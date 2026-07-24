@@ -22,7 +22,12 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title, {
       body: data.body,
       icon: 'icon-192.png',
-      badge: 'icon-192.png',
+      // O Android usa só o canal alfa do badge para desenhar uma silhueta
+      // monocromática na barra de estado — um ícone colorido e opaco (como o
+      // icon-192.png acima) fica um bloco branco sólido, indistinguível de
+      // "sem imagem". badge-96.png é uma gota branca sobre fundo transparente,
+      // pensada só para isto.
+      badge: 'badge-96.png',
       tag: 'water-reminder',
       renotify: true,
     })
