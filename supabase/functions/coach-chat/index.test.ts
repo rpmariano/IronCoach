@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, runGetGymHistory } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -104,8 +104,21 @@ Deno.test("runGetNutritionHistory propaga erro de query do supabase", async () =
 /* ===================== Ginásio ===================== */
 
 // deno-lint-ignore no-explicit-any
-function makeSession(date: string, name: string, sets: any[]): any {
-  return { date, name, status: "concluido", workout_session_sets: sets };
+function makeSession(date: string, name: string, sets: any[], extra: any = {}): any {
+  return { date, name, status: "concluido", workout_session_sets: sets, ...extra };
+}
+
+// Aula: sem séries, descrita só pelas métricas do relógio.
+// deno-lint-ignore no-explicit-any
+function makeAula(date: string, name: string, extra: any = {}): any {
+  return {
+    date,
+    name,
+    status: "concluido",
+    kind: "aula",
+    workout_session_sets: [],
+    ...extra,
+  };
 }
 
 // Mock do chain usado por runGetGymHistory:
@@ -170,6 +183,63 @@ Deno.test("runGetGymHistory resume treinos com volume e séries", async () => {
   assertStringIncludes(result, "Treinos de 2026-07-01 a 2026-07-31 (2)");
   assertStringIncludes(result, "2026-07-02: Push — 900 kg de volume, 2 séries");
   assertStringIncludes(result, "2026-07-05: Pull — 400 kg de volume, 1 séries");
+});
+
+Deno.test("summariseSessions lê tipo, categorias e métricas", () => {
+  const rows = summariseSessions([
+    makeSession("2026-07-02", "Ombros e Tríceps", [{ reps: 10, weight: 50 }], {
+      categories: ["Ombros", "Tríceps"],
+      duration_seconds: 2580,
+      exertion: 6,
+    }),
+  ]);
+  assertEquals(rows[0].kind, "forca");
+  assertEquals(rows[0].categories, ["Ombros", "Tríceps"]);
+  assertEquals(rows[0].durationSeconds, 2580);
+  assertEquals(rows[0].exertion, 6);
+});
+
+Deno.test("summariseSessions assume 'forca' quando a sessão não tem tipo", () => {
+  // Sessões anteriores à coluna kind existir.
+  const rows = summariseSessions([makeSession("2026-07-01", "Push", [{ reps: 5, weight: 20 }])]);
+  assertEquals(rows[0].kind, "forca");
+  assertEquals(rows[0].categories, []);
+  assertEquals(rows[0].exertion, null);
+});
+
+// A regressão que motivou tudo isto: uma aula não tem séries, e descrevê-la
+// como "0 kg de volume, 0 séries" fazia o coach lê-la como treino falhado.
+Deno.test("formatSessionLine omite volume e séries numa aula", () => {
+  const [row] = summariseSessions([
+    makeAula("2026-07-25", "Aula de HIIT", {
+      categories: ["HIIT"],
+      duration_seconds: 2277,
+      calories_kcal: 175,
+      avg_hr: 100,
+      max_hr: 139,
+      exertion: 6,
+    }),
+  ]);
+  const line = formatSessionLine(row);
+  assertEquals(line.includes("0 kg"), false);
+  assertEquals(line.includes("0 séries"), false);
+  assertStringIncludes(line, "Aula de HIIT (aula) [HIIT]");
+  assertStringIncludes(line, "38 min");
+  assertStringIncludes(line, "175 kcal");
+  assertStringIncludes(line, "FC média 100 / máx 139 bpm");
+  assertStringIncludes(line, "esforço 6/10");
+});
+
+Deno.test("formatSessionLine mantém volume e séries num treino de força", () => {
+  const [row] = summariseSessions([
+    makeSession("2026-07-02", "Push", [{ reps: 10, weight: 50 }], { categories: ["Peito"] }),
+  ]);
+  assertStringIncludes(formatSessionLine(row), "Push [Peito] — 500 kg de volume, 1 séries");
+});
+
+Deno.test("formatSessionLine avisa quando não há detalhe nenhum", () => {
+  const [row] = summariseSessions([makeAula("2026-07-25", "Aula")]);
+  assertStringIncludes(formatSessionLine(row), "sem detalhes registados");
 });
 
 Deno.test("runGetGymHistory propaga erro de query", async () => {

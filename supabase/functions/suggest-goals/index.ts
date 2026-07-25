@@ -203,10 +203,23 @@ function buildPrompt(
     ? "Sem treinos de ginásio recentes."
     : gymSessions.map((s) => {
       let volume = 0;
+      let sets = 0;
       for (const st of (s.workout_session_sets || [])) {
-        if (st.reps != null && st.weight != null) volume += st.reps * st.weight;
+        if (st.reps != null && st.weight != null) { volume += st.reps * st.weight; sets += 1; }
       }
-      return `- ${s.date}: ${s.name || "Treino"} — ${Math.round(volume)} kg de volume`;
+      const parts: string[] = [];
+      // Volume só quando há séries: uma aula tem sempre zero, e "0 kg de
+      // volume" faria o modelo lê-la como treino falhado ao definir metas.
+      if (sets > 0) parts.push(`${Math.round(volume)} kg de volume`);
+      if (s.duration_seconds) parts.push(`${Math.round(s.duration_seconds / 60)} min`);
+      if (s.calories_kcal) parts.push(`${s.calories_kcal} kcal`);
+      if (s.exertion) parts.push(`esforço ${s.exertion}/10`);
+      const kindLabel = s.kind === "aula" ? " (aula)" : "";
+      const cats = Array.isArray(s.categories) && s.categories.length
+        ? ` [${s.categories.join(", ")}]`
+        : "";
+      const detail = parts.length ? ` — ${parts.join(", ")}` : "";
+      return `- ${s.date}: ${s.name || "Treino"}${kindLabel}${cats}${detail}`;
     }).join("\n");
 
   const byDate = aggregateMealsByDate(meals);
@@ -239,7 +252,9 @@ function buildPrompt(
     `Próximas provas agendadas (a mais próxima é a prioridade, mas tem em conta se houver várias muito ` +
     `seguidas — nesse caso os objetivos devem servir a sequência toda, não só a primeira):\n${raceLines}\n\n` +
     `Corridas recentes (últimos ~60 dias, mais recente primeiro):\n${runLines}\n\n` +
-    `Treinos de ginásio recentes (últimos ~60 dias, mais recente primeiro):\n${gymLines}\n\n` +
+    `Treinos de ginásio recentes (últimos ~60 dias, mais recente primeiro). As sessões marcadas ` +
+    `com "(aula)" são aulas de grupo ou cardio (HIIT, RPM, pilates...) e não têm volume em kg ` +
+    `porque não é assim que se medem — não as contes como treinos falhados:\n${gymLines}\n\n` +
     `Regras:\n` +
     `- Só sugere um valor para um objetivo se fizer sentido com os dados disponíveis (ex.: não sugiras ` +
     `peso-alvo se nunca houve avaliação de peso; não sugiras objetivos de nutrição se não houver nenhum ` +
@@ -331,7 +346,10 @@ Deno.serve(async (req) => {
 
     const { data: gymSessions } = await sb
       .from("workout_sessions")
-      .select("date, name, status, workout_session_sets(reps, weight)")
+      .select(
+        "date, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
+          "workout_session_sets(reps, weight)",
+      )
       .eq("user_id", userId)
       .eq("status", "concluido")
       .gte("date", windowStart60ISO)

@@ -44,9 +44,14 @@ const NUTRITION_TOOL = {
 const GYM_TOOL = {
   name: "get_gym_history",
   description:
-    "Obtém os treinos de ginásio concluídos (data, nome do treino, volume total em kg, " +
-    "nº de séries) do utilizador para um intervalo de datas específico. Usa esta função " +
-    "sempre que a pergunta envolva treinos fora dos últimos 30 dias já fornecidos no contexto.",
+    "Obtém os treinos concluídos do utilizador para um intervalo de datas específico. " +
+    "Cada sessão é de um de dois tipos: treino de força (com exercícios, séries, volume " +
+    "total em kg e grupos musculares trabalhados) ou aula de grupo/cardio marcada com " +
+    "\"(aula)\" — ex.: HIIT, RPM, pilates — que NÃO tem séries nem volume, sendo descrita " +
+    "por duração, calorias e frequência cardíaca. Uma aula sem volume é um treino a sério, " +
+    "não um treino falhado. Ambos os tipos podem trazer duração, calorias, frequência " +
+    "cardíaca e esforço percebido (1-10). Usa esta função sempre que a pergunta envolva " +
+    "treinos fora dos últimos 30 dias já fornecidos no contexto.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -264,18 +269,68 @@ export async function runGetNutritionHistory(sb: any, userId: string, args: { st
 }
 
 // ── Ginásio ────────────────────────────────────────────────────────────────
-// Resume sessões de treino em {data, nome, volume, séries}. Volume = Σ reps×carga
-// sobre séries com reps e carga preenchidos.
+export type GymSessionSummary = {
+  date: string;
+  name: string;
+  kind: "forca" | "aula";
+  categories: string[];
+  volume: number;
+  sets: number;
+  durationSeconds: number | null;
+  calories: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  exertion: number | null;
+};
+
+// Resume sessões de treino para o coach. Volume = Σ reps×carga sobre séries
+// com reps e carga preenchidos — numa aula fica 0, porque uma aula não tem
+// séries (ver formatSessionLine, que por isso as omite).
 // deno-lint-ignore no-explicit-any
-export function summariseSessions(sessions: any[]): { date: string; name: string; volume: number; sets: number }[] {
+export function summariseSessions(sessions: any[]): GymSessionSummary[] {
   return sessions.map((s) => {
     let volume = 0;
     let sets = 0;
     for (const st of (s.workout_session_sets || [])) {
       if (st.reps != null && st.weight != null) { volume += st.reps * st.weight; sets += 1; }
     }
-    return { date: s.date, name: s.name || "Treino", volume, sets };
+    return {
+      date: s.date,
+      name: s.name || "Treino",
+      kind: s.kind === "aula" ? "aula" : "forca",
+      categories: Array.isArray(s.categories) ? s.categories : [],
+      volume,
+      sets,
+      durationSeconds: s.duration_seconds ?? null,
+      calories: s.calories_kcal ?? null,
+      avgHr: s.avg_hr ?? null,
+      maxHr: s.max_hr ?? null,
+      exertion: s.exertion ?? null,
+    };
   });
+}
+
+// Uma linha por sessão, no formato que o modelo lê. Partilhada pelo resumo
+// automático e pela function call, para não divergirem.
+export function formatSessionLine(r: GymSessionSummary): string {
+  const parts: string[] = [];
+  // Volume e séries só entram quando existem mesmo. Uma aula tem sempre zero
+  // de ambos, e escrever "0 kg de volume, 0 séries" fazia o coach ler um HIIT
+  // de 45 minutos como treino falhado.
+  if (r.sets > 0) {
+    parts.push(`${Math.round(r.volume)} kg de volume`, `${r.sets} séries`);
+  }
+  if (r.durationSeconds) parts.push(`${Math.round(r.durationSeconds / 60)} min`);
+  if (r.calories) parts.push(`${r.calories} kcal`);
+  if (r.avgHr && r.maxHr) parts.push(`FC média ${r.avgHr} / máx ${r.maxHr} bpm`);
+  else if (r.avgHr) parts.push(`FC média ${r.avgHr} bpm`);
+  else if (r.maxHr) parts.push(`FC máx ${r.maxHr} bpm`);
+  if (r.exertion) parts.push(`esforço ${r.exertion}/10`);
+
+  const kindLabel = r.kind === "aula" ? " (aula)" : "";
+  const cats = r.categories.length ? ` [${r.categories.join(", ")}]` : "";
+  const detail = parts.length ? ` — ${parts.join(", ")}` : " — sem detalhes registados";
+  return `- ${r.date}: ${r.name}${kindLabel}${cats}${detail}`;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -284,10 +339,8 @@ function buildGymSummary(sessions: any[], windowDays: number): string {
   if (rows.length === 0) {
     return `Treinos de ginásio (últimos ${windowDays} dias): sem treinos concluídos.`;
   }
-  const lines = rows.map((r) =>
-    `- ${r.date}: ${r.name} — ${Math.round(r.volume)} kg de volume, ${r.sets} séries`,
-  );
-  return `Treinos de ginásio (últimos ${windowDays} dias, ${rows.length} concluído(s)):\n${lines.join("\n")}`;
+  return `Treinos de ginásio (últimos ${windowDays} dias, ${rows.length} concluído(s)):\n` +
+    rows.map(formatSessionLine).join("\n");
 }
 
 // Executa a function call get_gym_history: treinos concluídos num intervalo.
@@ -315,8 +368,8 @@ export async function runGetGymHistory(sb: any, userId: string, args: { start_da
   if (error) return `Erro ao consultar dados: ${error.message}`;
   const rows = summariseSessions(data || []);
   if (rows.length === 0) return `Sem treinos concluídos entre ${start_date} e ${end_date}.`;
-  const lines = rows.map((r) => `- ${r.date}: ${r.name} — ${Math.round(r.volume)} kg de volume, ${r.sets} séries`);
-  return `Treinos de ${start_date} a ${end_date} (${rows.length}):\n${lines.join("\n")}`;
+  return `Treinos de ${start_date} a ${end_date} (${rows.length}):\n` +
+    rows.map(formatSessionLine).join("\n");
 }
 
 // ── Corrida ──────────────────────────────────────────────────────────────
@@ -473,6 +526,13 @@ function buildSystemInstruction(
     `de um treino/corrida, sugere beber água). Tal como as provas, não forces este tópico numa ` +
     `pergunta que não tem nada a ver com hidratação — só o menciona quando for relevante.\n\n` +
     `Data atual: ${today}.\n\n` +
+    `Sobre os treinos: há dois tipos. Os treinos de força trazem exercícios, séries, volume em ` +
+    `kg e os grupos musculares trabalhados entre parênteses retos. As aulas de grupo e cardio ` +
+    `vêm marcadas com "(aula)" — HIIT, RPM, pilates e afins — e NÃO têm séries nem volume, ` +
+    `porque não é assim que se medem: são descritas por duração, calorias e frequência ` +
+    `cardíaca. Nunca leias uma aula sem volume como um treino falhado ou uma semana parada. ` +
+    `Qualquer dos tipos pode trazer esforço percebido de 1 a 10, útil para perceber se a carga ` +
+    `de treino está adequada.\n\n` +
     `O contexto abaixo tem os dados de nutrição dos últimos 7 dias, os treinos de ginásio e as ` +
     `corridas dos últimos 30 dias. Se a pergunta do utilizador precisar de dados fora dessas ` +
     `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
@@ -618,7 +678,10 @@ async function handler(req: Request): Promise<Response> {
     const gymStartISO = gymStartD.toISOString().slice(0, 10);
     const { data: gymSessions } = await sb
       .from("workout_sessions")
-      .select("date, name, status, workout_session_sets(reps, weight)")
+      .select(
+        "date, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
+          "workout_session_sets(reps, weight)",
+      )
       .eq("user_id", userId)
       .eq("status", "concluido")
       .gte("date", gymStartISO)

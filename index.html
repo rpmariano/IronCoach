@@ -96,7 +96,15 @@
   .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
 
   .range-chip.active { background:var(--accent); color:#09090b; border-color:var(--accent); }
+  .range-chip:not(.active) { color:var(--green) !important; border-color:var(--green) !important; }
   .mealtype-pill.active { background:var(--accent); color:#09090b; border-color:var(--accent); font-weight:700; }
+  .mealtype-pill:not(.active) { color:var(--green) !important; border-color:var(--green) !important; }
+  /* Pílula de escolha genérica (tipo de corrida, tipo de sessão de ginásio,
+     categoria). Mesmo tratamento das .mealtype-pill, mas sem estar presa ao
+     nome "refeição" — o estado escolhido usa a cor de destaque, os restantes
+     ficam em verde, como as abas do topo. */
+  .choice-pill { border:1px solid var(--brd-700); color:var(--green); transition:background-color .15s, color .15s, border-color .15s; }
+  .choice-pill.active { background:var(--accent); color:#09090b; border-color:var(--accent); font-weight:700; }
 
   .fade-in { animation: fadeIn .25s ease-out; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
@@ -508,7 +516,17 @@ let gymSessions = [];             // sessões carregadas (histórico completo do
 let gymPhotos = [];               // [{ dataUrl, base64 }] prints comprimidos prontos a enviar
 let gymDate = todayISO();         // data pré-preenchida da nova sessão
 let gymNotes = '';                // observação livre antes da análise
-let gymSessionNameDraft = '';     // nome opcional da sessão (entrada manual)
+let gymSessionNameDraft = '';     // nome da sessão (opcional, upload e manual)
+// Tipo da sessão a registar. 'forca' = exercícios/séries com carga; 'aula' =
+// aula de grupo (HIIT, RPM, pilates...), que não tem séries mas tem duração,
+// calorias e frequência cardíaca vindas do relógio.
+let gymKindDraft = 'forca';       // 'forca' | 'aula'
+let gymCategoriesDraft = [];      // grupos musculares (força) ou tipos de aula
+let gymDurationDraft = '';        // aceita "37:57", "43m", "1:05:30" ou minutos
+let gymCaloriesDraft = '';
+let gymAvgHrDraft = '';
+let gymMaxHrDraft = '';
+let gymExertionDraft = '';        // esforço percebido 1-10 (o "6/10" da Hevy)
 let analyzingGym = false;
 let expandedGymSessionId = null;
 let reanalyzingGymSessionId = null;
@@ -523,6 +541,20 @@ let gymCalendarSelectedDate = todayISO();
 let gymRange = 'mes';             // semana | mes | trimestre
 let gymChartExercise = null;      // exercício selecionado para a progressão
 let gymCharts = { vol: null, ex: null }; // instâncias Chart.js (destruídas antes de recriar)
+
+const GYM_KINDS = [
+  { key:'forca', label:'Força', icon:'dumbbell' },
+  { key:'aula',  label:'Aula',  icon:'users' },
+];
+// Categorias sugeridas por tipo. Ficam só no cliente de propósito: a coluna
+// `category` não tem CHECK na BD, por isso estas listas podem crescer sem
+// migração. O utilizador pode sempre escrever uma categoria à mão.
+const GYM_CATEGORIES = {
+  forca: ['Peito','Costas','Pernas','Ombros','Bíceps','Tríceps','Braços','Core/Abdominais','Glúteos','Full Body','Push','Pull'],
+  aula:  ['HIIT','RPM/Cycling','Pilates','Yoga','Body Pump','Zumba','CrossFit','Treino Funcional','Natação','Outro'],
+};
+function gymCategoriesFor(kind){ return GYM_CATEGORIES[kind] || GYM_CATEGORIES.forca; }
+function gymKindLabel(kind){ return (GYM_KINDS.find(k => k.key === kind) || {}).label || 'Força'; }
 
 let coachMessages = []; // { id, role, content, created_at }
 
@@ -601,10 +633,10 @@ const HOME_CARD_DEFS = [
   { key:'bmi',            label:'IMC',                  icon:'activity',       module:'Corpo',    size:'half' },
   { key:'muscle_mass_kg', label:'Massa muscular',       icon:'dumbbell',       module:'Corpo',    size:'half' },
   { key:'body_water_pct', label:'Água corporal',        icon:'droplet',        module:'Corpo',    size:'half' },
-  { key:'gym_sessions',   label:'Ginásio · Sessões',    icon:'calendar-check', module:'Ginásio',  size:'full' },
-  { key:'gym_volume',     label:'Ginásio · Volume',     icon:'weight',         module:'Ginásio',  size:'full' },
   { key:'corrida_km',     label:'Corrida · Distância',  icon:'footprints',     module:'Corrida',  size:'full' },
   { key:'corrida_pace',   label:'Corrida · Pace médio', icon:'gauge',          module:'Corrida',  size:'full' },
+  { key:'gym_sessions',   label:'Ginásio · Sessões',    icon:'calendar-check', module:'Ginásio',  size:'full' },
+  { key:'gym_volume',     label:'Ginásio · Volume',     icon:'weight',         module:'Ginásio',  size:'full' },
 ];
 // Ordem fixa (agrupada por módulo) em que os cartões ativos aparecem no
 // Início — o utilizador escolhe QUAIS ativar, não a ordem. Curada para dar
@@ -862,6 +894,53 @@ function formatDuration(totalSeconds){
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = Math.round(totalSeconds % 60);
   return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+}
+// Inverso tolerante do formatDuration, para campos onde o utilizador copia o
+// que vê no relógio. Cada app escreve a duração à sua maneira, por isso aceita:
+//   "37:57" (m:s) · "1:05:30" (h:m:s) · "43m" · "1h 20m" · "45 min" · "38"
+// Devolve null se não der para interpretar — quem chama decide se isso é erro
+// ou apenas campo vazio.
+function parseDurationToSeconds(raw){
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (!text) return null;
+
+  if (text.includes(':')) {
+    const parts = text.split(':').map(p => p.trim());
+    if (parts.length > 3 || parts.some(p => p === '' || !/^\d+$/.test(p))) return null;
+    const nums = parts.map(Number);
+    // Preenche à esquerda para ficar sempre [horas, minutos, segundos].
+    while (nums.length < 3) nums.unshift(0);
+    const [h, m, s] = nums;
+    if (m > 59 || s > 59) return null;
+    const total = h * 3600 + m * 60 + s;
+    return total > 0 ? total : null;
+  }
+
+  // Formato com unidades ("1h 20m", "43m", "45 min", "90s"). Cada unidade só
+  // pode aparecer uma vez, e tem de sobrar apenas espaço no fim — assim "43x"
+  // é rejeitado em vez de ser lido como 43 de alguma coisa.
+  if (/[hms]/.test(text)) {
+    const re = /(\d+(?:[.,]\d+)?)\s*(h|min|m|s)/g;
+    const seen = {};
+    let total = 0;
+    let matched = '';
+    let match;
+    while ((match = re.exec(text)) !== null) {
+      const value = Number(match[1].replace(',', '.'));
+      const unit = match[2] === 'min' ? 'm' : match[2];
+      if (!isFinite(value) || seen[unit]) return null;
+      seen[unit] = true;
+      total += value * (unit === 'h' ? 3600 : unit === 'm' ? 60 : 1);
+      matched += match[0];
+    }
+    if (!matched || text.replace(/\s/g, '') !== matched.replace(/\s/g, '')) return null;
+    return total > 0 ? Math.round(total) : null;
+  }
+
+  // Número solto: assume-se minutos, que é como as pessoas o dizem.
+  const minutes = Number(text.replace(',', '.'));
+  if (!isFinite(minutes) || minutes <= 0) return null;
+  return Math.round(minutes * 60);
 }
 // Corridas de PELO MENOS `minKm` km, mais recente primeiro. Base do "melhor
 // pace aos 5/10/21 km": uma corrida de 12 km conta para os buckets de 5 e de
@@ -2623,22 +2702,7 @@ function nextRaceHomeCard(){
 // ignoradas em vez de rebentar o render.
 function currentHomeLayout(){
   const saved = state.profile && Array.isArray(state.profile.home_layout) ? state.profile.home_layout : null;
-  // Se layout foi customizado mas usa a ordem antiga (gym antes corrida), reseta para novo padrão
-  let layout = saved && saved.length ? saved : DEFAULT_HOME_LAYOUT;
-  if (saved && saved.length) {
-    const gymIdx = saved.indexOf('gym_sessions');
-    const runIdx = saved.indexOf('corrida_km');
-    if (gymIdx >= 0 && runIdx >= 0 && gymIdx < runIdx) {
-      // Layout antigo detectado (gym antes corrida) — reseta para novo padrão
-      layout = DEFAULT_HOME_LAYOUT;
-      if (state.profile) {
-        state.profile.home_layout = layout;
-        // Sincroniza com BD
-        sb.from('profiles').update({ home_layout: layout }).eq('id', currentUser.id).catch(() => {});
-      }
-    }
-  }
-  const activeSet = new Set(layout);
+  const activeSet = new Set((saved && saved.length) ? saved : DEFAULT_HOME_LAYOUT);
   return CANONICAL_HOME_ORDER.filter(k => activeSet.has(k));
 }
 
@@ -2936,7 +3000,7 @@ function renderRunKindFields(){
     <div class="flex flex-wrap gap-1.5 mb-3">
       ${kinds.map(k => `
         <button onclick="selectRunKind('${k.key}')" type="button"
-          class="border rounded-full px-3 py-1.5 text-[11px] font-medium transition ${runKind===k.key ? 'text-neutral-950 bg-[var(--accent)] border-transparent' : 'text-slate-300 border-neutral-700'}">
+          class="choice-pill ${runKind===k.key ? 'active' : ''} rounded-full px-3 py-1.5 text-[11px] font-medium">
           ${k.label}
         </button>
       `).join('')}
@@ -4303,6 +4367,49 @@ function gymSetGroups(session){
   return order.map(name => ({ exercise_name: name, sets: byName[name] }));
 }
 
+// Resumo curto de uma sessão, adequado ao seu tipo: um treino de força
+// descreve-se pelo nº de exercícios, uma aula pelas métricas do relógio
+// (que é tudo o que ela tem). Usado em toasts e no cabeçalho do cartão.
+function gymSessionSummary(session){
+  if (session.kind === 'aula') {
+    const parts = [
+      session.duration_seconds ? formatDuration(session.duration_seconds) : null,
+      session.calories_kcal ? `${session.calories_kcal} kcal` : null,
+    ].filter(Boolean);
+    if (parts.length) return parts.join(' · ');
+    return gymCategoryLabel(session) || 'Aula';
+  }
+  return `${gymSetGroups(session).length} exercício(s)`;
+}
+
+// "Ombros · Tríceps" a partir do array de categorias. Tolera as sessões
+// antigas, anteriores à coluna existir.
+function gymCategoryLabel(session){
+  return (session.categories || []).join(' · ');
+}
+
+// Chips das métricas do relógio, mostrados em qualquer sessão que as tenha
+// (uma aula tem quase sempre, um treino de força pode ter). Devolve string
+// vazia quando não há nada para mostrar, para o chamador poder omitir a linha.
+function gymMetricChips(session){
+  const chips = [
+    session.duration_seconds ? { icon:'timer', text: formatDuration(session.duration_seconds) } : null,
+    session.calories_kcal ? { icon:'flame', text: `${session.calories_kcal} kcal` } : null,
+    session.avg_hr ? { icon:'heart-pulse', text: `${session.avg_hr} bpm méd` } : null,
+    session.max_hr ? { icon:'trending-up', text: `${session.max_hr} bpm máx` } : null,
+    session.exertion ? { icon:'gauge', text: `Esforço ${session.exertion}/10` } : null,
+  ].filter(Boolean);
+  if (!chips.length) return '';
+  return `
+    <div class="flex flex-wrap gap-1.5">
+      ${chips.map(c => `
+        <span class="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 bg-neutral-900 border border-neutral-800 rounded-full px-2 py-1">
+          <i data-lucide="${c.icon}" class="w-3 h-3"></i>${c.text}
+        </span>
+      `).join('')}
+    </div>`;
+}
+
 /* ============================= REGISTAR / ANÁLISE ============================= */
 async function onGymPhotoSelected(input){
   const files = Array.from(input.files || []);
@@ -4320,6 +4427,61 @@ function removeGymPhoto(index){ gymPhotos.splice(index, 1); refreshGym(); }
 function clearGymPhotos(){ gymPhotos = []; refreshGym(); }
 function updateGymNotes(value){ gymNotes = value; }
 function updateGymSessionName(value){ gymSessionNameDraft = value; }
+// Trocar de tipo limpa as categorias: um grupo muscular não faz sentido numa
+// aula (e vice-versa), e deixá-las lá gravaria "Peito" numa aula de pilates.
+function selectGymKind(kind){
+  if (gymKindDraft === kind) return;
+  gymKindDraft = kind;
+  gymCategoriesDraft = [];
+  refreshGym();
+}
+// Uma sessão pode treinar vários grupos ("Ombros" + "Tríceps"), por isso a
+// escolha é múltipla: segundo toque na mesma pílula desmarca.
+function toggleGymCategory(category){
+  const i = gymCategoriesDraft.indexOf(category);
+  if (i >= 0) gymCategoriesDraft.splice(i, 1);
+  else gymCategoriesDraft.push(category);
+  refreshGym();
+}
+// Categoria escrita à mão, para o que não está nas listas sugeridas.
+function addCustomGymCategory(){
+  const el = document.getElementById('gymCategoryCustom');
+  if (!el) return;
+  const value = el.value.trim().slice(0, 60);
+  el.value = '';
+  if (!value || gymCategoriesDraft.includes(value)) { refreshGym(); return; }
+  gymCategoriesDraft.push(value);
+  refreshGym();
+}
+// Lê os campos de métricas para o formato da BD, ignorando os que ficaram
+// vazios ou ilegíveis. Partilhado pelo upload e pela entrada manual.
+function gymMetricsFromDraft(){
+  const int = (v) => {
+    const n = Math.round(Number(String(v ?? '').trim()));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const exertion = int(gymExertionDraft);
+  return {
+    duration_seconds: parseDurationToSeconds(gymDurationDraft),
+    calories_kcal: int(gymCaloriesDraft),
+    avg_hr: int(gymAvgHrDraft),
+    max_hr: int(gymMaxHrDraft),
+    // A BD só aceita 1-10 (CHECK); fora disso vale mais não gravar do que
+    // rebentar o insert.
+    exertion: exertion !== null && exertion <= 10 ? exertion : null,
+  };
+}
+function resetGymDraft(){
+  gymPhotos = [];
+  gymNotes = '';
+  gymSessionNameDraft = '';
+  gymCategoriesDraft = [];
+  gymDurationDraft = '';
+  gymCaloriesDraft = '';
+  gymAvgHrDraft = '';
+  gymMaxHrDraft = '';
+  gymExertionDraft = '';
+}
 
 function refreshGymTabContent(){
   if (gymTab === 'registar') return renderGymRegistar();
@@ -4342,7 +4504,18 @@ async function analyzeGym(){
   refreshGym();
   try {
     const { data, error } = await sb.functions.invoke('analyze-gym', {
-      body: { images: gymPhotos.map(p => p.base64), mime_type: 'image/jpeg', date, notes: gymNotes || null },
+      body: {
+        images: gymPhotos.map(p => p.base64),
+        mime_type: 'image/jpeg',
+        date,
+        notes: gymNotes || null,
+        kind: gymKindDraft,
+        // O que o utilizador escreveu ganha à sugestão da IA — ver analyze-gym,
+        // que só preenche estes campos quando vêm vazios daqui.
+        name: gymSessionNameDraft.trim() || null,
+        categories: gymCategoriesDraft,
+        ...gymMetricsFromDraft(),
+      },
     });
     if (error) throw new Error(await edgeFunctionErrorMessage(error, 'Falha na análise.'));
     if (data && data.error) throw new Error(data.error);
@@ -4351,12 +4524,19 @@ async function analyzeGym(){
     session.workout_session_sets = data.sets || [];
     gymSessions.unshift(session);
     gymSessions.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
-    gymPhotos = [];
-    gymNotes = '';
+    resetGymDraft();
     expandedGymSessionId = session.id;
-    showToast('success', 'Sessão registada', `${formatDatePT(session.date)} · ${gymSetGroups(session).length} exercício(s)`,
+    showToast('success', 'Sessão registada', `${formatDatePT(session.date)} · ${gymSessionSummary(session)}`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInGymCalendar('${session.date}')` });
-    logEvent('success', 'gym_analysis', null, { date: session.date, ...(data.usage || {}) });
+    // extra_fields são dados que a IA viu no print e que a app ainda não tem
+    // onde guardar. Ficam nos logs (app_logs.meta) para depois decidirmos quais
+    // valem uma coluna própria — ver RESPONSE_SCHEMA em analyze-gym.
+    logEvent('success', 'gym_analysis', null, {
+      date: session.date,
+      kind: session.kind,
+      ...(data.extra_fields && data.extra_fields.length ? { extra_fields: data.extra_fields } : {}),
+      ...(data.usage || {}),
+    });
   } catch(e) {
     console.error(e);
     const msg = e.message || 'Falha na análise. Tenta novamente.';
@@ -4440,27 +4620,72 @@ async function loadGymSessionPhotoUrls(id){
 /* -------- Sessão manual (série-a-série), sem IA -------- */
 async function startManualGymSession(){
   const date = document.getElementById('gymDate').value || todayISO();
+  // Sem nome escrito, cai para a categoria ("HIIT") e só depois para o tipo
+  // ("Aula") — assim uma aula registada à pressa continua identificável na
+  // lista, em vez de aparecer como "Treino" sem mais nada.
+  const name = gymSessionNameDraft.trim() || gymCategoriesDraft.join(' e ') || gymKindLabel(gymKindDraft);
   try {
     const { data, error } = await sb.from('workout_sessions')
-      .insert({ user_id: currentUser.id, date, name: gymSessionNameDraft.trim() || null, photo_paths: [], status: 'concluido' })
+      .insert({
+        user_id: currentUser.id,
+        date,
+        name,
+        kind: gymKindDraft,
+        categories: gymCategoriesDraft,
+        ...gymMetricsFromDraft(),
+        notes: gymNotes.trim() || null,
+        photo_paths: [],
+        status: 'concluido',
+      })
       .select().single();
     if (error) throw error;
     data.workout_session_sets = [];
     gymSessions.unshift(data);
     manualGymSessionId = data.id;
     expandedGymSessionId = data.id;
-    gymSessionNameDraft = '';
+    resetGymDraft();
   } catch(e) {
     flashSyncError(e);
   }
   refreshGym();
 }
 
+// Esforço percebido é o único campo editável depois da sessão gravada: é o
+// que muitas vezes só se sabe no fim do treino, e não vale a pena reanalisar
+// os prints por causa dele. Campo vazio limpa o valor.
+async function saveGymSessionExertion(sessionId, rawValue){
+  const s = findGymSessionById(sessionId);
+  if (!s) return;
+  const text = String(rawValue ?? '').trim();
+  let value = null;
+  if (text) {
+    const n = Math.round(Number(text));
+    if (!Number.isFinite(n) || n < 1 || n > 10) {
+      showToast('error', null, 'O esforço tem de ser um número entre 1 e 10.');
+      refreshGym();
+      return;
+    }
+    value = n;
+  }
+  if (value === (s.exertion ?? null)) return;
+  const previous = s.exertion ?? null;
+  s.exertion = value;
+  refreshGym();
+  try {
+    const { error } = await sb.from('workout_sessions').update({ exertion: value }).eq('id', sessionId);
+    if (error) throw error;
+  } catch(e) {
+    s.exertion = previous;
+    flashSyncError(e);
+    refreshGym();
+  }
+}
+
 function finishManualGymSession(){
   const s = manualGymSessionId ? findGymSessionById(manualGymSessionId) : null;
   if (s) {
     showToast('success', 'Sessão registada',
-      `${formatDatePT(s.date)} · ${gymSetGroups(s).length} exercício(s)`,
+      `${formatDatePT(s.date)} · ${gymSessionSummary(s)}`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInGymCalendar('${s.date}')` });
   }
   manualGymSessionId = null;
@@ -4525,7 +4750,7 @@ function renderGymRegistar(){
       <div class="space-y-4 fade-in">
         <div class="rounded-2xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 flex items-center gap-2">
           <i data-lucide="pencil-line" class="w-4 h-4 text-[var(--accent)] shrink-0"></i>
-          <p class="text-xs text-white/90 theme-flip-text flex-1">A construir sessão · ${formatDatePT(manualSession.date)} — adiciona as séries abaixo.</p>
+          <p class="text-xs text-white/90 theme-flip-text flex-1">A construir sessão · ${formatDatePT(manualSession.date)}${manualSession.kind === 'aula' ? ' — confirma os dados e conclui.' : ' — adiciona as séries abaixo.'}</p>
         </div>
         ${renderGymSessionCard(manualSession)}
         <button onclick="finishManualGymSession()" class="w-full bg-emerald-500 text-neutral-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition">
@@ -4576,6 +4801,16 @@ function renderGymRegistar(){
           </label>
         `}
 
+        <label class="text-[11px] text-slate-500 mb-1.5 block">Tipo de sessão</label>
+        <div class="flex gap-1.5 mb-3">
+          ${GYM_KINDS.map(k => `
+            <button onclick="selectGymKind('${k.key}')" type="button"
+              class="choice-pill ${gymKindDraft===k.key ? 'active' : ''} flex-1 rounded-xl py-2 text-[11px] font-semibold flex items-center justify-center gap-1.5">
+              <i data-lucide="${k.icon}" class="w-3.5 h-3.5"></i> ${k.label}
+            </button>
+          `).join('')}
+        </div>
+
         <div class="grid grid-cols-2 gap-2 mb-3">
           <input id="gymDate" type="date" value="${gymDate}" max="${todayISO()}" onchange="gymDate = this.value"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
@@ -4583,7 +4818,56 @@ function renderGymRegistar(){
         </div>
 
         <div class="mb-3">
-          <label class="text-[11px] text-slate-500 mb-1 block">Observações (opcional) — ex.: "treino de força", "peso corporal"</label>
+          <label class="text-[11px] text-slate-500 mb-1 block">Nome da sessão (opcional) — ex.: "${gymKindDraft==='aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"</label>
+          <input id="gymSessionName" type="text" maxlength="80" value="${esc(gymSessionNameDraft)}" oninput="updateGymSessionName(this.value)"
+            placeholder="Nome do treino"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
+        <div class="mb-3">
+          <label class="text-[11px] text-slate-500 mb-1.5 block">
+            ${gymKindDraft==='aula' ? 'Tipo de aula' : 'Grupos musculares'} — podes escolher vários
+          </label>
+          <div class="flex flex-wrap gap-1.5 mb-2">
+            ${gymCategoriesFor(gymKindDraft).map(c => `
+              <button onclick="toggleGymCategory('${esc(c)}')" type="button"
+                class="choice-pill ${gymCategoriesDraft.includes(c) ? 'active' : ''} rounded-full px-3 py-1.5 text-[11px] font-medium">
+                ${esc(c)}
+              </button>
+            `).join('')}
+            ${gymCategoriesDraft.filter(c => !gymCategoriesFor(gymKindDraft).includes(c)).map(c => `
+              <button onclick="toggleGymCategory('${esc(c)}')" type="button"
+                class="choice-pill active rounded-full px-3 py-1.5 text-[11px] font-medium">
+                ${esc(c)}
+              </button>
+            `).join('')}
+          </div>
+          <input id="gymCategoryCustom" type="text" maxlength="60"
+            onchange="addCustomGymCategory()" placeholder="Ou escreve outra e prime Enter..."
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
+        <label class="text-[11px] text-slate-500 mb-1.5 block">Métricas do relógio (opcional)</label>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+          <input id="gymDuration" type="text" inputmode="text" value="${esc(gymDurationDraft)}" oninput="gymDurationDraft=this.value"
+            placeholder="Duração (43m ou 37:57)"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+          <input id="gymCalories" type="number" min="0" step="1" value="${esc(gymCaloriesDraft)}" oninput="gymCaloriesDraft=this.value"
+            placeholder="Calorias (kcal)"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+          <input id="gymAvgHr" type="number" min="0" step="1" value="${esc(gymAvgHrDraft)}" oninput="gymAvgHrDraft=this.value"
+            placeholder="FC média (bpm)"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+          <input id="gymMaxHr" type="number" min="0" step="1" value="${esc(gymMaxHrDraft)}" oninput="gymMaxHrDraft=this.value"
+            placeholder="FC máx (bpm)"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+          <input id="gymExertion" type="number" min="1" max="10" step="1" value="${esc(gymExertionDraft)}" oninput="gymExertionDraft=this.value"
+            placeholder="Esforço (1-10)"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
+        <div class="mb-3">
+          <label class="text-[11px] text-slate-500 mb-1 block">Observações (opcional) — ex.: "${gymKindDraft==='aula' ? 'aula puxada, professor novo' : 'treino de força, peso corporal'}"</label>
           <textarea id="gymNotes" rows="2" maxlength="500" placeholder="Contexto do treino..."
             oninput="updateGymNotes(this.value)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 resize-none">${esc(gymNotes)}</textarea>
@@ -4596,16 +4880,10 @@ function renderGymRegistar(){
             : `<i data-lucide="sparkles" class="w-4 h-4"></i> Analisar Treino${gymPhotos.length>1?` (${gymPhotos.length} prints)`:''}`}
         </button>
 
-        <div class="mb-3 mt-3">
-          <label class="text-[11px] text-slate-500 mb-1 block">Nome da sessão (opcional, entrada manual) — ex.: "Peito e Tríceps"</label>
-          <input id="gymSessionName" type="text" maxlength="80" value="${esc(gymSessionNameDraft)}" oninput="updateGymSessionName(this.value)"
-            placeholder="Nome do treino"
-            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-        </div>
-
         <button onclick="startManualGymSession()" ${analyzingGym ? 'disabled' : ''} type="button"
-          class="w-full border-2 border-dashed border-neutral-700 hover:border-[var(--accent)]/50 text-slate-400 hover:text-[var(--accent)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-40">
-          <i data-lucide="pencil-line" class="w-4 h-4"></i> Adicionar Treino Manualmente
+          class="w-full mt-3 border-2 border-dashed border-neutral-700 hover:border-[var(--accent)]/50 text-slate-400 hover:text-[var(--accent)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-40">
+          <i data-lucide="pencil-line" class="w-4 h-4"></i>
+          ${gymKindDraft==='aula' ? 'Registar Aula Sem Print' : 'Adicionar Treino Manualmente'}
         </button>
       </div>
     </div>
@@ -4623,27 +4901,52 @@ function renderGymSessionCard(session){
   const volume = sessionVolume(session);
   const totalSets = (session.workout_session_sets || []).length;
   const showAddSetForm = manualGymSessionId === session.id;
+  const isAula = session.kind === 'aula';
+  // Uma aula não tem volume para mostrar à direita; em contrapartida quase
+  // sempre tem duração, que é a métrica que a resume melhor.
+  const headlineValue = isAula
+    ? (session.duration_seconds ? formatDuration(session.duration_seconds) : '')
+    : `${Math.round(volume).toLocaleString('pt-PT')} kg`;
+  const categoryLabel = gymCategoryLabel(session);
+  const subtitle = isAula
+    ? [formatDatePT(session.date), categoryLabel || 'Aula'].filter(Boolean).join(' · ')
+    : `${formatDatePT(session.date)} · ${groups.length} exercício(s) · ${totalSets} série(s)`;
 
   return `
     <div id="gym-session-card-${session.id}" class="card rounded-2xl overflow-hidden">
       <button onclick="toggleGymSessionExpand('${session.id}')" class="w-full flex items-center justify-between p-4 text-left">
         <div class="flex items-center gap-3 min-w-0">
           <div class="w-9 h-9 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center shrink-0">
-            <i data-lucide="dumbbell" class="w-4 h-4 text-[var(--accent)]"></i>
+            <i data-lucide="${isAula ? 'users' : 'dumbbell'}" class="w-4 h-4 text-[var(--accent)]"></i>
           </div>
           <div class="min-w-0">
-            <p class="text-xs font-semibold text-white flex items-center gap-1">${esc(session.name || 'Treino')}${paths.length>1?`<span class="text-[9px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}</p>
-            <p class="text-[10px] text-slate-500">${formatDatePT(session.date)} · ${groups.length} exercício(s) · ${totalSets} série(s)</p>
+            <p class="text-xs font-semibold text-white flex items-center gap-1 flex-wrap">
+              ${esc(session.name || 'Treino')}
+              ${isAula ? `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">Aula</span>` : ''}
+              ${!isAula ? (session.categories || []).map(c => `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">${esc(c)}</span>`).join('') : ''}
+              ${paths.length>1?`<span class="text-[9px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}
+            </p>
+            <p class="text-[10px] text-slate-500">${subtitle}</p>
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <span class="text-xs font-bold text-[var(--accent)]">${Math.round(volume).toLocaleString('pt-PT')} kg</span>
+          ${headlineValue ? `<span class="text-xs font-bold text-[var(--accent)]">${headlineValue}</span>` : ''}
           <i data-lucide="${expanded?'chevron-up':'chevron-down'}" class="w-4 h-4 text-slate-500"></i>
         </div>
       </button>
 
       ${expanded ? `
       <div class="px-4 pb-4 space-y-3 border-t border-neutral-800 pt-3">
+        ${gymMetricChips(session)}
+
+        <div class="flex items-center gap-2">
+          <label for="gymExertion-${session.id}" class="text-[11px] text-slate-500 shrink-0">Esforço (1-10)</label>
+          <input id="gymExertion-${session.id}" type="number" min="1" max="10" step="1"
+            value="${session.exertion ?? ''}" placeholder="—"
+            onchange="saveGymSessionExertion('${session.id}', this.value)"
+            class="w-20 bg-neutral-900 border border-neutral-800 rounded-lg px-2 py-1 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
         ${paths.length ? `
           <div class="flex flex-wrap gap-2">
             ${paths.map(p => signedUrlCache[p]
@@ -4675,11 +4978,11 @@ function renderGymSessionCard(session){
               </div>
             </div>
           `).join('')}
-        </div>` : `<p class="text-xs text-slate-500">Ainda sem exercícios registados.</p>`}
+        </div>` : isAula ? '' : `<p class="text-xs text-slate-500">Ainda sem exercícios registados.</p>`}
 
         ${session.notes ? `<p class="text-[11px] text-slate-500"><span class="text-slate-400 font-medium">Obs.:</span> ${esc(session.notes)}</p>` : ''}
 
-        ${showAddSetForm ? `
+        ${showAddSetForm && !isAula ? `
           <div class="bg-neutral-900/60 border border-[var(--accent)]/30 rounded-xl p-3 space-y-2">
             <p class="text-xs font-semibold text-[var(--accent)] flex items-center gap-1.5">
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nova Série
@@ -5051,8 +5354,18 @@ function renderDashboard(animate = true){
     </div>
   `).join('');
 
+  const mealCount = mealsInRange(activeRange).length;
+
   return `
     <div class="space-y-4 ${animate ? 'fade-in' : ''}">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,var(--green-dark),var(--green-glow));">
+          <i data-lucide="trending-up" class="w-5 h-5 text-white"></i>
+        </div>
+        <div><h2 class="text-sm font-bold text-white leading-none">Evolução</h2>
+        <p class="text-[11px] text-slate-500 mt-1">${mealCount} refeição(ões) no período</p></div>
+      </div>
+
       <div class="flex gap-2">
         ${['hoje','semana','mes'].map(r => `
           <button onclick="setRange('${r}')"
