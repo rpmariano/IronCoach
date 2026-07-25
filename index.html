@@ -135,16 +135,12 @@
      fundo azul cheio em vez de branco. O texto fica sempre claro por cima —
      não depende da regra geral (que assume cartão claro/texto escuro). */
   .water-home-card {
-    min-height:172px;
-    background:linear-gradient(165deg, var(--blue-dark), var(--blue));
-    box-shadow: 0 1px 0 0 rgba(255,255,255,.2) inset, 0 16px 30px -16px rgba(44,78,96,.55), 0 3px 8px rgba(44,78,96,.25);
+    min-height:140px;
   }
-  /* O nível preenchido fica mais claro que a base do cartão — sem isso, com
-     o cartão inteiro em azul, deixava de se perceber onde está o "nível". */
+  /* Borda esquerda azul (padrão dos outros cartões) */
+  .water-home-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:0 9px 9px 0; background:var(--blue); }
+  /* O nível preenchido fica azul — barra de progresso visual */
   .water-home-card .water-glass-fill { background:linear-gradient(180deg, var(--blue-glow), var(--blue)); }
-  .water-home-card [class~="text-white"],
-  .water-home-card [class~="text-slate-400"],
-  .water-home-card [class~="text-slate-500"] { color:#eaf6fb !important; }
 
   input[type=number]::-webkit-inner-spin-button { opacity:1; }
 
@@ -6058,7 +6054,7 @@ function waterHomeCard(){
 
   return `
     <div id="water-home-card-container" onclick="switchVertical('nutricao'); switchTab('agua');"
-      class="water-home-card w-full text-left rounded-3xl p-5 relative overflow-hidden active:scale-[0.99] transition cursor-pointer">
+      class="water-home-card w-full text-left rounded-2xl p-3.5 relative overflow-hidden active:scale-[0.98] transition cursor-pointer" style="${statCardBg(var(--blue))}">
       <div class="water-glass-fill" style="height:${pct}%">
         <svg class="water-wave-svg" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_1}"/></svg>
         <svg class="water-wave-svg w2" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_2}"/></svg>
