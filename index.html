@@ -1,21 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-PT">
 <head>
-<script>
-(function(){
-  try {
-    if (localStorage.getItem('ih_theme') === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.style.colorScheme = 'only light';
-      return;
-    }
-  } catch(e) {}
-  document.documentElement.style.colorScheme = 'only dark';
-})();
-</script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-<meta name="color-scheme" content="dark light" />
+<meta name="color-scheme" content="light" />
 <title>IronHealth</title>
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
@@ -23,48 +11,27 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="IronHealth" />
-<meta name="theme-color" content="#e8734a" />
+<meta name="theme-color" content="#e17b5e" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style id="accent-vars">
-  /* Cor de destaque fixa da app (Âmbar). A personalização de cor foi removida —
-     a única preferência de tema que o utilizador controla é escuro/claro. */
-  :root { --accent:#f5b942; --accent-dark:#92400e; }
+  /* Paleta fixa da app (coral/azul-aço/dourado, a partir do logótipo) — sem
+     personalização de cor nem alternância claro/escuro; é sempre este esquema. */
+  :root {
+    --accent:#e17b5e; --accent-dark:#c25f45; --accent-glow:#f2a688;
+    --chrome:#c9a34d; --chrome-dark:#9c7a2e; --chrome-glow:#e6c877;
+    --blue:#3e6b82; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
+    --green:#416e7f; --green-dark:#2d4a57; --green-glow:#5a8fa3;
+  }
 </style>
 <style>
+  /* Superfícies "papel" — únicas, sem alternativa escura. Um toque de coral
+     entra via color-mix() nas bordas para dar calor subtil sem ficar cinza puro. */
   :root {
-    color-scheme: only dark;
-    /* Base escura fixa (não muda com o tema) para os cartões com texto/ícones
-       brancos por cima — "Hoje" e os módulos — para não ficarem lavados no
-       tema claro, onde as superfícies neutras (--surf-*) ficam claras. */
-    --tile-base-1:#4a3a26;
-    --tile-base-2:#1f160d;
-    --tile-base-3:#6b4f30;
-  }
-
-  /* Superfícies "Ardósia": carvão frio (levemente azulado) no escuro, slate
-     claro no claro. Um toque de âmbar entra via color-mix() para dar calor
-     subtil sem voltar ao castanho. O cartão "Hoje"/módulos usam --tile-base-*
-     (quente, fixo) para se destacarem como o único elemento em cor forte. */
-  html:not(.light) {
-    --surf-950: color-mix(in srgb, var(--accent) 3%, #171a21);
-    --surf-900: color-mix(in srgb, var(--accent) 4%, #1f232c);
-    --surf-800: color-mix(in srgb, var(--accent) 6%, #2a2f3a);
-    --surf-700: color-mix(in srgb, var(--accent) 9%, #363c48);
-    --brd-700:  color-mix(in srgb, var(--accent) 20%, #4b515e);
-    --brd-800:  color-mix(in srgb, var(--accent-dark) 16%, #383e49);
-    --brd-900:  color-mix(in srgb, var(--accent-dark) 10%, #262b33);
-    --page-bg:  color-mix(in srgb, var(--accent-dark) 8%, #16181f);
-    --input-bg: color-mix(in srgb, var(--accent) 9%, #3f4552);
-    --grain-opacity: 0.05;
-    --card-shadow: 0 1px 0 0 rgba(255,255,255,.07) inset, 0 -1px 0 0 rgba(0,0,0,.4) inset, 0 12px 28px -12px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4);
-    --groove-shadow: inset 0 1px 4px rgba(0,0,0,.5), inset 0 -1px 0 rgba(255,255,255,.03);
-    --thumb-shadow: 0 2px 5px rgba(0,0,0,.4), 0 1px 0 rgba(255,255,255,.18) inset;
-  }
-  html.light {
+    color-scheme: only light;
     --surf-950: #eef1f6;
     --surf-900: #ffffff;
     --surf-800: #e9edf3;
@@ -114,9 +81,6 @@
     background-color:var(--input-bg) !important;
   }
 
-  .tab-btn.active { color:var(--accent); }
-  .tab-btn.active .tab-dot { opacity:1; }
-
   /* Submenu Dashboard/Calendário (Nutrição, Corpo, Ginásio) e Registo/Agenda
      (Corrida): pílula com indicador que desliza entre as duas opções em vez
      de trocar instantaneamente de cor. */
@@ -129,7 +93,7 @@
      real de cada aba (nav da Nutrição, que agora tem Dashboard/Calendário/Água). */
   .seg-nav:has(.seg-btn[data-tab="agua"].active) .seg-thumb { transform: translateX(200%); }
   .seg-btn.active { color:#09090b !important; }
-  .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); }
+  .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
 
   .range-chip.active { background:var(--accent); color:#09090b; border-color:var(--accent); }
   .mealtype-pill.active { background:var(--accent); color:#09090b; border-color:var(--accent); font-weight:700; }
@@ -149,14 +113,14 @@
      duas ondas SVG desfasadas a deslizar em loop dão o efeito de líquido a
      "chapinhar" em vez de uma barra estática. */
   .water-glass { position:relative; margin:0 auto; border-radius:18px 18px 34px 34px;
-    border:2px solid rgba(56,189,248,.35); background:rgba(56,189,248,.06); overflow:hidden;
-    box-shadow: inset 0 0 24px rgba(56,189,248,.10); }
+    border:2px solid color-mix(in srgb, var(--blue) 40%, transparent); background:color-mix(in srgb, var(--blue) 7%, transparent); overflow:hidden;
+    box-shadow: inset 0 0 24px color-mix(in srgb, var(--blue) 12%, transparent); }
   .water-glass-fill { position:absolute; left:-2px; right:-2px; bottom:0;
-    background:linear-gradient(180deg, #38bdf8, #0ea5e9); transition:height 1.1s cubic-bezier(.4,0,.2,1); }
+    background:linear-gradient(180deg, var(--blue-glow), var(--blue)); transition:height 1.1s cubic-bezier(.4,0,.2,1); }
   .water-wave-svg { position:absolute; left:0; top:-9px; width:200%; height:18px; animation:waterWaveScroll 4.5s linear infinite; }
-  .water-wave-svg path { fill:#38bdf8; }
+  .water-wave-svg path { fill:var(--blue-glow); }
   .water-wave-svg.w2 { animation-duration:7s; animation-direction:reverse; opacity:.55; top:-6px; }
-  .water-wave-svg.w2 path { fill:#0ea5e9; }
+  .water-wave-svg.w2 path { fill:var(--blue); }
   @keyframes waterWaveScroll { from{transform:translateX(0);} to{transform:translateX(-100px);} }
   .water-glass-bubbles span { position:absolute; bottom:4px; border-radius:50%; background:rgba(255,255,255,.55); animation:waterBubbleRise 3.6s ease-in infinite; }
   @keyframes waterBubbleRise { 0%{transform:translateY(0); opacity:0;} 18%{opacity:.8;} 100%{transform:translateY(-90%); opacity:0;} }
@@ -167,8 +131,20 @@
 
   /* Cartão de água do Início: foge de propósito ao "gradiente + ícone/anel"
      dos outros cartões — o cartão inteiro é o copo (ver .water-glass-fill/
-     .water-wave-svg acima, reaproveitados aqui num contentor maior). */
-  .water-home-card { min-height:172px; }
+     .water-wave-svg acima, reaproveitados aqui num contentor maior), com
+     fundo azul cheio em vez de branco. O texto fica sempre claro por cima —
+     não depende da regra geral (que assume cartão claro/texto escuro). */
+  .water-home-card {
+    min-height:172px;
+    background:linear-gradient(165deg, var(--blue-dark), var(--blue));
+    box-shadow: 0 1px 0 0 rgba(255,255,255,.2) inset, 0 16px 30px -16px rgba(44,78,96,.55), 0 3px 8px rgba(44,78,96,.25);
+  }
+  /* O nível preenchido fica mais claro que a base do cartão — sem isso, com
+     o cartão inteiro em azul, deixava de se perceber onde está o "nível". */
+  .water-home-card .water-glass-fill { background:linear-gradient(180deg, var(--blue-glow), var(--blue)); }
+  .water-home-card [class~="text-white"],
+  .water-home-card [class~="text-slate-400"],
+  .water-home-card [class~="text-slate-500"] { color:#eaf6fb !important; }
 
   input[type=number]::-webkit-inner-spin-button { opacity:1; }
 
@@ -176,63 +152,35 @@
   .no-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
 
   .vertical-btn .vertical-icon { background:var(--surf-800); border:1px solid var(--brd-800); color:#a89a86; }
-  .vertical-btn.active .vertical-icon { background:var(--surf-800); border:2px solid var(--accent); color:var(--accent); }
-  .vertical-btn.active .vertical-label { color:var(--accent); }
+  .vertical-btn.active .vertical-icon { background:var(--surf-800); border:2px solid var(--accent); color:var(--accent-dark); }
+  .vertical-btn.active .vertical-label { color:var(--accent-dark); }
 
-  /* Botões de módulo na barra fixa do fundo (Início/Nutrição/Corpo/Coach). */
-  .vbar-btn.active { color:var(--accent) !important; }
+  /* Botões de módulo na barra fixa do fundo (Início/Nutrição/Corpo/Coach) —
+     é "chrome" fixo, por isso usa o dourado em vez do coral de conteúdo. */
+  .vbar-btn.active { color:var(--chrome-dark) !important; }
+  .vbar-btn:not(.active) { color:var(--green) !important; }
 
-  .theme-swatch { border:1px solid var(--brd-800); background:transparent; }
-  .theme-swatch.active { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, transparent); }
+  .sticky.top-0 { background:color-mix(in srgb, var(--surf-950) 95%, transparent); }
+  #bottomNav > div { background:color-mix(in srgb, var(--surf-950) 97%, transparent); }
 
-  /* Os tons mais escuros da paleta slate do Tailwind (500/600) foram pensados
-     para fundos médios, não para o quase-preto dos nossos --surf-900/950 —
-     sobre esse fundo ficam com pouco contraste e difíceis de ler (ex.: as
-     legendas e placeholders no módulo Corpo). Aclara-os no tema escuro
-     (default da app), espelhando o ajuste já feito para o tema claro abaixo.
-     text-slate-400 já tem contraste suficiente e fica como está. */
-  [class~="text-slate-600"] { color:#8b95a3 !important; }
-  [class~="text-slate-500"] { color:#9aa4b1 !important; }
-  [class~="placeholder-slate-600"]::placeholder { color:#5f6773 !important; }
+  [class~="text-white"] { color:#0f172a !important; }
+  [class~="text-slate-200"] { color:#1e293b !important; }
+  [class~="text-slate-300"] { color:#334155 !important; }
+  [class~="text-slate-400"] { color:#475569 !important; }
+  [class~="text-slate-500"] { color:#64748b !important; }
+  [class~="text-slate-600"] { color:#94a3b8 !important; }
+  [class~="placeholder-slate-600"]::placeholder { color:#94a3b8 !important; }
 
-  /* ===== Tema claro ===== */
-  html.light { color-scheme: only light; }
-  html.light .sticky.top-0 { background:color-mix(in srgb, var(--surf-950) 95%, transparent); }
-  html.light #bottomNav > div { background:color-mix(in srgb, var(--surf-950) 97%, transparent); }
+  [class~="text-emerald-300"] { color:#047857 !important; }
+  [class~="text-emerald-400"] { color:#059669 !important; }
+  [class*="text-emerald-200"] { color:#047857 !important; }
+  [class~="text-red-400"] { color:#dc2626 !important; }
 
-  /* O âmbar é ótimo como texto no escuro, mas pálido sobre superfícies claras.
-     No tema claro, os estados ativos (módulo/separador) e o texto de destaque
-     usam um âmbar mais escuro (700) para manter o contraste legível. */
-  html.light { --accent-ink:#b45309; }
-  html.light .vbar-btn.active,
-  html.light .tab-btn.active { color:var(--accent-ink) !important; }
-  html.light .tab-btn.active .tab-dot { background:var(--accent-ink); }
-
-  html.light [class~="text-white"] { color:#0f172a !important; }
-  /* Os cartões "Hoje" e de módulo mantêm fundo escuro em ambos os temas
-     (ver --tile-base-*), por isso o texto branco tem de se manter branco
-     mesmo com o tema claro ativo. */
-  html.light .tile-dark [class~="text-white"] { color:#ffffff !important; }
-  html.light [class~="text-slate-200"] { color:#1e293b !important; }
-  html.light [class~="text-slate-300"] { color:#334155 !important; }
-  html.light [class~="text-slate-400"] { color:#475569 !important; }
-  html.light [class~="text-slate-500"] { color:#64748b !important; }
-  html.light [class~="text-slate-600"] { color:#94a3b8 !important; }
-  html.light [class~="placeholder-slate-600"]::placeholder { color:#94a3b8 !important; }
-
-  html.light [class~="text-emerald-300"] { color:#047857 !important; }
-  html.light [class~="text-emerald-400"] { color:#059669 !important; }
-  html.light [class*="text-emerald-200"] { color:#047857 !important; }
-  html.light [class~="text-red-400"] { color:#dc2626 !important; }
-
-  html.light .theme-flip-text { color:#0f172a !important; }
-
-  html.light .theme-swatch.active { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); }
+  .theme-flip-text { color:#0f172a !important; }
 
   /* ===== Coach chat ===== */
   .coach-bubble-user  { background:var(--accent); color:#09090b; border-radius:18px 18px 4px 18px; }
   .coach-bubble-model { background:var(--surf-800); border:1px solid var(--brd-800); border-radius:18px 18px 18px 4px; }
-  html.light .coach-bubble-user  { color:#09090b; }
 
   /* Markdown inside coach bubbles */
   .md-body strong { font-weight:700; }
@@ -240,27 +188,34 @@
   .md-body ul     { list-style:disc inside; margin:.375rem 0; space-y:.125rem; }
   .md-body ol     { list-style:decimal inside; margin:.375rem 0; }
   .md-body li     { margin-left:.75rem; }
-  .md-body code   { font-family:monospace; font-size:.75rem; background:rgba(0,0,0,.25); border-radius:4px; padding:0 4px; }
-  .md-body pre    { font-family:monospace; font-size:.75rem; background:rgba(0,0,0,.3); border-radius:8px; padding:.625rem; margin:.5rem 0; overflow-x:auto; white-space:pre-wrap; }
-  html.light .md-body code { background:rgba(0,0,0,.07); }
-  html.light .md-body pre  { background:rgba(0,0,0,.05); }
+  .md-body code   { font-family:monospace; font-size:.75rem; background:rgba(0,0,0,.07); border-radius:4px; padding:0 4px; }
+  .md-body pre    { font-family:monospace; font-size:.75rem; background:rgba(0,0,0,.05); border-radius:8px; padding:.625rem; margin:.5rem 0; overflow-x:auto; white-space:pre-wrap; }
 </style>
 </head>
 <body class="bg-neutral-950 text-slate-200 font-sans antialiased">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <!-- Cor fixa (Terracota) — a marca não deve seguir a cor de destaque escolhida pelo utilizador. -->
+    <!-- Marca fixa (anéis coral/azul entrelaçados, "nó" e pulso dourados) — não
+         segue a cor de destaque escolhida pelo utilizador. -->
     <linearGradient id="logoBgGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#4a3a26"/>
-      <stop offset="100%" stop-color="#1f160d"/>
+      <stop offset="0%" stop-color="#fbf8f2"/>
+      <stop offset="100%" stop-color="#ece6d8"/>
     </linearGradient>
-    <radialGradient id="logoGlowGrad" cx="30%" cy="22%" r="70%">
-      <stop offset="0%" stop-color="#e8734a" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#e8734a" stop-opacity="0"/>
+    <radialGradient id="logoGlowGrad" cx="30%" cy="20%" r="75%">
+      <stop offset="0%" stop-color="#e17b5e" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#e17b5e" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="logoRingGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f5b942"/>
-      <stop offset="100%" stop-color="#e8734a"/>
+    <linearGradient id="logoCoralGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f2a688"/>
+      <stop offset="100%" stop-color="#c25f45"/>
+    </linearGradient>
+    <linearGradient id="logoBlueGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6f9cb2"/>
+      <stop offset="100%" stop-color="#2c4e60"/>
+    </linearGradient>
+    <linearGradient id="logoGoldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e6c877"/>
+      <stop offset="100%" stop-color="#9c7a2e"/>
     </linearGradient>
   </defs>
 </svg>
@@ -281,13 +236,15 @@
           <svg viewBox="0 0 100 100" class="w-full h-full">
             <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#logoBgGrad)"/>
             <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#logoGlowGrad)"/>
-            <circle cx="50" cy="50" r="26" fill="none" stroke="url(#logoRingGrad)" stroke-width="16"
-                    stroke-linecap="round" stroke-dasharray="130 163" transform="rotate(-90 50 50)"/>
-            <circle cx="50" cy="24.6" r="9" fill="#f5b942"/>
+            <circle cx="38" cy="52" r="24" fill="none" stroke="url(#logoCoralGrad)" stroke-width="11"/>
+            <circle cx="62" cy="52" r="24" fill="none" stroke="url(#logoBlueGrad)" stroke-width="11"/>
+            <path d="M18 58 H34 L41 44 L50 70 L59 40 L66 58 H82" fill="none" stroke="url(#logoGoldGrad)"
+                  stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="50" cy="26" r="7.5" fill="url(#logoGoldGrad)"/>
           </svg>
         </button>
         <div>
-          <h1 class="text-base font-bold tracking-tight text-white leading-none">Iron<span style="color:#e8734a;">Health</span></h1>
+          <h1 class="text-base font-bold tracking-tight text-white leading-none">Iron<span style="color:var(--accent-dark);">Health</span></h1>
           <p id="header-date" class="text-[11px] text-slate-500 leading-none mt-1"></p>
         </div>
       </div>
@@ -350,8 +307,8 @@
     </button>
     <!-- "+" central elevado (posicionado em absoluto para sobressair da barra). -->
     <button id="fabMainBtn" onclick="toggleFab()" type="button"
-      class="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-[var(--accent)] text-neutral-950 flex items-center justify-center active:scale-95 transition"
-      style="top:-22px; border:4px solid var(--surf-900); box-shadow:0 8px 20px -4px color-mix(in srgb, var(--accent) 55%, transparent);">
+      class="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-[var(--chrome)] text-neutral-950 flex items-center justify-center active:scale-95 transition"
+      style="top:-22px; border:4px solid var(--surf-900); box-shadow:0 8px 20px -4px color-mix(in srgb, var(--chrome) 55%, transparent);">
       <i data-lucide="plus" id="fabIcon" class="w-6 h-6 transition-transform"></i>
     </button>
   </nav>
@@ -380,7 +337,7 @@ const PT_MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','
 const MACROS = [
   { key:'calories', label:'Calorias', unit:'kcal', goalKey:'calorie_goal', color:'#facc15' },
   { key:'protein', label:'Proteína', unit:'g', goalKey:'protein_goal', color:'#10b981' },
-  { key:'carbs', label:'Hidratos', unit:'g', goalKey:'carbs_goal', color:'#38bdf8' },
+  { key:'carbs', label:'Hidratos', unit:'g', goalKey:'carbs_goal', color:'#3e6b82' },
   { key:'fat', label:'Gordura', unit:'g', goalKey:'fat_goal', color:'#fb923c' },
 ];
 const MICROS = [
@@ -403,7 +360,7 @@ const BODY_METRICS = [
   { key:'body_fat_pct',         label:'Gordura corporal',  unit:'%',    dec:1, color:'#ef4444', good:'down' },
   { key:'skeletal_muscle_pct',  label:'Músculo esquelético', unit:'%',  dec:1, color:'#10b981', good:'up' },
   { key:'muscle_mass_kg',       label:'Massa muscular',    unit:'kg',   dec:1, color:'#22c55e', good:'up' },
-  { key:'body_water_pct',       label:'Água corporal',     unit:'%',    dec:1, color:'#38bdf8', good:'up' },
+  { key:'body_water_pct',       label:'Água corporal',     unit:'%',    dec:1, color:'#3e6b82', good:'up' },
   { key:'protein_pct',          label:'Proteína',          unit:'%',    dec:1, color:'#a78bfa', good:'up' },
   { key:'bone_mass_kg',         label:'Massa óssea',       unit:'kg',   dec:1, color:'#94a3b8', good:null },
   { key:'bmr_kcal',             label:'Metabolismo basal', unit:'kcal', dec:0, color:'#facc15', good:'up' },
@@ -668,7 +625,7 @@ const CANONICAL_HOME_ORDER = HOME_CARD_DEFS.map(d => d.key);
 // Por defeito cobre sempre os três pilares que o Coach monitoriza (Nutrição,
 // Corpo, Ginásio/Corrida) — a Próxima Prova é fixa e fica fora deste sistema
 // (ver renderHome, mesmo tratamento do cartão de calorias).
-const DEFAULT_HOME_LAYOUT = ['weight_kg', 'body_fat_pct', 'protein_today', 'gym_sessions', 'gym_volume', 'corrida_km', 'corrida_pace'];
+const DEFAULT_HOME_LAYOUT = ['weight_kg', 'body_fat_pct', 'protein_today', 'corrida_km', 'corrida_pace', 'gym_sessions', 'gym_volume'];
 let homeEditMode = false;
 let coachLoading  = false;
 let coachSuggestions = []; // perguntas de seguimento sugeridas pela última resposta
@@ -692,7 +649,7 @@ let signedUrlFailed = {};     // photo_path -> true se o último pedido falhou (
 let dashChart = null;
 let selectedMacro = 'calories'; // qual macro o gráfico "por Dia" está a mostrar
 let microsCollapsed = false;
-let theme = document.documentElement.classList.contains('light') ? 'light' : 'dark'; // 'dark' | 'light'
+const theme = 'light'; // esquema único da app — ver comentário em statCardBg() e nos gráficos que ainda leem esta constante
 
 let fabOpen = false; // menu do botão flutuante "+" (atalho global de criação de registo)
 
@@ -768,29 +725,6 @@ function suggestMealTypeByTime(){
   if (h >= 15 && h < 19) return 'lanche';
   if (h >= 19 && h < 21.5) return 'jantar';
   return 'ceia';
-}
-
-// Devolve a regra :root da folha #accent-vars (CSSOM), criando-a se necessário.
-function applyTheme(key){
-  theme = (key === 'light') ? 'light' : 'dark';
-  const isLight = theme === 'light';
-  const scheme  = isLight ? 'only light' : 'only dark';
-  document.documentElement.classList.toggle('light', isLight);
-  document.documentElement.style.colorScheme = scheme;
-  const meta = document.querySelector('meta[name="color-scheme"]');
-  if (meta) meta.content = scheme;
-  try { localStorage.setItem('ih_theme', theme); } catch(e) {}
-}
-
-async function selectTheme(key){
-  if (!['dark','light'].includes(key) || !state.profile) return;
-  state.profile.theme = key;
-  applyTheme(key);
-  render();
-  try {
-    const { error } = await sb.from('profiles').update({ theme: key }).eq('id', currentUser.id);
-    if (error) throw error;
-  } catch(e) { flashSyncError(e); }
 }
 
 function flashSyncError(e){
@@ -1002,7 +936,6 @@ async function loadAllData(){
       profile = created;
     }
     state.profile = profile;
-    applyTheme(profile.theme);
 
     // refeições desde o início do mês ou da semana (o mais antigo) — cobre os 3 presets
     const start = startOfMonthISO() < startOfWeekISO() ? startOfMonthISO() : startOfWeekISO();
@@ -1716,11 +1649,13 @@ function renderAuth(){
           <svg viewBox="0 0 100 100" class="w-9 h-9 rounded-xl overflow-hidden">
             <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#logoBgGrad)"/>
             <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#logoGlowGrad)"/>
-            <circle cx="50" cy="50" r="26" fill="none" stroke="url(#logoRingGrad)" stroke-width="16"
-                    stroke-linecap="round" stroke-dasharray="130 163" transform="rotate(-90 50 50)"/>
-            <circle cx="50" cy="24.6" r="9" fill="#f5b942"/>
+            <circle cx="38" cy="52" r="24" fill="none" stroke="url(#logoCoralGrad)" stroke-width="11"/>
+            <circle cx="62" cy="52" r="24" fill="none" stroke="url(#logoBlueGrad)" stroke-width="11"/>
+            <path d="M18 58 H34 L41 44 L50 70 L59 40 L66 58 H82" fill="none" stroke="url(#logoGoldGrad)"
+                  stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="50" cy="26" r="7.5" fill="url(#logoGoldGrad)"/>
           </svg>
-          <h2 class="text-base font-bold text-white">Iron<span style="color:#e8734a;">Health</span></h2>
+          <h2 class="text-base font-bold text-white">Iron<span style="color:var(--accent-dark);">Health</span></h2>
         </div>
         <p class="text-xs text-slate-500 text-center">${authMode==='signin' ? 'Entra na tua conta' : 'Cria a tua conta'}</p>
 
@@ -2144,7 +2079,6 @@ function render(){
 }
 
 function renderScreen(){
-  applyTheme(theme);
   const nav = document.getElementById('bottomNav');
   const headerActions = document.getElementById('headerActions');
   const verticalStrip = document.getElementById('verticalStrip');
@@ -2182,7 +2116,7 @@ function renderScreen(){
   headerActions.innerHTML = `
     ${showPerfilShortcut ? `
       <button onclick="goToPerfil()"
-        class="flex items-center gap-1 bg-[var(--accent)] text-neutral-950 text-xs font-bold pl-2.5 pr-3 py-1.5 rounded-full active:scale-95 transition">
+        class="flex items-center gap-1 bg-[var(--chrome)] text-neutral-950 text-xs font-bold pl-2.5 pr-3 py-1.5 rounded-full active:scale-95 transition">
         <i data-lucide="user" class="w-3.5 h-3.5"></i> Perfil
       </button>
     ` : ''}
@@ -2328,20 +2262,12 @@ function renderScreen(){
 //   detalhe — uma barra fina à esquerda — deixando o destaque para os
 //   números, anéis e setas de tendência lá dentro (já coloridos).
 function statCardBg(color){
-  const isLight = theme === 'light';
-  if (isLight) {
-    return `background:
-        radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, ${color} 10%, transparent) 0%, transparent 60%),
-        linear-gradient(165deg, #ffffff, var(--surf-800));
-      border-style:solid; border-width:1px 1px 1px 3px;
-      border-color: var(--brd-700) var(--brd-700) var(--brd-700) color-mix(in srgb, ${color} 70%, var(--brd-700));
-      box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 4px 14px -5px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.6);`;
-  }
   return `background:
-      radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, ${color} 22%, transparent) 0%, transparent 60%),
-      linear-gradient(165deg, var(--surf-800), var(--surf-950));
-    border:1px solid color-mix(in srgb, ${color} 28%, var(--brd-700));
-    box-shadow: 0 6px 16px -6px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05);`;
+      radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, ${color} 10%, transparent) 0%, transparent 60%),
+      linear-gradient(165deg, #ffffff, var(--surf-800));
+    border-style:solid; border-width:1px 1px 1px 3px;
+    border-color: var(--brd-700) var(--brd-700) var(--brd-700) color-mix(in srgb, ${color} 70%, var(--brd-700));
+    box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 4px 14px -5px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.6);`;
 }
 
 // Cartão de módulo no Início: selo de cor + barra lateral que identificam o
@@ -2776,7 +2702,7 @@ function buildHomeCardsMap(totals, profile){
     muscle_mass_kg: bodyCard('muscle_mass_kg'),
     body_water_pct: bodyCard('body_water_pct'),
     protein_today: nutrientMiniCard('protein', 'Proteína hoje', '#a78bfa', totals, profile),
-    carbs_today: nutrientMiniCard('carbs', 'Hidratos hoje', '#38bdf8', totals, profile),
+    carbs_today: nutrientMiniCard('carbs', 'Hidratos hoje', '#3e6b82', totals, profile),
     fat_today: nutrientMiniCard('fat', 'Gordura hoje', '#fb923c', totals, profile),
     gym_sessions: gymSessionsCard(),
     gym_volume: gymVolumeMiniCard(),
@@ -5668,25 +5594,6 @@ function renderPerfilTabPerfil(p){
       </div>
 
       <div class="card rounded-2xl p-4">
-        <div class="flex items-center gap-2 mb-3">
-          <i data-lucide="sun-moon" class="w-4 h-4 text-[var(--accent)]"></i>
-          <h2 class="text-sm font-semibold text-white">Aparência</h2>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="selectTheme('dark')" type="button"
-            class="theme-swatch ${(p.theme||'dark')==='dark'?'active':''} rounded-xl py-3 flex flex-col items-center gap-1.5 transition active:scale-[0.97]">
-            <i data-lucide="moon" class="w-5 h-5 text-slate-300"></i>
-            <span class="text-xs font-semibold text-white">Escuro</span>
-          </button>
-          <button onclick="selectTheme('light')" type="button"
-            class="theme-swatch ${p.theme==='light'?'active':''} rounded-xl py-3 flex flex-col items-center gap-1.5 transition active:scale-[0.97]">
-            <i data-lucide="sun" class="w-5 h-5 text-slate-300"></i>
-            <span class="text-xs font-semibold text-white">Claro</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="card rounded-2xl p-4">
         <p class="text-[11px] text-slate-500 mb-3">Sessão iniciada como <b class="text-slate-300">${esc(currentUser.email||'')}</b></p>
         <button onclick="signOut()" class="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5">
           <i data-lucide="log-out" class="w-3.5 h-3.5"></i> Terminar sessão
@@ -5762,7 +5669,7 @@ function renderPerfilTabMetas(p){
 
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-800">
           <div class="pr-3">
-            <p class="text-xs font-semibold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-3.5 h-3.5" style="color:#38bdf8"></i> Lembretes de água</p>
+            <p class="text-xs font-semibold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-3.5 h-3.5" style="color:var(--blue)"></i> Lembretes de água</p>
             <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, só entre as 8h e as 22h.</p>
           </div>
           <button onclick="toggleWaterReminder()" ${waterSubscribing ? 'disabled' : ''} type="button"
@@ -6150,8 +6057,8 @@ function waterHomeCard(){
   const goalReached = goal > 0 && total >= goal;
 
   return `
-    <div onclick="switchVertical('nutricao'); switchTab('agua');"
-      class="water-home-card w-full text-left rounded-3xl p-5 relative overflow-hidden active:scale-[0.99] transition cursor-pointer" style="${statCardBg('#38bdf8')}">
+    <div id="water-home-card-container" onclick="switchVertical('nutricao'); switchTab('agua');"
+      class="water-home-card w-full text-left rounded-3xl p-5 relative overflow-hidden active:scale-[0.99] transition cursor-pointer">
       <div class="water-glass-fill" style="height:${pct}%">
         <svg class="water-wave-svg" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_1}"/></svg>
         <svg class="water-wave-svg w2" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_2}"/></svg>
@@ -6172,7 +6079,7 @@ function waterHomeCard(){
         ${remindersOn ? `
           <button onclick="event.stopPropagation(); ${mutedToday ? 'unmuteWaterReminderToday()' : 'openWaterMuteModal()'}" type="button"
             title="${mutedToday ? 'Reativar lembretes' : 'Silenciar lembretes'}"
-            class="shrink-0 w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center active:scale-90 transition">
+            class="shrink-0 w-8 h-8 rounded-full bg-white/15 border border-white/25 backdrop-blur flex items-center justify-center active:scale-90 transition">
             <i data-lucide="${mutedToday ? 'bell-off' : 'bell'}" class="w-4 h-4 text-white"></i>
           </button>
         ` : ''}
@@ -6181,7 +6088,7 @@ function waterHomeCard(){
       <div class="relative z-10 flex gap-2 mt-4">
         ${WATER_QUICK_AMOUNTS.map(ml => `
           <button onclick="event.stopPropagation(); logWater(${ml})" ${waterBusy ? 'disabled' : ''} type="button" data-water-busy-btn
-            class="text-[11px] font-semibold text-white bg-neutral-800 border border-neutral-700 rounded-full px-2.5 py-1.5 active:scale-95 transition disabled:opacity-50">
+            class="text-[11px] font-semibold text-white bg-white/15 border border-white/25 backdrop-blur rounded-full px-2.5 py-1.5 active:scale-95 transition disabled:opacity-50">
             +${ml}
           </button>
         `).join('')}
@@ -6199,11 +6106,19 @@ function renderAguaInPlace(){
   if (!main) return;
   // A água aparece em três sítios (separador Água, Perfil, cartão da Home)
   // — atualiza o que estiver mesmo visível, sem mexer nos outros.
-  if (activeVertical === 'home') main.innerHTML = renderHome();
-  else if (activeVertical === 'nutricao' && activeTab === 'agua') main.innerHTML = renderAgua();
-  else if (activeVertical === 'nutricao' && activeTab === 'perfil') main.innerHTML = renderPerfil();
-  else return;
-  if (window.lucide) lucide.createIcons();
+  if (activeVertical === 'home') {
+    const waterCard = document.getElementById('water-home-card-container');
+    if (waterCard) {
+      waterCard.outerHTML = waterHomeCard();
+      if (window.lucide) lucide.createIcons();
+    }
+  } else if (activeVertical === 'nutricao' && activeTab === 'agua') {
+    main.innerHTML = renderAgua();
+    if (window.lucide) lucide.createIcons();
+  } else if (activeVertical === 'nutricao' && activeTab === 'perfil') {
+    main.innerHTML = renderPerfil();
+    if (window.lucide) lucide.createIcons();
+  } else return;
 }
 
 // UI otimista igual ao padrão já usado no Coach: mostra logo o registo, e
@@ -6445,7 +6360,7 @@ function renderAgua(){
 
   return `
     <div class="space-y-4 fade-in">
-      <div class="rounded-2xl p-5" style="${statCardBg('#38bdf8')}">
+      <div class="rounded-2xl p-5" style="${statCardBg('var(--blue)')}">
         <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3 text-center">Água hoje</p>
         ${waterGlassVisual(total, goal, pct)}
       </div>
@@ -6454,7 +6369,7 @@ function renderAgua(){
         ${WATER_QUICK_AMOUNTS.map(ml => `
           <button onclick="logWater(${ml})" ${waterBusy ? 'disabled' : ''} type="button" data-water-busy-btn
             class="flex flex-col items-center gap-1 bg-neutral-900/60 border border-neutral-800 rounded-xl py-3 active:scale-95 transition disabled:opacity-50">
-            <i data-lucide="droplet" class="w-4 h-4" style="color:#38bdf8"></i>
+            <i data-lucide="droplet" class="w-4 h-4" style="color:var(--blue)"></i>
             <span class="text-xs font-semibold text-white">${ml} ml</span>
           </button>
         `).join('')}
@@ -6605,7 +6520,7 @@ function renderAdminUsers(){
           </div>
           <div class="text-right shrink-0">
             <p class="text-[11px] text-slate-400">${mealCount} refeições · ${msgCount} msgs</p>
-            <p class="text-[10px] text-slate-600 mt-0.5">${u.theme==='light'?'Tema claro':'Tema escuro'} · desde ${formatDatePT((u.created_at||'').slice(0,10) || todayISO())}</p>
+            <p class="text-[10px] text-slate-600 mt-0.5">Desde ${formatDatePT((u.created_at||'').slice(0,10) || todayISO())}</p>
           </div>
         </button>`;
       }).join('') || `<p class="text-xs text-slate-500 text-center py-6">Sem utilizadores.</p>`}
@@ -6842,7 +6757,6 @@ document.addEventListener('DOMContentLoaded', () => {
       showAdminPanel = false;
       adminData = null;
       adminSelectedUserId = null;
-      applyTheme('dark');
       render();
       history.replaceState(navSnapshot(), '');
     }
