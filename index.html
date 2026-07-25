@@ -6054,7 +6054,7 @@ function waterHomeCard(){
 
   return `
     <div id="water-home-card-container" onclick="switchVertical('nutricao'); switchTab('agua');"
-      class="water-home-card w-full text-left rounded-2xl p-3.5 relative overflow-hidden active:scale-[0.98] transition cursor-pointer" style="${statCardBg(var(--blue))}">
+      class="water-home-card w-full text-left rounded-2xl p-3.5 relative overflow-hidden active:scale-[0.98] transition cursor-pointer" style="${statCardBg('var(--blue)')}">
       <div class="water-glass-fill" style="height:${pct}%">
         <svg class="water-wave-svg" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_1}"/></svg>
         <svg class="water-wave-svg w2" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_2}"/></svg>
