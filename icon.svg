@@ -1,57 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fbf8f2"/>
-      <stop offset="100%" stop-color="#ece6d8"/>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f04a3e" />
+      <stop offset="100%" stop-color="#b82d23" />
     </linearGradient>
-    <radialGradient id="glow" cx="30%" cy="20%" r="75%">
-      <stop offset="0%" stop-color="#ec8871" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#ec8871" stop-opacity="0"/>
-    </radialGradient>
-    <!-- Anel coral: gradiente radial para 3D -->
-    <radialGradient id="coralRing" cx="35%" cy="35%" r="65%">
-      <stop offset="0%" stop-color="#f5a89a"/>
-      <stop offset="40%" stop-color="#ec8871"/>
-      <stop offset="100%" stop-color="#c65847"/>
-    </radialGradient>
-    <!-- Anel azul: gradiente radial para 3D -->
-    <radialGradient id="blueRing" cx="35%" cy="35%" r="65%">
-      <stop offset="0%" stop-color="#8ec1d4"/>
-      <stop offset="40%" stop-color="#5a8fa3"/>
-      <stop offset="100%" stop-color="#1f3a47"/>
-    </radialGradient>
-    <!-- Knob/nó dourado -->
-    <radialGradient id="goldKnob" cx="40%" cy="40%" r="60%">
-      <stop offset="0%" stop-color="#fef5e1"/>
-      <stop offset="50%" stop-color="#eccea4"/>
-      <stop offset="100%" stop-color="#b59757"/>
-    </radialGradient>
-    <!-- Linha de pulso dourada -->
-    <linearGradient id="goldPulse" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#dcc084"/>
-      <stop offset="50%" stop-color="#f5ddb8"/>
-      <stop offset="100%" stop-color="#c9a860"/>
+    <linearGradient id="darkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a1a" />
+      <stop offset="100%" stop-color="#0a0a0a" />
     </linearGradient>
+    <radialGradient id="goldSphere" cx="40%" cy="30%" r="65%">
+      <stop offset="0%" stop-color="#f8e5c8" />
+      <stop offset="40%" stop-color="#d4b17b" />
+      <stop offset="85%" stop-color="#9e7542" />
+      <stop offset="100%" stop-color="#6e4f27" />
+    </radialGradient>
+    <filter id="shadowRed" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.3" />
+    </filter>
+    <filter id="shadowSphere" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="5" stdDeviation="3.5" flood-color="#000" flood-opacity="0.85" />
+    </filter>
+    <filter id="innerShadowDark">
+      <feOffset dx="0" dy="4"/>
+      <feGaussianBlur stdDeviation="4" result="offset-blur"/>
+      <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+      <feFlood flood-color="black" flood-opacity="0.9" result="color"/>
+      <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+      <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
+    </filter>
   </defs>
-  <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#bg)"/>
-  <rect x="0" y="0" width="100" height="100" rx="24" fill="url(#glow)"/>
 
-  <!-- Anel coral (esquerda, mais perto da frente) -->
-  <circle cx="36" cy="52" r="25" fill="none" stroke="url(#coralRing)" stroke-width="12" opacity="0.95"/>
-  <!-- Sombra interior do anel coral -->
-  <circle cx="36" cy="52" r="25" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="2" stroke-dasharray="2,3" opacity="0.6"/>
+  <!-- Sem fundo: esta e a fonte usada tambem dentro da propria app (logo.png
+       no cabecalho/login), sobre o fundo claro da UI — um retangulo opaco
+       aqui ficava pesado e deslocado nesse contexto. O fundo opaco exigido
+       pelo iOS (apple-touch-icon) e pela variante "maskable" e aplicado à
+       parte, só nesses dois ficheiros derivados, nao na fonte. -->
 
-  <!-- Anel azul (direita, ligeiramente atrás) -->
-  <circle cx="64" cy="52" r="25" fill="none" stroke="url(#blueRing)" stroke-width="12" opacity="0.95"/>
-  <!-- Sombra interior do anel azul -->
-  <circle cx="64" cy="52" r="25" fill="none" stroke="rgba(0,0,0,0.08)" stroke-width="2" stroke-dasharray="2,3" opacity="0.6"/>
-
-  <!-- Linha de pulso/ECG dourada (passa pelos anéis) -->
-  <path d="M15 56 H28 L33 43 L40 65 L47 38 L54 65 L61 45 L72 56 H85"
-        fill="none" stroke="url(#goldPulse)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
-
-  <!-- Knob/botão dourado no topo (como "nó" ou ponto de articulação) -->
-  <circle cx="50" cy="24" r="8.5" fill="url(#goldKnob)" filter="drop-shadow(0 2px 3px rgba(0,0,0,0.15))"/>
-  <!-- Highlight no knob para mais dimensão -->
-  <circle cx="48" cy="22" r="3" fill="rgba(255,255,255,0.5)"/>
+  <!-- Grupo escalado a 0.92: o circulo (r=85) e a capsula (alcance vertical
+       85 a partir do centro) tocavam quase na borda do canvas (85% do meio-
+       canvas, só 7.5% de margem). A 0.92 ficam a ~78%, dentro da zona de
+       seguranca de mascaras adaptativas Android sem alterar o desenho. -->
+  <g transform="translate(100,100) scale(0.92) translate(-100,-100)">
+    <circle cx="100" cy="100" r="85" fill="url(#redGrad)" filter="url(#shadowRed)" />
+    <rect x="52" y="15" width="96" height="170" rx="48" ry="48" fill="url(#darkGrad)" filter="url(#innerShadowDark)" />
+    <rect x="52" y="15" width="96" height="170" rx="48" ry="48" fill="none" stroke="#000" stroke-width="4" opacity="0.6" />
+    <circle cx="100" cy="45" r="16" fill="url(#goldSphere)" filter="url(#shadowSphere)" />
+    <circle cx="100" cy="112" r="30" fill="url(#goldSphere)" filter="url(#shadowSphere)" />
+  </g>
 </svg>

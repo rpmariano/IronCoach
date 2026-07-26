@@ -7,11 +7,14 @@
 <title>IronHealth</title>
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="icon.svg" />
+<!-- iOS nao suporta SVG em apple-touch-icon de forma fiavel (versoes mais
+     antigas ignoram-no e usam uma captura de ecra da pagina em vez de
+     icone) — tem de ser PNG opaco, 180x180. -->
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="IronHealth" />
-<meta name="theme-color" content="#e17b5e" />
+<meta name="theme-color" content="#ec8871" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>tailwind.config = { darkMode: 'class' }</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -21,10 +24,60 @@
   /* Paleta fixa da app (coral/azul-aço/dourado, a partir do logótipo) — sem
      personalização de cor nem alternância claro/escuro; é sempre este esquema. */
   :root {
-    --accent:#ec8871; --accent-dark:#d46957; --accent-glow:#f5a89a;
+    /* --accent é cor de PREENCHIMENTO: texto escuro sobre coral dá 7.89.
+       --accent-ink é a mesma marca em versão TINTA, para quando o coral é o
+       texto ou o ícone sobre fundo claro — aí o coral puro dá 2.15, abaixo
+       até do limiar de 3:1 dos elementos gráficos. */
+    --accent:#ec8871; --accent-dark:#d46957; --accent-glow:#f5a89a; --accent-ink:#a8442c;
     --chrome:#eccea4; --chrome-dark:#c9a860; --chrome-glow:#f5ddb8;
     --blue:#3e6b82; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
     --green:#416e7f; --green-dark:#2d4a57; --green-glow:#5a8fa3;
+
+    /* ===== Cores de MÓDULO (Camada 2) =====
+       Distintas da marca acima (Camada 1: coral/dourado/verde/azul, usada só
+       em botões, estado ativo/inativo e nunca para identificar um módulo).
+       Cada módulo é um par escuro→claro, usado em diagonal (135deg) nos
+       blocos de ícone que identificam esse módulo — o mesmo tratamento em
+       toda a app. Esta é a ÚNICA declaração destes valores: tanto o array
+       VERTICALS (JS) como qualquer marcação estática referem-se a estas
+       variáveis, nunca a hexadecimais soltos — foi por não haver isto que a
+       troca da coral antiga (#e17b5e) ficou esquecida em 3 sítios. */
+    --mod-nutricao-from:#065f46; --mod-nutricao-to:#10b981;
+    --mod-corpo-from:#5b21b6;    --mod-corpo-to:#a855f7;
+    --mod-ginasio-from:#1e3a8a;  --mod-ginasio-to:#6366f1;
+    --mod-corrida-from:#9a3412;  --mod-corrida-to:#f97316;
+    --mod-coach-from:#155e75;    --mod-coach-to:#06b6d4;
+
+    /* ===== Cores de DADOS (Camada 3) =====
+       17 tons para os 4 macros + 13 métricas de Corpo, usados só em elementos
+       GRÁFICOS (anel, barra, tira, linha de gráfico) — nunca como texto, por
+       isso o limiar é 3:1 (WCAG 1.4.11), não 4.5:1. Cada um foi verificado
+       contra os três fundos reais (cartão/página/branco) com folga ≥3.3.
+       As matizes evitam de propósito as bandas já usadas pela marca e pelos
+       5 módulos acima — uma exceção deliberada, comentada abaixo.
+       Antes desta lista havia 17 hexadecimais soltos e 5 colisões reais
+       (a mesma cor a significar duas métricas diferentes, ex.: #f97316 era
+       simultaneamente "Corrida" e "Gordura visceral"). Zero duplicados aqui. */
+    --data-calorias:#dd3c4f;
+    --data-proteina:#3c6cdd;
+    --data-hidratos:#8b8118;
+    --data-gordura:#dd3cb7;
+    --data-peso:#dd3c71;
+    --data-imc:#da2fd7;
+    --data-gordura-corporal:#dd3c94;
+    --data-musculo-esqueletico:#468f19;
+    --data-massa-muscular:#2c931a;
+    /* Água corporal fica deliberadamente azul (mnemónica óbvia) mesmo estando
+       a ~11° do --blue de marca — são intensidades bem diferentes lado a
+       lado, e nunca aparecem no mesmo local da UI. */
+    --data-agua-corporal:#2b82da;
+    --data-proteina-pct:#5f8b18;
+    --data-massa-ossea:#643cdd;
+    --data-metabolismo-basal:#768618;
+    --data-gordura-visceral:#bc3cdd;
+    --data-gordura-subcutanea:#1a9324;
+    --data-idade-metabolica:#1a9340;
+    --data-massa-magra:#198f89;
   }
 </style>
 <style>
@@ -95,21 +148,36 @@
   .seg-btn.active { color:#09090b !important; }
   .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
 
-  .range-chip.active { background:var(--accent); color:#09090b; border-color:var(--accent); }
+  /* O `!important` no estado ativo não é decorativo: as classes utilitárias
+     de cor (text-slate-300, etc.) são remapeadas com !important mais abaixo e,
+     sem isto, ganhavam à regra do estado selecionado — o texto do chip ativo
+     ficava cinzento sobre coral (4.11) em vez de preto (7.89). */
+  .range-chip.active { background:var(--accent); color:#09090b !important; border-color:var(--accent); }
   .range-chip:not(.active) { color:var(--green) !important; border-color:var(--green) !important; }
-  .mealtype-pill.active { background:var(--accent); color:#09090b; border-color:var(--accent); font-weight:700; }
+  .mealtype-pill.active { background:var(--accent); color:#09090b !important; border-color:var(--accent); font-weight:700; }
   .mealtype-pill:not(.active) { color:var(--green) !important; border-color:var(--green) !important; }
   /* Pílula de escolha genérica (tipo de corrida, tipo de sessão de ginásio,
      categoria). Mesmo tratamento das .mealtype-pill, mas sem estar presa ao
      nome "refeição" — o estado escolhido usa a cor de destaque, os restantes
      ficam em verde, como as abas do topo. */
   .choice-pill { border:1px solid var(--brd-700); color:var(--green); transition:background-color .15s, color .15s, border-color .15s; }
-  .choice-pill.active { background:var(--accent); color:#09090b; border-color:var(--accent); font-weight:700; }
+  .choice-pill.active { background:var(--accent); color:#09090b !important; border-color:var(--accent); font-weight:700; }
+
+  /* Alvos de toque: chips, pílulas, abas e campos de formulário ficavam entre
+     19px e 42px. 19px (as pílulas de tipo de corrida) é menos de metade do
+     mínimo recomendado. */
+  .range-chip, .mealtype-pill, .choice-pill, .seg-btn { min-height:44px; }
+  .choice-pill, .mealtype-pill { display:inline-flex; align-items:center; justify-content:center; }
+  input[type="text"], input[type="number"], input[type="date"], input[type="email"],
+  input[type="password"], select, textarea { min-height:44px; }
+  /* Botões de ação de largura total (Guardar, Analisar, Terminar sessão...)
+     estavam entre 36 e 40px por causa do padding vertical. */
+  button[class~="w-full"] { min-height:44px; }
 
   .fade-in { animation: fadeIn .25s ease-out; }
   @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
 
-  .toast-item { animation: toastIn .25s cubic-bezier(.34,1.56,.64,1); }
+  .toast-item { animation: toastIn .25s cubic-bezier(.16,1,.3,1); }
   .toast-item.leaving { animation: toastOut .18s ease-in forwards; }
   @keyframes toastIn { from { opacity:0; transform:translateY(-12px) scale(.96);} to {opacity:1; transform:translateY(0) scale(1);} }
   @keyframes toastOut { from { opacity:1; transform:translateY(0) scale(1);} to {opacity:0; transform:translateY(-8px) scale(.97);} }
@@ -123,6 +191,10 @@
   .water-glass { position:relative; margin:0 auto; border-radius:18px 18px 34px 34px;
     border:2px solid color-mix(in srgb, var(--blue) 40%, transparent); background:color-mix(in srgb, var(--blue) 7%, transparent); overflow:hidden;
     box-shadow: inset 0 0 24px color-mix(in srgb, var(--blue) 12%, transparent); }
+  /* transition em height (não transform:scaleY) de propósito: as ondas SVG
+     lá dentro têm altura fixa de 18px e ficariam esmagadas se o preenchimento
+     inteiro fosse escalado verticalmente. A troca por transform só vale a
+     pena se a onda for reestruturada para não ser filha direta do fill. */
   .water-glass-fill { position:absolute; left:-2px; right:-2px; bottom:0;
     background:linear-gradient(180deg, var(--blue-glow), var(--blue)); transition:height 1.1s cubic-bezier(.4,0,.2,1); }
   .water-wave-svg { position:absolute; left:0; top:-9px; width:200%; height:18px; animation:waterWaveScroll 4.5s linear infinite; }
@@ -133,20 +205,31 @@
   .water-glass-bubbles span { position:absolute; bottom:4px; border-radius:50%; background:rgba(255,255,255,.55); animation:waterBubbleRise 3.6s ease-in infinite; }
   @keyframes waterBubbleRise { 0%{transform:translateY(0); opacity:0;} 18%{opacity:.8;} 100%{transform:translateY(-90%); opacity:0;} }
   .water-glass-label { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
-  .water-glass-ml { font-weight:800; color:#fff; text-shadow:0 1px 4px rgba(0,0,0,.45); line-height:1; }
-  .water-glass-ml small { font-weight:700; color:rgba(255,255,255,.75); margin-left:2px; }
-  .water-glass-pct { font-weight:700; color:rgba(255,255,255,.9); margin-top:3px; }
+  /* O texto do copo era branco, herdado do tema escuro. O copo agora é quase
+     branco na parte por encher, e o rótulo fica sobretudo aí — dava 1.13 de
+     contraste, praticamente invisível. Com tinta escura fica legível tanto na
+     zona vazia como sobre a água (que é azul-claro no topo do gradiente). */
+  .water-glass-ml { font-weight:800; color:#0f172a; line-height:1; }
+  .water-glass-ml small { font-weight:700; color:#334155; margin-left:2px; }
+  .water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
-  /* Cartão de água do Início: foge de propósito ao "gradiente + ícone/anel"
-     dos outros cartões — o cartão inteiro é o copo (ver .water-glass-fill/
-     .water-wave-svg acima, reaproveitados aqui num contentor maior), com
-     fundo azul cheio em vez de branco. O texto fica sempre claro por cima —
-     não depende da regra geral (que assume cartão claro/texto escuro). */
+  /* Cartão de água do Início: usa o mesmo fundo claro dos outros cartões, mas
+     o nível vai subindo à medida que se bebe (ver .water-glass-fill/
+     .water-wave-svg acima, reaproveitados aqui num contentor maior).
+     O enchimento é um TOM, não um bloco opaco: a 100% cobriria o cartão todo,
+     e o texto escuro por cima de azul sólido ficava ilegível. Assim continua a
+     ler-se "o copo está a encher" sem nunca comprometer o contraste. */
   .water-home-card {
     min-height:140px;
   }
+  .water-home-card .water-glass-fill { opacity:.55; }
+  /* O nível sobe POR TRÁS do texto, por isso o texto deste cartão não pode
+     usar os cinzentos secundários: com o copo cheio cairiam para ~2.5 de
+     contraste. Com esta tinta fica 12.4 vazio e 5.7 cheio. */
+  .water-home-card [class~="text-slate-500"],
+  .water-home-card [class~="text-slate-400"] { color:#1e293b !important; }
   /* Borda esquerda azul (padrão dos outros cartões) */
-  .water-home-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:0 9px 9px 0; background:var(--blue); }
+  .water-home-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:0 9px 9px 0; background:var(--blue); z-index:1; }
   /* O nível preenchido fica azul — barra de progresso visual */
   .water-home-card .water-glass-fill { background:linear-gradient(180deg, var(--blue-glow), var(--blue)); }
 
@@ -163,22 +246,89 @@
      é "chrome" fixo, por isso usa o dourado em vez do coral de conteúdo. */
   .vbar-btn.active { color:var(--chrome-dark) !important; }
   .vbar-btn:not(.active) { color:var(--green) !important; }
+  /* 44px é o mínimo recomendado para um alvo de toque. Esta é a barra mais
+     usada da app e ficava em 36px — falhava-se o destino com o telemóvel na
+     mão a meio de um treino. */
+  .vbar-btn { min-height:44px; }
+
+  /* Mesma regra para os restantes controlos pequenos: em vez de mexer no
+     padding de cada um (o que mudaria o desenho), garante-se só a área
+     tocável mínima. */
+  .tap-44 { min-width:44px; min-height:44px; }
+  .tap-h-44 { min-height:44px; }
+  /* O interruptor tem de continuar a parecer uma pista de 44x24 — esticá-lo
+     para 44 de altura estragava o desenho. Estende-se só a área tocável. */
+  .switch-tap::after { content:''; position:absolute; left:0; right:0; top:-10px; bottom:-10px; }
+
+  /* Foco visível. Não havia nenhuma regra :focus na app e o outline computado
+     era `none` — navegar por teclado era literalmente às cegas. Usa-se
+     :focus-visible para o anel só aparecer em navegação por teclado, e não a
+     cada toque no telemóvel. */
+  :focus-visible {
+    outline: 3px solid var(--green);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* Sobre superfícies coral/douradas o verde perde-se; aí usa-se tinta escura. */
+  .range-chip.active:focus-visible, .mealtype-pill.active:focus-visible,
+  .choice-pill.active:focus-visible, .seg-btn.active:focus-visible,
+  #fabMainBtn:focus-visible { outline-color:#0f172a; }
+
+  /* Respeita quem pede menos movimento: as ondas e bolhas do copo de água
+     animam em loop infinito e podem incomodar (vestibular/atenção). */
+  /* O kill global apanha animações decorativas (entradas, pulso, ondas) sem
+     perda de informação — o estado final já lá está. Os spinners de "loading"
+     (.animate-spin) são a exceção: a rotação É o sinal de progresso, não
+     decoração, por isso ficam de fora do kill em vez de congelar parados e
+     dar a entender (a quem depende de reduced-motion) que nada está a acontecer. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      scroll-behavior: auto !important;
+    }
+    .animate-spin {
+      animation-duration: 1s !important;
+      animation-iteration-count: infinite !important;
+    }
+  }
+
+  /* Etiquetas com fundo tingido a 10% da cor: usar a cor pura como texto dava
+     1.7-2.6 de contraste (o fundo tingido é quase branco, e a cor é clara).
+     Misturar a cor com tinta escura mantém a identidade cromática e leva
+     todas as cores em uso para 5.5-8.5. */
+  .badge-ink { color: color-mix(in srgb, var(--accent) 45%, #0f172a) !important; }
+
+  /* Coral usado como texto ou ícone passa à versão tinta. A cor de fundo dos
+     botões continua a ser o coral cheio — só muda quando é a própria cor a
+     desenhar as letras. */
+  [class~="text-[var(--accent)]"] { color: var(--accent-ink) !important; }
+  [class~="hover:text-[var(--accent)]"]:hover { color: var(--accent-ink) !important; }
 
   .sticky.top-0 { background:color-mix(in srgb, var(--surf-950) 95%, transparent); }
   #bottomNav > div { background:color-mix(in srgb, var(--surf-950) 97%, transparent); }
 
+  /* Escala de cinzentos do tema claro. Os tons foram escurecidos até TODOS
+     passarem 4.5:1 (WCAG AA para texto normal) sobre o fundo mais escuro em
+     que aparecem — o fim do gradiente dos cartões, #e9edf3. Antes, slate-500
+     ficava em 4.05 e slate-600 em 2.18, e são as classes de quase todo o
+     texto secundário da app. A hierarquia comprime-se em baixo porque num
+     fundo claro não cabem quatro níveis de cinzento todos acima de 4.5. */
   [class~="text-white"] { color:#0f172a !important; }
   [class~="text-slate-200"] { color:#1e293b !important; }
   [class~="text-slate-300"] { color:#334155 !important; }
-  [class~="text-slate-400"] { color:#475569 !important; }
-  [class~="text-slate-500"] { color:#64748b !important; }
-  [class~="text-slate-600"] { color:#94a3b8 !important; }
-  [class~="placeholder-slate-600"]::placeholder { color:#94a3b8 !important; }
+  [class~="text-slate-400"] { color:#475569 !important; }  /* 6.45 */
+  [class~="text-slate-500"] { color:#516071 !important; }  /* 5.48 */
+  [class~="text-slate-600"] { color:#5c6b7d !important; }  /* 4.64 */
+  /* Placeholders ficam propositadamente mais claros que o texto real, para se
+     distinguirem do valor preenchido — mas acima do mínimo para texto grande. */
+  [class~="placeholder-slate-600"]::placeholder { color:#697889 !important; }
 
   [class~="text-emerald-300"] { color:#047857 !important; }
-  [class~="text-emerald-400"] { color:#059669 !important; }
+  [class~="text-emerald-400"] { color:#047857 !important; }  /* 4.67 */
   [class*="text-emerald-200"] { color:#047857 !important; }
-  [class~="text-red-400"] { color:#dc2626 !important; }
+  [class~="text-red-400"] { color:#b91c1c !important; }      /* 5.51 */
 
   .theme-flip-text { color:#0f172a !important; }
 
@@ -197,35 +347,13 @@
 </style>
 </head>
 <body class="bg-neutral-950 text-slate-200 font-sans antialiased">
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <!-- Marca fixa (anéis coral/azul entrelaçados, "nó" e pulso dourados) — não
-         segue a cor de destaque escolhida pelo utilizador. -->
-    <linearGradient id="logoBgGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#fbf8f2"/>
-      <stop offset="100%" stop-color="#ece6d8"/>
-    </linearGradient>
-    <radialGradient id="logoGlowGrad" cx="30%" cy="20%" r="75%">
-      <stop offset="0%" stop-color="#e17b5e" stop-opacity="0.2"/>
-      <stop offset="100%" stop-color="#e17b5e" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="logoCoralGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f2a688"/>
-      <stop offset="100%" stop-color="#c25f45"/>
-    </linearGradient>
-    <linearGradient id="logoBlueGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#6f9cb2"/>
-      <stop offset="100%" stop-color="#2c4e60"/>
-    </linearGradient>
-    <linearGradient id="logoGoldGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#e6c877"/>
-      <stop offset="100%" stop-color="#9c7a2e"/>
-    </linearGradient>
-  </defs>
-</svg>
 <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col relative">
 
-  <div id="toastStack" class="fixed top-0 inset-x-0 z-50 flex flex-col items-stretch gap-2 px-3 pt-3 pointer-events-none max-w-md mx-auto"></div>
+  <!-- role=status + aria-live: sem isto, nenhuma confirmação ou erro chegava a
+       quem usa leitor de ecrã — gravava-se o perfil sem qualquer retorno.
+       "polite" para não interromper a leitura a meio. -->
+  <div id="toastStack" role="status" aria-live="polite" aria-atomic="false"
+    class="fixed top-0 inset-x-0 z-50 flex flex-col items-stretch gap-2 px-3 pt-3 pointer-events-none max-w-md mx-auto"></div>
 
   <div id="coachClearModal"></div>
 
@@ -233,11 +361,14 @@
 
   <div id="perfilLeaveModal"></div>
 
+  <div id="deleteMealModal"></div>
+
   <div class="sticky top-0 z-20 bg-neutral-950/90 backdrop-blur border-b border-neutral-800">
     <header class="px-4 pt-4 pb-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <button onclick="handleLogoClick()" class="w-9 h-9 rounded-xl active:scale-95 transition overflow-hidden">
-          <img src="logo.png" alt="IronHealth logo" class="w-full h-full object-cover" />
+        <button onclick="handleLogoClick()" aria-label="IronHealth"
+          class="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
+          <img src="logo.png" alt="" class="w-9 h-9 rounded-xl object-cover" />
         </button>
         <div>
           <h1 class="text-base font-bold tracking-tight text-white leading-none" style="color:var(--green);">IronHealth</h1>
@@ -258,22 +389,22 @@
   <div id="fabMenu" class="hidden fixed left-1/2 -translate-x-1/2 z-40 flex-col items-center gap-2 w-max" style="bottom:86px;">
     <button onclick="fabCreateMeal()" type="button"
       class="flex items-center gap-2 bg-neutral-900 border border-neutral-800 pl-2.5 pr-3.5 py-2 rounded-full shadow-lg active:scale-95 transition">
-      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,#065f46,#10b981);"><i data-lucide="camera" class="w-3.5 h-3.5"></i></span>
+      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,var(--mod-nutricao-from),var(--mod-nutricao-to));"><i data-lucide="camera" class="w-3.5 h-3.5"></i></span>
       <span class="text-xs font-semibold text-white whitespace-nowrap">Registar refeição</span>
     </button>
     <button onclick="fabCreateAssessment()" type="button"
       class="flex items-center gap-2 bg-neutral-900 border border-neutral-800 pl-2.5 pr-3.5 py-2 rounded-full shadow-lg active:scale-95 transition">
-      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,#5b21b6,#a855f7);"><i data-lucide="user" class="w-3.5 h-3.5"></i></span>
+      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,var(--mod-corpo-from),var(--mod-corpo-to));"><i data-lucide="user" class="w-3.5 h-3.5"></i></span>
       <span class="text-xs font-semibold text-white whitespace-nowrap">Nova avaliação</span>
     </button>
     <button onclick="fabCreateRun()" type="button"
       class="flex items-center gap-2 bg-neutral-900 border border-neutral-800 pl-2.5 pr-3.5 py-2 rounded-full shadow-lg active:scale-95 transition">
-      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,#9a3412,#f97316);"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M14.1 7.9 12.5 10"/><path d="M17.4 10.1 16 12"/><path d="M2 16a2 2 0 0 0 2 2h13c2.8 0 5-2.2 5-5a2 2 0 0 0-2-2c-.8 0-1.6-.2-2.2-.7l-6.2-4.2c-.4-.3-.9-.2-1.3.1 0 0-.6.8-1.2 1.1a3.5 3.5 0 0 1-4.2.1C4.4 7 3.7 6.3 3.7 6.3A.92.92 0 0 0 2 7Z"/><path d="M2 11c0 1.7 1.3 3 3 3h7"/></svg></span>
+      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,var(--mod-corrida-from),var(--mod-corrida-to));"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M14.1 7.9 12.5 10"/><path d="M17.4 10.1 16 12"/><path d="M2 16a2 2 0 0 0 2 2h13c2.8 0 5-2.2 5-5a2 2 0 0 0-2-2c-.8 0-1.6-.2-2.2-.7l-6.2-4.2c-.4-.3-.9-.2-1.3.1 0 0-.6.8-1.2 1.1a3.5 3.5 0 0 1-4.2.1C4.4 7 3.7 6.3 3.7 6.3A.92.92 0 0 0 2 7Z"/><path d="M2 11c0 1.7 1.3 3 3 3h7"/></svg></span>
       <span class="text-xs font-semibold text-white whitespace-nowrap">Nova corrida</span>
     </button>
     <button onclick="fabCreateGymSession()" type="button"
       class="flex items-center gap-2 bg-neutral-900 border border-neutral-800 pl-2.5 pr-3.5 py-2 rounded-full shadow-lg active:scale-95 transition">
-      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,#1e3a8a,#6366f1);"><i data-lucide="dumbbell" class="w-3.5 h-3.5"></i></span>
+      <span class="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0" style="background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to));"><i data-lucide="dumbbell" class="w-3.5 h-3.5"></i></span>
       <span class="text-xs font-semibold text-white whitespace-nowrap">Novo treino</span>
     </button>
   </div>
@@ -303,6 +434,7 @@
     </button>
     <!-- "+" central elevado (posicionado em absoluto para sobressair da barra). -->
     <button id="fabMainBtn" onclick="toggleFab()" type="button"
+      aria-label="Registar" aria-haspopup="menu" aria-expanded="false" aria-controls="fabMenu"
       class="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-[var(--chrome)] text-neutral-950 flex items-center justify-center active:scale-95 transition"
       style="top:-22px; border:4px solid var(--surf-900); box-shadow:0 8px 20px -4px color-mix(in srgb, var(--chrome) 55%, transparent);">
       <i data-lucide="plus" id="fabIcon" class="w-6 h-6 transition-transform"></i>
@@ -330,11 +462,16 @@ const MEAL_TYPES = [
   { key:'ceia', label:'Ceia', icon:'moon-star' },
 ];
 const PT_MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+// color tem de ser hex LITERAL, não var(--x): além de estilos DOM (onde
+// var() resolvia bem), estas cores também alimentam Chart.js via
+// hexToRgba() mais abaixo — o <canvas> não resolve variáveis CSS, só sabe
+// interpretar a string de cor diretamente. Os valores espelham var(--data-*)
+// em <style id="accent-vars"> — essa é a fonte a editar; isto segue-a.
 const MACROS = [
-  { key:'calories', label:'Calorias', unit:'kcal', goalKey:'calorie_goal', color:'#facc15' },
-  { key:'protein', label:'Proteína', unit:'g', goalKey:'protein_goal', color:'#10b981' },
-  { key:'carbs', label:'Hidratos', unit:'g', goalKey:'carbs_goal', color:'#3e6b82' },
-  { key:'fat', label:'Gordura', unit:'g', goalKey:'fat_goal', color:'#fb923c' },
+  { key:'calories', label:'Calorias', unit:'kcal', goalKey:'calorie_goal', color:'#dd3c4f' },
+  { key:'protein', label:'Proteína', unit:'g', goalKey:'protein_goal', color:'#3c6cdd' },
+  { key:'carbs', label:'Hidratos', unit:'g', goalKey:'carbs_goal', color:'#8b8118' },
+  { key:'fat', label:'Gordura', unit:'g', goalKey:'fat_goal', color:'#dd3cb7' },
 ];
 const MICROS = [
   { key:'fiber', label:'Fibra', unit:'g' },
@@ -350,20 +487,22 @@ const MICROS = [
 // apresentação; `good` indica o sentido saudável da variação ('up' = subir é
 // melhor, 'down' = descer é melhor, null = neutro) e serve para colorir os
 // deltas entre avaliações. As chaves espelham as colunas de body_assessments.
+// Mesma ressalva de MACROS acima: hex literal, não var(--x), por causa do
+// Chart.js em renderBodyChart. Valores espelham var(--data-*).
 const BODY_METRICS = [
-  { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#fb923c', good:null },
-  { key:'bmi',                  label:'IMC',               unit:'',     dec:1, color:'#f59e0b', good:'down' },
-  { key:'body_fat_pct',         label:'Gordura corporal',  unit:'%',    dec:1, color:'#ef4444', good:'down' },
-  { key:'skeletal_muscle_pct',  label:'Músculo esquelético', unit:'%',  dec:1, color:'#10b981', good:'up' },
-  { key:'muscle_mass_kg',       label:'Massa muscular',    unit:'kg',   dec:1, color:'#22c55e', good:'up' },
-  { key:'body_water_pct',       label:'Água corporal',     unit:'%',    dec:1, color:'#3e6b82', good:'up' },
-  { key:'protein_pct',          label:'Proteína',          unit:'%',    dec:1, color:'#a78bfa', good:'up' },
-  { key:'bone_mass_kg',         label:'Massa óssea',       unit:'kg',   dec:1, color:'#94a3b8', good:null },
-  { key:'bmr_kcal',             label:'Metabolismo basal', unit:'kcal', dec:0, color:'#facc15', good:'up' },
-  { key:'visceral_fat',         label:'Gordura visceral',  unit:'',     dec:0, color:'#f97316', good:'down' },
-  { key:'subcutaneous_fat_pct', label:'Gordura subcutânea', unit:'%',   dec:1, color:'#fb7185', good:'down' },
-  { key:'metabolic_age',        label:'Idade metabólica',  unit:'anos', dec:0, color:'#c084fc', good:'down' },
-  { key:'lean_body_mass_kg',    label:'Massa magra',       unit:'kg',   dec:1, color:'#2dd4bf', good:'up' },
+  { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71', good:null },
+  { key:'bmi',                  label:'IMC',               unit:'',     dec:1, color:'#da2fd7', good:'down' },
+  { key:'body_fat_pct',         label:'Gordura corporal',  unit:'%',    dec:1, color:'#dd3c94', good:'down' },
+  { key:'skeletal_muscle_pct',  label:'Músculo esquelético', unit:'%',  dec:1, color:'#468f19', good:'up' },
+  { key:'muscle_mass_kg',       label:'Massa muscular',    unit:'kg',   dec:1, color:'#2c931a', good:'up' },
+  { key:'body_water_pct',       label:'Água corporal',     unit:'%',    dec:1, color:'#2b82da', good:'up' },
+  { key:'protein_pct',          label:'Proteína',          unit:'%',    dec:1, color:'#5f8b18', good:'up' },
+  { key:'bone_mass_kg',         label:'Massa óssea',       unit:'kg',   dec:1, color:'#643cdd', good:null },
+  { key:'bmr_kcal',             label:'Metabolismo basal', unit:'kcal', dec:0, color:'#768618', good:'up' },
+  { key:'visceral_fat',         label:'Gordura visceral',  unit:'',     dec:0, color:'#bc3cdd', good:'down' },
+  { key:'subcutaneous_fat_pct', label:'Gordura subcutânea', unit:'%',   dec:1, color:'#1a9324', good:'down' },
+  { key:'metabolic_age',        label:'Idade metabólica',  unit:'anos', dec:0, color:'#1a9340', good:'down' },
+  { key:'lean_body_mass_kg',    label:'Massa magra',       unit:'kg',   dec:1, color:'#198f89', good:'up' },
 ];
 
 // Grupos musculares da vertical Ginásio (chaves iguais às do check da BD).
@@ -392,16 +531,21 @@ const WEEKDAYS = [
 
 // As "verticais" do IronHealth Coach — Nutrição está implementada; as restantes
 // são placeholders "Em breve" até serem desenhadas.
+// from/to referem-se sempre às variáveis --mod-*-from/-to (ver <style
+// id="accent-vars">) — nunca hex direto aqui. Como isto é interpolado dentro
+// de atributos style="...", o browser resolve var(--mod-x) normalmente; um
+// hex duplicado neste array voltaria a criar uma segunda fonte de verdade.
 const VERTICALS = [
   { key:'home', label:'Início', icon:'layout-grid' },
-  { key:'nutricao', label:'Nutrição', icon:'utensils' },
-  { key:'corpo', label:'Corpo', icon:'scale', from:'#5b21b6', to:'#a855f7',
+  { key:'nutricao', label:'Nutrição', icon:'utensils', from:'var(--mod-nutricao-from)', to:'var(--mod-nutricao-to)',
+    desc:'Regista refeições, acompanha calorias e macros, e mantém a hidratação em dia.' },
+  { key:'corpo', label:'Corpo', icon:'scale', from:'var(--mod-corpo-from)', to:'var(--mod-corpo-to)',
     desc:'Envia prints da app Renpho Health e a IA extrai as métricas de composição corporal, avalia os números e acompanha a tua evolução ao longo do tempo.' },
-  { key:'ginasio', label:'Ginásio', icon:'dumbbell', from:'#1e3a8a', to:'#6366f1',
+  { key:'ginasio', label:'Ginásio', icon:'dumbbell', from:'var(--mod-ginasio-from)', to:'var(--mod-ginasio-to)',
     desc:'Regista os teus treinos de ginásio e acompanha a evolução de cargas, séries e repetições ao longo do tempo.' },
-  { key:'corrida', label:'Corrida', icon:'footprints', from:'#9a3412', to:'#f97316',
+  { key:'corrida', label:'Corrida', icon:'footprints', from:'var(--mod-corrida-from)', to:'var(--mod-corrida-to)',
     desc:'Regista as tuas corridas — distância, ritmo, tempo — e acompanha a tua evolução como corredor.' },
-  { key:'coach', label:'Coach', icon:'bot', from:'#155e75', to:'#06b6d4',
+  { key:'coach', label:'Coach', icon:'bot', from:'var(--mod-coach-from)', to:'var(--mod-coach-to)',
     desc:'O teu treinador pessoal com IA vai analisar nutrição, treino e corrida para te dar sugestões — com memória do teu histórico e a estratégia que definires.' },
 ];
 
@@ -1074,7 +1218,7 @@ async function loadAllData(){
 
   } catch(e) {
     console.error(e);
-    showToast('error', 'Erro de sincronização', e.message || 'Erro a carregar dados.');
+    showToast('error', 'Erro de sincronização', e.message || 'Não foi possível carregar os dados. Tenta novamente.');
   }
   dataLoading = false;
   render();
@@ -1193,7 +1337,47 @@ async function deleteMealItem(itemId){
   } catch(e) { flashSyncError(e); }
 }
 
-async function deleteMeal(mealId){
+// Modal próprio em vez de confirm() nativo (mesmo motivo do coachClearModal):
+// eliminar uma refeição é permanente e o confirm() do browser falha em
+// silêncio dentro da PWA instalada.
+function openDeleteMealModal(mealId){
+  const found = findMealById(mealId);
+  if (!found) return;
+  const el = document.getElementById('deleteMealModal');
+  if (!el) return;
+  const label = `${mealTypeLabel(found.meal.meal_type)} de ${formatDatePT(found.meal.date)}`;
+  el.innerHTML = `
+    <div class="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6"
+         onclick="if(event.target===this) closeDeleteMealModal()">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-xs w-full">
+        <p class="text-sm font-bold text-white mb-2">Eliminar ${label}?</p>
+        <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+          Esta ação apaga permanentemente a refeição e todos os alimentos registados nela.
+          Não pode ser desfeita.
+        </p>
+        <div class="flex gap-2">
+          <button onclick="closeDeleteMealModal()"
+            class="flex-1 border border-neutral-700 text-slate-300 text-xs font-semibold rounded-xl py-2.5">
+            Cancelar
+          </button>
+          <button onclick="confirmDeleteMeal('${mealId}')"
+            class="flex-1 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5">
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  if (window.lucide) lucide.createIcons();
+  activateModal('deleteMealModal', `Eliminar ${label}?`, closeDeleteMealModal);
+}
+function closeDeleteMealModal(){
+  const el = document.getElementById('deleteMealModal');
+  if (el) el.innerHTML = '';
+  deactivateModal();
+}
+async function confirmDeleteMeal(mealId){
+  closeDeleteMealModal();
   const found = findMealById(mealId);
   if (!found) return;
   const { meal, array } = found;
@@ -1352,6 +1536,187 @@ function switchPerfilTab(tab){
   renderAguaInPlace();
 }
 
+/* ===== Acessibilidade dos modais =====
+   Os três modais da app são desenhados injetando HTML num <div> vazio. Sem o
+   tratamento abaixo, um utilizador de teclado ficava preso: o Escape não
+   fechava nada, o Tab passeava pelos 20 elementos por trás do modal, e o
+   leitor de ecrã nem sequer anunciava que se tinha aberto um diálogo.
+   Em vez de repetir isto em cada modal, há um sítio só. */
+const MODAL_MOUNTS = ['perfilLeaveModal', 'waterMuteModal', 'coachClearModal'];
+let modalCloseFn = null;      // como fechar o modal aberto (usado pelo Escape)
+let modalLastFocus = null;    // para onde devolver o foco depois de fechar
+
+function currentOpenModal(){
+  for (const id of MODAL_MOUNTS) {
+    const el = document.getElementById(id);
+    if (el && el.innerHTML.trim()) return el;
+  }
+  return null;
+}
+function modalFocusables(modal){
+  return [...modal.querySelectorAll('button, a[href], input, select, textarea')]
+    .filter(el => el.offsetParent !== null && !el.disabled);
+}
+// Chamada no fim de cada open*: marca o painel como diálogo, guarda o foco de
+// origem e leva o foco para dentro.
+function activateModal(mountId, titleText, closeFn){
+  const el = document.getElementById(mountId);
+  if (!el) return;
+  const panel = el.querySelector('div > div') || el.firstElementChild;
+  if (panel) {
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    if (titleText) panel.setAttribute('aria-label', titleText);
+  }
+  modalCloseFn = closeFn;
+  modalLastFocus = document.activeElement;
+  const f = modalFocusables(el);
+  if (f.length) f[0].focus();
+}
+// Chamada no fim de cada close*: devolve o foco a quem o tinha antes, para o
+// utilizador não ser atirado para o topo da página.
+function deactivateModal(){
+  modalCloseFn = null;
+  const back = modalLastFocus;
+  modalLastFocus = null;
+  if (back && document.contains(back)) back.focus();
+}
+
+/* ===== Rótulos de formulário =====
+   Os formulários são desenhados como strings de HTML e muitos ids são gerados
+   (pfGoal_${key}), por isso escrever `for` à mão em cada campo apodreceria à
+   primeira alteração. Em vez disso, depois de cada render liga-se cada <label>
+   órfão ao campo que se lhe segue, e os campos que não têm rótulo nenhum
+   recebem um nome a partir do placeholder. Sem isto, o Perfil › Metas era
+   anunciado como 21 "campos de edição, em branco" indistinguíveis. */
+function labelFieldsFor(root){
+  const scope = root || document;
+  scope.querySelectorAll('label:not([for])').forEach(label => {
+    if (label.querySelector('input, select, textarea')) return; // já envolve o campo
+    let field = label.nextElementSibling;
+    if (field && !field.matches('input, select, textarea')) {
+      field = field.querySelector ? field.querySelector('input, select, textarea') : null;
+    }
+    if (!field) return;
+    if (!field.id) field.id = 'fld-' + Math.random().toString(36).slice(2, 9);
+    label.setAttribute('for', field.id);
+  });
+  // Sobra dos campos sem rótulo visível (ex.: "Outra quantidade (ml)").
+  scope.querySelectorAll('input, select, textarea').forEach(field => {
+    const temLabel = field.id && scope.querySelector(`label[for="${CSS.escape(field.id)}"]`);
+    if (temLabel || field.getAttribute('aria-label') || field.getAttribute('aria-labelledby')) return;
+    const ph = field.getAttribute('placeholder');
+    if (ph) field.setAttribute('aria-label', ph);
+  });
+}
+
+// Ícones são decoração: o significado está sempre no texto ao lado ou no
+// aria-label do botão. Sem aria-hidden, um leitor de ecrã anuncia "imagem" a
+// cada linha. Feito aqui porque o Lucide injeta os <svg> depois do render.
+function hideDecorativeIcons(root){
+  (root || document).querySelectorAll('svg:not([aria-hidden])').forEach(svg => {
+    if (svg.querySelector('title')) return; // tem nome próprio, é informativo
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+  });
+}
+
+// Um observador em vez de chamadas espalhadas: a app redesenha o conteúdo em
+// dezenas de sítios diferentes e qualquer um deles esqueceria a chamada.
+function applyA11yPasses(root){
+  labelFieldsFor(root);
+  hideDecorativeIcons(root);
+}
+function watchForms(){
+  const main = document.getElementById('tab-content');
+  if (!main) return;
+  applyA11yPasses(document);
+  new MutationObserver(() => applyA11yPasses(document))
+    .observe(document.body, { childList: true, subtree: true });
+}
+
+/* ===== Guarda de contraste (dev only) =====
+   A correção de 31 falhas de contraste (25 Jul) só aconteceu porque foi
+   caçada à mão, ecrã a ecrã. Isto automatiza essa caça: percorre o texto
+   visível, calcula o contraste real contra o fundo herdado, e avisa na
+   consola quem falhar WCAG AA (4.5:1 texto normal, 3:1 texto grande/negrito).
+   Não corre para utilizadores reais — só com ?debugColor=1 na URL, ou
+   chamando auditContrast() à mão na consola — porque é uma ferramenta de
+   desenvolvimento, não instrumentação de produção. */
+function auditContrast(){
+  function luminance(rgb){
+    const v = rgb.map(x => x/255).map(x => x<=0.03928 ? x/12.92 : Math.pow((x+0.055)/1.055, 2.4));
+    return 0.2126*v[0] + 0.7152*v[1] + 0.0722*v[2];
+  }
+  function parseColor(c){
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const p = m[1].split(',').map(s => parseFloat(s));
+    return { rgb: [p[0], p[1], p[2]], a: p.length > 3 ? p[3] : 1 };
+  }
+  function backgroundOf(el){
+    let n = el;
+    while (n && n !== document.documentElement) {
+      const c = parseColor(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0.9) return c.rgb;
+      n = n.parentElement;
+    }
+    return [255, 255, 255];
+  }
+  function contrast(fg, bg){
+    const l1 = luminance(fg), l2 = luminance(bg);
+    const hi = Math.max(l1, l2), lo = Math.min(l1, l2);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+  const failures = [];
+  document.querySelectorAll('body *').forEach(el => {
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const style = getComputedStyle(el);
+    if (style.visibility === 'hidden' || style.display === 'none' || parseFloat(style.opacity) < 0.5) return;
+    const text = Array.from(el.childNodes)
+      .filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join(' ').trim();
+    if (!text) return;
+    const fg = parseColor(style.color);
+    if (!fg) return;
+    const ratio = contrast(fg.rgb, backgroundOf(el));
+    const fontSize = parseFloat(style.fontSize);
+    const isBold = parseInt(style.fontWeight) >= 700;
+    const minRatio = (fontSize >= 24 || (fontSize >= 18.66 && isBold)) ? 3 : 4.5;
+    if (ratio < minRatio) {
+      failures.push({ texto: text.slice(0, 40), ratio: +ratio.toFixed(2), minimo: minRatio, elemento: el });
+    }
+  });
+  if (failures.length) {
+    console.warn(`[auditContrast] ${failures.length} falha(s) de contraste WCAG AA:`);
+    console.table(failures.map(({ elemento, ...rest }) => rest));
+  } else {
+    console.info('[auditContrast] sem falhas de contraste no ecrã atual.');
+  }
+  return failures;
+}
+if (new URLSearchParams(location.search).has('debugColor')) {
+  window.addEventListener('DOMContentLoaded', () => setTimeout(auditContrast, 800));
+}
+
+document.addEventListener('keydown', (e) => {
+  const modal = currentOpenModal();
+  if (!modal) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (modalCloseFn) modalCloseFn();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  // Confina o Tab ao modal, em ciclo.
+  const f = modalFocusables(modal);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (!modal.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
 // Modal "sair sem gravar?" — intercetado tanto ao trocar de módulo
 // (switchVertical) como ao usar o botão/gesto físico "voltar" (popstate,
 // ver window.addEventListener('popstate', ...) mais abaixo). `action` é a
@@ -1382,11 +1747,13 @@ function openPerfilLeaveModal(action){
       </div>
     </div>
   `;
+  activateModal('perfilLeaveModal', 'Tens alterações por gravar', closePerfilLeaveModal);
 }
 function closePerfilLeaveModal(){
   pendingLeaveAction = null;
   const el = document.getElementById('perfilLeaveModal');
   if (el) el.innerHTML = '';
+  deactivateModal();
 }
 function discardPerfilAndLeave(){
   perfilDirty[perfilTab] = false;
@@ -1793,11 +2160,11 @@ function abandonManualMealSession(){
   expandedMealId = null;
   showAddItemForm = false;
   if (!hasItems) {
-    deleteMeal(mealId);
+    confirmDeleteMeal(mealId);
     return;
   }
   const keep = confirm('Adicionaste alimentos a esta refeição.\n\nOK para guardar a refeição, Cancelar para descartar tudo.');
-  if (!keep) deleteMeal(mealId);
+  if (!keep) confirmDeleteMeal(mealId);
 }
 
 // Troca de vertical (Início / Nutrição / Ginásio / Corrida / Coach).
@@ -1848,10 +2215,14 @@ function closeFab(){
 function updateFabUI(){
   const menu = document.getElementById('fabMenu');
   const icon = document.getElementById('fabIcon');
+  const btn  = document.getElementById('fabMainBtn');
   if (!menu) return;
   menu.classList.toggle('hidden', !fabOpen);
   menu.classList.toggle('flex', fabOpen);
   if (icon) icon.style.transform = fabOpen ? 'rotate(45deg)' : '';
+  // O estado aberto/fechado tem de ser anunciado, não só desenhado (a rotação
+  // do "+" é a única pista visual e não chega a um leitor de ecrã).
+  if (btn) btn.setAttribute('aria-expanded', fabOpen ? 'true' : 'false');
 }
 // Se o FAB for usado a partir do Calendário (Nutrição/Corpo) com um dia já
 // selecionado, a entrada deve sugerir essa data — não a de hoje — tal como
@@ -2175,7 +2546,7 @@ function renderScreen(){
   headerActions.innerHTML = `
     ${showPerfilShortcut ? `
       <button onclick="goToPerfil()"
-        class="flex items-center gap-1 bg-[var(--chrome)] text-neutral-950 text-xs font-bold pl-2.5 pr-3 py-1.5 rounded-full active:scale-95 transition">
+        class="tap-h-44 flex items-center gap-1 bg-[var(--chrome)] text-neutral-950 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition">
         <i data-lucide="user" class="w-3.5 h-3.5"></i> Perfil
       </button>
     ` : ''}
@@ -2374,7 +2745,7 @@ function gaugeBar(pct, { color = 'var(--accent)' } = {}){
   const width = Math.max(0, Math.min(100, pct));
   return `
     <div class="w-full h-1.5 rounded-full overflow-hidden" style="background:${emptyFillColor()}">
-      <div class="h-full rounded-full" style="width:${width}%;background:${color};transition:width .4s ease"></div>
+      <div class="h-full w-full rounded-full" style="transform-origin:left;transform:scaleX(${width / 100});background:${color};transition:transform .4s ease"></div>
     </div>`;
 }
 
@@ -2388,13 +2759,16 @@ function nutritionHeroCard(totals, profile){
   const pct = calGoal > 0 ? (totals.calories / calGoal) * 100 : 0;
   const mealsToday = state.meals.filter(m => m.date === todayISO()).length;
 
+  // Tons escuros o suficiente para passarem 4.5:1 sobre o cartão claro — os
+  // originais eram cores de tema escuro (#f87171/#34d399/#fbbf24) e no fundo
+  // claro caíam para 1.4-2.5, deixando o aviso quase invisível.
   let status = null;
   if (calGoal > 0 && totals.calories > calGoal) {
-    status = { color: '#f87171', label: 'Calorias acima da meta' };
+    status = { color: '#b91c1c', label: 'Calorias acima da meta' };
   } else if (proteinGoal > 0 && totals.protein >= proteinGoal) {
-    status = { color: '#34d399', label: 'Proteína no alvo' };
+    status = { color: '#047857', label: 'Proteína no alvo' };
   } else if (proteinGoal > 0) {
-    status = { color: '#fbbf24', label: `Faltam ${(proteinGoal - totals.protein).toFixed(0)}g de proteína` };
+    status = { color: '#8f5e07', label: `Faltam ${(proteinGoal - totals.protein).toFixed(0)}g de proteína` };
   }
 
   const mealsLabel = `${mealsToday} refeiç${mealsToday === 1 ? 'ão' : 'ões'} registada${mealsToday === 1 ? '' : 's'} hoje`;
@@ -2405,13 +2779,13 @@ function nutritionHeroCard(totals, profile){
   return `
     <button onclick="switchVertical('nutricao')"
       class="w-full text-left rounded-3xl p-5 active:scale-[0.99] transition" style="${statCardBg('var(--accent)')}">
-      <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-4">Hoje · Nutrição</p>
+      <h2 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-4">Hoje · Nutrição</h2>
       <div class="flex items-center gap-5">
         <div class="relative shrink-0" style="width:104px;height:104px;">
           ${ringSvg(pct, { size: 104, stroke: 9 })}
           <div class="absolute inset-0 flex flex-col items-center justify-center">
             <span class="text-2xl font-extrabold text-white leading-none">${totals.calories.toFixed(0)}</span>
-            <span class="text-[9px] font-semibold text-slate-500 uppercase tracking-wide mt-1">${calGoal > 0 ? `de ${calGoal.toFixed(0)} kcal` : 'kcal'}</span>
+            <span class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mt-1">${calGoal > 0 ? `de ${calGoal.toFixed(0)} kcal` : 'kcal'}</span>
           </div>
         </div>
         <div class="min-w-0 flex-1">
@@ -2445,7 +2819,7 @@ function bodyMiniStatCard(m, latestVal, prevVal, goal){
 
   return `
     <button onclick="switchVertical('corpo')" class="text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg(m.color)}">
-      <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 truncate">${m.label}</p>
+      <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 truncate">${m.label}</h2>
       <div class="flex items-center gap-3">
         <div class="relative shrink-0" style="width:52px;height:52px;">
           ${ringSvg(hasGoal ? pct : 0, { size: 52, stroke: 5, color: m.color })}
@@ -2482,7 +2856,7 @@ function gymSessionsCard(){
   return `
     <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#6366f1')}">
       <div class="flex items-center justify-between mb-3">
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Esta semana</p>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Esta semana</h2>
         <p class="text-xs font-bold text-white">${sessions.length} ${sessions.length === 1 ? 'sessão' : 'sessões'}</p>
       </div>
       <div class="flex items-center gap-1.5">
@@ -2492,10 +2866,10 @@ function gymSessionsCard(){
           return `
             <div class="flex flex-col items-center gap-1 flex-1">
               <div class="w-full aspect-square rounded-lg flex items-center justify-center"
-                style="${trained ? 'background:linear-gradient(135deg,#1e3a8a,#6366f1)' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #6366f1' : '')}">
+                style="${trained ? 'background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #6366f1' : '')}">
                 ${trained ? '<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>' : ''}
               </div>
-              <span class="text-[9px] ${isToday ? 'text-white font-bold' : 'text-slate-600'}">${labels[i]}</span>
+              <span class="text-[10px] ${isToday ? 'text-white font-bold' : 'text-slate-600'}">${labels[i]}</span>
             </div>`;
         }).join('')}
       </div>
@@ -2526,7 +2900,7 @@ function gymVolumeMiniCard(){
   return `
     <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#6366f1')}">
       <div class="flex items-center justify-between mb-1">
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Volume</p>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Volume</h2>
         ${gymSessions.length ? `<span class="text-[10px] font-semibold ${trendColor}">${trendArrow} ${Math.round(Math.abs(trend))} kg</span>` : ''}
       </div>
       <p class="text-2xl font-extrabold text-white leading-none">${Math.round(thisWeek)}<span class="text-xs font-semibold text-slate-500"> kg</span></p>
@@ -2535,7 +2909,7 @@ function gymVolumeMiniCard(){
         ${perDay.map(kg => `<div class="flex-1 rounded-sm" style="height:${kg > 0 ? Math.max(4, kg / maxDay * 28) : 3}px;background:${kg > 0 ? '#6366f1' : emptyFillColor()}"></div>`).join('')}
       </div>
       <div class="flex items-center gap-1.5 mt-1">
-        ${days.map((d, i) => `<span class="flex-1 text-center text-[9px] ${d===todayStr?'text-white font-bold':'text-slate-600'}">${labels[i]}</span>`).join('')}
+        ${days.map((d, i) => `<span class="flex-1 text-center text-[10px] ${d===todayStr?'text-white font-bold':'text-slate-600'}">${labels[i]}</span>`).join('')}
       </div>
     </button>`;
 }
@@ -2550,7 +2924,7 @@ function nutrientMiniCard(nutrientKey, label, color, totals, profile){
   const pct = hasGoal ? (value / goal) * 100 : 0;
   return `
     <button onclick="switchVertical('nutricao')" class="text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg(color)}">
-      <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 truncate">${label}</p>
+      <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2 truncate">${label}</h2>
       <div class="flex items-center gap-3">
         <div class="relative shrink-0" style="width:52px;height:52px;">
           ${ringSvg(hasGoal ? pct : 0, { size: 52, stroke: 5, color })}
@@ -2582,18 +2956,18 @@ function kmHomeCard(){
   const todayStr = todayISO();
 
   return `
-    <button onclick="switchVertical('corrida')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#f97316')}">
+    <button onclick="switchVertical('corrida')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('var(--mod-corrida-to)')}">
       <div class="flex items-center justify-between mb-1">
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Corrida · Distância</p>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Corrida · Distância</h2>
         ${runs.length ? `<span class="text-[10px] font-semibold ${trendColor}">${trendArrow} ${Math.abs(trend).toFixed(1)} km</span>` : ''}
       </div>
       <p class="text-2xl font-extrabold text-white leading-none">${weekKm.toFixed(1)}<span class="text-xs font-semibold text-slate-500"> km</span></p>
       <p class="text-[10px] text-slate-500 mt-1 mb-3">esta semana · ${monthKm.toFixed(1)} km este mês</p>
       <div class="flex items-end gap-1.5" style="height:28px;">
-        ${perDay.map(km => `<div class="flex-1 rounded-sm" style="height:${km > 0 ? Math.max(4, km / maxDay * 28) : 3}px;background:${km > 0 ? '#f97316' : emptyFillColor()}"></div>`).join('')}
+        ${perDay.map(km => `<div class="flex-1 rounded-sm" style="height:${km > 0 ? Math.max(4, km / maxDay * 28) : 3}px;background:${km > 0 ? 'var(--mod-corrida-to)' : emptyFillColor()}"></div>`).join('')}
       </div>
       <div class="flex items-center gap-1.5 mt-1">
-        ${days.map((d, i) => `<span class="flex-1 text-center text-[9px] ${d===todayStr?'text-white font-bold':'text-slate-600'}">${labels[i]}</span>`).join('')}
+        ${days.map((d, i) => `<span class="flex-1 text-center text-[10px] ${d===todayStr?'text-white font-bold':'text-slate-600'}">${labels[i]}</span>`).join('')}
       </div>
     </button>`;
 }
@@ -2620,7 +2994,7 @@ function paceHomeCard(){
           <p class="text-[10px] text-slate-500">${label}</p>
           <p class="text-xs text-slate-600">Sem dados</p>
         </div>
-        ${gaugeBar(0, { color: '#f97316' })}
+        ${gaugeBar(0, { color: 'var(--mod-corrida-to)' })}
       </div>`;
     return `
       <div class="flex-1 min-w-0">
@@ -2628,12 +3002,12 @@ function paceHomeCard(){
           <p class="text-[10px] text-slate-500">${label}</p>
           <p class="text-sm font-extrabold text-white leading-none">${formatPace(b.pace)}</p>
         </div>
-        ${gaugeBar(paceQualityPct(b.pace), { color: '#f97316' })}
+        ${gaugeBar(paceQualityPct(b.pace), { color: 'var(--mod-corrida-to)' })}
       </div>`;
   };
   return `
-    <button onclick="switchVertical('corrida')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#f97316')}">
-      <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2.5">Corrida · Melhor pace</p>
+    <button onclick="switchVertical('corrida')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('var(--mod-corrida-to)')}">
+      <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2.5">Corrida · Melhor pace</h2>
       <div class="flex items-start gap-3">
         ${bucket('5 km+', b5)}
         ${bucket('10 km+', b10)}
@@ -2663,7 +3037,7 @@ function nextRaceHomeCard(){
   if (!next) {
     return `
       <button onclick="goToCorridaAgenda()" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg(color)}">
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Próxima Prova</p>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Próxima Prova</h2>
         <div class="flex items-center gap-2.5">
           <span class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:${color}1a;">
             <i data-lucide="flag" class="w-4 h-4" style="color:${color}"></i>
@@ -2681,8 +3055,8 @@ function nextRaceHomeCard(){
   return `
     <button onclick="goToCorridaAgenda()" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg(color)}">
       <div class="flex items-center justify-between mb-1.5">
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Próxima Prova</p>
-        <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style="background:${color}1a;color:${color}">${esc(typeLabel)}</span>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Próxima Prova</h2>
+        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style="background:${color}1a;color:color-mix(in srgb, ${color} 45%, #0f172a)">${esc(typeLabel)}</span>
       </div>
       <div class="flex items-end justify-between gap-2">
         <div class="min-w-0">
@@ -2760,9 +3134,12 @@ function buildHomeCardsMap(totals, profile){
     bmi: bodyCard('bmi'),
     muscle_mass_kg: bodyCard('muscle_mass_kg'),
     body_water_pct: bodyCard('body_water_pct'),
-    protein_today: nutrientMiniCard('protein', 'Proteína hoje', '#a78bfa', totals, profile),
-    carbs_today: nutrientMiniCard('carbs', 'Hidratos hoje', '#3e6b82', totals, profile),
-    fat_today: nutrientMiniCard('fat', 'Gordura hoje', '#fb923c', totals, profile),
+    // Cor vem sempre de MACROS, nunca repetida à mão aqui — era assim que
+    // "Proteína hoje" (macro) e "Proteína %" (métrica de Corpo) acabaram com
+    // o mesmo roxo #a78bfa sem ninguém ter decidido isso.
+    protein_today: nutrientMiniCard('protein', 'Proteína hoje', MACROS.find(m => m.key === 'protein').color, totals, profile),
+    carbs_today: nutrientMiniCard('carbs', 'Hidratos hoje', MACROS.find(m => m.key === 'carbs').color, totals, profile),
+    fat_today: nutrientMiniCard('fat', 'Gordura hoje', MACROS.find(m => m.key === 'fat').color, totals, profile),
     gym_sessions: gymSessionsCard(),
     gym_volume: gymVolumeMiniCard(),
     corrida_km: kmHomeCard(),
@@ -2804,7 +3181,7 @@ function renderHomeEditPanel(){
       <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">Escolhe os cartões que queres ver. A posição é sempre agrupada por módulo — o cartão de calorias é sempre o primeiro e não se pode desativar.</p>
 
       ${modules.map(mod => `
-        <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${mod}</p>
+        <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${mod}</h2>
         <div class="space-y-1.5 mb-3">
           ${HOME_CARD_DEFS.filter(d => d.module === mod).map(d => homeCardRow(d, activeSet.has(d.key))).join('')}
         </div>`).join('')}
@@ -2820,8 +3197,8 @@ function renderHome(){
   return `
     <div class="space-y-4 fade-in">
       <div class="flex items-center justify-between">
-        <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Início</p>
-        <button onclick="toggleHomeEditMode()" type="button" class="flex items-center gap-1 text-[11px] font-semibold text-slate-400 border border-neutral-800 rounded-full px-2.5 py-1 active:scale-95 transition">
+        <h2 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Início</h2>
+        <button onclick="toggleHomeEditMode()" type="button" class="tap-h-44 flex items-center gap-1 text-[11px] font-semibold text-slate-400 border border-neutral-800 rounded-full px-3.5 active:scale-95 transition">
           <i data-lucide="sliders-horizontal" class="w-3 h-3"></i> Personalizar
         </button>
       </div>
@@ -2886,8 +3263,8 @@ function runCard(r){
         <div class="min-w-0">
           <p class="text-xs font-semibold text-white flex items-center gap-1.5 flex-wrap">
             ${formatDatePT(r.date)}
-            ${kindLabel ? `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">${esc(kindLabel)}</span>` : ''}
-            ${paths.length>1 ? `<span class="text-[9px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>` : ''}
+            ${kindLabel ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">${esc(kindLabel)}</span>` : ''}
+            ${paths.length>1 ? `<span class="text-[10px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>` : ''}
           </p>
           <p class="text-[11px] text-slate-500 mt-0.5">${summaryParts.length ? summaryParts.join(' · ') : 'Sem distância/duração registadas'}</p>
           ${splits.length ? `<p class="text-[10px] text-slate-600 mt-0.5">Splits: ${splits.join(' · ')}</p>` : ''}
@@ -2902,7 +3279,7 @@ function runCard(r){
             ${paths.map(p => signedUrlCache[p]
               ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-xl border border-neutral-800" alt="Print" /></a>`
               : signedUrlFailed[p]
-                ? `<button onclick="loadRunPhotoUrls('${r.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[9px] gap-1 text-center px-1">
+                ? `<button onclick="loadRunPhotoUrls('${r.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> Tentar de novo
                   </button>`
                 : `<div class="w-20 h-20 shrink-0 rounded-xl border border-neutral-800 bg-neutral-900 flex items-center justify-center text-slate-600 text-xs"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></div>`
@@ -2950,7 +3327,7 @@ function runCard(r){
 function runSplitHint(minKm, draft){
   const distance = Number(runDistanceDraft);
   if (!(distance >= minKm) || distance <= minKm * SPLIT_TOLERANCE || String(draft).trim()) return '';
-  return `<p class="text-[9px] text-amber-500/80 mt-1 leading-tight">Sem isto, não conta para o pace aos ${minKm}km.</p>`;
+  return `<p class="text-[10px] text-amber-500/80 mt-1 leading-tight">Sem isto, não conta para o pace aos ${minKm}km.</p>`;
 }
 
 function selectRunKind(kind){
@@ -3045,9 +3422,9 @@ function renderRunKindFields(){
 function renderCorrida(){
   return `
     <div class="space-y-4 fade-in">
-      <div class="rounded-2xl p-4" style="${statCardBg('#f97316')}">
+      <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-corrida-to)')}">
         <div class="flex items-center gap-2 mb-3">
-          <span style="color:#f97316">${sneakerIcon('w-4 h-4')}</span>
+          <span style="color:var(--mod-corrida-to)">${sneakerIcon('w-4 h-4')}</span>
           <h2 class="text-sm font-semibold text-white">Nova Corrida</h2>
         </div>
 
@@ -3086,7 +3463,7 @@ function renderCorrida(){
         `}
 
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <input id="runDate" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
+          <input id="runDate" type="date" aria-label="Data da corrida" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           <div class="flex items-center justify-center text-[11px] text-slate-500">Data da corrida</div>
         </div>
@@ -3458,8 +3835,8 @@ function raceEventCard(ev){
         <div class="min-w-0">
           <p class="text-xs font-semibold text-white flex items-center gap-1.5 flex-wrap">
             ${esc(ev.name)}
-            <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">${esc(typeLabel)}</span>
-            ${done ? `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Concluída</span>` : ''}
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">${esc(typeLabel)}</span>
+            ${done ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">Concluída</span>` : ''}
           </p>
           <p class="text-[11px] text-slate-500 mt-0.5">${formatDatePT(ev.date)}${isPast && !done ? ' · já passou' : ''}${ev.location ? ` · ${esc(ev.location)}` : ''}</p>
           ${ev.target_time ? `<p class="text-[10px] text-slate-600 mt-0.5">Tempo-alvo: ${esc(ev.target_time)}</p>` : ''}
@@ -3655,7 +4032,7 @@ function classificationStyle(label){
 function classificationBadge(assessment, key, extra){
   const label = assessment && assessment.classifications ? assessment.classifications[key] : null;
   if (!label) return '';
-  return `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 ${classificationStyle(label)} ${extra || ''}">${esc(label)}</span>`;
+  return `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border shrink-0 ${classificationStyle(label)} ${extra || ''}">${esc(label)}</span>`;
 }
 
 function switchBodyTab(tab){
@@ -3869,7 +4246,7 @@ function renderBodyUpload(){
       `}
 
       <div class="grid grid-cols-2 gap-2 mb-3">
-        <input id="bodyDate" type="date" value="${bodyDate}" max="${todayISO()}" onchange="bodyDate = this.value"
+        <input id="bodyDate" type="date" aria-label="Data da avaliação" value="${bodyDate}" max="${todayISO()}" onchange="bodyDate = this.value"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
         <div class="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
       </div>
@@ -3961,7 +4338,7 @@ function renderAssessmentCard(a){
               ${a.photo_paths.map(p => signedUrlCache[p]
                 ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-lg border border-neutral-800" alt="Print" /></a>`
                 : signedUrlFailed[p]
-                  ? `<button onclick="loadAssessmentPhotoUrls('${a.id}')" type="button" class="w-20 h-20 shrink-0 rounded-lg border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[9px] gap-1 text-center px-1">
+                  ? `<button onclick="loadAssessmentPhotoUrls('${a.id}')" type="button" class="w-20 h-20 shrink-0 rounded-lg border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1">
                       <i data-lucide="refresh-cw" class="w-4 h-4"></i> Tentar de novo
                     </button>`
                   : `<div class="w-20 h-20 shrink-0 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center"><i data-lucide="loader-2" class="w-4 h-4 text-slate-600 animate-spin"></i></div>`
@@ -3992,11 +4369,12 @@ function renderBodyDashboard(){
   if (!bodyAssessments.length) {
     return `
       <div class="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 fade-in">
-        <span class="w-16 h-16 rounded-3xl flex items-center justify-center mb-4" style="background:linear-gradient(135deg,#5b21b6,#a855f7);">
+        <span class="w-16 h-16 rounded-3xl flex items-center justify-center mb-4" style="background:linear-gradient(135deg,var(--mod-corpo-from),var(--mod-corpo-to));">
           <i data-lucide="user" class="w-7 h-7 text-white"></i>
         </span>
+        <h2 class="text-sm font-bold text-white mb-1">Composição corporal</h2>
         <p class="text-xs text-slate-500 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>
-        <button onclick="switchBodyTab('calendario')" class="mt-4 bg-[var(--accent)] text-neutral-950 font-bold text-xs rounded-xl px-4 py-2.5 flex items-center gap-1.5 active:scale-[0.98] transition">
+        <button onclick="switchBodyTab('calendario')" class="tap-h-44 mt-4 bg-[var(--accent)] text-neutral-950 font-bold text-xs rounded-xl px-4 flex items-center gap-1.5 active:scale-[0.98] transition">
           <i data-lucide="calendar-days" class="w-4 h-4"></i> Ir para o Calendário
         </button>
       </div>`;
@@ -4104,11 +4482,11 @@ function renderBodyCalendario(){
 
       <div class="card rounded-2xl p-4">
         <div class="flex items-center justify-between mb-4">
-          <button onclick="changeBodyCalendarMonth(-1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeBodyCalendarMonth(-1)" aria-label="Mês anterior" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-left" class="w-5 h-5"></i>
           </button>
           <h2 class="text-sm font-bold text-white capitalize">${monthLabel}</h2>
-          <button onclick="changeBodyCalendarMonth(1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeBodyCalendarMonth(1)" aria-label="Mês seguinte" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-right" class="w-5 h-5"></i>
           </button>
         </div>
@@ -4812,7 +5190,7 @@ function renderGymRegistar(){
         </div>
 
         <div class="grid grid-cols-2 gap-2 mb-3">
-          <input id="gymDate" type="date" value="${gymDate}" max="${todayISO()}" onchange="gymDate = this.value"
+          <input id="gymDate" type="date" aria-label="Data do treino" value="${gymDate}" max="${todayISO()}" onchange="gymDate = this.value"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           <div class="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
         </div>
@@ -4922,9 +5300,9 @@ function renderGymSessionCard(session){
           <div class="min-w-0">
             <p class="text-xs font-semibold text-white flex items-center gap-1 flex-wrap">
               ${esc(session.name || 'Treino')}
-              ${isAula ? `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">Aula</span>` : ''}
-              ${!isAula ? (session.categories || []).map(c => `<span class="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/30">${esc(c)}</span>`).join('') : ''}
-              ${paths.length>1?`<span class="text-[9px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}
+              ${isAula ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">Aula</span>` : ''}
+              ${!isAula ? (session.categories || []).map(c => `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">${esc(c)}</span>`).join('') : ''}
+              ${paths.length>1?`<span class="text-[10px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}
             </p>
             <p class="text-[10px] text-slate-500">${subtitle}</p>
           </div>
@@ -4952,7 +5330,7 @@ function renderGymSessionCard(session){
             ${paths.map(p => signedUrlCache[p]
               ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-xl border border-neutral-800" alt="Print" /></a>`
               : signedUrlFailed[p]
-                ? `<button onclick="loadGymSessionPhotoUrls('${session.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[9px] gap-1 text-center px-1">
+                ? `<button onclick="loadGymSessionPhotoUrls('${session.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> Falhou<br/>Tentar de novo
                   </button>`
                 : `<div class="w-20 h-20 shrink-0 rounded-xl border border-neutral-800 bg-neutral-900 flex items-center justify-center text-slate-600 text-xs"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></div>`
@@ -5068,11 +5446,11 @@ function renderGymCalendario(){
 
       <div class="card rounded-2xl p-4">
         <div class="flex items-center justify-between mb-4">
-          <button onclick="changeGymCalendarMonth(-1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeGymCalendarMonth(-1)" aria-label="Mês anterior" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-left" class="w-5 h-5"></i>
           </button>
           <h2 class="text-sm font-bold text-white capitalize">${monthLabel}</h2>
-          <button onclick="changeGymCalendarMonth(1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeGymCalendarMonth(1)" aria-label="Mês seguinte" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-right" class="w-5 h-5"></i>
           </button>
         </div>
@@ -5181,7 +5559,7 @@ function renderGymDashboard(){
   return `
     <div class="space-y-4 fade-in">
       <div class="flex items-center gap-2">
-        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,#1e3a8a,#6366f1);">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to));">
           <i data-lucide="trending-up" class="w-5 h-5 text-white"></i>
         </div>
         <div><h2 class="text-sm font-bold text-white leading-none">Evolução</h2>
@@ -5222,7 +5600,7 @@ function renderGymDashboard(){
           <div class="flex items-center justify-between gap-2">
             <p class="text-[11px] font-semibold text-slate-300">Progressão por exercício</p>
           </div>
-          <select onchange="selectGymExercise(this.value)"
+          <select onchange="selectGymExercise(this.value)" aria-label="Exercício a mostrar na progressão"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--accent)]/60">
             <option value="">Escolhe um exercício…</option>
             ${trained.map(name => `<option value="${esc(name)}" ${gymChartExercise===name?'selected':''}>${esc(name)}</option>`).join('')}
@@ -5331,14 +5709,10 @@ function renderDashboard(animate = true){
     return `
       <button onclick="selectMacro('${m.key}')"
         class="card rounded-2xl p-4 text-left transition ${isSelected ? 'ring-2' : ''}" style="${isSelected ? `--tw-ring-color:${m.color};` : ''}">
-        <div class="flex items-center justify-between gap-1 mb-1">
-          <span class="text-xs min-w-0 truncate ${isSelected ? 'text-white font-semibold' : 'text-slate-400'} flex items-center gap-1">
-            ${m.label}${isSelected ? `<i data-lucide="bar-chart-3" class="w-3 h-3 shrink-0" style="color:${m.color}"></i>` : ''}
-          </span>
-          <span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap ${over ? 'bg-red-500/15 text-red-400 border border-red-500/40' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}">
-            ${over ? `${Math.abs(remaining).toFixed(0)} ${m.unit} acima` : `restam ${remaining.toFixed(0)} ${m.unit}`}
-          </span>
-        </div>
+        <span class="text-xs block truncate mb-1 ${isSelected ? 'text-white font-semibold' : 'text-slate-400'}">${m.label}</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded-full inline-block mb-1 whitespace-nowrap ${over ? 'bg-red-500/15 text-red-400 border border-red-500/40' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}">
+          ${over ? `${Math.abs(remaining).toFixed(0)} ${m.unit} acima` : `restam ${remaining.toFixed(0)} ${m.unit}`}
+        </span>
         <p class="text-lg font-bold text-white leading-none mb-2">${consumed.toFixed(0)}<span class="text-[11px] text-slate-500 font-normal"> / ${goal.toFixed(0)} ${m.unit}</span></p>
         <div class="w-full h-2 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden">
           <div class="h-full rounded-full" style="width:${pct}%; background:${over ? '#ef4444' : m.color}"></div>
@@ -5359,7 +5733,7 @@ function renderDashboard(animate = true){
   return `
     <div class="space-y-4 ${animate ? 'fade-in' : ''}">
       <div class="flex items-center gap-2">
-        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,var(--green-dark),var(--green-glow));">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,var(--mod-nutricao-from),var(--mod-nutricao-to));">
           <i data-lucide="trending-up" class="w-5 h-5 text-white"></i>
         </div>
         <div><h2 class="text-sm font-bold text-white leading-none">Evolução</h2>
@@ -5512,7 +5886,7 @@ function renderRegistar(){
         `}
 
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <input id="mealDate" type="date" value="${registarDate}" max="${todayISO()}" onchange="registarDate = this.value"
+          <input id="mealDate" type="date" aria-label="Data da refeição" value="${registarDate}" max="${todayISO()}" onchange="registarDate = this.value"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           <div class="flex items-center justify-center text-[11px] text-slate-500">Data da refeição</div>
         </div>
@@ -5563,7 +5937,7 @@ function renderMealCard(meal){
             <i data-lucide="${mealTypeIcon(meal.meal_type)}" class="w-4 h-4 text-[var(--accent)]"></i>
           </div>
           <div class="min-w-0">
-            <p class="text-xs font-semibold text-white flex items-center gap-1">${mealTypeLabel(meal.meal_type)}${paths.length>1?`<span class="text-[9px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}</p>
+            <p class="text-xs font-semibold text-white flex items-center gap-1">${mealTypeLabel(meal.meal_type)}${paths.length>1?`<span class="text-[10px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>`:''}</p>
             <p class="text-[10px] text-slate-500">${formatDatePT(meal.date)} · ${(meal.meal_items||[]).length} item(s)</p>
           </div>
         </div>
@@ -5580,7 +5954,7 @@ function renderMealCard(meal){
             ${paths.map(p => signedUrlCache[p]
               ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-xl border border-neutral-800" alt="Foto" /></a>`
               : signedUrlFailed[p]
-                ? `<button onclick="loadMealPhotoUrls('${meal.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[9px] gap-1 text-center px-1">
+                ? `<button onclick="loadMealPhotoUrls('${meal.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> Falhou<br/>Tentar de novo
                   </button>`
                 : `<div class="w-20 h-20 shrink-0 rounded-xl border border-neutral-800 bg-neutral-900 flex items-center justify-center text-slate-600 text-xs"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></div>`
@@ -5590,8 +5964,8 @@ function renderMealCard(meal){
         <div class="grid grid-cols-4 gap-1.5 text-center">
           ${MACROS.map(m => `
             <div class="bg-neutral-900/60 border border-neutral-800 rounded-xl py-2">
-              <p class="text-[9px] text-slate-500">${m.label}</p>
-              <p class="text-xs font-bold text-white">${n[m.key].toFixed(0)}<span class="text-[9px] font-normal text-slate-500">${m.unit==='kcal'?'':m.unit}</span></p>
+              <p class="text-[10px] text-slate-500">${m.label}</p>
+              <p class="text-xs font-bold text-white">${n[m.key].toFixed(0)}<span class="text-[10px] font-normal text-slate-500">${m.unit==='kcal'?'':m.unit}</span></p>
             </div>
           `).join('')}
         </div>
@@ -5682,7 +6056,7 @@ function renderMealCard(meal){
           </button>
         `}
 
-        <button onclick="deleteMeal('${meal.id}')" class="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5">
+        <button onclick="openDeleteMealModal('${meal.id}')" class="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5">
           <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Eliminar refeição
         </button>
       </div>` : ''}
@@ -5714,11 +6088,11 @@ function renderCalendario(){
 
       <div class="card rounded-2xl p-4">
         <div class="flex items-center justify-between mb-4">
-          <button onclick="changeCalendarMonth(-1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeCalendarMonth(-1)" aria-label="Mês anterior" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-left" class="w-5 h-5"></i>
           </button>
           <h2 class="text-sm font-bold text-white capitalize">${monthLabel}</h2>
-          <button onclick="changeCalendarMonth(1)" class="p-2 text-slate-400 hover:text-white">
+          <button onclick="changeCalendarMonth(1)" aria-label="Mês seguinte" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
             <i data-lucide="chevron-right" class="w-5 h-5"></i>
           </button>
         </div>
@@ -5981,7 +6355,9 @@ function renderPerfilTabMetas(p){
             <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, só entre as 8h e as 22h.</p>
           </div>
           <button onclick="toggleWaterReminder()" ${waterSubscribing ? 'disabled' : ''} type="button"
-            class="w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-50 ${p.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}">
+            role="switch" aria-checked="${p.water_reminder_enabled ? 'true' : 'false'}"
+            aria-label="Lembretes de água"
+            class="switch-tap w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-50 ${p.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}">
             <span class="absolute top-0.5 ${p.water_reminder_enabled ? 'left-5' : 'left-0.5'} w-5 h-5 rounded-full bg-white transition-all"></span>
           </button>
         </div>
@@ -6107,7 +6483,7 @@ function renderCoach() {
   const emptyState = msgs.length === 0 && !coachLoading ? `
     <div class="flex flex-col items-center justify-center flex-1 text-center px-6 py-8">
       <div class="w-16 h-16 rounded-3xl flex items-center justify-center mb-4"
-        style="background:linear-gradient(135deg,#155e75,#06b6d4)">
+        style="background:linear-gradient(135deg,var(--mod-coach-from),var(--mod-coach-to))">
         <i data-lucide="bot" class="w-8 h-8 text-white"></i>
       </div>
       <p class="text-sm font-bold text-white mb-1">O teu coach está pronto</p>
@@ -6134,11 +6510,11 @@ function renderCoach() {
       <div class="flex items-center justify-between mb-3 shrink-0">
         <div class="flex items-center gap-2.5">
           <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style="background:linear-gradient(135deg,#155e75,#06b6d4)">
+            style="background:linear-gradient(135deg,var(--mod-coach-from),var(--mod-coach-to))">
             <i data-lucide="bot" class="w-5 h-5 text-white"></i>
           </div>
           <div>
-            <p class="text-sm font-bold text-white leading-none">Coach IronHealth</p>
+            <h2 class="text-sm font-bold text-white leading-none">Coach IronHealth</h2>
             <p class="text-[10px] text-slate-500 mt-0.5">Nutrição · Ginásio · Corrida</p>
           </div>
         </div>
@@ -6172,6 +6548,7 @@ function renderCoach() {
                    text-white outline-none focus:border-[var(--accent)]/60 resize-none leading-tight"
           ></textarea>
           <button onclick="sendCoachMessage()" ${coachLoading ? 'disabled' : ''}
+            aria-label="Enviar pergunta ao Coach"
             class="shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center transition
                    active:scale-95 ${coachLoading
                      ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
@@ -6284,11 +6661,13 @@ function openClearCoachModal() {
     </div>
   `;
   if (window.lucide) lucide.createIcons();
+  activateModal('coachClearModal', 'Limpar toda a conversa com o Coach?', closeClearCoachModal);
 }
 
 function closeClearCoachModal() {
   const el = document.getElementById('coachClearModal');
   if (el) el.innerHTML = '';
+  deactivateModal();
 }
 
 async function confirmClearCoachConversation() {
@@ -6366,6 +6745,9 @@ function waterHomeCard(){
 
   return `
     <div id="water-home-card-container" onclick="switchVertical('nutricao'); switchTab('agua');"
+      role="button" tabindex="0"
+      aria-label="Água hoje: ${total} de ${goal} mililitros, ${pct}% da meta. Abrir separador Água."
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();switchVertical('nutricao');switchTab('agua');}"
       class="water-home-card w-full text-left rounded-2xl p-3.5 relative overflow-hidden active:scale-[0.98] transition cursor-pointer" style="${statCardBg('var(--blue)')}">
       <div class="water-glass-fill" style="height:${pct}%">
         <svg class="water-wave-svg" viewBox="0 0 200 20" preserveAspectRatio="none"><path d="${WATER_WAVE_PATH_1}"/></svg>
@@ -6380,15 +6762,16 @@ function waterHomeCard(){
 
       <div class="relative z-10 flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Água hoje</p>
+          <h2 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Água hoje</h2>
           <p class="text-3xl font-black text-white leading-none">${total}<span class="text-sm font-bold text-slate-400"> /${goal} ml</span></p>
           <p class="text-xs text-slate-400 mt-1.5">${goalReached ? 'Meta atingida! 🎉' : `${pct}% da meta diária`}</p>
         </div>
         ${remindersOn ? `
           <button onclick="event.stopPropagation(); ${mutedToday ? 'unmuteWaterReminderToday()' : 'openWaterMuteModal()'}" type="button"
             title="${mutedToday ? 'Reativar lembretes' : 'Silenciar lembretes'}"
-            class="shrink-0 w-8 h-8 rounded-full bg-white/15 border border-white/25 backdrop-blur flex items-center justify-center active:scale-90 transition">
-            <i data-lucide="${mutedToday ? 'bell-off' : 'bell'}" class="w-4 h-4 text-white"></i>
+            aria-label="${mutedToday ? 'Reativar lembretes de água' : 'Silenciar lembretes de água'}"
+            class="tap-44 shrink-0 rounded-full bg-white border border-[var(--blue)]/30 flex items-center justify-center active:scale-90 transition">
+            <i data-lucide="${mutedToday ? 'bell-off' : 'bell'}" class="w-4 h-4" style="color:var(--blue-dark)"></i>
           </button>
         ` : ''}
       </div>
@@ -6396,7 +6779,8 @@ function waterHomeCard(){
       <div class="relative z-10 flex gap-2 mt-4">
         ${WATER_QUICK_AMOUNTS.map(ml => `
           <button onclick="event.stopPropagation(); logWater(${ml})" ${waterBusy ? 'disabled' : ''} type="button" data-water-busy-btn
-            class="text-[11px] font-semibold text-white bg-white/15 border border-white/25 backdrop-blur rounded-full px-2.5 py-1.5 active:scale-95 transition disabled:opacity-50">
+            aria-label="Adicionar ${ml} mililitros de água"
+            class="tap-h-44 flex items-center justify-center text-[11px] font-semibold text-slate-700 bg-white border border-[var(--blue)]/30 rounded-full px-4 active:scale-95 transition disabled:opacity-50">
             +${ml}
           </button>
         `).join('')}
@@ -6464,7 +6848,7 @@ async function logWater(amountMl){
       return data;
     } catch(e) {
       waterLogs = waterLogs.filter(w => w.id !== tempId);
-      showToast('error', null, e.message || 'Não foi possível registar a água.');
+      showToast('error', null, e.message || 'Não foi possível registar a água. Tenta novamente.');
       waterBusy = false;
       renderAguaInPlace();
       return null;
@@ -6506,7 +6890,7 @@ async function removeWaterLog(id){
   const { error } = await sb.from('water_logs').delete().eq('id', id);
   if (error) {
     waterLogs = prev;
-    showToast('error', null, 'Não foi possível remover o registo.');
+    showToast('error', null, 'Não foi possível remover o registo. Tenta novamente.');
     renderAguaInPlace();
   }
 }
@@ -6541,7 +6925,7 @@ async function ensurePushSubscription(){
   try {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      showToast('error', null, 'Permissão de notificações recusada.');
+      showToast('error', null, 'Notificações bloqueadas. Ativa-as nas definições do browser para receberes lembretes.');
       return false;
     }
     const reg = await navigator.serviceWorker.ready;
@@ -6567,7 +6951,7 @@ async function ensurePushSubscription(){
     return true;
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Não foi possível ativar as notificações.');
+    showToast('error', null, 'Não foi possível ativar as notificações. Tenta novamente.');
     return false;
   }
 }
@@ -6588,7 +6972,7 @@ async function toggleWaterReminder(){
     patch.water_reminder_muted_date = null; // um "silenciar resto do dia" antigo não deve sobreviver a reativar
   }
   const { error } = await sb.from('profiles').update(patch).eq('id', currentUser.id);
-  if (error) { showToast('error', null, 'Não foi possível guardar.'); renderAguaInPlace(); return; }
+  if (error) { showToast('error', null, 'Não foi possível guardar a preferência de lembretes. Tenta novamente.'); renderAguaInPlace(); return; }
   state.profile.water_reminder_enabled = enabling;
   if (enabling) {
     state.profile.water_last_activity_at = nowIso;
@@ -6629,23 +7013,25 @@ function openWaterMuteModal(){
       </div>
     </div>
   `;
+  activateModal('waterMuteModal', 'Silenciar lembretes de água', closeWaterMuteModal);
 }
 function closeWaterMuteModal(){
   const el = document.getElementById('waterMuteModal');
   if (el) el.innerHTML = '';
+  deactivateModal();
 }
 async function snoozeWaterReminder(scope){
   closeWaterMuteModal();
   if (scope === 'next') {
     const nowIso = new Date().toISOString();
     const { error } = await sb.from('profiles').update({ water_last_activity_at: nowIso }).eq('id', currentUser.id);
-    if (error) { showToast('error', null, 'Não foi possível adiar o lembrete.'); return; }
+    if (error) { showToast('error', null, 'Não foi possível adiar o lembrete. Tenta novamente.'); return; }
     state.profile.water_last_activity_at = nowIso;
     showToast('success', null, 'Próximo lembrete adiado.');
   } else {
     const today = todayISO();
     const { error } = await sb.from('profiles').update({ water_reminder_muted_date: today }).eq('id', currentUser.id);
-    if (error) { showToast('error', null, 'Não foi possível silenciar.'); return; }
+    if (error) { showToast('error', null, 'Não foi possível silenciar os lembretes. Tenta novamente.'); return; }
     state.profile.water_reminder_muted_date = today;
     showToast('success', null, 'Lembretes silenciados até amanhã.');
   }
@@ -6669,7 +7055,7 @@ function renderAgua(){
   return `
     <div class="space-y-4 fade-in">
       <div class="rounded-2xl p-5" style="${statCardBg('var(--blue)')}">
-        <p class="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3 text-center">Água hoje</p>
+        <h2 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-3 text-center">Água hoje</h2>
         ${waterGlassVisual(total, goal, pct)}
       </div>
 
@@ -6701,8 +7087,10 @@ function renderAgua(){
                 <span class="text-xs text-white">${w.amount_ml} ml</span>
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] text-slate-500">${new Date(w.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}</span>
-                  <button onclick="removeWaterLog('${w.id}')" type="button" class="text-slate-500 active:text-red-400">
-                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                  <button onclick="removeWaterLog('${w.id}')" type="button"
+                    aria-label="Remover registo de ${w.amount_ml} ml"
+                    class="tap-44 -mr-2 flex items-center justify-center text-slate-500 active:text-red-400">
+                    <i data-lucide="x" class="w-4 h-4"></i>
                   </button>
                 </div>
               </div>
@@ -7031,6 +7419,7 @@ function renderAdminLogs(){
 /* ============================= INIT ============================= */
 document.addEventListener('DOMContentLoaded', () => {
   render();
+  watchForms();
   history.replaceState(navSnapshot(), '');
   // Independente do login: só recebe notificações push (lembretes de água)
   // se estiver registado, mas registar não exige sessão nem faz nada visível.
