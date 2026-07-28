@@ -48,7 +48,7 @@
        troca da coral antiga (#e17b5e) ficou esquecida em 3 sítios. */
     --mod-nutricao-from:#065f46; --mod-nutricao-to:#10b981;
     --mod-corpo-from:#5b21b6;    --mod-corpo-to:#a855f7;
-    --mod-ginasio-from:#1e3a8a;  --mod-ginasio-to:#6366f1;
+    --mod-ginasio-from:#0f766e;  --mod-ginasio-to:#2dd4bf;
     --mod-corrida-from:#9a3412;  --mod-corrida-to:#f97316;
     --mod-coach-from:#155e75;    --mod-coach-to:#06b6d4;
 
@@ -427,25 +427,31 @@
   <!-- Barra fixa no fundo: os 5 módulos + Início à volta do "+" central
        elevado. Sem texto (só ícone) para caber tudo. -->
   <nav id="verticalStrip" class="hidden fixed bottom-0 left-0 right-0 z-30 max-w-md mx-auto grid grid-cols-7 items-center bg-neutral-900/95 backdrop-blur border-t border-neutral-800 pt-1 pb-2">
-    <button onclick="switchVertical('home')" data-vert="home" title="Início" class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+    <button onclick="switchVertical('home')" data-vert="home" title="Início" class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <i data-lucide="layout-grid" class="w-5 h-5"></i>
+      <span class="text-[9px] font-medium leading-none">Início</span>
     </button>
-    <button onclick="switchVertical('nutricao')" data-vert="nutricao" title="Nutrição" class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+    <button onclick="switchVertical('nutricao')" data-vert="nutricao" title="Nutrição" class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <i data-lucide="utensils" class="w-5 h-5"></i>
+      <span class="text-[9px] font-medium leading-none">Nutrição</span>
     </button>
     <button id="vbarGinasio" onclick="switchVertical('ginasio')" data-vert="ginasio" title="Ginásio"
-      class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+      class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <i data-lucide="dumbbell" class="w-5 h-5"></i>
+      <span class="text-[9px] font-medium leading-none">Ginásio</span>
     </button>
     <div aria-hidden="true"></div>
-    <button onclick="switchVertical('corpo')" data-vert="corpo" title="Corpo" class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+    <button onclick="switchVertical('corpo')" data-vert="corpo" title="Corpo" class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <i data-lucide="user" class="w-5 h-5"></i>
+      <span class="text-[9px] font-medium leading-none">Corpo</span>
     </button>
-    <button onclick="switchVertical('corrida')" data-vert="corrida" title="Corrida" class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+    <button onclick="switchVertical('corrida')" data-vert="corrida" title="Corrida" class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M14.1 7.9 12.5 10"/><path d="M17.4 10.1 16 12"/><path d="M2 16a2 2 0 0 0 2 2h13c2.8 0 5-2.2 5-5a2 2 0 0 0-2-2c-.8 0-1.6-.2-2.2-.7l-6.2-4.2c-.4-.3-.9-.2-1.3.1 0 0-.6.8-1.2 1.1a3.5 3.5 0 0 1-4.2.1C4.4 7 3.7 6.3 3.7 6.3A.92.92 0 0 0 2 7Z"/><path d="M2 11c0 1.7 1.3 3 3 3h7"/></svg>
+      <span class="text-[9px] font-medium leading-none">Corrida</span>
     </button>
-    <button onclick="switchVertical('coach')" data-vert="coach" title="Coach" class="vbar-btn flex items-center justify-center py-2 text-slate-500 active:scale-95 transition">
+    <button onclick="switchVertical('coach')" data-vert="coach" title="Coach" class="vbar-btn flex flex-col items-center justify-center gap-0.5 py-2 text-slate-500 active:scale-95 transition">
       <i data-lucide="bot" class="w-5 h-5"></i>
+      <span class="text-[9px] font-medium leading-none">Coach</span>
     </button>
     <!-- "+" central elevado (posicionado em absoluto para sobressair da barra). -->
     <button id="fabMainBtn" onclick="toggleFab()" type="button"
@@ -681,6 +687,12 @@ let gymSessionNameDraft = '';     // nome da sessão (opcional, upload e manual)
 // calorias e frequência cardíaca vindas do relógio.
 let gymKindDraft = 'forca';       // 'forca' | 'aula'
 let gymCategoriesDraft = [];      // grupos musculares (força) ou tipos de aula
+// A lista de força tem 12 opções e a de aula 10 — mostrar as duas de uma vez
+// era o ponto de maior carga cognitiva da app (muito acima do limite de ~4-8
+// opções simultâneas). Mostra as GYM_CATEGORIES_VISIBLE primeiras por
+// omissão, com um chip "+N mais" a revelar o resto.
+let gymCategoriesExpanded = false;
+const GYM_CATEGORIES_VISIBLE = 6;
 let gymDurationDraft = '';        // aceita "37:57", "43m", "1:05:30" ou minutos
 let gymCaloriesDraft = '';
 let gymAvgHrDraft = '';
@@ -916,14 +928,27 @@ function suggestMealTypeByTime(){
 // a seguir a uma ação que o utilizador queria que corresse bem. A alteração
 // local já foi revertida por quem chama isto antes de chegar aqui; a mensagem
 // crua só vai para a consola, nunca para o toast.
+function isOfflineOrNetworkError(e){
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  return offline || (e && e instanceof TypeError) || (e && /fetch|network/i.test(e.message || ''));
+}
 function flashSyncError(e){
   console.error(e);
-  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-  const isNetworkError = offline || (e && e instanceof TypeError) || (e && /fetch|network/i.test(e.message || ''));
-  const message = offline || isNetworkError
+  const message = isOfflineOrNetworkError(e)
     ? 'Sem ligação à internet. A alteração não foi guardada — tenta novamente.'
     : 'Não foi possível guardar a alteração. Tenta novamente.';
   showToast('error', null, message);
+}
+// Ao contrário de flashSyncError (que protege de texto cru do Postgres em
+// operações diretas de tabela), os erros das Edge Functions de IA já vêm
+// tratados por edgeFunctionErrorMessage() — data.error ou uma mensagem
+// própria de timeout, nunca uma exceção crua da BD. Mostrar e.message aqui é
+// seguro e é o que dá ao utilizador a diferença entre "poucas fotos" e
+// "o servidor demorou". Só cai no fallback genérico em falha de rede real ou
+// se, por algum motivo, não vier mensagem nenhuma.
+function aiErrorMessage(e, fallback){
+  if (isOfflineOrNetworkError(e)) return 'Sem ligação à internet. Tenta novamente.';
+  return (e && e.message) ? e.message : fallback;
 }
 
 /* ============================= TOASTS ============================= */
@@ -1483,7 +1508,7 @@ async function submitNewItem(mealId){
     showToast('success', 'Alimento adicionado', null);
     logEvent('success', 'meal_item_estimate', null, { mealId, ...(data.usage || {}) });
   } catch(e) {
-    showToast('error', null, 'Falha a estimar valores nutricionais. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha a estimar valores nutricionais. Tenta novamente.'));
     logEvent('error', 'meal_item_estimate', e.message || 'erro desconhecido', { mealId });
   }
   addingItem = false;
@@ -1849,7 +1874,7 @@ async function suggestGoals(){
     logEvent('success', 'goals_suggestion', null, { updated: updatedCount, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha a sugerir objetivos. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha a sugerir objetivos. Tenta novamente.'));
     logEvent('error', 'goals_suggestion', e.message || 'erro desconhecido');
   }
   suggestingGoals = false;
@@ -1960,7 +1985,7 @@ async function analyzeMeal(){
     logEvent('success', 'meal_analysis', null, { mealType: meal.meal_type, date: meal.date, itemCount: meal.meal_items.length, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'meal_analysis', e.message || 'erro desconhecido');
   }
   analyzing = false;
@@ -2126,7 +2151,7 @@ async function reanalyzeMeal(mealId){
     logEvent('success', 'meal_reanalysis', null, { mealId, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na reanálise. Tenta novamente.'));
     logEvent('error', 'meal_reanalysis', e.message || 'erro desconhecido', { mealId });
   }
   reanalyzingMealId = null;
@@ -2966,7 +2991,7 @@ function gymSessionsCard(){
           return `
             <div class="flex flex-col items-center gap-1 flex-1">
               <div class="w-full aspect-square rounded-lg flex items-center justify-center"
-                style="${trained ? 'background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #6366f1' : '')}">
+                style="${trained ? 'background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #2dd4bf' : '')}">
                 ${trained ? '<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>' : ''}
               </div>
               <span class="text-[10px] ${isToday ? 'text-white font-bold' : 'text-slate-600'}">${labels[i]}</span>
@@ -3559,6 +3584,7 @@ function renderCorrida(){
             <input type="file" accept="image/*" multiple class="hidden" onchange="onRunPhotoSelected(this)" />
             <i data-lucide="image-plus" class="w-7 h-7 text-slate-600 mx-auto mb-2"></i>
             <p class="text-xs text-slate-400 font-medium">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
+            <p class="text-[10px] text-slate-600 mt-1">A IA lê a distância, duração e splits automaticamente</p>
           </label>
         `}
 
@@ -3669,7 +3695,7 @@ async function analyzeRun(){
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'run_analysis', e.message || 'erro desconhecido');
   }
   analyzingRun = false;
@@ -3693,7 +3719,7 @@ async function reanalyzeRun(id){
     logEvent('success', 'run_reanalysis', null, { date: r.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na reanálise. Tenta novamente.'));
     logEvent('error', 'run_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingRunId = null;
@@ -4213,7 +4239,7 @@ async function analyzeBody(){
     logEvent('success', 'body_analysis', null, { date: assessment.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'body_analysis', e.message || 'erro desconhecido');
   }
   analyzingBody = false;
@@ -4237,7 +4263,7 @@ async function reanalyzeBody(id){
     logEvent('success', 'body_reanalysis', null, { date: a.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na reanálise. Tenta novamente.'));
     logEvent('error', 'body_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingAssessmentId = null;
@@ -4360,7 +4386,7 @@ function renderBodyUpload(){
           <input type="file" accept="image/*" multiple class="hidden" onchange="onBodyPhotoSelected(this)" />
           <i data-lucide="image-plus" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
           <p class="text-xs text-slate-400 font-medium">Escolhe os prints da app Renpho Health</p>
-          <p class="text-[10px] text-slate-600 mt-1">Podes juntar vários ecrãs (resumo, gordura, músculo...) da mesma pesagem</p>
+          <p class="text-[10px] text-slate-600 mt-1">Podes juntar vários ecrãs (resumo, gordura, músculo...) da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
         </label>
       `}
 
@@ -4807,11 +4833,7 @@ function switchCorridaTab(tab){
 const GYM_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <!-- #818cf8 em vez de --mod-ginasio-to (#6366f1): o token dava só 4.45:1
-             contra o texto escuro do separador ativo, por pouco abaixo do
-             mínimo AA (4.5). Um tom só aqui, não uma mudança ao token partilhado
-             (usado noutros sítios onde a cor de fundo, não o texto, é que muda). -->
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:#818cf8"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-ginasio-to)"></span>
         <button onclick="switchGymTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4934,6 +4956,7 @@ function selectGymKind(kind){
   if (gymKindDraft === kind) return;
   gymKindDraft = kind;
   gymCategoriesDraft = [];
+  gymCategoriesExpanded = false;
   refreshGym();
 }
 // Uma sessão pode treinar vários grupos ("Ombros" + "Tríceps"), por isso a
@@ -4942,6 +4965,10 @@ function toggleGymCategory(category){
   const i = gymCategoriesDraft.indexOf(category);
   if (i >= 0) gymCategoriesDraft.splice(i, 1);
   else gymCategoriesDraft.push(category);
+  refreshGym();
+}
+function toggleGymCategoriesExpanded(){
+  gymCategoriesExpanded = !gymCategoriesExpanded;
   refreshGym();
 }
 // Categoria escrita à mão, para o que não está nas listas sugeridas.
@@ -5040,7 +5067,7 @@ async function analyzeGym(){
     });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'gym_analysis', e.message || 'erro desconhecido');
   }
   analyzingGym = false;
@@ -5065,7 +5092,7 @@ async function reanalyzeGym(id){
     logEvent('success', 'gym_reanalysis', null, { date: s.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Falha na reanálise. Tenta novamente.'));
     logEvent('error', 'gym_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingGymSessionId = null;
@@ -5308,7 +5335,7 @@ function renderGymRegistar(){
             <input type="file" accept="image/*" multiple class="hidden" onchange="onGymPhotoSelected(this)" />
             <i data-lucide="image-plus" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
             <p class="text-xs text-slate-400 font-medium">Escolhe os prints da app de treino (Hevy, Strong...)</p>
-            <p class="text-[10px] text-slate-600 mt-1">Podes juntar vários ecrãs da mesma sessão</p>
+            <p class="text-[10px] text-slate-600 mt-1">Podes juntar vários ecrãs da mesma sessão — a IA lê exercícios, séries e cargas automaticamente</p>
           </label>
         `}
 
@@ -5340,12 +5367,26 @@ function renderGymRegistar(){
             ${gymKindDraft==='aula' ? 'Tipo de aula' : 'Grupos musculares'} — podes escolher vários
           </label>
           <div class="flex flex-wrap gap-1.5 mb-2">
-            ${gymCategoriesFor(gymKindDraft).map(c => `
-              <button onclick="toggleGymCategory('${esc(c)}')" type="button"
-                class="choice-pill ${gymCategoriesDraft.includes(c) ? 'active' : ''} rounded-full px-3 py-1.5 text-[11px] font-medium">
-                ${esc(c)}
-              </button>
-            `).join('')}
+            ${(() => {
+              const all = gymCategoriesFor(gymKindDraft);
+              // Sempre mostra as selecionadas, mesmo as que ficariam escondidas
+              // no corte — esconder uma escolha já feita é pior do que mostrar
+              // uma opção a mais.
+              const visible = gymCategoriesExpanded ? all
+                : all.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || gymCategoriesDraft.includes(c));
+              const hiddenCount = all.length - visible.length;
+              return visible.map(c => `
+                <button onclick="toggleGymCategory('${esc(c)}')" type="button"
+                  class="choice-pill ${gymCategoriesDraft.includes(c) ? 'active' : ''} rounded-full px-3 py-1.5 text-[11px] font-medium">
+                  ${esc(c)}
+                </button>
+              `).join('') + (hiddenCount > 0 ? `
+                <button onclick="toggleGymCategoriesExpanded()" type="button"
+                  class="choice-pill rounded-full px-3 py-1.5 text-[11px] font-medium border-dashed">
+                  +${hiddenCount} mais
+                </button>
+              ` : '');
+            })()}
             ${gymCategoriesDraft.filter(c => !gymCategoriesFor(gymKindDraft).includes(c)).map(c => `
               <button onclick="toggleGymCategory('${esc(c)}')" type="button"
                 class="choice-pill active rounded-full px-3 py-1.5 text-[11px] font-medium">
@@ -6015,7 +6056,8 @@ function renderRegistar(){
               <p class="text-xs text-slate-400 font-medium">Da galeria</p>
             </label>
           </div>
-          <p class="text-[10px] text-slate-600 text-center -mt-2 mb-3">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
+          <p class="text-[10px] text-slate-600 text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
+          <p class="text-[10px] text-slate-600 text-center mb-3">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
         `}
 
         <div class="grid grid-cols-2 gap-2 mb-2">
@@ -6767,7 +6809,7 @@ async function sendCoachMessage() {
     logEvent('success', 'coach_message', null, data.usage || null);
   } catch(e) {
     console.error(e);
-    showToast('error', null, 'Erro inesperado. Tenta novamente.');
+    showToast('error', null, aiErrorMessage(e, 'Erro inesperado. Tenta novamente.'));
     coachMessages = coachMessages.filter(m => m.id !== '__tmp__');
     logEvent('error', 'coach_message', e.message || 'erro desconhecido', e.detail ? { detail: e.detail } : null);
   }
