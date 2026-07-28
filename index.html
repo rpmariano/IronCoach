@@ -49,7 +49,13 @@
     --mod-nutricao-from:#065f46; --mod-nutricao-to:#10b981;
     --mod-corpo-from:#5b21b6;    --mod-corpo-to:#a855f7;
     --mod-ginasio-from:#1e40af;  --mod-ginasio-to:#60a5fa;
-    --mod-corrida-from:#9a3412;  --mod-corrida-to:#f97316;
+    /* Corrida: fuchsia, por pedido explícito do utilizador (era verde-lima
+       #84cc16, antes disso laranja #f97316). Nota: fuchsia fica a ~17° do
+       roxo do Corpo (--mod-corpo-to) no círculo cromático — mais próximo do
+       que o ideal, mas mantido porque foi um pedido direto. -to é fuchsia-500
+       (não o -600 mais saturado) porque #09090b sobre #c026d3 só dava 4.39:1
+       — abaixo do AA de texto (4.5:1) no chip ativo do seg-nav; #d946ef dá 6.48:1. */
+    --mod-corrida-from:#86198f;  --mod-corrida-to:#d946ef;
     --mod-coach-from:#155e75;    --mod-coach-to:#06b6d4;
 
     /* ===== Cores de DADOS (Camada 3) =====
@@ -154,7 +160,7 @@
      arquitetura (são alcançados a partir daí, não são separadores próprios)
      — mas mostrar o thumb 100% opaco fingia estar mesmo em Calendário.
      Atenuado para se ler como "contexto relacionado", não "estás aqui". */
-  #bottomNav.nav-elsewhere .seg-thumb { opacity:.45; }
+  #bottomNav.nav-elsewhere .seg-thumb { opacity:.6; }
   /* Preto, não branco: mesma fórmula do range-chip.active (--accent + texto
      quase preto, 7.89:1). Usa o stop -to de cada módulo (mais claro/saturado
      que o -from usado antes) precisamente para poder usar texto escuro em
@@ -731,42 +737,56 @@ function gymKindLabel(kind){ return (GYM_KINDS.find(k => k.key === kind) || {}).
 let coachMessages = []; // { id, role, content, created_at }
 
 /* ===== Estado da vertical Corrida ===== */
-let runs = [];              // corridas registadas (id, date, distance_km, duration_seconds, notes, kind, training_type, details, photo_paths, split_5k/10k/21k_seconds)
+let runs = [];              // corridas registadas (id, date, distance_km, duration_seconds, notes, kind, training_type, details, photo_paths)
+// split_5k/10k/21k_seconds já não são gravados (campo removido, ninguém
+// percebia para que servia) — bestPaceData()/runCard() continuam a lê-los
+// só para não esconder dados de corridas antigas que já os tinham.
 let runDate = todayISO();   // rascunho do formulário "Nova corrida"
-let runKind = 'simples';    // 'simples' | 'treino' | 'competicao' — partilhado pelo upload e pela entrada manual
-let runTrainingType = null; // continuo | longo | tempo | recuperacao | intervalos | sprints (só kind==='treino')
+let runKind = 'treino';     // 'treino' | 'competicao' — partilhado pelo upload e pela entrada manual
+let runTrainingType = 'continuo'; // ver RUN_TRAINING_TYPES (só kind==='treino')
 let runDetailsDraft = {};   // campos dinâmicos por tipo/competição (chave -> string do input)
 let runDistanceDraft = '';
 let runDurationDraft = '';  // minutos (aceita decimais, ex.: 32.5)
-let runNotesDraft = '';
-// Splits opcionais (minutos, aceita decimais) — nunca obrigatórios; servem
-// para o "melhor pace aos 5/10/21 km" do Início refletir o troço real da
-// corrida em vez do pace médio da corrida inteira (ver bucketPaceForRun).
-let runSplit5kDraft = '';
-let runSplit10kDraft = '';
-let runSplit21kDraft = '';
+// Nome da corrida — obrigatório, sempre sugerido (tipo de treino + período do
+// dia, ex.: "Treino Contínuo matinal"), editável a qualquer momento.
+// runNameAutoSuggested controla se o texto atual ainda é a sugestão
+// automática (e por isso deve continuar a acompanhar mudanças de
+// kind/tipo/disciplina) ou se o utilizador já o reescreveu à mão.
+let runNameDraft = '';
+let runNameAutoSuggested = true;
+// Splits individuais (distância+tempo por volta/repetição) — só para treinos
+// por repetição (ver RUN_REPEAT_TRAINING_TYPES), substituem os antigos campos
+// fixos "5/10/21km" que ninguém percebia para que serviam.
+let runSplitsDraft = []; // [{ distance_km, minutes }]
+let runEffortDraft = null; // nível de esforço percebido (RPE 1-10), opcional — partilhado por IA e manual
+let editingRunId = null;   // != null → renderCorridaRegistar() mostra o formulário de edição, não o de criação
 let savingRun = false;
 let runPhotos = [];             // [{ dataUrl, base64 }] prints comprimidos prontos a enviar
 let analyzingRun = false;
 let expandedRunId = null;
 let reanalyzingRunId = null;
 
+// Cobre estrada e trilho na mesma lista (como Garmin/Strava/Samsung Health
+// fazem) — trilho não tem taxonomia própria de treinos, só acrescenta ênfase
+// a desnível/terreno técnico. Chaves antigas (continuo/longo/tempo/etc.)
+// mantidas tal como estavam para não invalidar corridas já gravadas.
 const RUN_TRAINING_TYPES = [
-  { key:'continuo', label:'Contínuo' },
-  { key:'longo', label:'Longo' },
-  { key:'tempo', label:'Tempo' },
-  { key:'recuperacao', label:'Recuperação' },
-  { key:'intervalos', label:'Intervalos' },
-  { key:'sprints', label:'Sprints' },
+  { key:'continuo', label:'Contínuo', group:'Corrida solta' },
+  { key:'longo', label:'Longo', group:'Corrida solta' },
+  { key:'recuperacao', label:'Recuperação', group:'Corrida solta' },
+  { key:'tempo', label:'Ritmo (Tempo)', group:'Estruturado' },
+  { key:'fartlek', label:'Fartlek', group:'Estruturado' },
+  { key:'intervalos', label:'Intervalos', group:'Estruturado' },
+  { key:'subidas', label:'Subidas', group:'Trilho' },
+  { key:'trail', label:'Trail', group:'Trilho' },
+  { key:'tecnico', label:'Técnico (trilho)', group:'Trilho' },
 ];
-// Tipos de treino cujas séries/repetições justificam campos dinâmicos extra
-// (aquecimento, nº de repetições, distância por repetição, recuperação);
-// os restantes usam só os campos padrão de distância/duração.
-const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'sprints']);
+// Tipos de treino feitos de voltas/repetições — em vez de uma distância e
+// duração únicas, fazem mais sentido como uma lista de splits (cada volta
+// com a sua distância e tempo) mais aquecimento/recuperação à parte.
+const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'subidas']);
 const RUN_REPEAT_DETAIL_FIELDS = [
   { key:'warmup_minutes', label:'Aquecimento (min)', step:'1' },
-  { key:'reps_count', label:'Nº de repetições', step:'1' },
-  { key:'rep_distance_m', label:'Distância por repetição (m)', step:'50' },
   { key:'recovery_seconds', label:'Recuperação entre repetições (seg)', step:'5' },
 ];
 
@@ -2332,7 +2352,7 @@ function switchVertical(vertical){
   // Calendário/FAB, nunca ficando "preso" lá ao entrar na vertical de outro sítio.
   if (vertical === 'corpo' && bodyTab === 'avaliar') bodyTab = 'dashboard';
   // Idem para a Corrida: Registar só se acede a partir do Calendário/FAB.
-  if (vertical === 'corrida' && corridaTab === 'registar') corridaTab = 'dashboard';
+  if (vertical === 'corrida' && corridaTab === 'registar') { corridaTab = 'dashboard'; editingRunId = null; }
   render();
   pushNavState();
 }
@@ -3388,9 +3408,13 @@ function renderHome(){
 /* ============================= CORRIDA (vertical) ============================= */
 // Etiqueta curta do tipo de corrida para o cartão da lista e para o resumo do Coach.
 function runKindLabel(r){
-  if (r.kind === 'competicao') return 'Competição';
+  if (r.kind === 'competicao') {
+    const raceType = (r.details || {}).race_type;
+    const disciplineLabel = raceType ? (RACE_TYPES.find(t => t.key === raceType) || {}).label : null;
+    return disciplineLabel ? `Competição · ${disciplineLabel}` : 'Competição';
+  }
   if (r.kind === 'treino') return (RUN_TRAINING_TYPES.find(t => t.key === r.training_type) || {}).label || 'Treino';
-  return null; // 'simples' não mostra etiqueta — é o caso comum, sem ruído visual
+  return null; // corridas antigas gravadas como 'simples' (categoria removida) não mostram etiqueta
 }
 
 function runCard(r){
@@ -3417,11 +3441,11 @@ function runCard(r){
       <button onclick="toggleRunExpand('${r.id}')" class="w-full flex items-center justify-between gap-2 p-3 text-left">
         <div class="min-w-0">
           <p class="text-xs font-semibold text-white flex items-center gap-1.5 flex-wrap">
-            ${formatDatePT(r.date)}
+            ${r.name ? esc(r.name) : formatDatePT(r.date)}
             ${kindLabel ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">${esc(kindLabel)}</span>` : ''}
             ${paths.length>1 ? `<span class="text-[10px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>` : ''}
           </p>
-          <p class="text-[11px] text-slate-500 mt-0.5">${summaryParts.length ? summaryParts.join(' · ') : 'Sem distância/duração registadas'}</p>
+          <p class="text-[11px] text-slate-500 mt-0.5">${r.name ? formatDatePT(r.date) + (summaryParts.length ? ' · ' + summaryParts.join(' · ') : '') : (summaryParts.length ? summaryParts.join(' · ') : 'Sem distância/duração registadas')}</p>
           ${splits.length ? `<p class="text-[10px] text-slate-600 mt-0.5">Splits: ${splits.join(' · ')}</p>` : ''}
         </div>
         <i data-lucide="${expanded?'chevron-up':'chevron-down'}" class="w-4 h-4 text-slate-500 shrink-0"></i>
@@ -3442,12 +3466,16 @@ function runCard(r){
           </div>` : ''}
 
         ${r.kind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(r.training_type) ? `
-          <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400">
+          <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400 mb-1.5">
             ${d.warmup_minutes ? `<span>Aquecimento: <span class="text-slate-200">${d.warmup_minutes} min</span></span>` : ''}
-            ${d.reps_count ? `<span>Repetições: <span class="text-slate-200">${d.reps_count}</span></span>` : ''}
-            ${d.rep_distance_m ? `<span>Distância/rep.: <span class="text-slate-200">${d.rep_distance_m} m</span></span>` : ''}
             ${d.recovery_seconds ? `<span>Recuperação: <span class="text-slate-200">${d.recovery_seconds} seg</span></span>` : ''}
-          </div>` : ''}
+          </div>
+          ${(d.splits && d.splits.length) ? `
+            <div class="space-y-0.5 mb-1">
+              ${d.splits.map((s, i) => `
+                <p class="text-[11px] text-slate-400">Split ${i+1}: <span class="text-slate-200">${s.distance_km ? Number(s.distance_km).toFixed(2)+' km' : ''}${s.distance_km && s.time_seconds ? ' · ' : ''}${s.time_seconds ? formatDuration(s.time_seconds) : ''}</span></p>
+              `).join('')}
+            </div>` : ''}` : ''}
 
         ${r.kind === 'competicao' ? `
           <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400">
@@ -3455,9 +3483,14 @@ function runCard(r){
             ${d.position ? `<span>Posição: <span class="text-slate-200">${d.position}º</span></span>` : ''}
           </div>` : ''}
 
+        ${r.effort_rpe ? `<p class="text-[11px] text-slate-500">Esforço: <span class="text-slate-300 font-medium">${r.effort_rpe}/10</span></p>` : ''}
         ${r.notes ? `<p class="text-[11px] text-slate-500"><span class="text-slate-400 font-medium">Obs.:</span> ${esc(r.notes)}</p>` : ''}
 
         <div class="flex items-center gap-2 pt-1">
+          <button onclick="openEditRun('${r.id}')"
+            class="flex-1 border border-neutral-700 hover:border-[var(--accent)]/50 text-slate-300 text-xs font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5 transition">
+            <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Editar
+          </button>
           ${paths.length ? `
             <button onclick="reanalyzeRun('${r.id}')" ${reanalyzing ? 'disabled' : ''}
               class="flex-1 border border-neutral-700 hover:border-[var(--accent)]/50 text-slate-300 text-xs font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5 transition disabled:opacity-40 ${reanalyzing?'analyzing':''}">
@@ -3475,31 +3508,92 @@ function runCard(r){
     </div>`;
 }
 
-// Aviso sob um campo de split: só aparece quando a distância introduzida já
-// ultrapassa a tolerância desse bucket (ver SPLIT_TOLERANCE) e o split ainda
-// não foi preenchido — é o sinal de que, sem essa informação, a corrida não
-// vai contar para o "melhor pace" desse bucket no Início.
-function runSplitHint(minKm, draft){
-  const distance = Number(runDistanceDraft);
-  if (!(distance >= minKm) || distance <= minKm * SPLIT_TOLERANCE || String(draft).trim()) return '';
-  return `<p class="text-[10px] text-amber-500/80 mt-1 leading-tight">Sem isto, não conta para o pace aos ${minKm}km.</p>`;
-}
-
 function selectRunKind(kind){
   runKind = kind;
-  if (kind !== 'treino') runTrainingType = null;
+  // 'continuo' por omissão ao voltar a Treino — a maioria das corridas são
+  // uma corrida solta, não vale a pena obrigar a escolher sempre.
+  runTrainingType = kind === 'treino' ? 'continuo' : null;
   runDetailsDraft = {};
+  runSplitsDraft = [];
+  refreshRunNameSuggestion();
   refreshCorridaRegistar();
 }
 function selectRunTrainingType(type){
   runTrainingType = type;
   runDetailsDraft = {};
+  runSplitsDraft = [];
+  refreshRunNameSuggestion();
   refreshCorridaRegistar();
 }
 function updateRunDetail(key, value){ runDetailsDraft[key] = value; }
+function selectRaceType(value){
+  runDetailsDraft.race_type = value;
+  refreshRunNameSuggestion();
+  refreshCorridaRegistar();
+}
 
-// Campos dinâmicos (Intervalos/Sprints) ou de competição, prontos para gravar
-// em `details` jsonb — só inclui chaves preenchidas com valores válidos.
+function selectRunEffort(n){ runEffortDraft = (runEffortDraft === n) ? null : n; refreshCorridaRegistar(); }
+
+// Campo "Nome da corrida" — obrigatório, sempre pré-preenchido com uma
+// sugestão (ver suggestedRunName), partilhado por IA e manual. `id` distinto
+// por instância porque o mesmo campo aparece em dois cartões no ecrã de
+// criação (IA e manual).
+function renderRunNameField(id){
+  return `
+    <div class="mb-3">
+      <label for="${id}" class="text-[11px] text-slate-500 mb-1 block">Nome da corrida <span class="text-red-400">*</span></label>
+      <input id="${id}" type="text" maxlength="120" required value="${esc(runNameDraft)}"
+        oninput="updateRunName(this.value)"
+        class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+    </div>
+  `;
+}
+
+// Período do dia (hora atual) usado na sugestão automática do nome.
+function periodOfDayLabel(){
+  const h = new Date().getHours();
+  if (h < 12) return 'matinal';
+  if (h < 19) return 'da tarde';
+  return 'noturno';
+}
+// Nome sugerido a partir do kind/tipo/disciplina atuais + período do dia —
+// ex.: "Treino Contínuo matinal", "Competição Meia maratona da tarde".
+function suggestedRunName(){
+  const period = periodOfDayLabel();
+  if (runKind === 'competicao') {
+    const disc = RACE_TYPES.find(t => t.key === (runDetailsDraft.race_type || ''));
+    return disc ? `Competição ${disc.label} ${period}` : `Competição ${period}`;
+  }
+  const type = RUN_TRAINING_TYPES.find(t => t.key === runTrainingType);
+  return type ? `Treino ${type.label} ${period}` : `Treino ${period}`;
+}
+// Só atualiza o rascunho se ainda for a sugestão automática — nunca sobrepõe
+// um nome que o utilizador já editou à mão.
+function refreshRunNameSuggestion(){
+  if (!runNameAutoSuggested) return;
+  runNameDraft = suggestedRunName();
+}
+function updateRunName(value){ runNameDraft = value; runNameAutoSuggested = false; }
+
+// Splits dinâmicos (Intervalos/Subidas) — cada volta com a sua
+// distância e tempo, em vez de um "nº de repetições" + "distância por
+// repetição" genéricos que assumiam todas as voltas iguais.
+function addRunSplit(){
+  runSplitsDraft.push({ distance_km:'', minutes:'' });
+  refreshCorridaRegistar();
+}
+function removeRunSplit(index){
+  runSplitsDraft.splice(index, 1);
+  refreshCorridaRegistar();
+}
+function updateRunSplit(index, field, value){
+  if (!runSplitsDraft[index]) return;
+  runSplitsDraft[index][field] = value;
+}
+
+// Campos dinâmicos (Intervalos/Subidas) ou de competição, prontos
+// para gravar em `details` jsonb — só inclui chaves/splits preenchidos com
+// valores válidos.
 function buildRunDetailsPayload(){
   if (runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType)) {
     const d = {};
@@ -3507,10 +3601,15 @@ function buildRunDetailsPayload(){
       const v = Number(runDetailsDraft[f.key]);
       if (v > 0) d[f.key] = v;
     });
+    const splits = runSplitsDraft
+      .map(s => ({ distance_km: Number(s.distance_km), time_seconds: Number(s.minutes) > 0 ? Math.round(Number(s.minutes) * 60) : null }))
+      .filter(s => s.distance_km > 0 || s.time_seconds);
+    if (splits.length) d.splits = splits;
     return Object.keys(d).length ? d : null;
   }
   if (runKind === 'competicao') {
     const d = {};
+    if (runDetailsDraft.race_type) d.race_type = runDetailsDraft.race_type;
     const officialMin = Number(runDetailsDraft.official_time_minutes);
     if (officialMin > 0) d.official_time_seconds = Math.round(officialMin * 60);
     const pos = Number(runDetailsDraft.position);
@@ -3520,11 +3619,12 @@ function buildRunDetailsPayload(){
   return null;
 }
 
-// Pílulas Simples/Treino/Competição + campos dinâmicos consoante o tipo —
-// partilhadas pelo upload (analyzeRun) e pela entrada manual (submitNewRun).
-function renderRunKindFields(){
+// Pílulas Treino/Competição — a única classificação partilhada pelo upload
+// (analyzeRun) e pela entrada manual (submitNewRun): a IA lê o resto (tipo de
+// treino, splits, tempo oficial...) sozinha a partir da imagem; só a entrada
+// manual precisa da classificação detalhada (ver renderRunTypeDetailFields).
+function renderRunKindPills(){
   const kinds = [
-    { key:'simples', label:'Simples' },
     { key:'treino', label:'Treino' },
     { key:'competicao', label:'Competição' },
   ];
@@ -3537,23 +3637,79 @@ function renderRunKindFields(){
         </button>
       `).join('')}
     </div>
+  `;
+}
 
+// Nível de esforço percebido (RPE 1-10) — opcional, partilhado por IA e
+// manual (a IA nunca o infere, é sempre o utilizador a reportar).
+function renderRunEffortField(){
+  return `
+    <div class="mb-3">
+      <label class="text-[11px] text-slate-500 mb-1 block">Nível de esforço <span class="text-slate-600">(RPE, opcional)</span></label>
+      <div class="flex gap-1">
+        ${Array.from({length:10}, (_, i) => i+1).map(n => `
+          <button onclick="selectRunEffort(${n})" type="button" aria-label="Esforço ${n} de 10"
+            class="flex-1 h-7 rounded-lg text-[10px] font-semibold border transition ${runEffortDraft===n ? 'bg-[var(--accent)] border-[var(--accent)] text-neutral-950' : 'bg-neutral-900 border-neutral-800 text-slate-500'}">
+            ${n}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Tipo de treino/disciplina + campos próprios de cada um — só usados na
+// entrada manual (ver ponto 2: no caminho por foto, a IA infere isto tudo
+// sozinha a partir da imagem, sem pedir ao utilizador para classificar antes).
+function renderRunTypeDetailFields(){
+  return `
     ${runKind === 'treino' ? `
-      <div class="mb-3">
+      <div class="mb-1.5">
         <label class="text-[11px] text-slate-500 mb-1 block">Tipo de treino</label>
         <select onchange="selectRunTrainingType(this.value)"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
           <option value="">Escolhe o tipo…</option>
-          ${RUN_TRAINING_TYPES.map(t => `<option value="${t.key}" ${runTrainingType===t.key?'selected':''}>${t.label}</option>`).join('')}
+          ${[...new Set(RUN_TRAINING_TYPES.map(t => t.group))].map(g => `
+            <optgroup label="${g}">
+              ${RUN_TRAINING_TYPES.filter(t => t.group === g).map(t => `<option value="${t.key}" ${runTrainingType===t.key?'selected':''}>${t.label}</option>`).join('')}
+            </optgroup>
+          `).join('')}
         </select>
       </div>
+      <p class="text-[10px] text-slate-600 mb-3">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
       ${RUN_REPEAT_TRAINING_TYPES.has(runTrainingType) ? `
         <div class="grid grid-cols-2 gap-2 mb-3">
           ${RUN_REPEAT_DETAIL_FIELDS.map(f => `
             <div>
-              <input type="number" min="0" step="${f.step}" placeholder="${f.label}" value="${esc(runDetailsDraft[f.key] || '')}"
+              <label class="text-[10px] text-slate-500 mb-1 block">${f.label}</label>
+              <input type="number" min="0" step="${f.step}" value="${esc(runDetailsDraft[f.key] || '')}"
                 oninput="updateRunDetail('${f.key}', this.value)"
                 class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="mb-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="text-[11px] text-slate-500">Splits (cada volta com distância e tempo)</label>
+            <button onclick="addRunSplit()" type="button" class="text-[11px] text-[var(--accent)] font-semibold flex items-center gap-1">
+              <i data-lucide="plus" class="w-3 h-3"></i> Adicionar split
+            </button>
+          </div>
+          ${runSplitsDraft.length === 0 ? `
+            <p class="text-[11px] text-slate-600">Sem splits ainda — usa "Adicionar split" para cada volta, ou deixa em branco se só quiseres o total.</p>
+          ` : runSplitsDraft.map((s, i) => `
+            <div class="flex items-center gap-1.5 mb-1.5">
+              <span class="text-[10px] text-slate-600 w-4 shrink-0">${i+1}.</span>
+              <input type="number" min="0" step="0.01" placeholder="Distância (km)" value="${esc(s.distance_km)}"
+                onchange="updateRunSplit(${i}, 'distance_km', this.value)"
+                class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+              <input type="number" min="0" step="0.1" placeholder="Tempo (min)" value="${esc(s.minutes)}"
+                onchange="updateRunSplit(${i}, 'minutes', this.value)"
+                class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
+              <button onclick="removeRunSplit(${i})" type="button" aria-label="Remover split ${i+1}" class="shrink-0 text-slate-600 hover:text-red-400 p-1">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
             </div>
           `).join('')}
         </div>
@@ -3561,6 +3717,14 @@ function renderRunKindFields(){
     ` : ''}
 
     ${runKind === 'competicao' ? `
+      <div class="mb-3">
+        <label class="text-[11px] text-slate-500 mb-1 block">Disciplina</label>
+        <select onchange="selectRaceType(this.value)"
+          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+          <option value="">Escolhe a disciplina…</option>
+          ${RACE_TYPES.map(t => `<option value="${t.key}" ${(runDetailsDraft.race_type||'')===t.key?'selected':''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
       <div class="grid grid-cols-2 gap-2 mb-3">
         <input type="number" min="0" step="0.01" placeholder="Tempo oficial (min)" value="${esc(runDetailsDraft.official_time_minutes || '')}"
           oninput="updateRunDetail('official_time_minutes', this.value)"
@@ -3674,7 +3838,7 @@ function renderCorridaCharts(){
     corridaCharts.dist = new Chart(canvas, {
       data: {
         labels: days.map(d => d.slice(8,10) + '/' + d.slice(5,7)),
-        datasets: [{ type:'bar', label:'Distância (km)', data: days.map(d => byDay[d]), backgroundColor: hexToRgba('#f97316', 0.6), borderRadius:4 }]
+        datasets: [{ type:'bar', label:'Distância (km)', data: days.map(d => byDay[d]), backgroundColor: hexToRgba('#d946ef', 0.6), borderRadius:4 }]
       },
       options: {
         responsive:true,
@@ -3779,6 +3943,9 @@ function renderCorridaCalendario(){
 }
 
 function renderCorridaRegistar(){
+  if (editingRunId) return renderCorridaEditar();
+
+  const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
   return `
     <div class="space-y-4 fade-in">
       <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-corrida-to)')}">
@@ -3787,7 +3954,7 @@ function renderCorridaRegistar(){
           <h2 class="text-sm font-semibold text-white">Nova Corrida</h2>
         </div>
 
-        ${renderRunKindFields()}
+        ${renderRunKindPills()}
 
         ${runPhotos.length ? `
           <div class="grid grid-cols-3 gap-2 mb-2">
@@ -3818,59 +3985,108 @@ function renderCorridaRegistar(){
             <input type="file" accept="image/*" multiple class="hidden" onchange="onRunPhotoSelected(this)" />
             <i data-lucide="image-plus" class="w-7 h-7 text-slate-600 mx-auto mb-2"></i>
             <p class="text-xs text-slate-400 font-medium">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
-            <p class="text-[10px] text-slate-600 mt-1">A IA lê a distância, duração e splits automaticamente</p>
+            <p class="text-[10px] text-slate-600 mt-1">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
           </label>
         `}
 
-        <div class="grid grid-cols-2 gap-2 mb-2">
-          <input id="runDate" type="date" aria-label="Data da corrida" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
+        <div class="mb-3">
+          <label for="runDateAi" class="text-[11px] text-slate-500 mb-1 block">Data da corrida</label>
+          <input id="runDateAi" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
-          <div class="flex items-center justify-center text-[11px] text-slate-500">Data da corrida</div>
         </div>
 
+        ${renderRunEffortField()}
+
+        ${renderRunNameField('runNameAi')}
+
         <button onclick="analyzeRun()" ${(!runPhotos.length || analyzingRun) ? 'disabled' : ''} type="button"
-          class="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-40 ${analyzingRun?'analyzing':''} mb-3">
+          class="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-40 ${analyzingRun?'analyzing':''}">
           ${analyzingRun
             ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A ler com IA...'
             : `<i data-lucide="sparkles" class="w-4 h-4"></i> Analisar Corrida${runPhotos.length>1?` (${runPhotos.length} prints)`:''}`}
         </button>
+      </div>
 
-        <p class="text-[10px] text-slate-600 mb-2 text-center">— ou introduz manualmente —</p>
+      <div class="rounded-2xl p-4 border border-dashed border-neutral-700" style="${statCardBg('var(--mod-corrida-to)')}">
+        <p class="text-xs font-semibold text-slate-300 mb-3 flex items-center gap-1.5">
+          <i data-lucide="pencil-line" class="w-3.5 h-3.5 text-slate-500"></i> Registo manual <span class="text-slate-600 font-normal">— sem foto</span>
+        </p>
 
-        <input id="runDistance" type="number" min="0" step="0.01" placeholder="Distância (km)" value="${esc(runDistanceDraft)}"
+        <div class="mb-3">
+          <label for="runDateManual" class="text-[11px] text-slate-500 mb-1 block">Data da corrida</label>
+          <input id="runDateManual" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
+        ${renderRunTypeDetailFields()}
+
+        <input id="runDistance" type="number" min="0" step="0.01" placeholder="${isRepeatType ? 'Distância total (opcional)' : 'Distância (km)'}" value="${esc(runDistanceDraft)}"
           oninput="runDistanceDraft=this.value" onchange="refreshCorridaRegistar()"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
-        <input id="runDuration" type="number" min="0" step="0.1" placeholder="${runKind==='competicao' ? 'Tempo pessoal (minutos)' : 'Duração (minutos)'}" value="${esc(runDurationDraft)}"
+        <input id="runDuration" type="number" min="0" step="0.1" placeholder="${isRepeatType ? 'Duração total (opcional)' : (runKind==='competicao' ? 'Tempo pessoal (minutos)' : 'Duração (minutos)')}" value="${esc(runDurationDraft)}"
           oninput="runDurationDraft=this.value"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
-        <p class="text-[10px] text-slate-600 mb-1">Splits (opcional) — se souberes o tempo até cada marca, o "melhor pace" do Início usa o troço real em vez da média da corrida.</p>
-        <div class="grid grid-cols-3 gap-2 mb-2">
-          <div>
-            <input id="runSplit5k" type="number" min="0" step="0.1" placeholder="5km (min)" value="${esc(runSplit5kDraft)}"
-              oninput="runSplit5kDraft=this.value" onchange="refreshCorridaRegistar()"
-              class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-            ${runSplitHint(5, runSplit5kDraft)}
-          </div>
-          <div>
-            <input id="runSplit10k" type="number" min="0" step="0.1" placeholder="10km (min)" value="${esc(runSplit10kDraft)}"
-              oninput="runSplit10kDraft=this.value" onchange="refreshCorridaRegistar()"
-              class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-            ${runSplitHint(10, runSplit10kDraft)}
-          </div>
-          <div>
-            <input id="runSplit21k" type="number" min="0" step="0.1" placeholder="21km (min)" value="${esc(runSplit21kDraft)}"
-              oninput="runSplit21kDraft=this.value" onchange="refreshCorridaRegistar()"
-              class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-            ${runSplitHint(21, runSplit21kDraft)}
-          </div>
-        </div>
-        <input id="runNotes" type="text" maxlength="200" placeholder="Notas (opcional) — ex.: trail, ritmo forte" value="${esc(runNotesDraft)}"
-          oninput="runNotesDraft=this.value"
-          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
+        ${isRepeatType ? `
+          <p class="text-[10px] text-slate-600 -mt-1 mb-2">Os splits acima já contam para a sessão — só precisas destes campos se quiseres também um total combinado.</p>
+        ` : ''}
+
+        ${renderRunEffortField()}
+
+        ${renderRunNameField('runNameManual')}
         <button onclick="submitNewRun()" ${savingRun ? 'disabled' : ''} type="button"
-          class="w-full border-2 border-dashed border-neutral-700 hover:border-[var(--accent)]/50 text-slate-400 hover:text-[var(--accent)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50">
+          class="w-full bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50">
           ${savingRun ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A gravar...' : '<i data-lucide="pencil-line" class="w-4 h-4"></i> Registar Corrida Manualmente'}
         </button>
+      </div>
+    </div>
+  `;
+}
+
+// Formulário de edição de uma corrida já existente (manual ou vinda de IA) —
+// acedido a partir do Calendário/cartão expandido, nunca da landing page.
+// Reaproveita os mesmos campos/estado da entrada manual; grava com UPDATE
+// direto (sem voltar a chamar a IA — para isso já existe "Reanalisar").
+function renderCorridaEditar(){
+  const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+  return `
+    <div class="space-y-4 fade-in">
+      <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-corrida-to)')}">
+        <div class="flex items-center gap-2 mb-3">
+          <span style="color:var(--mod-corrida-to)">${sneakerIcon('w-4 h-4')}</span>
+          <h2 class="text-sm font-semibold text-white">Editar Corrida</h2>
+        </div>
+
+        ${renderRunKindPills()}
+
+        <div class="mb-3">
+          <label for="runDate" class="text-[11px] text-slate-500 mb-1 block">Data da corrida</label>
+          <input id="runDate" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value"
+            class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
+        </div>
+
+        ${renderRunTypeDetailFields()}
+
+        <input id="runDistance" type="number" min="0" step="0.01" placeholder="${isRepeatType ? 'Distância total (opcional)' : 'Distância (km)'}" value="${esc(runDistanceDraft)}"
+          oninput="runDistanceDraft=this.value" onchange="refreshCorridaRegistar()"
+          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
+        <input id="runDuration" type="number" min="0" step="0.1" placeholder="${isRepeatType ? 'Duração total (opcional)' : (runKind==='competicao' ? 'Tempo pessoal (minutos)' : 'Duração (minutos)')}" value="${esc(runDurationDraft)}"
+          oninput="runDurationDraft=this.value"
+          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
+
+        ${renderRunEffortField()}
+
+        ${renderRunNameField('runNameEdit')}
+
+        <div class="flex items-center gap-2">
+          <button onclick="cancelEditRun()" type="button"
+            class="flex-1 border border-neutral-700 text-slate-400 text-xs font-semibold rounded-xl py-2.5 transition">
+            Cancelar
+          </button>
+          <button onclick="saveRunEdit()" ${savingRun ? 'disabled' : ''} type="button"
+            class="flex-[2] bg-[var(--accent)] text-neutral-950 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition disabled:opacity-50">
+            ${savingRun ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A gravar...' : '<i data-lucide="check" class="w-4 h-4"></i> Guardar alterações'}
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -3902,15 +4118,16 @@ function clearRunPhotos(){ runPhotos = []; refreshCorridaRegistar(); }
 
 async function analyzeRun(){
   if (!runPhotos.length || analyzingRun) return;
-  const date = document.getElementById('runDate').value || todayISO();
+  if (!runNameDraft.trim()) { showToast('error', null, 'Preenche o nome da corrida.'); return; }
+  const date = runDate || todayISO();
   analyzingRun = true;
   refreshCorridaRegistar();
   try {
     const { data, error } = await sb.functions.invoke('analyze-run', {
       body: {
         images: runPhotos.map(p => p.base64), mime_type: 'image/jpeg', date,
-        kind: runKind, training_type: runKind === 'treino' ? runTrainingType : null,
-        details: buildRunDetailsPayload(), notes: runNotesDraft.trim() || null,
+        kind: runKind, name: runNameDraft.trim(), name_is_auto: runNameAutoSuggested,
+        period_label: periodOfDayLabel(), effort_rpe: runEffortDraft || null,
       },
     });
     if (error) throw new Error(await edgeFunctionErrorMessage(error, 'Falha na análise.'));
@@ -3920,6 +4137,9 @@ async function analyzeRun(){
     runs.unshift(run);
     runs.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
     runPhotos = [];
+    runNameAutoSuggested = true;
+    runNameDraft = suggestedRunName();
+    runEffortDraft = null;
     expandedRunId = run.id;
     showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${run.date}')` });
@@ -3990,21 +4210,22 @@ async function loadRunPhotoUrls(id){
 
 async function submitNewRun(){
   if (savingRun) return;
-  const dateEl = document.getElementById('runDate');
-  const date = dateEl ? dateEl.value : runDate;
+  const date = runDate;
   const distance = Number(runDistanceDraft);
   const minutes = Number(runDurationDraft);
   const hasDistance = distance > 0;
   const hasDuration = minutes > 0;
 
-  // Simples continua a exigir distância+duração (comportamento original);
-  // treino/competição toleram ficar só com os campos dinâmicos preenchidos
-  // (ex.: uma sessão de sprints pode não ter uma distância total única).
+  // Treinos "normais" continuam a exigir distância+duração; treinos por
+  // repetição (Intervalos/Subidas) e competição toleram ficar só com os
+  // campos dinâmicos preenchidos (ex.: uma sessão de intervalos pode não ter
+  // uma distância total única; uma competição já tem o tempo oficial).
   if (!date) {
     showToast('error', null, 'Preenche a data.');
     return;
   }
-  if (runKind === 'simples' && (!hasDistance || !hasDuration)) {
+  const needsDistanceDuration = runKind === 'treino' && !RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+  if (needsDistanceDuration && (!hasDistance || !hasDuration)) {
     showToast('error', null, 'Preenche a data, a distância e a duração com valores válidos.');
     return;
   }
@@ -4016,56 +4237,145 @@ async function submitNewRun(){
     showToast('error', null, 'Escolhe o tipo de treino.');
     return;
   }
-
-  const durationSeconds = hasDuration ? Math.round(minutes * 60) : null;
-
-  // Splits opcionais: só fazem sentido se a corrida cobrir essa distância, e
-  // nunca podem exceder a duração total nem estar fora de ordem (5km ≤ 10km ≤ 21km).
-  const minutesToSeconds = v => { const n = Number(v); return n > 0 ? Math.round(n * 60) : null; };
-  const split5k = hasDistance && distance >= 5 ? minutesToSeconds(runSplit5kDraft) : null;
-  const split10k = hasDistance && distance >= 10 ? minutesToSeconds(runSplit10kDraft) : null;
-  const split21k = hasDistance && distance >= 21 ? minutesToSeconds(runSplit21kDraft) : null;
-  const splits = [split5k, split10k, split21k].filter(s => s !== null);
-  const inOrder = splits.every((s, i) => i === 0 || s >= splits[i - 1]);
-  if (!inOrder || (durationSeconds !== null && splits.some(s => s > durationSeconds))) {
-    showToast('error', null, 'Os splits têm de estar por ordem (5km ≤ 10km ≤ 21km) e não podem exceder a duração total.');
+  if (!runNameDraft.trim()) {
+    showToast('error', null, 'Preenche o nome da corrida.');
     return;
   }
+
+  const durationSeconds = hasDuration ? Math.round(minutes * 60) : null;
 
   savingRun = true;
   render();
 
-  const notes = runNotesDraft.trim() || null;
   try {
     const { data, error } = await sb.from('runs').insert({
       user_id: currentUser.id, date,
       distance_km: hasDistance ? distance : null,
       duration_seconds: durationSeconds,
-      notes,
+      name: runNameDraft.trim(),
       kind: runKind,
       training_type: runKind === 'treino' ? runTrainingType : null,
       details: buildRunDetailsPayload(),
-      split_5k_seconds: split5k, split_10k_seconds: split10k, split_21k_seconds: split21k,
+      effort_rpe: runEffortDraft || null,
     }).select().single();
     if (error) throw error;
     runs.unshift(data);
     runs.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
     runDate = todayISO();
-    runKind = 'simples';
-    runTrainingType = null;
+    runKind = 'treino';
+    runTrainingType = 'continuo';
     runDetailsDraft = {};
     runDistanceDraft = '';
     runDurationDraft = '';
-    runNotesDraft = '';
-    runSplit5kDraft = '';
-    runSplit10kDraft = '';
-    runSplit21kDraft = '';
+    runSplitsDraft = [];
+    runEffortDraft = null;
+    runNameAutoSuggested = true;
+    runNameDraft = suggestedRunName();
     showToast('success', 'Corrida registada', null,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${data.date}')` });
     corridaTab = 'dashboard';
   } catch (e) {
     console.error(e);
     showToast('error', null, 'Falha a gravar a corrida. Tenta novamente.');
+  }
+  savingRun = false;
+  render();
+}
+
+// Edição de uma corrida já existente (manual ou vinda de IA) — acedida a
+// partir do Calendário/cartão expandido. Reaproveita o estado/formulário da
+// entrada manual, pré-preenchido; grava com UPDATE direto (não volta a
+// chamar a IA — para isso já existe "Reanalisar").
+function openEditRun(id){
+  const r = runs.find(x => x.id === id);
+  if (!r) return;
+  const d = r.details || {};
+  editingRunId = id;
+  runDate = r.date;
+  runKind = r.kind === 'competicao' ? 'competicao' : 'treino';
+  runTrainingType = runKind === 'treino' ? (r.training_type || 'continuo') : null;
+  runDetailsDraft = {
+    warmup_minutes: d.warmup_minutes || '',
+    recovery_seconds: d.recovery_seconds || '',
+    race_type: d.race_type || '',
+    official_time_minutes: d.official_time_seconds ? d.official_time_seconds / 60 : '',
+    position: d.position || '',
+  };
+  runSplitsDraft = (d.splits || []).map(s => ({
+    distance_km: s.distance_km || '',
+    minutes: s.time_seconds ? s.time_seconds / 60 : '',
+  }));
+  runDistanceDraft = r.distance_km != null ? String(r.distance_km) : '';
+  runDurationDraft = r.duration_seconds != null ? String(r.duration_seconds / 60) : '';
+  runNameDraft = r.name || suggestedRunName();
+  runNameAutoSuggested = false;
+  runEffortDraft = r.effort_rpe || null;
+  corridaTab = 'registar';
+  render();
+  pushNavState();
+}
+function cancelEditRun(){
+  editingRunId = null;
+  runDate = todayISO();
+  runKind = 'treino';
+  runTrainingType = 'continuo';
+  runDetailsDraft = {};
+  runDistanceDraft = '';
+  runDurationDraft = '';
+  runSplitsDraft = [];
+  runEffortDraft = null;
+  runNameAutoSuggested = true;
+  runNameDraft = suggestedRunName();
+  corridaTab = 'calendario';
+  render();
+  pushNavState();
+}
+async function saveRunEdit(){
+  if (!editingRunId || savingRun) return;
+  const id = editingRunId;
+  const distance = Number(runDistanceDraft);
+  const minutes = Number(runDurationDraft);
+  const hasDistance = distance > 0;
+  const hasDuration = minutes > 0;
+  if (!runDate) { showToast('error', null, 'Preenche a data.'); return; }
+  if (runKind === 'treino' && !runTrainingType) { showToast('error', null, 'Escolhe o tipo de treino.'); return; }
+  if (!runNameDraft.trim()) { showToast('error', null, 'Preenche o nome da corrida.'); return; }
+
+  savingRun = true;
+  refreshCorridaRegistar();
+  try {
+    const { data, error } = await sb.from('runs').update({
+      date: runDate,
+      distance_km: hasDistance ? distance : null,
+      duration_seconds: hasDuration ? Math.round(minutes * 60) : null,
+      name: runNameDraft.trim(),
+      kind: runKind,
+      training_type: runKind === 'treino' ? runTrainingType : null,
+      details: buildRunDetailsPayload(),
+      effort_rpe: runEffortDraft || null,
+    }).eq('id', id).select().single();
+    if (error) throw error;
+    const idx = runs.findIndex(r => r.id === id);
+    if (idx >= 0) runs[idx] = data;
+    runs.sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
+    showToast('success', 'Corrida atualizada', null);
+    logEvent('success', 'run_edit', null, { date: data.date });
+    editingRunId = null;
+    runDate = todayISO();
+    runKind = 'treino';
+    runTrainingType = 'continuo';
+    runDetailsDraft = {};
+    runDistanceDraft = '';
+    runDurationDraft = '';
+    runSplitsDraft = [];
+    runEffortDraft = null;
+    runNameAutoSuggested = true;
+    runNameDraft = suggestedRunName();
+    corridaTab = 'dashboard';
+  } catch (e) {
+    console.error(e);
+    flashSyncError(e);
+    logEvent('error', 'run_edit', e.message || 'erro desconhecido');
   }
   savingRun = false;
   render();
@@ -4095,7 +4405,10 @@ async function deleteRun(id){
 }
 
 function goToCorridaRegistarForDate(dateIso){
+  editingRunId = null;
   runDate = dateIso;
+  runNameAutoSuggested = true;
+  runNameDraft = suggestedRunName();
   activeVertical = 'corrida';
   corridaTab = 'registar';
   render();
@@ -6828,20 +7141,23 @@ function renderPerfilTabCoach(p){
   return `
       <div class="card rounded-2xl p-4">
         <div class="flex items-center gap-2 mb-3">
-          <i data-lucide="sparkles" class="w-4 h-4 text-[var(--accent)]"></i>
+          <i data-lucide="sparkles" class="w-4 h-4" style="color:var(--mod-coach-to)"></i>
           <h2 class="text-sm font-semibold text-white">Objetivos com o Coach</h2>
         </div>
         <p class="text-[11px] text-slate-500 mb-3">O Coach analisa o teu histórico de Corpo, Nutrição, Ginásio e Corrida — e as tuas próximas provas agendadas — para sugerir objetivos de Corpo e de Nutrição (na aba Metas).</p>
         <button onclick="suggestGoals()" ${suggestingGoals ? 'disabled' : ''} type="button"
-          class="w-full border-2 border-dashed border-[var(--accent)]/40 hover:border-[var(--accent)]/70 hover:bg-[var(--accent)]/5 text-[var(--accent)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50 ${suggestingGoals?'analyzing':''}">
+          class="w-full border-2 border-dashed py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50 ${suggestingGoals?'analyzing':''}"
+          style="border-color:color-mix(in srgb, var(--mod-coach-to) 40%, transparent); color:var(--mod-coach-to);"
+          onmouseover="this.style.borderColor='color-mix(in srgb, var(--mod-coach-to) 70%, transparent)'; this.style.background='color-mix(in srgb, var(--mod-coach-to) 5%, transparent)'"
+          onmouseout="this.style.borderColor='color-mix(in srgb, var(--mod-coach-to) 40%, transparent)'; this.style.background='transparent'">
           ${suggestingGoals
             ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> O Coach está a analisar o teu histórico...'
             : '<i data-lucide="sparkles" class="w-4 h-4"></i> Pedir ao Coach para definir objetivos'}
         </button>
         ${goalsRationale ? `
-          <div class="rounded-xl bg-[var(--accent)]/5 border border-[var(--accent)]/20 p-3 mt-3">
+          <div class="rounded-xl p-3 mt-3" style="background:color-mix(in srgb, var(--mod-coach-to) 5%, transparent); border:1px solid color-mix(in srgb, var(--mod-coach-to) 20%, transparent);">
             <div class="flex items-center justify-between gap-2 mb-1">
-              <span class="text-[11px] font-semibold text-[var(--accent)] flex items-center gap-1.5">
+              <span class="text-[11px] font-semibold flex items-center gap-1.5" style="color:var(--mod-coach-to)">
                 <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Porquê estes objetivos
               </span>
               <button onclick="dismissGoalsRationale()" aria-label="Fechar explicação" class="text-slate-500 hover:text-white shrink-0">
@@ -6855,7 +7171,7 @@ function renderPerfilTabCoach(p){
 
       <div class="card rounded-2xl p-4">
         <div class="flex items-center gap-2 mb-1">
-          <i data-lucide="bot" class="w-4 h-4 text-[var(--accent)]"></i>
+          <i data-lucide="bot" class="w-4 h-4" style="color:var(--mod-coach-to)"></i>
           <h2 class="text-sm font-semibold text-white">Contexto do Coach</h2>
         </div>
         <p class="text-[11px] text-slate-500 mb-2 leading-relaxed">
@@ -6864,8 +7180,10 @@ function renderPerfilTabCoach(p){
         <textarea id="pfCoachCtx" rows="5" oninput="markPerfilDirty()"
           placeholder="Ex: Quero correr uma meia maratona em Novembro. Tenho uma lesão no joelho direito. Objetivo: ganhar massa muscular mantendo o peso atual."
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white
-                 outline-none focus:border-[var(--accent)]/60 resize-none leading-relaxed
+                 outline-none resize-none leading-relaxed
                  placeholder-slate-600"
+          style="--tw-ring-color:var(--mod-coach-to)"
+          onfocus="this.style.borderColor='var(--mod-coach-to)'" onblur="this.style.borderColor=''"
         >${esc(p.coach_context||'')}</textarea>
         ${perfilSaveButton('savePerfilTabCoach')}
       </div>`;
@@ -6944,8 +7262,8 @@ function renderCoach() {
           'Que alimentos devo comer antes de treinar?'
         ].map(s => `
           <button onclick="coachSuggestion('${s}')"
-            class="w-full text-left text-xs text-[var(--accent)] border border-[var(--accent)]/30
-                   bg-[var(--accent)]/5 rounded-xl px-3 py-2.5 active:bg-[var(--accent)]/15 transition">
+            class="w-full text-left text-xs rounded-xl px-3 py-2.5 transition"
+            style="color:var(--mod-coach-to); border:1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent); background:color-mix(in srgb, var(--mod-coach-to) 5%, transparent);">
             ${s}
           </button>`).join('')}
       </div>
@@ -6979,8 +7297,8 @@ function renderCoach() {
           <div class="flex flex-wrap gap-2 mr-6">
             ${coachSuggestions.map(s => `
               <button onclick="coachSuggestion('${esc(s).replace(/'/g, "\\'")}')"
-                class="text-left text-xs text-[var(--accent)] border border-[var(--accent)]/30
-                       bg-[var(--accent)]/5 rounded-xl px-3 py-2 active:bg-[var(--accent)]/15 transition">
+                class="text-left text-xs rounded-xl px-3 py-2 transition"
+                style="color:var(--mod-coach-to); border:1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent); background:color-mix(in srgb, var(--mod-coach-to) 5%, transparent);">
                 ${esc(s)}
               </button>`).join('')}
           </div>` : ''}
@@ -6996,10 +7314,9 @@ function renderCoach() {
           ></textarea>
           <button onclick="sendCoachMessage()" ${coachLoading ? 'disabled' : ''}
             aria-label="Enviar pergunta ao Coach"
-            class="shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center transition
-                   active:scale-95 ${coachLoading
-                     ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
-                     : 'bg-[var(--accent)] text-neutral-950'}">
+            class="shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center transition active:scale-95
+                   ${coachLoading ? 'bg-neutral-800 text-slate-500 cursor-not-allowed' : 'text-neutral-950'}"
+            style="${coachLoading ? '' : 'background:var(--mod-coach-to);'}">
             <i data-lucide="${coachLoading ? 'loader-2' : 'send'}"
                class="w-5 h-5 ${coachLoading ? 'animate-spin' : ''}"></i>
           </button>

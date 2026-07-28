@@ -339,7 +339,12 @@ create table runs (
   created_at timestamptz not null default now(),
   photo_paths text[] not null default '{}',
   kind text not null default 'simples' check (kind in ('simples', 'treino', 'competicao')),
-  training_type text check (training_type is null or training_type in ('continuo', 'longo', 'tempo', 'recuperacao', 'intervalos', 'sprints')),
+  -- 'sprints' mantido só por compatibilidade com registos antigos — já não é
+  -- oferecido no ecrã (ver RUN_TRAINING_TYPES no cliente).
+  training_type text check (training_type is null or training_type in (
+    'continuo', 'longo', 'tempo', 'recuperacao', 'fartlek',
+    'intervalos', 'subidas', 'trail', 'tecnico', 'sprints'
+  )),
   details jsonb
 );
 create index runs_user_date_idx on runs(user_id, date desc);
@@ -355,6 +360,15 @@ create policy "admin read all" on runs for select using (public.is_admin());
 alter table runs add column if not exists split_5k_seconds integer check (split_5k_seconds is null or split_5k_seconds > 0);
 alter table runs add column if not exists split_10k_seconds integer check (split_10k_seconds is null or split_10k_seconds > 0);
 alter table runs add column if not exists split_21k_seconds integer check (split_21k_seconds is null or split_21k_seconds > 0);
+
+-- Nível de esforço percebido (RPE 1-10), opcional, partilhado por registo
+-- manual e por IA — sempre reportado pelo utilizador, nunca inferido.
+alter table runs add column if not exists effort_rpe smallint check (effort_rpe is null or (effort_rpe between 1 and 10));
+
+-- Nome da corrida (obrigatório na app, sugerido automaticamente a partir do
+-- tipo de treino + período do dia — ex.: "Treino Contínuo matinal"). Nullable
+-- na BD para não partir registos antigos sem nome.
+alter table runs add column if not exists name text;
 
 -- ============ storage: prints de corridas (bucket privado) ============
 insert into storage.buckets (id, name, public)
