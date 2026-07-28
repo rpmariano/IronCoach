@@ -6,7 +6,11 @@
 <meta name="color-scheme" content="light" />
 <title>IronHealth</title>
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<!-- Favicon em PNG, não SVG: o logo atual vem de arte rasterizada (traçado
+     pintado/textura), não de formas vetoriais limpas — não há vantagem em
+     forçar um SVG aqui, e ficheiro PNG pequeno evita reprocessar milhares de
+     paths a cada carregamento da aba. -->
+<link rel="icon" href="favicon.png" type="image/png" />
 <!-- iOS nao suporta SVG em apple-touch-icon de forma fiavel (versoes mais
      antigas ignoram-no e usam uma captura de ecra da pagina em vez de
      icone) — tem de ser PNG opaco, 180x180. -->
