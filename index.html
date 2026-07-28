@@ -2002,6 +2002,7 @@ async function analyzeMeal(){
       `${mealTypeLabel(meal.meal_type)} · ${formatDatePT(meal.date)} · ${mealNutrients(meal).calories.toFixed(0)} kcal · ${meal.meal_items.length} item(s)`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCalendar('${meal.date}')` });
     logEvent('success', 'meal_analysis', null, { mealType: meal.meal_type, date: meal.date, itemCount: meal.meal_items.length, ...(data.usage || {}) });
+    activeTab = 'dashboard';
   } catch(e) {
     console.error(e);
     showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
@@ -2040,6 +2041,7 @@ function finishManualMeal(){
   manualMealId = null;
   expandedMealId = null;
   showAddItemForm = false;
+  activeTab = 'dashboard';
   render();
 }
 
@@ -3922,13 +3924,14 @@ async function analyzeRun(){
     showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${run.date}')` });
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
+    corridaTab = 'dashboard';
   } catch(e) {
     console.error(e);
     showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'run_analysis', e.message || 'erro desconhecido');
   }
   analyzingRun = false;
-  refreshCorridaRegistar();
+  render();
 }
 
 async function reanalyzeRun(id){
@@ -4059,6 +4062,7 @@ async function submitNewRun(){
     runSplit21kDraft = '';
     showToast('success', 'Corrida registada', null,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${data.date}')` });
+    corridaTab = 'dashboard';
   } catch (e) {
     console.error(e);
     showToast('error', null, 'Falha a gravar a corrida. Tenta novamente.');
@@ -4474,13 +4478,14 @@ async function analyzeBody(){
     showToast('success', 'Avaliação registada', `${formatDatePT(assessment.date)} · a IA leu e comentou os valores`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInBodyCalendar('${assessment.date}')` });
     logEvent('success', 'body_analysis', null, { date: assessment.date, ...(data.usage || {}) });
+    bodyTab = 'dashboard';
   } catch(e) {
     console.error(e);
     showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'body_analysis', e.message || 'erro desconhecido');
   }
   analyzingBody = false;
-  refreshBody();
+  render();
 }
 
 async function reanalyzeBody(id){
@@ -5316,13 +5321,14 @@ async function analyzeGym(){
       ...(data.extra_fields && data.extra_fields.length ? { extra_fields: data.extra_fields } : {}),
       ...(data.usage || {}),
     });
+    gymTab = 'dashboard';
   } catch(e) {
     console.error(e);
     showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
     logEvent('error', 'gym_analysis', e.message || 'erro desconhecido');
   }
   analyzingGym = false;
-  refreshGym();
+  render();
 }
 
 async function reanalyzeGym(id){
@@ -5477,7 +5483,8 @@ function finishManualGymSession(){
   newGymExerciseNameDraft = '';
   newGymSetRepsDraft = '';
   newGymSetWeightDraft = '';
-  refreshGym();
+  gymTab = 'dashboard';
+  render();
 }
 
 // Adiciona uma série ao exercício indicado pelo nome (cria o exercício se for
