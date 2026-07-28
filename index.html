@@ -48,7 +48,7 @@
        troca da coral antiga (#e17b5e) ficou esquecida em 3 sítios. */
     --mod-nutricao-from:#065f46; --mod-nutricao-to:#10b981;
     --mod-corpo-from:#5b21b6;    --mod-corpo-to:#a855f7;
-    --mod-ginasio-from:#0f766e;  --mod-ginasio-to:#2dd4bf;
+    --mod-ginasio-from:#1e40af;  --mod-ginasio-to:#60a5fa;
     --mod-corrida-from:#9a3412;  --mod-corrida-to:#f97316;
     --mod-coach-from:#155e75;    --mod-coach-to:#06b6d4;
 
@@ -143,12 +143,13 @@
      de trocar instantaneamente de cor. */
   .seg-nav { box-shadow: var(--groove-shadow); }
   .seg-thumb { transition: transform .28s cubic-bezier(.4,0,.2,1); box-shadow: var(--thumb-shadow); }
-  .seg-nav:has(.seg-btn[data-tab="calendario"].active) .seg-thumb,
-  .seg-nav:has(.seg-btn[data-tab="agenda"].active) .seg-thumb { transform: translateX(100%); }
+  .seg-nav:has(.seg-btn[data-tab="calendario"].active) .seg-thumb { transform: translateX(100%); }
   /* translateX é relativo à largura do próprio thumb, não do contentor — por
      isso 200% funciona para "a 3ª de 3 abas" independentemente da largura
-     real de cada aba (nav da Nutrição, que agora tem Dashboard/Calendário/Água). */
-  .seg-nav:has(.seg-btn[data-tab="agua"].active) .seg-thumb { transform: translateX(200%); }
+     real de cada aba (nav da Nutrição: Dashboard/Calendário/Água; nav da
+     Corrida: Dashboard/Calendário/Agenda — Agenda passou a 3ª aba, já não 2ª). */
+  .seg-nav:has(.seg-btn[data-tab="agua"].active) .seg-thumb,
+  .seg-nav:has(.seg-btn[data-tab="agenda"].active) .seg-thumb { transform: translateX(200%); }
   /* Regista/Avaliar mantêm "Calendário" em destaque no nav por decisão de
      arquitetura (são alcançados a partir daí, não são separadores próprios)
      — mas mostrar o thumb 100% opaco fingia estar mesmo em Calendário.
@@ -769,8 +770,17 @@ const RUN_REPEAT_DETAIL_FIELDS = [
   { key:'recovery_seconds', label:'Recuperação entre repetições (seg)', step:'5' },
 ];
 
-/* ===== Estado da Agenda de provas (sub-tab da Corrida) ===== */
-let corridaTab = 'registo';       // 'registo' | 'agenda'
+/* ===== Estado da Corrida ===== */
+// Mesma estrutura de Ginásio/Corpo/Nutrição: Dashboard é a landing page,
+// Calendário é onde se navega por dia e se acede ao registo (via botão ou
+// FAB) — "Registar" nunca é a própria landing page. "registar" não é uma
+// aba própria do nav (só Dashboard/Calendário/Agenda são), à semelhança de
+// como "registar"/"avaliar" não são abas em Ginásio/Corpo.
+let corridaTab = 'dashboard';     // 'dashboard' | 'calendario' | 'agenda' | 'registar'
+let corridaRange = 'mes';         // semana | mes | trimestre (dashboard)
+let corridaCharts = { dist: null }; // instância Chart.js (destruída antes de recriar)
+let corridaCalendarViewMonth = todayISO().slice(0,7);
+let corridaCalendarSelectedDate = todayISO();
 let raceEvents = [];              // provas agendadas/concluídas, ordenadas por data
 let showRaceEventForm = false;    // form inline de criar/editar prova
 let editingRaceEventId = null;    // id da prova em edição (null = a criar uma nova)
@@ -1076,8 +1086,17 @@ function rangeTotals(range){
 }
 
 /* ============================= CORRIDA (helpers) ============================= */
+// rangeBounds() (Nutrição) só cobre hoje/semana/mês — o dashboard da Corrida
+// espelha o do Ginásio, que também tem "3 Meses" (trimestre).
+function corridaRangeBounds(range){
+  const today = todayISO();
+  if (range === 'semana') return { start: startOfWeekISO(), end: today };
+  if (range === 'mes')    return { start: startOfMonthISO(), end: today };
+  const d = new Date(); d.setDate(d.getDate() - 89); // trimestre: últimos 90 dias
+  return { start: d.toISOString().slice(0, 10), end: today };
+}
 function runsInRange(range){
-  const { start, end } = rangeBounds(range);
+  const { start, end } = corridaRangeBounds(range);
   return runs.filter(r => r.date >= start && r.date <= end);
 }
 function totalKm(list){ return list.reduce((sum, r) => sum + Number(r.distance_km || 0), 0); }
@@ -2310,6 +2329,8 @@ function switchVertical(vertical){
   // Avaliar (Corpo) segue a mesma regra do Registar — só se acede a partir do
   // Calendário/FAB, nunca ficando "preso" lá ao entrar na vertical de outro sítio.
   if (vertical === 'corpo' && bodyTab === 'avaliar') bodyTab = 'dashboard';
+  // Idem para a Corrida: Registar só se acede a partir do Calendário/FAB.
+  if (vertical === 'corrida' && corridaTab === 'registar') corridaTab = 'dashboard';
   render();
   pushNavState();
 }
@@ -2746,20 +2767,27 @@ function renderScreen(){
       return;
     }
     if (activeVertical === 'corrida') {
-      // Pílula "Registo | Agenda" — Registo mantém o formulário+lista de
-      // corridas de sempre; Agenda é a lista de provas futuras/passadas.
+      // Mesma lógica de Ginásio/Corpo: nav próprio (Dashboard/Calendário,
+      // aqui com Agenda como 3ª aba) sempre visível; Registar só se acede a
+      // partir do Calendário/FAB, nunca é a landing page nem uma aba própria.
       nav.classList.remove('hidden');
       nav.innerHTML = CORRIDA_NAV_HTML;
       main.classList.remove('overflow-hidden', 'pb-28', 'flex', 'flex-col');
       main.classList.add('overflow-y-auto', 'pb-28');
+      const navHighlight = corridaTab === 'registar' ? 'calendario' : corridaTab;
+      nav.classList.toggle('nav-elsewhere', corridaTab === 'registar');
       document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === corridaTab);
+        btn.classList.toggle('active', btn.dataset.tab === navHighlight);
       });
+      if (corridaTab === 'registar') closeFab();
 
-      if (corridaTab === 'agenda') main.innerHTML = renderCorridaAgenda();
-      else main.innerHTML = renderCorrida();
+      if (corridaTab === 'dashboard') main.innerHTML = renderCorridaDashboard();
+      else if (corridaTab === 'calendario') main.innerHTML = renderCorridaCalendario();
+      else if (corridaTab === 'agenda') main.innerHTML = renderCorridaAgenda();
+      else if (corridaTab === 'registar') main.innerHTML = renderCorridaRegistar();
 
       if (window.lucide) lucide.createIcons();
+      if (corridaTab === 'dashboard') requestAnimationFrame(renderCorridaCharts);
       return;
     }
     // Início → placeholder simples, sem sub-navegação de topo (outras
@@ -2979,7 +3007,7 @@ function gymSessionsCard(){
   const todayStr = todayISO();
 
   return `
-    <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#6366f1')}">
+    <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('var(--mod-ginasio-to)')}">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Esta semana</h2>
         <p class="text-xs font-bold text-white">${sessions.length} ${sessions.length === 1 ? 'sessão' : 'sessões'}</p>
@@ -2991,7 +3019,7 @@ function gymSessionsCard(){
           return `
             <div class="flex flex-col items-center gap-1 flex-1">
               <div class="w-full aspect-square rounded-lg flex items-center justify-center"
-                style="${trained ? 'background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #2dd4bf' : '')}">
+                style="${trained ? 'background:linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : ('background:' + emptyFillColor()) + (isToday ? ';box-shadow:inset 0 0 0 1.5px #60a5fa' : '')}">
                 ${trained ? '<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>' : ''}
               </div>
               <span class="text-[10px] ${isToday ? 'text-white font-bold' : 'text-slate-600'}">${labels[i]}</span>
@@ -3023,7 +3051,7 @@ function gymVolumeMiniCard(){
   const todayStr = todayISO();
 
   return `
-    <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('#6366f1')}">
+    <button onclick="switchVertical('ginasio')" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg('var(--mod-ginasio-to)')}">
       <div class="flex items-center justify-between mb-1">
         <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ginásio · Volume</h2>
         ${gymSessions.length ? `<span class="text-[10px] font-semibold ${trendColor}">${trendArrow} ${Math.round(Math.abs(trend))} kg</span>` : ''}
@@ -3031,7 +3059,7 @@ function gymVolumeMiniCard(){
       <p class="text-2xl font-extrabold text-white leading-none">${Math.round(thisWeek)}<span class="text-xs font-semibold text-slate-500"> kg</span></p>
       <p class="text-[10px] text-slate-500 mt-1 mb-3">esta semana · semana passada abaixo</p>
       <div class="flex items-end gap-1.5" style="height:28px;">
-        ${perDay.map(kg => `<div class="flex-1 rounded-sm" style="height:${kg > 0 ? Math.max(4, kg / maxDay * 28) : 3}px;background:${kg > 0 ? '#6366f1' : emptyFillColor()}"></div>`).join('')}
+        ${perDay.map(kg => `<div class="flex-1 rounded-sm" style="height:${kg > 0 ? Math.max(4, kg / maxDay * 28) : 3}px;background:${kg > 0 ? 'var(--mod-ginasio-to)' : emptyFillColor()}"></div>`).join('')}
       </div>
       <div class="flex items-center gap-1.5 mt-1">
         ${days.map((d, i) => `<span class="flex-1 text-center text-[10px] ${d===todayStr?'text-white font-bold':'text-slate-600'}">${labels[i]}</span>`).join('')}
@@ -3459,12 +3487,12 @@ function selectRunKind(kind){
   runKind = kind;
   if (kind !== 'treino') runTrainingType = null;
   runDetailsDraft = {};
-  refreshCorrida();
+  refreshCorridaRegistar();
 }
 function selectRunTrainingType(type){
   runTrainingType = type;
   runDetailsDraft = {};
-  refreshCorrida();
+  refreshCorridaRegistar();
 }
 function updateRunDetail(key, value){ runDetailsDraft[key] = value; }
 
@@ -3544,7 +3572,211 @@ function renderRunKindFields(){
   `;
 }
 
-function renderCorrida(){
+/* ---------- Dashboard de evolução (landing page da Corrida) ---------- */
+function setCorridaRange(r){ corridaRange = r; refreshCorridaDashboard(); }
+function refreshCorridaDashboard(){
+  const main = document.getElementById('tab-content');
+  if (!main) return;
+  main.innerHTML = renderCorridaDashboard();
+  if (window.lucide) lucide.createIcons();
+  requestAnimationFrame(renderCorridaCharts);
+}
+function renderCorridaDashboard(){
+  const periodRuns = runsInRange(corridaRange);
+  const totalDist = totalKm(periodRuns);
+  const totalDuration = periodRuns.reduce((a, r) => a + (Number(r.duration_seconds) || 0), 0);
+  const avgPaceSec = totalDist > 0 ? totalDuration / totalDist : 0;
+  const ranges = [{ k:'semana', l:'Esta Semana' }, { k:'mes', l:'Este Mês' }, { k:'trimestre', l:'3 Meses' }];
+  const b5 = bestPaceData(5), b10 = bestPaceData(10), b21 = bestPaceData(21);
+  const bucket = (label, b) => {
+    if (!b) return `
+      <div class="flex-1 min-w-0">
+        <div class="flex items-baseline justify-between gap-2">
+          <p class="text-[10px] text-slate-500">${label}</p>
+          <p class="text-xs text-slate-600">Sem dados</p>
+        </div>
+        ${gaugeBar(0, { color: 'var(--mod-corrida-to)' })}
+      </div>`;
+    return `
+      <div class="flex-1 min-w-0">
+        <div class="flex items-baseline justify-between gap-2 mb-1">
+          <p class="text-[10px] text-slate-500">${label}</p>
+          <p class="text-sm font-extrabold text-white leading-none">${formatPace(b.pace)}</p>
+        </div>
+        ${gaugeBar(paceQualityPct(b.pace), { color: 'var(--mod-corrida-to)' })}
+      </div>`;
+  };
+
+  return `
+    <div class="space-y-4 fade-in">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style="background:linear-gradient(135deg,var(--mod-corrida-from),var(--mod-corrida-to));">
+          <i data-lucide="trending-up" class="w-5 h-5 text-white"></i>
+        </div>
+        <div><h2 class="text-sm font-bold text-white leading-none">Evolução</h2>
+        <p class="text-[11px] text-slate-500 mt-1">${periodRuns.length} corrida(s) no período</p></div>
+      </div>
+
+      <div class="flex gap-2">
+        ${ranges.map(r => `
+          <button onclick="setCorridaRange('${r.k}')" class="range-chip ${corridaRange===r.k?'active':''} flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold text-slate-300 transition">${r.l}</button>`).join('')}
+      </div>
+
+      <div class="grid grid-cols-3 gap-2">
+        <div class="card rounded-2xl p-3 text-center">
+          <p class="text-lg font-bold text-white leading-none">${periodRuns.length}</p>
+          <p class="text-[10px] text-slate-500 mt-1.5">Corridas</p>
+        </div>
+        <div class="card rounded-2xl p-3 text-center">
+          <p class="text-lg font-bold text-white leading-none">${totalDist.toFixed(1)}</p>
+          <p class="text-[10px] text-slate-500 mt-1.5">Distância (km)</p>
+        </div>
+        <div class="card rounded-2xl p-3 text-center">
+          <p class="text-lg font-bold text-white leading-none">${formatPace(avgPaceSec)}</p>
+          <p class="text-[10px] text-slate-500 mt-1.5">Pace médio</p>
+        </div>
+      </div>
+
+      ${periodRuns.length === 0 ? `
+        <div class="min-h-[30vh] flex flex-col items-center justify-center text-center px-6">
+          <i data-lucide="bar-chart-3" class="w-10 h-10 text-slate-600 mb-3"></i>
+          <p class="text-xs text-slate-500 max-w-xs leading-relaxed">Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.</p>
+        </div>` : `
+        <div class="card rounded-2xl p-3.5">
+          <p class="text-[11px] font-semibold text-slate-300 mb-2">Distância por dia</p>
+          <canvas id="corridaDistChart" height="150"></canvas>
+        </div>`}
+
+      <div class="card rounded-2xl p-3.5">
+        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5">Melhor pace de sempre</h2>
+        <div class="flex items-start gap-3">
+          ${bucket('5 km+', b5)}
+          ${bucket('10 km+', b10)}
+          ${bucket('21 km+', b21)}
+        </div>
+      </div>
+    </div>`;
+}
+function renderCorridaCharts(){
+  Chart.defaults.color = theme === 'light' ? '#475569' : '#a1a1aa';
+  const gridColor = theme === 'light' ? 'rgba(154,116,74,0.45)' : 'rgba(232,163,66,0.3)';
+  const { start, end } = corridaRangeBounds(corridaRange);
+
+  if (corridaCharts.dist) { corridaCharts.dist.destroy(); corridaCharts.dist = null; }
+  const canvas = document.getElementById('corridaDistChart');
+  if (canvas) {
+    const byDay = {};
+    for (let d = new Date(start); d.toISOString().slice(0,10) <= end; d.setDate(d.getDate()+1)) byDay[d.toISOString().slice(0,10)] = 0;
+    runs.forEach(r => { if (r.date >= start && r.date <= end) byDay[r.date] = (byDay[r.date] || 0) + Number(r.distance_km || 0); });
+    const days = Object.keys(byDay).sort();
+    corridaCharts.dist = new Chart(canvas, {
+      data: {
+        labels: days.map(d => d.slice(8,10) + '/' + d.slice(5,7)),
+        datasets: [{ type:'bar', label:'Distância (km)', data: days.map(d => byDay[d]), backgroundColor: hexToRgba('#f97316', 0.6), borderRadius:4 }]
+      },
+      options: {
+        responsive:true,
+        plugins:{ legend:{ display:false } },
+        scales:{ y:{ beginAtZero:true, grid:{ color:gridColor } }, x:{ grid:{ display:false } } }
+      }
+    });
+  }
+}
+
+/* ---------- Calendário (navegação por dia + acesso ao registo) ---------- */
+function changeCorridaCalendarMonth(delta){
+  corridaCalendarViewMonth = shiftMonthKey(corridaCalendarViewMonth, delta);
+  render();
+}
+function selectCorridaCalendarDay(dateIso){
+  corridaCalendarSelectedDate = dateIso;
+  render();
+}
+function dayCorridaStatus(dateIso){
+  return runs.some(r => r.date === dateIso) ? 'has' : 'none';
+}
+function refreshCorridaCalendarDaySessions(){
+  const container = document.getElementById('corridaCalendarDayRuns');
+  if (!container) return;
+  container.innerHTML = renderCorridaCalendarDayRuns();
+  if (window.lucide) lucide.createIcons();
+}
+function renderCorridaCalendarDayRuns(){
+  const dayRuns = runs
+    .filter(r => r.date === corridaCalendarSelectedDate)
+    .sort((a,b) => (a.created_at||'').localeCompare(b.created_at||''));
+  if (dayRuns.length === 0) return `<p class="text-xs text-slate-500 px-1">Sem corridas registadas neste dia.</p>`;
+  return dayRuns.map(runCard).join('');
+}
+function renderCorridaCalendario(){
+  const [y, m] = corridaCalendarViewMonth.split('-').map(Number);
+  const firstOfMonth = new Date(y, m - 1, 1);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const firstWeekday = (firstOfMonth.getDay() + 6) % 7;
+  const monthLabel = `${PT_MONTHS[m-1]} ${y}`;
+  const todayIso = todayISO();
+
+  const cells = Array(firstWeekday).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  }
+
+  return `
+    <div class="space-y-4 fade-in">
+      <button onclick="goToCorridaRegistarForDate(corridaCalendarSelectedDate)"
+        class="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg">
+        ${sneakerIcon('w-5 h-5')} Nova Corrida
+      </button>
+
+      <div class="card rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-4">
+          <button onclick="changeCorridaCalendarMonth(-1)" aria-label="Mês anterior" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
+            <i data-lucide="chevron-left" class="w-5 h-5"></i>
+          </button>
+          <h2 class="text-sm font-bold text-white capitalize">${monthLabel}</h2>
+          <button onclick="changeCorridaCalendarMonth(1)" aria-label="Mês seguinte" class="tap-44 flex items-center justify-center text-slate-400 hover:text-white">
+            <i data-lucide="chevron-right" class="w-5 h-5"></i>
+          </button>
+        </div>
+
+        <div class="grid grid-cols-7 gap-1 mb-1">
+          ${['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d => `<div class="text-center text-[10px] text-slate-600 font-semibold">${d}</div>`).join('')}
+        </div>
+
+        <div class="grid grid-cols-7 gap-1">
+          ${cells.map(dateIso => {
+            if (!dateIso) return `<div></div>`;
+            const status = dayCorridaStatus(dateIso);
+            const isToday = dateIso === todayIso;
+            const isSelected = dateIso === corridaCalendarSelectedDate;
+            const dotColor = status === 'has' ? 'bg-emerald-500' : 'bg-neutral-700';
+            const dayNum = Number(dateIso.slice(8,10));
+            return `
+              <button onclick="selectCorridaCalendarDay('${dateIso}')"
+                class="aspect-square flex flex-col items-center justify-center rounded-xl text-xs transition
+                  ${isSelected ? 'bg-[var(--accent)] text-neutral-950 font-bold' : isToday ? 'border border-[var(--accent)]/60 text-white' : 'text-slate-300 hover:bg-neutral-800'}">
+                ${dayNum}
+                <span class="w-1.5 h-1.5 rounded-full mt-0.5 ${dotColor}"></span>
+              </button>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3 border-t border-neutral-800 text-[10px] text-slate-500">
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Corrida registada</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-neutral-700"></span> Sem registo</span>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide px-1">${formatDatePT(corridaCalendarSelectedDate)}</h2>
+        <div id="corridaCalendarDayRuns" class="space-y-3">${renderCorridaCalendarDayRuns()}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCorridaRegistar(){
   return `
     <div class="space-y-4 fade-in">
       <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-corrida-to)')}">
@@ -3604,7 +3836,7 @@ function renderCorrida(){
         <p class="text-[10px] text-slate-600 mb-2 text-center">— ou introduz manualmente —</p>
 
         <input id="runDistance" type="number" min="0" step="0.01" placeholder="Distância (km)" value="${esc(runDistanceDraft)}"
-          oninput="runDistanceDraft=this.value" onchange="refreshCorrida()"
+          oninput="runDistanceDraft=this.value" onchange="refreshCorridaRegistar()"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 mb-2" />
         <input id="runDuration" type="number" min="0" step="0.1" placeholder="${runKind==='competicao' ? 'Tempo pessoal (minutos)' : 'Duração (minutos)'}" value="${esc(runDurationDraft)}"
           oninput="runDurationDraft=this.value"
@@ -3613,19 +3845,19 @@ function renderCorrida(){
         <div class="grid grid-cols-3 gap-2 mb-2">
           <div>
             <input id="runSplit5k" type="number" min="0" step="0.1" placeholder="5km (min)" value="${esc(runSplit5kDraft)}"
-              oninput="runSplit5kDraft=this.value" onchange="refreshCorrida()"
+              oninput="runSplit5kDraft=this.value" onchange="refreshCorridaRegistar()"
               class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
             ${runSplitHint(5, runSplit5kDraft)}
           </div>
           <div>
             <input id="runSplit10k" type="number" min="0" step="0.1" placeholder="10km (min)" value="${esc(runSplit10kDraft)}"
-              oninput="runSplit10kDraft=this.value" onchange="refreshCorrida()"
+              oninput="runSplit10kDraft=this.value" onchange="refreshCorridaRegistar()"
               class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
             ${runSplitHint(10, runSplit10kDraft)}
           </div>
           <div>
             <input id="runSplit21k" type="number" min="0" step="0.1" placeholder="21km (min)" value="${esc(runSplit21kDraft)}"
-              oninput="runSplit21kDraft=this.value" onchange="refreshCorrida()"
+              oninput="runSplit21kDraft=this.value" onchange="refreshCorridaRegistar()"
               class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-2 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
             ${runSplitHint(21, runSplit21kDraft)}
           </div>
@@ -3638,20 +3870,16 @@ function renderCorrida(){
           ${savingRun ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A gravar...' : '<i data-lucide="pencil-line" class="w-4 h-4"></i> Registar Corrida Manualmente'}
         </button>
       </div>
-
-      <div class="space-y-2">
-        ${runs.length === 0 ? `<p class="text-xs text-slate-500 px-1">Sem corridas registadas.</p>` : runs.map(runCard).join('')}
-      </div>
     </div>
   `;
 }
 
-// Atualização in-place do ecrã da Corrida (sem sub-navegação própria),
-// espelhando refreshBody/refreshGym.
-function refreshCorrida(){
+// Atualização in-place do ecrã de Registar (aberto via Calendário/FAB, nunca
+// a landing page — ver corridaTab).
+function refreshCorridaRegistar(){
   const main = document.getElementById('tab-content');
   if (!main) return;
-  main.innerHTML = renderCorrida();
+  main.innerHTML = renderCorridaRegistar();
   if (window.lucide) lucide.createIcons();
 }
 
@@ -3665,16 +3893,16 @@ async function onRunPhotoSelected(input){
     try { runPhotos.push(await compressImage(file)); }
     catch(e) { console.warn('Falha a processar imagem', e); }
   }
-  refreshCorrida();
+  refreshCorridaRegistar();
 }
-function removeRunPhoto(index){ runPhotos.splice(index, 1); refreshCorrida(); }
-function clearRunPhotos(){ runPhotos = []; refreshCorrida(); }
+function removeRunPhoto(index){ runPhotos.splice(index, 1); refreshCorridaRegistar(); }
+function clearRunPhotos(){ runPhotos = []; refreshCorridaRegistar(); }
 
 async function analyzeRun(){
   if (!runPhotos.length || analyzingRun) return;
   const date = document.getElementById('runDate').value || todayISO();
   analyzingRun = true;
-  refreshCorrida();
+  refreshCorridaRegistar();
   try {
     const { data, error } = await sb.functions.invoke('analyze-run', {
       body: {
@@ -3691,7 +3919,8 @@ async function analyzeRun(){
     runs.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
     runPhotos = [];
     expandedRunId = run.id;
-    showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`);
+    showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`,
+      { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${run.date}')` });
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
@@ -3699,7 +3928,7 @@ async function analyzeRun(){
     logEvent('error', 'run_analysis', e.message || 'erro desconhecido');
   }
   analyzingRun = false;
-  refreshCorrida();
+  refreshCorridaRegistar();
 }
 
 async function reanalyzeRun(id){
@@ -3707,7 +3936,7 @@ async function reanalyzeRun(id){
   const r = runs.find(x => x.id === id);
   if (!r) return;
   reanalyzingRunId = id;
-  refreshCorrida();
+  refreshCorridaRegistar();
   try {
     const { data, error } = await sb.functions.invoke('analyze-run', {
       body: { run_id: id, notes: r.notes || null },
@@ -3723,13 +3952,13 @@ async function reanalyzeRun(id){
     logEvent('error', 'run_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingRunId = null;
-  refreshCorrida();
+  refreshCorridaRegistar();
 }
 
 async function toggleRunExpand(id){
   const opening = expandedRunId !== id;
   expandedRunId = opening ? id : null;
-  refreshCorrida();
+  refreshCorridaCalendarDaySessions();
   if (opening) scrollCardIntoView(`run-card-${id}`);
   if (expandedRunId) await loadRunPhotoUrls(id);
 }
@@ -3753,7 +3982,7 @@ async function loadRunPhotoUrls(id){
     console.warn('signed urls', e);
     paths.forEach(p => { signedUrlFailed[p] = true; });
   }
-  if (expandedRunId === id) refreshCorrida();
+  if (expandedRunId === id) refreshCorridaCalendarDaySessions();
 }
 
 async function submitNewRun(){
@@ -3828,7 +4057,8 @@ async function submitNewRun(){
     runSplit5kDraft = '';
     runSplit10kDraft = '';
     runSplit21kDraft = '';
-    showToast('success', 'Corrida registada', null);
+    showToast('success', 'Corrida registada', null,
+      { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${data.date}')` });
   } catch (e) {
     console.error(e);
     showToast('error', null, 'Falha a gravar a corrida. Tenta novamente.');
@@ -3860,10 +4090,17 @@ async function deleteRun(id){
   }
 }
 
+function goToCorridaRegistarForDate(dateIso){
+  runDate = dateIso;
+  activeVertical = 'corrida';
+  corridaTab = 'registar';
+  render();
+  pushNavState();
+}
 function fabCreateRun(){
   closeFab();
-  corridaTab = 'registo';
-  switchVertical('corrida');
+  const date = (activeVertical === 'corrida' && corridaTab === 'calendario') ? corridaCalendarSelectedDate : todayISO();
+  goToCorridaRegistarForDate(date);
 }
 
 /* ============================= AGENDA DE PROVAS ============================= */
@@ -4808,17 +5045,21 @@ const CORPO_NAV_HTML = `
       </div>
     </div>`;
 
-// Nav inferior da vertical Corrida — "Registo" é o ecrã de sempre (form +
-// lista); "Agenda" é a nova lista de provas futuras/passadas (Fase 3).
+// Nav inferior da vertical Corrida — mesma estrutura de Ginásio/Corpo
+// (Dashboard/Calendário), com Agenda (provas) como 3ª aba própria da Corrida.
+// "Registar" nunca é aba própria — acede-se via Calendário ou FAB.
 const CORRIDA_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corrida-to)"></span>
-        <button onclick="switchCorridaTab('registo')" data-tab="registo" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
-          ${sneakerIcon('w-4 h-4')}Registo
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(33.333% - 4px);background:var(--mod-corrida-to)"></span>
+        <button onclick="switchCorridaTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
+        </button>
+        <button onclick="switchCorridaTab('calendario')" data-tab="calendario" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
+          <i data-lucide="calendar-days" class="w-4 h-4"></i>Calendário
         </button>
         <button onclick="switchCorridaTab('agenda')" data-tab="agenda" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
-          <i data-lucide="calendar-days" class="w-4 h-4"></i>Agenda
+          <i data-lucide="flag" class="w-4 h-4"></i>Agenda
         </button>
       </div>
     </div>`;
@@ -4863,6 +5104,16 @@ function fabCreateGymSession(){
   closeFab();
   const date = (activeVertical === 'ginasio' && gymTab === 'calendario') ? gymCalendarSelectedDate : todayISO();
   goToGymRegistarForDate(date);
+}
+
+// Volta ao Calendário (vertical Corrida) já no dia da corrida registada.
+function viewInCorridaCalendar(dateIso){
+  corridaCalendarSelectedDate = dateIso;
+  corridaCalendarViewMonth = dateIso.slice(0,7);
+  activeVertical = 'corrida';
+  corridaTab = 'calendario';
+  render();
+  pushNavState();
 }
 
 // Volta ao Calendário (vertical Ginásio) já no dia da sessão registada.
@@ -5375,15 +5626,18 @@ function renderGymRegistar(){
               const visible = gymCategoriesExpanded ? all
                 : all.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || gymCategoriesDraft.includes(c));
               const hiddenCount = all.length - visible.length;
+              // O toggle fica sempre visível quando há mais do que o corte,
+              // mesmo expandido (só "+N mais" desaparecia — sem hiddenCount,
+              // não havia forma de voltar a colapsar sem perder seleções).
               return visible.map(c => `
                 <button onclick="toggleGymCategory('${esc(c)}')" type="button"
                   class="choice-pill ${gymCategoriesDraft.includes(c) ? 'active' : ''} rounded-full px-3 py-1.5 text-[11px] font-medium">
                   ${esc(c)}
                 </button>
-              `).join('') + (hiddenCount > 0 ? `
+              `).join('') + (all.length > GYM_CATEGORIES_VISIBLE ? `
                 <button onclick="toggleGymCategoriesExpanded()" type="button"
                   class="choice-pill rounded-full px-3 py-1.5 text-[11px] font-medium border-dashed">
-                  +${hiddenCount} mais
+                  ${gymCategoriesExpanded ? 'Mostrar menos' : `+${hiddenCount} mais`}
                 </button>
               ` : '');
             })()}
