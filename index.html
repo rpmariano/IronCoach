@@ -149,11 +149,16 @@
      isso 200% funciona para "a 3ª de 3 abas" independentemente da largura
      real de cada aba (nav da Nutrição, que agora tem Dashboard/Calendário/Água). */
   .seg-nav:has(.seg-btn[data-tab="agua"].active) .seg-thumb { transform: translateX(200%); }
-  /* Texto branco, não preto: o thumb já não é sempre a --accent clara (7.89
-     contra preto) — passou a usar a cor de módulo de cada vertical (só o
-     stop -from, não o gradiente completo: o -to de nutrição/corrida dava
-     ~2.5:1 contra branco, falhava WCAG). */
-  .seg-btn.active { color:#fff !important; }
+  /* Regista/Avaliar mantêm "Calendário" em destaque no nav por decisão de
+     arquitetura (são alcançados a partir daí, não são separadores próprios)
+     — mas mostrar o thumb 100% opaco fingia estar mesmo em Calendário.
+     Atenuado para se ler como "contexto relacionado", não "estás aqui". */
+  #bottomNav.nav-elsewhere .seg-thumb { opacity:.45; }
+  /* Preto, não branco: mesma fórmula do range-chip.active (--accent + texto
+     quase preto, 7.89:1). Usa o stop -to de cada módulo (mais claro/saturado
+     que o -from usado antes) precisamente para poder usar texto escuro em
+     vez de tons escondidos a "energia" atrás de fundos escuros. */
+  .seg-btn.active { color:#09090b !important; }
   .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
 
   /* O `!important` no estado ativo não é decorativo: as classes utilitárias
@@ -1341,6 +1346,14 @@ async function updateItemQuantity(itemId, grams){
   } catch(e) { flashSyncError(e); }
 }
 
+function openDeleteMealItemModal(itemId){
+  const meal = findMealByItemId(itemId);
+  if (!meal) return;
+  const item = (meal.meal_items || []).find(i => i.id === itemId);
+  openConfirmDeleteModal(`Eliminar ${item ? esc(item.name) : 'alimento'}?`,
+    'Remove este alimento da refeição. Não pode ser desfeito.',
+    () => deleteMealItem(itemId));
+}
 async function deleteMealItem(itemId){
   const meal = findMealByItemId(itemId);
   if (!meal) return;
@@ -2223,13 +2236,13 @@ function openKeepMealModal(mealId){
           como está (já gravada) ou descartar tudo.
         </p>
         <div class="flex gap-2">
-          <button onclick="closeKeepMealModal('${mealId}', true)"
-            class="flex-1 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5">
-            Descartar
-          </button>
           <button onclick="closeKeepMealModal('${mealId}')"
             class="flex-1 border border-neutral-700 text-slate-300 text-xs font-semibold rounded-xl py-2.5">
             Guardar
+          </button>
+          <button onclick="closeKeepMealModal('${mealId}', true)"
+            class="flex-1 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5">
+            Descartar
           </button>
         </div>
       </div>
@@ -2662,6 +2675,7 @@ function renderScreen(){
       main.classList.remove('overflow-hidden', 'pb-28', 'flex', 'flex-col');
       main.classList.add('overflow-y-auto', 'pb-28');
       const navHighlight = gymTab === 'registar' ? 'calendario' : gymTab;
+      nav.classList.toggle('nav-elsewhere', gymTab === 'registar');
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === navHighlight);
       });
@@ -2685,6 +2699,7 @@ function renderScreen(){
       main.classList.remove('overflow-hidden', 'pb-28', 'flex', 'flex-col');
       main.classList.add('overflow-y-auto', 'pb-28');
       const navHighlight = bodyTab === 'avaliar' ? 'calendario' : bodyTab;
+      nav.classList.toggle('nav-elsewhere', bodyTab === 'avaliar');
       document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === navHighlight);
       });
@@ -2742,6 +2757,7 @@ function renderScreen(){
   } else {
     nav.classList.remove('hidden');
     const navHighlight = activeTab === 'registar' ? 'calendario' : activeTab; // Registar é acedido a partir do Calendário
+    nav.classList.toggle('nav-elsewhere', activeTab === 'registar');
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === navHighlight);
     });
@@ -4734,7 +4750,7 @@ function renderBodyChart(){
 const NUTRITION_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(33.333% - 4px);background:var(--mod-nutricao-from)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(33.333% - 4px);background:var(--mod-nutricao-to)"></span>
         <button onclick="switchTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4752,7 +4768,7 @@ const NUTRITION_NAV_HTML = `
 const CORPO_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corpo-from)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corpo-to)"></span>
         <button onclick="switchBodyTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4767,7 +4783,7 @@ const CORPO_NAV_HTML = `
 const CORRIDA_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corrida-from)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corrida-to)"></span>
         <button onclick="switchCorridaTab('registo')" data-tab="registo" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           ${sneakerIcon('w-4 h-4')}Registo
         </button>
@@ -4787,7 +4803,11 @@ function switchCorridaTab(tab){
 const GYM_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-ginasio-from)"></span>
+        <!-- #818cf8 em vez de --mod-ginasio-to (#6366f1): o token dava só 4.45:1
+             contra o texto escuro do separador ativo, por pouco abaixo do
+             mínimo AA (4.5). Um tom só aqui, não uma mudança ao token partilhado
+             (usado noutros sítios onde a cor de fundo, não o texto, é que muda). -->
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:#818cf8"></span>
         <button onclick="switchGymTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -5213,6 +5233,11 @@ async function submitGymSet(sessionId){
   refreshGym();
 }
 
+function openDeleteGymSetModal(sessionId, setId, label){
+  openConfirmDeleteModal(`Eliminar ${label}?`,
+    'Remove esta série da sessão de treino. Não pode ser desfeita.',
+    () => deleteGymSet(sessionId, setId));
+}
 async function deleteGymSet(sessionId, setId){
   const s = findGymSessionById(sessionId);
   if (!s) return;
@@ -5454,7 +5479,7 @@ function renderGymSessionCard(session){
                     <span>Série ${i+1}</span>
                     <span class="text-slate-300">${s.reps ?? '—'} reps × ${s.weight ?? '—'} kg</span>
                     ${showAddSetForm ? `
-                      <button onclick="deleteGymSet('${session.id}', '${s.id}')" aria-label="Eliminar série" class="text-slate-600 hover:text-red-400 shrink-0">
+                      <button onclick="openDeleteGymSetModal('${session.id}', '${s.id}', 'série ${i+1} de ${esc(g.exercise_name)}')" aria-label="Eliminar série" class="text-slate-600 hover:text-red-400 shrink-0">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                       </button>` : ''}
                   </div>
@@ -5814,7 +5839,7 @@ function renderDashboard(animate = true){
 
     return `
       <button onclick="selectMacro('${m.key}')"
-        class="card rounded-2xl p-4 text-left transition ${isSelected ? 'ring-2' : ''}" style="${isSelected ? `--tw-ring-color:${m.color};` : ''}">
+        class="card rounded-2xl p-4 text-left transition ${isSelected ? 'ring-2' : ''}" style="${isSelected ? `--tw-ring-color:var(--accent);` : ''}">
         <span class="text-xs block truncate mb-1 ${isSelected ? 'text-white font-semibold' : 'text-slate-400'}">${m.label}</span>
         <span class="text-[10px] px-1.5 py-0.5 rounded-full inline-block mb-1 whitespace-nowrap ${over ? 'bg-red-500/15 text-red-400 border border-red-500/40' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}">
           ${over ? `${Math.abs(remaining).toFixed(0)} ${m.unit} acima` : `restam ${remaining.toFixed(0)} ${m.unit}`}
@@ -6115,7 +6140,7 @@ function renderMealCard(meal){
             <div class="bg-neutral-900/60 border border-neutral-800 rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
                 <p class="text-xs font-semibold text-white truncate mr-2">${esc(item.name)}</p>
-                <button onclick="deleteMealItem('${item.id}')" aria-label="Eliminar alimento" class="text-slate-600 hover:text-red-400 shrink-0">
+                <button onclick="openDeleteMealItemModal('${item.id}')" aria-label="Eliminar alimento" class="text-slate-600 hover:text-red-400 shrink-0">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
