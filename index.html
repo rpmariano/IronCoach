@@ -6435,8 +6435,13 @@ function renderPerfilTabMetas(p){
               class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           </div>
         </div>
-        <button type="button" onclick="toggleMetasBodyGoals()" class="w-full flex items-center justify-between py-1">
-          <span class="text-[11px] text-slate-500 text-left">Objetivos (opcional) — usados para acompanhar o progresso no módulo Corpo.</span>
+        <button type="button" onclick="toggleMetasBodyGoals()"
+          class="w-full flex items-center justify-between border border-neutral-800 rounded-xl px-3 py-2.5 ${metasBodyGoalsExpanded ? 'mb-2' : ''}">
+          <div class="flex items-center gap-2">
+            <i data-lucide="target" class="w-4 h-4 text-[var(--accent)]"></i>
+            <span class="text-sm font-semibold text-white">Objetivos corporais</span>
+            <span class="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">${BODY_METRICS.filter(m => p['goal_' + m.key] != null).length}/${BODY_METRICS.length} definidos</span>
+          </div>
           <i id="metasBodyGoalsChevron" data-lucide="${metasBodyGoalsExpanded ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-500 shrink-0"></i>
         </button>
 
@@ -6508,7 +6513,10 @@ function renderPerfilTabMetas(p){
             </select>
           </div>
         ` : ''}
+      </div>
 
+      <div class="card rounded-2xl p-4">
+        <p class="text-[11px] text-slate-500 mb-2">Guarda tudo o que alteraste nesta página — avaliação corporal, objetivos, nutrição e lembretes de água.</p>
         ${perfilSaveButton('savePerfilTabMetas')}
       </div>`;
 }
