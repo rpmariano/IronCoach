@@ -911,9 +911,19 @@ function suggestMealTypeByTime(){
   return 'ceia';
 }
 
+// Mostrava e.message diretamente — em falha de rede/RLS/restrição isso é a
+// mensagem crua do Postgres/Supabase, ilegível e por vezes assustadora, logo
+// a seguir a uma ação que o utilizador queria que corresse bem. A alteração
+// local já foi revertida por quem chama isto antes de chegar aqui; a mensagem
+// crua só vai para a consola, nunca para o toast.
 function flashSyncError(e){
   console.error(e);
-  showToast('error', null, (e && e.message) ? e.message : 'Erro de sincronização.');
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const isNetworkError = offline || (e && e instanceof TypeError) || (e && /fetch|network/i.test(e.message || ''));
+  const message = offline || isNetworkError
+    ? 'Sem ligação à internet. A alteração não foi guardada — tenta novamente.'
+    : 'Não foi possível guardar a alteração. Tenta novamente.';
+  showToast('error', null, message);
 }
 
 /* ============================= TOASTS ============================= */
@@ -1238,7 +1248,7 @@ async function loadAllData(){
 
   } catch(e) {
     console.error(e);
-    showToast('error', 'Erro de sincronização', e.message || 'Não foi possível carregar os dados. Tenta novamente.');
+    showToast('error', 'Erro de sincronização', 'Não foi possível carregar os dados. Tenta novamente.');
   }
   dataLoading = false;
   render();
@@ -1473,9 +1483,8 @@ async function submitNewItem(mealId){
     showToast('success', 'Alimento adicionado', null);
     logEvent('success', 'meal_item_estimate', null, { mealId, ...(data.usage || {}) });
   } catch(e) {
-    const msg = e.message || 'Falha a estimar valores nutricionais.';
-    showToast('error', null, msg);
-    logEvent('error', 'meal_item_estimate', msg, { mealId });
+    showToast('error', null, 'Falha a estimar valores nutricionais. Tenta novamente.');
+    logEvent('error', 'meal_item_estimate', e.message || 'erro desconhecido', { mealId });
   }
   addingItem = false;
   render();
@@ -1840,9 +1849,8 @@ async function suggestGoals(){
     logEvent('success', 'goals_suggestion', null, { updated: updatedCount, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha a sugerir objetivos. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'goals_suggestion', msg);
+    showToast('error', null, 'Falha a sugerir objetivos. Tenta novamente.');
+    logEvent('error', 'goals_suggestion', e.message || 'erro desconhecido');
   }
   suggestingGoals = false;
   render();
@@ -1952,9 +1960,8 @@ async function analyzeMeal(){
     logEvent('success', 'meal_analysis', null, { mealType: meal.meal_type, date: meal.date, itemCount: meal.meal_items.length, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na análise. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'meal_analysis', msg);
+    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    logEvent('error', 'meal_analysis', e.message || 'erro desconhecido');
   }
   analyzing = false;
   render();
@@ -2089,7 +2096,7 @@ async function saveNotesOnly(mealId){
     editingNotesDraft = '';
   } catch(e) {
     console.error(e);
-    showToast('error', null, e.message || 'Falha a gravar observações.');
+    showToast('error', null, 'Falha a gravar observações. Tenta novamente.');
   }
   reanalyzingMealId = null;
   render();
@@ -2119,9 +2126,8 @@ async function reanalyzeMeal(mealId){
     logEvent('success', 'meal_reanalysis', null, { mealId, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na reanálise. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'meal_reanalysis', msg, { mealId });
+    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    logEvent('error', 'meal_reanalysis', e.message || 'erro desconhecido', { mealId });
   }
   reanalyzingMealId = null;
   render();
@@ -3663,9 +3669,8 @@ async function analyzeRun(){
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na análise. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'run_analysis', msg);
+    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    logEvent('error', 'run_analysis', e.message || 'erro desconhecido');
   }
   analyzingRun = false;
   refreshCorrida();
@@ -3688,9 +3693,8 @@ async function reanalyzeRun(id){
     logEvent('success', 'run_reanalysis', null, { date: r.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na reanálise.';
-    showToast('error', null, msg);
-    logEvent('error', 'run_reanalysis', msg);
+    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    logEvent('error', 'run_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingRunId = null;
   refreshCorrida();
@@ -3800,7 +3804,8 @@ async function submitNewRun(){
     runSplit21kDraft = '';
     showToast('success', 'Corrida registada', null);
   } catch (e) {
-    showToast('error', null, e.message || 'Falha a gravar a corrida.');
+    console.error(e);
+    showToast('error', null, 'Falha a gravar a corrida. Tenta novamente.');
   }
   savingRun = false;
   render();
@@ -3893,7 +3898,8 @@ async function submitRaceEvent(){
     showToast('success', editingRaceEventId ? 'Prova atualizada' : 'Prova adicionada à agenda', null);
     closeRaceEventForm();
   } catch(e) {
-    showToast('error', null, e.message || 'Falha a gravar a prova.');
+    console.error(e);
+    showToast('error', null, 'Falha a gravar a prova. Tenta novamente.');
   }
 }
 
@@ -4207,9 +4213,8 @@ async function analyzeBody(){
     logEvent('success', 'body_analysis', null, { date: assessment.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na análise. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'body_analysis', msg);
+    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    logEvent('error', 'body_analysis', e.message || 'erro desconhecido');
   }
   analyzingBody = false;
   refreshBody();
@@ -4232,9 +4237,8 @@ async function reanalyzeBody(id){
     logEvent('success', 'body_reanalysis', null, { date: a.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na reanálise.';
-    showToast('error', null, msg);
-    logEvent('error', 'body_reanalysis', msg);
+    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    logEvent('error', 'body_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingAssessmentId = null;
   refreshBody();
@@ -5036,9 +5040,8 @@ async function analyzeGym(){
     });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na análise. Tenta novamente.';
-    showToast('error', null, msg);
-    logEvent('error', 'gym_analysis', msg);
+    showToast('error', null, 'Falha na análise. Tenta novamente.');
+    logEvent('error', 'gym_analysis', e.message || 'erro desconhecido');
   }
   analyzingGym = false;
   refreshGym();
@@ -5062,9 +5065,8 @@ async function reanalyzeGym(id){
     logEvent('success', 'gym_reanalysis', null, { date: s.date, ...(data.usage || {}) });
   } catch(e) {
     console.error(e);
-    const msg = e.message || 'Falha na reanálise.';
-    showToast('error', null, msg);
-    logEvent('error', 'gym_reanalysis', msg);
+    showToast('error', null, 'Falha na reanálise. Tenta novamente.');
+    logEvent('error', 'gym_reanalysis', e.message || 'erro desconhecido');
   }
   reanalyzingGymSessionId = null;
   refreshGym();
@@ -6756,10 +6758,10 @@ async function sendCoachMessage() {
     coachSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
     logEvent('success', 'coach_message', null, data.usage || null);
   } catch(e) {
-    const msg = e.message || 'Erro inesperado. Tenta novamente.';
-    showToast('error', null, msg);
+    console.error(e);
+    showToast('error', null, 'Erro inesperado. Tenta novamente.');
     coachMessages = coachMessages.filter(m => m.id !== '__tmp__');
-    logEvent('error', 'coach_message', msg, e.detail ? { detail: e.detail } : null);
+    logEvent('error', 'coach_message', e.message || 'erro desconhecido', e.detail ? { detail: e.detail } : null);
   }
 
   coachLoading = false;
@@ -6982,7 +6984,8 @@ async function logWater(amountMl){
       return data;
     } catch(e) {
       waterLogs = waterLogs.filter(w => w.id !== tempId);
-      showToast('error', null, e.message || 'Não foi possível registar a água. Tenta novamente.');
+      console.error(e);
+      showToast('error', null, 'Não foi possível registar a água. Tenta novamente.');
       waterBusy = false;
       renderAguaInPlace();
       return null;
