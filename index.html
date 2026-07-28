@@ -149,7 +149,11 @@
      isso 200% funciona para "a 3ª de 3 abas" independentemente da largura
      real de cada aba (nav da Nutrição, que agora tem Dashboard/Calendário/Água). */
   .seg-nav:has(.seg-btn[data-tab="agua"].active) .seg-thumb { transform: translateX(200%); }
-  .seg-btn.active { color:#09090b !important; }
+  /* Texto branco, não preto: o thumb já não é sempre a --accent clara (7.89
+     contra preto) — passou a usar a cor de módulo de cada vertical (só o
+     stop -from, não o gradiente completo: o -to de nutrição/corrida dava
+     ~2.5:1 contra branco, falhava WCAG). */
+  .seg-btn.active { color:#fff !important; }
   .seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
 
   /* O `!important` no estado ativo não é decorativo: as classes utilitárias
@@ -365,7 +369,9 @@
 
   <div id="perfilLeaveModal"></div>
 
-  <div id="deleteMealModal"></div>
+  <div id="confirmDeleteModal"></div>
+
+  <div id="keepMealModal"></div>
 
   <div class="sticky top-0 z-20 bg-neutral-950/90 backdrop-blur border-b border-neutral-800">
     <header class="px-4 pt-4 pb-3 flex items-center justify-between">
@@ -854,6 +860,11 @@ let goalsRationale = null;        // explicação do Coach para os últimos obje
 // escolher gravar/descartar no aviso.
 let perfilTab = 'perfil'; // 'perfil' | 'metas' | 'coach'
 let perfilDirty = { perfil:false, metas:false, coach:false };
+// Metas tinha 18 campos numéricos numa só lista sem agrupamento (13 objetivos
+// corporais + 5 de nutrição) — o ecrã de maior carga cognitiva da app, logo
+// no momento de configuração inicial. Objetivos corporais são opcionais e
+// menos usados no dia a dia, por isso ficam colapsados por omissão.
+let metasBodyGoalsExpanded = false;
 let pendingLeaveAction = null; // function | null
 let selectedBodyMetric = 'weight_kg'; // métrica mostrada no gráfico do dashboard
 let bodyChart = null;
@@ -944,7 +955,7 @@ function renderToasts(){
         ${t.message ? `<p class="text-[11px] ${t.type === 'error' ? 'text-red-200/80' : 'text-emerald-200/80'} ${t.title ? 'mt-0.5' : ''}">${esc(t.message)}</p>` : ''}
         ${t.actionLabel ? `<button onclick="${t.actionOnclick}" class="text-[11px] ${t.type === 'error' ? 'text-red-300' : 'text-emerald-300'} font-semibold underline mt-1">${esc(t.actionLabel)}</button>` : ''}
       </div>
-      <button onclick="dismissToast(${t.id})" class="shrink-0 text-slate-400 hover:text-white -m-1 p-1">
+      <button onclick="dismissToast(${t.id})" aria-label="Fechar notificação" class="shrink-0 text-slate-400 hover:text-white -m-1 p-1">
         <i data-lucide="x" class="w-3.5 h-3.5"></i>
       </button>
     </div>
@@ -1341,30 +1352,28 @@ async function deleteMealItem(itemId){
   } catch(e) { flashSyncError(e); }
 }
 
-// Modal próprio em vez de confirm() nativo (mesmo motivo do coachClearModal):
-// eliminar uma refeição é permanente e o confirm() do browser falha em
-// silêncio dentro da PWA instalada.
-function openDeleteMealModal(mealId){
-  const found = findMealById(mealId);
-  if (!found) return;
-  const el = document.getElementById('deleteMealModal');
+// Modal genérico de confirmação de eliminação, em vez de confirm() nativo
+// (mesmo motivo em todos os usos: o confirm() do browser falha em silêncio
+// dentro da PWA instalada). Reutilizado por refeição, corrida, sessão de
+// ginásio, avaliação corporal e prova agendada — as 5 ações de eliminação
+// permanente da app, que antes só a refeição tinha protegida.
+let _confirmDeleteExecutor = null;
+function openConfirmDeleteModal(title, message, executorFn){
+  _confirmDeleteExecutor = executorFn;
+  const el = document.getElementById('confirmDeleteModal');
   if (!el) return;
-  const label = `${mealTypeLabel(found.meal.meal_type)} de ${formatDatePT(found.meal.date)}`;
   el.innerHTML = `
     <div class="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6"
-         onclick="if(event.target===this) closeDeleteMealModal()">
+         onclick="if(event.target===this) closeConfirmDeleteModal()">
       <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-xs w-full">
-        <p class="text-sm font-bold text-white mb-2">Eliminar ${label}?</p>
-        <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-          Esta ação apaga permanentemente a refeição e todos os alimentos registados nela.
-          Não pode ser desfeita.
-        </p>
+        <p class="text-sm font-bold text-white mb-2">${title}</p>
+        <p class="text-xs text-slate-400 mb-4 leading-relaxed">${message}</p>
         <div class="flex gap-2">
-          <button onclick="closeDeleteMealModal()"
+          <button onclick="closeConfirmDeleteModal()"
             class="flex-1 border border-neutral-700 text-slate-300 text-xs font-semibold rounded-xl py-2.5">
             Cancelar
           </button>
-          <button onclick="confirmDeleteMeal('${mealId}')"
+          <button onclick="runConfirmDelete()"
             class="flex-1 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5">
             Eliminar
           </button>
@@ -1373,15 +1382,28 @@ function openDeleteMealModal(mealId){
     </div>
   `;
   if (window.lucide) lucide.createIcons();
-  activateModal('deleteMealModal', `Eliminar ${label}?`, closeDeleteMealModal);
+  activateModal('confirmDeleteModal', title, closeConfirmDeleteModal);
 }
-function closeDeleteMealModal(){
-  const el = document.getElementById('deleteMealModal');
+function closeConfirmDeleteModal(){
+  const el = document.getElementById('confirmDeleteModal');
   if (el) el.innerHTML = '';
   deactivateModal();
+  _confirmDeleteExecutor = null;
+}
+function runConfirmDelete(){
+  const fn = _confirmDeleteExecutor;
+  closeConfirmDeleteModal();
+  if (fn) fn();
+}
+function openDeleteMealModal(mealId){
+  const found = findMealById(mealId);
+  if (!found) return;
+  const label = `${mealTypeLabel(found.meal.meal_type)} de ${formatDatePT(found.meal.date)}`;
+  openConfirmDeleteModal(`Eliminar ${label}?`,
+    'Esta ação apaga permanentemente a refeição e todos os alimentos registados nela. Não pode ser desfeita.',
+    () => confirmDeleteMeal(mealId));
 }
 async function confirmDeleteMeal(mealId){
-  closeDeleteMealModal();
   const found = findMealById(mealId);
   if (!found) return;
   const { meal, array } = found;
@@ -1530,6 +1552,20 @@ function isPerfilDirty(){
 
 // Troca de separador dentro do Perfil — sujeito à mesma proteção "sair sem
 // gravar?" que trocar de módulo ou usar o botão físico de voltar atrás.
+// Toggle só de DOM (sem re-render): os campos da Metas são inputs com
+// valores por gravar (markPerfilDirty) — um refreshAguaInPlace() aqui
+// reconstruiria o ecrã a partir do profile gravado e apagaria silenciosamente
+// o que o utilizador esteja a meio de escrever nos outros campos da mesma tab.
+function toggleMetasBodyGoals(){
+  metasBodyGoalsExpanded = !metasBodyGoalsExpanded;
+  const grid = document.getElementById('metasBodyGoalsGrid');
+  const chevron = document.getElementById('metasBodyGoalsChevron');
+  if (grid) grid.classList.toggle('hidden', !metasBodyGoalsExpanded);
+  if (chevron) {
+    chevron.setAttribute('data-lucide', metasBodyGoalsExpanded ? 'chevron-up' : 'chevron-down');
+    if (window.lucide) lucide.createIcons();
+  }
+}
 function switchPerfilTab(tab){
   if (tab === perfilTab) return;
   if (isPerfilDirty()) {
@@ -1546,7 +1582,7 @@ function switchPerfilTab(tab){
    fechava nada, o Tab passeava pelos 20 elementos por trás do modal, e o
    leitor de ecrã nem sequer anunciava que se tinha aberto um diálogo.
    Em vez de repetir isto em cada modal, há um sítio só. */
-const MODAL_MOUNTS = ['perfilLeaveModal', 'waterMuteModal', 'coachClearModal'];
+const MODAL_MOUNTS = ['perfilLeaveModal', 'waterMuteModal', 'coachClearModal', 'confirmDeleteModal', 'keepMealModal'];
 let modalCloseFn = null;      // como fechar o modal aberto (usado pelo Escape)
 let modalLastFocus = null;    // para onde devolver o foco depois de fechar
 
@@ -2167,8 +2203,46 @@ function abandonManualMealSession(){
     confirmDeleteMeal(mealId);
     return;
   }
-  const keep = confirm('Adicionaste alimentos a esta refeição.\n\nOK para guardar a refeição, Cancelar para descartar tudo.');
-  if (!keep) confirmDeleteMeal(mealId);
+  // Modal próprio em vez de confirm() nativo (mesmo motivo do coachClearModal):
+  // isto corre a meio de uma navegação já em curso (troca de separador, botão
+  // "voltar" do browser/PWA) — o ecrã de destino já renderizou por baixo, o
+  // modal só decide se a refeição em construção fica ou é descartada, sem
+  // bloquear ou repetir a navegação em si.
+  openKeepMealModal(mealId);
+}
+function openKeepMealModal(mealId){
+  const el = document.getElementById('keepMealModal');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-6"
+         onclick="if(event.target===this) closeKeepMealModal('${mealId}')">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-xs w-full">
+        <p class="text-sm font-bold text-white mb-2">Guardar a refeição em construção?</p>
+        <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+          Adicionaste alimentos a esta refeição antes de sair. Podes guardá-la
+          como está (já gravada) ou descartar tudo.
+        </p>
+        <div class="flex gap-2">
+          <button onclick="closeKeepMealModal('${mealId}', true)"
+            class="flex-1 border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5">
+            Descartar
+          </button>
+          <button onclick="closeKeepMealModal('${mealId}')"
+            class="flex-1 border border-neutral-700 text-slate-300 text-xs font-semibold rounded-xl py-2.5">
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  if (window.lucide) lucide.createIcons();
+  activateModal('keepMealModal', 'Guardar a refeição em construção?', () => closeKeepMealModal(mealId));
+}
+function closeKeepMealModal(mealId, discard){
+  const el = document.getElementById('keepMealModal');
+  if (el) el.innerHTML = '';
+  deactivateModal();
+  if (discard) confirmDeleteMeal(mealId);
 }
 
 // Troca de vertical (Início / Nutrição / Ginásio / Corrida / Coach).
@@ -3315,7 +3389,7 @@ function runCard(r){
                 : '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reanalisar'}
             </button>
           ` : ''}
-          <button onclick="deleteRun('${r.id}')"
+          <button onclick="openDeleteRunModal('${r.id}')" aria-label="Eliminar corrida"
             class="border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-semibold rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 transition">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
           </button>
@@ -3439,7 +3513,7 @@ function renderCorrida(){
             ${runPhotos.map((p, i) => `
               <div class="relative aspect-square">
                 <img src="${p.dataUrl}" class="w-full h-full object-cover rounded-xl border border-neutral-800" alt="Print ${i+1}" />
-                <button onclick="removeRunPhoto(${i})" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
+                <button onclick="removeRunPhoto(${i})" aria-label="Remover foto" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
                   <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
@@ -3716,6 +3790,13 @@ async function submitNewRun(){
   render();
 }
 
+function openDeleteRunModal(id){
+  const run = runs.find(r => r.id === id);
+  if (!run) return;
+  openConfirmDeleteModal(`Eliminar corrida de ${formatDatePT(run.date)}?`,
+    'Esta ação apaga permanentemente o registo da corrida. Não pode ser desfeita.',
+    () => deleteRun(id));
+}
 async function deleteRun(id){
   const idx = runs.findIndex(r => r.id === id);
   if (idx === -1) return;
@@ -3815,6 +3896,13 @@ async function toggleRaceEventStatus(id){
   }
 }
 
+function openDeleteRaceEventModal(id){
+  const ev = findRaceEventById(id);
+  if (!ev) return;
+  openConfirmDeleteModal(`Eliminar ${ev.name || 'prova'}?`,
+    'Esta ação remove permanentemente a prova da agenda. Não pode ser desfeita.',
+    () => deleteRaceEvent(id));
+}
 async function deleteRaceEvent(id){
   const idx = raceEvents.findIndex(e => e.id === id);
   if (idx === -1) return;
@@ -3851,10 +3939,10 @@ function raceEventCard(ev){
           <button onclick="toggleRaceEventStatus('${ev.id}')" title="${done ? 'Marcar como agendada' : 'Marcar como concluída'}" class="text-slate-600 hover:text-emerald-400 p-1">
             <i data-lucide="${done ? 'rotate-ccw' : 'check-circle'}" class="w-4 h-4"></i>
           </button>
-          <button onclick="openRaceEventForm('${ev.id}')" class="text-slate-600 hover:text-[var(--accent)] p-1">
+          <button onclick="openRaceEventForm('${ev.id}')" aria-label="Editar prova" class="text-slate-600 hover:text-[var(--accent)] p-1">
             <i data-lucide="pencil" class="w-4 h-4"></i>
           </button>
-          <button onclick="deleteRaceEvent('${ev.id}')" class="text-slate-600 hover:text-red-400 p-1">
+          <button onclick="openDeleteRaceEventModal('${ev.id}')" aria-label="Eliminar prova" class="text-slate-600 hover:text-red-400 p-1">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -4136,6 +4224,13 @@ async function reanalyzeBody(id){
   refreshBody();
 }
 
+function openDeleteBodyAssessmentModal(id){
+  const a = findAssessmentById(id);
+  if (!a) return;
+  openConfirmDeleteModal(`Eliminar avaliação de ${formatDatePT(a.date)}?`,
+    'Esta ação apaga permanentemente a avaliação corporal. Não pode ser desfeita.',
+    () => deleteBodyAssessment(id));
+}
 async function deleteBodyAssessment(id){
   const a = findAssessmentById(id);
   if (!a) return;
@@ -4221,7 +4316,7 @@ function renderBodyUpload(){
           ${bodyPhotos.map((p, i) => `
             <div class="relative aspect-square">
               <img src="${p.dataUrl}" class="w-full h-full object-cover rounded-xl border border-neutral-800" alt="Print ${i+1}" />
-              <button onclick="removeBodyPhoto(${i})" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
+              <button onclick="removeBodyPhoto(${i})" aria-label="Remover foto" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
               </button>
             </div>
@@ -4358,7 +4453,7 @@ function renderAssessmentCard(a){
                 ? '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> A reanalisar...'
                 : '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reanalisar'}
             </button>
-            <button onclick="deleteBodyAssessment('${a.id}')"
+            <button onclick="openDeleteBodyAssessmentModal('${a.id}')" aria-label="Eliminar avaliação"
               class="border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-semibold rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 transition">
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
             </button>
@@ -4639,7 +4734,7 @@ function renderBodyChart(){
 const NUTRITION_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full bg-[var(--accent)]" style="width:calc(33.333% - 4px)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(33.333% - 4px);background:var(--mod-nutricao-from)"></span>
         <button onclick="switchTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4657,7 +4752,7 @@ const NUTRITION_NAV_HTML = `
 const CORPO_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full bg-[var(--accent)]" style="width:calc(50% - 4px)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corpo-from)"></span>
         <button onclick="switchBodyTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4672,7 +4767,7 @@ const CORPO_NAV_HTML = `
 const CORRIDA_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full bg-[var(--accent)]" style="width:calc(50% - 4px)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-corrida-from)"></span>
         <button onclick="switchCorridaTab('registo')" data-tab="registo" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           ${sneakerIcon('w-4 h-4')}Registo
         </button>
@@ -4692,7 +4787,7 @@ function switchCorridaTab(tab){
 const GYM_NAV_HTML = `
     <div class="max-w-md mx-auto bg-neutral-900/95 backdrop-blur border-b border-neutral-800 px-4 py-2.5">
       <div class="seg-nav relative flex bg-neutral-800 border border-neutral-700 rounded-full p-1">
-        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full bg-[var(--accent)]" style="width:calc(50% - 4px)"></span>
+        <span class="seg-thumb absolute inset-y-1 left-1 rounded-full" style="width:calc(50% - 4px);background:var(--mod-ginasio-from)"></span>
         <button onclick="switchGymTab('dashboard')" data-tab="dashboard" class="tab-btn seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full text-slate-400 transition-colors">
           <i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard
         </button>
@@ -4955,6 +5050,13 @@ async function reanalyzeGym(id){
   refreshGym();
 }
 
+function openDeleteGymSessionModal(id){
+  const s = findGymSessionById(id);
+  if (!s) return;
+  openConfirmDeleteModal(`Eliminar sessão de ${formatDatePT(s.date)}?`,
+    'Esta ação apaga permanentemente a sessão de treino. Não pode ser desfeita.',
+    () => deleteGymSession(id));
+}
 async function deleteGymSession(id){
   const s = findGymSessionById(id);
   if (!s) return;
@@ -5155,7 +5257,7 @@ function renderGymRegistar(){
             ${gymPhotos.map((p, i) => `
               <div class="relative aspect-square">
                 <img src="${p.dataUrl}" class="w-full h-full object-cover rounded-xl border border-neutral-800" alt="Print ${i+1}" />
-                <button onclick="removeGymPhoto(${i})" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
+                <button onclick="removeGymPhoto(${i})" aria-label="Remover foto" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
                   <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
@@ -5352,7 +5454,7 @@ function renderGymSessionCard(session){
                     <span>Série ${i+1}</span>
                     <span class="text-slate-300">${s.reps ?? '—'} reps × ${s.weight ?? '—'} kg</span>
                     ${showAddSetForm ? `
-                      <button onclick="deleteGymSet('${session.id}', '${s.id}')" class="text-slate-600 hover:text-red-400 shrink-0">
+                      <button onclick="deleteGymSet('${session.id}', '${s.id}')" aria-label="Eliminar série" class="text-slate-600 hover:text-red-400 shrink-0">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                       </button>` : ''}
                   </div>
@@ -5401,7 +5503,7 @@ function renderGymSessionCard(session){
                 : '<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reanalisar'}
             </button>
           ` : ''}
-          <button onclick="deleteGymSession('${session.id}')"
+          <button onclick="openDeleteGymSessionModal('${session.id}')" aria-label="Eliminar sessão"
             class="border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-semibold rounded-xl px-3 py-2 flex items-center justify-center gap-1.5 transition">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
           </button>
@@ -5847,7 +5949,7 @@ function renderRegistar(){
             ${photos.map((p, i) => `
               <div class="relative aspect-square">
                 <img src="${p.dataUrl}" class="w-full h-full object-cover rounded-xl border border-neutral-800" alt="Foto ${i+1}" />
-                <button onclick="removePhoto(${i})" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
+                <button onclick="removePhoto(${i})" aria-label="Remover foto" class="absolute top-1 right-1 bg-neutral-950/80 border border-neutral-700 rounded-full p-1 text-slate-300">
                   <i data-lucide="x" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
@@ -6013,7 +6115,7 @@ function renderMealCard(meal){
             <div class="bg-neutral-900/60 border border-neutral-800 rounded-xl p-3">
               <div class="flex items-center justify-between mb-2">
                 <p class="text-xs font-semibold text-white truncate mr-2">${esc(item.name)}</p>
-                <button onclick="deleteMealItem('${item.id}')" class="text-slate-600 hover:text-red-400 shrink-0">
+                <button onclick="deleteMealItem('${item.id}')" aria-label="Eliminar alimento" class="text-slate-600 hover:text-red-400 shrink-0">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                 </button>
               </div>
@@ -6306,9 +6408,12 @@ function renderPerfilTabMetas(p){
               class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           </div>
         </div>
-        <p class="text-[11px] text-slate-500 mb-2">Objetivos (opcional) — usados para acompanhar o progresso no módulo Corpo.</p>
+        <button type="button" onclick="toggleMetasBodyGoals()" class="w-full flex items-center justify-between py-1">
+          <span class="text-[11px] text-slate-500 text-left">Objetivos (opcional) — usados para acompanhar o progresso no módulo Corpo.</span>
+          <i id="metasBodyGoalsChevron" data-lucide="${metasBodyGoalsExpanded ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-500 shrink-0"></i>
+        </button>
 
-        <div class="grid grid-cols-2 gap-2">
+        <div id="metasBodyGoalsGrid" class="grid grid-cols-2 gap-2 mt-2 ${metasBodyGoalsExpanded ? '' : 'hidden'}">
           ${BODY_METRICS.map(m => `
             <div>
               <label class="text-[11px] text-slate-500 truncate block">${m.label}${m.unit ? ` (${m.unit})` : ''}</label>
@@ -6401,7 +6506,7 @@ function renderPerfilTabCoach(p){
               <span class="text-[11px] font-semibold text-[var(--accent)] flex items-center gap-1.5">
                 <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Porquê estes objetivos
               </span>
-              <button onclick="dismissGoalsRationale()" class="text-slate-500 hover:text-white shrink-0">
+              <button onclick="dismissGoalsRationale()" aria-label="Fechar explicação" class="text-slate-500 hover:text-white shrink-0">
                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
               </button>
             </div>
