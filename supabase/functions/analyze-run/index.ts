@@ -378,10 +378,13 @@ async function generateCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // thinkingBudget: 0 desliga o raciocínio interno do modelo — sem
-          // isto, os tokens de "pensamento" (por vezes em inglês) consomem
-          // o maxOutputTokens e cortam o texto visível a meio de frase.
-          generationConfig: { maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } },
+          // gemini-flash-latest resolve para um modelo da série Gemini 3,
+          // que usa thinkingLevel (string) em vez do antigo thinkingBudget
+          // (número) — thinkingBudget é silenciosamente ignorado nesta
+          // série, o que deixava o thinking a consumir maxOutputTokens sem
+          // avisar. "minimal" é o mais próximo de desligar o thinking que a
+          // série 3 permite (não suporta desligar por completo).
+          generationConfig: { maxOutputTokens: 500, thinkingConfig: { thinkingLevel: "minimal" } },
         }),
       },
       20000,
