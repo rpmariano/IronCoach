@@ -309,7 +309,7 @@ async function generateCoachNotes(
   const totalDistanceHistory = previousRuns.reduce((a, r) => a + (r.distance_km || 0), 0);
   const oldestDate = previousRuns.length ? previousRuns[previousRuns.length - 1].date : null;
   const weeksSpanned = oldestDate
-    ? Math.max(1, (new Date(date).getTime() - new Date(oldestDate).getTime()) / (7 * 24 * 3600 * 1000))
+    ? Math.max(1, (new Date(run.date).getTime() - new Date(oldestDate).getTime()) / (7 * 24 * 3600 * 1000))
     : null;
   const weeklyVolumeStr = weeksSpanned && totalDistanceHistory > 0
     ? `${(totalDistanceHistory / weeksSpanned).toFixed(1)}km/semana em média nas últimas ${weeksSpanned.toFixed(1)} semanas (${previousRuns.length} corridas)`
