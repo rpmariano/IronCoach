@@ -82,10 +82,34 @@ const RESPONSE_SCHEMA = {
     race_type: { type: "STRING", nullable: true, enum: RACE_TYPE_KEYS },
     official_time_seconds: { type: "NUMBER", nullable: true },
     position: { type: "NUMBER", nullable: true },
+    // Métricas do relógio — comuns a qualquer tipo de corrida, lidas do
+    // quadro principal (desnível, cadência, calorias), do quadro de
+    // frequência cardíaca (média, máxima, zonas) e do quadro de VO2 máx,
+    // quando esses ecrãs estiverem entre as imagens.
+    elevation_gain_m: { type: "NUMBER", nullable: true },
+    cadence_spm: { type: "NUMBER", nullable: true },
+    calories_kcal: { type: "NUMBER", nullable: true },
+    avg_heart_rate_bpm: { type: "NUMBER", nullable: true },
+    max_heart_rate_bpm: { type: "NUMBER", nullable: true },
+    vo2_max: { type: "NUMBER", nullable: true },
+    hr_zones: {
+      type: "ARRAY",
+      nullable: true,
+      items: {
+        type: "OBJECT",
+        properties: {
+          zone: { type: "NUMBER", nullable: true },
+          minutes: { type: "NUMBER", nullable: true },
+        },
+        required: ["zone", "minutes"],
+      },
+    },
   },
   required: [
     "distance_km", "duration_seconds", "training_type", "warmup_minutes",
     "recovery_seconds", "splits", "race_type", "official_time_seconds", "position",
+    "elevation_gain_m", "cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
+    "max_heart_rate_bpm", "vo2_max", "hr_zones",
   ],
 };
 
@@ -112,6 +136,13 @@ function buildPrompt(kindHint: string | null, notes: string | null): string {
     `Escolhe entre: ${RACE_TYPE_KEYS.join(", ")}.\n` +
     "- official_time_seconds / position: só em competição, se o ecrã mostrar o tempo oficial de prova e/ou a " +
     "posição de chegada (classificação).\n" +
+    "- elevation_gain_m / cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece distância/tempo/pace) " +
+    "mostrar desnível acumulado (m), cadência média (passadas por minuto) ou calorias, extrai esses valores.\n" +
+    "- avg_heart_rate_bpm / max_heart_rate_bpm: se houver um ecrã de frequência cardíaca, extrai a FC média e a FC " +
+    "máxima da atividade.\n" +
+    "- hr_zones: se esse ecrã de frequência cardíaca mostrar uma repartição por zonas (Z1 a Z5, ou similar) com o " +
+    "tempo passado em cada uma, devolve cada linha como { zone, minutes } (zone = número da zona, 1 a 5).\n" +
+    "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";
   if (kindHint === "treino") {
@@ -182,6 +213,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 type GeminiUsage = { input_tokens: number; output_tokens: number };
 type RunSplit = { distance_km: number | null; time_seconds: number | null };
+type HrZone = { zone: number | null; minutes: number | null };
 type RunExtraction = {
   distance_km: number | null;
   duration_seconds: number | null;
@@ -192,6 +224,13 @@ type RunExtraction = {
   race_type: string | null;
   official_time_seconds: number | null;
   position: number | null;
+  elevation_gain_m: number | null;
+  cadence_spm: number | null;
+  calories_kcal: number | null;
+  avg_heart_rate_bpm: number | null;
+  max_heart_rate_bpm: number | null;
+  vo2_max: number | null;
+  hr_zones: HrZone[] | null;
 };
 
 async function analyzeWithGemini(
@@ -259,6 +298,14 @@ async function analyzeWithGemini(
     }))
     .filter((s) => s.distance_km !== null || s.time_seconds !== null);
 
+  const rawZones = Array.isArray(parsed.hr_zones) ? parsed.hr_zones : [];
+  const hrZones: HrZone[] = rawZones
+    .map((z) => ({
+      zone: num((z as Record<string, unknown>)?.zone),
+      minutes: num((z as Record<string, unknown>)?.minutes),
+    }))
+    .filter((z) => z.zone !== null && z.minutes !== null);
+
   const extraction: RunExtraction = {
     distance_km: num(parsed.distance_km),
     duration_seconds: num(parsed.duration_seconds),
@@ -269,6 +316,13 @@ async function analyzeWithGemini(
     race_type: str(parsed.race_type, RACE_TYPE_KEYS),
     official_time_seconds: num(parsed.official_time_seconds),
     position: num(parsed.position),
+    elevation_gain_m: num(parsed.elevation_gain_m),
+    cadence_spm: num(parsed.cadence_spm),
+    calories_kcal: num(parsed.calories_kcal),
+    avg_heart_rate_bpm: num(parsed.avg_heart_rate_bpm),
+    max_heart_rate_bpm: num(parsed.max_heart_rate_bpm),
+    vo2_max: num(parsed.vo2_max),
+    hr_zones: hrZones.length ? hrZones : null,
   };
 
   if (extraction.distance_km === null && extraction.duration_seconds === null) {
@@ -278,25 +332,31 @@ async function analyzeWithGemini(
   return { extraction, usage };
 }
 
-// Monta o `details` jsonb a partir da extração — só inclui o que for
-// relevante ao tipo (treino por repetição vs. competição), tal como o
-// cliente faz na entrada manual (buildRunDetailsPayload).
+// Monta o `details` jsonb a partir da extração: campos específicos do tipo
+// (treino por repetição vs. competição) + métricas do relógio, que se
+// aplicam a qualquer corrida — mesma estrutura que o cliente usa na entrada
+// manual (buildRunDetailsPayload/buildRunWatchMetrics).
 function detailsFromExtraction(kind: string, e: RunExtraction): Record<string, unknown> | null {
+  const d: Record<string, unknown> = {};
+  if (e.elevation_gain_m) d.elevation_gain_m = e.elevation_gain_m;
+  if (e.cadence_spm) d.cadence_spm = e.cadence_spm;
+  if (e.calories_kcal) d.calories_kcal = e.calories_kcal;
+  if (e.avg_heart_rate_bpm) d.avg_heart_rate_bpm = e.avg_heart_rate_bpm;
+  if (e.max_heart_rate_bpm) d.max_heart_rate_bpm = e.max_heart_rate_bpm;
+  if (e.vo2_max) d.vo2_max = e.vo2_max;
+  if (e.hr_zones && e.hr_zones.length) d.hr_zones = e.hr_zones;
+
   if (kind === "treino" && e.training_type && REPEAT_TRAINING_TYPES.has(e.training_type)) {
-    const d: Record<string, unknown> = {};
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;
     if (e.recovery_seconds) d.recovery_seconds = e.recovery_seconds;
     if (e.splits && e.splits.length) d.splits = e.splits;
-    return Object.keys(d).length ? d : null;
   }
   if (kind === "competicao") {
-    const d: Record<string, unknown> = {};
     if (e.race_type) d.race_type = e.race_type;
     if (e.official_time_seconds) d.official_time_seconds = e.official_time_seconds;
     if (e.position) d.position = e.position;
-    return Object.keys(d).length ? d : null;
   }
-  return null;
+  return Object.keys(d).length ? d : null;
 }
 
 const VALID_KINDS = new Set(["simples", "treino", "competicao"]);
