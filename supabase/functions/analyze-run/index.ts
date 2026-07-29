@@ -384,11 +384,13 @@ async function generateCoachNotes(
           // valor errado pode ser ignorado ou rejeitado (400) consoante a
           // série. Em vez de adivinhar, damos um orçamento de tokens grande
           // o suficiente para sobrar texto visível mesmo que o modelo gaste
-          // uma fatia a "pensar" por baixo dos panos.
-          generationConfig: { maxOutputTokens: 2048 },
+          // uma fatia a "pensar" por baixo dos panos. 2048 já se mostrou
+          // insuficiente com o prompt mais rico (histórico de 30 corridas +
+          // tendências) — o thinking cresce com a complexidade do pedido.
+          generationConfig: { maxOutputTokens: 8192 },
         }),
       },
-      20000,
+      30000,
       1,
     );
 
