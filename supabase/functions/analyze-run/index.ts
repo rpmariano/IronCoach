@@ -378,7 +378,10 @@ async function generateCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 400 },
+          // thinkingBudget: 0 desliga o raciocínio interno do modelo — sem
+          // isto, os tokens de "pensamento" (por vezes em inglês) consomem
+          // o maxOutputTokens e cortam o texto visível a meio de frase.
+          generationConfig: { maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } },
         }),
       },
       20000,
