@@ -1,15 +1,17 @@
 // IronHealth · analyze-run Edge Function
 // Modo normal: recebe 1+ prints de uma app de corrida (Strava, Garmin, etc.),
-// extrai distância/duração/tipo de treino/splits/dados de competição com o
-// Gemini e grava a corrida em `runs`. O utilizador só escolhe Treino vs.
-// Competição (kind) e a data no cliente — tudo o resto (tipo de treino,
-// aquecimento/recuperação, splits, disciplina, tempo oficial, posição) é
-// inferido pela IA a partir da imagem. O nível de esforço (effort_rpe) nunca
-// é inferido — é sempre reportado pelo próprio utilizador.
+// extrai distância/duração/splits/dados de competição/métricas do relógio com
+// o Gemini e grava a corrida em `runs`. O utilizador escolhe Treino vs.
+// Competição (kind) E o tipo de treino/disciplina (training_type/race_type)
+// no cliente, antes de submeter — a IA só lê o que não é uma classificação
+// (distância, duração, splits, aquecimento/recuperação, tempo oficial,
+// posição, métricas do relógio). O nível de esforço (effort_rpe) também
+// nunca é inferido — é sempre reportado pelo próprio utilizador.
 // Modo reanálise (run_id presente): repesca os prints já guardados dessa
 // corrida no Storage e volta a analisar do zero (mesma extração da IA),
-// substituindo os campos lidos da imagem; kind/notes/effort_rpe mantêm-se
-// como estavam (não vêm de imagem nenhuma).
+// substituindo os campos lidos da imagem; kind/training_type/race_type/
+// notes/effort_rpe mantêm-se como estavam (são escolhas do utilizador, não
+// vêm de imagem nenhuma).
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -46,17 +48,11 @@ const RACE_TYPE_LABELS: Record<string, string> = {
 const REPEAT_TRAINING_TYPES = new Set(["intervalos", "subidas"]);
 
 // Nome sugerido quando o cliente marcou o nome como "ainda é a sugestão
-// automática" (name_is_auto) — reconstrói com o tipo/disciplina já
-// confirmados pela extração da IA, mantendo o período do dia enviado pelo
-// cliente (hora local de quem regista, não a hora do servidor).
-function buildAutoName(kind: string, trainingType: string | null, raceType: string | null, period: string): string {
+// automática" (name_is_auto) — só kind + período do dia (sem tipo/disciplina,
+// para não duplicar o que já aparece nos badges/detalhes da corrida).
+function buildAutoName(kind: string, period: string): string {
   const p = period || "";
-  if (kind === "competicao") {
-    const label = raceType ? RACE_TYPE_LABELS[raceType] : null;
-    return (label ? `Competição ${label} ${p}` : `Competição ${p}`).trim();
-  }
-  const label = trainingType ? TRAINING_TYPE_LABELS[trainingType] : null;
-  return (label ? `Treino ${label} ${p}` : `Treino ${p}`).trim();
+  return (kind === "competicao" ? `Competição ${p}` : `Treino ${p}`).trim();
 }
 
 const RESPONSE_SCHEMA = {
@@ -64,7 +60,6 @@ const RESPONSE_SCHEMA = {
   properties: {
     distance_km: { type: "NUMBER", nullable: true },
     duration_seconds: { type: "NUMBER", nullable: true },
-    training_type: { type: "STRING", nullable: true, enum: TRAINING_TYPE_KEYS },
     warmup_minutes: { type: "NUMBER", nullable: true },
     recovery_seconds: { type: "NUMBER", nullable: true },
     splits: {
@@ -79,7 +74,6 @@ const RESPONSE_SCHEMA = {
         required: ["distance_km", "time_seconds"],
       },
     },
-    race_type: { type: "STRING", nullable: true, enum: RACE_TYPE_KEYS },
     official_time_seconds: { type: "NUMBER", nullable: true },
     position: { type: "NUMBER", nullable: true },
     // Métricas do relógio — comuns a qualquer tipo de corrida, lidas do
@@ -106,49 +100,53 @@ const RESPONSE_SCHEMA = {
     },
   },
   required: [
-    "distance_km", "duration_seconds", "training_type", "warmup_minutes",
-    "recovery_seconds", "splits", "race_type", "official_time_seconds", "position",
+    "distance_km", "duration_seconds", "warmup_minutes",
+    "recovery_seconds", "splits", "official_time_seconds", "position",
     "elevation_gain_m", "cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
     "max_heart_rate_bpm", "vo2_max", "hr_zones",
   ],
 };
 
-function buildPrompt(kindHint: string | null, notes: string | null): string {
+// trainingType/raceType já são escolhas confirmadas do utilizador (não pedidos
+// à IA) — só servem aqui para dar contexto que ajuda a ler os campos certos
+// (ex.: só esperar aquecimento/recuperação num treino de Intervalos).
+function buildPrompt(
+  kindHint: string | null,
+  trainingType: string | null,
+  raceType: string | null,
+  notes: string | null,
+): string {
   let prompt =
     "As imagens seguintes são capturas de ecrã (screenshots) de uma app de registo de corrida " +
     "(ex.: Strava, Garmin Connect, Nike Run Club, ou similar), todas da MESMA corrida " +
     "(possivelmente ecrãs diferentes da mesma atividade). Extrai:\n" +
     "- distance_km: distância total percorrida, em quilómetros (ex.: 10.42).\n" +
     "- duration_seconds: duração total (tempo em movimento/total da atividade), em segundos.\n" +
-    `- training_type: só se esta for claramente uma sessão de TREINO (não uma competição). ` +
-    `Escolhe o melhor palpite entre: ${TRAINING_TYPE_KEYS.join(", ")} ` +
-    "(continuo = corrida solta sem estrutura; longo = corrida mais longa que o habitual, ritmo confortável; " +
-    "recuperacao = ritmo muito fácil, pós-esforço; tempo = ritmo forte sustentado; fartlek = variações de ritmo " +
-    "livres/não estruturadas; intervalos = repetições curtas rápidas com pausa entre elas, normalmente numa tabela " +
-    "de voltas/laps com tempos muito diferentes entre si; subidas = repetições em subida; trail = trilho/montanha " +
-    "com desnível relevante; tecnico = trilho técnico irregular). Se não conseguires distinguir com confiança, " +
-    "devolve null em vez de adivinhar às cegas — não é obrigatório.\n" +
-    "- warmup_minutes / recovery_seconds: só se training_type for 'intervalos' ou 'subidas' e o ecrã mostrar " +
-    "claramente um aquecimento inicial ou o tempo de recuperação entre repetições.\n" +
+    "- warmup_minutes / recovery_seconds: só se o ecrã mostrar claramente um aquecimento inicial ou o tempo de " +
+    "recuperação entre repetições.\n" +
     "- splits: se o ecrã mostrar uma tabela de voltas/laps/repetições com distância e tempo de cada uma, devolve " +
     "cada linha como { distance_km, time_seconds }. Deixa null se não houver essa tabela visível.\n" +
-    `- race_type: só se esta for claramente uma COMPETIÇÃO/prova oficial (não um treino normal). ` +
-    `Escolhe entre: ${RACE_TYPE_KEYS.join(", ")}.\n` +
     "- official_time_seconds / position: só em competição, se o ecrã mostrar o tempo oficial de prova e/ou a " +
     "posição de chegada (classificação).\n" +
     "- elevation_gain_m / cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece distância/tempo/pace) " +
     "mostrar desnível acumulado (m), cadência média (passadas por minuto) ou calorias, extrai esses valores.\n" +
     "- avg_heart_rate_bpm / max_heart_rate_bpm: se houver um ecrã de frequência cardíaca, extrai a FC média e a FC " +
-    "máxima da atividade.\n" +
-    "- hr_zones: se esse ecrã de frequência cardíaca mostrar uma repartição por zonas (Z1 a Z5, ou similar) com o " +
-    "tempo passado em cada uma, devolve cada linha como { zone, minutes } (zone = número da zona, 1 a 5).\n" +
+    "máxima da atividade. Estes dois números aparecem quase sempre juntos no mesmo ecrã — se encontrares a FC " +
+    "média, procura ativamente a FC máxima ao lado ou por perto antes de desistir.\n" +
+    "- hr_zones: PRESTA ATENÇÃO ESPECIAL a este campo — é frequentemente ignorado. Procura em TODAS as imagens " +
+    "recebidas (pode estar num ecrã dedicado, separado do ecrã principal de FC) uma repartição por zonas de " +
+    "frequência cardíaca — pode aparecer como 'Zonas de FC', 'HR Zones', 'Time in Zones', ou apenas uma lista/" +
+    "gráfico de barras com Z1, Z2, Z3, Z4, Z5 (ou Zona 1...5) e o tempo passado em cada uma. Mesmo que os valores " +
+    "estejam só em minutos:segundos por barra, converte para minutos (decimal) e devolve cada linha como " +
+    "{ zone, minutes } (zone = número da zona, 1 a 5). Só devolve null se tiveres a certeza de que NENHUMA das " +
+    "imagens mostra este ecrã.\n" +
     "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";
   if (kindHint === "treino") {
-    prompt += "\n\nO utilizador já indicou que isto é um TREINO (não uma competição) — só preenche os campos de treino, deixa race_type/official_time_seconds/position a null.";
+    prompt += `\n\nO utilizador já confirmou que isto é um TREINO do tipo "${trainingType ? TRAINING_TYPE_LABELS[trainingType] || trainingType : "não especificado"}" — usa isso como contexto (ex.: só esperar aquecimento/recuperação/splits estruturados se o tipo for Intervalos ou Subidas). Deixa official_time_seconds/position a null.`;
   } else if (kindHint === "competicao") {
-    prompt += "\n\nO utilizador já indicou que isto é uma COMPETIÇÃO — só preenche os campos de competição, deixa training_type/warmup_minutes/recovery_seconds a null.";
+    prompt += `\n\nO utilizador já confirmou que isto é uma COMPETIÇÃO de disciplina "${raceType ? RACE_TYPE_LABELS[raceType] || raceType : "não especificada"}" — deixa warmup_minutes/recovery_seconds a null.`;
   }
   if (notes && notes.trim()) {
     prompt +=
@@ -217,11 +215,9 @@ type HrZone = { zone: number | null; minutes: number | null };
 type RunExtraction = {
   distance_km: number | null;
   duration_seconds: number | null;
-  training_type: string | null;
   warmup_minutes: number | null;
   recovery_seconds: number | null;
   splits: RunSplit[] | null;
-  race_type: string | null;
   official_time_seconds: number | null;
   position: number | null;
   elevation_gain_m: number | null;
@@ -237,10 +233,12 @@ async function analyzeWithGemini(
   images: string[],
   mime: string,
   kindHint: string | null,
+  trainingType: string | null,
+  raceType: string | null,
   notes: string | null,
   geminiKey: string,
 ): Promise<{ extraction: RunExtraction; usage: GeminiUsage }> {
-  const parts: unknown[] = [{ text: buildPrompt(kindHint, notes) }];
+  const parts: unknown[] = [{ text: buildPrompt(kindHint, trainingType, raceType, notes) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -287,8 +285,6 @@ async function analyzeWithGemini(
 
   const num = (v: unknown): number | null =>
     typeof v === "number" && isFinite(v) && v >= 0 ? v : null;
-  const str = (v: unknown, allowed: string[]): string | null =>
-    typeof v === "string" && allowed.includes(v) ? v : null;
 
   const rawSplits = Array.isArray(parsed.splits) ? parsed.splits : [];
   const splits: RunSplit[] = rawSplits
@@ -309,11 +305,9 @@ async function analyzeWithGemini(
   const extraction: RunExtraction = {
     distance_km: num(parsed.distance_km),
     duration_seconds: num(parsed.duration_seconds),
-    training_type: str(parsed.training_type, TRAINING_TYPE_KEYS),
     warmup_minutes: num(parsed.warmup_minutes),
     recovery_seconds: num(parsed.recovery_seconds),
     splits: splits.length ? splits : null,
-    race_type: str(parsed.race_type, RACE_TYPE_KEYS),
     official_time_seconds: num(parsed.official_time_seconds),
     position: num(parsed.position),
     elevation_gain_m: num(parsed.elevation_gain_m),
@@ -329,14 +323,34 @@ async function analyzeWithGemini(
     throw new Error("Não foi possível ler a distância ou a duração nas imagens. Tenta outro ângulo ou mais luz.");
   }
 
+  // Diagnóstico leve (sem dados de imagem) — permite perceber via get_logs
+  // quais métricas do relógio o Gemini conseguiu (ou não) ler numa extração
+  // que correu bem mas ficou incompleta (ex.: hr_zones ausente).
+  console.log("Extração de corrida:", JSON.stringify({
+    has_distance: extraction.distance_km !== null,
+    has_duration: extraction.duration_seconds !== null,
+    has_elevation: extraction.elevation_gain_m !== null,
+    has_cadence: extraction.cadence_spm !== null,
+    has_calories: extraction.calories_kcal !== null,
+    has_avg_hr: extraction.avg_heart_rate_bpm !== null,
+    has_max_hr: extraction.max_heart_rate_bpm !== null,
+    has_vo2max: extraction.vo2_max !== null,
+    hr_zones_count: extraction.hr_zones?.length || 0,
+  }));
+
   return { extraction, usage };
 }
 
-// Monta o `details` jsonb a partir da extração: campos específicos do tipo
-// (treino por repetição vs. competição) + métricas do relógio, que se
-// aplicam a qualquer corrida — mesma estrutura que o cliente usa na entrada
-// manual (buildRunDetailsPayload/buildRunWatchMetrics).
-function detailsFromExtraction(kind: string, e: RunExtraction): Record<string, unknown> | null {
+// Monta o `details` jsonb a partir da extração + tipo/disciplina já
+// confirmados pelo utilizador (trainingType/raceType — não vêm da IA) +
+// métricas do relógio, que se aplicam a qualquer corrida — mesma estrutura
+// que o cliente usa na entrada manual (buildRunDetailsPayload/buildRunWatchMetrics).
+function detailsFromExtraction(
+  kind: string,
+  e: RunExtraction,
+  trainingType: string | null,
+  raceType: string | null,
+): Record<string, unknown> | null {
   const d: Record<string, unknown> = {};
   if (e.elevation_gain_m) d.elevation_gain_m = e.elevation_gain_m;
   if (e.cadence_spm) d.cadence_spm = e.cadence_spm;
@@ -346,13 +360,13 @@ function detailsFromExtraction(kind: string, e: RunExtraction): Record<string, u
   if (e.vo2_max) d.vo2_max = e.vo2_max;
   if (e.hr_zones && e.hr_zones.length) d.hr_zones = e.hr_zones;
 
-  if (kind === "treino" && e.training_type && REPEAT_TRAINING_TYPES.has(e.training_type)) {
+  if (kind === "treino" && trainingType && REPEAT_TRAINING_TYPES.has(trainingType)) {
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;
     if (e.recovery_seconds) d.recovery_seconds = e.recovery_seconds;
     if (e.splits && e.splits.length) d.splits = e.splits;
   }
   if (kind === "competicao") {
-    if (e.race_type) d.race_type = e.race_type;
+    if (raceType) d.race_type = raceType;
     if (e.official_time_seconds) d.official_time_seconds = e.official_time_seconds;
     if (e.position) d.position = e.position;
   }
@@ -399,7 +413,7 @@ Deno.serve(async (req) => {
       const runId = body.run_id;
       const { data: existing, error: fetchError } = await sb
         .from("runs")
-        .select("id, photo_paths, kind")
+        .select("id, photo_paths, kind, training_type, details")
         .eq("id", runId)
         .eq("user_id", userId)
         .maybeSingle();
@@ -420,22 +434,26 @@ Deno.serve(async (req) => {
         images.push(bytesToBase64(new Uint8Array(await fileBlob.arrayBuffer())));
       }
 
+      // Tipo de treino/disciplina são escolhas do utilizador, não vêm da
+      // imagem — preserva o que já estava gravado em vez de tentar adivinhar
+      // de novo a cada reanálise.
+      const kind = existing.kind;
+      const existingTrainingType = kind === "treino" ? existing.training_type : null;
+      const existingRaceType = kind === "competicao" ? ((existing.details || {}).race_type ?? null) : null;
+
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", existing.kind, rawNotes, geminiKey);
+        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
 
-      const kind = existing.kind;
-      const trainingType = kind === "treino" ? result.extraction.training_type : null;
       const { data: updated, error: updateError } = await sb
         .from("runs")
         .update({
           distance_km: result.extraction.distance_km,
           duration_seconds: result.extraction.duration_seconds,
-          training_type: trainingType,
-          details: detailsFromExtraction(kind, result.extraction),
+          details: detailsFromExtraction(kind, result.extraction, existingTrainingType, existingRaceType),
           notes: rawNotes,
         })
         .eq("id", runId)
@@ -455,8 +473,19 @@ Deno.serve(async (req) => {
     const clientName = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
     const nameIsAuto = body.name_is_auto === true;
     const periodLabel = typeof body.period_label === "string" ? body.period_label.slice(0, 20) : "";
+    // Tipo de treino/disciplina: sempre escolhidos pelo utilizador no
+    // cliente antes de submeter — nunca inferidos pela IA.
+    const trainingType = kind === "treino" && typeof body.training_type === "string" && TRAINING_TYPE_KEYS.includes(body.training_type)
+      ? body.training_type
+      : null;
+    const raceType = kind === "competicao" && typeof body.race_type === "string" && RACE_TYPE_KEYS.includes(body.race_type)
+      ? body.race_type
+      : null;
     if (!clientName) {
       return jsonResponse({ error: "Preenche o nome da corrida." }, 400);
+    }
+    if (kind === "treino" && !trainingType) {
+      return jsonResponse({ error: "Escolhe o tipo de treino antes de analisar." }, 400);
     }
 
     let images: string[] = [];
@@ -496,19 +525,16 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, kind, rawNotes, geminiKey);
+      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey);
     } catch (e) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
     }
 
-    const trainingType = kind === "treino" ? result.extraction.training_type : null;
-    // Se o nome ainda era a sugestão genérica do cliente (sem saber o tipo
-    // real), refaz com o tipo/disciplina que a IA acabou de detetar. Se o
-    // utilizador já o tinha reescrito à mão, mantém exatamente o que enviou.
-    const finalName = nameIsAuto
-      ? buildAutoName(kind, trainingType, kind === "competicao" ? result.extraction.race_type : null, periodLabel)
-      : clientName;
+    // Se o nome ainda era a sugestão genérica do cliente, refaz com o kind +
+    // período (sem tipo/disciplina, ver buildAutoName). Se o utilizador já o
+    // tinha reescrito à mão, mantém exatamente o que enviou.
+    const finalName = nameIsAuto ? buildAutoName(kind, periodLabel) : clientName;
 
     // 3. Gravar corrida
     const { data: run, error: insertError } = await sb
@@ -519,7 +545,7 @@ Deno.serve(async (req) => {
         photo_paths: photoPaths,
         kind,
         training_type: trainingType,
-        details: detailsFromExtraction(kind, result.extraction),
+        details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
         notes: rawNotes,
         name: finalName,
         effort_rpe: effortRpe,

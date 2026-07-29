@@ -3696,16 +3696,11 @@ function periodOfDayLabel(){
   if (h < 19) return 'da tarde';
   return 'noturno';
 }
-// Nome sugerido a partir do kind/tipo/disciplina atuais + período do dia —
-// ex.: "Treino Contínuo matinal", "Competição Meia maratona da tarde".
+// Nome sugerido a partir do kind atual + período do dia —
+// ex.: "Treino matinal", "Competição da tarde".
 function suggestedRunName(){
   const period = periodOfDayLabel();
-  if (runKind === 'competicao') {
-    const disc = RACE_TYPES.find(t => t.key === (runDetailsDraft.race_type || ''));
-    return disc ? `Competição ${disc.label} ${period}` : `Competição ${period}`;
-  }
-  const type = RUN_TRAINING_TYPES.find(t => t.key === runTrainingType);
-  return type ? `Treino ${type.label} ${period}` : `Treino ${period}`;
+  return runKind === 'competicao' ? `Competição ${period}` : `Treino ${period}`;
 }
 // Só atualiza o rascunho se ainda for a sugestão automática — nunca sobrepõe
 // um nome que o utilizador já editou à mão.
@@ -3811,10 +3806,10 @@ function buildRunDetailsPayload(){
   return Object.keys(d).length ? d : null;
 }
 
-// Pílulas Treino/Competição — a única classificação partilhada pelo upload
-// (analyzeRun) e pela entrada manual (submitNewRun): a IA lê o resto (tipo de
-// treino, splits, tempo oficial...) sozinha a partir da imagem; só a entrada
-// manual precisa da classificação detalhada (ver renderRunTypeDetailFields).
+// Pílulas Treino/Competição — partilhadas pelo upload (analyzeRun) e pela
+// entrada manual (submitNewRun). O tipo de treino/disciplina (ver
+// renderRunTypeSelectField) é escolhido logo a seguir, também partilhado: é
+// sempre o utilizador a decidir, mesmo no caminho por foto.
 function renderRunKindPills(){
   const kinds = [
     { key:'treino', label:'Treino' },
@@ -3908,27 +3903,48 @@ function renderRunWatchMetricsFields(){
   `;
 }
 
-// Tipo de treino/disciplina + campos próprios de cada um — só usados na
-// entrada manual (ver ponto 2: no caminho por foto, a IA infere isto tudo
-// sozinha a partir da imagem, sem pedir ao utilizador para classificar antes).
+// Tipo de treino (Treino) ou Disciplina (Competição) — sempre escolhido pelo
+// utilizador, na secção partilhada do ecrã (antes de "Analisar Corrida" ou da
+// entrada manual): a IA já não infere isto a partir da foto.
+function renderRunTypeSelectField(){
+  if (runKind === 'competicao') {
+    return `
+      <div class="mb-3">
+        <label class="text-[11px] text-slate-500 mb-1 block">Disciplina</label>
+        <select onchange="selectRaceType(this.value)"
+          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+          <option value="">Escolhe a disciplina…</option>
+          ${RACE_TYPES.map(t => `<option value="${t.key}" ${(runDetailsDraft.race_type||'')===t.key?'selected':''}>${t.label}</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }
+  return `
+    <div class="mb-1.5">
+      <label class="text-[11px] text-slate-500 mb-1 block">Tipo de treino</label>
+      <select id="runTrainingTypeSelect" onchange="selectRunTrainingType(this.value)"
+        class="w-full bg-neutral-900 border ${runFieldBorderClass('trainingType')} rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+        <option value="">Escolhe o tipo…</option>
+        ${[...new Set(RUN_TRAINING_TYPES.map(t => t.group))].map(g => `
+          <optgroup label="${g}">
+            ${RUN_TRAINING_TYPES.filter(t => t.group === g).map(t => `<option value="${t.key}" ${runTrainingType===t.key?'selected':''}>${t.label}</option>`).join('')}
+          </optgroup>
+        `).join('')}
+      </select>
+      ${runFieldErrorMsg('trainingType')}
+    </div>
+    <p class="text-[10px] text-slate-600 mb-3">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+  `;
+}
+
+// Campos específicos de cada tipo/disciplina — usados na entrada manual e no
+// ecrã de edição (a estrutura da sessão, tempo oficial, etc., continuam a ser
+// preenchidos à mão; o tipo/disciplina em si já não está aqui, ver
+// renderRunTypeSelectField).
 function renderRunTypeDetailFields(){
   return `
     ${renderRunWatchMetricsFields()}
     ${runKind === 'treino' ? `
-      <div class="mb-1.5">
-        <label class="text-[11px] text-slate-500 mb-1 block">Tipo de treino</label>
-        <select id="runTrainingTypeSelect" onchange="selectRunTrainingType(this.value)"
-          class="w-full bg-neutral-900 border ${runFieldBorderClass('trainingType')} rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
-          <option value="">Escolhe o tipo…</option>
-          ${[...new Set(RUN_TRAINING_TYPES.map(t => t.group))].map(g => `
-            <optgroup label="${g}">
-              ${RUN_TRAINING_TYPES.filter(t => t.group === g).map(t => `<option value="${t.key}" ${runTrainingType===t.key?'selected':''}>${t.label}</option>`).join('')}
-            </optgroup>
-          `).join('')}
-        </select>
-        ${runFieldErrorMsg('trainingType')}
-      </div>
-      <p class="text-[10px] text-slate-600 mb-3">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
       ${RUN_REPEAT_TRAINING_TYPES.has(runTrainingType) ? `
         <div class="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 mb-3">
           <p class="text-[11px] font-semibold text-slate-400 mb-2">Estrutura da sessão</p>
@@ -3973,14 +3989,6 @@ function renderRunTypeDetailFields(){
     ` : ''}
 
     ${runKind === 'competicao' ? `
-      <div class="mb-3">
-        <label class="text-[11px] text-slate-500 mb-1 block">Disciplina</label>
-        <select onchange="selectRaceType(this.value)"
-          class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
-          <option value="">Escolhe a disciplina…</option>
-          ${RACE_TYPES.map(t => `<option value="${t.key}" ${(runDetailsDraft.race_type||'')===t.key?'selected':''}>${t.label}</option>`).join('')}
-        </select>
-      </div>
       <div class="grid grid-cols-2 gap-2 mb-3">
         <input type="text" inputmode="text" placeholder="Tempo oficial (ex.: 1:45:00)" value="${esc(runDetailsDraft.official_time_minutes || '')}"
           oninput="updateRunDetail('official_time_minutes', this.value)"
@@ -3995,6 +4003,127 @@ function renderRunTypeDetailFields(){
 }
 
 /* ---------- Dashboard de evolução (landing page da Corrida) ---------- */
+
+// Agrega as métricas do relógio (details) das corridas do período — só entram
+// no cálculo as corridas que efetivamente têm cada campo, para não puxar
+// médias para baixo com corridas sem essa informação.
+function runWatchMetricsSummary(periodRuns){
+  const withDetails = periodRuns.filter(r => r.details);
+  const numsFrom = (key) => withDetails
+    .map(r => Number(r.details[key]))
+    .filter(n => Number.isFinite(n) && n > 0);
+
+  const elevation = numsFrom('elevation_gain_m');
+  const calories = numsFrom('calories_kcal');
+  const cadence = numsFrom('cadence_spm');
+  const avgHr = numsFrom('avg_heart_rate_bpm');
+  const maxHr = numsFrom('max_heart_rate_bpm');
+
+  const vo2Runs = withDetails
+    .filter(r => Number(r.details.vo2_max) > 0)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const zoneMinutes = [0, 0, 0, 0, 0]; // índice 0 = Zona 1
+  withDetails.forEach(r => {
+    (r.details.hr_zones || []).forEach(z => {
+      const zone = Number(z.zone), minutes = Number(z.minutes);
+      if (zone >= 1 && zone <= 5 && Number.isFinite(minutes) && minutes > 0) zoneMinutes[zone - 1] += minutes;
+    });
+  });
+  const zoneTotal = zoneMinutes.reduce((a, b) => a + b, 0);
+
+  return {
+    totalElevation: elevation.reduce((a, b) => a + b, 0),
+    totalCalories: calories.reduce((a, b) => a + b, 0),
+    avgCadence: cadence.length ? cadence.reduce((a, b) => a + b, 0) / cadence.length : null,
+    avgHr: avgHr.length ? avgHr.reduce((a, b) => a + b, 0) / avgHr.length : null,
+    maxHr: maxHr.length ? Math.max(...maxHr) : null,
+    latestVo2: vo2Runs.length ? Number(vo2Runs[0].details.vo2_max) : null,
+    zoneMinutes, zoneTotal,
+  };
+}
+
+// Cartões extra do Dashboard, um por família de métrica do relógio — só
+// aparecem quando há pelo menos uma corrida no período com esse dado (o
+// utilizador pode nunca ter usado relógio, ou só nalgumas corridas).
+function renderRunWatchMetricsDashboard(periodRuns){
+  const m = runWatchMetricsSummary(periodRuns);
+  const cards = [];
+
+  if (m.totalElevation > 0 || m.totalCalories > 0 || m.avgCadence != null) {
+    cards.push(`
+      <div class="card rounded-2xl p-3.5">
+        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5 flex items-center gap-1.5">
+          <i data-lucide="mountain" class="w-3.5 h-3.5 text-slate-500"></i> Desnível, calorias e cadência
+        </h2>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div>
+            <p class="text-base font-extrabold text-white leading-none">${m.totalElevation > 0 ? Math.round(m.totalElevation) : '—'}</p>
+            <p class="text-[10px] text-slate-500 mt-1">Desnível (m)</p>
+          </div>
+          <div>
+            <p class="text-base font-extrabold text-white leading-none">${m.totalCalories > 0 ? Math.round(m.totalCalories) : '—'}</p>
+            <p class="text-[10px] text-slate-500 mt-1">Calorias</p>
+          </div>
+          <div>
+            <p class="text-base font-extrabold text-white leading-none">${m.avgCadence != null ? Math.round(m.avgCadence) : '—'}</p>
+            <p class="text-[10px] text-slate-500 mt-1">Cadência (spm)</p>
+          </div>
+        </div>
+      </div>
+    `);
+  }
+
+  if (m.avgHr != null || m.maxHr != null || m.zoneTotal > 0) {
+    const zoneLabels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
+    cards.push(`
+      <div class="card rounded-2xl p-3.5">
+        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5 flex items-center gap-1.5">
+          <i data-lucide="heart-pulse" class="w-3.5 h-3.5 text-slate-500"></i> Frequência cardíaca
+        </h2>
+        <div class="grid grid-cols-2 gap-2 text-center mb-3">
+          <div>
+            <p class="text-base font-extrabold text-white leading-none">${m.avgHr != null ? Math.round(m.avgHr) : '—'}</p>
+            <p class="text-[10px] text-slate-500 mt-1">FC média (bpm)</p>
+          </div>
+          <div>
+            <p class="text-base font-extrabold text-white leading-none">${m.maxHr != null ? Math.round(m.maxHr) : '—'}</p>
+            <p class="text-[10px] text-slate-500 mt-1">FC máxima (bpm)</p>
+          </div>
+        </div>
+        ${m.zoneTotal > 0 ? `
+          <div class="space-y-1.5">
+            ${zoneLabels.map((label, i) => `
+              <div class="flex items-center gap-2">
+                <span class="text-[10px] text-slate-500 w-5 shrink-0">${label}</span>
+                <div class="flex-1">${gaugeBar((m.zoneMinutes[i] / m.zoneTotal) * 100, { color: 'var(--mod-corrida-from)' })}</div>
+                <span class="text-[10px] text-slate-500 w-10 text-right shrink-0">${Math.round(m.zoneMinutes[i])} min</span>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `);
+  }
+
+  if (m.latestVo2 != null) {
+    cards.push(`
+      <div class="card rounded-2xl p-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="gauge" class="w-4 h-4 text-slate-500"></i>
+          <div>
+            <p class="text-[11px] font-semibold text-slate-300">VO2 máx</p>
+            <p class="text-[10px] text-slate-500">Valor mais recente do relógio</p>
+          </div>
+        </div>
+        <p class="text-lg font-extrabold text-white leading-none">${m.latestVo2.toFixed(1)}</p>
+      </div>
+    `);
+  }
+
+  return cards.join('');
+}
+
 function setCorridaRange(r){ corridaRange = r; refreshCorridaDashboard(); }
 function refreshCorridaDashboard(){
   const main = document.getElementById('tab-content');
@@ -4077,6 +4206,8 @@ function renderCorridaDashboard(){
           ${bucket('21 km+', b21)}
         </div>
       </div>
+
+      ${renderRunWatchMetricsDashboard(periodRuns)}
     </div>`;
 }
 function renderCorridaCharts(){
@@ -4215,6 +4346,8 @@ function renderCorridaRegistar(){
 
         ${renderRunKindPills()}
 
+        ${renderRunTypeSelectField()}
+
         <div class="mb-3">
           <label for="runDate" class="text-[11px] text-slate-500 mb-1 block">Data da corrida</label>
           <input id="runDate" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value; clearRunFieldError('date');"
@@ -4315,6 +4448,8 @@ function renderCorridaEditar(){
 
         ${renderRunKindPills()}
 
+        ${renderRunTypeSelectField()}
+
         <div class="mb-3">
           <label for="runDate" class="text-[11px] text-slate-500 mb-1 block">Data da corrida</label>
           <input id="runDate" type="date" value="${runDate}" max="${todayISO()}" onchange="runDate=this.value; clearRunFieldError('date');"
@@ -4379,10 +4514,13 @@ function clearRunPhotos(){ runPhotos = []; refreshCorridaRegistar(); }
 
 async function analyzeRun(){
   if (!runPhotos.length || analyzingRun) return;
-  if (!runNameDraft.trim()) {
-    runFieldErrors = { name: 'Preenche o nome da corrida.' };
+  const errors = {};
+  if (runKind === 'treino' && !runTrainingType) errors.trainingType = 'Escolhe o tipo de treino.';
+  if (!runNameDraft.trim()) errors.name = 'Preenche o nome da corrida.';
+  if (Object.keys(errors).length) {
+    runFieldErrors = errors;
     refreshCorridaRegistar();
-    focusRunField('runName');
+    focusRunField(errors.trainingType ? 'runTrainingTypeSelect' : 'runName');
     return;
   }
   const date = runDate || todayISO();
@@ -4394,6 +4532,8 @@ async function analyzeRun(){
         images: runPhotos.map(p => p.base64), mime_type: 'image/jpeg', date,
         kind: runKind, name: runNameDraft.trim(), name_is_auto: runNameAutoSuggested,
         period_label: periodOfDayLabel(), effort_rpe: runEffortDraft || null,
+        training_type: runKind === 'treino' ? runTrainingType : null,
+        race_type: runKind === 'competicao' ? (runDetailsDraft.race_type || null) : null,
       },
     });
     if (error) throw new Error(await edgeFunctionErrorMessage(error, 'Falha na análise.'));
