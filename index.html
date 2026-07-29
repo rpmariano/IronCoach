@@ -4150,20 +4150,16 @@ function renderCorridaDashboard(){
   const b5 = bestPaceData(5), b10 = bestPaceData(10), b21 = bestPaceData(21);
   const bucket = (label, b) => {
     if (!b) return `
-      <div class="flex-1 min-w-0">
-        <div class="flex items-baseline justify-between gap-2">
-          <p class="text-[10px] text-slate-500">${label}</p>
-          <p class="text-xs text-slate-600">Sem dados</p>
-        </div>
-        ${gaugeBar(0, { color: 'var(--mod-corrida-from)' })}
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-[10px] text-slate-500">${label}</p>
+        <p class="text-[10px] text-slate-600">Sem dados</p>
+        <div class="flex-1">${gaugeBar(0, { color: 'var(--mod-corrida-from)' })}</div>
       </div>`;
     return `
-      <div class="flex-1 min-w-0">
-        <div class="flex items-baseline justify-between gap-2 mb-1">
-          <p class="text-[10px] text-slate-500">${label}</p>
-          <p class="text-sm font-extrabold text-white leading-none">${formatPace(b.pace)}</p>
-        </div>
-        ${gaugeBar(paceQualityPct(b.pace), { color: 'var(--mod-corrida-from)' })}
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-[10px] text-slate-500">${label}</p>
+        <p class="text-xs font-extrabold text-white">${formatPace(b.pace)}</p>
+        <div class="flex-1">${gaugeBar(paceQualityPct(b.pace), { color: 'var(--mod-corrida-from)' })}</div>
       </div>`;
   };
 
@@ -4208,8 +4204,8 @@ function renderCorridaDashboard(){
         </div>`}
 
       <div class="card rounded-2xl p-3.5">
-        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5">Melhor pace de sempre</h2>
-        <div class="flex items-start gap-3">
+        <h2 class="text-[11px] font-semibold text-slate-300 mb-3">Melhor pace de sempre</h2>
+        <div class="space-y-2.5">
           ${bucket('5 km+', b5)}
           ${bucket('10 km+', b10)}
           ${bucket('21 km+', b21)}
