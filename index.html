@@ -3549,32 +3549,35 @@ function runCard(r){
   ].filter(Boolean);
 
   return `
-    <div id="run-card-${r.id}" class="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-hidden">
-      <button onclick="toggleRunExpand('${r.id}')" class="w-full flex items-center justify-between gap-2 p-3 text-left">
+    <div id="run-card-${r.id}" class="border border-neutral-800 rounded-2xl overflow-hidden">
+      <button onclick="toggleRunExpand('${r.id}')" class="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-neutral-900/40 transition">
         <div class="min-w-0">
-          <p class="text-xs font-semibold text-white flex items-center gap-1.5 flex-wrap">
-            ${r.name ? esc(r.name) : formatDatePT(r.date)}
-            ${kindLabel ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 badge-ink border border-[var(--accent)]/30">${esc(kindLabel)}</span>` : ''}
-            ${paths.length>1 ? `<span class="text-[10px] text-slate-500 flex items-center gap-0.5"><i data-lucide="images" class="w-3 h-3"></i>${paths.length}</span>` : ''}
-          </p>
-          <p class="text-[11px] text-slate-500 mt-0.5">${r.name ? formatDatePT(r.date) + (summaryParts.length ? ' · ' + summaryParts.join(' · ') : '') : (summaryParts.length ? summaryParts.join(' · ') : 'Sem distância/duração registadas')}</p>
-          ${splits.length ? `<p class="text-[10px] text-slate-600 mt-0.5">Splits: ${splits.join(' · ')}</p>` : ''}
+          <div class="flex items-center gap-2 mb-1">
+            <p class="text-sm font-bold text-white">${r.name ? esc(r.name) : formatDatePT(r.date)}</p>
+            ${kindLabel ? `<span class="text-[10px] font-semibold px-2 py-1 rounded-full bg-[var(--mod-corrida-to)]/10 text-[var(--mod-corrida-to)]">${esc(kindLabel)}</span>` : ''}
+            ${paths.length>1 ? `<span class="text-[10px] text-slate-500"><i data-lucide="images" class="w-3 h-3 inline"></i> ${paths.length}</span>` : ''}
+          </div>
+          <p class="text-[12px] text-slate-400">${r.name ? formatDatePT(r.date) : ''}</p>
+          ${summaryParts.length ? `<p class="text-sm font-semibold text-white mt-1">${summaryParts.join(' · ')}</p>` : ''}
         </div>
-        <i data-lucide="${expanded?'chevron-up':'chevron-down'}" class="w-4 h-4 text-slate-500 shrink-0"></i>
+        <i data-lucide="${expanded?'chevron-up':'chevron-down'}" class="w-5 h-5 text-slate-500 shrink-0"></i>
       </button>
 
       ${expanded ? `
-      <div class="px-3 pb-3 space-y-2.5 border-t border-neutral-800 pt-2.5">
+      <div class="px-4 pb-4 border-t border-neutral-800 pt-4 space-y-3">
         ${paths.length ? `
-          <div class="flex flex-wrap gap-2">
-            ${paths.map(p => signedUrlCache[p]
-              ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-xl border border-neutral-800" alt="Print" /></a>`
-              : signedUrlFailed[p]
-                ? `<button onclick="loadRunPhotoUrls('${r.id}')" type="button" class="w-20 h-20 shrink-0 rounded-xl border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Tentar de novo
-                  </button>`
-                : `<div class="w-20 h-20 shrink-0 rounded-xl border border-neutral-800 bg-neutral-900 flex items-center justify-center text-slate-600 text-xs"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></div>`
-            ).join('')}
+          <div>
+            <p class="text-[11px] text-slate-500 font-semibold mb-2">Prints</p>
+            <div class="flex flex-wrap gap-2">
+              ${paths.map(p => signedUrlCache[p]
+                ? `<a href="${signedUrlCache[p]}" target="_blank" rel="noopener" class="shrink-0"><img src="${signedUrlCache[p]}" class="w-20 h-20 object-cover rounded-lg border border-neutral-800 hover:border-neutral-700 transition" alt="Print" /></a>`
+                : signedUrlFailed[p]
+                  ? `<button onclick="loadRunPhotoUrls('${r.id}')" type="button" class="w-20 h-20 shrink-0 rounded-lg border border-red-500/30 bg-neutral-900 flex flex-col items-center justify-center text-red-400 text-[10px] gap-1 text-center px-1 hover:bg-red-500/10 transition">
+                      <i data-lucide="refresh-cw" class="w-4 h-4"></i> Tentar
+                    </button>`
+                  : `<div class="w-20 h-20 shrink-0 rounded-lg border border-neutral-800 bg-neutral-900 flex items-center justify-center text-slate-600 text-xs"><i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i></div>`
+              ).join('')}
+            </div>
           </div>` : ''}
 
         ${r.kind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(r.training_type) ? `
@@ -3596,27 +3599,32 @@ function runCard(r){
           </div>` : ''}
 
         ${(d.elevation_gain_m || d.cadence_spm || d.calories_kcal || d.avg_heart_rate_bpm || d.max_heart_rate_bpm || d.vo2_max) ? `
-          <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-400">
-            ${d.elevation_gain_m ? `<span>Desnível: <span class="text-slate-200">${d.elevation_gain_m} m</span></span>` : ''}
-            ${d.cadence_spm ? `<span>Cadência: <span class="text-slate-200">${d.cadence_spm} spm</span></span>` : ''}
-            ${d.calories_kcal ? `<span>Calorias: <span class="text-slate-200">${d.calories_kcal} kcal</span></span>` : ''}
-            ${d.vo2_max ? `<span>VO2 máx: <span class="text-slate-200">${d.vo2_max}</span></span>` : ''}
-            ${d.avg_heart_rate_bpm ? `<span>FC média: <span class="text-slate-200">${d.avg_heart_rate_bpm} bpm</span></span>` : ''}
-            ${d.max_heart_rate_bpm ? `<span>FC máxima: <span class="text-slate-200">${d.max_heart_rate_bpm} bpm</span></span>` : ''}
+          <div>
+            <p class="text-[11px] text-slate-500 font-semibold mb-2">Métricas</p>
+            <div class="grid grid-cols-3 gap-2">
+              ${d.elevation_gain_m ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.elevation_gain_m}</p><p class="text-[10px] text-slate-500 mt-0.5">Desnível (m)</p></div>` : ''}
+              ${d.cadence_spm ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.cadence_spm}</p><p class="text-[10px] text-slate-500 mt-0.5">Cadência (spm)</p></div>` : ''}
+              ${d.calories_kcal ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.calories_kcal}</p><p class="text-[10px] text-slate-500 mt-0.5">Calorias</p></div>` : ''}
+              ${d.vo2_max ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.vo2_max}</p><p class="text-[10px] text-slate-500 mt-0.5">VO2 máx</p></div>` : ''}
+              ${d.avg_heart_rate_bpm ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.avg_heart_rate_bpm}</p><p class="text-[10px] text-slate-500 mt-0.5">FC média</p></div>` : ''}
+              ${d.max_heart_rate_bpm ? `<div class="bg-neutral-900/50 rounded-lg p-2 text-center"><p class="text-sm font-bold text-white">${d.max_heart_rate_bpm}</p><p class="text-[10px] text-slate-500 mt-0.5">FC máx</p></div>` : ''}
+            </div>
           </div>` : ''}
         ${(d.hr_zones && d.hr_zones.length) ? `
           <p class="text-[11px] text-slate-400">Zonas de FC: <span class="text-slate-200">${d.hr_zones.map(z => `Z${z.zone} ${z.minutes}min`).join(' · ')}</span></p>
         ` : ''}
 
-        ${r.effort_rpe ? `<p class="text-[11px] text-slate-500">Esforço: <span class="text-slate-300 font-medium">${r.effort_rpe}/10</span></p>` : ''}
-        ${r.notes ? `<p class="text-[11px] text-slate-500"><span class="text-slate-400 font-medium">Obs.:</span> ${esc(r.notes)}</p>` : ''}
+        <div class="flex gap-3">
+          ${r.effort_rpe ? `<div class="flex-1"><p class="text-[11px] text-slate-500 mb-1">Esforço</p><div class="flex gap-1">${Array(10).fill(0).map((_, i) => `<div class="flex-1 h-1.5 rounded-full ${i < r.effort_rpe ? 'bg-[var(--mod-corrida-to)]' : 'bg-neutral-800'}"></div>`).join('')}</div></div>` : ''}
+        </div>
+        ${r.notes ? `<div><p class="text-[11px] text-slate-500 mb-1">Observações</p><p class="text-sm text-slate-300">${esc(r.notes)}</p></div>` : ''}
 
         ${r.coach_notes ? `
-          <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/30 p-3 mb-2">
-            <p class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1.5 mb-1.5">
-              <i data-lucide="award" class="w-3.5 h-3.5"></i> Coach
+          <div class="rounded-xl bg-emerald-500/10 border border-emerald-500/40 p-3">
+            <p class="text-[11px] text-emerald-300 font-semibold flex items-center gap-1.5 mb-2">
+              <i data-lucide="award" class="w-4 h-4"></i> Análise do Coach
             </p>
-            <p class="text-[11px] text-slate-300 leading-relaxed">${esc(r.coach_notes)}</p>
+            <p class="text-sm text-slate-200 leading-relaxed">${esc(r.coach_notes)}</p>
           </div>
         ` : ''}
 
