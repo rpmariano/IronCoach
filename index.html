@@ -4525,6 +4525,7 @@ async function analyzeRun(){
   if (!runPhotos.length || analyzingRun) return;
   const errors = {};
   if (runKind === 'treino' && !runTrainingType) errors.trainingType = 'Escolhe o tipo de treino.';
+  if (runKind === 'competicao' && !runDetailsDraft.race_type) errors.trainingType = 'Escolhe a disciplina.';
   if (!runNameDraft.trim()) errors.name = 'Preenche o nome da corrida.';
   if (Object.keys(errors).length) {
     runFieldErrors = errors;
