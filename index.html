@@ -1263,15 +1263,42 @@ function splitFieldForBucket(minKm){
 // contam como "10km"; 21km e 27km contam como "meia").
 const SPLIT_TOLERANCE = 1.3;
 
+// Deriva o pace até uma distância-alvo (ex.: aos 10km) a partir dos splits
+// guardados em details.splits — cada split tem a SUA PRÓPRIA distância e
+// tempo (não cumulativos, ex.: "Split 1: 1.00km em 6'10", Split 2: 1.00km em
+// 6'25"), tal como extraído pela IA de uma tabela de voltas/laps. Soma splits
+// em ordem até atingir/ultrapassar o alvo, interpolando a fração do último
+// split necessária para lá chegar — dá o pace real ao km-alvo, não a média
+// da corrida inteira. Devolve null se os splits não cobrirem essa distância
+// ou tiverem dados incompletos (não arrisca uma estimativa não fiável).
+function paceAtDistanceFromSplits(splits, targetKm){
+  if (!Array.isArray(splits) || !splits.length) return null;
+  let distSoFar = 0, timeSoFar = 0;
+  for (const s of splits) {
+    const d = Number(s.distance_km);
+    const t = Number(s.time_seconds);
+    if (!(d > 0) || !(t > 0)) return null;
+    if (distSoFar + d >= targetKm) {
+      const fraction = (targetKm - distSoFar) / d;
+      return (timeSoFar + t * fraction) / targetKm;
+    }
+    distSoFar += d;
+    timeSoFar += t;
+  }
+  return null;
+}
 // Pace de uma corrida PARA UM BUCKET específico, ou null se não houver forma
-// fiável de o saber. Com split guardado para essa distância, usa o pace real
-// desse troço (tempo do split / minKm) — o pace aos 5km de uma corrida de
-// 12km é o do troço, não o da corrida inteira. Sem split, só usa o pace
-// médio da corrida quando ela não ultrapassa a distância do bucket em mais
-// de SPLIT_TOLERANCE (nesse caso a média já É essencialmente o pace ao
-// km-alvo); para além disso, sem split não há dado fiável — a corrida não
-// alimenta esse bucket.
+// fiável de o saber. Com splits por km/volta guardados, deriva o pace real
+// até essa distância (ver paceAtDistanceFromSplits) — o pace aos 10km de uma
+// corrida de 12km é o desse troço, não o da corrida inteira. Sem splits que
+// cubram a distância, cai para o campo split_Xk_seconds legado (se existir)
+// e por fim para o pace médio da corrida, só quando ela não ultrapassa a
+// distância do bucket em mais de SPLIT_TOLERANCE (nesse caso a média já É
+// essencialmente o pace ao km-alvo); para além disso, não há dado fiável —
+// a corrida não alimenta esse bucket.
 function bucketPaceForRun(run, minKm){
+  const fromSplits = paceAtDistanceFromSplits((run.details || {}).splits, minKm);
+  if (fromSplits !== null) return fromSplits;
   const field = splitFieldForBucket(minKm);
   const split = field ? run[field] : null;
   if (split !== null && split !== undefined && split > 0) return split / minKm;
