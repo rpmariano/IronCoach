@@ -378,20 +378,23 @@ async function generateCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // Não forçamos thinkingConfig — o parâmetro certo (thinkingBudget
-          // vs. thinkingLevel, e os valores válidos) depende de qual modelo
-          // concreto "gemini-flash-latest" resolve num dado momento, e um
-          // valor errado pode ser ignorado ou rejeitado (400) consoante a
-          // série. Em vez de adivinhar, damos um orçamento de tokens grande
-          // o suficiente para sobrar texto visível mesmo que o modelo gaste
-          // uma fatia a "pensar" por baixo dos panos. 2048 já se mostrou
-          // insuficiente com o prompt mais rico (histórico de 30 corridas +
-          // tendências) — o thinking cresce com a complexidade do pedido.
-          generationConfig: { maxOutputTokens: 8192 },
+          // A falha anterior não era o parâmetro (thinkingLevel "minimal" é
+          // válido para a série Gemini 3 por trás de gemini-flash-latest) —
+          // era o timeout de 20s a ser demasiado curto para um prompt mais
+          // pesado (histórico de 30 corridas), confirmado por uma chamada
+          // real que bateu certo nos 30000ms do timeout seguinte. Junta-se
+          // aqui thinkingLevel "minimal" (reduz o tempo gasto a "pensar",
+          // logo reduz a hipótese de exceder o timeout) com um timeout bem
+          // mais folgado e um orçamento de tokens generoso como rede de
+          // segurança adicional.
+          generationConfig: {
+            maxOutputTokens: 8192,
+            thinkingConfig: { thinkingLevel: "minimal" },
+          },
         }),
       },
-      30000,
-      1,
+      45000,
+      0,
     );
 
     if (!res.ok) {
