@@ -264,7 +264,7 @@ async function generateCoachNotes(
 
   const details = (run.details || {}) as Record<string, unknown>;
 
-  // previousRuns pode trazer até 30 corridas (ver chamada no handler) — as
+  // previousRuns pode trazer até 10 corridas (ver chamada no handler) — as
   // últimas 5 vão em detalhe no prompt, mas o conjunto todo alimenta
   // estatísticas de médio prazo (volume semanal, tendência de pace, recorde
   // pessoal) que dão à análise substância que uma janela de 5 não permite.
@@ -294,7 +294,7 @@ async function generateCoachNotes(
     })
     .join("\n");
 
-  // Estatísticas de médio prazo sobre o histórico alargado (até 30 corridas):
+  // Estatísticas de médio prazo sobre o histórico alargado (até 10 corridas):
   // recorde pessoal de pace, volume total/semanal, e tendência comparando a
   // metade mais recente do histórico com a mais antiga.
   const allWithPace = previousRuns
@@ -748,17 +748,19 @@ Deno.serve(async (req) => {
 
     // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
     try {
-      // Busca um histórico bem maior do que as 5 corridas mostradas em
-      // detalhe no prompt — dá ao generateCoachNotes material para calcular
+      // Busca um histórico maior do que as 5 corridas mostradas em detalhe
+      // no prompt — dá ao generateCoachNotes material para calcular
       // tendências de médio prazo (volume semanal, evolução de pace,
       // recordes pessoais) em vez de comparar só com a corrida anterior.
+      // 30 corridas tornava o prompt pesado o suficiente para arriscar
+      // timeout no Gemini; 10 é um equilíbrio entre contexto útil e latência.
       const { data: previousRuns } = await sb
         .from("runs")
         .select("date, distance_km, duration_seconds, effort_rpe, details")
         .eq("user_id", userId)
         .lt("date", date)
         .order("date", { ascending: false })
-        .limit(30);
+        .limit(10);
 
       const coachNotes = await generateCoachNotes(
         {
