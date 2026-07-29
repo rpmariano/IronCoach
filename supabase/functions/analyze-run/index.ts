@@ -276,6 +276,10 @@ async function generateCoachNotes(
     })
     .join("\n");
 
+  const contextSection = previousContext.trim()
+    ? `\nÚltimas corridas (comparação):\n${previousContext}\n`
+    : `\nNota: esta é a primeira corrida registada (sem histórico anterior para comparação).\n`;
+
   const prompt =
     `Como um coach de corrida experiente, analisa esta corrida e fornece feedback breve (2-3 frases max). ` +
     `Sé elogioso quando apropriado, alerta para métricas fracas e sugere melhorias concretas.\n\n` +
@@ -288,7 +292,7 @@ async function generateCoachNotes(
     (details.elevation_gain_m ? `- Desnível: ${details.elevation_gain_m}m\n` : "") +
     (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.vo2_max ? `- VO2 max: ${details.vo2_max}\n` : "") +
-    `\nÚltimas corridas:\n${previousContext}\n\n` +
+    contextSection +
     `Responde em português (PT), de forma amigável mas motivadora.`;
 
   try {
@@ -659,27 +663,25 @@ Deno.serve(async (req) => {
         .eq("user_id", userId)
         .lt("date", date)
         .order("date", { ascending: false })
-        .limit(10);
+        .limit(5);
 
-      if (previousRuns && previousRuns.length > 0) {
-        coachNotes = await generateCoachNotes(
-          {
-            date,
-            kind,
-            training_type: trainingType,
-            distance_km: result.extraction.distance_km,
-            duration_seconds: result.extraction.duration_seconds,
-            effort_rpe: effortRpe,
-            details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-          },
-          previousRuns,
-          geminiKey,
-        );
+      coachNotes = await generateCoachNotes(
+        {
+          date,
+          kind,
+          training_type: trainingType,
+          distance_km: result.extraction.distance_km,
+          duration_seconds: result.extraction.duration_seconds,
+          effort_rpe: effortRpe,
+          details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
+        },
+        previousRuns || [],
+        geminiKey,
+      );
 
-        if (coachNotes) {
-          await sb.from("runs").update({ coach_notes: coachNotes }).eq("id", run.id);
-          run.coach_notes = coachNotes;
-        }
+      if (coachNotes) {
+        await sb.from("runs").update({ coach_notes: coachNotes }).eq("id", run.id);
+        run.coach_notes = coachNotes;
       }
     } catch (e) {
       console.warn("Coach generation skipped:", e);
