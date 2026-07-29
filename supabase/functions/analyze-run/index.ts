@@ -654,8 +654,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
     }
 
-    // 4. Gerar análise do Coach (assíncrono, não bloqueia a resposta)
-    let coachNotes: string | null = null;
+    // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
     try {
       const { data: previousRuns } = await sb
         .from("runs")
@@ -665,7 +664,7 @@ Deno.serve(async (req) => {
         .order("date", { ascending: false })
         .limit(5);
 
-      coachNotes = await generateCoachNotes(
+      const coachNotes = await generateCoachNotes(
         {
           date,
           kind,
@@ -684,7 +683,7 @@ Deno.serve(async (req) => {
         run.coach_notes = coachNotes;
       }
     } catch (e) {
-      console.warn("Coach generation skipped:", e);
+      console.warn("Coach generation failed:", e);
     }
 
     return jsonResponse({ run, usage: result.usage });

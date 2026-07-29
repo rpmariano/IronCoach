@@ -4569,6 +4569,7 @@ async function analyzeRun(){
     runNameDraft = suggestedRunName();
     runEffortDraft = null;
     expandedRunId = run.id;
+    await loadRunPhotoUrls(run.id);
     showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${run.date}')` });
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
