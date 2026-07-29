@@ -749,7 +749,6 @@ Deno.serve(async (req) => {
     }
 
     // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
-    let coachDebug: unknown = null;
     try {
       // Busca um histórico maior do que as 5 corridas mostradas em detalhe
       // no prompt — dá ao generateCoachNotes material para calcular
@@ -778,30 +777,16 @@ Deno.serve(async (req) => {
         previousRuns || [],
         geminiKey,
       );
-      coachDebug = coachResult.debug;
 
       if (coachResult.text) {
         await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
         run.coach_notes = coachResult.text;
-      } else {
-        // TODO(temporário): guarda o motivo da falha dentro de details (chave
-        // não lida pelo cliente) para conseguir diagnosticar falhas reais de
-        // utilizadores — coach_debug na resposta só ajuda em testes diretos.
-        await sb.from("runs").update({
-          details: { ...(run.details as Record<string, unknown> || {}), _coach_debug: coachDebug },
-        }).eq("id", run.id);
       }
     } catch (e) {
       console.warn("Coach generation failed:", e);
-      coachDebug = { exception: String(e) };
-      await sb.from("runs").update({
-        details: { ...(run.details as Record<string, unknown> || {}), _coach_debug: coachDebug },
-      }).eq("id", run.id);
     }
 
-    // TODO(temporário): coach_debug ajuda a diagnosticar por que coach_notes
-    // às vezes fica null em produção — remover depois de confirmado estável.
-    return jsonResponse({ run, usage: result.usage, coach_debug: coachDebug });
+    return jsonResponse({ run, usage: result.usage });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
