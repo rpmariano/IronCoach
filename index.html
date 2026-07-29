@@ -1257,10 +1257,11 @@ function runsAtLeast(minKm){
 function splitFieldForBucket(minKm){
   return minKm === 5 ? 'split_5k_seconds' : minKm === 10 ? 'split_10k_seconds' : minKm === 21 ? 'split_21k_seconds' : null;
 }
-// Margem de tolerância (10%) acima da qual uma corrida sem split deixa de
-// contar para um bucket — cobre a variação normal de GPS num "5K"/"10K"/meia
-// (ex.: 5.3km ainda conta como "5km" sem split; 12km já não).
-const SPLIT_TOLERANCE = 1.1;
+// Margem de tolerância (30%) acima da qual uma corrida sem split deixa de
+// contar para um bucket — cobre a variação normal de GPS e corridas que
+// ultrapassam os marcos (ex.: 5.3km e 6.5km contam como "5km"; 10km e 12km
+// contam como "10km"; 21km e 27km contam como "meia").
+const SPLIT_TOLERANCE = 1.3;
 
 // Pace de uma corrida PARA UM BUCKET específico, ou null se não houver forma
 // fiável de o saber. Com split guardado para essa distância, usa o pace real
