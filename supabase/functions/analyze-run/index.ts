@@ -378,13 +378,14 @@ async function generateCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // gemini-flash-latest resolve para um modelo da série Gemini 3,
-          // que usa thinkingLevel (string) em vez do antigo thinkingBudget
-          // (número) — thinkingBudget é silenciosamente ignorado nesta
-          // série, o que deixava o thinking a consumir maxOutputTokens sem
-          // avisar. "minimal" é o mais próximo de desligar o thinking que a
-          // série 3 permite (não suporta desligar por completo).
-          generationConfig: { maxOutputTokens: 500, thinkingConfig: { thinkingLevel: "minimal" } },
+          // Não forçamos thinkingConfig — o parâmetro certo (thinkingBudget
+          // vs. thinkingLevel, e os valores válidos) depende de qual modelo
+          // concreto "gemini-flash-latest" resolve num dado momento, e um
+          // valor errado pode ser ignorado ou rejeitado (400) consoante a
+          // série. Em vez de adivinhar, damos um orçamento de tokens grande
+          // o suficiente para sobrar texto visível mesmo que o modelo gaste
+          // uma fatia a "pensar" por baixo dos panos.
+          generationConfig: { maxOutputTokens: 2048 },
         }),
       },
       20000,
@@ -392,13 +393,18 @@ async function generateCoachNotes(
     );
 
     if (!res.ok) {
-      console.warn("Coach generation failed:", res.status);
+      console.warn("Coach generation failed:", res.status, await res.text());
       return null;
     }
 
     const json = await res.json();
-    const coachText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return coachText ? coachText.trim() : null;
+    const candidate = json?.candidates?.[0];
+    const coachText = candidate?.content?.parts?.[0]?.text;
+    if (!coachText) {
+      console.warn("Coach generation returned no text:", JSON.stringify({ finishReason: candidate?.finishReason, json }).slice(0, 2000));
+      return null;
+    }
+    return coachText.trim();
   } catch (e) {
     console.warn("Coach generation error:", e);
     return null;
