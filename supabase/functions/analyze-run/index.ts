@@ -251,8 +251,8 @@ async function generateCoachNotes(
     details: Record<string, unknown> | null;
   }>,
   geminiKey: string,
-): Promise<string | null> {
-  if (!geminiKey) return null;
+): Promise<{ text: string | null; debug: unknown }> {
+  if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
   const trainingTypeLabel = run.training_type
     ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type
@@ -398,21 +398,23 @@ async function generateCoachNotes(
     );
 
     if (!res.ok) {
-      console.warn("Coach generation failed:", res.status, await res.text());
-      return null;
+      const bodyText = await res.text();
+      console.warn("Coach generation failed:", res.status, bodyText);
+      return { text: null, debug: { httpStatus: res.status, body: bodyText.slice(0, 1500) } };
     }
 
     const json = await res.json();
     const candidate = json?.candidates?.[0];
     const coachText = candidate?.content?.parts?.[0]?.text;
     if (!coachText) {
-      console.warn("Coach generation returned no text:", JSON.stringify({ finishReason: candidate?.finishReason, json }).slice(0, 2000));
-      return null;
+      const debugInfo = { finishReason: candidate?.finishReason, promptFeedback: json?.promptFeedback, usageMetadata: json?.usageMetadata };
+      console.warn("Coach generation returned no text:", JSON.stringify(debugInfo).slice(0, 2000));
+      return { text: null, debug: debugInfo };
     }
-    return coachText.trim();
+    return { text: coachText.trim(), debug: null };
   } catch (e) {
     console.warn("Coach generation error:", e);
-    return null;
+    return { text: null, debug: { exception: String(e) } };
   }
 }
 
@@ -747,6 +749,7 @@ Deno.serve(async (req) => {
     }
 
     // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
+    let coachDebug: unknown = null;
     try {
       // Busca um histórico maior do que as 5 corridas mostradas em detalhe
       // no prompt — dá ao generateCoachNotes material para calcular
@@ -762,7 +765,7 @@ Deno.serve(async (req) => {
         .order("date", { ascending: false })
         .limit(10);
 
-      const coachNotes = await generateCoachNotes(
+      const coachResult = await generateCoachNotes(
         {
           date,
           kind,
@@ -775,16 +778,20 @@ Deno.serve(async (req) => {
         previousRuns || [],
         geminiKey,
       );
+      coachDebug = coachResult.debug;
 
-      if (coachNotes) {
-        await sb.from("runs").update({ coach_notes: coachNotes }).eq("id", run.id);
-        run.coach_notes = coachNotes;
+      if (coachResult.text) {
+        await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
+        run.coach_notes = coachResult.text;
       }
     } catch (e) {
       console.warn("Coach generation failed:", e);
+      coachDebug = { exception: String(e) };
     }
 
-    return jsonResponse({ run, usage: result.usage });
+    // TODO(temporário): coach_debug ajuda a diagnosticar por que coach_notes
+    // às vezes fica null em produção — remover depois de confirmado estável.
+    return jsonResponse({ run, usage: result.usage, coach_debug: coachDebug });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
