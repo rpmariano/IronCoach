@@ -911,6 +911,7 @@ let bodyNotes = '';            // observação livre antes da análise
 let analyzingBody = false;
 let expandedAssessmentId = null;
 let reanalyzingAssessmentId = null;
+let manualAssessmentId = null; // avaliação a ser construída manualmente (sem foto) no Avaliar
 let suggestingGoals = false;      // pedido ao Coach para definir objetivos de Corpo+Nutrição (Perfil)
 let goalsRationale = null;        // explicação do Coach para os últimos objetivos sugeridos
 
@@ -940,6 +941,46 @@ let bodyCalendarSelectedDate = todayISO();
 // diretamente (ex.: Chart.js, que não resolve CSS custom properties).
 function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+/* ---------- Validação por campo (genérico) ----------
+   Generalização do padrão criado para a Corrida (runFieldErrors) — mesma
+   linguagem visual (borda vermelha + mensagem por baixo do campo + foco
+   automático no primeiro erro) reaproveitada por Nutrição/Ginásio/Corpo, em
+   vez de cada vertical inventar o seu próprio toast genérico. Chaves são
+   namespaced por vertical (ex.: 'meal.desc', 'gym.name') para coexistirem
+   no mesmo objeto sem colisão. */
+let formFieldErrors = {};
+function formFieldBorderClass(key){ return formFieldErrors[key] ? 'border-red-500/70' : 'border-neutral-800'; }
+function formFieldErrorMsg(key){ return formFieldErrors[key] ? `<p class="text-[11px] text-red-400 mt-1">${esc(formFieldErrors[key])}</p>` : ''; }
+function clearFormFieldError(key, refreshFn){
+  if (formFieldErrors[key]) { delete formFieldErrors[key]; if (refreshFn) refreshFn(); }
+}
+function focusFormField(id){
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ behavior:'smooth', block:'center' }); }
+  });
+}
+
+/* ---------- Rascunho persistente (genérico) ----------
+   Guarda o estado de um formulário em construção (fotos incluídas) em
+   localStorage, para sobreviver a um refresh/interrupção — o cenário mais
+   comum para este público (a treinar, a meio de uma corrida, entre séries).
+   "Best effort": nunca deixa uma falha de quota partir o fluxo, só deixa de
+   persistir silenciosamente (os dados continuam válidos em memória). */
+function saveDraft(key, data){
+  try { localStorage.setItem('ih_draft_' + key, JSON.stringify(data)); }
+  catch(e) { /* quota excedida ou modo privado — sem persistência, sem crash */ }
+}
+function loadDraft(key){
+  try {
+    const raw = localStorage.getItem('ih_draft_' + key);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+function clearDraft(key){
+  try { localStorage.removeItem('ih_draft_' + key); } catch(e) {}
+}
 function formatDatePT(iso){
   const [y,m,d] = iso.split('-').map(Number);
   return `${String(d).padStart(2,'0')} ${PT_MONTHS[m-1]} ${y}`;
@@ -1529,6 +1570,8 @@ function toggleAddItemForm(){
   showAddItemForm = !showAddItemForm;
   newItemNameDraft = '';
   newItemGramsDraft = '';
+  delete formFieldErrors['meal.itemName'];
+  delete formFieldErrors['meal.itemGrams'];
   render();
 }
 
@@ -1545,8 +1588,13 @@ async function submitNewItem(mealId){
   const name = newItemNameDraft.trim();
   const grams = Number(newItemGramsDraft);
 
-  if (!name || !(grams > 0)) {
-    showToast('error', null, 'Preenche a descrição e as gramas com valores válidos.');
+  const errors = {};
+  if (!name) errors['meal.itemName'] = 'Preenche a descrição do alimento.';
+  if (!(grams > 0)) errors['meal.itemGrams'] = 'Preenche as gramas com um valor válido.';
+  formFieldErrors = errors;
+  if (Object.keys(errors).length) {
+    render();
+    focusFormField(errors['meal.itemName'] ? 'newItemName' : 'newItemGrams');
     return;
   }
 
@@ -1564,6 +1612,8 @@ async function submitNewItem(mealId){
     showAddItemForm = false;
     newItemNameDraft = '';
     newItemGramsDraft = '';
+    delete formFieldErrors['meal.itemName'];
+    delete formFieldErrors['meal.itemGrams'];
     showToast('success', 'Alimento adicionado', null);
     logEvent('success', 'meal_item_estimate', null, { mealId, ...(data.usage || {}) });
   } catch(e) {
@@ -1979,26 +2029,61 @@ async function onPhotoSelected(input){
     try { photos.push(await compressImage(file)); }
     catch(e) { console.warn('Falha a processar imagem', e); }
   }
+  saveMealDraft();
   render();
 }
 
 function removePhoto(index){
   photos.splice(index, 1);
+  saveMealDraft();
   render();
 }
 
 function clearPhotos(){
   photos = [];
+  saveMealDraft();
   render();
 }
 
 function updateMealNotes(value){
   mealNotes = value;
+  saveMealDraft();
 }
 
 function selectMealType(key){
   selectedMealType = key;
   document.querySelectorAll('.mealtype-pill').forEach(b => b.classList.toggle('active', b.dataset.type === key));
+  saveMealDraft();
+}
+
+// Rascunho da Nova Refeição (fotos+data+tipo+notas) — só antes de a IA/registo
+// manual criar a refeição em si (manualMealId), que já vive na BD e não
+// precisa de rascunho local. "Best effort": nunca bloqueia o fluxo se a
+// gravação falhar (ver saveDraft/loadDraft/clearDraft).
+function saveMealDraft(){
+  if (manualMealId) return;
+  const isEmpty = !photos.length && !mealNotes.trim() && registarDate === todayISO() && selectedMealType === suggestMealTypeByTime();
+  if (isEmpty) { clearDraft('meal'); return; }
+  saveDraft('meal', { photos, registarDate, selectedMealType, mealNotes });
+}
+function restoreMealDraftIfAny(){
+  if (manualMealId) return;
+  const d = loadDraft('meal');
+  if (!d || (!d.photos?.length && !((d.mealNotes||'').trim()))) return;
+  photos = d.photos || [];
+  registarDate = d.registarDate || todayISO();
+  selectedMealType = d.selectedMealType || suggestMealTypeByTime();
+  mealNotes = d.mealNotes || '';
+  showToast('success', 'Rascunho recuperado', 'Continuámos a refeição que tinhas a meio.',
+    { actionLabel: 'Descartar', actionOnclick: 'discardMealDraft()' });
+}
+function discardMealDraft(){
+  photos = [];
+  registarDate = todayISO();
+  selectedMealType = suggestMealTypeByTime();
+  mealNotes = '';
+  clearDraft('meal');
+  if (activeVertical === 'nutricao' && activeTab === 'registar') render();
 }
 
 // Tenta ler a mensagem de erro específica do corpo da resposta da Edge
@@ -2037,6 +2122,7 @@ async function analyzeMeal(){
     state.meals.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
     photos = [];
     mealNotes = '';
+    clearDraft('meal');
     expandedMealId = meal.id;
     showToast('success', 'Refeição registada',
       `${mealTypeLabel(meal.meal_type)} · ${formatDatePT(meal.date)} · ${mealNutrients(meal).calories.toFixed(0)} kcal · ${meal.meal_items.length} item(s)`,
@@ -2064,6 +2150,7 @@ async function startManualMeal(){
     manualMealId = data.id;
     expandedMealId = data.id;
     showAddItemForm = true;
+    clearDraft('meal');
   } catch(e) {
     flashSyncError(e);
   }
@@ -2380,7 +2467,7 @@ function switchVertical(vertical){
 function switchTab(tab){
   activeTab = tab;
   abandonManualMealSession();
-  if (tab === 'registar') selectedMealType = suggestMealTypeByTime();
+  if (tab === 'registar') { selectedMealType = suggestMealTypeByTime(); restoreMealDraftIfAny(); }
   if (tab === 'calendario') ensureCalendarMonthLoaded(calendarViewMonth);
   render();
   pushNavState();
@@ -2446,6 +2533,7 @@ function goToAvaliarForDate(dateIso){
   bodyDate = dateIso;
   activeVertical = 'corpo';
   bodyTab = 'avaliar';
+  restoreBodyDraftIfAny();
   render();
   pushNavState();
 }
@@ -4831,6 +4919,7 @@ function classificationBadge(assessment, key, extra){
 
 function switchBodyTab(tab){
   bodyTab = tab;
+  if (tab === 'avaliar') restoreBodyDraftIfAny();
   render();
   pushNavState();
 }
@@ -4851,6 +4940,34 @@ function refreshBody(){
   main.innerHTML = renderBodyTabContent();
   if (window.lucide) lucide.createIcons();
   if (bodyTab === 'dashboard') requestAnimationFrame(renderBodyChart);
+  if (bodyTab === 'avaliar') saveBodyDraft();
+}
+
+// Rascunho da Nova Avaliação (fotos+data+notas) — só antes de a IA/registo
+// manual criar a avaliação em si (manualAssessmentId). Mesma lógica do
+// rascunho da Nutrição/Ginásio (ver saveMealDraft/saveGymDraft).
+function saveBodyDraft(){
+  if (manualAssessmentId) return;
+  const isEmpty = !bodyPhotos.length && !bodyNotes.trim() && bodyDate === todayISO();
+  if (isEmpty) { clearDraft('body'); return; }
+  saveDraft('body', { bodyPhotos, bodyDate, bodyNotes });
+}
+function restoreBodyDraftIfAny(){
+  if (manualAssessmentId) return;
+  const d = loadDraft('body');
+  if (!d || (!d.bodyPhotos?.length && !(d.bodyNotes||'').trim())) return;
+  bodyPhotos = d.bodyPhotos || [];
+  bodyDate = d.bodyDate || todayISO();
+  bodyNotes = d.bodyNotes || '';
+  showToast('success', 'Rascunho recuperado', 'Continuámos a avaliação que tinhas a meio.',
+    { actionLabel: 'Descartar', actionOnclick: 'discardBodyDraft()' });
+}
+function discardBodyDraft(){
+  bodyPhotos = [];
+  bodyDate = todayISO();
+  bodyNotes = '';
+  clearDraft('body');
+  if (activeVertical === 'corpo' && bodyTab === 'avaliar') refreshBody();
 }
 
 async function onBodyPhotoSelected(input){
@@ -4868,7 +4985,7 @@ async function onBodyPhotoSelected(input){
 
 function removeBodyPhoto(index){ bodyPhotos.splice(index, 1); refreshBody(); }
 function clearBodyPhotos(){ bodyPhotos = []; refreshBody(); }
-function updateBodyNotes(value){ bodyNotes = value; }
+function updateBodyNotes(value){ bodyNotes = value; saveBodyDraft(); }
 
 async function analyzeBody(){
   if (!bodyPhotos.length || analyzingBody) return;
@@ -4887,6 +5004,7 @@ async function analyzeBody(){
     bodyAssessments.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
     bodyPhotos = [];
     bodyNotes = '';
+    clearDraft('body');
     expandedAssessmentId = assessment.id;
     showToast('success', 'Avaliação registada', `${formatDatePT(assessment.date)} · a IA leu e comentou os valores`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInBodyCalendar('${assessment.date}')` });
@@ -4923,6 +5041,43 @@ async function reanalyzeBody(id){
   }
   reanalyzingAssessmentId = null;
   refreshBody();
+}
+
+// Cria uma avaliação vazia na BD e entra em modo de construção manual — cada
+// métrica grava-se sozinha ao editar (ver updateAssessmentMetric, já
+// reutilizado por renderAssessmentCard), sem precisar de foto nenhuma.
+// Espelha startManualMeal/startManualGymSession.
+async function startManualAssessment(){
+  const date = document.getElementById('bodyDate') ? document.getElementById('bodyDate').value : bodyDate;
+  try {
+    const { data, error } = await sb.from('body_assessments')
+      .insert({ user_id: currentUser.id, date: date || todayISO(), photo_paths: [], notes: bodyNotes.trim() || null })
+      .select().single();
+    if (error) throw error;
+    bodyAssessments.unshift(data);
+    bodyAssessments.sort((a,b) => b.date.localeCompare(a.date) || (b.created_at||'').localeCompare(a.created_at||''));
+    manualAssessmentId = data.id;
+    expandedAssessmentId = data.id;
+    bodyPhotos = [];
+    bodyNotes = '';
+    clearDraft('body');
+  } catch(e) {
+    flashSyncError(e);
+  }
+  refreshBody();
+}
+
+function finishManualAssessment(){
+  const a = manualAssessmentId ? findAssessmentById(manualAssessmentId) : null;
+  if (a) {
+    const filledCount = BODY_METRICS.filter(m => a[m.key] !== null && a[m.key] !== undefined).length;
+    showToast('success', 'Avaliação registada', `${formatDatePT(a.date)} · ${filledCount} valor(es)`,
+      { actionLabel: 'Ver no Calendário', actionOnclick: `viewInBodyCalendar('${a.date}')` });
+  }
+  manualAssessmentId = null;
+  expandedAssessmentId = null;
+  bodyTab = 'dashboard';
+  render();
 }
 
 function openDeleteBodyAssessmentModal(id){
@@ -4996,6 +5151,21 @@ function selectBodyMetric(key){ selectedBodyMetric = key; refreshBody(); }
 // inferior. Espelha renderRegistar: banner de sucesso com link para o
 // Calendário, seguido do formulário de upload.
 function renderBodyAvaliar(){
+  const manualAssessment = manualAssessmentId ? findAssessmentById(manualAssessmentId) : null;
+  if (manualAssessment) {
+    return `
+      <div class="space-y-4 fade-in">
+        <div class="rounded-2xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 p-3 flex items-center gap-2">
+          <i data-lucide="pencil-line" class="w-4 h-4 text-[var(--accent)] shrink-0"></i>
+          <p class="text-xs text-white/90 theme-flip-text flex-1">A construir avaliação · ${formatDatePT(manualAssessment.date)} — preenche os valores abaixo.</p>
+        </div>
+        ${renderAssessmentCard(manualAssessment)}
+        <button onclick="finishManualAssessment()" class="w-full bg-emerald-500 text-neutral-950 font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition">
+          <i data-lucide="check" class="w-4 h-4"></i> Concluir Avaliação
+        </button>
+      </div>
+    `;
+  }
   return `
     <div class="space-y-4 fade-in">
 
@@ -5006,9 +5176,9 @@ function renderBodyAvaliar(){
 
 function renderBodyUpload(){
   return `
-    <div class="card rounded-2xl p-4">
+    <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-corpo-to)')}">
       <div class="flex items-center gap-2 mb-3">
-        <i data-lucide="scan-line" class="w-4 h-4 text-[var(--accent)]"></i>
+        <i data-lucide="scan-line" class="w-4 h-4" style="color:var(--mod-corpo-to)"></i>
         <h2 class="text-sm font-semibold text-white">Nova Avaliação</h2>
       </div>
 
@@ -5046,7 +5216,7 @@ function renderBodyUpload(){
       `}
 
       <div class="grid grid-cols-2 gap-2 mb-3">
-        <input id="bodyDate" type="date" aria-label="Data da avaliação" value="${bodyDate}" max="${todayISO()}" onchange="bodyDate = this.value"
+        <input id="bodyDate" type="date" aria-label="Data da avaliação" value="${bodyDate}" max="${todayISO()}" onchange="bodyDate = this.value; saveBodyDraft();"
           class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
         <div class="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
       </div>
@@ -5063,6 +5233,11 @@ function renderBodyUpload(){
         ${analyzingBody
           ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A ler com IA...'
           : `<i data-lucide="sparkles" class="w-4 h-4"></i> Analisar Avaliação${bodyPhotos.length>1?` (${bodyPhotos.length} prints)`:''}`}
+      </button>
+
+      <button onclick="startManualAssessment()" ${analyzingBody ? 'disabled' : ''} type="button"
+        class="w-full mt-2 border-2 border-dashed border-neutral-700 hover:border-[var(--accent)]/50 text-slate-400 hover:text-[var(--accent)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-40">
+        <i data-lucide="pencil-line" class="w-4 h-4"></i> Registar Avaliação Manualmente
       </button>
     </div>
   `;
@@ -5504,6 +5679,7 @@ const GYM_NAV_HTML = `
 
 function switchGymTab(tab){
   gymTab = tab;
+  if (tab === 'registar') restoreGymDraftIfAny();
   render();
   pushNavState();
 }
@@ -5514,6 +5690,7 @@ function goToGymRegistarForDate(dateIso){
   gymDate = dateIso;
   activeVertical = 'ginasio';
   gymTab = 'registar';
+  restoreGymDraftIfAny();
   render();
   pushNavState();
 }
@@ -5617,8 +5794,47 @@ async function onGymPhotoSelected(input){
 }
 function removeGymPhoto(index){ gymPhotos.splice(index, 1); refreshGym(); }
 function clearGymPhotos(){ gymPhotos = []; refreshGym(); }
-function updateGymNotes(value){ gymNotes = value; }
-function updateGymSessionName(value){ gymSessionNameDraft = value; }
+function updateGymNotes(value){ gymNotes = value; saveGymDraft(); }
+function updateGymSessionName(value){ gymSessionNameDraft = value; saveGymDraft(); }
+
+// Rascunho do "Novo Treino" (fotos+data+tipo+categorias+métricas+notas) — só
+// antes de a sessão manual/IA existir na BD (manualGymSessionId). Mesma
+// lógica do rascunho da Nutrição (ver saveMealDraft).
+function saveGymDraft(){
+  if (manualGymSessionId) return;
+  const isEmpty = !gymPhotos.length && !gymNotes.trim() && !gymSessionNameDraft.trim() && gymCategoriesDraft.length === 0
+    && !gymDurationDraft && !gymCaloriesDraft && !gymAvgHrDraft && !gymMaxHrDraft && !gymExertionDraft && gymDate === todayISO();
+  if (isEmpty) { clearDraft('gym'); return; }
+  saveDraft('gym', {
+    gymPhotos, gymDate, gymNotes, gymSessionNameDraft, gymKindDraft, gymCategoriesDraft,
+    gymDurationDraft, gymCaloriesDraft, gymAvgHrDraft, gymMaxHrDraft, gymExertionDraft,
+  });
+}
+function restoreGymDraftIfAny(){
+  if (manualGymSessionId) return;
+  const d = loadDraft('gym');
+  if (!d || (!d.gymPhotos?.length && !(d.gymNotes||'').trim() && !(d.gymSessionNameDraft||'').trim())) return;
+  gymPhotos = d.gymPhotos || [];
+  gymDate = d.gymDate || todayISO();
+  gymNotes = d.gymNotes || '';
+  gymSessionNameDraft = d.gymSessionNameDraft || '';
+  gymKindDraft = d.gymKindDraft || 'forca';
+  gymCategoriesDraft = d.gymCategoriesDraft || [];
+  gymDurationDraft = d.gymDurationDraft || '';
+  gymCaloriesDraft = d.gymCaloriesDraft || '';
+  gymAvgHrDraft = d.gymAvgHrDraft || '';
+  gymMaxHrDraft = d.gymMaxHrDraft || '';
+  gymExertionDraft = d.gymExertionDraft || '';
+  showToast('success', 'Rascunho recuperado', 'Continuámos o treino que tinhas a meio.',
+    { actionLabel: 'Descartar', actionOnclick: 'discardGymDraft()' });
+}
+function discardGymDraft(){
+  gymPhotos = []; gymDate = todayISO(); gymNotes = ''; gymSessionNameDraft = '';
+  gymKindDraft = 'forca'; gymCategoriesDraft = [];
+  gymDurationDraft = ''; gymCaloriesDraft = ''; gymAvgHrDraft = ''; gymMaxHrDraft = ''; gymExertionDraft = '';
+  clearDraft('gym');
+  if (activeVertical === 'ginasio' && gymTab === 'registar') refreshGym();
+}
 // Trocar de tipo limpa as categorias: um grupo muscular não faz sentido numa
 // aula (e vice-versa), e deixá-las lá gravaria "Peito" numa aula de pilates.
 function selectGymKind(kind){
@@ -5678,6 +5894,7 @@ function resetGymDraft(){
   gymAvgHrDraft = '';
   gymMaxHrDraft = '';
   gymExertionDraft = '';
+  clearDraft('gym');
 }
 
 function refreshGymTabContent(){
@@ -5692,6 +5909,7 @@ function refreshGym(){
   main.innerHTML = refreshGymTabContent();
   if (window.lucide) lucide.createIcons();
   if (gymTab === 'dashboard') requestAnimationFrame(renderGymCharts);
+  if (gymTab === 'registar') saveGymDraft();
 }
 
 async function analyzeGym(){
@@ -5908,8 +6126,15 @@ async function submitGymSet(sessionId){
   const name = newGymExerciseNameDraft.trim();
   const reps = Number(newGymSetRepsDraft);
   const weight = Number(newGymSetWeightDraft);
-  if (!name || !(reps > 0) || !(weight >= 0)) {
-    showToast('error', null, 'Preenche o exercício, as repetições e a carga com valores válidos.');
+
+  const errors = {};
+  if (!name) errors['gym.exerciseName'] = 'Preenche o exercício.';
+  if (!(reps > 0)) errors['gym.setReps'] = 'Repetições inválidas.';
+  if (!(weight >= 0)) errors['gym.setWeight'] = 'Carga inválida.';
+  formFieldErrors = errors;
+  if (Object.keys(errors).length) {
+    refreshGym();
+    focusFormField(errors['gym.exerciseName'] ? 'newGymExerciseName' : errors['gym.setReps'] ? 'newGymSetReps' : 'newGymSetWeight');
     return;
   }
   const s = findGymSessionById(sessionId);
@@ -5971,9 +6196,9 @@ function renderGymRegistar(){
 
   return `
     <div class="space-y-4 fade-in">
-      <div class="card rounded-2xl p-4">
+      <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-ginasio-to)')}">
         <div class="flex items-center gap-2 mb-3">
-          <i data-lucide="dumbbell" class="w-4 h-4 text-[var(--accent)]"></i>
+          <i data-lucide="dumbbell" class="w-4 h-4" style="color:var(--mod-ginasio-to)"></i>
           <h2 class="text-sm font-semibold text-white">Novo Treino</h2>
         </div>
 
@@ -6021,7 +6246,7 @@ function renderGymRegistar(){
         </div>
 
         <div class="grid grid-cols-2 gap-2 mb-3">
-          <input id="gymDate" type="date" aria-label="Data do treino" value="${gymDate}" max="${todayISO()}" onchange="gymDate = this.value"
+          <input id="gymDate" type="date" aria-label="Data do treino" value="${gymDate}" max="${todayISO()}" onchange="gymDate = this.value; saveGymDraft();"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           <div class="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
         </div>
@@ -6075,19 +6300,19 @@ function renderGymRegistar(){
 
         <label class="text-[11px] text-slate-500 mb-1.5 block">Métricas do relógio (opcional)</label>
         <div class="grid grid-cols-2 gap-2 mb-3">
-          <input id="gymDuration" type="text" inputmode="text" value="${esc(gymDurationDraft)}" oninput="gymDurationDraft=this.value"
+          <input id="gymDuration" type="text" inputmode="text" value="${esc(gymDurationDraft)}" oninput="gymDurationDraft=this.value; saveGymDraft();"
             placeholder="Duração (43m ou 37:57)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-          <input id="gymCalories" type="number" min="0" step="1" value="${esc(gymCaloriesDraft)}" oninput="gymCaloriesDraft=this.value"
+          <input id="gymCalories" type="number" min="0" step="1" value="${esc(gymCaloriesDraft)}" oninput="gymCaloriesDraft=this.value; saveGymDraft();"
             placeholder="Calorias (kcal)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-          <input id="gymAvgHr" type="number" min="0" step="1" value="${esc(gymAvgHrDraft)}" oninput="gymAvgHrDraft=this.value"
+          <input id="gymAvgHr" type="number" min="0" step="1" value="${esc(gymAvgHrDraft)}" oninput="gymAvgHrDraft=this.value; saveGymDraft();"
             placeholder="FC média (bpm)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-          <input id="gymMaxHr" type="number" min="0" step="1" value="${esc(gymMaxHrDraft)}" oninput="gymMaxHrDraft=this.value"
+          <input id="gymMaxHr" type="number" min="0" step="1" value="${esc(gymMaxHrDraft)}" oninput="gymMaxHrDraft=this.value; saveGymDraft();"
             placeholder="FC máx (bpm)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
-          <input id="gymExertion" type="number" min="1" max="10" step="1" value="${esc(gymExertionDraft)}" oninput="gymExertionDraft=this.value"
+          <input id="gymExertion" type="number" min="1" max="10" step="1" value="${esc(gymExertionDraft)}" oninput="gymExertionDraft=this.value; saveGymDraft();"
             placeholder="Esforço (1-10)"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60" />
         </div>
@@ -6214,18 +6439,25 @@ function renderGymSessionCard(session){
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Nova Série
             </p>
             <input id="newGymExerciseName" type="text" placeholder="Exercício (ex.: Supino)" value="${esc(newGymExerciseNameDraft)}"
-              oninput="newGymExerciseNameDraft=this.value" list="gymKnownExercises" ${addingGymSet ? 'disabled' : ''}
-              class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+              oninput="newGymExerciseNameDraft=this.value; clearFormFieldError('gym.exerciseName', refreshGym);" list="gymKnownExercises" ${addingGymSet ? 'disabled' : ''}
+              class="w-full bg-neutral-950 border ${formFieldBorderClass('gym.exerciseName')} rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+            ${formFieldErrorMsg('gym.exerciseName')}
             <datalist id="gymKnownExercises">
               ${trainedExercisesInRange('trimestre').map(n => `<option value="${esc(n)}"></option>`).join('')}
             </datalist>
             <div class="grid grid-cols-2 gap-2">
-              <input id="newGymSetReps" type="number" min="0" step="1" placeholder="Repetições" value="${esc(newGymSetRepsDraft)}"
-                oninput="newGymSetRepsDraft=this.value" ${addingGymSet ? 'disabled' : ''}
-                class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
-              <input id="newGymSetWeight" type="number" min="0" step="0.5" placeholder="Carga (kg)" value="${esc(newGymSetWeightDraft)}"
-                oninput="newGymSetWeightDraft=this.value" ${addingGymSet ? 'disabled' : ''}
-                class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+              <div>
+                <input id="newGymSetReps" type="number" min="0" step="1" placeholder="Repetições" value="${esc(newGymSetRepsDraft)}"
+                  oninput="newGymSetRepsDraft=this.value; clearFormFieldError('gym.setReps', refreshGym);" ${addingGymSet ? 'disabled' : ''}
+                  class="w-full bg-neutral-950 border ${formFieldBorderClass('gym.setReps')} rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+                ${formFieldErrorMsg('gym.setReps')}
+              </div>
+              <div>
+                <input id="newGymSetWeight" type="number" min="0" step="0.5" placeholder="Carga (kg)" value="${esc(newGymSetWeightDraft)}"
+                  oninput="newGymSetWeightDraft=this.value; clearFormFieldError('gym.setWeight', refreshGym);" ${addingGymSet ? 'disabled' : ''}
+                  class="w-full bg-neutral-950 border ${formFieldBorderClass('gym.setWeight')} rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+                ${formFieldErrorMsg('gym.setWeight')}
+              </div>
             </div>
             <button onclick="submitGymSet('${session.id}')" ${addingGymSet ? 'disabled' : ''} type="button"
               class="w-full bg-[var(--accent)] text-neutral-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-60">
@@ -6680,9 +6912,9 @@ function renderRegistar(){
       </button>
       ` : `
 
-      <div class="card rounded-2xl p-4">
+      <div class="rounded-2xl p-4" style="${statCardBg('var(--mod-nutricao-to)')}">
         <div class="flex items-center gap-2 mb-3">
-          <i data-lucide="camera" class="w-4 h-4 text-[var(--accent)]"></i>
+          <i data-lucide="camera" class="w-4 h-4" style="color:var(--mod-nutricao-to)"></i>
           <h2 class="text-sm font-semibold text-white">Nova Refeição</h2>
         </div>
 
@@ -6735,7 +6967,7 @@ function renderRegistar(){
         `}
 
         <div class="grid grid-cols-2 gap-2 mb-2">
-          <input id="mealDate" type="date" aria-label="Data da refeição" value="${registarDate}" max="${todayISO()}" onchange="registarDate = this.value"
+          <input id="mealDate" type="date" aria-label="Data da refeição" value="${registarDate}" max="${todayISO()}" onchange="registarDate = this.value; saveMealDraft();"
             class="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
           <div class="flex items-center justify-center text-[11px] text-slate-500">Data da refeição</div>
         </div>
@@ -6881,11 +7113,13 @@ function renderMealCard(meal){
               <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Novo Alimento
             </p>
             <input id="newItemName" type="text" placeholder="Descrição do alimento" value="${esc(newItemNameDraft)}"
-              oninput="newItemNameDraft=this.value" ${addingItem ? 'disabled' : ''}
-              class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+              oninput="newItemNameDraft=this.value; clearFormFieldError('meal.itemName', render);" ${addingItem ? 'disabled' : ''}
+              class="w-full bg-neutral-950 border ${formFieldBorderClass('meal.itemName')} rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+            ${formFieldErrorMsg('meal.itemName')}
             <input id="newItemGrams" type="number" min="0" step="5" placeholder="Gramas" value="${esc(newItemGramsDraft)}"
-              oninput="newItemGramsDraft=this.value" ${addingItem ? 'disabled' : ''}
-              class="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+              oninput="newItemGramsDraft=this.value; clearFormFieldError('meal.itemGrams', render);" ${addingItem ? 'disabled' : ''}
+              class="w-full bg-neutral-950 border ${formFieldBorderClass('meal.itemGrams')} rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-[var(--accent)]/60 disabled:opacity-50" />
+            ${formFieldErrorMsg('meal.itemGrams')}
             <p class="text-[10px] text-slate-600">Os valores nutricionais são estimados automaticamente a partir da descrição.</p>
             <div class="grid grid-cols-2 gap-2 pt-1">
               <button onclick="toggleAddItemForm()" ${addingItem ? 'disabled' : ''} type="button" class="border border-neutral-700 text-slate-300 text-xs font-semibold rounded-lg py-2 disabled:opacity-40">
