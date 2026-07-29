@@ -1,7 +1,9 @@
 // IronHealth · analyze-run Edge Function
 // Modo normal: recebe 1+ prints de uma app de corrida (Strava, Garmin, etc.),
 // extrai distância/duração/splits/dados de competição/métricas do relógio com
-// o Gemini e grava a corrida em `runs`. O utilizador escolhe Treino vs.
+// o Gemini e grava a corrida em `runs`. Após análise bem-sucedida, gera uma
+// nota do "Coach" (análise de progresso, elogios, alertas, sugestões) via
+// Gemini, usando contexto das últimas corridas. O utilizador escolhe Treino vs.
 // Competição (kind) E o tipo de treino/disciplina (training_type/race_type)
 // no cliente, antes de submeter — a IA só lê o que não é uma classificação
 // (distância, duração, splits, aquecimento/recuperação, tempo oficial,
@@ -10,8 +12,8 @@
 // Modo reanálise (run_id presente): repesca os prints já guardados dessa
 // corrida no Storage e volta a analisar do zero (mesma extração da IA),
 // substituindo os campos lidos da imagem; kind/training_type/race_type/
-// notes/effort_rpe mantêm-se como estavam (são escolhas do utilizador, não
-// vêm de imagem nenhuma).
+// notes/effort_rpe/coach_notes mantêm-se como estavam (são escolhas/análises
+// anteriores, não vêm de imagem nenhuma).
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -228,6 +230,95 @@ type RunExtraction = {
   vo2_max: number | null;
   hr_zones: HrZone[] | null;
 };
+
+// Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
+// baseado na corrida acabada de ser criada e no contexto das últimas corridas.
+async function generateCoachNotes(
+  run: {
+    date: string;
+    kind: string;
+    training_type: string | null;
+    distance_km: number | null;
+    duration_seconds: number | null;
+    effort_rpe: number | null;
+    details: Record<string, unknown> | null;
+  },
+  previousRuns: Array<{
+    date: string;
+    distance_km: number | null;
+    duration_seconds: number | null;
+    effort_rpe: number | null;
+    details: Record<string, unknown> | null;
+  }>,
+  geminiKey: string,
+): Promise<string | null> {
+  if (!geminiKey) return null;
+
+  const trainingTypeLabel = run.training_type
+    ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type
+    : "Desconhecido";
+  const paceSec = run.distance_km && run.distance_km > 0 && run.duration_seconds
+    ? run.duration_seconds / run.distance_km
+    : null;
+  const paceStr = paceSec ? `${Math.floor(paceSec / 60)}'${Math.round(paceSec % 60)}"` : "—";
+
+  const details = (run.details || {}) as Record<string, unknown>;
+  const previousContext = previousRuns
+    .slice(-5)
+    .map((r) => {
+      const d = (r.details || {}) as Record<string, unknown>;
+      const p =
+        r.distance_km && r.distance_km > 0 && r.duration_seconds
+          ? r.duration_seconds / r.distance_km
+          : null;
+      const ps = p ? `${Math.floor(p / 60)}'${Math.round(p % 60)}"` : "—";
+      return `${r.date}: ${r.distance_km?.toFixed(1) || "?"}km, pace ${ps}, esforço ${r.effort_rpe || "?"}`;
+    })
+    .join("\n");
+
+  const prompt =
+    `Como um coach de corrida experiente, analisa esta corrida e fornece feedback breve (2-3 frases max). ` +
+    `Sé elogioso quando apropriado, alerta para métricas fracas e sugere melhorias concretas.\n\n` +
+    `Corrida de hoje:\n` +
+    `- Tipo: ${trainingTypeLabel}\n` +
+    `- Data: ${run.date}\n` +
+    `- Distância: ${run.distance_km?.toFixed(2) || "?"} km\n` +
+    `- Pace: ${paceStr}\n` +
+    `- Esforço (RPE): ${run.effort_rpe || "?"}/10\n` +
+    (details.elevation_gain_m ? `- Desnível: ${details.elevation_gain_m}m\n` : "") +
+    (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
+    (details.vo2_max ? `- VO2 max: ${details.vo2_max}\n` : "") +
+    `\nÚltimas corridas:\n${previousContext}\n\n` +
+    `Responde em português (PT), de forma amigável mas motivadora.`;
+
+  try {
+    const res = await fetchGeminiWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 150 },
+        }),
+      },
+      20000,
+      1,
+    );
+
+    if (!res.ok) {
+      console.warn("Coach generation failed:", res.status);
+      return null;
+    }
+
+    const json = await res.json();
+    const coachText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return coachText ? coachText.trim() : null;
+  } catch (e) {
+    console.warn("Coach generation error:", e);
+    return null;
+  }
+}
 
 async function analyzeWithGemini(
   images: string[],
@@ -557,6 +648,41 @@ Deno.serve(async (req) => {
     if (insertError) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
+    }
+
+    // 4. Gerar análise do Coach (assíncrono, não bloqueia a resposta)
+    let coachNotes: string | null = null;
+    try {
+      const { data: previousRuns } = await sb
+        .from("runs")
+        .select("date, distance_km, duration_seconds, effort_rpe, details")
+        .eq("user_id", userId)
+        .lt("date", date)
+        .order("date", { ascending: false })
+        .limit(10);
+
+      if (previousRuns && previousRuns.length > 0) {
+        coachNotes = await generateCoachNotes(
+          {
+            date,
+            kind,
+            training_type: trainingType,
+            distance_km: result.extraction.distance_km,
+            duration_seconds: result.extraction.duration_seconds,
+            effort_rpe: effortRpe,
+            details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
+          },
+          previousRuns,
+          geminiKey,
+        );
+
+        if (coachNotes) {
+          await sb.from("runs").update({ coach_notes: coachNotes }).eq("id", run.id);
+          run.coach_notes = coachNotes;
+        }
+      }
+    } catch (e) {
+      console.warn("Coach generation skipped:", e);
     }
 
     return jsonResponse({ run, usage: result.usage });

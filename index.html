@@ -3611,6 +3611,15 @@ function runCard(r){
         ${r.effort_rpe ? `<p class="text-[11px] text-slate-500">Esforço: <span class="text-slate-300 font-medium">${r.effort_rpe}/10</span></p>` : ''}
         ${r.notes ? `<p class="text-[11px] text-slate-500"><span class="text-slate-400 font-medium">Obs.:</span> ${esc(r.notes)}</p>` : ''}
 
+        ${r.coach_notes ? `
+          <div class="rounded-lg bg-neutral-800/40 border border-emerald-500/20 p-2.5 mb-1">
+            <p class="text-[10px] text-emerald-400 font-semibold flex items-center gap-1.5 mb-1">
+              <i data-lucide="award" class="w-3.5 h-3.5"></i> Coach
+            </p>
+            <p class="text-[11px] text-slate-300 leading-relaxed">${esc(r.coach_notes)}</p>
+          </div>
+        ` : ''}
+
         <div class="flex items-center gap-2 pt-1">
           <button onclick="openEditRun('${r.id}')"
             class="flex-1 border border-neutral-700 hover:border-[var(--accent)]/50 text-slate-300 text-xs font-semibold rounded-xl py-2 flex items-center justify-center gap-1.5 transition">
@@ -4550,7 +4559,8 @@ async function analyzeRun(){
     showToast('success', 'Corrida registada', `${formatDatePT(run.date)} · a IA leu os dados do print`,
       { actionLabel: 'Ver no Calendário', actionOnclick: `viewInCorridaCalendar('${run.date}')` });
     logEvent('success', 'run_analysis', null, { date: run.date, ...(data.usage || {}) });
-    corridaTab = 'dashboard';
+    corridaTab = 'calendario';
+    corridaCalendarSelectedDate = run.date;
   } catch(e) {
     console.error(e);
     showToast('error', null, aiErrorMessage(e, 'Falha na análise. Tenta novamente.'));
