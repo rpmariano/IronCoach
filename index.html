@@ -4057,14 +4057,18 @@ function runWatchMetricsSummary(periodRuns){
 // utilizador pode nunca ter usado relógio, ou só nalgumas corridas).
 function renderRunWatchMetricsDashboard(periodRuns){
   const m = runWatchMetricsSummary(periodRuns);
+  const rangeLabel = corridaRange === 'semana' ? 'Esta Semana' : corridaRange === 'mes' ? 'Este Mês' : '3 Meses';
   const cards = [];
 
   if (m.totalElevation > 0 || m.totalCalories > 0 || m.avgCadence != null) {
     cards.push(`
       <div class="card rounded-2xl p-3.5">
-        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5 flex items-center gap-1.5">
-          <i data-lucide="mountain" class="w-3.5 h-3.5 text-slate-500"></i> Desnível, calorias e cadência
-        </h2>
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="mountain" class="w-3.5 h-3.5 text-slate-500"></i> Desnível, calorias e cadência
+          </h2>
+          <p class="text-[10px] text-slate-500">${rangeLabel}</p>
+        </div>
         <div class="grid grid-cols-3 gap-2 text-center">
           <div>
             <p class="text-base font-extrabold text-white leading-none">${m.totalElevation > 0 ? Math.round(m.totalElevation) : '—'}</p>
@@ -4087,9 +4091,12 @@ function renderRunWatchMetricsDashboard(periodRuns){
     const zoneLabels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
     cards.push(`
       <div class="card rounded-2xl p-3.5">
-        <h2 class="text-[11px] font-semibold text-slate-300 mb-2.5 flex items-center gap-1.5">
-          <i data-lucide="heart-pulse" class="w-3.5 h-3.5 text-slate-500"></i> Frequência cardíaca
-        </h2>
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="heart-pulse" class="w-3.5 h-3.5 text-slate-500"></i> Frequência cardíaca
+          </h2>
+          <p class="text-[10px] text-slate-500">${rangeLabel}</p>
+        </div>
         <div class="grid grid-cols-2 gap-2 text-center mb-3">
           <div>
             <p class="text-base font-extrabold text-white leading-none">${m.avgHr != null ? Math.round(m.avgHr) : '—'}</p>
