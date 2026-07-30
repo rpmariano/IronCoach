@@ -1307,14 +1307,22 @@ function bucketPaceForRun(run, minKm){
 }
 // Melhor (mais baixo) pace de sempre entre as corridas qualificantes de um
 // bucket — não o mais recente, o recorde. runnerUp (2º melhor) dá uma noção
-// de quão destacado é esse recorde face ao resto do histórico.
+// de quão destacado é esse recorde face ao resto do histórico. date/runId
+// identificam a corrida do recorde, para mostrar quando foi alcançado em
+// vez de uma barra de progresso sem escala de referência clara.
 function bestPaceData(minKm){
-  const paces = runsAtLeast(minKm)
-    .map(r => bucketPaceForRun(r, minKm))
-    .filter(p => p !== null)
-    .sort((a,b) => a - b);
-  if (paces.length === 0) return null;
-  return { pace: paces[0], runnerUp: paces.length > 1 ? paces[1] : null, count: paces.length };
+  const entries = runsAtLeast(minKm)
+    .map(r => ({ run: r, pace: bucketPaceForRun(r, minKm) }))
+    .filter(e => e.pace !== null)
+    .sort((a,b) => a.pace - b.pace);
+  if (entries.length === 0) return null;
+  return {
+    pace: entries[0].pace,
+    date: entries[0].run.date,
+    runId: entries[0].run.id,
+    runnerUp: entries.length > 1 ? entries[1].pace : null,
+    count: entries.length,
+  };
 }
 
 /* ============================= DADOS ============================= */
@@ -4232,18 +4240,24 @@ function renderCorridaDashboard(){
   const avgPaceSec = totalDist > 0 ? totalDuration / totalDist : 0;
   const ranges = [{ k:'semana', l:'Esta Semana' }, { k:'mes', l:'Este Mês' }, { k:'trimestre', l:'3 Meses' }];
   const b5 = bestPaceData(5), b10 = bestPaceData(10), b21 = bestPaceData(21);
+  // Sem barra de progresso — a escala fixa (3:00–8:00/km) não tinha
+  // significado percetível para quem a olhasse (não é uma meta do
+  // utilizador, nem uma comparação clara). Em vez disso, mostra a data do
+  // recorde e quantas corridas já qualificam para o bucket — informação
+  // real que já temos, em vez de um preenchimento decorativo.
   const bucket = (label, b) => {
     if (!b) return `
-      <div class="flex items-center justify-between gap-3">
-        <p class="text-[10px] text-slate-500">${label}</p>
-        <p class="text-[10px] text-slate-600">Sem dados</p>
-        <div class="flex-1">${gaugeBar(0, { color: 'var(--mod-corrida-from)' })}</div>
+      <div class="flex items-center justify-between gap-3 py-1.5">
+        <p class="text-xs text-slate-500">${label}</p>
+        <p class="text-xs text-slate-600">Sem dados</p>
       </div>`;
     return `
-      <div class="flex items-center justify-between gap-3">
-        <p class="text-[10px] text-slate-500">${label}</p>
-        <p class="text-xs font-extrabold text-white">${formatPace(b.pace)}</p>
-        <div class="flex-1">${gaugeBar(paceQualityPct(b.pace), { color: 'var(--mod-corrida-from)' })}</div>
+      <div class="flex items-center justify-between gap-3 py-1.5">
+        <div>
+          <p class="text-xs text-slate-500">${label}</p>
+          <p class="text-[10px] text-slate-600 mt-0.5">${formatDatePT(b.date)} · ${b.count} corrida${b.count > 1 ? 's' : ''}</p>
+        </div>
+        <p class="text-base font-extrabold text-white">${formatPace(b.pace)}</p>
       </div>`;
   };
 
