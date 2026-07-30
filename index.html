@@ -818,7 +818,7 @@ const RUN_REPEAT_DETAIL_FIELDS = [
 // como "registar"/"avaliar" não são abas em Ginásio/Corpo.
 let corridaTab = 'dashboard';     // 'dashboard' | 'calendario' | 'agenda' | 'registar'
 let corridaRange = 'mes';         // semana | mes | trimestre (dashboard)
-let corridaCharts = { dist: null }; // instância Chart.js (destruída antes de recriar)
+let corridaCharts = { dist: null, vo2: null, hr: null, eff: null }; // instâncias Chart.js (destruídas antes de recriar)
 let corridaCalendarViewMonth = todayISO().slice(0,7);
 let corridaCalendarSelectedDate = todayISO();
 let raceEvents = [];              // provas agendadas/concluídas, ordenadas por data
@@ -4077,6 +4077,26 @@ function runWatchMetricsSummary(periodRuns){
   });
   const zoneTotal = zoneMinutes.reduce((a, b) => a + b, 0);
 
+  // Séries cronológicas (mais antiga primeiro) para os gráficos de evolução
+  // — só entram corridas do período selecionado (periodRuns), por isso o
+  // gráfico responde ao seletor Esta Semana/Este Mês/3 Meses no topo.
+  const byDateAsc = (a, b) => a.date.localeCompare(b.date) || (a.created_at || '').localeCompare(b.created_at || '');
+  const vo2Series = withDetails
+    .filter(r => Number(r.details.vo2_max) > 0)
+    .sort(byDateAsc)
+    .map(r => ({ date: r.date, value: Number(r.details.vo2_max) }));
+  const hrSeries = withDetails
+    .filter(r => Number(r.details.avg_heart_rate_bpm) > 0)
+    .sort(byDateAsc)
+    .map(r => ({ date: r.date, value: Number(r.details.avg_heart_rate_bpm) }));
+  // Eficiência cardíaca: segundos de pace por bpm de FC média — junta duas
+  // métricas que já recolhemos (pace e FC) numa leitura de progresso que
+  // nenhuma delas dá sozinha (correr mais rápido à mesma FC = mais eficiente).
+  const effSeries = withDetails
+    .filter(r => Number(r.details.avg_heart_rate_bpm) > 0 && Number(r.distance_km) > 0 && Number(r.duration_seconds) > 0)
+    .sort(byDateAsc)
+    .map(r => ({ date: r.date, value: (Number(r.duration_seconds) / Number(r.distance_km)) / Number(r.details.avg_heart_rate_bpm) }));
+
   return {
     totalElevation: elevation.reduce((a, b) => a + b, 0),
     totalCalories: calories.reduce((a, b) => a + b, 0),
@@ -4085,6 +4105,7 @@ function runWatchMetricsSummary(periodRuns){
     maxHr: maxHr.length ? Math.max(...maxHr) : null,
     latestVo2: vo2Runs.length ? Number(vo2Runs[0].details.vo2_max) : null,
     zoneMinutes, zoneTotal,
+    vo2Series, hrSeries, effSeries,
   };
 }
 
@@ -4125,6 +4146,9 @@ function renderRunWatchMetricsDashboard(periodRuns){
 
   if (m.avgHr != null || m.maxHr != null || m.zoneTotal > 0) {
     const zoneLabels = ['Z1', 'Z2', 'Z3', 'Z4', 'Z5'];
+    // Zona dominante (a que soma mais minutos) — dá uma leitura imediata de
+    // "onde treinaste principalmente" sem ter de ler as 5 barras.
+    const dominantZoneIdx = m.zoneTotal > 0 ? m.zoneMinutes.indexOf(Math.max(...m.zoneMinutes)) : -1;
     cards.push(`
       <div class="card rounded-2xl p-3.5">
         <div class="flex items-center justify-between mb-2.5">
@@ -4143,13 +4167,21 @@ function renderRunWatchMetricsDashboard(periodRuns){
             <p class="text-[10px] text-slate-500 mt-1">FC máxima (bpm)</p>
           </div>
         </div>
+        ${m.hrSeries.length >= 2 ? `
+          <p class="text-[10px] text-slate-500 mb-1">FC média por corrida</p>
+          <div class="h-24 mb-3"><canvas id="corridaHrChart"></canvas></div>
+        ` : ''}
+        ${m.effSeries.length >= 2 ? `
+          <p class="text-[10px] text-slate-500 mb-1">Eficiência cardíaca (segundos por km, por bpm — quanto menor, mais eficiente)</p>
+          <div class="h-24 mb-3"><canvas id="corridaEffChart"></canvas></div>
+        ` : ''}
         ${m.zoneTotal > 0 ? `
           <div class="space-y-1.5">
             ${zoneLabels.map((label, i) => `
               <div class="flex items-center gap-2">
-                <span class="text-[10px] text-slate-500 w-5 shrink-0">${label}</span>
+                <span class="text-[10px] w-5 shrink-0 ${i === dominantZoneIdx ? 'text-white font-semibold' : 'text-slate-500'}">${label}</span>
                 <div class="flex-1">${gaugeBar((m.zoneMinutes[i] / m.zoneTotal) * 100, { color: 'var(--mod-corrida-from)' })}</div>
-                <span class="text-[10px] text-slate-500 w-10 text-right shrink-0">${Math.round(m.zoneMinutes[i])} min</span>
+                <span class="text-[10px] text-slate-500 w-24 text-right shrink-0">${Math.round(m.zoneMinutes[i])} min · ${Math.round((m.zoneMinutes[i] / m.zoneTotal) * 100)}%</span>
               </div>
             `).join('')}
           </div>
@@ -4159,16 +4191,25 @@ function renderRunWatchMetricsDashboard(periodRuns){
   }
 
   if (m.latestVo2 != null) {
+    const vo2Delta = m.vo2Series.length >= 2
+      ? m.vo2Series[m.vo2Series.length - 1].value - m.vo2Series[0].value
+      : null;
     cards.push(`
-      <div class="card rounded-2xl p-3.5 flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <i data-lucide="gauge" class="w-4 h-4 text-slate-500"></i>
-          <div>
-            <p class="text-[11px] font-semibold text-slate-300">VO2 máx</p>
-            <p class="text-[10px] text-slate-500">Valor mais recente do relógio</p>
+      <div class="card rounded-2xl p-3.5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <i data-lucide="gauge" class="w-4 h-4 text-slate-500"></i>
+            <div>
+              <p class="text-[11px] font-semibold text-slate-300">VO2 máx</p>
+              <p class="text-[10px] text-slate-500">${m.vo2Series.length >= 2 ? 'Evolução no período' : 'Valor mais recente do relógio'}</p>
+            </div>
+          </div>
+          <div class="text-right">
+            <p class="text-lg font-extrabold text-white leading-none">${m.latestVo2.toFixed(1)}</p>
+            ${vo2Delta != null ? `<p class="text-[10px] mt-0.5 ${vo2Delta > 0 ? 'text-emerald-400' : vo2Delta < 0 ? 'text-red-400' : 'text-slate-500'}">${vo2Delta > 0 ? '+' : ''}${vo2Delta.toFixed(1)} no período</p>` : ''}
           </div>
         </div>
-        <p class="text-lg font-extrabold text-white leading-none">${m.latestVo2.toFixed(1)}</p>
+        ${m.vo2Series.length >= 2 ? `<div class="h-24"><canvas id="corridaVo2Chart"></canvas></div>` : ''}
       </div>
     `);
   }
@@ -4282,6 +4323,39 @@ function renderCorridaCharts(){
       }
     });
   }
+
+  // Gráficos de evolução partilhados (VO2 máx, FC média, eficiência
+  // cardíaca) — todos respondem ao mesmo seletor de período do topo
+  // (Esta Semana/Este Mês/3 Meses), já que usam a mesma janela [start,end].
+  const periodRuns = runs.filter(r => r.date >= start && r.date <= end);
+  const m = runWatchMetricsSummary(periodRuns);
+  const lineChart = (key, canvasId, series, { label, color, tooltipSuffix, decimals }) => {
+    if (corridaCharts[key]) { corridaCharts[key].destroy(); corridaCharts[key] = null; }
+    const el = document.getElementById(canvasId);
+    if (!el || series.length < 2) return;
+    corridaCharts[key] = new Chart(el, {
+      type: 'line',
+      data: {
+        labels: series.map(p => p.date.slice(8,10) + '/' + p.date.slice(5,7)),
+        datasets: [{
+          label, data: series.map(p => p.value),
+          borderColor: color, backgroundColor: hexToRgba(color, 0.15),
+          tension: 0.3, fill: true, pointRadius: 3, pointBackgroundColor: color,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y.toFixed(decimals)}${tooltipSuffix || ''}` } },
+        },
+        scales: { y: { grid: { color: gridColor } }, x: { grid: { display: false } } },
+      },
+    });
+  };
+  lineChart('vo2', 'corridaVo2Chart', m.vo2Series, { label: 'VO2 máx', color: cssVar('--mod-corrida-to'), tooltipSuffix: '', decimals: 1 });
+  lineChart('hr', 'corridaHrChart', m.hrSeries, { label: 'FC média', color: '#f87171', tooltipSuffix: ' bpm', decimals: 0 });
+  lineChart('eff', 'corridaEffChart', m.effSeries, { label: 'Eficiência', color: '#34d399', tooltipSuffix: ' s/km/bpm', decimals: 2 });
 }
 
 /* ---------- Calendário (navegação por dia + acesso ao registo) ---------- */
