@@ -245,11 +245,13 @@ async function generateCoachNotes(
   },
   previousRuns: Array<{
     date: string;
+    kind: string;
     distance_km: number | null;
     duration_seconds: number | null;
     effort_rpe: number | null;
     details: Record<string, unknown> | null;
   }>,
+  historyLabel: string,
   geminiKey: string,
 ): Promise<{ text: string | null; debug: unknown }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
@@ -264,11 +266,12 @@ async function generateCoachNotes(
 
   const details = (run.details || {}) as Record<string, unknown>;
 
-  // previousRuns pode trazer até 10 corridas (ver chamada no handler) — as
-  // últimas 5 vão em detalhe no prompt, mas o conjunto todo alimenta
-  // estatísticas de médio prazo (volume semanal, tendência de pace, recorde
-  // pessoal) que dão à análise substância que uma janela de 5 não permite.
-  const recentRuns = previousRuns.slice(-5);
+  // previousRuns vem ordenado por data DESCENDENTE (mais recente em
+  // previousRuns[0]) e pode trazer até 100 corridas do mesmo segmento (ver
+  // chamada no handler) — dá uma base de histórico bem mais fiável para
+  // recorde pessoal/volume/tendência do que só as últimas 10, sem inchar o
+  // prompt: só as 5 mais recentes vão em detalhe no texto.
+  const recentRuns = previousRuns.slice(0, 5);
   const recentPaces = recentRuns
     .map((r) => (r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null))
     .filter((p): p is number => p != null);
@@ -282,7 +285,18 @@ async function generateCoachNotes(
     ? `${paceSec < avgRecentPace ? "-" : "+"}${Math.round(Math.abs(paceSec - avgRecentPace))}s/km vs. média das últimas ${recentRuns.length}`
     : null;
 
-  const previousContext = recentRuns
+  // Dias desde a corrida anterior do mesmo segmento — calculado aqui, nunca
+  // deixado para o modelo estimar a partir da lista (é isso que causava
+  // afirmações de hiato fabricadas/inconsistentes entre análises da mesma
+  // corrida, ex.: "15 dias desde 29 de maio" quando havia corridas nesse
+  // intervalo todo).
+  const daysSinceLastRun = previousRuns.length
+    ? Math.round((new Date(run.date).getTime() - new Date(previousRuns[0].date).getTime()) / (24 * 3600 * 1000))
+    : null;
+
+  // Lista em ordem cronológica (mais antiga primeiro, mais recente por
+  // último) para o modelo ler como uma narrativa de progresso.
+  const previousContext = [...recentRuns].reverse()
     .map((r) => {
       const d = (r.details || {}) as Record<string, unknown>;
       const p =
@@ -290,13 +304,14 @@ async function generateCoachNotes(
           ? r.duration_seconds / r.distance_km
           : null;
       const ps = p ? `${Math.floor(p / 60)}'${Math.round(p % 60)}"` : "—";
-      return `${r.date}: ${r.distance_km?.toFixed(1) || "?"}km, pace ${ps}, esforço ${r.effort_rpe || "?"}/10${d.avg_heart_rate_bpm ? `, FC média ${d.avg_heart_rate_bpm}bpm` : ""}`;
+      const kindLabel = r.kind === "competicao" ? "Competição" : "Treino";
+      return `${r.date} (${kindLabel}): ${r.distance_km?.toFixed(1) || "?"}km, pace ${ps}, esforço ${r.effort_rpe || "?"}/10${d.avg_heart_rate_bpm ? `, FC média ${d.avg_heart_rate_bpm}bpm` : ""}`;
     })
     .join("\n");
 
-  // Estatísticas de médio prazo sobre o histórico alargado (até 10 corridas):
-  // recorde pessoal de pace, volume total/semanal, e tendência comparando a
-  // metade mais recente do histórico com a mais antiga.
+  // Estatísticas de longo prazo sobre TODO o histórico do segmento (até 100
+  // corridas): recorde pessoal de pace, volume total/semanal, e tendência
+  // comparando a metade mais recente do histórico com a mais antiga.
   const allWithPace = previousRuns
     .map((r) => ({ ...r, pace: r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null }))
     .filter((r) => r.pace != null) as Array<{ date: string; distance_km: number | null; pace: number }>;
@@ -307,6 +322,9 @@ async function generateCoachNotes(
   const isNewPersonalBest = bestPaceRun && paceSec ? paceSec <= bestPaceRun.pace : false;
 
   const totalDistanceHistory = previousRuns.reduce((a, r) => a + (r.distance_km || 0), 0);
+  // previousRuns[0] é o mais recente, o último elemento é o mais antigo
+  // (ordem descendente da query) — usa-se o mais antigo para medir o
+  // período total coberto pelo histórico disponível.
   const oldestDate = previousRuns.length ? previousRuns[previousRuns.length - 1].date : null;
   const weeksSpanned = oldestDate
     ? Math.max(1, (new Date(run.date).getTime() - new Date(oldestDate).getTime()) / (7 * 24 * 3600 * 1000))
@@ -317,14 +335,16 @@ async function generateCoachNotes(
 
   // Tendência: compara o pace médio da metade mais recente do histórico com
   // a metade mais antiga — sinal de progressão/regressão a médio prazo que
-  // a comparação só com as 5 últimas corridas não apanha.
+  // a comparação só com as 5 últimas corridas não apanha. allWithPace vem
+  // ordenado do mais recente (índice 0) para o mais antigo (último índice),
+  // por isso a primeira metade é a MAIS RECENTE e a segunda é a mais antiga.
   let trendStr: string | null = null;
   if (allWithPace.length >= 6) {
     const mid = Math.floor(allWithPace.length / 2);
-    const olderHalf = allWithPace.slice(0, mid); // array vem do mais recente para o mais antigo
-    const newerHalf = allWithPace.slice(mid);
-    const avgOlder = olderHalf.reduce((a, r) => a + r.pace, 0) / olderHalf.length;
+    const newerHalf = allWithPace.slice(0, mid);
+    const olderHalf = allWithPace.slice(mid);
     const avgNewer = newerHalf.reduce((a, r) => a + r.pace, 0) / newerHalf.length;
+    const avgOlder = olderHalf.reduce((a, r) => a + r.pace, 0) / olderHalf.length;
     const diff = Math.round(avgOlder - avgNewer);
     trendStr = diff === 0
       ? "pace estável ao longo do histórico disponível"
@@ -334,20 +354,23 @@ async function generateCoachNotes(
   }
 
   const contextSection = previousContext.trim()
-    ? `\nÚltimas ${recentRuns.length} corridas (mais recente por último):\n${previousContext}\n` +
+    ? `\nBase de comparação usada: ${historyLabel}.\n` +
+      `\nÚltimas ${recentRuns.length} corridas deste grupo (mais antiga primeiro, mais recente por último):\n${previousContext}\n` +
       (avgRecentDistance ? `\nMédia de distância recente: ${avgRecentDistance.toFixed(1)}km\n` : "") +
       (avgRecentPace ? `Média de pace recente: ${Math.floor(avgRecentPace / 60)}'${Math.round(avgRecentPace % 60)}"/km\n` : "") +
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
-      `\nHistórico alargado (${previousRuns.length} corridas disponíveis):\n` +
+      (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
+      `\nHistórico alargado (${previousRuns.length} corridas deste grupo disponíveis para estatística, mesmo sem irem todas em detalhe acima):\n` +
       (weeklyVolumeStr ? `- Volume: ${weeklyVolumeStr}\n` : "") +
-      (bestPaceStr ? `- Melhor pace já registado: ${bestPaceStr}${isNewPersonalBest ? " — a corrida de hoje IGUALA ou BATE este recorde\n" : "\n"}` : "") +
+      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " — a corrida de hoje IGUALA ou BATE este recorde\n" : "\n"}` : "") +
       (trendStr ? `- Tendência: ${trendStr}\n` : "")
-    : `\nNota: esta é a primeira corrida registada (sem histórico anterior para comparação) — nesse caso, comenta sobre o que os dados desta corrida por si só revelam (ex.: relação esforço/pace, consistência dos splits), não sobre progresso.\n`;
+    : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação — nesse caso, comenta sobre o que os dados desta corrida por si só revelam (ex.: relação esforço/pace, consistência dos splits), não sobre progresso, e não inventes um histórico que não existe.\n`;
 
   const prompt =
     `És um treinador de corrida experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma corrida. ` +
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
     `REGRAS OBRIGATÓRIAS:\n` +
+    `- NUNCA inventes ou estimes números que não te foram dados explicitamente — em especial "dias desde a última corrida"/hiatos: usa exatamente o valor em "Dias desde a corrida anterior" quando existir, e se não existir, não fales de hiatos ou gaps.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo ("Excelente trabalho!", "Continua assim!", "Bom trabalho!") — cada frase tem de estar ancorada num número ou comparação concreta dos dados fornecidos.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
     `- Se a corrida de hoje é um novo recorde pessoal de pace, assinala isso claramente logo no início.\n` +
@@ -357,7 +380,7 @@ async function generateCoachNotes(
     `- Termina com uma sugestão concreta e acionável para o próximo treino (não um conselho vago tipo "continua a treinar").\n` +
     `- Não repitas os números todos, escolhe os 3-4 mais relevantes para a história que estás a contar.\n\n` +
     `Corrida de hoje:\n` +
-    `- Tipo: ${trainingTypeLabel}\n` +
+    `- Tipo: ${run.kind === "competicao" ? "Competição" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
     `- Distância: ${run.distance_km?.toFixed(2) || "?"} km\n` +
     `- Pace: ${paceStr}/km\n` +
@@ -750,19 +773,42 @@ Deno.serve(async (req) => {
 
     // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
     try {
-      // Busca um histórico maior do que as 5 corridas mostradas em detalhe
-      // no prompt — dá ao generateCoachNotes material para calcular
-      // tendências de médio prazo (volume semanal, evolução de pace,
-      // recordes pessoais) em vez de comparar só com a corrida anterior.
-      // 30 corridas tornava o prompt pesado o suficiente para arriscar
-      // timeout no Gemini; 10 é um equilíbrio entre contexto útil e latência.
-      const { data: previousRuns } = await sb
+      // Segmentação do histórico usado na comparação:
+      // - Competição: só compara com outras competições (não treinos) — e,
+      //   dentro das competições, Trail só compara com Trail (terreno/esforço
+      //   não comparável a estrada); as restantes disciplinas (estrada,
+      //   5k/10k/21k/42k/ultra/outro) comparam-se todas entre si, mesmo com
+      //   distâncias diferentes, porque o prompt já pede ao modelo para
+      //   normalizar por pace/esforço, não por tempo absoluto.
+      // - Treino: continua a olhar para treinos E competições — um treino
+      //   ganha contexto ao ver o nível atingido em prova.
+      let historyQuery = sb
         .from("runs")
-        .select("date, distance_km, duration_seconds, effort_rpe, details")
+        .select("date, kind, distance_km, duration_seconds, effort_rpe, details")
         .eq("user_id", userId)
-        .lt("date", date)
+        .lt("date", date);
+      let historyLabel: string;
+      if (kind === "competicao") {
+        historyQuery = historyQuery.eq("kind", "competicao");
+        if (raceType === "trail") {
+          historyQuery = historyQuery.eq("details->>race_type", "trail");
+          historyLabel = "apenas outras competições de Trail";
+        } else {
+          historyQuery = historyQuery.neq("details->>race_type", "trail");
+          historyLabel = "apenas outras competições de estrada/pista (todas as distâncias, sem Trail)";
+        }
+      } else {
+        historyLabel = "treinos e competições";
+      }
+
+      // Janela alargada (até 100 corridas do mesmo segmento, não só as 10
+      // mais recentes) para que recorde pessoal, volume e tendência assentem
+      // numa base fiável mesmo quando as 5-10 corridas mais recentes têm
+      // pouca variação — só as 5 mais recentes vão em detalhe no prompt
+      // (ver generateCoachNotes), o resto alimenta só as estatísticas.
+      const { data: previousRuns } = await historyQuery
         .order("date", { ascending: false })
-        .limit(10);
+        .limit(100);
 
       const coachResult = await generateCoachNotes(
         {
@@ -775,6 +821,7 @@ Deno.serve(async (req) => {
           details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
         },
         previousRuns || [],
+        historyLabel,
         geminiKey,
       );
 
