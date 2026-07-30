@@ -2035,7 +2035,15 @@ function dismissGoalsRationale(){
 }
 
 /* ============================= FOTO + ANÁLISE ============================= */
-// Comprime um ficheiro: máx 1280px no lado maior, JPEG q0.8
+// Comprime um ficheiro: normalmente máx 1600px no lado maior, JPEG q0.8.
+// Screenshots em "scroll compilado" (ex.: resumo completo do Garmin Connect,
+// muito mais altos do que largos) escalar só pelo lado maior esmagava a
+// largura para valores ilegíveis (ex.: uma imagem de 1278×10770 ficava com
+// 152px de largura) — tanto para uma pessoa como para a IA ler qualquer
+// tabela (splits, zonas). Garante por isso uma largura mínima legível,
+// mesmo que isso deixe a altura acima do limite normal; só recua dessa
+// garantia se a altura resultante for mesmo extrema, para não gerar
+// imagens gigantes.
 function compressImage(file){
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -2044,8 +2052,12 @@ function compressImage(file){
     reader.onload = () => {
       img.onerror = reject;
       img.onload = () => {
-        const maxSide = 1280;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const maxSide = 1600;
+        const minWidth = 900;
+        const maxHeight = 6000;
+        let scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        if (img.width * scale < minWidth) scale = Math.min(1, minWidth / img.width);
+        if (img.height * scale > maxHeight) scale = maxHeight / img.height;
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
