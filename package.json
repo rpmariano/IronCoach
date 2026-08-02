@@ -1,0 +1,47 @@
+{
+  "name": "claude",
+  "version": "1.0.0",
+  "description": "",
+  "main": "sw.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rpmariano/ironhealth.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rpmariano/ironhealth/issues"
+  },
+  "homepage": "https://github.com/rpmariano/ironhealth#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
+    "chart.js": "^4.5.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.28.0",
+    "puppeteer-core": "^25.4.0",
+    "react": "^19.2.8",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.8",
+    "tailwind-merge": "^3.6.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
+  }
+}
