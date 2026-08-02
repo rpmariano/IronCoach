@@ -23,11 +23,13 @@ export const useAppStore = create((set, get) => ({
   // UI State
   activeTab: 'home',
   homeLayout: ['weight_kg', 'body_fat_pct', 'protein_today', 'corrida_km', 'corrida_pace', 'gym_sessions', 'gym_volume'],
+  openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout'
   
   // Actions
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),

@@ -14,7 +14,7 @@ const MEAL_TYPES = [
 
 const MAX_PHOTOS = 4;
 
-export default function MealRegistration() {
+export default function MealRegistration({ onClose }) {
   const { setActiveNutritionTab } = useAppStore();
   const [photos, setPhotos] = useState([]);
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -65,9 +65,20 @@ export default function MealRegistration() {
         className="rounded-2xl p-4 shadow-sm relative overflow-hidden" 
         style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.1)', borderLeft: '4px solid var(--mod-nutricao-to)' }}
       >
-        <div className="flex items-center gap-2 mb-4">
-          <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-          <h2 className="text-[15px] font-semibold text-slate-700">Nova Refeição</h2>
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2">
+            <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
+            <h2 className="text-[15px] font-semibold text-slate-700">Nova Refeição</h2>
+          </div>
+          {onClose && (
+            <button 
+              onClick={onClose} 
+              type="button" 
+              className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
+            >
+              Cancelar
+            </button>
+          )}
         </div>
 
         {photos.length > 0 ? (

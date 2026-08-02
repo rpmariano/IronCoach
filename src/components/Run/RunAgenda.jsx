@@ -113,7 +113,7 @@ export default function RunAgenda({ onNewRun }) {
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
               {ev.name}
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-corrida-to)', borderColor: 'var(--mod-corrida-to)' }}>
                 {typeLabel}
               </span>
               {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}

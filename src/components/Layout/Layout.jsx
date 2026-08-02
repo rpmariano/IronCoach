@@ -16,7 +16,7 @@ function RunIcon({ className = "w-5 h-5" }) {
 }
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin } = useAppStore();
+  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const lastLogoClickAt = useRef(0);
@@ -87,10 +87,10 @@ export default function Layout({ children }) {
           style={{ bottom: 86 }}
           ref={fabRef}
         >
-          <FabItem label="Registar refeição" gradient="var(--mod-nutricao-from),var(--mod-nutricao-to)" icon={<Camera size={14} />} onClick={() => { closeFab(); setActiveTab('nutricao'); }} />
-          <FabItem label="Nova avaliação" gradient="var(--mod-corpo-from),var(--mod-corpo-to)" icon={<User size={14} />} onClick={() => { closeFab(); setActiveTab('corpo'); }} />
-          <FabItem label="Nova corrida" gradient="var(--mod-corrida-from),var(--mod-corrida-to)" icon={<RunIcon className="w-3.5 h-3.5" />} onClick={() => { closeFab(); setActiveTab('corrida'); }} />
-          <FabItem label="Novo treino" gradient="var(--mod-ginasio-from),var(--mod-ginasio-to)" icon={<Dumbbell size={14} />} onClick={() => { closeFab(); setActiveTab('ginasio'); }} />
+          <FabItem label="Registar refeição" gradient="var(--mod-nutricao-from),var(--mod-nutricao-to)" icon={<Camera size={14} />} onClick={() => { closeFab(); setActiveTab('nutricao'); setOpenCreationMode('meal'); }} />
+          <FabItem label="Nova avaliação" gradient="var(--mod-corpo-from),var(--mod-corpo-to)" icon={<User size={14} />} onClick={() => { closeFab(); setActiveTab('corpo'); setOpenCreationMode('assessment'); }} />
+          <FabItem label="Nova corrida" gradient="var(--mod-corrida-from),var(--mod-corrida-to)" icon={<RunIcon className="w-3.5 h-3.5" />} onClick={() => { closeFab(); setActiveTab('corrida'); setOpenCreationMode('run'); }} />
+          <FabItem label="Novo treino" gradient="var(--mod-ginasio-from),var(--mod-ginasio-to)" icon={<Dumbbell size={14} />} onClick={() => { closeFab(); setActiveTab('ginasio'); setOpenCreationMode('workout'); }} />
         </div>
       )}
 

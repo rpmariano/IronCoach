@@ -13,14 +13,14 @@ const TABS = [
 
 export default function Run() {
   const [activeSubTab, setActiveSubTab] = useState('dashboard');
-  const [isFabOpen, setIsFabOpen] = useState(false);
   const [fabDate, setFabDate] = useState(null);
+  const { openCreationMode, setOpenCreationMode } = useAppStore();
   
   const tabIndex = TABS.findIndex(t => t.id === activeSubTab);
 
   const handleOpenFab = (date = null) => {
     setFabDate(date);
-    setIsFabOpen(true);
+    setOpenCreationMode('run');
   };
 
   return (
@@ -53,8 +53,8 @@ export default function Run() {
         })}
       </div>
 
-      {isFabOpen ? (
-        <RunRegistration onClose={() => setIsFabOpen(false)} initialMode="corrida" dateIso={fabDate} />
+      {openCreationMode === 'run' ? (
+        <RunRegistration onClose={() => setOpenCreationMode(null)} initialMode="corrida" dateIso={fabDate} />
       ) : (
         <>
           {activeSubTab === 'dashboard' && <RunDashboard />}
@@ -64,13 +64,13 @@ export default function Run() {
       )}
 
       {/* FAB para Nova Corrida se não estiver na Agenda (Agenda tem o seu botão) */}
-      {activeSubTab !== 'agenda' && (
+      {activeSubTab !== 'agenda' && openCreationMode !== 'run' && (
         <button 
           onClick={() => handleOpenFab()}
           className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition z-40 text-neutral-950"
-          style={{ background: 'var(--accent)' }}
+          style={{ background: 'var(--mod-corrida-to)' }}
         >
-          <Plus size={28} />
+          <Plus size={28} className="text-white" />
         </button>
       )}
     </div>
