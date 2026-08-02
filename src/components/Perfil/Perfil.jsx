@@ -58,7 +58,7 @@ export default function Perfil() {
       const { error } = await supabase
         .from('profiles')
         .update(draft)
-        .eq('id', profile.id);
+        .eq('id', profile?.id);
         
       if (error) throw error;
       

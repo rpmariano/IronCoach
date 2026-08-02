@@ -121,8 +121,8 @@ function NextRaceCard({ raceEvents = [], onNav }) {
 // ─── Nutrição Hero ─────────────────────────────────────────────────────────
 function NutritionHeroCard({ meals = [], profile = {}, onNav }) {
   const today = todayISO();
-  const calGoal = Number(profile.calorie_goal) || 0;
-  const proteinGoal = Number(profile.protein_goal) || 0;
+  const calGoal = Number(profile?.calorie_goal) || 0;
+  const proteinGoal = Number(profile?.protein_goal) || 0;
   const totals = useMemo(() => {
     return meals.filter(m => m.date === today).reduce((acc, m) => ({
       calories: acc.calories + (m.calories || 0),
@@ -176,7 +176,7 @@ function NutritionHeroCard({ meals = [], profile = {}, onNav }) {
 // ─── Água Home card ───────────────────────────────────────────────────────────
 function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
   const today = todayISO();
-  const goal = Number(profile.water_goal_ml) || 2000;
+  const goal = Number(profile?.water_goal_ml) || 2000;
   const total = useMemo(() => waterLogs.filter(w => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0), [waterLogs, today]);
   const pct = goal > 0 ? Math.min(100, Math.round((total / goal) * 100)) : 0;
 
