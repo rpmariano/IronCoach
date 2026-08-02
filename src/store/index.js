@@ -60,13 +60,15 @@ export const useAppStore = create((set, get) => ({
         { data: runs },
         { data: gymSessions },
         { data: bodyAssessments },
-        { data: waterLogs }
+        { data: waterLogs },
+        { data: coachMsgs }
       ] = await Promise.all([
-        supabase.from('meals').select('*').eq('user_id', userId).order('date', { ascending: false }),
+        supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('workout_sessions').select('*').eq('user_id', userId).order('date', { ascending: false }),
+        supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+        supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true })
       ]);
 
       set({
@@ -74,7 +76,8 @@ export const useAppStore = create((set, get) => ({
         runs: runs || [],
         gymSessions: gymSessions || [],
         bodyAssessments: bodyAssessments || [],
-        waterLogs: waterLogs || []
+        waterLogs: waterLogs || [],
+        coachMessages: coachMsgs || []
       });
 
     } catch (err) {
