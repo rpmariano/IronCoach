@@ -100,6 +100,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   const [warmupMinutes, setWarmupMinutes] = useState('');
   const [recoverySeconds, setRecoverySeconds] = useState('');
   const [splits, setSplits] = useState([]); // { distance_km, minutes }
+  const [hrZones, setHrZones] = useState([]); // { zone, minutes }
   
   // Competition specifics (when runKind === 'competicao')
   const [officialTime, setOfficialTime] = useState('');
@@ -157,6 +158,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         setWarmupMinutes(d.warmup_minutes || '');
         setRecoverySeconds(d.recovery_seconds || '');
         setSplits(d.splits ? d.splits.map(s => ({ distance_km: s.distance_km || '', minutes: s.time_seconds ? formatDuration(s.time_seconds) : '' })) : []);
+        setHrZones(d.hr_zones ? d.hr_zones.map(z => ({ zone: z.zone || '', minutes: z.minutes || '' })) : []);
         
         setOfficialTime(d.official_time_seconds ? formatDuration(d.official_time_seconds) : '');
         setPosition(d.position || '');
@@ -239,6 +241,13 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
         max_heart_rate_bpm: parseInt(maxHeartRate) || null,
       };
+
+      const parsedHrZones = hrZones
+        .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+        .filter(z => z.zone && z.minutes);
+      if (parsedHrZones.length > 0) {
+        details.hr_zones = parsedHrZones;
+      }
 
       if (runKind === 'treino') {
         if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
@@ -467,22 +476,154 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           <button 
             onClick={() => alert('Análise IA será implementada na próxima fase!')}
             disabled={!runPhotos.length || analyzingRun}
-            className="w-full bg-[#E879F9] text-white font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-50"
+            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
           >
             {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {analyzingRun ? 'A ler com IA...' : 'Analisar Prints com IA'}
+            {analyzingRun ? 'A ler com IA...' : 'Analisar Corrida'}
           </button>
         </div>
 
         {/* Bloco 3: Detalhes Manuais */}
         <div 
-          className="rounded-2xl p-4 shadow-sm border border-dashed border-slate-300"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.02), rgba(217, 70, 239, 0.05))' }}
+          className="rounded-2xl p-4 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
         >
-          <p className="text-[11px] font-bold text-slate-400 mb-4 flex items-center gap-1.5 uppercase tracking-wide">
-            <PencilLine className="w-3.5 h-3.5" /> Detalhes Manuais <span className="text-slate-400 font-normal normal-case">— sem foto</span>
+          <p className="text-[13px] font-bold text-slate-700 mb-4 flex items-center gap-1.5">
+            <PencilLine className="w-4 h-4 text-slate-500" /> Registo manual <span className="text-slate-400 font-normal">— sem foto</span>
           </p>
 
+          {/* Metrics Grid inside "Métricas do relógio" sub-container */}
+          <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-4">
+            <p className="text-[12px] font-bold text-slate-500 mb-2.5">Métricas do relógio (opcional)</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <input 
+                type="number" placeholder="Desnível (m)" 
+                value={elevationGain} onChange={e=>setElevationGain(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <input 
+                type="number" placeholder="Cadência (passadas/min)" 
+                value={cadence} onChange={e=>setCadence(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <input 
+                type="number" placeholder="Calorias (kcal)" 
+                value={calories} onChange={e=>setCalories(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <input 
+                type="number" step="0.1" placeholder="VO2 máx" 
+                value={vo2Max} onChange={e=>setVo2Max(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <input 
+                type="number" placeholder="FC média (bpm)" 
+                value={avgHeartRate} onChange={e=>setAvgHeartRate(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <input 
+                type="number" placeholder="FC máxima (bpm)" 
+                value={maxHeartRate} onChange={e=>setMaxHeartRate(e.target.value)} 
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+            </div>
+
+            {/* FC Zones */}
+            <div className="flex items-center justify-between mt-3 mb-2">
+              <label className="text-[12px] text-slate-500">Zonas de FC (tempo em cada zona)</label>
+              <button 
+                onClick={() => setHrZones([...hrZones, { zone: '', minutes: '' }])} 
+                type="button" 
+                className="text-[12px] text-[#f07167] font-semibold flex items-center gap-1 hover:underline"
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar zona
+              </button>
+            </div>
+            {hrZones.length === 0 ? (
+              <p className="text-[11px] text-slate-400">Sem zonas ainda — usa "Adicionar zona" para cada uma que o relógio mostrar.</p>
+            ) : (
+              hrZones.map((z, idx) => (
+                <div key={idx} className="flex items-center gap-1.5 mb-1.5">
+                  <select 
+                    value={z.zone} 
+                    onChange={e => {
+                      const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy);
+                    }} 
+                    className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none"
+                  >
+                    <option value="">Zona</option>
+                    {[1,2,3,4,5].map(n => <option key={n} value={n}>Z{n}</option>)}
+                  </select>
+                  <input 
+                    type="number" placeholder="Minutos" 
+                    value={z.minutes} 
+                    onChange={e => {
+                      const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy);
+                    }} 
+                    className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none" 
+                  />
+                  <button 
+                    onClick={() => setHrZones(hrZones.filter((_, i) => i !== idx))} 
+                    type="button" 
+                    className="p-1 text-slate-400 hover:text-red-500"
+                  >
+                    <X className="w-3.5 h-3.5"/>
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Repeat Specifics */}
+          {runKind === 'treino' && isRepeatType && (
+            <div className="bg-white/50 rounded-xl p-3 border border-slate-200 mb-4">
+              <p className="text-[12px] font-semibold text-slate-500 mb-2">Estrutura da Sessão</p>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div>
+                  <label className="text-[10px] text-slate-500 block mb-1">Aquecimento (min)</label>
+                  <input type="number" value={warmupMinutes} onChange={e=>setWarmupMinutes(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 block mb-1">Recuperação (seg)</label>
+                  <input type="number" value={recoverySeconds} onChange={e=>setRecoverySeconds(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+                </div>
+              </div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] text-slate-500">Splits (voltas)</label>
+                <button onClick={() => setSplits([...splits, { distance_km: '', minutes: '' }])} className="text-[11px] text-[var(--accent)] font-bold flex items-center gap-0.5">
+                  <Plus className="w-3 h-3" /> Adicionar split
+                </button>
+              </div>
+              {splits.map((s, i) => (
+                <div key={i} className="flex gap-1 mb-1.5 items-center">
+                  <span className="text-[10px] text-slate-400 w-3">{i+1}.</span>
+                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => {
+                    const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits);
+                  }} className="w-20 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs" />
+                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => {
+                    const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits);
+                  }} className="flex-1 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs" />
+                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="p-1 text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Competition Specifics */}
+          {runKind === 'competicao' && (
+            <div className="grid grid-cols-2 gap-2 mb-4 bg-white/50 border border-slate-200 rounded-xl p-3">
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
+                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
+                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+              </div>
+            </div>
+          )}
+
+          {/* Main Manual Fields */}
           <div className="relative mb-3">
             <input 
               type="number" min="0" step="0.01" 
@@ -500,91 +641,14 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4" 
           />
 
-          {/* Metrics Grid */}
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Desnível (m)</label>
-              <input type="number" value={elevationGain} onChange={e=>setElevationGain(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Cadência</label>
-              <input type="number" value={cadence} onChange={e=>setCadence(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">Calorias</label>
-              <input type="number" value={calories} onChange={e=>setCalories(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">FC Média</label>
-              <input type="number" value={avgHeartRate} onChange={e=>setAvgHeartRate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">FC Máx</label>
-              <input type="number" value={maxHeartRate} onChange={e=>setMaxHeartRate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-            <div>
-              <label className="text-[9px] font-bold text-slate-400 uppercase ml-1">VO2 Máx</label>
-              <input type="number" step="0.1" value={vo2Max} onChange={e=>setVo2Max(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-[var(--accent)]" />
-            </div>
-          </div>
-
-          {/* Repeat Specifics */}
-          {runKind === 'treino' && isRepeatType && (
-            <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 mb-3">
-              <p className="text-[11px] font-semibold text-slate-500 mb-2">Estrutura da Sessão</p>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Aquecimento (min)</label>
-                  <input type="number" value={warmupMinutes} onChange={e=>setWarmupMinutes(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Recuperação (seg)</label>
-                  <input type="number" value={recoverySeconds} onChange={e=>setRecoverySeconds(e.target.value)} className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" />
-                </div>
-              </div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] text-slate-500">Splits (voltas)</label>
-                <button onClick={() => setSplits([...splits, { distance_km: '', minutes: '' }])} className="text-[10px] text-[var(--accent)] font-bold flex items-center gap-0.5">
-                  <Plus className="w-3 h-3" /> Adicionar
-                </button>
-              </div>
-              {splits.map((s, i) => (
-                <div key={i} className="flex gap-1 mb-1.5 items-center">
-                  <span className="text-[10px] text-slate-400 w-3">{i+1}.</span>
-                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits);
-                  }} className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs" />
-                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits);
-                  }} className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs" />
-                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="p-1 text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Competition Specifics */}
-          {runKind === 'competicao' && (
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
-                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
-                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none" />
-              </div>
-            </div>
-          )}
-
           {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 mb-3">{errorMsg}</p>}
 
           <button 
             onClick={handleSaveCorrida}
             disabled={isSubmitting}
-            className="w-full bg-slate-800 text-white font-bold text-sm rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition hover:bg-slate-700 disabled:opacity-50"
+            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[13px] font-bold rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition border border-slate-200 shadow-sm"
           >
-            {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</> : <><PencilLine className="w-4 h-4" /> Registar Corrida Manualmente</>}
+            {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</> : <><PencilLine className="w-4 h-4 text-slate-500" /> Registar Corrida Manualmente</>}
           </button>
         </div>
       </div>
