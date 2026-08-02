@@ -113,7 +113,7 @@ export default function RunAgenda({ onNewRun }) {
           <div className="min-w-0">
             <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
               {ev.name}
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--mod-corrida-from)]/10 border border-[var(--mod-corrida-from)]/30" style={{ color: 'var(--mod-corrida-to)' }}>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--accent)', borderColor: 'var(--accent)' }}>
                 {typeLabel}
               </span>
               {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
@@ -127,14 +127,14 @@ export default function RunAgenda({ onNewRun }) {
             {ev.equipment && <p className="text-[11px] text-slate-500 mt-0.5">Equipamento: {ev.equipment}</p>}
             {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
           </div>
-          <div className="flex items-center gap-1.5 shrink-0 flex-col">
-            <button onClick={() => handleToggleStatus(ev)} title={done ? 'Marcar como agendada' : 'Marcar como concluída'} className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-emerald-500 transition">
+          <div className="flex items-center gap-1.5 shrink-0 flex-row">
+            <button onClick={() => handleToggleStatus(ev)} title={done ? 'Marcar como agendada' : 'Marcar como concluída'} className="p-1 text-slate-400 hover:text-emerald-500 transition">
               {done ? <RotateCcw size={16} /> : <CheckCircle size={16} />}
             </button>
-            <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-[var(--accent)] transition">
+            <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="p-1 text-slate-400 hover:text-[var(--accent)] transition">
               <Pencil size={16} />
             </button>
-            <button onClick={() => handleDelete(ev.id)} aria-label="Eliminar prova" className="p-2 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-red-500 transition">
+            <button onClick={() => handleDelete(ev.id)} aria-label="Eliminar prova" className="p-1 text-slate-400 hover:text-red-500 transition">
               <Trash2 size={16} />
             </button>
           </div>
@@ -148,9 +148,9 @@ export default function RunAgenda({ onNewRun }) {
       <button 
         onClick={() => handleOpenForm(null)}
         className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-        style={{ background: 'var(--mod-corrida-to)' }}
+        style={{ background: 'var(--accent)' }}
       >
-        <CalendarPlus size={20} style={{ color: 'var(--blue-dark)' }} />
+        <CalendarPlus size={20} style={{ color: '#000' }} />
         Nova Prova
       </button>
 

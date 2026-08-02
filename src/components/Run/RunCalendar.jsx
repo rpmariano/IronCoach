@@ -61,9 +61,9 @@ export default function RunCalendar({ onNewRun }) {
       <button 
         onClick={() => onNewRun(selectedDate)}
         className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-        style={{ background: 'var(--mod-corrida-to)' }}
+        style={{ background: 'var(--accent)' }}
       >
-        <span className="text-xl leading-none font-black mb-0.5" style={{ color: 'var(--blue-dark)' }}>🏃</span>
+        <span className="text-xl leading-none font-black mb-0.5" style={{ color: '#000' }}>🏃</span>
         Nova Corrida
       </button>
 
@@ -106,10 +106,10 @@ export default function RunCalendar({ onNewRun }) {
                 key={dateIso}
                 onClick={() => setSelectedDate(dateIso)}
                 className={btnClass}
-                style={{ background: isSelected ? 'var(--mod-corrida-from)' : undefined }}
+                style={{ background: isSelected ? 'var(--accent)' : undefined }}
               >
                 {dayNum}
-                <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${hasRun ? 'bg-emerald-500' : (isSelected ? 'bg-white/30' : 'bg-slate-200')}`}></span>
+                <span className={`w-1 h-1 rounded-full mt-1 ${hasRun ? 'bg-emerald-500' : (isSelected ? 'bg-white/30' : 'bg-slate-200')}`}></span>
               </button>
             );
           })}

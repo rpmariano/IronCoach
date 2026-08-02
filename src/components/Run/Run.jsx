@@ -31,12 +31,11 @@ export default function Run() {
     <div className="flex flex-col fade-in">
       {/* Seg-nav deslizante — 3 tabs */}
       <div
-        className={`seg-nav at-${tabIndex + 1} relative flex rounded-full p-0.5 mb-5`}
-        style={{ background: 'var(--surf-800)' }}
+        className={`seg-nav at-${tabIndex + 1} relative flex bg-transparent border border-slate-200 shadow-sm rounded-full p-1 mb-5`}
       >
         <div
-          className="seg-thumb absolute top-0.5 bottom-0.5 rounded-full"
-          style={{ width: `${100 / TABS.length}%`, background: 'var(--mod-corrida-to)', left: 0 }}
+          className="seg-thumb absolute top-1 bottom-1 rounded-full bg-white shadow-sm"
+          style={{ width: `calc(${100 / TABS.length}% - 4px)`, left: '2px' }}
         />
         {TABS.map(tab => {
           const Icon = tab.icon;
@@ -46,7 +45,7 @@ export default function Run() {
               key={tab.id}
               data-tab={tab.id}
               onClick={() => setActiveSubTab(tab.id)}
-              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full transition-colors ${active ? 'active' : ''}`}
+              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-bold rounded-full transition-colors ${active ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Icon size={16} />
               {tab.label}
@@ -63,8 +62,8 @@ export default function Run() {
       {activeSubTab !== 'agenda' && (
         <button 
           onClick={() => handleOpenFab()}
-          className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition z-40"
-          style={{ background: 'var(--mod-corrida-to)', color: 'var(--blue-dark)' }}
+          className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition z-40 text-neutral-950"
+          style={{ background: 'var(--accent)' }}
         >
           <Plus size={28} />
         </button>

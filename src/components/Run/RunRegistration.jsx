@@ -279,7 +279,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             onClick={handleSaveProva}
             disabled={isSubmitting}
             className="w-full mt-4 text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg disabled:opacity-50"
-            style={{ background: 'var(--mod-corrida-to)' }}
+            style={{ background: 'var(--accent)' }}
           >
             {isSubmitting ? 'A guardar...' : <><Check size={18} /> Guardar Prova</>}
           </button>
