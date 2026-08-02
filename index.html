@@ -7866,7 +7866,7 @@ function renderPerfilTabMetas(p){
         <div class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-800">
           <div class="pr-3">
             <p class="text-xs font-semibold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-3.5 h-3.5" style="color:var(--blue)"></i> Lembretes de água</p>
-            <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, só entre as 8h e as 22h.</p>
+            <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, dentro do horário que definires abaixo (por omissão, 8h–22h).</p>
           </div>
           <button onclick="toggleWaterReminder()" ${waterSubscribing ? 'disabled' : ''} type="button"
             role="switch" aria-checked="${p.water_reminder_enabled ? 'true' : 'false'}"
@@ -7884,6 +7884,26 @@ function renderPerfilTabMetas(p){
                 <option value="${m}" ${m === (Number(p.water_reminder_interval_minutes) || 120) ? 'selected' : ''}>${waterIntervalLabel(m)}</option>
               `).join('')}
             </select>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div>
+              <label class="text-[11px] text-slate-500">A partir das</label>
+              <select onchange="setWaterReminderHour('start', this.value)"
+                class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                ${WATER_REMINDER_HOURS.map(h => `
+                  <option value="${h}" ${h === Number(p.water_reminder_start_hour ?? 8) ? 'selected' : ''}>${waterHourLabel(h)}</option>
+                `).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-500">Até às</label>
+              <select onchange="setWaterReminderHour('end', this.value)"
+                class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                ${WATER_REMINDER_HOURS.map(h => `
+                  <option value="${h}" ${h === Number(p.water_reminder_end_hour ?? 22) ? 'selected' : ''}>${waterHourLabel(h)}</option>
+                `).join('')}
+              </select>
+            </div>
           </div>
         ` : ''}
       </div>
@@ -8214,6 +8234,13 @@ function waterIntervalLabel(m){
   return `De ${label} em ${label}`;
 }
 
+// Janela horária dos lembretes de água — 0 a 23, por omissão 8h-22h (ver
+// migração add_water_reminder_hour_window e send-water-reminders).
+const WATER_REMINDER_HOURS = Array.from({ length: 24 }, (_, h) => h);
+function waterHourLabel(h){
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
 function todayWaterLogs(){
   return waterLogs.filter(w => w.date === todayISO());
 }
@@ -8422,6 +8449,18 @@ async function setWaterReminderInterval(minutes){
   if (!Number.isFinite(n) || n <= 0) return;
   const { error } = await sb.from('profiles').update({ water_reminder_interval_minutes: n }).eq('id', currentUser.id);
   if (!error) { state.profile.water_reminder_interval_minutes = n; }
+}
+
+// edge = 'start' | 'end' — grava a hora (0-23) de início/fim da janela de
+// lembretes de água diretamente (mesmo padrão de setWaterReminderInterval:
+// guarda de imediato, sem depender do botão "Guardar" da página).
+async function setWaterReminderHour(edge, hour){
+  const n = Number(hour);
+  if (!Number.isInteger(n) || n < 0 || n > 23) return;
+  const column = edge === 'start' ? 'water_reminder_start_hour' : 'water_reminder_end_hour';
+  const { error } = await sb.from('profiles').update({ [column]: n }).eq('id', currentUser.id);
+  if (!error) { state.profile[column] = n; }
+  else showToast('error', null, 'Falha a guardar o horário. Tenta novamente.');
 }
 
 // Converte a chave pública VAPID (base64url, formato standard do Web Push)

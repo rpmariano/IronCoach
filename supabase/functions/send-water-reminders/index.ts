@@ -22,16 +22,28 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const DEFAULT_INTERVAL_MINUTES = 120;
-const REMINDER_START_HOUR = 8;  // inclusive
-const REMINDER_END_HOUR = 22;   // exclusive — última hora possível é 21:xx
+const DEFAULT_START_HOUR = 8;  // inclusive
+const DEFAULT_END_HOUR = 22;   // exclusive — última hora possível é 21:xx
 
 // Hora local em Portugal (não UTC do servidor) — Intl trata o horário de
 // verão sozinho, ao contrário de um offset fixo hardcoded.
-function isWithinReminderHours(date: Date): boolean {
-  const hour = Number(
+function currentLisbonHour(date: Date): number {
+  return Number(
     new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", hour12: false }).format(date),
   );
-  return hour >= REMINDER_START_HOUR && hour < REMINDER_END_HOUR;
+}
+
+// Janela agora configurável por utilizador (water_reminder_start_hour/
+// water_reminder_end_hour, 0-23) — falha para 8-22 só se, por alguma razão,
+// vierem null/undefined de perfis antigos sem os valores por omissão da
+// coluna aplicados.
+function isWithinReminderHours(hour: number, startHour: number | null, endHour: number | null): boolean {
+  const start = startHour ?? DEFAULT_START_HOUR;
+  const end = endHour ?? DEFAULT_END_HOUR;
+  if (start === end) return true; // janela de 24h (ex.: utilizador pôs início=fim)
+  if (start < end) return hour >= start && hour < end;
+  // Janela que atravessa a meia-noite (ex.: início=22, fim=6).
+  return hour >= start || hour < end;
 }
 
 async function handler(req: Request): Promise<Response> {
@@ -56,17 +68,14 @@ async function handler(req: Request): Promise<Response> {
 
   try {
     const nowDate = new Date();
-    if (!isWithinReminderHours(nowDate)) {
-      // Fora de 08:00–22:00 (hora de Portugal) não se envia nada — mesmo que
-      // o intervalo já tenha passado, fica para quando a janela reabrir.
-      return jsonResponse({ skipped: "outside reminder hours (08:00–22:00 Europe/Lisbon)" });
-    }
-
+    const currentHour = currentLisbonHour(nowDate);
     const todayISO = nowDate.toISOString().slice(0, 10);
 
     const { data: profiles, error: profilesErr } = await sb
       .from("profiles")
-      .select("id, water_goal_ml, water_reminder_interval_minutes, water_last_activity_at, water_reminder_muted_date")
+      .select(
+        "id, water_goal_ml, water_reminder_interval_minutes, water_last_activity_at, water_reminder_muted_date, water_reminder_start_hour, water_reminder_end_hour",
+      )
       .eq("water_reminder_enabled", true);
     if (profilesErr) return jsonResponse({ error: profilesErr.message }, 500);
 
@@ -74,8 +83,11 @@ async function handler(req: Request): Promise<Response> {
     // "Resto do dia" silencia sem tocar em water_reminder_enabled — fica
     // marcado só até à data guardada; no dia seguinte esta condição já não
     // bate certo e os lembretes retomam sozinhos, sem limpeza nenhuma.
+    // A janela horária é por utilizador (water_reminder_start_hour/
+    // water_reminder_end_hour) — cada perfil pode ter um horário diferente.
     const dueByTime = (profiles || []).filter((p) => {
       if (p.water_reminder_muted_date === todayISO) return false;
+      if (!isWithinReminderHours(currentHour, p.water_reminder_start_hour, p.water_reminder_end_hour)) return false;
       const intervalMs = (p.water_reminder_interval_minutes || DEFAULT_INTERVAL_MINUTES) * 60000;
       const lastMs = p.water_last_activity_at ? new Date(p.water_last_activity_at).getTime() : 0;
       return now - lastMs >= intervalMs;
