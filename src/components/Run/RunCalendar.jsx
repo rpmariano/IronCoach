@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import RunCard from './RunCard';
+import RunRegistration from './RunRegistration';
 
 const PT_MONTHS = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -14,11 +17,13 @@ function todayISO() {
 }
 
 export default function RunCalendar({ onNewRun }) {
-  const { runs } = useAppStore();
+  const { runs, setRuns } = useAppStore();
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
+  
+  const [editingRunId, setEditingRunId] = useState(null);
   
   const todayIso = todayISO();
   const [selectedDate, setSelectedDate] = useState(todayIso);
@@ -55,6 +60,23 @@ export default function RunCalendar({ onNewRun }) {
     });
     return map;
   }, [runs]);
+
+  const handleDeleteRun = async (id) => {
+    if (!window.confirm('Eliminar corrida? Não pode ser desfeito.')) return;
+    const previous = [...runs];
+    setRuns(runs.filter(r => r.id !== id));
+    try {
+      const { error } = await supabase.from('runs').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err) {
+      console.error(err);
+      setRuns(previous);
+    }
+  };
+
+  if (editingRunId) {
+    return <RunRegistration onClose={() => setEditingRunId(null)} initialMode="corrida" runIdToEdit={editingRunId} />;
+  }
 
   return (
     <div className="space-y-4 fade-in pb-20">
@@ -121,19 +143,12 @@ export default function RunCalendar({ onNewRun }) {
         <div className="space-y-3 mt-4">
           <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">Corridas a {selectedDate === todayIso ? 'Hoje' : selectedDate}</h3>
           {runsByDate[selectedDate].map(run => (
-            <div key={run.id} className="card rounded-2xl p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800">{run.name}</h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5 capitalize">{run.kind} {run.training_type ? `· ${run.training_type}` : ''}</p>
-                </div>
-                {run.distance_km && (
-                  <div className="text-right">
-                    <p className="font-extrabold text-base text-slate-800 leading-none">{run.distance_km}<span className="text-xs text-slate-500 font-semibold ml-0.5">km</span></p>
-                  </div>
-                )}
-              </div>
-            </div>
+            <RunCard 
+              key={run.id} 
+              run={run} 
+              onEdit={setEditingRunId} 
+              onDelete={handleDeleteRun} 
+            />
           ))}
         </div>
       ) : (
