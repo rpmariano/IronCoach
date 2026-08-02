@@ -36,30 +36,37 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Read ?tab= from URL query params
+    // Read ?tab= & ?demo= from URL query params
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
+    const isDemo = params.get('demo') === 'true';
+
     if (tabParam) {
       setActiveTab(tabParam);
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSession(session);
-        loadInitialData(session.user.id).finally(() => setIsInitializing(false));
-      } else {
-        // Provide demo fallback session for UI rendering/previews
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      if (existingSession?.user) {
+        setSession(existingSession);
+        loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
+      } else if (isDemo) {
+        // Fallback demo mode only if ?demo=true explicitly requested
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironhealth.app' } };
         setSession(demoSession);
         setProfile(DEMO_PROFILE);
         setIsInitializing(false);
+      } else {
+        setSession(null);
+        setIsInitializing(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setSession(session);
-        loadInitialData(session.user.id);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (newSession?.user) {
+        setSession(newSession);
+        loadInitialData(newSession.user.id);
+      } else if (_event === 'SIGNED_OUT') {
+        setSession(null);
       }
     });
 
@@ -68,9 +75,9 @@ export default function App() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--surf-950)]">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--page-bg)]">
         <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 bg-[var(--brd-700)] rounded-full mb-4"></div>
+          <div className="w-12 h-12 bg-[var(--brd-700)] rounded-xl mb-4"></div>
           <div className="h-4 w-24 bg-[var(--brd-700)] rounded"></div>
         </div>
       </div>
