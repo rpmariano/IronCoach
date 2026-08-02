@@ -457,7 +457,7 @@ function CustomizePanel({ activeLayout, onToggle, onClose }) {
 
 // ─── Main Home component ──────────────────────────────────────────────────────
 export default function Home() {
-  const { profile, meals, runs, gymSessions, bodyAssessments, waterLogs, setActiveTab } = useAppStore();
+  const { profile, meals, runs, gymSessions, bodyAssessments, waterLogs, raceEvents, setActiveTab } = useAppStore();
   const [homeEditMode, setHomeEditMode] = useState(false);
   const [localLayout, setLocalLayout] = useState(
     () => profile?.home_layout || DEFAULT_HOME_LAYOUT
@@ -555,7 +555,7 @@ export default function Home() {
       </div>
 
       {/* Próxima Prova */}
-      <NextRaceCard raceEvents={[]} onNav={handleNav} />
+      <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
 
       {/* Nutrição Hero — sempre visível */}
       <NutritionHeroCard meals={meals} profile={profile} onNav={handleNav} />

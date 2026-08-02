@@ -331,151 +331,174 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
 
     return (
-      <div className="space-y-4 fade-in">
-        {/* Run Kind Pills */}
-        <div className="flex gap-2">
-          <button 
-            onClick={() => setRunKind('treino')}
-            className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition border ${runKind === 'treino' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-slate-200 bg-white text-slate-500'}`}
-          >
-            Treino
-          </button>
-          <button 
-            onClick={() => setRunKind('competicao')}
-            className={`flex-1 rounded-xl py-2.5 text-xs font-bold transition border ${runKind === 'competicao' ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]' : 'border-slate-200 bg-white text-slate-500'}`}
-          >
-            Competição
-          </button>
-        </div>
-
-        {/* Training Type Select */}
-        {runKind === 'treino' && (
-          <div>
-            <select 
-              value={runTrainingType} 
-              onChange={e => setRunTrainingType(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-            >
-              <optgroup label="Corrida solta">
-                <option value="continuo">Contínuo</option>
-                <option value="longo">Longo</option>
-                <option value="recuperacao">Recuperação</option>
-              </optgroup>
-              <optgroup label="Estruturado">
-                <option value="tempo">Ritmo (Tempo)</option>
-                <option value="intervalado">Intervalado</option>
-                <option value="fartlek">Fartlek</option>
-                <option value="progressivo">Progressivo</option>
-                <option value="series">Séries</option>
-              </optgroup>
-            </select>
+      <div className="space-y-4 fade-in pb-10">
+        
+        {/* Bloco 1: Detalhes Básicos */}
+        <div 
+          className="rounded-2xl p-4 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
+        >
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <SneakerIcon className="w-5 h-5" style={{ color: 'var(--mod-corrida-to)' }} />
+              <h2 className="text-[15px] font-bold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
+            </div>
+            <button onClick={onClose} className="text-[12px] text-slate-400 hover:text-slate-600 transition font-medium">Cancelar</button>
           </div>
-        )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Data</label>
+          <div className="flex gap-2 mb-4">
+            <button 
+              onClick={() => setRunKind('treino')}
+              className={`flex-1 rounded-2xl py-2.5 text-[13px] font-bold transition border shadow-sm ${runKind === 'treino' ? 'border-[var(--mod-corrida-to)] bg-[var(--mod-corrida-to)] text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+            >
+              Treino
+            </button>
+            <button 
+              onClick={() => setRunKind('competicao')}
+              className={`flex-1 rounded-2xl py-2.5 text-[13px] font-bold transition border shadow-sm ${runKind === 'competicao' ? 'border-[var(--mod-corrida-to)] bg-[var(--mod-corrida-to)] text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+            >
+              Competição
+            </button>
+          </div>
+
+          {runKind === 'treino' && (
+            <div className="mb-4">
+              <label className="text-[12px] text-slate-500 mb-1.5 block">Tipo de treino</label>
+              <select 
+                value={runTrainingType} 
+                onChange={e => setRunTrainingType(e.target.value)}
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+              >
+                <optgroup label="Corrida solta">
+                  <option value="continuo">Contínuo</option>
+                  <option value="longo">Longo</option>
+                  <option value="recuperacao">Recuperação</option>
+                </optgroup>
+                <optgroup label="Estruturado">
+                  <option value="tempo">Ritmo (Tempo)</option>
+                  <option value="intervalado">Intervalado</option>
+                  <option value="fartlek">Fartlek</option>
+                  <option value="progressivo">Progressivo</option>
+                  <option value="series">Séries</option>
+                </optgroup>
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+            </div>
+          )}
+
+          <div className="mb-4">
+            <label className="text-[12px] text-slate-500 mb-1.5 block">Data da corrida</label>
             <input 
               type="date" 
               value={runDate} 
               max={todayISO()} 
               onChange={e => setRunDate(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
             />
           </div>
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Nome</label>
+
+          <div className="mb-4">
+            <label className="text-[12px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+            <div className="flex gap-1.5">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <button 
+                  key={i}
+                  onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
+                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="mb-1">
+            <label className="text-[12px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
             <input 
               type="text" 
               value={runName} 
               onChange={e => setRunName(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
             />
+            <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
           </div>
         </div>
 
-        {/* Effort RPE Bar */}
-        <div>
-          <label className="text-[11px] text-slate-500 mb-2 block">Nível de Esforço (RPE 1-10)</label>
-          <div className="flex gap-1 h-3 cursor-pointer">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div 
-                key={i}
-                onClick={() => setRunEffortRpe(i + 1)}
-                className={`flex-1 rounded-full transition-colors ${i < runEffortRpe ? 'bg-[var(--mod-corrida-to)]' : 'bg-slate-200 hover:bg-slate-300'}`} 
-              />
-            ))}
-          </div>
-          <div className="flex justify-between mt-1 text-[9px] text-slate-400 font-semibold px-1">
-            <span>MUITO FÁCIL</span>
-            <span>MÁXIMO</span>
-          </div>
-        </div>
-
-        {/* AI Photos block */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4">
+        {/* Bloco 2: Fotos e IA */}
+        <div 
+          className="rounded-2xl p-4 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
+        >
           {runPhotos.length > 0 ? (
             <>
-              <div className="grid grid-cols-4 gap-2 mb-2">
+              <div className="grid grid-cols-3 gap-2 mb-3">
                 {runPhotos.map((p, i) => (
                   <div key={i} className="relative aspect-square">
                     <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
-                    <button onClick={() => removePhoto(i)} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 text-white">
-                      <X className="w-3 h-3" />
+                    <button onClick={() => removePhoto(i)} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 text-white hover:bg-red-500 transition">
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
               </div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
+                <button onClick={() => setRunPhotos([])} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
+                  <Trash2 className="w-3.5 h-3.5" /> Limpar todos
+                </button>
+              </div>
               {runPhotos.length < MAX_PHOTOS && (
-                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-slate-50 transition mb-3">
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition mb-3">
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-                  <ImagePlus className="w-4 h-4 text-[var(--accent)]" />
-                  <span className="text-[11px] font-semibold text-[var(--accent)]">Adicionar outro print</span>
+                  <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
+                  <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">Adicionar outro print</span>
                 </label>
               )}
             </>
           ) : (
-            <label className="block border-2 border-dashed border-slate-200 rounded-xl py-6 text-center cursor-pointer hover:border-slate-300 transition mb-3 bg-slate-50">
+            <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-3 bg-white/50">
               <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-              <ImagePlus className="w-6 h-6 text-slate-400 mx-auto mb-2" />
-              <p className="text-xs text-slate-500 font-medium">Anexar prints da app (Strava, Garmin...)</p>
-              <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê os dados automaticamente</p>
+              <ImagePlus className="w-7 h-7 text-slate-400 mx-auto mb-2" />
+              <p className="text-[12px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
+              <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
             </label>
           )}
 
           <button 
             onClick={() => alert('Análise IA será implementada na próxima fase!')}
             disabled={!runPhotos.length || analyzingRun}
-            className="w-full bg-[var(--mod-corrida-to)] text-white font-bold text-sm rounded-xl py-2.5 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-50 mt-3"
+            className="w-full bg-[#E879F9] text-white font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-50"
           >
             {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {analyzingRun ? 'A ler com IA...' : 'Analisar Prints com IA'}
           </button>
         </div>
 
-        {/* Manual Entry Details */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4">
-          <p className="text-[11px] font-bold text-slate-400 mb-3 flex items-center gap-1.5 uppercase tracking-wide">
-            <PencilLine className="w-3.5 h-3.5" /> Detalhes Manuais
+        {/* Bloco 3: Detalhes Manuais */}
+        <div 
+          className="rounded-2xl p-4 shadow-sm border border-dashed border-slate-300"
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.02), rgba(217, 70, 239, 0.05))' }}
+        >
+          <p className="text-[11px] font-bold text-slate-400 mb-4 flex items-center gap-1.5 uppercase tracking-wide">
+            <PencilLine className="w-3.5 h-3.5" /> Detalhes Manuais <span className="text-slate-400 font-normal normal-case">— sem foto</span>
           </p>
 
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="relative">
-              <input 
-                type="number" min="0" step="0.01" 
-                placeholder="Distância" 
-                value={runDistance} onChange={e => setRunDistance(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl pl-3 pr-8 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">km</span>
-            </div>
+          <div className="relative mb-3">
             <input 
-              type="text" 
-              placeholder="Tempo (ex: 45:00)" 
-              value={runDuration} onChange={e => setRunDuration(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
+              type="number" min="0" step="0.01" 
+              placeholder={isRepeatType ? 'Distância total (opcional)' : 'Distância'} 
+              value={runDistance} onChange={e => setRunDistance(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-3 pr-10 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition" 
             />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
           </div>
+          
+          <input 
+            type="text" 
+            placeholder={isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
+            value={runDuration} onChange={e => setRunDuration(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4" 
+          />
 
           {/* Metrics Grid */}
           <div className="grid grid-cols-3 gap-2 mb-3">
@@ -554,16 +577,16 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             </div>
           )}
 
-          {errorMsg && <p className="text-red-500 text-xs text-center mt-2 font-medium">{errorMsg}</p>}
-        </div>
+          {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 mb-3">{errorMsg}</p>}
 
-        <button 
-          onClick={handleSaveCorrida}
-          disabled={isSubmitting}
-          className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg disabled:opacity-50"
-        >
-          {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A guardar...</> : <><Check className="w-5 h-5" /> Guardar Registo</>}
-        </button>
+          <button 
+            onClick={handleSaveCorrida}
+            disabled={isSubmitting}
+            className="w-full bg-slate-800 text-white font-bold text-sm rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition hover:bg-slate-700 disabled:opacity-50"
+          >
+            {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</> : <><PencilLine className="w-4 h-4" /> Registar Corrida Manualmente</>}
+          </button>
+        </div>
       </div>
     );
   };
@@ -666,43 +689,11 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto pb-20 fade-in">
-      {/* Header */}
-      <div className="sticky top-0 bg-slate-50/80 backdrop-blur-md border-b border-slate-200 z-10 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {mode === 'corrida' ? <SneakerIcon className="w-5 h-5 text-[var(--accent)]" /> : <SneakerIcon className="w-5 h-5 text-slate-600" />}
-          <h2 className="text-base font-bold text-slate-800">
-            {mode === 'corrida' ? (runIdToEdit ? 'Editar Corrida' : 'Nova Corrida') : (eventIdToEdit ? 'Editar Prova' : 'Nova Prova')}
-          </h2>
+    <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto">
+      <div className="min-h-screen pb-10">
+        <div className="p-4 pt-6 max-w-lg mx-auto">
+          {mode === 'corrida' ? renderCorridaForm() : renderProvaForm()}
         </div>
-        <button onClick={onClose} className="p-1.5 text-slate-500 hover:text-red-500 transition rounded-full hover:bg-slate-200">
-          <X className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Mode Switch (only if creating new) */}
-      {!runIdToEdit && !eventIdToEdit && (
-        <div className="px-4 pt-4 pb-2">
-          <div className="flex bg-slate-200/50 p-1 rounded-xl">
-            <button 
-              onClick={() => setMode('corrida')}
-              className={`flex-1 rounded-lg py-2 text-[13px] font-bold transition-colors ${mode === 'corrida' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Registar Corrida (Passado)
-            </button>
-            <button 
-              onClick={() => setMode('prova')}
-              className={`flex-1 rounded-lg py-2 text-[13px] font-bold transition-colors ${mode === 'prova' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Agendar Prova (Futuro)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Form Content */}
-      <div className="p-4">
-        {mode === 'corrida' ? renderCorridaForm() : renderProvaForm()}
       </div>
     </div>
   );
