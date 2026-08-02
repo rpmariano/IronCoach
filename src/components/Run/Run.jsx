@@ -23,10 +23,6 @@ export default function Run() {
     setIsFabOpen(true);
   };
 
-  if (isFabOpen) {
-    return <RunRegistration onClose={() => setIsFabOpen(false)} initialMode="corrida" dateIso={fabDate} />;
-  }
-
   return (
     <div className="flex flex-col fade-in">
       {/* Seg-nav deslizante — 3 tabs */}
@@ -44,7 +40,10 @@ export default function Run() {
             <button
               key={tab.id}
               data-tab={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
+              onClick={() => {
+                setIsFabOpen(false); // Close registration if switching tabs
+                setActiveSubTab(tab.id);
+              }}
               className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-bold rounded-full transition-colors ${active ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Icon size={16} />
@@ -54,9 +53,15 @@ export default function Run() {
         })}
       </div>
 
-      {activeSubTab === 'dashboard' && <RunDashboard />}
-      {activeSubTab === 'calendario' && <RunCalendar onNewRun={handleOpenFab} />}
-      {activeSubTab === 'agenda' && <RunAgenda />}
+      {isFabOpen ? (
+        <RunRegistration onClose={() => setIsFabOpen(false)} initialMode="corrida" dateIso={fabDate} />
+      ) : (
+        <>
+          {activeSubTab === 'dashboard' && <RunDashboard />}
+          {activeSubTab === 'calendario' && <RunCalendar onNewRun={handleOpenFab} />}
+          {activeSubTab === 'agenda' && <RunAgenda />}
+        </>
+      )}
 
       {/* FAB para Nova Corrida se não estiver na Agenda (Agenda tem o seu botão) */}
       {activeSubTab !== 'agenda' && (

@@ -345,26 +345,26 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         {/* Bloco 1: Detalhes Básicos */}
         <div 
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
         >
-          <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
-              <SneakerIcon className="w-5 h-5" style={{ color: 'var(--mod-corrida-to)' }} />
-              <h2 className="text-[15px] font-bold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
+              <SneakerIcon className="w-4 h-4" style={{ color: 'var(--mod-corrida-to)' }} />
+              <h2 className="text-sm font-semibold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
             </div>
-            <button onClick={onClose} className="text-[12px] text-slate-400 hover:text-slate-600 transition font-medium">Cancelar</button>
+            <button onClick={onClose} className="text-[11px] text-slate-500 hover:text-red-400 transition">Cancelar</button>
           </div>
 
-          <div className="flex gap-2 mb-4">
+          <div className="flex flex-wrap gap-1.5 mb-3">
             <button 
               onClick={() => setRunKind('treino')}
-              className={`flex-1 rounded-2xl py-2.5 text-[13px] font-bold transition border shadow-sm ${runKind === 'treino' ? 'border-[var(--mod-corrida-to)] bg-[var(--mod-corrida-to)] text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'treino' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
               Treino
             </button>
             <button 
               onClick={() => setRunKind('competicao')}
-              className={`flex-1 rounded-2xl py-2.5 text-[13px] font-bold transition border shadow-sm ${runKind === 'competicao' ? 'border-[var(--mod-corrida-to)] bg-[var(--mod-corrida-to)] text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'competicao' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
               Competição
             </button>
@@ -436,7 +436,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         {/* Bloco 2: Fotos e IA */}
         <div 
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
         >
           {runPhotos.length > 0 ? (
             <>
@@ -486,7 +486,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         {/* Bloco 3: Detalhes Manuais */}
         <div 
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.03), rgba(217, 70, 239, 0.08))', borderLeft: '3px solid var(--mod-corrida-to)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
         >
           <p className="text-[13px] font-bold text-slate-700 mb-4 flex items-center gap-1.5">
             <PencilLine className="w-4 h-4 text-slate-500" /> Registo manual <span className="text-slate-400 font-normal">— sem foto</span>
@@ -753,12 +753,8 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto">
-      <div className="min-h-screen pb-10">
-        <div className="p-4 pt-6 max-w-lg mx-auto">
-          {mode === 'corrida' ? renderCorridaForm() : renderProvaForm()}
-        </div>
-      </div>
+    <div className="w-full max-w-lg mx-auto pb-10">
+      {mode === 'corrida' ? renderCorridaForm() : renderProvaForm()}
     </div>
   );
 }
