@@ -13,6 +13,7 @@ export const useAppStore = create((set, get) => ({
   gymSessions: [],
   runs: [],
   waterLogs: [],
+  raceEvents: [],
   
   // Coach State
   coachMessages: [],
@@ -39,6 +40,7 @@ export const useAppStore = create((set, get) => ({
   setRuns: (runs) => set({ runs }),
   setGymSessions: (sessions) => set({ gymSessions: sessions }),
   setBodyAssessments: (assessments) => set({ bodyAssessments: assessments }),
+  setRaceEvents: (events) => set({ raceEvents: events }),
 
   // Fetch initial user data (called after login)
   loadInitialData: async (userId) => {
@@ -61,14 +63,16 @@ export const useAppStore = create((set, get) => ({
         { data: gymSessions },
         { data: bodyAssessments },
         { data: waterLogs },
-        { data: coachMsgs }
+        { data: coachMsgs },
+        { data: raceEvents }
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true })
+        supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+        supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true })
       ]);
 
       set({
@@ -77,7 +81,8 @@ export const useAppStore = create((set, get) => ({
         gymSessions: gymSessions || [],
         bodyAssessments: bodyAssessments || [],
         waterLogs: waterLogs || [],
-        coachMessages: coachMsgs || []
+        coachMessages: coachMsgs || [],
+        raceEvents: raceEvents || []
       });
 
     } catch (err) {

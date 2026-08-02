@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import RunDashboard from './RunDashboard';
-import { LayoutDashboard, CalendarDays, Flag } from 'lucide-react';
+import RunCalendar from './RunCalendar';
+import RunAgenda from './RunAgenda';
+import RunRegistration from './RunRegistration';
+import { LayoutDashboard, CalendarDays, Flag, Plus } from 'lucide-react';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -10,7 +13,19 @@ const TABS = [
 
 export default function Run() {
   const [activeSubTab, setActiveSubTab] = useState('dashboard');
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [fabDate, setFabDate] = useState(null);
+  
   const tabIndex = TABS.findIndex(t => t.id === activeSubTab);
+
+  const handleOpenFab = (date = null) => {
+    setFabDate(date);
+    setIsFabOpen(true);
+  };
+
+  if (isFabOpen) {
+    return <RunRegistration onClose={() => setIsFabOpen(false)} initialMode="corrida" dateIso={fabDate} />;
+  }
 
   return (
     <div className="flex flex-col fade-in">
@@ -41,15 +56,18 @@ export default function Run() {
       </div>
 
       {activeSubTab === 'dashboard' && <RunDashboard />}
-      {activeSubTab === 'calendario' && (
-        <div className="py-10 text-center text-sm" style={{ color: 'var(--green)' }}>
-          Calendário de corridas em construção...
-        </div>
-      )}
-      {activeSubTab === 'agenda' && (
-        <div className="py-10 text-center text-sm" style={{ color: 'var(--green)' }}>
-          Agenda de provas em construção...
-        </div>
+      {activeSubTab === 'calendario' && <RunCalendar onNewRun={handleOpenFab} />}
+      {activeSubTab === 'agenda' && <RunAgenda />}
+
+      {/* FAB para Nova Corrida se não estiver na Agenda (Agenda tem o seu botão) */}
+      {activeSubTab !== 'agenda' && (
+        <button 
+          onClick={() => handleOpenFab()}
+          className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition z-40"
+          style={{ background: 'var(--mod-corrida-to)', color: 'var(--blue-dark)' }}
+        >
+          <Plus size={28} />
+        </button>
       )}
     </div>
   );
