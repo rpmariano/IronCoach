@@ -82,7 +82,7 @@ sequenceDiagram
 
 O ecrã **Início** funciona como o painel central de comando do atleta.
 
-![Ecrã Início - IronHealth v2](https://tmpfiles.org/dl/wLwKRooA9XEn/ironhealth_home_dashboard.jpg)
+![Ecrã Início - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg)
 
 ### 📊 Regras de Campos e Preenchimento
 
@@ -110,7 +110,7 @@ O ecrã **Início** funciona como o painel central de comando do atleta.
 
 O módulo de Nutrição gere a ingestão calórica, macronutrientes e micronutrientes sem fricção.
 
-![Ecrã Nutrição - IronHealth v2](https://tmpfiles.org/dl/wKw3RBoA94pV/ironhealth_nutrition_dashboard.jpg)
+![Ecrã Nutrição - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_nutrition.jpg)
 
 ### 🥗 Tipos de Refeição e Validações
 
@@ -143,7 +143,7 @@ No Calendário Nutricional, um dia fica assinalado com cor de alerta sempre que 
 
 O módulo de Ginásio suporta registo flexível de treino com pesos e aulas coletivas.
 
-![Ecrã Ginásio - IronHealth v2](https://tmpfiles.org/dl/wXwrRxoRQrwz/ironhealth_gym_dashboard.jpg)
+![Ecrã Ginásio - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_gym.jpg)
 
 ### 🏋️ Regras de Campos e Distinção de Treinos
 
@@ -173,7 +173,7 @@ $$\text{Volume da Sessão (kg)} = \sum_{i=1}^{n} (\text{Repetições}_i \times \
 
 Módulo dedicado à análise avançada de composição corporal através de capturas da balança **Renpho Health**.
 
-![Ecrã Corpo - IronHealth v2](https://tmpfiles.org/dl/wVwCRYo8QlfH/ironhealth_body_dashboard.jpg)
+![Ecrã Corpo - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_body.jpg)
 
 ### 📱 Tabela dos 13 Indicadores Corporais
 
@@ -206,7 +206,7 @@ Cada métrica possui uma meta associada (`goal_*`).
 
 Módulo técnico especializado para treinos de corrida e preparação para competições.
 
-![Ecrã Corrida - IronHealth v2](https://tmpfiles.org/dl/w2wfRzoDQzlv/ironhealth_run_dashboard.jpg)
+![Ecrã Corrida - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_run.jpg)
 
 ### 🏃 Tipos de Evento e Categorias
 
@@ -232,7 +232,7 @@ Módulo técnico especializado para treinos de corrida e preparação para compe
 
 O **Coach IA** atua como treinador pessoal e nutricionista dedicado em Português de Portugal (`pt-PT`).
 
-![Ecrã Coach IA - IronHealth v2](https://tmpfiles.org/dl/wAwsRxoyQwgn/ironhealth_coach_dashboard.jpg)
+![Ecrã Coach IA - IronHealth v2](https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_coach.jpg)
 
 ### 📐 Janelas de Contexto Automáticas
 Ao ser invocado, o `coach-chat` constrói automaticamente o seguinte contexto:

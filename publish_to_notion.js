@@ -17,8 +17,10 @@ function getNotionToken() {
 const NOTION_TOKEN = getNotionToken();
 const PAGE_ID = process.argv[2] || '39c70bb4-c353-81cc-8974-ee6dfe83f301';
 
-// Direct URLs for IronHealth app screenshots
-const IMAGE_MAP = {
+// Direct GitHub raw URLs
+const GITHUB_IMAGE_MAP = {
+  'início': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg',
+  'inicio': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg',
   'home': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg',
   'nutrição': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_nutrition.jpg',
   'nutricao': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_nutrition.jpg',
@@ -219,32 +221,38 @@ function markdownToNotionBlocks(mdContent) {
       continue;
     }
 
-    // Images
+    // Images - ALWAYS use GitHub raw URL based on caption or URL
     const imgMatch = line.match(/!\[(.*?)\]\((.*?)\)/);
     if (imgMatch) {
       const caption = imgMatch[1];
-      let imgUrl = imgMatch[2];
+      const origUrl = imgMatch[2];
+      let finalUrl = null;
 
-      if (!imgUrl.startsWith('http')) {
-        const lowerCap = caption.toLowerCase();
-        for (const key of Object.keys(IMAGE_MAP)) {
-          if (lowerCap.includes(key)) {
-            imgUrl = IMAGE_MAP[key];
-            break;
-          }
+      // Check caption or origUrl for module matching
+      const searchText = (caption + ' ' + origUrl).toLowerCase();
+      for (const key of Object.keys(GITHUB_IMAGE_MAP)) {
+        if (searchText.includes(key)) {
+          finalUrl = GITHUB_IMAGE_MAP[key];
+          break;
         }
       }
 
-      if (!imgUrl.startsWith('http')) {
-        imgUrl = IMAGE_MAP['home'];
+      if (!finalUrl) {
+        if (origUrl.includes('raw.githubusercontent.com')) {
+          finalUrl = origUrl;
+        } else {
+          finalUrl = GITHUB_IMAGE_MAP['home'];
+        }
       }
+
+      console.log(`Mapping image [${caption}] -> ${finalUrl}`);
 
       blocks.push({
         object: 'block',
         type: 'image',
         image: {
           type: 'external',
-          external: { url: imgUrl },
+          external: { url: finalUrl },
           caption: parseRichText(caption || 'IronHealth App Dashboard Screen')
         }
       });
@@ -328,7 +336,7 @@ async function publish() {
     const mdPath = path.join(__dirname, 'MANUAL_UTILIZADOR.md');
     const mdContent = fs.readFileSync(mdPath, 'utf8');
 
-    console.log(`🔄 A converter Markdown em blocos nativos do Notion com imagens REAIS da app...`);
+    console.log(`🔄 A converter Markdown em blocos nativos do Notion com URLs GitHub CDN...`);
     const allBlocks = markdownToNotionBlocks(mdContent);
     console.log(`📦 Total de ${allBlocks.length} blocos gerados.`);
 
@@ -352,7 +360,7 @@ async function publish() {
       console.log(`   - Blocos ${j + 1} a ${Math.min(j + chunkSize, allBlocks.length)} adicionados.`);
     }
 
-    console.log(`✅ Publicação com imagens reais da app concluída com sucesso!`);
+    console.log(`✅ Publicação com URLs GitHub CDN concluída com sucesso!`);
     console.log(`🔗 Acede à página no Notion: https://app.notion.com/p/${PAGE_ID.replace(/-/g, '')}`);
   } catch (err) {
     console.error(`❌ Erro durante a publicação:`, err.message);
