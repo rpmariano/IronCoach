@@ -41,7 +41,7 @@ export default function Run() {
               key={tab.id}
               data-tab={tab.id}
               onClick={() => {
-                setIsFabOpen(false); // Close registration if switching tabs
+                setOpenCreationMode(null); // Close registration if switching tabs
                 setActiveSubTab(tab.id);
               }}
               className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-bold rounded-full transition-colors ${active ? 'active' : 'text-slate-500 hover:text-slate-700'}`}
@@ -61,17 +61,6 @@ export default function Run() {
           {activeSubTab === 'calendario' && <RunCalendar onNewRun={handleOpenFab} />}
           {activeSubTab === 'agenda' && <RunAgenda />}
         </>
-      )}
-
-      {/* FAB para Nova Corrida se não estiver na Agenda (Agenda tem o seu botão) */}
-      {activeSubTab !== 'agenda' && openCreationMode !== 'run' && (
-        <button 
-          onClick={() => handleOpenFab()}
-          className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition z-40 text-neutral-950"
-          style={{ background: 'var(--mod-corrida-to)' }}
-        >
-          <Plus size={28} className="text-white" />
-        </button>
       )}
     </div>
   );
