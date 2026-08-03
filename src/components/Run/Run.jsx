@@ -30,8 +30,8 @@ export default function Run() {
         className={`seg-nav at-${tabIndex + 1} relative flex bg-transparent border border-slate-200 shadow-sm rounded-full p-1 mb-5`}
       >
         <div
-          className="seg-thumb absolute top-1 bottom-1 rounded-full bg-white shadow-sm"
-          style={{ width: `calc(${100 / TABS.length}% - 4px)`, left: '2px' }}
+          className="seg-thumb absolute top-1 bottom-1 rounded-full"
+          style={{ width: `calc(${100 / TABS.length}% - 4px)`, left: '2px', background: 'var(--mod-corrida-to)' }}
         />
         {TABS.map(tab => {
           const Icon = tab.icon;
@@ -44,7 +44,7 @@ export default function Run() {
                 setIsFabOpen(false); // Close registration if switching tabs
                 setActiveSubTab(tab.id);
               }}
-              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-bold rounded-full transition-colors ${active ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-bold rounded-full transition-colors ${active ? 'active' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Icon size={16} />
               {tab.label}
