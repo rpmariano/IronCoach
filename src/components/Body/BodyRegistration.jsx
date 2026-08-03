@@ -88,7 +88,7 @@ export default function BodyRegistration({ onClose }) {
       <div 
         className="rounded-2xl p-4" 
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, #f8fafc)',
+          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, var(--surf-900), var(--surf-detail))',
           borderStyle: 'solid',
           borderWidth: '1px 1px 1px 3px',
           borderColor: '#e2e8f0 #e2e8f0 #e2e8f0 color-mix(in srgb, var(--mod-corpo-to) 70%, #e2e8f0)'

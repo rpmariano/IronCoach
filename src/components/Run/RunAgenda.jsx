@@ -182,13 +182,13 @@ export default function RunAgenda({ onNewRun }) {
             {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0 flex-row">
-            <button onClick={() => handleToggleStatus(ev)} title={done ? 'Marcar como agendada' : 'Marcar como concluída'} className="p-1 text-slate-400 hover:text-emerald-500 transition">
+            <button onClick={() => handleToggleStatus(ev)} aria-label={done ? 'Marcar prova como agendada' : 'Marcar prova como concluída'} className="tap-44 text-slate-400 hover:text-emerald-500 transition">
               {done ? <RotateCcw size={16} /> : <CheckCircle size={16} />}
             </button>
-            <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="p-1 text-slate-400 hover:text-[var(--accent)] transition">
+            <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="tap-44 text-slate-400 hover:text-[var(--accent)] transition">
               <Pencil size={16} />
             </button>
-            <button onClick={() => handleDelete(ev.id)} aria-label="Eliminar prova" className="p-1 text-slate-400 hover:text-red-500 transition">
+            <button onClick={() => handleDelete(ev.id)} aria-label="Eliminar prova" className="tap-44 text-slate-400 hover:text-red-500 transition">
               <Trash2 size={16} />
             </button>
           </div>

@@ -59,7 +59,7 @@ export default function BodyAssessmentCard({ assessment }) {
   ].filter(Boolean);
 
   return (
-    <div className="bg-[#f8fafc] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
+    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
       {/* Header Bar */}
       <div 
         onClick={() => setExpanded(prev => !prev)}
@@ -83,7 +83,15 @@ export default function BodyAssessmentCard({ assessment }) {
           <span className="text-sm font-bold text-purple-600">
             {weight || '—'}
           </span>
-          <button className="text-slate-400 hover:text-slate-600 p-1">
+          {/* A linha inteira é clicável, mas o chevron é o controlo real —
+              é ele que dá acesso por teclado e o estado ao leitor de ecrã. */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded(prev => !prev); }}
+            type="button"
+            aria-label={expanded ? 'Fechar detalhes da avaliação' : 'Ver detalhes da avaliação'}
+            aria-expanded={expanded}
+            className="tap-44 text-slate-400 hover:text-slate-600 shrink-0"
+          >
             {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
         </div>

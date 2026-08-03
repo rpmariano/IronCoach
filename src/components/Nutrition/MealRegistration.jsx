@@ -87,12 +87,16 @@ export default function MealRegistration({ onClose }) {
               {photos.map((p, i) => (
                 <div key={i} className="relative aspect-square">
                   <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Foto ${i+1}`} />
-                  <button 
-                    onClick={() => removePhoto(i)} 
-                    aria-label="Remover foto" 
-                    className="absolute top-1 right-1 bg-white/90 border border-slate-200 rounded-full p-1 text-slate-500 hover:text-red-500 shadow-sm transition"
+                  {/* Alvo tátil de 44px sem inflar o badge visível, que ocuparia
+                      metade da miniatura. */}
+                  <button
+                    onClick={() => removePhoto(i)}
+                    aria-label={`Remover foto ${i + 1}`}
+                    className="tap-44 absolute -top-1.5 -right-1.5 text-slate-500 hover:text-red-500 transition"
                   >
-                    <X size={14} />
+                    <span className="bg-white/90 border border-slate-200 rounded-full p-1 shadow-sm flex items-center justify-center">
+                      <X size={14} />
+                    </span>
                   </button>
                 </div>
               ))}

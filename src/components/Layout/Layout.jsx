@@ -24,6 +24,12 @@ const TAB_MODULE_COLORS = {
   perfil: 'var(--accent)',
 };
 
+// Círculo de ícone com glifo branco: usa o mesmo gradiente -from → -to dos
+// dashboards de cada módulo. O tom -to sozinho é demasiado claro para o
+// ícone branco ter contraste suficiente.
+const moduleGradient = (mod) =>
+  `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
+
 export default function Layout({ children }) {
   const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
@@ -114,10 +120,10 @@ export default function Layout({ children }) {
             style={{ bottom: 90 }}
             ref={fabRef}
           >
-            <FabItem 
-              label="Registar refeição" 
-              bgColor="bg-[#059669]" 
-              icon={<Camera size={14} />} 
+            <FabItem
+              label="Registar refeição"
+              color={moduleGradient('nutricao')}
+              icon={<Camera size={14} />}
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
@@ -126,8 +132,8 @@ export default function Layout({ children }) {
               }} 
             />
             <FabItem 
-              label="Nova avaliação" 
-              bgColor="bg-[#7c3aed]" 
+              label="Nova avaliação"
+              color={moduleGradient('corpo')}
               icon={<User size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -137,8 +143,8 @@ export default function Layout({ children }) {
               }} 
             />
             <FabItem 
-              label="Nova corrida" 
-              bgColor="bg-[#c026d3]" 
+              label="Nova corrida"
+              color={moduleGradient('corrida')}
               icon={<RunIcon className="w-3.5 h-3.5" />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -148,8 +154,8 @@ export default function Layout({ children }) {
               }} 
             />
             <FabItem 
-              label="Novo treino" 
-              bgColor="bg-[#2563eb]" 
+              label="Novo treino"
+              color={moduleGradient('ginasio')}
               icon={<Dumbbell size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -184,11 +190,12 @@ export default function Layout({ children }) {
             e.stopPropagation();
             setFabOpen(v => !v);
           }}
-          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all bg-[#f3d5ab] border-[4px] border-white ring-[2.5px] ring-slate-900 shadow-xl text-slate-900 z-50 cursor-pointer"
+          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all bg-[var(--fab-bg)] border-[4px] border-white ring-[2.5px] ring-slate-900 shadow-xl text-slate-900 z-50 cursor-pointer"
           style={{
             top: -22,
           }}
-          aria-label="Registar"
+          aria-label={fabOpen ? 'Fechar menu de registo' : 'Registar novo item'}
+          aria-expanded={fabOpen}
         >
           {fabOpen ? (
             <X size={22} className="stroke-[2.5]" />
@@ -210,7 +217,8 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
       onClick={() => setTab(tab)}
       data-vert={tab}
       aria-label={label}
-      className="vbar-btn w-full flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
+      aria-current={active ? 'page' : undefined}
+      className="vbar-btn w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
       style={{ color: active ? activeColor : '#64748b', fontWeight: active ? 700 : 500 }}
     >
       {icon}
@@ -219,7 +227,7 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
   );
 }
 
-function FabItem({ label, bgColor, icon, onClick }) {
+function FabItem({ label, color, icon, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -227,7 +235,8 @@ function FabItem({ label, bgColor, icon, onClick }) {
       className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white border border-slate-200/80 shadow-md hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
     >
       <span
-        className={`w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0 ${bgColor}`}
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
+        style={{ background: color }}
       >
         {icon}
       </span>

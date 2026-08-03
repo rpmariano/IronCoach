@@ -19,6 +19,12 @@
   --brd-900:  #e1e7ee;
   --page-bg:  #eaeef4;
   --input-bg: #eef2f7;
+  /* Superfície dos cartões expansíveis (refeição, corrida, treino, avaliação) —
+     estava repetida como hex solto em cada um desses componentes. */
+  --surf-detail: #f8fafc;
+  --surf-success-soft: #e6f4ea;
+  /* Creme do botão "+" — decisão de marca deliberada, não é o --accent. */
+  --fab-bg: #f3d5ab;
   --text-main: #0f172a;
   --color-error: #ef4444;
   --color-alert: #f97316;

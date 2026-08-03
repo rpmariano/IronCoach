@@ -154,7 +154,7 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
   ].filter(Boolean);
 
   return (
-    <div className="bg-[#f8fafc] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
+    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
       {/* Header Bar */}
       <div 
         onClick={handleExpandToggle}
@@ -185,7 +185,15 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
               {headlineValue}
             </span>
           )}
-          <button className="text-slate-400 hover:text-slate-600 p-1">
+          {/* A linha inteira é clicável, mas o chevron é o controlo real —
+              é ele que dá acesso por teclado e o estado ao leitor de ecrã. */}
+          <button
+            onClick={(e) => { e.stopPropagation(); handleExpandToggle(); }}
+            type="button"
+            aria-label={isExpanded ? 'Fechar detalhes do treino' : 'Ver detalhes do treino'}
+            aria-expanded={isExpanded}
+            className="tap-44 text-slate-400 hover:text-slate-600 shrink-0"
+          >
             {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
         </div>
