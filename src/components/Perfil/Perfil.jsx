@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
+import { ensurePushSubscription } from '../../lib/push';
 import { User, Target, Bot, LogOut, ChevronDown, ChevronUp, Bell, Sparkles, Loader2, X } from 'lucide-react';
 
 const BODY_METRICS = [
@@ -35,6 +36,7 @@ export default function Perfil() {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [subscribingPush, setSubscribingPush] = useState(false);
 
   // Destino pendente quando se tenta sair com alterações por gravar.
   // { kind: 'tab' | 'nav', target: string }
@@ -47,13 +49,21 @@ export default function Perfil() {
   const [suggestingGoals, setSuggestingGoals] = useState(false);
   const [goalsRationale, setGoalsRationale] = useState(profile?.goals_rationale || '');
 
-  // Reset draft when profile changes or tab changes
+  /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
+     por gravar. Depender da identidade do objeto `profile` não servia: o
+     loadInitialData corre a cada onAuthStateChange (incluindo TOKEN_REFRESHED,
+     de hora a hora) e cria sempre um objeto novo, o que apagava o rascunho e
+     limpava o próprio aviso de saída sem gravar. Só um perfil diferente, ou
+     uma mudança de sub-separador sem nada pendente, justifica o reset. */
+  const loadedProfileId = useRef(null);
   useEffect(() => {
-    if (profile) {
-      setDraft(profile);
-      setIsDirty(false);
-    }
-  }, [profile, tab]);
+    if (!profile) return;
+    const isOtherProfile = loadedProfileId.current !== profile.id;
+    if (isDirty && !isOtherProfile) return;
+    loadedProfileId.current = profile.id;
+    setDraft(profile);
+    setIsDirty(false);
+  }, [profile, tab, isDirty]);
 
   // Trava a navegação para fora do Perfil enquanto houver alterações por gravar.
   useEffect(() => {
@@ -81,18 +91,48 @@ export default function Perfil() {
     setIsDirty(true);
   };
 
+  /* Ligar o interruptor pede a permissão ao browser e subscreve o push de
+     imediato — é uma ação do browser, não um valor de formulário, por isso não
+     espera pelo Guardar (ver PRD 3.7). O campo em si continua a ser rascunho:
+     se o utilizador sair sem gravar, a subscrição fica mas os lembretes não
+     são ativados no perfil. */
+  const toggleWaterReminder = async () => {
+    const enabling = !draft.water_reminder_enabled;
+    if (!enabling) {
+      updateDraft('water_reminder_enabled', false);
+      return;
+    }
+    setSubscribingPush(true);
+    const { ok, error } = await ensurePushSubscription();
+    setSubscribingPush(false);
+    if (!ok) {
+      alert(error);
+      return;
+    }
+    updateDraft('water_reminder_enabled', true);
+  };
+
   const handleSave = async () => {
     if (!isDirty) return true;
     setIsSaving(true);
     try {
+      const updates = { ...draft };
+      /* Ativar agora começa a contagem a partir deste momento, não do último
+         registo antigo, e limpa um "silenciar resto do dia" que não deve
+         sobreviver a reativar. */
+      if (draft.water_reminder_enabled && !profile?.water_reminder_enabled) {
+        updates.water_last_activity_at = new Date().toISOString();
+        updates.water_reminder_muted_date = null;
+      }
+
       const { error } = await supabase
         .from('profiles')
-        .update(draft)
+        .update(updates)
         .eq('id', profile?.id);
 
       if (error) throw error;
 
-      setProfile({ ...profile, ...draft });
+      setProfile({ ...profile, ...updates });
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -123,8 +163,12 @@ export default function Perfil() {
       return;
     }
     // O guard vive no store e ainda está registado neste render — limpa-o
-    // antes de navegar para não voltar a travar o mesmo pedido.
+    // antes de sair para não voltar a travar o mesmo pedido.
     setNavGuard(null);
+    if (kind === 'signout') {
+      supabase.auth.signOut();
+      return;
+    }
     useAppStore.getState().setActiveTab(target);
   };
 
@@ -144,7 +188,13 @@ export default function Perfil() {
     goToPendingTarget(pending);
   };
 
+  // Terminar sessão é a saída mais destrutiva de todas: desmonta o Perfil e
+  // leva o rascunho com ele. Passa pelo mesmo aviso que as outras.
   const handleSignOut = async () => {
+    if (isDirty) {
+      setLeavePrompt({ kind: 'signout', target: null });
+      return;
+    }
     await supabase.auth.signOut();
   };
 
@@ -362,10 +412,11 @@ export default function Perfil() {
                   Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
                 </p>
               </div>
-              <button onClick={() => updateDraft('water_reminder_enabled', !draft.water_reminder_enabled)} type="button"
+              <button onClick={toggleWaterReminder} type="button" disabled={subscribingPush}
                 aria-label={draft.water_reminder_enabled ? 'Desativar lembretes de água' : 'Ativar lembretes de água'}
                 aria-pressed={!!draft.water_reminder_enabled}
-                className={`w-11 h-6 rounded-full relative transition shrink-0 ${draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}`}>
+                aria-busy={subscribingPush}
+                className={`w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-60 ${draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.water_reminder_enabled ? 'left-5' : 'left-0.5'}`}></span>
               </button>
             </div>

@@ -1,13 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
-import { Droplets, Plus, Minus, GlassWater, Info, Trash2 } from 'lucide-react';
+import { Droplets, Plus, Minus, GlassWater, Info, Trash2, Bell, BellOff, Clock } from 'lucide-react';
 
 const WATER_PRESETS = [200, 250, 300];
 
 export default function WaterTracker() {
-  const { profile, waterLogs, session } = useAppStore();
+  const { profile, waterLogs, session, setProfile } = useAppStore();
   const [isUpdating, setIsUpdating] = useState(false);
+
+  const remindersOn = !!profile?.water_reminder_enabled;
+  const mutedToday = profile?.water_reminder_muted_date === new Date().toISOString().slice(0, 10);
 
   // Goal from profile
   const goal = profile?.water_goal_ml || 2000;
@@ -44,13 +47,55 @@ export default function WaterTracker() {
       };
       const { data, error } = await supabase.from('water_logs').insert(newLog).select().single();
       if (error) throw error;
-      
+
       // Update store directly for immediate feedback
       useAppStore.setState(state => ({
         waterLogs: [data, ...state.waterLogs]
       }));
+
+      /* Beber conta como "atividade" e reinicia a contagem do próximo lembrete
+         — a Edge Function send-water-reminders lê este campo para saber se já
+         é devido. Sem isto os lembretes disparavam ao intervalo cru, mesmo
+         acabado de beber. */
+      const nowIso = new Date().toISOString();
+      await supabase.from('profiles').update({ water_last_activity_at: nowIso }).eq('id', session.user.id);
+      setProfile({ ...useAppStore.getState().profile, water_last_activity_at: nowIso });
     } catch (err) {
       console.error('Error adding water:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Silenciar sem mexer no interruptor geral do Perfil: adiar só o próximo
+  // (reaproveita water_last_activity_at) ou até ao fim do dia
+  // (water_reminder_muted_date, ver send-water-reminders).
+  const snoozeReminder = async (scope) => {
+    if (!session?.user?.id) return;
+    setIsUpdating(true);
+    try {
+      const updates = scope === 'next'
+        ? { water_last_activity_at: new Date().toISOString() }
+        : { water_reminder_muted_date: todayStr };
+      const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
+      if (error) throw error;
+      setProfile({ ...useAppStore.getState().profile, ...updates });
+    } catch (err) {
+      console.error('Error snoozing water reminder:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const unmuteToday = async () => {
+    if (!session?.user?.id) return;
+    setIsUpdating(true);
+    try {
+      const { error } = await supabase.from('profiles').update({ water_reminder_muted_date: null }).eq('id', session.user.id);
+      if (error) throw error;
+      setProfile({ ...useAppStore.getState().profile, water_reminder_muted_date: null });
+    } catch (err) {
+      console.error('Error unmuting water reminder:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -146,6 +191,40 @@ export default function WaterTracker() {
         </div>
       )}
 
+
+      {/* Silenciar lembretes sem desligar o interruptor geral do Perfil. */}
+      {remindersOn && (
+        <div className="card rounded-xl p-3">
+          {mutedToday ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                <BellOff size={14} className="shrink-0 text-slate-400" /> Lembretes silenciados até amanhã.
+              </p>
+              <button onClick={unmuteToday} disabled={isUpdating} type="button"
+                className="tap-h-44 px-3 rounded-xl text-[11px] font-bold text-white shrink-0 disabled:opacity-50 transition active:scale-95"
+                style={{ background: 'var(--blue)' }}>
+                Reativar
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-2.5">
+                <Bell size={14} className="shrink-0 text-slate-400" /> Lembretes de água ativos.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => snoozeReminder('next')} disabled={isUpdating} type="button"
+                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-slate-600 border border-slate-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
+                  <Clock size={14} /> Adiar próximo
+                </button>
+                <button onClick={() => snoozeReminder('day')} disabled={isUpdating} type="button"
+                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-slate-600 border border-slate-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
+                  <BellOff size={14} /> Silenciar hoje
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="card rounded-xl p-3 bg-blue-50/50 border border-blue-100 flex gap-2">
         <Info size={16} style={{ color: 'var(--blue)' }} className="shrink-0 mt-0.5" />

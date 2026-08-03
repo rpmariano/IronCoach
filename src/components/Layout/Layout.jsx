@@ -74,6 +74,13 @@ export default function Layout({ children }) {
 
   const closeFab = () => setFabOpen(false);
 
+  // setActiveTab devolve false quando o navGuard recusa (ex.: Perfil com
+  // alterações por gravar). Sem isto, openCreationMode ficava no store e o
+  // formulário de registo abria sozinho na visita seguinte a esse módulo.
+  const goRegister = (tab, mode) => {
+    if (setActiveTab(tab)) setOpenCreationMode(mode);
+  };
+
   return (
     <div className="max-w-md mx-auto min-h-screen flex flex-col relative" style={{ background: 'var(--page-bg)' }}>
 
@@ -127,8 +134,7 @@ export default function Layout({ children }) {
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
-                setActiveTab('nutricao'); 
-                setOpenCreationMode('meal'); 
+                goRegister('nutricao', 'meal');
               }} 
             />
             <FabItem 
@@ -138,8 +144,7 @@ export default function Layout({ children }) {
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
-                setActiveTab('corpo'); 
-                setOpenCreationMode('assessment'); 
+                goRegister('corpo', 'assessment');
               }} 
             />
             <FabItem 
@@ -149,8 +154,7 @@ export default function Layout({ children }) {
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
-                setActiveTab('corrida'); 
-                setOpenCreationMode('run'); 
+                goRegister('corrida', 'run');
               }} 
             />
             <FabItem 
@@ -160,8 +164,7 @@ export default function Layout({ children }) {
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
-                setActiveTab('ginasio'); 
-                setOpenCreationMode('workout'); 
+                goRegister('ginasio', 'workout');
               }} 
             />
           </div>

@@ -603,7 +603,9 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                   <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => {
                     const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits);
                   }} className="flex-1 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs" />
-                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} className="p-1 text-slate-400 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
+                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} type="button"
+                    aria-label={`Remover parcial ${i + 1}`}
+                    className="tap-44 text-slate-400 hover:text-red-500 shrink-0"><X className="w-3.5 h-3.5"/></button>
                 </div>
               ))}
             </div>

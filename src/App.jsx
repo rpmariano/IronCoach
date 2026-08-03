@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
@@ -36,6 +37,10 @@ export default function App() {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
+    // Sem sessão nem nada visível: só sem o service worker registado é que a
+    // subscrição de push (lembretes de água) nunca chega a resolver.
+    registerServiceWorker();
+
     // Read ?tab= & ?demo= from URL query params
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');

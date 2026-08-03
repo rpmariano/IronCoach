@@ -34,8 +34,10 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
   - Intervalo configurável (30/60/90/120/180/240 min).
   - **Janela horária configurável** (hora de início e hora de fim, granularidade de 1h, 00:00–23:00). Por omissão, quando o utilizador não define outro valor: **08:00–22:00** (hora de Portugal, `Europe/Lisbon`).
   - Suporta janelas que atravessam a meia-noite (ex.: início=22h, fim=6h) e o caso início=fim (lembretes 24h).
-  - "Silenciar resto do dia" independente da ativação geral.
-  - Ativar/desativar, intervalo e janela horária estão sujeitos à **regra do botão "Guardar"** da tab Metas (ver secção 3.7): nenhuma alteração é persistida até o utilizador gravar.
+  - **Entrega**: service worker em `public/sw.js` (registado em `App.jsx` a cada arranque, sem exigir sessão) e subscrição Web Push guardada pela Edge Function `save-push-subscription`. A lógica de envio vive em `send-water-reminders`, disparada por `pg_cron`. Sem service worker registado nem subscrição gravada, as definições de lembrete não produzem notificação nenhuma.
+  - **Beber reinicia a contagem**: registar água atualiza `water_last_activity_at`, o campo que a Edge Function usa para decidir se o lembrete já é devido.
+  - **Silenciar, sem mexer na ativação geral** (no separador Água): "Adiar próximo" (empurra `water_last_activity_at`) e "Silenciar hoje" (`water_reminder_muted_date`, que expira sozinho no dia seguinte), com opção de reativar.
+  - Ativar/desativar, intervalo e janela horária estão sujeitos à **regra do botão "Guardar"** da tab Metas (ver secção 3.7): nenhuma alteração é persistida até o utilizador gravar. Ativar de novo depois de gravar reinicia `water_last_activity_at` e limpa um "silenciar hoje" anterior.
 - **Calendário de Nutrição**: cada dia mostra até dois indicadores —
   - Ponto de estado nutricional: **verde** quando Calorias, Hidratos e Gordura não são excedidos **e** a Proteína é atingida ou ultrapassada; **vermelho** se qualquer uma das 3 primeiras for excedida **ou** a Proteína ficar abaixo da meta; **cinzento** sem refeições registadas nesse dia. Uma macro sem meta definida nunca conta como excedida.
   - Ponto adicional **azul-claro** (`bg-sky-400`), por baixo do anterior, nos dias em que a soma dos registos de água atinge a meta diária.
@@ -113,7 +115,8 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 ## 5. Requisitos Não Funcionais & Acessibilidade
 
 ### 5.1. Alvos de Toque (Touch Targets)
-- Todos os botões e elementos interativos clicáveis devem ter um tamanho mínimo de **44px × 44px** (FAB em **56px × 56px**). Usar as classes `tap-44` (largura e altura) ou `tap-h-44` (só altura).
+- Todos os botões e elementos interativos clicáveis devem ter um tamanho mínimo de **44px × 44px** (FAB em **56px × 56px**). Usar as classes `tap-44` (largura e altura) ou `tap-h-44` (só altura), ou dimensões explícitas equivalentes (`Coach.jsx` usa `min-w-[44px] min-h-[44px]`, igualmente válido).
+- **Estado da verificação (2026-08-03)**: confirmado por medição no browser em Layout, os quatro calendários, os quatro cartões expansíveis, WaterTracker, MealRegistration, RunAgenda, RunRegistration e Perfil. **Não** foi feita uma varredura exaustiva de todos os botões dos 29 ficheiros de `src/components/` — os módulos Admin, Auth e os dashboards não foram medidos um a um. Novos botões devem cumprir a regra; a varredura completa fica como trabalho pendente.
 
 ### 5.2. Acessibilidade (Leitores de Ecrã e Contraste)
 - **`aria-label` obrigatório** em botões que utilizem exclusivamente ícones (fechar, adicionar rápidos, FAB, setas de navegação, eliminar, editar).
@@ -122,6 +125,12 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - Quando uma linha inteira é clicável por conveniência, o controlo semântico (botão com `aria-label` e `aria-expanded`) tem de existir e funcionar por teclado — um `<div onClick>` sozinho não é acessível.
 - **Contraste**: o texto principal usa `var(--text-main)` (`#0f172a`) sobre superfícies claras, acima de 7:1.
 - **Exceção conhecida — cores de aba ativa**: as cores de módulo usadas no rótulo de 10px da barra de navegação ficam entre **2,54:1 e 3,96:1** sobre branco, abaixo dos 4,5:1 da WCAG AA para texto pequeno. A decisão foi manter as cores de módulo e **não** fazer o estado ativo depender apenas da cor: a aba ativa tem também uma barra indicadora acima do ícone e peso tipográfico distinto, cumprindo a WCAG 1.4.1. Esta exceção é deliberada e deve ser reavaliada se a paleta de módulos mudar.
+- **Estado da verificação**: o `aria-label` foi auditado por varredura automática de botões cujo conteúdo é só um ícone. A varredura tem falsos positivos conhecidos (botões cujo texto vive dentro de uma expressão JSX) e já deixou passar pelo menos um caso real, por isso não substitui revisão.
+
+### 5.3. Carregamento de Dados (dívida registada)
+- `loadInitialData` (`src/store/index.js`) busca `meals` e `water_logs` **sem limite de datas**. O PostgREST limita o número de linhas por omissão (1000 no Supabase), ordenadas por data descendente.
+- **Consequência**: a partir desse volume, recuar o suficiente no calendário mostra dias a cinzento ("sem registo") que na verdade têm registos — dados errados em silêncio, não um erro visível.
+- A versão vanilla evitava isto carregando cada mês a pedido (`calendarCache` / `waterCalendarCache`, água limitada a 14 dias). Esse carregamento por mês **não foi portado** e deve ser reposto antes de o histórico de qualquer utilizador se aproximar do limite.
 
 ---
 

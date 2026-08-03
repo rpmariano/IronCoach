@@ -32,10 +32,14 @@ export const useAppStore = create((set, get) => ({
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
   setNavGuard: (fn) => set({ navGuard: fn }),
+  // Devolve false quando o guard recusa, para quem chama não seguir com
+  // efeitos secundários (ex.: abrir um formulário de registo) numa navegação
+  // que não aconteceu.
   setActiveTab: (tab) => {
     const guard = get().navGuard;
-    if (guard && !guard(tab)) return;
+    if (guard && !guard(tab)) return false;
     set({ activeTab: tab });
+    return true;
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   

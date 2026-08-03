@@ -24,6 +24,32 @@ export default function NutritionCalendar({ onRegisterClick }) {
     return meals.filter(m => m.date === dayStr);
   }, [meals, selectedDate]);
 
+  /* Um agrupamento por data em vez de varrer meals e waterLogs inteiros uma
+     vez por cada dia da grelha (31 varreduras completas por render, cada uma
+     a somar os nutrientes de todas as refeições que batessem). */
+  const dayInfo = useMemo(() => {
+    const groupBy = (rows) => {
+      const map = new Map();
+      for (const row of rows || []) {
+        if (!map.has(row.date)) map.set(row.date, []);
+        map.get(row.date).push(row);
+      }
+      return map;
+    };
+    const mealsByDay = groupBy(meals);
+    const waterByDay = groupBy(waterLogs);
+
+    const info = new Map();
+    for (const date of daysInMonth) {
+      const dayStr = format(date, 'yyyy-MM-dd');
+      info.set(dayStr, {
+        status: dayNutrientStatus(mealsByDay.get(dayStr) || [], dayStr, profile),
+        waterMet: dayWaterGoalMet(waterByDay.get(dayStr) || [], dayStr, profile),
+      });
+    }
+    return info;
+  }, [daysInMonth, meals, waterLogs, profile]);
+
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Botão de Registo */}
@@ -65,8 +91,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
             if (!isCurrentMonth) return null;
 
             const dayStr = format(date, 'yyyy-MM-dd');
-            const status = dayNutrientStatus(meals, dayStr, profile);
-            const waterMet = dayWaterGoalMet(waterLogs, dayStr, profile);
+            const { status, waterMet } = dayInfo.get(dayStr) || { status: 'none', waterMet: false };
             const statusColor =
               status === 'ok' ? 'bg-emerald-500' :
               status === 'over' ? 'bg-red-500' :
