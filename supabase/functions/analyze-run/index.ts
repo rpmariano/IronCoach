@@ -126,8 +126,17 @@ function buildPrompt(
     "- duration_seconds: duração total (tempo em movimento/total da atividade), em segundos.\n" +
     "- warmup_minutes / recovery_seconds: só se o ecrã mostrar claramente um aquecimento inicial ou o tempo de " +
     "recuperação entre repetições.\n" +
-    "- splits: se o ecrã mostrar uma tabela de voltas/laps/repetições com distância e tempo de cada uma, devolve " +
-    "cada linha como { distance_km, time_seconds }. Deixa null se não houver essa tabela visível.\n" +
+    "- splits: se alguma imagem mostrar uma tabela de voltas/laps (em português normalmente chamada 'Voltas', " +
+    "em inglês 'Laps'), com colunas do tipo Tempo/Distância/Ritmo (ou Time/Distance/Pace), extrai TODAS as linhas " +
+    "dessa tabela, por ordem, como { distance_km, time_seconds }. Cada linha é UM TROÇO com a SUA PRÓPRIA distância " +
+    "e tempo (não são valores cumulativos da corrida toda). Inclui também as linhas de cabeçalho especiais " +
+    "'Aquecer'/'Warmup' e 'Arrefecer'/'Cooldown' se existirem — são só mais um troço, com a distância e tempo " +
+    "próprios indicados na mesma linha (ex.: 'Aquecer · 05:00 · 0,88 km' vira { distance_km: 0.88, " +
+    "time_seconds: 300 }); ignora apenas o texto do rótulo (nome/número da volta), não os valores numéricos ao " +
+    "lado. Os números podem usar vírgula como separador decimal (ex.: '0,88' = 0.88) — converte sempre para ponto. " +
+    "O tempo de cada linha está em mm:ss (ex.: '05:58' = 358 segundos) — converte sempre para segundos totais. " +
+    "Isto é um campo importante e frequentemente esquecido: procura ativamente por esta tabela em TODAS as imagens " +
+    "antes de decidires devolver null.\n" +
     "- official_time_seconds / position: só em competição, se o ecrã mostrar o tempo oficial de prova e/ou a " +
     "posição de chegada (classificação).\n" +
     "- elevation_gain_m / cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece distância/tempo/pace) " +
@@ -146,7 +155,7 @@ function buildPrompt(
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";
   if (kindHint === "treino") {
-    prompt += `\n\nO utilizador já confirmou que isto é um TREINO do tipo "${trainingType ? TRAINING_TYPE_LABELS[trainingType] || trainingType : "não especificado"}" — usa isso como contexto (ex.: só esperar aquecimento/recuperação/splits estruturados se o tipo for Intervalos ou Subidas). Deixa official_time_seconds/position a null.`;
+    prompt += `\n\nO utilizador já confirmou que isto é um TREINO do tipo "${trainingType ? TRAINING_TYPE_LABELS[trainingType] || trainingType : "não especificado"}" — usa isso como contexto (ex.: só esperar aquecimento/recuperação estruturados se o tipo for Intervalos ou Subidas). Isto NÃO se aplica a splits: relógios como o Garmin geram automaticamente voltas de ~1km em QUALQUER corrida, incluindo Contínuo/Longo/Recuperação — extrai a tabela de voltas sempre que o ecrã a mostrar, seja qual for o tipo de treino. Deixa official_time_seconds/position a null.`;
   } else if (kindHint === "competicao") {
     prompt += `\n\nO utilizador já confirmou que isto é uma COMPETIÇÃO de disciplina "${raceType ? RACE_TYPE_LABELS[raceType] || raceType : "não especificada"}" — deixa warmup_minutes/recovery_seconds a null.`;
   }
@@ -572,11 +581,15 @@ function detailsFromExtraction(
   if (e.vo2_max) d.vo2_max = e.vo2_max;
   if (e.hr_zones && e.hr_zones.length) d.hr_zones = e.hr_zones;
 
+  // warmup_minutes/recovery_seconds só fazem sentido para treinos estruturados
+  // por repetição (Intervalos/Subidas) — mas splits (voltas/laps) aparecem em
+  // QUALQUER corrida com relógio que gera auto-lap por km, independentemente
+  // do tipo de treino, por isso fica fora dessa condição.
   if (kind === "treino" && trainingType && REPEAT_TRAINING_TYPES.has(trainingType)) {
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;
     if (e.recovery_seconds) d.recovery_seconds = e.recovery_seconds;
-    if (e.splits && e.splits.length) d.splits = e.splits;
   }
+  if (e.splits && e.splits.length) d.splits = e.splits;
   if (kind === "competicao") {
     if (raceType) d.race_type = raceType;
     if (e.official_time_seconds) d.official_time_seconds = e.official_time_seconds;

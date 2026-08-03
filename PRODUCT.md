@@ -28,8 +28,8 @@ PWA instalável (Android/iOS), Supabase (Postgres + Edge Functions) como backend
 ## Capabilities and Constraints
 
 - Stack: React (Vite SPA), Tailwind CSS, Zustand para gestão de estado global, Lucide Icons, Chart.js, Supabase JS SDK.
-- Design System: O módulo `design-system/` constitui a fonte única de verdade (Single Source of Truth) para a biblioteca de componentes React e tokens de UI da aplicação.
-- Botões de Sistema & Ergonomia: Alvo tátil mínimo obrigatório de **44px × 44px**, superfícies neutras para botões de navegação/ações secundárias e botão flutuante (FAB) em Coral (`var(--accent)`).
+- Design System: o módulo `design-system/` existe como catálogo de componentes com Storybook, mas **não é consumido pela aplicação** — nenhum ficheiro de `src/` o importa. A fonte de verdade dos componentes é `src/components/`, com a consistência garantida pelos tokens CSS de `src/styles/globals.css`. Ver PRD secção 4.3 para a dívida técnica registada (incompatibilidade de versões de React e dimensão da migração).
+- Botões de Sistema & Ergonomia: Alvo tátil mínimo obrigatório de **44px × 44px**, superfícies neutras para botões de navegação/ações secundárias e botão flutuante (FAB) de 56px em creme (`var(--fab-bg)`, `#f3d5ab`) — decisão de marca deliberada, não usa `var(--accent)`.
 - Registo assistido por IA em 4 módulos (refeições, corridas, avaliações corporais, sessões de ginásio), sempre com alternativa de introdução manual.
 - Idioma da interface: português (pt-PT), sem alternativa de idioma implementada.
 - Sem modo escuro — tema claro fixo.

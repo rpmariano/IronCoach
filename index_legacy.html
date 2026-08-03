@@ -50,7 +50,7 @@
     --mod-corpo-from:#5b21b6;    --mod-corpo-to:#a855f7;
     --mod-ginasio-from:#1e40af;  --mod-ginasio-to:#60a5fa;
     /* Corrida: fuchsia, por pedido explícito do utilizador (era verde-lima
-       #84cc16, antes disso laranja var(--color-alert)). Nota: fuchsia fica a ~17° do
+       #84cc16, antes disso laranja #f97316). Nota: fuchsia fica a ~17° do
        roxo do Corpo (--mod-corpo-to) no círculo cromático — mais próximo do
        que o ideal, mas mantido porque foi um pedido direto. -to é fuchsia-500
        (não o -600 mais saturado) porque #09090b sobre #c026d3 só dava 4.39:1
@@ -77,7 +77,7 @@
        As matizes evitam de propósito as bandas já usadas pela marca e pelos
        5 módulos acima — uma exceção deliberada, comentada abaixo.
        Antes desta lista havia 17 hexadecimais soltos e 5 colisões reais
-       (a mesma cor a significar duas métricas diferentes, ex.: var(--color-alert) era
+       (a mesma cor a significar duas métricas diferentes, ex.: #f97316 era
        simultaneamente "Corrida" e "Gordura visceral"). Zero duplicados aqui. */
     --data-calorias:#dd3c4f;
     --data-proteina:#3c6cdd;
@@ -115,12 +115,6 @@
     --brd-900:  #e1e7ee;
     --page-bg:  #eaeef4;
     --input-bg: #eef2f7;
-  --text-main: var(--text-main);
-  --color-error: var(--color-error);
-  --color-alert: var(--color-alert);
-  --color-warn: var(--color-warn);
-  --color-success: var(--color-success);
-
     --grain-opacity: 0.02;
     --card-shadow: 0 1px 0 0 rgba(255,255,255,.8) inset, 0 8px 20px -10px rgba(15,23,42,.14), 0 1px 3px rgba(15,23,42,.06);
     --groove-shadow: inset 0 1px 3px rgba(15,23,42,.1);
@@ -246,7 +240,7 @@
      branco na parte por encher, e o rótulo fica sobretudo aí — dava 1.13 de
      contraste, praticamente invisível. Com tinta escura fica legível tanto na
      zona vazia como sobre a água (que é azul-claro no topo do gradiente). */
-  .water-glass-ml { font-weight:800; color:var(--text-main); line-height:1; }
+  .water-glass-ml { font-weight:800; color:#0f172a; line-height:1; }
   .water-glass-ml small { font-weight:700; color:#334155; margin-left:2px; }
   .water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
@@ -309,7 +303,7 @@
   /* Sobre superfícies coral/douradas o verde perde-se; aí usa-se tinta escura. */
   .range-chip.active:focus-visible, .mealtype-pill.active:focus-visible,
   .choice-pill.active:focus-visible, .seg-btn.active:focus-visible,
-  #fabMainBtn:focus-visible { outline-color:var(--text-main); }
+  #fabMainBtn:focus-visible { outline-color:#0f172a; }
 
   /* Respeita quem pede menos movimento: as ondas e bolhas do copo de água
      animam em loop infinito e podem incomodar (vestibular/atenção). */
@@ -335,7 +329,7 @@
      1.7-2.6 de contraste (o fundo tingido é quase branco, e a cor é clara).
      Misturar a cor com tinta escura mantém a identidade cromática e leva
      todas as cores em uso para 5.5-8.5. */
-  .badge-ink { color: color-mix(in srgb, var(--accent) 45%, var(--text-main)) !important; }
+  .badge-ink { color: color-mix(in srgb, var(--accent) 45%, #0f172a) !important; }
 
   /* Coral usado como texto ou ícone passa à versão tinta. A cor de fundo dos
      botões continua a ser o coral cheio — só muda quando é a própria cor a
@@ -352,7 +346,7 @@
      ficava em 4.05 e slate-600 em 2.18, e são as classes de quase todo o
      texto secundário da app. A hierarquia comprime-se em baixo porque num
      fundo claro não cabem quatro níveis de cinzento todos acima de 4.5. */
-  [class~="text-white"] { color:var(--text-main) !important; }
+  [class~="text-white"] { color:#0f172a !important; }
   [class~="text-slate-200"] { color:#1e293b !important; }
   [class~="text-slate-300"] { color:#334155 !important; }
   [class~="text-slate-400"] { color:#475569 !important; }  /* 6.45 */
@@ -362,12 +356,12 @@
      distinguirem do valor preenchido — mas acima do mínimo para texto grande. */
   [class~="placeholder-slate-600"]::placeholder { color:#697889 !important; }
 
-  [class~="text-emerald-300"] { color:var(--color-success) !important; }
-  [class~="text-emerald-400"] { color:var(--color-success) !important; }  /* 4.67 */
-  [class*="text-emerald-200"] { color:var(--color-success) !important; }
+  [class~="text-emerald-300"] { color:#047857 !important; }
+  [class~="text-emerald-400"] { color:#047857 !important; }  /* 4.67 */
+  [class*="text-emerald-200"] { color:#047857 !important; }
   [class~="text-red-400"] { color:#b91c1c !important; }      /* 5.51 */
 
-  .theme-flip-text { color:var(--text-main) !important; }
+  .theme-flip-text { color:#0f172a !important; }
 
   /* ===== Coach chat ===== */
   .coach-bubble-user  { background:var(--accent); color:#09090b; border-radius:18px 18px 4px 18px; }
@@ -617,12 +611,7 @@ const ACCENT_COLORS = [
 
 /* ============================= ADMIN ============================= */
 const ADMIN_EMAIL = 'rpmariano@gmail.com';
-function isAdmin(){
-  if (currentUserProfile && typeof currentUserProfile.is_admin === 'boolean') {
-    return currentUserProfile.is_admin;
-  }
-  return !!currentUser && currentUser.email === ADMIN_EMAIL;
-}
+function isAdmin(){ return !!currentUser && currentUser.email === ADMIN_EMAIL; }
 
 // Vertical de Ginásio em beta fechada — só visível/utilizável para ADMIN_EMAIL
 // enquanto a funcionalidade não é lançada a todos os utilizadores.
@@ -908,6 +897,7 @@ let fabOpen = false; // menu do botão flutuante "+" (atalho global de criação
 let calendarViewMonth = todayISO().slice(0,7);   // 'YYYY-MM' do mês visível
 let calendarSelectedDate = todayISO();
 let calendarCache = {};       // 'YYYY-MM' -> refeições desse mês (meses != atual)
+let waterCalendarCache = {};  // 'YYYY-MM' -> registos de água desse mês (meses != atual) — waterLogs global só guarda os últimos 14 dias
 let calendarLoading = false;
 
 /* ===== Avaliação Corporal (vertical "Corpo") — mesma lógica da Nutrição:
@@ -920,6 +910,15 @@ let bodyTab = 'dashboard';     // 'dashboard' | 'avaliar' | 'calendario'
 let waterLogs = [];             // [{ id, date, amount_ml, created_at }] últimos 14 dias, desc
 let waterBusy = false;          // desativa os botões de adição enquanto grava, evita duplo-toque
 let waterSubscribing = false;   // idem, para o toggle de notificações (pede permissão + subscreve)
+// Rascunho dos 4 campos de lembretes de água na tab Metas do Perfil — fica
+// null enquanto não há edição pendente (a UI lê de state.profile). Só passa
+// a ter valor quando o utilizador mexe no toggle/intervalo/horário, e só é
+// persistido para a BD (e fundido em state.profile) quando "Guardar" é
+// premido — exatamente a mesma regra dos restantes campos desta tab. Em
+// "sair sem gravar" (discardPerfilAndLeave) volta a null, sem deixar
+// nenhum valor não gravado a residir noutro sítio da app (ex.: cartão de
+// água do Início, que lê diretamente state.profile).
+let waterReminderDraft = null;
 let bodyPhotos = [];           // [{ dataUrl, base64 }] prints comprimidos prontos a enviar
 let bodyDate = todayISO();     // data pré-preenchida da nova avaliação
 let bodyNotes = '';            // observação livre antes da análise
@@ -1447,24 +1446,64 @@ function mealsForMonth(monthKey){
   return calendarCache[monthKey] || null;
 }
 
+// Ao contrário de mealsForMonth, não há atalho para o mês atual: waterLogs
+// (global) só guarda os últimos 14 dias, que não cobrem necessariamente o
+// mês inteiro (ex.: dia 20 do mês não tem os registos do dia 1 ao 6). Por
+// isso todos os meses, incluindo o atual, passam sempre por
+// waterCalendarCache.
+function waterLogsForMonth(monthKey){
+  return waterCalendarCache[monthKey] || null;
+}
+
+// waterCalendarCache é preenchido uma vez quando o mês é aberto no
+// calendário — registar ou remover água depois disso (ex.: no separador
+// Água, ou no cartão do Início) só atualiza waterLogs (global), deixando o
+// cache do calendário parado no valor antigo (o ponto azul do dia não
+// aparecia mesmo já tendo atingido a meta). Chamar isto a seguir a
+// qualquer alteração a waterLogs para uma data específica resolve isso,
+// substituindo só as entradas dessa data pelo que waterLogs tem agora —
+// só tem efeito se esse mês já estiver em cache.
+function syncWaterCalendarCacheForDate(dateIso){
+  const monthKey = dateIso.slice(0, 7);
+  const cached = waterCalendarCache[monthKey];
+  if (!cached) return;
+  const others = cached.filter(w => w.date !== dateIso);
+  const fresh = waterLogs.filter(w => w.date === dateIso);
+  waterCalendarCache[monthKey] = [...others, ...fresh];
+}
+
 async function ensureCalendarMonthLoaded(monthKey){
-  if (mealsForMonth(monthKey) !== null) return;
+  const needsMeals = mealsForMonth(monthKey) === null;
+  const needsWater = waterLogsForMonth(monthKey) === null;
+  if (!needsMeals && !needsWater) return;
   calendarLoading = true; render();
   try {
     const [y, m] = monthKey.split('-').map(Number);
     const start = `${monthKey}-01`;
     const end = new Date(y, m, 0).toISOString().slice(0,10); // último dia do mês
-    const { data, error } = await sb.from('meals')
-      .select('*, meal_items(*)')
-      .eq('user_id', currentUser.id)
-      .gte('date', start)
-      .lte('date', end)
-      .order('date', { ascending:true });
-    if (error) throw error;
-    calendarCache[monthKey] = data || [];
+    if (needsMeals) {
+      const { data, error } = await sb.from('meals')
+        .select('*, meal_items(*)')
+        .eq('user_id', currentUser.id)
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending:true });
+      if (error) throw error;
+      calendarCache[monthKey] = data || [];
+    }
+    if (needsWater) {
+      const { data, error } = await sb.from('water_logs')
+        .select('date, amount_ml')
+        .eq('user_id', currentUser.id)
+        .gte('date', start)
+        .lte('date', end);
+      if (error) throw error;
+      waterCalendarCache[monthKey] = data || [];
+    }
   } catch(e) {
     flashSyncError(e);
-    calendarCache[monthKey] = [];
+    if (needsMeals) calendarCache[monthKey] = calendarCache[monthKey] || [];
+    if (needsWater) waterCalendarCache[monthKey] = waterCalendarCache[monthKey] || [];
   }
   calendarLoading = false;
   render();
@@ -1481,7 +1520,12 @@ function selectCalendarDay(dateIso){
   render();
 }
 
-// 'ok' (dentro das metas), 'over' (algum macro excedido), 'none' (sem refeições)
+// 'ok' (dentro das metas), 'over' (falhou alguma regra), 'none' (sem
+// refeições). Regra assimétrica: Calorias/Hidratos/Gordura são "não
+// exceder" (mais não é melhor), mas Proteína é "atingir ou ultrapassar"
+// (mais é bom) — por isso fica de fora do grupo "excedeu" e é verificada
+// ao contrário. Verde só quando as duas condições se cumprem ao mesmo
+// tempo; vermelho se qualquer uma falhar.
 function dayNutrientStatus(dateIso, monthMeals){
   const dayMeals = (monthMeals || []).filter(m => m.date === dateIso);
   if (dayMeals.length === 0) return 'none';
@@ -1492,8 +1536,21 @@ function dayNutrientStatus(dateIso, monthMeals){
     totals.carbs += n.carbs; totals.fat += n.fat;
   });
   const p = state.profile || {};
-  const over = MACROS.some(m => totals[m.key] > (Number(p[m.goalKey]) || Infinity));
-  return over ? 'over' : 'ok';
+  const exceededCapped = ['calories', 'carbs', 'fat'].some(key => {
+    const goalKey = MACROS.find(m => m.key === key).goalKey;
+    return totals[key] > (Number(p[goalKey]) || Infinity);
+  });
+  const proteinMet = totals.protein >= (Number(p.protein_goal) || 0);
+  return (!exceededCapped && proteinMet) ? 'ok' : 'over';
+}
+
+// Objetivo de água atingido nesse dia — soma dos registos >= meta diária.
+function dayWaterGoalMet(dateIso, monthWaterLogs){
+  const dayLogs = (monthWaterLogs || []).filter(w => w.date === dateIso);
+  if (dayLogs.length === 0) return false;
+  const total = dayLogs.reduce((sum, w) => sum + (Number(w.amount_ml) || 0), 0);
+  const goal = Number(state.profile?.water_goal_ml) || 2000;
+  return total >= goal;
 }
 
 /* Refeições podem viver em state.meals (mês atual) ou em calendarCache (outros
@@ -1717,6 +1774,22 @@ async function savePerfilTabMetas(){
     const raw = el.value.trim();
     updates['goal_' + m.key] = raw === '' ? null : Math.max(0, Number(raw));
   });
+  // Lembretes de água: só entram no update se houver um rascunho pendente
+  // (o utilizador mexeu no toggle/intervalo/horário) — caso contrário não
+  // reenviamos os mesmos valores já gravados sem necessidade.
+  if (waterReminderDraft) {
+    const wasEnabled = !!state.profile.water_reminder_enabled;
+    const wr = waterReminderDraft;
+    updates.water_reminder_enabled = wr.water_reminder_enabled;
+    updates.water_reminder_interval_minutes = wr.water_reminder_interval_minutes;
+    updates.water_reminder_start_hour = wr.water_reminder_start_hour;
+    updates.water_reminder_end_hour = wr.water_reminder_end_hour;
+    if (wr.water_reminder_enabled && !wasEnabled) {
+      updates.water_last_activity_at = new Date().toISOString(); // começa a contagem já, não do último registo antigo
+      updates.water_reminder_muted_date = null; // um "silenciar resto do dia" antigo não deve sobreviver a reativar
+    }
+    waterReminderDraft = null;
+  }
   await persistPerfilTab('metas', updates);
 }
 
@@ -2004,6 +2077,7 @@ function closePerfilLeaveModal(){
 }
 function discardPerfilAndLeave(){
   perfilDirty[perfilTab] = false;
+  waterReminderDraft = null; // descarta também qualquer edição pendente de lembretes de água
   const next = pendingLeaveAction;
   pendingLeaveAction = null;
   closePerfilLeaveModal();
@@ -2156,10 +2230,7 @@ function discardMealDraft(){
 // ("Edge Function returned a non-2xx status code") — nesse caso damos ao
 // utilizador o motivo mais provável em vez dessa mensagem interna.
 async function edgeFunctionErrorMessage(error, fallback){
-  if (error && (error.name === 'AbortError' || error.message?.includes('aborted') || error.message?.includes('timeout'))) {
-    return 'A análise demorou demasiado tempo (timeout). Por favor, tenta novamente.';
-  }
-  if (error && error.context && typeof error.context.json === 'function') {
+  if (error.context && typeof error.context.json === 'function') {
     try {
       const body = await error.context.json();
       if (body && body.error) return body.error;
@@ -2167,7 +2238,7 @@ async function edgeFunctionErrorMessage(error, fallback){
       return 'A análise demorou demasiado tempo e o servidor interrompeu o pedido. Tenta novamente — costuma resolver-se à segunda tentativa.';
     }
   }
-  return (error && error.message) || fallback;
+  return error.message || fallback;
 }
 
 async function analyzeMeal(){
@@ -3115,7 +3186,7 @@ function nutritionHeroCard(totals, profile){
   if (calGoal > 0 && totals.calories > calGoal) {
     status = { color: '#b91c1c', label: 'Calorias acima da meta' };
   } else if (proteinGoal > 0 && totals.protein >= proteinGoal) {
-    status = { color: 'var(--color-success)', label: 'Proteína no alvo' };
+    status = { color: '#047857', label: 'Proteína no alvo' };
   } else if (proteinGoal > 0) {
     status = { color: '#8f5e07', label: `Faltam ${(proteinGoal - totals.protein).toFixed(0)}g de proteína` };
   }
@@ -3381,7 +3452,7 @@ function nextRaceHomeCard(){
     .filter(e => e.status !== 'concluida' && e.date >= todayIso)
     .sort((a,b) => a.date.localeCompare(b.date));
   const next = upcoming[0];
-  const color = 'var(--color-warn)';
+  const color = '#eab308';
 
   if (!next) {
     return `
@@ -3399,13 +3470,13 @@ function nextRaceHomeCard(){
   const daysUntil = Math.round((new Date(next.date + 'T00:00:00') - new Date(todayIso + 'T00:00:00')) / 86400000);
   const typeLabel = (RACE_TYPES.find(t => t.key === next.race_type) || {}).label || next.race_type;
   const countLabel = daysUntil === 0 ? 'Hoje!' : daysUntil === 1 ? '1 dia' : `${daysUntil} dias`;
-  const countColor = daysUntil === 0 ? 'var(--color-error)' : daysUntil <= 7 ? 'var(--color-alert)' : '#fff';
+  const countColor = daysUntil === 0 ? '#ef4444' : daysUntil <= 7 ? '#f97316' : '#fff';
 
   return `
     <button onclick="goToCorridaAgenda()" class="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style="${statCardBg(color)}">
       <div class="flex items-center justify-between mb-1.5">
         <h2 class="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Próxima Prova</h2>
-        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style="background:${color}1a;color:color-mix(in srgb, ${color} 45%, var(--text-main))">${esc(typeLabel)}</span>
+        <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style="background:${color}1a;color:color-mix(in srgb, ${color} 45%, #0f172a)">${esc(typeLabel)}</span>
       </div>
       <div class="flex items-end justify-between gap-2">
         <div class="min-w-0">
@@ -4464,7 +4535,10 @@ function renderCorridaCalendario(){
             const status = dayCorridaStatus(dateIso);
             const isToday = dateIso === todayIso;
             const isSelected = dateIso === corridaCalendarSelectedDate;
-            const dotColor = status === 'has' ? 'bg-emerald-500' : 'bg-neutral-700';
+            // bg-neutral-400 (não bg-neutral-700): uma regra CSS global redefine
+            // neutral-700 para a cor de superfície do tema claro, tornando o
+            // ponto "sem registo" quase invisível/ambíguo (ver Nutrição).
+            const dotColor = status === 'has' ? 'bg-emerald-500' : 'bg-neutral-400';
             const dayNum = Number(dateIso.slice(8,10));
             return `
               <button onclick="selectCorridaCalendarDay('${dateIso}')"
@@ -4479,7 +4553,6 @@ function renderCorridaCalendario(){
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3 border-t border-neutral-800 text-[10px] text-slate-500">
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Corrida registada</span>
-          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-neutral-700"></span> Sem registo</span>
         </div>
       </div>
 
@@ -5913,7 +5986,10 @@ function renderBodyCalendario(){
             const status = dayBodyStatus(dateIso);
             const isToday = dateIso === todayIso;
             const isSelected = dateIso === bodyCalendarSelectedDate;
-            const dotColor = status === 'alert' ? 'bg-red-500' : status === 'has' ? 'bg-emerald-500' : 'bg-neutral-700';
+            // bg-neutral-400 (não bg-neutral-700): uma regra CSS global redefine
+            // neutral-700 para a cor de superfície do tema claro, tornando o
+            // ponto "sem registo" quase invisível/ambíguo (ver Nutrição).
+            const dotColor = status === 'alert' ? 'bg-red-500' : status === 'has' ? 'bg-emerald-500' : 'bg-neutral-400';
             const dayNum = Number(dateIso.slice(8,10));
             return `
               <button onclick="selectBodyCalendarDay('${dateIso}')"
@@ -5929,7 +6005,6 @@ function renderBodyCalendario(){
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3 border-t border-neutral-800 text-[10px] text-slate-500">
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Avaliação registada</span>
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Afastou-se do objetivo</span>
-          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-neutral-700"></span> Sem registo</span>
         </div>
       </div>
 
@@ -6018,7 +6093,7 @@ function renderBodyChart(){
   if (goal !== null) {
     datasets.push({
       label: 'Objetivo', data: points.map(() => goal),
-      borderColor: 'var(--color-error)', borderDash: [6,4], pointRadius: 0, borderWidth: 1.5,
+      borderColor: '#ef4444', borderDash: [6,4], pointRadius: 0, borderWidth: 1.5,
     });
   }
 
@@ -6982,7 +7057,10 @@ function renderGymCalendario(){
             const status = dayGymStatus(dateIso);
             const isToday = dateIso === todayIso;
             const isSelected = dateIso === gymCalendarSelectedDate;
-            const dotColor = status === 'has' ? 'bg-emerald-500' : 'bg-neutral-700';
+            // bg-neutral-400 (não bg-neutral-700): uma regra CSS global redefine
+            // neutral-700 para a cor de superfície do tema claro, tornando o
+            // ponto "sem registo" quase invisível/ambíguo (ver Nutrição).
+            const dotColor = status === 'has' ? 'bg-emerald-500' : 'bg-neutral-400';
             const dayNum = Number(dateIso.slice(8,10));
             return `
               <button onclick="selectGymCalendarDay('${dateIso}')"
@@ -6997,7 +7075,6 @@ function renderGymCalendario(){
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3 border-t border-neutral-800 text-[10px] text-slate-500">
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Treino registado</span>
-          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-neutral-700"></span> Sem registo</span>
         </div>
       </div>
 
@@ -7232,7 +7309,7 @@ function renderDashboard(animate = true){
         </span>
         <p class="text-lg font-bold text-white leading-none mb-2">${consumed.toFixed(0)}<span class="text-[11px] text-slate-500 font-normal"> / ${goal.toFixed(0)} ${m.unit}</span></p>
         <div class="w-full h-2 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden">
-          <div class="h-full rounded-full" style="width:${pct}%; background:${over ? 'var(--color-error)' : m.color}"></div>
+          <div class="h-full rounded-full" style="width:${pct}%; background:${over ? '#ef4444' : m.color}"></div>
         </div>
       </button>
     `;
@@ -7317,7 +7394,7 @@ function renderDashChart(){
       labels: days.map(d => d.slice(8,10) + '/' + d.slice(5,7)),
       datasets: [
         { type:'bar', label:`${macro.label} (${macro.unit})`, data:days.map(d=>byDay[d]), backgroundColor:hexToRgba(macro.color, 0.6), borderRadius:4 },
-        { type:'line', label:'Meta', data:days.map(()=>goal), borderColor:'var(--color-error)', borderDash:[6,4], pointRadius:0, borderWidth:1.5 },
+        { type:'line', label:'Meta', data:days.map(()=>goal), borderColor:'#ef4444', borderDash:[6,4], pointRadius:0, borderWidth:1.5 },
       ]
     },
     options: {
@@ -7587,6 +7664,7 @@ function renderMealCard(meal){
 /* ============================= CALENDÁRIO ============================= */
 function renderCalendario(){
   const monthMeals = mealsForMonth(calendarViewMonth);
+  const monthWaterLogs = waterLogsForMonth(calendarViewMonth);
   const [y, m] = calendarViewMonth.split('-').map(Number);
   const firstOfMonth = new Date(y, m - 1, 1);
   const daysInMonth = new Date(y, m, 0).getDate();
@@ -7621,7 +7699,7 @@ function renderCalendario(){
           ${['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'].map(d => `<div class="text-center text-[10px] text-slate-600 font-semibold">${d}</div>`).join('')}
         </div>
 
-        ${monthMeals === null ? `
+        ${(monthMeals === null || monthWaterLogs === null) ? `
           <div class="flex items-center justify-center h-40 text-slate-500 text-xs gap-2">
             <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> A carregar...
           </div>
@@ -7630,9 +7708,16 @@ function renderCalendario(){
           ${cells.map(dateIso => {
             if (!dateIso) return `<div></div>`;
             const status = dayNutrientStatus(dateIso, monthMeals);
+            const waterMet = dayWaterGoalMet(dateIso, monthWaterLogs);
             const isToday = dateIso === todayIso;
             const isSelected = dateIso === calendarSelectedDate;
-            const dotColor = status === 'ok' ? 'bg-emerald-500' : status === 'over' ? 'bg-red-500' : 'bg-neutral-700';
+            // bg-neutral-700 fica de fora aqui de propósito: uma regra CSS global
+            // (linha ~146) redefine essa classe para a cor de superfície do tema
+            // claro (--surf-700, um cinzento-azulado muito pálido, quase branco)
+            // porque a maior parte dos usos são fundos de cards — mas nos pontos
+            // do calendário isso tornava o "sem registo" quase invisível/ambíguo
+            // com outras cores. bg-neutral-400 não tem essa sobreposição.
+            const dotColor = status === 'ok' ? 'bg-emerald-500' : status === 'over' ? 'bg-red-500' : 'bg-neutral-400';
             const dayNum = Number(dateIso.slice(8,10));
             return `
               <button onclick="selectCalendarDay('${dateIso}')"
@@ -7640,6 +7725,7 @@ function renderCalendario(){
                   ${isSelected ? 'bg-[var(--accent)] text-neutral-950 font-bold' : isToday ? 'border border-[var(--accent)]/60 text-white' : 'text-slate-300 hover:bg-neutral-800'}">
                 ${dayNum}
                 <span class="w-1.5 h-1.5 rounded-full mt-0.5 ${dotColor}"></span>
+                ${waterMet ? `<span class="w-1.5 h-1.5 rounded-full mt-0.5 bg-sky-400"></span>` : ''}
               </button>
             `;
           }).join('')}
@@ -7648,8 +7734,8 @@ function renderCalendario(){
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 pt-3 border-t border-neutral-800 text-[10px] text-slate-500">
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Objetivos cumpridos</span>
-          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Excedeu um macro</span>
-          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-neutral-700"></span> Sem registos</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-500"></span> Excedeu um macro ou ficou abaixo da proteína</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-sky-400"></span> Objetivo de água atingido</span>
         </div>
       </div>
 
@@ -7677,29 +7763,33 @@ function renderCalendarDaySummary(monthMeals){
     totals.carbs += n.carbs; totals.fat += n.fat;
   });
   const p = state.profile || {};
+  // Proteína é a exceção: a meta é um mínimo (atingir/ultrapassar é bom), as
+  // outras 3 são um máximo (exceder é mau) — mesma regra assimétrica de
+  // dayNutrientStatus, aqui aplicada por macro para o resumo do dia.
   const rows = MACROS.map(m => {
     const goal = Number(p[m.goalKey]) || 0;
     const value = totals[m.key];
     const hasGoal = goal > 0;
-    const over = hasGoal && value > goal;
-    return { m, value, goal, hasGoal, over };
+    const isProtein = m.key === 'protein';
+    const bad = hasGoal && (isProtein ? value < goal : value > goal);
+    return { m, value, goal, hasGoal, bad, isProtein };
   }).filter(r => r.hasGoal);
-  const anyOver = rows.some(r => r.over);
-  if (!anyOver) return '';
+  const anyBad = rows.some(r => r.bad);
+  if (!anyBad) return '';
 
   return `
     <div class="rounded-2xl border border-red-500/30 bg-red-500/5 p-3.5 space-y-2.5">
       <p class="text-[11px] font-semibold text-red-300 uppercase tracking-wide flex items-center gap-1.5">
-        <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Excedeu a meta neste dia
+        <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Meta não cumprida neste dia
       </p>
       ${rows.map(r => `
         <div>
           <div class="flex items-center justify-between text-xs mb-1">
-            <span class="${r.over ? 'text-red-300 font-semibold' : 'text-slate-400'}">${esc(r.m.label)}${r.over ? ' — excedido' : ''}</span>
-            <span class="${r.over ? 'text-red-300 font-semibold' : 'text-slate-500'}">${r.value.toFixed(0)} / ${r.goal.toFixed(0)} ${r.m.unit}</span>
+            <span class="${r.bad ? 'text-red-300 font-semibold' : 'text-slate-400'}">${esc(r.m.label)}${r.bad ? (r.isProtein ? ' — abaixo da meta' : ' — excedido') : ''}</span>
+            <span class="${r.bad ? 'text-red-300 font-semibold' : 'text-slate-500'}">${r.value.toFixed(0)} / ${r.goal.toFixed(0)} ${r.m.unit}</span>
           </div>
           <div class="w-full h-1.5 rounded-full overflow-hidden" style="background:${emptyFillColor()}">
-            <div class="h-full rounded-full" style="width:${Math.min(100, (r.value / r.goal) * 100)}%;background:${r.over ? 'var(--color-error)' : r.m.color}"></div>
+            <div class="h-full rounded-full" style="width:${Math.min(100, (r.value / r.goal) * 100)}%;background:${r.bad ? '#ef4444' : r.m.color}"></div>
           </div>
         </div>
       `).join('')}
@@ -7877,29 +7967,7 @@ function renderPerfilTabMetas(p){
           </div>
         </div>
 
-        <div class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-800">
-          <div class="pr-3">
-            <p class="text-xs font-semibold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-3.5 h-3.5" style="color:var(--blue)"></i> Lembretes de água</p>
-            <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, só entre as 8h e as 22h.</p>
-          </div>
-          <button onclick="toggleWaterReminder()" ${waterSubscribing ? 'disabled' : ''} type="button"
-            role="switch" aria-checked="${p.water_reminder_enabled ? 'true' : 'false'}"
-            aria-label="Lembretes de água"
-            class="switch-tap w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-50 ${p.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}">
-            <span class="absolute top-0.5 ${p.water_reminder_enabled ? 'left-5' : 'left-0.5'} w-5 h-5 rounded-full bg-white transition-all"></span>
-          </button>
-        </div>
-        ${p.water_reminder_enabled ? `
-          <div class="mt-2">
-            <label class="text-[11px] text-slate-500">De quanto em quanto tempo</label>
-            <select onchange="setWaterReminderInterval(this.value)"
-              class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
-              ${WATER_REMINDER_INTERVALS.map(m => `
-                <option value="${m}" ${m === (Number(p.water_reminder_interval_minutes) || 120) ? 'selected' : ''}>${waterIntervalLabel(m)}</option>
-              `).join('')}
-            </select>
-          </div>
-        ` : ''}
+        ${renderWaterReminderSection()}
       </div>
 
       <div class="card rounded-2xl p-4">
@@ -8135,28 +8203,15 @@ async function sendCoachMessage() {
 
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 45000);
-    let res;
-    try {
-      res = await fetch(`${SUPABASE_URL}/functions/v1/coach-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-          'apikey': SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ message: text }),
-        signal: controller.signal
-      });
-    } catch (fetchErr) {
-      if (fetchErr.name === 'AbortError') {
-        throw new Error('O Coach demorou demasiado tempo a responder. Por favor, tenta novamente.');
-      }
-      throw fetchErr;
-    } finally {
-      clearTimeout(timer);
-    }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/coach-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ message: text }),
+    });
     const data = await res.json();
     if (!res.ok) {
       const err = new Error(data.error || 'Erro no coach');
@@ -8239,6 +8294,125 @@ const WATER_REMINDER_INTERVALS = [30, 60, 90, 120, 180, 240]; // minutos
 function waterIntervalLabel(m){
   const label = (m % 60 === 0) ? `${m / 60}h` : `${m} min`;
   return `De ${label} em ${label}`;
+}
+
+// Janela horária dos lembretes de água — 0 a 23, por omissão 8h-22h (ver
+// migração add_water_reminder_hour_window e send-water-reminders).
+const WATER_REMINDER_HOURS = Array.from({ length: 24 }, (_, h) => h);
+function waterHourLabel(h){
+  return `${String(h).padStart(2, '0')}:00`;
+}
+
+// Valores atuais dos 4 campos de lembretes de água — do rascunho pendente
+// se houver edição por gravar, senão de state.profile diretamente.
+function currentWaterReminderValues(){
+  if (waterReminderDraft) return waterReminderDraft;
+  const p = state.profile || {};
+  return {
+    water_reminder_enabled: !!p.water_reminder_enabled,
+    water_reminder_interval_minutes: Number(p.water_reminder_interval_minutes) || 120,
+    water_reminder_start_hour: Number(p.water_reminder_start_hour ?? 8),
+    water_reminder_end_hour: Number(p.water_reminder_end_hour ?? 22),
+  };
+}
+function ensureWaterReminderDraft(){
+  if (!waterReminderDraft) waterReminderDraft = currentWaterReminderValues();
+  return waterReminderDraft;
+}
+function refreshWaterReminderSectionInPlace(){
+  const el = document.getElementById('waterReminderSection');
+  if (!el) return;
+  el.outerHTML = renderWaterReminderSection();
+  if (window.lucide) lucide.createIcons();
+}
+
+// Secção "Lembretes de água" da tab Metas — extraída para se poder
+// atualizar sozinha (refreshWaterReminderSectionInPlace) sem re-renderizar
+// a tab inteira, o que apagaria edições por gravar nos outros campos
+// (altura, metas de macros, etc., que vivem só no DOM até ao Guardar).
+function renderWaterReminderSection(){
+  const v = currentWaterReminderValues();
+  return `
+    <div id="waterReminderSection">
+      <div class="flex items-center justify-between mt-4 pt-3 border-t border-neutral-800">
+        <div class="pr-3">
+          <p class="text-xs font-semibold text-white flex items-center gap-1.5"><i data-lucide="bell" class="w-3.5 h-3.5" style="color:var(--blue)"></i> Lembretes de água</p>
+          <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Notificação de X em X tempo enquanto não atingires a meta diária, dentro do horário que definires abaixo (por omissão, 8h–22h).</p>
+        </div>
+        <button onclick="toggleWaterReminderDraft()" ${waterSubscribing ? 'disabled' : ''} type="button"
+          role="switch" aria-checked="${v.water_reminder_enabled ? 'true' : 'false'}"
+          aria-label="Lembretes de água"
+          class="switch-tap w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-50 ${v.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}">
+          <span class="absolute top-0.5 ${v.water_reminder_enabled ? 'left-5' : 'left-0.5'} w-5 h-5 rounded-full bg-white transition-all"></span>
+        </button>
+      </div>
+      ${v.water_reminder_enabled ? `
+        <div class="mt-2">
+          <label class="text-[11px] text-slate-500">De quanto em quanto tempo</label>
+          <select onchange="setWaterReminderIntervalDraft(this.value)"
+            class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+            ${WATER_REMINDER_INTERVALS.map(m => `
+              <option value="${m}" ${m === v.water_reminder_interval_minutes ? 'selected' : ''}>${waterIntervalLabel(m)}</option>
+            `).join('')}
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <div>
+            <label class="text-[11px] text-slate-500">A partir das</label>
+            <select onchange="setWaterReminderHourDraft('start', this.value)"
+              class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+              ${WATER_REMINDER_HOURS.map(h => `
+                <option value="${h}" ${h === v.water_reminder_start_hour ? 'selected' : ''}>${waterHourLabel(h)}</option>
+              `).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] text-slate-500">Até às</label>
+            <select onchange="setWaterReminderHourDraft('end', this.value)"
+              class="w-full mt-1 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+              ${WATER_REMINDER_HOURS.map(h => `
+                <option value="${h}" ${h === v.water_reminder_end_hour ? 'selected' : ''}>${waterHourLabel(h)}</option>
+              `).join('')}
+            </select>
+          </div>
+        </div>
+      ` : ''}
+    </div>`;
+}
+
+// Toggle/intervalo/horário dos lembretes de água agora só editam o rascunho
+// (waterReminderDraft) + marcam a tab como suja — a gravação real acontece
+// em savePerfilTabMetas, tal como qualquer outro campo desta página. Pedir
+// a permissão push continua a acontecer de imediato ao ligar (é uma ação
+// do browser, não um valor de formulário, e é preciso ter a subscrição
+// antes de haver algo para gravar como "ativado").
+async function toggleWaterReminderDraft(){
+  const draft = ensureWaterReminderDraft();
+  const enabling = !draft.water_reminder_enabled;
+  if (enabling) {
+    waterSubscribing = true;
+    refreshWaterReminderSectionInPlace();
+    const ok = await ensurePushSubscription();
+    waterSubscribing = false;
+    if (!ok) { refreshWaterReminderSectionInPlace(); return; }
+  }
+  draft.water_reminder_enabled = enabling;
+  markPerfilDirty();
+  refreshWaterReminderSectionInPlace();
+}
+function setWaterReminderIntervalDraft(minutes){
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n <= 0) return;
+  ensureWaterReminderDraft().water_reminder_interval_minutes = n;
+  markPerfilDirty();
+}
+function setWaterReminderHourDraft(edge, hour){
+  const n = Number(hour);
+  if (!Number.isInteger(n) || n < 0 || n > 23) return;
+  const draft = ensureWaterReminderDraft();
+  if (edge === 'start') draft.water_reminder_start_hour = n;
+  else draft.water_reminder_end_hour = n;
+  markPerfilDirty();
 }
 
 function todayWaterLogs(){
@@ -8375,6 +8549,7 @@ async function logWater(amountMl){
   waterBusy = true;
   const tempId = '__tmp_water__' + Date.now();
   waterLogs = [{ id: tempId, user_id: currentUser.id, date: todayISO(), amount_ml: amountMl, created_at: new Date().toISOString() }, ...waterLogs];
+  syncWaterCalendarCacheForDate(todayISO());
   renderAguaInPlace();
   const insertPromise = (async () => {
     try {
@@ -8383,6 +8558,7 @@ async function logWater(amountMl){
         .select().single();
       if (error) throw error;
       waterLogs = waterLogs.map(w => w.id === tempId ? data : w);
+      syncWaterCalendarCacheForDate(todayISO());
       // Beber conta como "atividade" — reinicia a contagem do próximo lembrete
       // (ver send-water-reminders: usa este campo para saber se já é devido).
       const nowIso = new Date().toISOString();
@@ -8396,6 +8572,7 @@ async function logWater(amountMl){
       return data;
     } catch(e) {
       waterLogs = waterLogs.filter(w => w.id !== tempId);
+      syncWaterCalendarCacheForDate(todayISO());
       console.error(e);
       showToast('error', null, 'Não foi possível registar a água. Tenta novamente.');
       waterBusy = false;
@@ -8434,21 +8611,17 @@ async function removeWaterLog(id){
     id = real.id;
   }
   const prev = waterLogs;
+  const removed = waterLogs.find(w => w.id === id);
   waterLogs = waterLogs.filter(w => w.id !== id);
+  if (removed) syncWaterCalendarCacheForDate(removed.date);
   renderAguaInPlace();
   const { error } = await sb.from('water_logs').delete().eq('id', id);
   if (error) {
     waterLogs = prev;
+    if (removed) syncWaterCalendarCacheForDate(removed.date);
     showToast('error', null, 'Não foi possível remover o registo. Tenta novamente.');
     renderAguaInPlace();
   }
-}
-
-async function setWaterReminderInterval(minutes){
-  const n = Number(minutes);
-  if (!Number.isFinite(n) || n <= 0) return;
-  const { error } = await sb.from('profiles').update({ water_reminder_interval_minutes: n }).eq('id', currentUser.id);
-  if (!error) { state.profile.water_reminder_interval_minutes = n; }
 }
 
 // Converte a chave pública VAPID (base64url, formato standard do Web Push)
@@ -8505,31 +8678,6 @@ async function ensurePushSubscription(){
   }
 }
 
-async function toggleWaterReminder(){
-  const enabling = !state.profile.water_reminder_enabled;
-  if (enabling) {
-    waterSubscribing = true;
-    renderAguaInPlace();
-    const ok = await ensurePushSubscription();
-    waterSubscribing = false;
-    if (!ok) { renderAguaInPlace(); return; }
-  }
-  const nowIso = new Date().toISOString();
-  const patch = { water_reminder_enabled: enabling };
-  if (enabling) {
-    patch.water_last_activity_at = nowIso; // começa a contagem já, não do último registo antigo
-    patch.water_reminder_muted_date = null; // um "silenciar resto do dia" antigo não deve sobreviver a reativar
-  }
-  const { error } = await sb.from('profiles').update(patch).eq('id', currentUser.id);
-  if (error) { showToast('error', null, 'Não foi possível guardar a preferência de lembretes. Tenta novamente.'); renderAguaInPlace(); return; }
-  state.profile.water_reminder_enabled = enabling;
-  if (enabling) {
-    state.profile.water_last_activity_at = nowIso;
-    state.profile.water_reminder_muted_date = null;
-  }
-  showToast('success', null, enabling ? 'Lembretes de água ativados.' : 'Lembretes de água desativados.');
-  renderAguaInPlace();
-}
 
 // Modal "Silenciar lembrete" — aberto a partir do cartão de água do Início.
 // Duas opções, sem afetar o toggle geral (definido no Perfil): adiar só o

@@ -1,0 +1,137 @@
+# Documento de Requisitos do Produto (PRD) — IronHealth
+
+Este documento define o comportamento global, a arquitetura e os módulos da aplicação **IronHealth**, servindo como especificação base para o desenvolvimento e revisão de código.
+
+## 1. Visão Geral
+O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otimizar a saúde e performance de atletas.
+- **Objetivo Principal**: Permitir que os atletas registem os seus dados de treino, nutrição e métricas corporais *após a realização dos mesmos*, permitindo que o seu treinador (Coach) analise e dê feedback de forma assíncrona.
+- **Público-alvo**: Atletas e os seus respetivos treinadores.
+- **Idioma Principal**: Português de Portugal (pt-PT).
+
+## 2. Tecnologias & Arquitetura
+- **Frontend**: React (Vite SPA). É a **única versão de produção** desde a consolidação de 2026-08-03.
+  - `index.html` é apenas o ponto de entrada do SPA; a aplicação vive em `src/`.
+  - `index_legacy.html` é um **arquivo** da versão anterior em JavaScript vanilla, guardado como referência histórica. Não é servido nem mantido. O último estado que esteve em produção está também na tag `backup/master-pre-react-merge`.
+- **Estilos**: Tailwind CSS e variáveis CSS nativas em `src/styles/globals.css`. Tema exclusivamente claro (`color-scheme: only light`).
+- **Backend / Base de Dados**: Supabase (Autenticação via Google OAuth, base de dados em tempo real, Edge Functions).
+- **Gestão de Estado**: Zustand (`src/store/index.js`).
+- **Testes**: Vitest + Testing Library.
+
+---
+
+## 3. Módulos da Aplicação
+
+### 3.1. Painel Inicial (Home)
+- Ecrã principal com cartões de estatísticas rápidas.
+- Permite visualizar o progresso da ingestão de água, calorias consumidas, treinos realizados na semana e metas em falta.
+- Acesso rápido a registos através de um Menu de Ação Flutuante (FAB).
+
+### 3.2. Nutrição (`Nutrition`)
+- Registo diário de refeições e ingestão de água.
+- Apresentação de macros consumidos vs metas (Proteínas, Hidratos de Carbono, Gorduras e Calorias totais).
+- Suporte para visualização em calendário histórico.
+- **Lembretes de água** (definidos no Perfil, tab Metas): notificação push periódica enquanto a meta diária não for atingida.
+  - Intervalo configurável (30/60/90/120/180/240 min).
+  - **Janela horária configurável** (hora de início e hora de fim, granularidade de 1h, 00:00–23:00). Por omissão, quando o utilizador não define outro valor: **08:00–22:00** (hora de Portugal, `Europe/Lisbon`).
+  - Suporta janelas que atravessam a meia-noite (ex.: início=22h, fim=6h) e o caso início=fim (lembretes 24h).
+  - "Silenciar resto do dia" independente da ativação geral.
+  - Ativar/desativar, intervalo e janela horária estão sujeitos à **regra do botão "Guardar"** da tab Metas (ver secção 3.7): nenhuma alteração é persistida até o utilizador gravar.
+- **Calendário de Nutrição**: cada dia mostra até dois indicadores —
+  - Ponto de estado nutricional: **verde** quando Calorias, Hidratos e Gordura não são excedidos **e** a Proteína é atingida ou ultrapassada; **vermelho** se qualquer uma das 3 primeiras for excedida **ou** a Proteína ficar abaixo da meta; **cinzento** sem refeições registadas nesse dia. Uma macro sem meta definida nunca conta como excedida.
+  - Ponto adicional **azul-claro** (`bg-sky-400`), por baixo do anterior, nos dias em que a soma dos registos de água atinge a meta diária.
+  - A lógica vive em `dayNutrientStatus()` e `dayWaterGoalMet()` (`src/utils/nutrition.js`), cobertas por testes unitários.
+
+### 3.3. Treino / Ginásio (`Gym`)
+- Registo de sessões de ginásio realizadas.
+- Cálculo de volume de treino (séries × repetições × peso em kg) semanal e histórico.
+- Visualização gráfica de volume e frequência de treino.
+- Calendário histórico: ponto verde nos dias com treino registado, cinzento nos restantes.
+
+### 3.4. Corrida (`Run`)
+- Registo de treinos de corrida (Distância, Ritmo/Pace médio e Duração).
+- Listagem de próximas provas agendadas e contagem decrescente de dias.
+- Gráfico de distância percorrida semanalmente.
+- Calendário histórico: ponto verde nos dias com corrida registada, cinzento nos restantes.
+
+### 3.5. Composição Corporal (`Body`)
+- Registo de avaliações físicas (Peso, Massa Gorda, Massa Muscular).
+- Gráficos históricos de evolução de peso e composição corporal.
+- Calendário histórico: ponto verde nos dias com avaliação registada, cinzento nos restantes.
+
+### 3.6. Aconselhamento do Coach (`Coach`)
+- Chat de interação assíncrona com um assistente virtual ou treinador real.
+- Recomendações personalizadas com base nos dados registados nos restantes módulos.
+
+### 3.7. Perfil (`Perfil`)
+- Três sub-separadores: **Pessoal**, **Metas** e **Coach**.
+- **Regra do botão "Guardar"**: todos os campos de todos os sub-separadores são editados num rascunho local. Nada é escrito na base de dados até o utilizador premir "Guardar alterações".
+- **Aviso de saída sem gravar**: com alterações pendentes, tentar mudar de sub-separador, sair do Perfil pela barra de navegação, ou fechar/recarregar o separador do browser dispara o aviso "Tens alterações por gravar", com três opções: **Gravar e sair**, **Sair sem gravar** e **Cancelar**. A navegação fica travada até o utilizador escolher.
+  - Implementado por um `navGuard` no store (consultado por `setActiveTab`) mais um handler `beforeunload`.
+  - **Exceção**: o pedido de permissão de notificações push ao browser acontece de imediato ao ligar o interruptor dos lembretes, antes de gravar — é uma ação do browser, não um valor de formulário.
+
+---
+
+## 4. Diretrizes de Design & Consistência Visual
+
+### 4.1. Cores de Marca & Design Tokens
+As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
+- **Accent (Coral)**: `var(--accent)` (Hover/Active: `var(--accent-dark)`)
+- **Chrome (Dourado/Bronze)**: `var(--chrome)` (Hover: `var(--chrome-dark)`)
+- **Green (Verde Garrafa)**: `var(--green)`
+- **Superfícies**: `var(--surf-900)` (Branco/Cards) e `var(--surf-950)` (Fundo principal da página)
+- **Superfícies de detalhe**: `var(--surf-detail)` nos cartões expansíveis (refeição, corrida, treino, avaliação) e `var(--surf-success-soft)` nos painéis de destaque verde.
+- **Texto Escuro**: `var(--text-main)` (`#0f172a`) para garantir legibilidade ideal.
+- **Não usar valores hexadecimais soltos** em componentes para superfícies ou cores de marca. Exceções legítimas: paletas de dados (`BODY_METRICS`, macros), configuração de gráficos e logótipos de terceiros.
+
+### 4.2. Mapeamento de Cores por Módulo
+- **Nutrição**: Mapeado para `--mod-nutricao-from` / `--mod-nutricao-to`.
+- **Ginásio**: Mapeado para `--mod-ginasio-from` / `--mod-ginasio-to`.
+- **Corrida**: Mapeado para `--mod-corrida-from` / `--mod-corrida-to`.
+- **Corpo**: Mapeado para `--mod-corpo-from` / `--mod-corpo-to`.
+- **Círculos de ícone com glifo branco** (ex.: itens do menu FAB, cabeçalhos dos dashboards) usam o **gradiente** `linear-gradient(135deg, var(--mod-X-from), var(--mod-X-to))`. O tom `-to` isolado é demasiado claro para o glifo branco atingir os 3:1 exigidos a componentes de interface.
+
+### 4.3. Biblioteca de Componentes (`design-system/`)
+- A diretoria `design-system/` contém um catálogo de componentes (Button, Card, Badge, Chip, NavIconButton, ProgressBar, TabButton) com Storybook.
+- **Estado atual: não é consumida pela aplicação.** Nenhum ficheiro de `src/` a importa; os componentes de `src/components/` são independentes. Alterações ao `design-system/` não têm efeito no produto.
+- **Dívida técnica registada**, a resolver em trabalho próprio e não durante um cutover:
+  1. `design-system/package.json` declara `react ^18.3.1` e `lucide-react ^0.462.0`; a aplicação usa `react ^19.2.8` e `lucide-react ^1.28.0`. Instalá-la como dependência traria uma segunda cópia do React e quebraria os hooks. O alinhamento de versões vem primeiro.
+  2. A migração abrange ~127 utilizações de `<button>` e ~36 de `card` em 29 ficheiros, sem testes de render que apanhem regressões visuais. Deve ser feita módulo a módulo, com testes a acompanhar.
+- Até essa migração, a fonte de verdade dos componentes é `src/components/`, e a consistência é garantida pelos tokens da secção 4.1 e pelos padrões da 4.4.
+
+### 4.4. Padrão Visual para Botões de Sistema
+- **Botões Circulares de Ícone (Fechar, Voltar, Opções, Expandir)**: superfície neutra, formato circular (`rounded-full`), dimensão mínima tátil de 44×44px (classe `tap-44`) e efeito visual suave no foco/hover.
+- **Botão Flutuante Principal (FAB)**: **fundo creme** `var(--fab-bg)` (`#f3d5ab`) com anel escuro, sombra elevada, ícone centralizado e dimensão de **56×56px**. O creme é uma **decisão de marca deliberada** — o FAB não usa `var(--accent)`.
+- Quando o alvo tátil de 44px inflaria demasiado o elemento visível (ex.: remover uma miniatura de fotografia), o alvo é expandido com `tap-44` no `<button>` e o badge visível fica num `<span>` interior mais pequeno.
+
+### 4.5. Consistência dos Calendários Históricos
+- Todos os calendários (Nutrição, Ginásio, Corrida, Corpo) usam o mesmo tom para dias sem registo, através do token único `CALENDAR_NO_DATA_DOT` (`src/lib/utils.js`).
+- **Não apresentam legenda para o estado "sem registo"** — só se listam na legenda os estados com significado (ex.: "Treino registado", "Objetivos cumpridos", "Objetivo de água atingido").
+- Exceção documentada: no calendário de Corrida o dia selecionado tem fundo Coral, onde o cinzento não lê bem; nesse estado o ponto usa `bg-white/30`.
+
+---
+
+## 5. Requisitos Não Funcionais & Acessibilidade
+
+### 5.1. Alvos de Toque (Touch Targets)
+- Todos os botões e elementos interativos clicáveis devem ter um tamanho mínimo de **44px × 44px** (FAB em **56px × 56px**). Usar as classes `tap-44` (largura e altura) ou `tap-h-44` (só altura).
+
+### 5.2. Acessibilidade (Leitores de Ecrã e Contraste)
+- **`aria-label` obrigatório** em botões que utilizem exclusivamente ícones (fechar, adicionar rápidos, FAB, setas de navegação, eliminar, editar).
+- **`aria-expanded`** em qualquer controlo que expanda ou recolha conteúdo, com o `aria-label` a refletir a ação seguinte (ex.: "Ver detalhes da refeição" ↔ "Fechar detalhes da refeição").
+- **`aria-current="page"`** na aba ativa da barra de navegação.
+- Quando uma linha inteira é clicável por conveniência, o controlo semântico (botão com `aria-label` e `aria-expanded`) tem de existir e funcionar por teclado — um `<div onClick>` sozinho não é acessível.
+- **Contraste**: o texto principal usa `var(--text-main)` (`#0f172a`) sobre superfícies claras, acima de 7:1.
+- **Exceção conhecida — cores de aba ativa**: as cores de módulo usadas no rótulo de 10px da barra de navegação ficam entre **2,54:1 e 3,96:1** sobre branco, abaixo dos 4,5:1 da WCAG AA para texto pequeno. A decisão foi manter as cores de módulo e **não** fazer o estado ativo depender apenas da cor: a aba ativa tem também uma barra indicadora acima do ícone e peso tipográfico distinto, cumprindo a WCAG 1.4.1. Esta exceção é deliberada e deve ser reavaliada se a paleta de módulos mudar.
+
+---
+
+## 6. Padrões de UX & Personas
+
+### 6.1. Personas do Sistema
+- **Mariana Silva (Corredora de Maratonas / Foco em Pace)**: Foco em registo por print de relógio via Gemini IA, acompanhamento da próxima prova e atalhos táteis amplos.
+- **Tiago Mendes (Ginásio & Recomposição Corporal)**: Foco em acompanhamento de volume semanal de treino, curvas de tendência corporal e metas diárias de macros.
+- **Coach André (Treinador Virtual IA)**: Assistente integrado com visão holística dos 4 módulos (*Nutrição*, *Ginásio*, *Corrida*, *Corpo*), fornecendo sugestões e respostas dinâmicas.
+
+### 6.2. Documentação de Auditoria
+- As auditorias e simulações de UX estão em `.impeccable/critique/` (`ui_audit.md`, `ux_personas.md`, `ux_accessibility.md`, `ux_simulations.md`).
+- **Aviso de leitura**: o `ux_accessibility.md` de 2026-08-03 declara conformidade WCAG 2.1 AA que a verificação do código não confirmou (alvos táteis em falta, contraste das abas ativas). As secções 5.1 e 5.2 deste PRD são a especificação em vigor; os relatórios são histórico de auditoria, não certificação.
