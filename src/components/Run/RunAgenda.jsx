@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../../store';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2 } from 'lucide-react';
+import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase } from '../../lib/supabase';
-import RunRegistration from './RunRegistration';
 
 const RACE_TYPES = [
   { key: '5k', label: '5 km' },
@@ -30,6 +29,16 @@ export default function RunAgenda({ onNewRun }) {
   const { raceEvents, profile, setRaceEvents } = useAppStore();
   const [editingEventId, setEditingEventId] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [draft, setDraft] = useState({
+    date: todayISO(),
+    race_type: '10k',
+    name: '',
+    location: '',
+    target_time: '',
+    equipment: '',
+    notes: ''
+  });
 
   const todayIso = todayISO();
   
@@ -84,6 +93,20 @@ export default function RunAgenda({ onNewRun }) {
 
   const handleOpenForm = (eventId = null) => {
     setEditingEventId(eventId);
+    if (eventId) {
+      const ev = raceEvents.find(e => e.id === eventId);
+      if (ev) setDraft({ ...ev });
+    } else {
+      setDraft({
+        date: todayIso,
+        race_type: '10k',
+        name: '',
+        location: '',
+        target_time: '',
+        equipment: '',
+        notes: ''
+      });
+    }
     setIsFormOpen(true);
   };
 
@@ -92,15 +115,46 @@ export default function RunAgenda({ onNewRun }) {
     setIsFormOpen(false);
   };
 
-  if (isFormOpen) {
-    return (
-      <RunRegistration 
-        onClose={handleCloseForm} 
-        initialMode="prova" 
-        eventIdToEdit={editingEventId}
-      />
-    );
-  }
+  const updateDraft = (key, val) => {
+    setDraft(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleSaveForm = async () => {
+    if (!draft.name.trim()) return;
+    setIsSubmitting(true);
+
+    try {
+      if (editingEventId) {
+        const { error } = await supabase
+          .from('race_events')
+          .update(draft)
+          .eq('id', editingEventId);
+        if (error) throw error;
+        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? { ...e, ...draft } : e));
+      } else {
+        const insertObj = {
+          ...draft,
+          user_id: profile?.id,
+          status: draft.date < todayIso ? 'concluida' : 'agendada'
+        };
+        const { data, error } = await supabase
+          .from('race_events')
+          .insert(insertObj)
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) {
+          setRaceEvents([...raceEvents, data]);
+        }
+      }
+      handleCloseForm();
+    } catch (err) {
+      console.error('Error saving race event:', err);
+      alert('Erro ao guardar prova.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const renderRaceEventCard = (ev) => {
     const typeLabel = (RACE_TYPES.find(t => t.key === ev.race_type) || {}).label || ev.race_type;
@@ -145,14 +199,93 @@ export default function RunAgenda({ onNewRun }) {
 
   return (
     <div className="space-y-4 fade-in pb-20">
-      <button 
-        onClick={() => handleOpenForm(null)}
-        className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-        style={{ background: 'var(--accent)' }}
-      >
-        <CalendarPlus size={20} style={{ color: '#000' }} />
-        Nova Prova
-      </button>
+      {!isFormOpen ? (
+        <button 
+          onClick={() => handleOpenForm(null)}
+          className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+          style={{ background: 'var(--accent)' }}
+        >
+          <CalendarPlus size={20} style={{ color: '#000' }} />
+          Nova Prova
+        </button>
+      ) : (
+        <div className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-2.5">
+          <p className="text-xs font-semibold text-[var(--accent)] flex items-center gap-1.5 mb-1">
+            {editingEventId ? <Pencil size={14} /> : <CalendarPlus size={14} />} 
+            {editingEventId ? 'Editar Prova' : 'Nova Prova'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input 
+              type="date" 
+              value={draft.date} 
+              onChange={e => updateDraft('date', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]" 
+            />
+            <select 
+              value={draft.race_type}
+              onChange={e => updateDraft('race_type', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+            >
+              {RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+          </div>
+          <input 
+            type="text" 
+            maxLength={120} 
+            placeholder="Nome da prova (ex.: Meia Maratona de Lisboa)" 
+            value={draft.name}
+            onChange={e => updateDraft('name', e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <input 
+              type="text" 
+              maxLength={120} 
+              placeholder="Local" 
+              value={draft.location}
+              onChange={e => updateDraft('location', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
+            />
+            <input 
+              type="text" 
+              maxLength={60} 
+              placeholder="Tempo-alvo (ex.: 1:45:00)" 
+              value={draft.target_time}
+              onChange={e => updateDraft('target_time', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
+            />
+          </div>
+          <input 
+            type="text" 
+            maxLength={120} 
+            placeholder="Equipamento (opcional) — ex.: sapatilhas novas" 
+            value={draft.equipment}
+            onChange={e => updateDraft('equipment', e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
+          />
+          <textarea 
+            rows={2} 
+            maxLength={300} 
+            placeholder="Notas (opcional)" 
+            value={draft.notes}
+            onChange={e => updateDraft('notes', e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none" 
+          />
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button onClick={handleCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
+              Cancelar
+            </button>
+            <button 
+              onClick={handleSaveForm} 
+              disabled={isSubmitting || !draft.name.trim()}
+              type="button" 
+              className="bg-[var(--accent)] text-neutral-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+            >
+              {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         <h2 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">Próximas provas</h2>
