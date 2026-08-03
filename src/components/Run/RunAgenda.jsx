@@ -209,9 +209,8 @@ export default function RunAgenda({ onNewRun }) {
           Nova Prova
         </button>
       ) : (
-        <div className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-2.5">
-          <p className="text-xs font-semibold text-[var(--accent)] flex items-center gap-1.5 mb-1">
-            {editingEventId ? <Pencil size={14} /> : <CalendarPlus size={14} />} 
+        <div className="rounded-2xl p-4 space-y-2.5" style={{ backgroundColor: 'rgba(217, 70, 239, 0.01)', border: '1px solid rgba(217, 70, 239, 0.03)', borderLeft: '4px solid var(--mod-corrida-to)' }}>
+          <p className="text-[11px] text-slate-500 font-semibold mb-1 uppercase tracking-wider">
             {editingEventId ? 'Editar Prova' : 'Nova Prova'}
           </p>
           <div className="grid grid-cols-2 gap-2">

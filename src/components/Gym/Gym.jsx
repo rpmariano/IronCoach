@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import GymDashboard from './GymDashboard';
 import GymCalendar from './GymCalendar';
+import GymRegistration from './GymRegistration';
+import { useAppStore } from '../../store';
 import { LayoutDashboard, CalendarDays } from 'lucide-react';
 
 const TABS = [
@@ -10,6 +12,8 @@ const TABS = [
 
 export default function Gym() {
   const [activeSubTab, setActiveSubTab] = useState('dashboard');
+  const { openCreationMode, setOpenCreationMode } = useAppStore();
+  
   const tabIndex = TABS.findIndex(t => t.id === activeSubTab);
 
   return (
@@ -30,7 +34,10 @@ export default function Gym() {
             <button
               key={tab.id}
               data-tab={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
+              onClick={() => {
+                setActiveSubTab(tab.id);
+                if (openCreationMode) setOpenCreationMode(null);
+              }}
               className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full transition-colors ${active ? 'active text-white' : 'text-slate-500'}`}
             >
               <Icon size={16} />
@@ -40,8 +47,13 @@ export default function Gym() {
         })}
       </div>
 
-      {activeSubTab === 'dashboard' && <GymDashboard />}
-      {activeSubTab === 'calendario' && <GymCalendar />}
+      {openCreationMode === 'workout' ? (
+        <GymRegistration onClose={() => setOpenCreationMode(null)} />
+      ) : activeSubTab === 'dashboard' ? (
+        <GymDashboard />
+      ) : (
+        <GymCalendar />
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import BodyDashboard from './BodyDashboard';
 import BodyCalendar from './BodyCalendar';
+import BodyRegistration from './BodyRegistration';
 import { LayoutDashboard, CalendarDays } from 'lucide-react';
+import { useAppStore } from '../../store';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -9,8 +11,11 @@ const TABS = [
 ];
 
 export default function Body() {
+  const { openCreationMode, setOpenCreationMode } = useAppStore();
   const [activeSubTab, setActiveSubTab] = useState('dashboard');
   const tabIndex = TABS.findIndex(t => t.id === activeSubTab);
+
+
 
   return (
     <div className="flex flex-col fade-in">
@@ -30,8 +35,11 @@ export default function Body() {
             <button
               key={tab.id}
               data-tab={tab.id}
-              onClick={() => setActiveSubTab(tab.id)}
-              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full transition-colors ${active ? 'active' : 'text-slate-500'}`}
+              onClick={() => {
+                setActiveSubTab(tab.id);
+                if (openCreationMode) setOpenCreationMode(null);
+              }}
+              className={`seg-btn relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-[13px] font-semibold rounded-full transition-colors ${active ? 'active text-white' : 'text-slate-500'}`}
             >
               <Icon size={16} />
               {tab.label}
@@ -40,8 +48,13 @@ export default function Body() {
         })}
       </div>
 
-      {activeSubTab === 'dashboard' && <BodyDashboard onGoToCalendar={() => setActiveSubTab('calendario')} />}
-      {activeSubTab === 'calendario' && <BodyCalendar />}
+      {openCreationMode === 'assessment' ? (
+        <BodyRegistration onClose={() => setOpenCreationMode(null)} />
+      ) : activeSubTab === 'dashboard' ? (
+        <BodyDashboard onGoToCalendar={() => setActiveSubTab('calendario')} />
+      ) : (
+        <BodyCalendar />
+      )}
     </div>
   );
 }

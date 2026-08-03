@@ -2,8 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { mealNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { ChevronLeft, ChevronRight, Flame, Camera } from 'lucide-react';
-import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday } from 'date-fns';
+import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import MealCard from './MealCard';
 
 export default function NutritionCalendar({ onRegisterClick }) {
   const { meals } = useAppStore();
@@ -21,19 +22,6 @@ export default function NutritionCalendar({ onRegisterClick }) {
     const dayStr = format(selectedDate, 'yyyy-MM-dd');
     return meals.filter(m => m.date === dayStr);
   }, [meals, selectedDate]);
-
-  // Day Totals
-  const dayTotals = useMemo(() => {
-    let c = 0, p = 0, h = 0, f = 0;
-    dayMeals.forEach(m => {
-      const n = mealNutrients(m);
-      c += n.calories;
-      p += n.protein;
-      h += n.carbs;
-      f += n.fat;
-    });
-    return { c, p, h, f };
-  }, [dayMeals]);
 
   const hasMealsOnDay = (date) => {
     const dayStr = format(date, 'yyyy-MM-dd');
@@ -71,7 +59,6 @@ export default function NutritionCalendar({ onRegisterClick }) {
           ))}
         </div>
         <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center">
-          {/* Empty cells for padding - assuming start of week is Monday */}
           {Array.from({ length: (startOfMonth(currentDate).getDay() + 6) % 7 }).map((_, i) => (
             <div key={`empty-${i}`} />
           ))}
@@ -80,7 +67,6 @@ export default function NutritionCalendar({ onRegisterClick }) {
             const isSelected = isSameDay(date, selectedDate);
             const isCurrentMonth = isSameMonth(date, currentDate);
             const hasActivity = hasMealsOnDay(date);
-            // Example dummy indicator check - original HTML checks if macros are met/exceeded
             const statusColor = hasActivity ? 'bg-[var(--mod-nutricao-to)]' : 'bg-slate-200';
 
             if (!isCurrentMonth) return null;
@@ -105,10 +91,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
         {/* Legend */}
         <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-100 px-1">
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-[var(--mod-nutricao-to)]"></span> Objetivos cumpridos
-          </span>
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-red-500"></span> Excedeu um macro
+            <span className="w-2 h-2 rounded-full bg-[var(--mod-nutricao-to)]"></span> Refeição registada
           </span>
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
             <span className="w-2 h-2 rounded-full bg-slate-200"></span> Sem registos
@@ -121,29 +104,13 @@ export default function NutritionCalendar({ onRegisterClick }) {
         <h3 className="text-[13px] font-semibold text-slate-500 mb-3 uppercase tracking-wide">
           {format(selectedDate, 'dd MMM yyyy', { locale: pt })}
         </h3>
-        <div className="space-y-2">
+        <div className="space-y-3">
         {dayMeals.length === 0 ? (
           <p className="text-xs text-slate-500 text-center py-6">Sem refeições registadas neste dia.</p>
         ) : (
-          dayMeals.map(meal => {
-            const n = mealNutrients(meal);
-            return (
-              <div key={meal.id} className="card rounded-2xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-center shrink-0">
-                    <Flame size={14} className="text-[var(--accent)]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-700">{mealTypeLabel(meal.meal_type)}</p>
-                    <p className="text-[10px] text-slate-500">{(meal.meal_items || []).length} item(s)</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-[var(--accent)]">{n.calories.toFixed(0)} kcal</p>
-                </div>
-              </div>
-            );
-          })
+          dayMeals.map(meal => (
+            <MealCard key={meal.id} meal={meal} />
+          ))
         )}
         </div>
       </div>

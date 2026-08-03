@@ -4,9 +4,10 @@ import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { ChevronLeft, ChevronRight, ScanLine } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import BodyAssessmentCard from './BodyAssessmentCard';
 
 export default function BodyCalendar() {
-  const { bodyAssessments } = useAppStore();
+  const { bodyAssessments, setOpenCreationMode } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -31,7 +32,7 @@ export default function BodyCalendar() {
     <div className="space-y-4 fade-in pb-8">
       {/* Botão Nova Avaliação */}
       <button 
-        onClick={() => alert('Em construção 🛠️')}
+        onClick={() => setOpenCreationMode('assessment')}
         className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
       >
         <ScanLine size={20} /> Nova Avaliação
@@ -108,31 +109,7 @@ export default function BodyCalendar() {
             <p className="text-xs text-slate-500 text-center py-6">Sem avaliações registadas neste dia.</p>
           ) : (
             dayAssessments.map(assessment => (
-              <div key={assessment.id} className="card rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Avaliação Corporal</span>
-                  <span className="text-[10px] text-slate-400">
-                    {new Date(assessment.created_at || assessment.date).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {BODY_METRICS.map(m => {
-                    const val = assessment[m.key];
-                    if (val === null || val === undefined) return null;
-                    return (
-                      <div key={m.key} className="bg-slate-50 rounded-xl p-2 border border-slate-100 text-center">
-                        <p className="text-[9px] text-slate-500 truncate">{m.label}</p>
-                        <p className="text-xs font-bold text-slate-700 mt-0.5">{fmtMetric(m, val)}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                {assessment.notes && (
-                  <p className="text-[11px] text-slate-500 border-t border-slate-100 pt-2 mt-2">
-                    <span className="font-semibold text-slate-600">Obs:</span> {assessment.notes}
-                  </p>
-                )}
-              </div>
+              <BodyAssessmentCard key={assessment.id} assessment={assessment} />
             ))
           )}
         </div>

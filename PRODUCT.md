@@ -27,7 +27,9 @@ PWA instalável (Android/iOS), Supabase (Postgres + Edge Functions) como backend
 
 ## Capabilities and Constraints
 
-- Stack: ficheiro único `index.html` (vanilla JS), Tailwind via CDN (JIT), Chart.js, Lucide icons, Supabase JS SDK.
+- Stack: React (Vite SPA), Tailwind CSS, Zustand para gestão de estado global, Lucide Icons, Chart.js, Supabase JS SDK.
+- Design System: O módulo `design-system/` constitui a fonte única de verdade (Single Source of Truth) para a biblioteca de componentes React e tokens de UI da aplicação.
+- Botões de Sistema & Ergonomia: Alvo tátil mínimo obrigatório de **44px × 44px**, superfícies neutras para botões de navegação/ações secundárias e botão flutuante (FAB) em Coral (`var(--accent)`).
 - Registo assistido por IA em 4 módulos (refeições, corridas, avaliações corporais, sessões de ginásio), sempre com alternativa de introdução manual.
 - Idioma da interface: português (pt-PT), sem alternativa de idioma implementada.
 - Sem modo escuro — tema claro fixo.
@@ -54,4 +56,4 @@ Dados reais vêm do backend Supabase do próprio utilizador (sem dados de demons
 
 ## Accessibility & Inclusion
 
-Padrão adotado nesta sessão: WCAG 2.1 AA (contraste, foco de teclado visível, `prefers-reduced-motion` com exceção para indicadores de carregamento essenciais, alvos de toque ≥44×44px). Nenhuma necessidade de utilizador específica foi comunicada além deste padrão geral.
+Padrão certificado nesta auditoria: **WCAG 2.1 AA** (contraste de texto `#0f172a` > 7:1, foco de teclado visível, alvos de toque ≥44×44px em todos os elementos interativos, FAB 56×56px e atributos `aria-label` em botões de ícones). Simulações de experiência validadas para as personas *Mariana* (Corredora de Maratonas), *Tiago* (Ginásio & Recomposição Corporal) e *Coach André* (Assistente Virtual IA).

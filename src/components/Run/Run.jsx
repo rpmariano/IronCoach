@@ -4,6 +4,7 @@ import RunCalendar from './RunCalendar';
 import RunAgenda from './RunAgenda';
 import RunRegistration from './RunRegistration';
 import { LayoutDashboard, CalendarDays, Flag, Plus } from 'lucide-react';
+import { useAppStore } from '../../store';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },

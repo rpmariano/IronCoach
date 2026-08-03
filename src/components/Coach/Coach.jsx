@@ -277,7 +277,7 @@ export default function Coach() {
             onClick={() => handleSend()}
             disabled={!inputStr.trim() || coachLoading}
             aria-label="Enviar pergunta ao Coach"
-            className={`shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center transition active:scale-95 ${
+            className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 : 'text-slate-950 font-bold'

@@ -1,13 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react';
+import GymSessionCard from './GymSessionCard';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 
 export default function GymCalendar() {
-  const { gymSessions } = useAppStore();
+  const { gymSessions, setOpenCreationMode } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
 
   const daysInMonth = useMemo(() => {
     const start = startOfMonth(currentDate);
@@ -30,8 +32,8 @@ export default function GymCalendar() {
     <div className="space-y-4 fade-in pb-8">
       {/* Botão Novo Treino */}
       <button 
-        onClick={() => alert('Em construção 🛠️')}
-        className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        onClick={() => setOpenCreationMode('workout')}
+        className="w-full bg-[var(--mod-ginasio-to)] text-white font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
       >
         <Dumbbell size={20} /> Novo Treino
       </button>
@@ -107,19 +109,12 @@ export default function GymCalendar() {
             <p className="text-xs text-slate-500 text-center py-6">Sem treinos registados neste dia.</p>
           ) : (
             daySessions.map(session => (
-              <div key={session.id} className="card rounded-2xl p-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[var(--mod-ginasio-to)]/10 border border-[var(--mod-ginasio-to)]/30 flex items-center justify-center shrink-0">
-                    <Dumbbell size={16} className="text-[var(--mod-ginasio-to)]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">{session.name || 'Sessão de Treino'}</p>
-                    <p className="text-[10px] text-slate-500">
-                      {(session.workout_session_sets || session.logs || []).length} série(s)
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <GymSessionCard 
+                key={session.id} 
+                session={session} 
+                isExpanded={expandedSessionId === session.id}
+                onToggleExpand={() => setExpandedSessionId(expandedSessionId === session.id ? null : session.id)}
+              />
             ))
           )}
         </div>

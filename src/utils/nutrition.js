@@ -32,36 +32,75 @@ export function rangeBounds(rangeStr) {
 
   const start = format(startDate, 'yyyy-MM-dd');
   const end = today;
-  // +1 to include today
   const daysElapsed = Math.max(1, differenceInDays(now, startDate) + 1);
 
   return { start, end, daysElapsed };
 }
 
-export function mealNutrients(meal) {
-  let c = 0, p = 0, h = 0, f = 0;
-  let micros = {
-    fiber: 0, sugar: 0, sodium: 0, iron_mg: 0, calcium_mg: 0, vitamin_c_mg: 0, potassium_mg: 0
-  };
+export function itemNutrients(item) {
+  if (!item) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   
-  if (meal && meal.meal_items) {
-    for (const item of meal.meal_items) {
-      const q = (Number(item.quantity) || 0) / 100;
-      c += (Number(item.food_item?.calories) || 0) * q;
-      p += (Number(item.food_item?.protein) || 0) * q;
-      h += (Number(item.food_item?.carbs) || 0) * q;
-      f += (Number(item.food_item?.fat) || 0) * q;
-      
-      micros.fiber += (Number(item.food_item?.fiber) || 0) * q;
-      micros.sugar += (Number(item.food_item?.sugar) || 0) * q;
-      micros.sodium += (Number(item.food_item?.sodium) || 0) * q;
-      micros.iron_mg += (Number(item.food_item?.iron_mg) || 0) * q;
-      micros.calcium_mg += (Number(item.food_item?.calcium_mg) || 0) * q;
-      micros.vitamin_c_mg += (Number(item.food_item?.vitamin_c_mg) || 0) * q;
-      micros.potassium_mg += (Number(item.food_item?.potassium_mg) || 0) * q;
-    }
+  // Direct macros on item if present
+  if (
+    (item.calories !== undefined && item.calories !== null && Number(item.calories) > 0) ||
+    (item.protein !== undefined && item.protein !== null && Number(item.protein) > 0) ||
+    (item.carbs !== undefined && item.carbs !== null && Number(item.carbs) > 0) ||
+    (item.fat !== undefined && item.fat !== null && Number(item.fat) > 0)
+  ) {
+    return {
+      calories: Number(item.calories) || 0,
+      protein: Number(item.protein) || 0,
+      carbs: Number(item.carbs) || 0,
+      fat: Number(item.fat) || 0,
+      fiber: Number(item.fiber) || 0,
+      sugar: Number(item.sugar) || 0,
+      sodium: Number(item.sodium) || 0,
+    };
   }
-  return { calories: c, protein: p, carbs: h, fat: f, ...micros };
+
+  // Per 100g scaling fallback
+  const grams = Number(item.quantity_grams ?? item.amount_g ?? item.quantity ?? 100);
+  const factor = grams / 100;
+
+  const cal100 = Number(item.calories_per_100g ?? item.food_item?.calories ?? item.calories_100g ?? 0);
+  const prot100 = Number(item.protein_per_100g ?? item.food_item?.protein ?? item.protein_100g ?? 0);
+  const carbs100 = Number(item.carbs_per_100g ?? item.food_item?.carbs ?? item.carbs_100g ?? 0);
+  const fat100 = Number(item.fat_per_100g ?? item.food_item?.fat ?? item.fat_100g ?? 0);
+
+  return {
+    calories: factor * cal100,
+    protein: factor * prot100,
+    carbs: factor * carbs100,
+    fat: factor * fat100,
+    fiber: factor * Number(item.fiber_per_100g ?? item.food_item?.fiber ?? 0),
+    sugar: factor * Number(item.sugar_per_100g ?? item.food_item?.sugar ?? 0),
+    sodium: factor * Number(item.sodium_per_100g ?? item.food_item?.sodium ?? 0),
+  };
+}
+
+export function mealNutrients(meal) {
+  const total = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
+  
+  const items = meal?.meal_items || [];
+  if (items.length > 0) {
+    items.forEach(item => {
+      const n = itemNutrients(item);
+      total.calories += n.calories;
+      total.protein += n.protein;
+      total.carbs += n.carbs;
+      total.fat += n.fat;
+      total.fiber += n.fiber || 0;
+      total.sugar += n.sugar || 0;
+      total.sodium += n.sodium || 0;
+    });
+  } else {
+    total.calories = Number(meal?.calories) || 0;
+    total.protein = Number(meal?.protein) || 0;
+    total.carbs = Number(meal?.carbs) || 0;
+    total.fat = Number(meal?.fat) || 0;
+  }
+  
+  return total;
 }
 
 export function rangeTotals(meals, rangeStr) {
@@ -94,10 +133,12 @@ export function rangeTotals(meals, rangeStr) {
 
 export function mealTypeLabel(type) {
   const labels = {
-    'pequeno_almoco': 'Pequeno-almoço',
+    'pequeno-almoco': 'Pequeno-Almoço',
+    'lanche-manha': 'Lanche da Manhã',
     'almoco': 'Almoço',
+    'lanche': 'Lanche da Tarde',
     'jantar': 'Jantar',
-    'lanche': 'Lanche'
+    'ceia': 'Ceia'
   };
-  return labels[type] || 'Snack';
+  return labels[type] || 'Refeição';
 }

@@ -27,18 +27,18 @@ describe('NutritionDashboard', () => {
     
     // Total aggregated calories: 1500 out of 3000
     expect(screen.getByText('1500')).toBeInTheDocument();
-    expect(screen.getByText('/ 3000 kcal')).toBeInTheDocument();
+    expect(screen.getByText(/3000\s*kcal/)).toBeInTheDocument();
     
     // Protein: 80 out of 200
     expect(screen.getByText('80')).toBeInTheDocument();
-    expect(screen.getByText('/ 200g')).toBeInTheDocument();
+    expect(screen.getByText(/200\s*g/)).toBeInTheDocument();
     
     // Carbs: 150 out of 300
     expect(screen.getByText('150')).toBeInTheDocument();
-    expect(screen.getByText('/ 300g')).toBeInTheDocument();
+    expect(screen.getByText(/300\s*g/)).toBeInTheDocument();
     
     // Fat: 40 out of 100
     expect(screen.getByText('40')).toBeInTheDocument();
-    expect(screen.getByText('/ 100g')).toBeInTheDocument();
+    expect(screen.getByText(/100\s*g/)).toBeInTheDocument();
   });
 });

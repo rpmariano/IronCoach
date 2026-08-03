@@ -1,5 +1,5 @@
+import { format } from 'date-fns';
+
 export function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
+  return format(new Date(), 'yyyy-MM-dd');
 }
