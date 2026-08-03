@@ -24,11 +24,19 @@ export const useAppStore = create((set, get) => ({
   activeTab: 'home',
   homeLayout: ['weight_kg', 'body_fat_pct', 'protein_today', 'corrida_km', 'corrida_pace', 'gym_sessions', 'gym_volume'],
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout'
-  
+  // Ecrãs com alterações por gravar registam aqui uma função que decide se a
+  // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
+  navGuard: null,
+
   // Actions
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setNavGuard: (fn) => set({ navGuard: fn }),
+  setActiveTab: (tab) => {
+    const guard = get().navGuard;
+    if (guard && !guard(tab)) return;
+    set({ activeTab: tab });
+  },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   
   // Coach Actions

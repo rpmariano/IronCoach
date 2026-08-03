@@ -1,13 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { mealNutrients, mealTypeLabel } from '../../utils/nutrition';
+import { dayNutrientStatus, dayWaterGoalMet } from '../../utils/nutrition';
+import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 import { ChevronLeft, ChevronRight, Flame, Camera } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import MealCard from './MealCard';
 
 export default function NutritionCalendar({ onRegisterClick }) {
-  const { meals } = useAppStore();
+  const { meals, waterLogs, profile } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -22,11 +23,6 @@ export default function NutritionCalendar({ onRegisterClick }) {
     const dayStr = format(selectedDate, 'yyyy-MM-dd');
     return meals.filter(m => m.date === dayStr);
   }, [meals, selectedDate]);
-
-  const hasMealsOnDay = (date) => {
-    const dayStr = format(date, 'yyyy-MM-dd');
-    return meals.some(m => m.date === dayStr);
-  };
 
   return (
     <div className="space-y-4 fade-in pb-8">
@@ -66,10 +62,15 @@ export default function NutritionCalendar({ onRegisterClick }) {
           {daysInMonth.map(date => {
             const isSelected = isSameDay(date, selectedDate);
             const isCurrentMonth = isSameMonth(date, currentDate);
-            const hasActivity = hasMealsOnDay(date);
-            const statusColor = hasActivity ? 'bg-[var(--mod-nutricao-to)]' : 'bg-slate-200';
-
             if (!isCurrentMonth) return null;
+
+            const dayStr = format(date, 'yyyy-MM-dd');
+            const status = dayNutrientStatus(meals, dayStr, profile);
+            const waterMet = dayWaterGoalMet(waterLogs, dayStr, profile);
+            const statusColor =
+              status === 'ok' ? 'bg-emerald-500' :
+              status === 'over' ? 'bg-red-500' :
+              CALENDAR_NO_DATA_DOT;
 
             return (
               <div key={date.toString()} className="flex justify-center">
@@ -80,8 +81,12 @@ export default function NutritionCalendar({ onRegisterClick }) {
                     'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span className="mb-1">{format(date, 'd')}</span>
-                  <div className={`w-1 h-1 rounded-full ${isSelected && hasActivity ? 'bg-white' : isSelected && !hasActivity ? 'bg-neutral-600' : statusColor}`} />
+                  <span className="leading-none">{format(date, 'd')}</span>
+                  {/* Altura fixa para os dias sem ponto de água não saltarem. */}
+                  <span className="flex flex-col items-center gap-[2px] mt-1 h-2.5">
+                    <span className={`w-1 h-1 rounded-full ${statusColor}`} />
+                    {waterMet && <span className="w-1 h-1 rounded-full bg-sky-400" />}
+                  </span>
                 </button>
               </div>
             );
@@ -89,12 +94,15 @@ export default function NutritionCalendar({ onRegisterClick }) {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-100 px-1">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-6 pt-4 border-t border-slate-100 px-1">
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-[var(--mod-nutricao-to)]"></span> Refeição registada
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Objetivos cumpridos
           </span>
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-slate-200"></span> Sem registos
+            <span className="w-2 h-2 rounded-full bg-red-500"></span> Excedeu um macro ou ficou abaixo da proteína
+          </span>
+          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className="w-2 h-2 rounded-full bg-sky-400"></span> Objetivo de água atingido
           </span>
         </div>
       </div>

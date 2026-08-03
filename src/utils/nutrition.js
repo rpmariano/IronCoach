@@ -103,6 +103,40 @@ export function mealNutrients(meal) {
   return total;
 }
 
+/* Estado nutricional de um dia no calendário: 'none' sem refeições, 'ok' com as
+   metas cumpridas, 'over' caso contrário. A proteína é a única macro em que o
+   problema é ficar ABAIXO da meta — nas outras três o problema é excedê-la. */
+export function dayNutrientStatus(meals, dateStr, profile) {
+  const dayMeals = (meals || []).filter(m => m.date === dateStr);
+  if (dayMeals.length === 0) return 'none';
+
+  const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  dayMeals.forEach(meal => {
+    const n = mealNutrients(meal);
+    totals.calories += n.calories;
+    totals.protein += n.protein;
+    totals.carbs += n.carbs;
+    totals.fat += n.fat;
+  });
+
+  const p = profile || {};
+  // Sem meta definida, a macro nunca conta como excedida (Infinity).
+  const exceededCapped = ['calories', 'carbs', 'fat'].some(key => {
+    const goalKey = MACROS.find(m => m.key === key).goalKey;
+    return totals[key] > (Number(p[goalKey]) || Infinity);
+  });
+  const proteinMet = totals.protein >= (Number(p.protein_goal) || 0);
+  return (!exceededCapped && proteinMet) ? 'ok' : 'over';
+}
+
+// Objetivo de água atingido nesse dia — soma dos registos >= meta diária.
+export function dayWaterGoalMet(waterLogs, dateStr, profile) {
+  const dayLogs = (waterLogs || []).filter(w => w.date === dateStr);
+  if (dayLogs.length === 0) return false;
+  const total = dayLogs.reduce((sum, w) => sum + (Number(w.amount_ml) || 0), 0);
+  return total >= (Number(profile?.water_goal_ml) || 2000);
+}
+
 export function rangeTotals(meals, rangeStr) {
   const { start, end } = rangeBounds(rangeStr);
   let c = 0, p = 0, h = 0, f = 0;

@@ -19,17 +19,26 @@ const BODY_METRICS = [
   { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1 },
 ];
 
-const WATER_REMINDER_INTERVALS = [30, 60, 90, 120];
+const WATER_REMINDER_INTERVALS = [30, 60, 90, 120, 180, 240];
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const DEFAULT_REMINDER_START_HOUR = 8;
+const DEFAULT_REMINDER_END_HOUR = 22;
+
+const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
 export default function Perfil() {
-  const { profile, setProfile, session } = useAppStore();
+  const { profile, setProfile, session, setNavGuard } = useAppStore();
   const [tab, setTab] = useState('perfil');
-  
+
   // Local state form (draft)
   const [draft, setDraft] = useState({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Destino pendente quando se tenta sair com alterações por gravar.
+  // { kind: 'tab' | 'nav', target: string }
+  const [leavePrompt, setLeavePrompt] = useState(null);
 
   // Metas UI
   const [metasBodyExpanded, setMetasBodyExpanded] = useState(false);
@@ -46,32 +55,93 @@ export default function Perfil() {
     }
   }, [profile, tab]);
 
+  // Trava a navegação para fora do Perfil enquanto houver alterações por gravar.
+  useEffect(() => {
+    if (!isDirty) {
+      setNavGuard(null);
+      return;
+    }
+    setNavGuard((intendedTab) => {
+      setLeavePrompt({ kind: 'nav', target: intendedTab });
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
   const updateDraft = (key, value) => {
     setDraft(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
   };
 
   const handleSave = async () => {
-    if (!isDirty) return;
+    if (!isDirty) return true;
     setIsSaving(true);
     try {
       const { error } = await supabase
         .from('profiles')
         .update(draft)
         .eq('id', profile?.id);
-        
+
       if (error) throw error;
-      
+
       setProfile({ ...profile, ...draft });
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
+      return true;
     } catch (err) {
       console.error('Error saving profile:', err);
       alert('Erro ao guardar o perfil.');
+      return false;
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Mudar de sub-tab descarta o draft (ver o useEffect acima), por isso passa
+  // pelo mesmo aviso que sair do Perfil.
+  const requestTabChange = (nextTab) => {
+    if (nextTab === tab) return;
+    if (isDirty) {
+      setLeavePrompt({ kind: 'tab', target: nextTab });
+      return;
+    }
+    setTab(nextTab);
+  };
+
+  const goToPendingTarget = ({ kind, target }) => {
+    if (kind === 'tab') {
+      setTab(target);
+      return;
+    }
+    // O guard vive no store e ainda está registado neste render — limpa-o
+    // antes de navegar para não voltar a travar o mesmo pedido.
+    setNavGuard(null);
+    useAppStore.getState().setActiveTab(target);
+  };
+
+  const discardAndLeave = () => {
+    const pending = leavePrompt;
+    setDraft(profile || {});
+    setIsDirty(false);
+    setLeavePrompt(null);
+    goToPendingTarget(pending);
+  };
+
+  const saveAndLeave = async () => {
+    const pending = leavePrompt;
+    const saved = await handleSave();
+    if (!saved) return; // mantém o aviso aberto para o utilizador decidir
+    setLeavePrompt(null);
+    goToPendingTarget(pending);
   };
 
   const handleSignOut = async () => {
@@ -87,6 +157,35 @@ export default function Perfil() {
       alert("A funcionalidade do Coach requer a Edge Function configurada.");
     }, 2000);
   };
+
+  const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;
+  const reminderEndHour = draft.water_reminder_end_hour ?? DEFAULT_REMINDER_END_HOUR;
+
+  const leaveModal = leavePrompt && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="perfil-leave-title">
+      <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
+        <h2 id="perfil-leave-title" className="text-sm font-semibold text-white">Tens alterações por gravar</h2>
+        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+          Se saíres agora, as alterações que fizeste neste separador não ficam guardadas.
+        </p>
+        <div className="mt-5 space-y-2">
+          <button onClick={saveAndLeave} disabled={isSaving} type="button"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] text-white shadow-lg active:scale-95 transition disabled:opacity-60">
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
+            {isSaving ? 'A guardar...' : 'Gravar e sair'}
+          </button>
+          <button onClick={discardAndLeave} disabled={isSaving} type="button"
+            className="w-full py-3 rounded-xl font-semibold text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 transition disabled:opacity-60">
+            Sair sem gravar
+          </button>
+          <button onClick={() => setLeavePrompt(null)} disabled={isSaving} type="button"
+            className="w-full py-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   const saveButton = (
     <button
@@ -114,7 +213,7 @@ export default function Perfil() {
         ].map(t => (
           <button
             key={t.key}
-            onClick={() => setTab(t.key)}
+            onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
               tab === t.key ? 'bg-[var(--accent)] text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
             }`}
@@ -131,6 +230,8 @@ export default function Perfil() {
           </div>
         </div>
       )}
+
+      {leaveModal}
 
       {/* TABS */}
       {tab === 'perfil' && (
@@ -257,23 +358,52 @@ export default function Perfil() {
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
               <div className="pr-4">
                 <p className="text-xs font-semibold text-white flex items-center gap-1.5"><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
-                <p className="text-[11px] text-slate-500 mt-1">Notificações durante o dia (8h-22h) enquanto não atingires a meta.</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
+                </p>
               </div>
               <button onClick={() => updateDraft('water_reminder_enabled', !draft.water_reminder_enabled)} type="button"
+                aria-label={draft.water_reminder_enabled ? 'Desativar lembretes de água' : 'Ativar lembretes de água'}
+                aria-pressed={!!draft.water_reminder_enabled}
                 className={`w-11 h-6 rounded-full relative transition shrink-0 ${draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}`}>
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.water_reminder_enabled ? 'left-5' : 'left-0.5'}`}></span>
               </button>
             </div>
-            
+
             {draft.water_reminder_enabled && (
-              <div className="mt-3 fade-in">
-                <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
-                <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
-                  {WATER_REMINDER_INTERVALS.map(m => (
-                    <option key={m} value={m}>A cada {m} minutos</option>
-                  ))}
-                </select>
+              <div className="mt-3 space-y-3 fade-in">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
+                  <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                    {WATER_REMINDER_INTERVALS.map(m => (
+                      <option key={m} value={m}>A cada {m} minutos</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">Início</label>
+                    <select value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                      {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-500 block mb-1">Fim</label>
+                    <select value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                      {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  {reminderStartHour === reminderEndHour
+                    ? 'Início igual ao fim: lembretes durante as 24 horas.'
+                    : reminderStartHour > reminderEndHour
+                      ? 'A janela atravessa a meia-noite.'
+                      : 'Hora de Portugal continental.'}
+                </p>
               </div>
             )}
           </div>

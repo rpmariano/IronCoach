@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import RunCard from './RunCard';
 import RunRegistration from './RunRegistration';
+import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 
 const SneakerIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -140,7 +141,8 @@ export default function RunCalendar({ onNewRun }) {
                 style={{ background: isSelected ? 'var(--accent)' : undefined }}
               >
                 {dayNum}
-                <span className={`w-1 h-1 rounded-full mt-1 ${hasRun ? 'bg-emerald-500' : (isSelected ? 'bg-white/30' : 'bg-slate-200')}`}></span>
+                {/* Dia selecionado tem fundo Coral, onde o cinzento não lê bem. */}
+                <span className={`w-1 h-1 rounded-full mt-1 ${hasRun ? 'bg-emerald-500' : (isSelected ? 'bg-white/30' : CALENDAR_NO_DATA_DOT)}`}></span>
               </button>
             );
           })}

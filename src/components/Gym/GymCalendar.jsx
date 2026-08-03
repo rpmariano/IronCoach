@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react';
 import GymSessionCard from './GymSessionCard';
+import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 
@@ -68,7 +69,7 @@ export default function GymCalendar() {
             const isSelected = isSameDay(date, selectedDate);
             const isCurrentMonth = isSameMonth(date, currentDate);
             const hasActivity = hasSessionOnDay(date);
-            const statusColor = hasActivity ? 'bg-emerald-500' : 'bg-slate-200';
+            const statusColor = hasActivity ? 'bg-emerald-500' : CALENDAR_NO_DATA_DOT;
 
             if (!isCurrentMonth) return null;
 
@@ -81,7 +82,7 @@ export default function GymCalendar() {
                   }`}
                 >
                   <span className="mb-1">{format(date, 'd')}</span>
-                  <div className={`w-1 h-1 rounded-full ${isSelected && hasActivity ? 'bg-white' : isSelected && !hasActivity ? 'bg-neutral-600' : statusColor}`} />
+                  <div className={`w-1 h-1 rounded-full ${statusColor}`} />
                 </button>
               </div>
             );
@@ -92,9 +93,6 @@ export default function GymCalendar() {
         <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-100 px-1">
           <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Treino registado
-          </span>
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-slate-200"></span> Sem registo
           </span>
         </div>
       </div>
