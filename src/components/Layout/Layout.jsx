@@ -218,9 +218,19 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
       data-vert={tab}
       aria-label={label}
       aria-current={active ? 'page' : undefined}
-      className="vbar-btn w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
+      className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
       style={{ color: active ? activeColor : '#64748b', fontWeight: active ? 700 : 500 }}
     >
+      {/* Pista não-cromática do estado ativo: as cores de módulo em texto de
+          10px não chegam ao contraste AA sobre o branco da barra, por isso o
+          estado não pode depender só da cor. Ver PRD 5.2. */}
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
+          style={{ background: activeColor }}
+        />
+      )}
       {icon}
       <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
     </button>
