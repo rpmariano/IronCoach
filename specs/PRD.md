@@ -10,20 +10,26 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 
 ## 2. Tecnologias & Arquitetura
 
-### 2.1. O que está em produção (2026-08-04)
-- **Produção é a app em JavaScript vanilla**, no `index.html` na raiz do `master`, servida pelo **GitHub Pages** em `https://rpmariano.github.io/ironhealth/`.
-- **O GitHub Pages serve o `master` como ficheiros estáticos e não corre nenhum passo de build.** Não existe workflow do GitHub Actions nem ramo `gh-pages`. O `netlify.toml` na raiz do repositório é de um ambiente de desenvolvimento separado e **não descreve como a produção é servida** — não inferir o host a partir dele.
-- A consolidação em React foi tentada a 2026-08-04 e **revertida no mesmo dia**: substituir o `index.html` pelo ponto de entrada do SPA deixou a app em branco, porque o Pages serviu as 20 linhas do entry sem nunca construir o `src/`. Reposto no commit `4b2b1ff`.
+- **Frontend**: React (Vite SPA), Tailwind CSS, Zustand (`src/store/index.js`), Vitest + Testing Library.
+- **Backend**: Supabase (Google OAuth, Postgres, Edge Functions), partilhado por todos os ambientes — **não existe base de dados de desenvolvimento separada**.
+- `index_legacy.html` é um arquivo da app anterior em JavaScript vanilla. Não é servido nem mantido; existe como referência, a par da tag `backup/master-pre-react-merge`.
 
-### 2.2. O React, que existe mas não é servido
-- O código React (Vite SPA, Zustand, Tailwind) está no repositório em `src/`, completo e testado, e **não é servido**. `index_legacy.html` é uma cópia de arquivo da app vanilla.
-- O trabalho de consolidação está no ramo `staging/react-consolidation` e no histórico do `master` em `5b076e6`. Rollback disponível em `backup/master-pre-react-merge`.
-- **Para o React chegar a produção no GitHub Pages faltam:**
-  1. um workflow que corra `npm run build` e publique o `dist`;
-  2. `base: '/ironhealth/'` no `vite.config.mjs` — o site vive num subcaminho, e os caminhos absolutos dão 404;
-  3. o registo do service worker a usar `import.meta.env.BASE_URL` em vez de `/sw.js`;
-  4. revisão dos caminhos absolutos no `index.html` e no `manifest.json`.
-  - Não é preciso fallback de 404: a navegação é estado do Zustand mais um parâmetro `?tab=`, não rotas por caminho.
+### 2.1. Dois ambientes, duas raízes
+| Ramo | Host | URL | Base |
+| :-- | :-- | :-- | :-- |
+| `master` | GitHub Pages, via GitHub Actions | `https://rpmariano.github.io/ironhealth/` | `/ironhealth/` |
+| `dev` | Netlify (ambiente de desenvolvimento) | domínio Netlify | `/` |
+
+- O `vite.config.mjs` lê `base` de `process.env.VITE_BASE`, com `/` por omissão. O workflow do Pages define `VITE_BASE=/ironhealth/`; o Netlify não define nada e fica na raiz. **O mesmo código serve os dois.**
+- O deploy do Pages é feito por `.github/workflows/deploy-pages.yml` (build + testes + publicação do `dist`). Requer **Settings → Pages → Source: GitHub Actions**; com "Deploy from a branch" o workflow corre mas não tem efeito.
+
+### 2.2. Regra de caminhos de assets — não repetir este erro
+A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servido sem passo de build. Depois de resolver isso, ficou o problema de raiz: **num subcaminho, todo o caminho absoluto para `public/` dá 404.**
+- O Vite prefixa o `base` nos caminhos absolutos **do `index.html`**, mas **não** nos que estão dentro do JSX.
+- Para assets de `public/` usar sempre `publicUrl()` (`src/lib/utils.js`), nunca `"/ficheiro.png"`.
+- O service worker registra-se em `` `${import.meta.env.BASE_URL}sw.js` `` — isto também lhe dá o scope correto, o da app.
+- O `public/manifest.json` usa caminhos **relativos** (`start_url: "."`, ícones sem `/` inicial), o que funciona nas duas raízes. Mantê-lo assim.
+- Não é preciso fallback de 404: a navegação é estado do Zustand mais um parâmetro `?tab=`, não rotas por caminho.
 - **Estilos**: Tailwind CSS e variáveis CSS nativas em `src/styles/globals.css`. Tema exclusivamente claro (`color-scheme: only light`).
 - **Backend / Base de Dados**: Supabase (Autenticação via Google OAuth, base de dados em tempo real, Edge Functions).
 - **Gestão de Estado**: Zustand (`src/store/index.js`).

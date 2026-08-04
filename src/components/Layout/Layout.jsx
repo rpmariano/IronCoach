@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
+import { publicUrl } from '../../lib/utils';
 import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User } from 'lucide-react';
 
 function RunIcon({ className = "w-5 h-5" }) {
@@ -89,7 +90,7 @@ export default function Layout({ children }) {
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
-              <img src="/logo.png" alt="" className="w-9 h-9 rounded-xl object-cover" onError={e => { e.target.style.display='none'; }} />
+              <img src={publicUrl('logo.png')} alt="" className="w-9 h-9 rounded-xl object-cover" onError={e => { e.target.style.display='none'; }} />
             </button>
             <div>
               <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--green)' }}>IronHealth</h1>

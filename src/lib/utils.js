@@ -16,3 +16,11 @@ export function lisbonTodayISO() {
 // Ponto de "sem registo" nos calendários históricos — tom único partilhado
 // pelos 4 módulos (Nutrição, Ginásio, Corrida, Corpo), sem legenda própria.
 export const CALENDAR_NO_DATA_DOT = 'bg-slate-300';
+
+/* URL de um ficheiro da pasta public/. O Vite prefixa o base nos caminhos
+   absolutos do index.html, mas não nos que estão dentro do JSX — por isso
+   "/logo.png" dá 404 quando a app vive num subcaminho, como no GitHub Pages
+   (/ironhealth/). Usar sempre isto para assets de public/. */
+export function publicUrl(file) {
+  return `${import.meta.env.BASE_URL}${String(file).replace(/^\//, '')}`;
+}

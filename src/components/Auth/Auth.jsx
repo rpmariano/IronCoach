@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { publicUrl } from '../../lib/utils';
 import { Loader2 } from 'lucide-react';
 
 export default function Auth() {
@@ -62,7 +63,7 @@ export default function Auth() {
       <div className="card rounded-3xl p-6 max-w-sm w-full shadow-lg border border-[var(--brd-700)] space-y-4">
         {/* Header */}
         <div className="flex items-center gap-2 justify-center mb-1">
-          <img src="/logo.png" alt="IronHealth" className="w-10 h-10 rounded-xl object-cover" />
+          <img src={publicUrl('logo.png')} alt="IronHealth" className="w-10 h-10 rounded-xl object-cover" />
           <h1 className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>IronHealth</h1>
         </div>
         <p className="text-xs text-slate-500 text-center">

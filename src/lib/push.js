@@ -60,7 +60,10 @@ function sameApplicationServerKey(sub, expected) {
 
 export function registerServiceWorker() {
   if (!pushSupported()) return;
-  navigator.serviceWorker.register('/sw.js').catch((e) => {
+  /* BASE_URL, não "/sw.js": no GitHub Pages a app vive em /ironhealth/, onde um
+     caminho absoluto dá 404. Registar em /ironhealth/sw.js também dá ao service
+     worker o scope certo, que é o da app. */
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((e) => {
     console.error('Registo do service worker falhou:', e);
   });
 }

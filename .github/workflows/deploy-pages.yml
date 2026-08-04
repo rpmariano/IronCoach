@@ -1,0 +1,66 @@
+# Publica a app React no GitHub Pages.
+#
+# Existe porque o GitHub Pages, quando serve um ramo diretamente, não corre
+# nenhum passo de build: servia o index.html do Vite tal e qual e a app ficava
+# em branco. Este workflow constrói e publica o dist/.
+#
+# Requer que o Pages esteja configurado com "Source: GitHub Actions"
+# (Settings → Pages). Com "Deploy from a branch" este workflow corre mas não
+# tem efeito, e o Pages continua a servir os ficheiros do ramo.
+name: Deploy React app to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  # Permite publicar a partir de outro ramo para validar antes de fazer merge.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Um deploy de cada vez; não cancela um a meio para não deixar o site incompleto.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Falhar aqui é preferível a publicar uma app quebrada.
+      - name: Testes
+        run: npx vitest run
+
+      - name: Build
+        # O site vive em https://rpmariano.github.io/ironhealth/ — sem este base
+        # os caminhos dos assets apontam para a raiz do domínio e dão 404.
+        env:
+          VITE_BASE: /ironhealth/
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
