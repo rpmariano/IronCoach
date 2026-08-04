@@ -131,6 +131,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   // Photos
   const [runPhotos, setRunPhotos] = useState([]); // [{ file?, dataUrl, url? }]
   const [analyzingRun, setAnalyzingRun] = useState(false);
+  // Um único cartão, forma de introdução escolhida em vez de 2 blocos
+  // sempre visíveis — só um dos dois fica ativo/clicável a cada vez, por
+  // isso não há risco de o utilizador preencher os dois em paralelo.
+  const [entryMethod, setEntryMethod] = useState('foto'); // 'foto' | 'manual'
   
   // --- PROVAS (AGENDA) STATE ---
   const [raceDate, setRaceDate] = useState(dateIso || todayISO());
@@ -142,11 +146,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   const [raceNotes, setRaceNotes] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Partilhado pelos dois caminhos de Corrida (foto e manual) — só um dos
+  // dois blocos está visível a cada vez (ver entryMethod), por isso já não
+  // há risco de a mesma mensagem aparecer em dois sítios ao mesmo tempo.
   const [errorMsg, setErrorMsg] = useState('');
-  // Estado próprio para a análise por IA: partilhar errorMsg com o registo
-  // manual duplicava a mesma mensagem em dois sítios do formulário sempre
-  // que qualquer um dos dois falhasse.
-  const [analyzeError, setAnalyzeError] = useState('');
 
   // Load existing data if editing
   useEffect(() => {
@@ -164,6 +167,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     } else if (initialMode === 'corrida' && runIdToEdit) {
       const r = runs.find(r => r.id === runIdToEdit);
       if (r) {
+        // Editar é sempre pelos campos — a IA por foto é só para criar (e,
+        // numa corrida já criada por foto, "Reanalisar" no cartão é a ação
+        // dedicada a isso).
+        setEntryMethod('manual');
         setRunKind(r.kind || 'treino');
         setRunTrainingType(r.training_type || 'continuo');
         setRunDate(r.date || todayISO());
@@ -235,20 +242,20 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     if (!runPhotos.length || analyzingRun) return;
 
     if (!runName.trim()) {
-      setAnalyzeError('Preenche o nome da corrida.');
+      setErrorMsg('Preenche o nome da corrida.');
       return;
     }
     if (runKind === 'treino' && !runTrainingType) {
-      setAnalyzeError('Escolhe o tipo de treino.');
+      setErrorMsg('Escolhe o tipo de treino.');
       return;
     }
     if (runKind === 'competicao' && !completedRaceType) {
-      setAnalyzeError('Escolhe a disciplina.');
+      setErrorMsg('Escolhe a disciplina.');
       return;
     }
 
     setAnalyzingRun(true);
-    setAnalyzeError('');
+    setErrorMsg('');
     try {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
@@ -270,18 +277,31 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
       onClose();
     } catch (err) {
       console.error(err);
-      setAnalyzeError(err.message || 'Falha na análise. Tenta novamente.');
+      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
     } finally {
       setAnalyzingRun(false);
     }
   };
 
   // ----------------------------------
-  // SAVE CORRIDA (Runs Table) — registo manual, sem IA nem fotos
+  // SAVE CORRIDA (Runs Table) — registo manual
   // ----------------------------------
+  // A criar uma corrida nova, passa pelo mesmo Coach que o caminho de fotos
+  // — modo "manual" da analyze-run: sem imagens, gera só o comentário a
+  // partir dos números que o próprio formulário já tem. A editar uma
+  // corrida existente mantém-se o update direto (sem reanálise — essa é a
+  // ação dedicada "Reanalisar" no cartão da corrida).
   const handleSaveCorrida = async () => {
     if (!runName.trim()) {
       setErrorMsg('Preenche o nome da corrida.');
+      return;
+    }
+    if (runKind === 'treino' && !runTrainingType) {
+      setErrorMsg('Escolhe o tipo de treino.');
+      return;
+    }
+    if (runKind === 'competicao' && !completedRaceType) {
+      setErrorMsg('Escolhe a disciplina.');
       return;
     }
 
@@ -291,64 +311,86 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     try {
       const distVal = parseFloat(runDistance);
       const durSecs = parseDurationToSeconds(runDuration);
-      
+
       const parsedSplits = splits.map(s => ({
         distance_km: parseFloat(s.distance_km) || null,
         time_seconds: parseDurationToSeconds(s.minutes)
       })).filter(s => s.distance_km || s.time_seconds);
 
-      const details = {
-        elevation_gain_m: parseInt(elevationGain) || null,
-        cadence_spm: parseInt(cadence) || null,
-        calories_kcal: parseInt(calories) || null,
-        vo2_max: parseFloat(vo2Max) || null,
-        avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
-        max_heart_rate_bpm: parseInt(maxHeartRate) || null,
-      };
-
       const parsedHrZones = hrZones
         .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
-      if (parsedHrZones.length > 0) {
-        details.hr_zones = parsedHrZones;
-      }
-
-      if (runKind === 'treino') {
-        if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
-        if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
-        if (parsedSplits.length) details.splits = parsedSplits;
-      } else {
-        details.race_type = completedRaceType;
-        if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
-        if (position) details.position = parseInt(position);
-      }
-
-      const payload = {
-        user_id: profile.id,
-        date: runDate,
-        name: runName.trim(),
-        kind: runKind,
-        training_type: runKind === 'treino' ? runTrainingType : null,
-        distance_km: !isNaN(distVal) ? distVal : null,
-        duration_seconds: durSecs,
-        effort_rpe: runEffortRpe || null,
-        details: Object.keys(details).length > 0 ? details : null,
-      };
 
       if (runIdToEdit) {
+        const details = {
+          elevation_gain_m: parseInt(elevationGain) || null,
+          cadence_spm: parseInt(cadence) || null,
+          calories_kcal: parseInt(calories) || null,
+          vo2_max: parseFloat(vo2Max) || null,
+          avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
+          max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+        };
+        if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
+        if (runKind === 'treino') {
+          if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
+          if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
+          if (parsedSplits.length) details.splits = parsedSplits;
+        } else {
+          details.race_type = completedRaceType;
+          if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
+          if (position) details.position = parseInt(position);
+        }
+
+        const payload = {
+          date: runDate,
+          name: runName.trim(),
+          kind: runKind,
+          training_type: runKind === 'treino' ? runTrainingType : null,
+          distance_km: !isNaN(distVal) ? distVal : null,
+          duration_seconds: durSecs,
+          effort_rpe: runEffortRpe || null,
+          details: Object.keys(details).length > 0 ? details : null,
+        };
         const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
         if (error) throw error;
         setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
-      } else {
-        const { data, error } = await supabase.from('runs').insert([payload]).select().single();
-        if (error) throw error;
-        setRuns([...runs, data]);
+        onClose();
+        return;
       }
 
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+        body: {
+          mode: 'manual',
+          date: runDate,
+          kind: runKind,
+          name: runName.trim(),
+          effort_rpe: runEffortRpe || null,
+          training_type: runKind === 'treino' ? runTrainingType : null,
+          race_type: runKind === 'competicao' ? completedRaceType : null,
+          distance_km: !isNaN(distVal) ? distVal : null,
+          duration_seconds: durSecs,
+          elevation_gain_m: parseInt(elevationGain) || null,
+          cadence_spm: parseInt(cadence) || null,
+          calories_kcal: parseInt(calories) || null,
+          vo2_max: parseFloat(vo2Max) || null,
+          avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
+          max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+          hr_zones: parsedHrZones.length ? parsedHrZones : null,
+          warmup_minutes: warmupMinutes ? parseInt(warmupMinutes) : null,
+          recovery_seconds: recoverySeconds ? parseInt(recoverySeconds) : null,
+          splits: parsedSplits.length ? parsedSplits : null,
+          official_time_seconds: officialTime ? parseDurationToSeconds(officialTime) : null,
+          position: position ? parseInt(position) : null,
+        },
+      });
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+
+      setRuns([...runs, data.run]);
       onClose();
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message);
+      setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -402,11 +444,18 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   const renderCorridaForm = () => {
     const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
 
+    const showToggle = !runIdToEdit;
+    const showFotoBlock = showToggle && entryMethod === 'foto';
+
     return (
       <div className="space-y-4 fade-in pb-10">
-        
-        {/* Bloco 1: Detalhes Básicos */}
-        <div 
+
+        {/* Cartão único — os campos comuns ficam sempre visíveis; a forma de
+            introdução (foto/IA ou manual) decide o resto. Editar uma corrida
+            existente é sempre pelos campos (ver showToggle acima) — a IA por
+            foto só cria; "Reanalisar" no cartão da corrida é a ação dedicada
+            a reanalisar uma corrida já criada assim. */}
+        <div
           className="rounded-2xl p-4 shadow-sm"
           style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
         >
@@ -419,13 +468,13 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           </div>
 
           <div className="flex flex-wrap gap-1.5 mb-3">
-            <button 
+            <button
               onClick={() => setRunKind('treino')}
               className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'treino' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
               Treino
             </button>
-            <button 
+            <button
               onClick={() => setRunKind('competicao')}
               className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'competicao' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
@@ -474,12 +523,12 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
 
           <div className="mb-4">
             <label className="text-[12px] text-slate-500 mb-1.5 block">Data da corrida</label>
-            <input 
-              type="date" 
-              value={runDate} 
-              max={todayISO()} 
+            <input
+              type="date"
+              value={runDate}
+              max={todayISO()}
               onChange={e => setRunDate(e.target.value)}
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
           </div>
 
@@ -487,7 +536,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             <label className="text-[12px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
             <div className="flex gap-1.5">
               {Array.from({ length: 10 }).map((_, i) => (
-                <button 
+                <button
                   key={i}
                   onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
                   className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
@@ -498,78 +547,87 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             </div>
           </div>
 
-          <div className="mb-1">
+          <div className="mb-4">
             <label className="text-[12px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
-            <input 
-              type="text" 
-              value={runName} 
+            <input
+              type="text"
+              value={runName}
               onChange={e => setRunName(e.target.value)}
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
             <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
           </div>
-        </div>
 
-        {/* Bloco 2: Fotos e IA */}
-        <div 
-          className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
-        >
-          {runPhotos.length > 0 ? (
-            <>
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {runPhotos.map((p, i) => (
-                  <div key={i} className="relative aspect-square">
-                    <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
-                    <button onClick={() => removePhoto(i)} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 text-white hover:bg-red-500 transition">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                <button onClick={() => setRunPhotos([])} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
-                  <Trash2 className="w-3.5 h-3.5" /> Limpar todos
+          {showToggle && (
+            <div className="mb-4">
+              <label className="text-[12px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod('foto')}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Foto (IA)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod('manual')}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                >
+                  <PencilLine className="w-3.5 h-3.5" /> Manual
                 </button>
               </div>
-              {runPhotos.length < MAX_PHOTOS && (
-                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition mb-3">
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-                  <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
-                  <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">Adicionar outro print</span>
-                </label>
-              )}
-            </>
-          ) : (
-            <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-3 bg-white/50">
-              <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-              <ImagePlus className="w-7 h-7 text-slate-400 mx-auto mb-2" />
-              <p className="text-[12px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
-              <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
-            </label>
+            </div>
           )}
 
-          <button
-            onClick={handleAnalyzeRun}
-            disabled={!runPhotos.length || analyzingRun}
-            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-          >
-            {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {analyzingRun ? 'A ler com IA...' : 'Analisar Corrida'}
-          </button>
-          {analyzeError && <p className="text-red-500 text-[13px] font-medium mt-3">{analyzeError}</p>}
-        </div>
+          {showFotoBlock ? (
+            <>
+              {runPhotos.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {runPhotos.map((p, i) => (
+                      <div key={i} className="relative aspect-square">
+                        <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
+                        <button onClick={() => removePhoto(i)} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 text-white hover:bg-red-500 transition">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
+                    <button onClick={() => setRunPhotos([])} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
+                      <Trash2 className="w-3.5 h-3.5" /> Limpar todos
+                    </button>
+                  </div>
+                  {runPhotos.length < MAX_PHOTOS && (
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition mb-3">
+                      <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
+                      <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
+                      <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">Adicionar outro print</span>
+                    </label>
+                  )}
+                </>
+              ) : (
+                <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-3 bg-white/50">
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
+                  <ImagePlus className="w-7 h-7 text-slate-400 mx-auto mb-2" />
+                  <p className="text-[12px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
+                  <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
+                </label>
+              )}
 
-        {/* Bloco 3: Detalhes Manuais */}
-        <div 
-          className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
-        >
-          <p className="text-[13px] font-bold text-slate-700 mb-4 flex items-center gap-1.5">
-            <PencilLine className="w-4 h-4 text-slate-500" /> Registo manual <span className="text-slate-400 font-normal">— sem foto</span>
-          </p>
-
+              <button
+                onClick={handleAnalyzeRun}
+                disabled={!runPhotos.length || analyzingRun}
+                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+              >
+                {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                {analyzingRun ? 'A ler com IA...' : 'Analisar Corrida'}
+              </button>
+            </>
+          ) : (
+            <>
           {/* Metrics Grid inside "Métricas do relógio" sub-container */}
           <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-4">
             <p className="text-[12px] font-bold text-slate-500 mb-2.5">Métricas do relógio (opcional)</p>
@@ -714,22 +772,26 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
           </div>
           
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder={isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
             value={runDuration} onChange={e => setRunDuration(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4" 
+            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4"
           />
 
-          {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 mb-3">{errorMsg}</p>}
-
-          <button 
+          <button
             onClick={handleSaveCorrida}
             disabled={isSubmitting}
-            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-[13px] font-bold rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition border border-slate-200 shadow-sm"
+            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
           >
-            {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</> : <><PencilLine className="w-4 h-4 text-slate-500" /> Registar Corrida Manualmente</>}
+            {isSubmitting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
+              : <><PencilLine className="w-4 h-4" /> {runIdToEdit ? 'Guardar Alterações' : 'Registar Corrida'}</>}
           </button>
+            </>
+          )}
+
+          {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3">{errorMsg}</p>}
         </div>
       </div>
     );

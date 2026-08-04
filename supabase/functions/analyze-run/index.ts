@@ -450,6 +450,87 @@ async function generateCoachNotes(
   }
 }
 
+// Segmenta o histórico de comparação e chama generateCoachNotes, gravando o
+// resultado em coach_notes se a IA responder. Best-effort: uma falha aqui
+// (Gemini indisponível, timeout, resposta vazia) nunca desfaz a corrida já
+// gravada — só fica sem comentário do Coach, tal como acontecia antes desta
+// função existir. Partilhada pelo modo normal (fotos) e pelo modo manual —
+// as duas entradas passam pelo mesmo Coach, só a origem dos dados difere.
+async function attachCoachNotes(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  run: { id: string; coach_notes?: string | null },
+  ctx: {
+    date: string;
+    kind: string;
+    training_type: string | null;
+    race_type: string | null;
+    distance_km: number | null;
+    duration_seconds: number | null;
+    effort_rpe: number | null;
+    details: Record<string, unknown> | null;
+  },
+  geminiKey: string,
+): Promise<void> {
+  try {
+    // Segmentação do histórico usado na comparação:
+    // - Competição: só compara com outras competições (não treinos) — e,
+    //   dentro das competições, Trail só compara com Trail (terreno/esforço
+    //   não comparável a estrada); as restantes disciplinas comparam-se
+    //   todas entre si, mesmo com distâncias diferentes.
+    // - Treino: continua a olhar para treinos E competições.
+    let historyQuery = sb
+      .from("runs")
+      .select("date, kind, distance_km, duration_seconds, effort_rpe, details")
+      .eq("user_id", userId)
+      .lt("date", ctx.date);
+    let historyLabel: string;
+    if (ctx.kind === "competicao") {
+      historyQuery = historyQuery.eq("kind", "competicao");
+      if (ctx.race_type === "trail") {
+        historyQuery = historyQuery.eq("details->>race_type", "trail");
+        historyLabel = "apenas outras competições de Trail";
+      } else {
+        historyQuery = historyQuery.neq("details->>race_type", "trail");
+        historyLabel = "apenas outras competições de estrada/pista (todas as distâncias, sem Trail)";
+      }
+    } else {
+      historyLabel = "treinos e competições";
+    }
+
+    // Janela alargada (até 100 corridas do mesmo segmento) para que recorde
+    // pessoal, volume e tendência assentem numa base fiável — ver
+    // generateCoachNotes para o porquê de só as 5 mais recentes irem em
+    // detalhe no prompt.
+    const { data: previousRuns } = await historyQuery
+      .order("date", { ascending: false })
+      .limit(100);
+
+    const coachResult = await generateCoachNotes(
+      {
+        date: ctx.date,
+        kind: ctx.kind,
+        training_type: ctx.training_type,
+        distance_km: ctx.distance_km,
+        duration_seconds: ctx.duration_seconds,
+        effort_rpe: ctx.effort_rpe,
+        details: ctx.details,
+      },
+      previousRuns || [],
+      historyLabel,
+      geminiKey,
+    );
+
+    if (coachResult.text) {
+      await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
+      run.coach_notes = coachResult.text;
+    }
+  } catch (e) {
+    console.warn("Coach generation failed:", e);
+  }
+}
+
 async function analyzeWithGemini(
   images: string[],
   mime: string,
@@ -689,6 +770,89 @@ Deno.serve(async (req) => {
       return jsonResponse({ run: updated, usage: result.usage });
     }
 
+    // ── Modo manual: registo sem fotos, com análise do Coach ───────────
+    // Os dados já vêm todos do formulário (nada para o Gemini extrair de
+    // imagem nenhuma) — grava a corrida diretamente e gera só o comentário
+    // do Coach, com o mesmo attachCoachNotes do modo normal. Sem isto, uma
+    // corrida registada manualmente nunca tinha análise nenhuma; agora as
+    // duas formas de registo passam pelo Coach.
+    if (body.mode === "manual") {
+      const clientName = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
+      if (!clientName) return jsonResponse({ error: "Preenche o nome da corrida." }, 400);
+
+      const kind = VALID_KINDS.has(body.kind) ? body.kind : "treino";
+      const effortRpe = Number.isInteger(body.effort_rpe) && body.effort_rpe >= 1 && body.effort_rpe <= 10
+        ? body.effort_rpe
+        : null;
+      const trainingType = kind === "treino" && typeof body.training_type === "string" && TRAINING_TYPE_KEYS.includes(body.training_type)
+        ? body.training_type
+        : null;
+      const raceType = kind === "competicao" && typeof body.race_type === "string" && RACE_TYPE_KEYS.includes(body.race_type)
+        ? body.race_type
+        : null;
+      if (kind === "treino" && !trainingType) {
+        return jsonResponse({ error: "Escolhe o tipo de treino." }, 400);
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+        return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
+      }
+
+      // Mesma forma (RunExtraction) que a extração por IA produzia —
+      // detailsFromExtraction não sabe (nem precisa saber) se os números
+      // vieram de um print ou de um formulário.
+      const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      const int = (v: unknown): number | null => (Number.isInteger(v) ? (v as number) : null);
+      const extraction: RunExtraction = {
+        distance_km: num(body.distance_km),
+        duration_seconds: int(body.duration_seconds),
+        warmup_minutes: int(body.warmup_minutes),
+        recovery_seconds: int(body.recovery_seconds),
+        splits: Array.isArray(body.splits) ? body.splits : null,
+        official_time_seconds: int(body.official_time_seconds),
+        position: int(body.position),
+        elevation_gain_m: int(body.elevation_gain_m),
+        cadence_spm: int(body.cadence_spm),
+        calories_kcal: int(body.calories_kcal),
+        avg_heart_rate_bpm: int(body.avg_heart_rate_bpm),
+        max_heart_rate_bpm: int(body.max_heart_rate_bpm),
+        vo2_max: num(body.vo2_max),
+        hr_zones: Array.isArray(body.hr_zones) ? body.hr_zones : null,
+      };
+      const details = detailsFromExtraction(kind, extraction, trainingType, raceType);
+
+      const { data: run, error: insertError } = await sb
+        .from("runs")
+        .insert({
+          user_id: userId,
+          date: body.date,
+          photo_paths: null,
+          kind,
+          training_type: trainingType,
+          details,
+          notes: rawNotes,
+          name: clientName,
+          effort_rpe: effortRpe,
+          distance_km: extraction.distance_km,
+          duration_seconds: extraction.duration_seconds,
+        })
+        .select()
+        .single();
+      if (insertError) return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
+
+      await attachCoachNotes(sb, userId, run, {
+        date: body.date,
+        kind,
+        training_type: trainingType,
+        race_type: raceType,
+        distance_km: extraction.distance_km,
+        duration_seconds: extraction.duration_seconds,
+        effort_rpe: effortRpe,
+        details,
+      }, geminiKey);
+
+      return jsonResponse({ run });
+    }
+
     // ── Modo normal: nova corrida a partir de imagens ─────────────────
     const { mime_type, date } = body;
     const kind = VALID_KINDS.has(body.kind) ? body.kind : "treino";
@@ -784,67 +948,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
     }
 
-    // 4. Gerar análise do Coach (bloqueante — deve estar pronto antes da resposta)
-    try {
-      // Segmentação do histórico usado na comparação:
-      // - Competição: só compara com outras competições (não treinos) — e,
-      //   dentro das competições, Trail só compara com Trail (terreno/esforço
-      //   não comparável a estrada); as restantes disciplinas (estrada,
-      //   5k/10k/21k/42k/ultra/outro) comparam-se todas entre si, mesmo com
-      //   distâncias diferentes, porque o prompt já pede ao modelo para
-      //   normalizar por pace/esforço, não por tempo absoluto.
-      // - Treino: continua a olhar para treinos E competições — um treino
-      //   ganha contexto ao ver o nível atingido em prova.
-      let historyQuery = sb
-        .from("runs")
-        .select("date, kind, distance_km, duration_seconds, effort_rpe, details")
-        .eq("user_id", userId)
-        .lt("date", date);
-      let historyLabel: string;
-      if (kind === "competicao") {
-        historyQuery = historyQuery.eq("kind", "competicao");
-        if (raceType === "trail") {
-          historyQuery = historyQuery.eq("details->>race_type", "trail");
-          historyLabel = "apenas outras competições de Trail";
-        } else {
-          historyQuery = historyQuery.neq("details->>race_type", "trail");
-          historyLabel = "apenas outras competições de estrada/pista (todas as distâncias, sem Trail)";
-        }
-      } else {
-        historyLabel = "treinos e competições";
-      }
-
-      // Janela alargada (até 100 corridas do mesmo segmento, não só as 10
-      // mais recentes) para que recorde pessoal, volume e tendência assentem
-      // numa base fiável mesmo quando as 5-10 corridas mais recentes têm
-      // pouca variação — só as 5 mais recentes vão em detalhe no prompt
-      // (ver generateCoachNotes), o resto alimenta só as estatísticas.
-      const { data: previousRuns } = await historyQuery
-        .order("date", { ascending: false })
-        .limit(100);
-
-      const coachResult = await generateCoachNotes(
-        {
-          date,
-          kind,
-          training_type: trainingType,
-          distance_km: result.extraction.distance_km,
-          duration_seconds: result.extraction.duration_seconds,
-          effort_rpe: effortRpe,
-          details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-        },
-        previousRuns || [],
-        historyLabel,
-        geminiKey,
-      );
-
-      if (coachResult.text) {
-        await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
-        run.coach_notes = coachResult.text;
-      }
-    } catch (e) {
-      console.warn("Coach generation failed:", e);
-    }
+    // 4. Gerar análise do Coach (best-effort — ver attachCoachNotes)
+    await attachCoachNotes(sb, userId, run, {
+      date,
+      kind,
+      training_type: trainingType,
+      race_type: raceType,
+      distance_km: result.extraction.distance_km,
+      duration_seconds: result.extraction.duration_seconds,
+      effort_rpe: effortRpe,
+      details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
+    }, geminiKey);
 
     return jsonResponse({ run, usage: result.usage });
   } catch (e) {

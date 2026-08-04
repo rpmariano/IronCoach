@@ -111,3 +111,110 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     expect(useAppStore.getState().runs).toEqual([]);
   });
 });
+
+describe('RunRegistration — cartão único: alternar entre Foto e Manual', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.getByText(/Escolhe os prints da app de corrida/)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Distância')).not.toBeInTheDocument();
+  });
+
+  it('ao escolher Manual, esconde o upload e mostra os campos manuais', () => {
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+
+    expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Distância')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registar Corrida' })).toBeInTheDocument();
+  });
+
+  it('esconde o seletor e vai direto aos campos manuais quando está a editar', () => {
+    // Editar é sempre pelos campos — a IA por foto só cria; "Reanalisar" no
+    // cartão da corrida é a ação dedicada a reanalisar uma já criada assim.
+    useAppStore.setState({
+      profile: PROFILE,
+      runs: [{ id: 'run-1', kind: 'treino', training_type: 'continuo', date: '2026-08-01', name: 'Corrida', distance_km: 10, duration_seconds: 3000, effort_rpe: 5, details: null }],
+      raceEvents: [],
+    });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-1" />);
+
+    expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Distância')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
+  });
+});
+
+describe('RunRegistration — registo manual também passa pelo Coach (analyze-run, modo manual)', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+
+  it('envia o registo manual para analyze-run em modo manual, sem imagens', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-2', coach_notes: 'Boa consistência de pace.' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '10' } });
+    fireEvent.change(screen.getByPlaceholderText('Duração (ex.: 43m ou 37:57)'), { target: { value: '50:00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-run');
+    expect(body.mode).toBe('manual');
+    expect(body.images).toBeUndefined();
+    expect(body.distance_km).toBe(10);
+    expect(body.duration_seconds).toBe(3000);
+    // 'continuo' é o valor por omissão do select de Tipo de treino — o
+    // mesmo enum que o caminho de fotos usa, validado do mesmo modo.
+    expect(body.training_type).toBe('continuo');
+  });
+
+  it('acrescenta a corrida devolvida (já com coach_notes) ao store e fecha o formulário', async () => {
+    const newRun = { id: 'run-2', coach_notes: 'Boa consistência de pace.' };
+    mocks.invoke.mockResolvedValue({ data: { run: newRun }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(useAppStore.getState().runs).toEqual([newRun]);
+  });
+
+  it('não invoca a análise sem nome de corrida preenchido', () => {
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: '' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
+  });
+
+  it('mostra o erro da Edge Function e não fecha o formulário', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a gravar corrida.' });
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+
+    await screen.findByText('Falha a gravar corrida.');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
