@@ -10,7 +10,10 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 
 ## 2. Tecnologias & Arquitetura
 
-- **Frontend**: React (Vite SPA), Tailwind CSS, Zustand (`src/store/index.js`), Vitest + Testing Library.
+- **Frontend**: React (Vite SPA).
+- **Estilos**: Tailwind CSS e variáveis CSS nativas em `src/styles/globals.css`. Tema exclusivamente claro (`color-scheme: only light`).
+- **Gestão de Estado**: Zustand (`src/store/index.js`).
+- **Testes**: Vitest + Testing Library.
 - **Backend**: Supabase (Google OAuth, Postgres, Edge Functions), partilhado por todos os ambientes — **não existe base de dados de desenvolvimento separada**.
 - `index_legacy.html` é um arquivo da app anterior em JavaScript vanilla. Não é servido nem mantido; existe como referência, a par da tag `backup/master-pre-react-merge`.
 
@@ -30,10 +33,6 @@ A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servi
 - O service worker registra-se em `` `${import.meta.env.BASE_URL}sw.js` `` — isto também lhe dá o scope correto, o da app.
 - O `public/manifest.json` usa caminhos **relativos** (`start_url: "."`, ícones sem `/` inicial), o que funciona nas duas raízes. Mantê-lo assim.
 - Não é preciso fallback de 404: a navegação é estado do Zustand mais um parâmetro `?tab=`, não rotas por caminho.
-- **Estilos**: Tailwind CSS e variáveis CSS nativas em `src/styles/globals.css`. Tema exclusivamente claro (`color-scheme: only light`).
-- **Backend / Base de Dados**: Supabase (Autenticação via Google OAuth, base de dados em tempo real, Edge Functions).
-- **Gestão de Estado**: Zustand (`src/store/index.js`).
-- **Testes**: Vitest + Testing Library.
 
 ---
 
