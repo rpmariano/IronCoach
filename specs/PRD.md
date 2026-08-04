@@ -9,9 +9,21 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 - **Idioma Principal**: Português de Portugal (pt-PT).
 
 ## 2. Tecnologias & Arquitetura
-- **Frontend**: React (Vite SPA). É a **única versão de produção** desde a consolidação de 2026-08-03.
-  - `index.html` é apenas o ponto de entrada do SPA; a aplicação vive em `src/`.
-  - `index_legacy.html` é um **arquivo** da versão anterior em JavaScript vanilla, guardado como referência histórica. Não é servido nem mantido. O último estado que esteve em produção está também na tag `backup/master-pre-react-merge`.
+
+### 2.1. O que está em produção (2026-08-04)
+- **Produção é a app em JavaScript vanilla**, no `index.html` na raiz do `master`, servida pelo **GitHub Pages** em `https://rpmariano.github.io/ironhealth/`.
+- **O GitHub Pages serve o `master` como ficheiros estáticos e não corre nenhum passo de build.** Não existe workflow do GitHub Actions nem ramo `gh-pages`. O `netlify.toml` na raiz do repositório é de um ambiente de desenvolvimento separado e **não descreve como a produção é servida** — não inferir o host a partir dele.
+- A consolidação em React foi tentada a 2026-08-04 e **revertida no mesmo dia**: substituir o `index.html` pelo ponto de entrada do SPA deixou a app em branco, porque o Pages serviu as 20 linhas do entry sem nunca construir o `src/`. Reposto no commit `4b2b1ff`.
+
+### 2.2. O React, que existe mas não é servido
+- O código React (Vite SPA, Zustand, Tailwind) está no repositório em `src/`, completo e testado, e **não é servido**. `index_legacy.html` é uma cópia de arquivo da app vanilla.
+- O trabalho de consolidação está no ramo `staging/react-consolidation` e no histórico do `master` em `5b076e6`. Rollback disponível em `backup/master-pre-react-merge`.
+- **Para o React chegar a produção no GitHub Pages faltam:**
+  1. um workflow que corra `npm run build` e publique o `dist`;
+  2. `base: '/ironhealth/'` no `vite.config.mjs` — o site vive num subcaminho, e os caminhos absolutos dão 404;
+  3. o registo do service worker a usar `import.meta.env.BASE_URL` em vez de `/sw.js`;
+  4. revisão dos caminhos absolutos no `index.html` e no `manifest.json`.
+  - Não é preciso fallback de 404: a navegação é estado do Zustand mais um parâmetro `?tab=`, não rotas por caminho.
 - **Estilos**: Tailwind CSS e variáveis CSS nativas em `src/styles/globals.css`. Tema exclusivamente claro (`color-scheme: only light`).
 - **Backend / Base de Dados**: Supabase (Autenticação via Google OAuth, base de dados em tempo real, Edge Functions).
 - **Gestão de Estado**: Zustand (`src/store/index.js`).
@@ -133,8 +145,10 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - **Estado da verificação**: o `aria-label` foi auditado por varredura automática de botões cujo conteúdo é só um ícone. A varredura tem falsos positivos conhecidos (botões cujo texto vive dentro de uma expressão JSX) e já deixou passar pelo menos um caso real, por isso não substitui revisão.
 
 ### 5.3. Escalas de Data (UTC vs Lisboa)
-- A janela horária dos lembretes é avaliada na **hora de Lisboa**, por isso o dia a que um "Silenciar hoje" se refere também é o **dia de Lisboa** (`lisbonTodayISO()` no cliente, `currentLisbonDate()` na Edge Function). Em horário de verão, entre as 00:00 e a 01:00, a data UTC ainda é a de ontem — sem isto, um silenciamento pedido às 23:00 caducava à 01:00 em vez de ao fim da janela.
-- **Conhecido e não alterado**: `water_logs.date` e as datas de refeição continuam a ser gravadas em **UTC**. Nessa mesma hora de divergência, um registo entra no dia anterior. A Edge Function compara `water_logs` em UTC precisamente para bater com o que o cliente grava. Unificar todas as datas na escala de Lisboa é uma alteração transversal (e exigiria migrar dados já gravados), pelo que fica fora de âmbito.
+- A **hora** da janela de lembretes é sempre avaliada em hora de Lisboa (`currentLisbonHour`), porque é uma decisão do utilizador sobre o dia dele.
+- A **data** de `water_reminder_muted_date` é comparada em **UTC** na Edge Function, para bater com o `todayISO()` do frontend vanilla que está em produção. O que importa é as duas pontas usarem a mesma escala: comparar em Lisboa contra um valor gravado em UTC faz o silenciamento não ter efeito nenhum na hora em que divergem (00:00–01:00 no horário de verão).
+- O ramo `staging/react-consolidation` tem as duas pontas em Lisboa (`lisbonTodayISO()` no cliente, `currentLisbonDate()` na função), que é o comportamento mais correto — o silenciamento passa a durar o dia do utilizador. **As duas mudanças têm de ser publicadas juntas**; publicar só uma reintroduz a divergência.
+- **Conhecido e não alterado**: `water_logs.date` e as datas de refeição são gravadas em UTC. Nessa mesma hora de divergência, um registo entra no dia anterior. Unificar todas as datas na escala de Lisboa é transversal e exigiria migrar dados já gravados, pelo que fica fora de âmbito.
 
 ### 5.4. Carregamento de Dados (dívida registada)
 - `loadInitialData` (`src/store/index.js`) busca `meals` e `water_logs` **sem limite de datas**. O PostgREST limita o número de linhas por omissão (1000 no Supabase), ordenadas por data descendente.

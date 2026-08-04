@@ -33,12 +33,16 @@ function currentLisbonHour(date: Date): number {
   );
 }
 
-// Data do calendário em Lisboa, pelo mesmo motivo da hora: em horário de verão
-// a data UTC ainda é a de ontem entre as 00:00 e a 01:00, e um "silenciar hoje"
-// pedido às 23:00 caducava à 01:00 em vez de ao fim da janela de lembretes.
-function currentLisbonDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(date);
-}
+/* NOTA: esta função compara water_reminder_muted_date em UTC de propósito,
+   porque o frontend em produção (a app vanilla em index.html) grava esse campo
+   com todayISO(), que é UTC. Manter as duas escalas iguais é o que importa —
+   comparar em Lisboa contra um valor gravado em UTC faria o silenciamento não
+   ter efeito nenhum na hora em que as duas divergem (00:00–01:00 no horário de
+   verão).
+
+   O ramo staging/react-consolidation tem a versão que compara pela data de
+   Lisboa, a par de um frontend que também a grava em Lisboa. As duas mudanças
+   têm de ir juntas — ver PRD 5.3. */
 
 // Janela agora configurável por utilizador (water_reminder_start_hour/
 // water_reminder_end_hour, 0-23) — falha para 8-22 só se, por alguma razão,
@@ -76,11 +80,8 @@ async function handler(req: Request): Promise<Response> {
   try {
     const nowDate = new Date();
     const currentHour = currentLisbonHour(nowDate);
-    // Duas noções de "hoje", de propósito: o silenciamento é uma decisão do
-    // utilizador sobre o dia dele (Lisboa), enquanto water_logs.date é gravado
-    // pelo cliente em UTC — comparar cada um na sua escala evita falhar por um
-    // dia na hora em que as duas divergem.
-    const lisbonToday = currentLisbonDate(nowDate);
+    // UTC, para bater com o todayISO() do frontend em produção — ver a nota
+    // acima sobre as escalas de data.
     const todayISO = nowDate.toISOString().slice(0, 10);
 
     const { data: profiles, error: profilesErr } = await sb
@@ -98,7 +99,7 @@ async function handler(req: Request): Promise<Response> {
     // A janela horária é por utilizador (water_reminder_start_hour/
     // water_reminder_end_hour) — cada perfil pode ter um horário diferente.
     const dueByTime = (profiles || []).filter((p) => {
-      if (p.water_reminder_muted_date === lisbonToday) return false;
+      if (p.water_reminder_muted_date === todayISO) return false;
       if (!isWithinReminderHours(currentHour, p.water_reminder_start_hour, p.water_reminder_end_hour)) return false;
       const intervalMs = (p.water_reminder_interval_minutes || DEFAULT_INTERVAL_MINUTES) * 60000;
       const lastMs = p.water_last_activity_at ? new Date(p.water_last_activity_at).getTime() : 0;
