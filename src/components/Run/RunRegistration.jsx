@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ImagePlus, X, Trash2, Check, Loader2, Sparkles, PencilLine, Plus } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { supabase } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { compressImage } from '../../lib/image';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -25,17 +26,37 @@ const RACE_TYPES = [
   { key: 'outro', label: 'Outro' }
 ];
 
+/* Espelha TRAINING_TYPE_KEYS/LABELS em supabase/functions/analyze-run —
+   têm de bater certo com o enum fixo do schema que o Gemini usa. O conjunto
+   anterior (intervalado/progressivo/series) não existia nesse enum: a
+   função descartava-o em silêncio e gravava training_type: null. */
 const RUN_TRAINING_TYPES = [
   { key: 'continuo', label: 'Contínuo', group: 'Corrida solta' },
   { key: 'longo', label: 'Longo', group: 'Corrida solta' },
   { key: 'recuperacao', label: 'Recuperação', group: 'Corrida solta' },
-  { key: 'intervalado', label: 'Intervalado', group: 'Estruturado' },
+  { key: 'tempo', label: 'Ritmo (Tempo)', group: 'Estruturado' },
   { key: 'fartlek', label: 'Fartlek', group: 'Estruturado' },
-  { key: 'progressivo', label: 'Progressivo', group: 'Estruturado' },
-  { key: 'series', label: 'Séries', group: 'Estruturado' }
+  { key: 'intervalos', label: 'Intervalos', group: 'Estruturado' },
+  { key: 'subidas', label: 'Subidas', group: 'Trilho' },
+  { key: 'trail', label: 'Trail', group: 'Trilho' },
+  { key: 'tecnico', label: 'Técnico (trilho)', group: 'Trilho' },
 ];
 
-const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalado', 'series']);
+const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'subidas']);
+
+/* Idem para RACE_TYPE_KEYS/LABELS — usado só no detalhe de competição
+   (runs.details.race_type), não confundir com o RACE_TYPES mais abaixo, que
+   é da Agenda de Provas (tabela race_events, sem ligação ao analyze-run). */
+const COMPLETED_RACE_TYPES = [
+  { key: 'estrada', label: 'Estrada' },
+  { key: 'trail', label: 'Trail' },
+  { key: 'ultra', label: 'Ultra' },
+  { key: '5k', label: '5 km' },
+  { key: '10k', label: '10 km' },
+  { key: '21k', label: 'Meia maratona' },
+  { key: '42k', label: 'Maratona' },
+  { key: 'outro', label: 'Outro' },
+];
 
 function todayISO() {
   const d = new Date();
@@ -71,7 +92,7 @@ function formatDuration(totalSeconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const MAX_PHOTOS = 4;
+const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
 export default function RunRegistration({ onClose, initialMode = 'corrida', dateIso = null, eventIdToEdit = null, runIdToEdit = null }) {
   const { profile, runs, raceEvents, setRuns, setRaceEvents } = useAppStore();
@@ -122,6 +143,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  // Estado próprio para a análise por IA: partilhar errorMsg com o registo
+  // manual duplicava a mesma mensagem em dois sítios do formulário sempre
+  // que qualquer um dos dois falhasse.
+  const [analyzeError, setAnalyzeError] = useState('');
 
   // Load existing data if editing
   useEffect(() => {
@@ -172,8 +197,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     }
   }, [initialMode, eventIdToEdit, runIdToEdit, raceEvents, runs]);
 
-  // Handle Photo Selection
-  const handlePhotoSelected = (e) => {
+  // Handle Photo Selection — comprime e normaliza para JPEG antes de guardar
+  // (ver src/lib/image.js); o .base64 resultante é o que vai no pedido de
+  // análise por IA.
+  const handlePhotoSelected = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (!files.length) return;
@@ -182,15 +209,15 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
       setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
       return;
     }
-    
-    // Read files as Data URLs
-    files.slice(0, remaining).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setRunPhotos(prev => [...prev, { file, dataUrl: ev.target.result }]);
-      };
-      reader.readAsDataURL(file);
-    });
+
+    for (const file of files.slice(0, remaining)) {
+      try {
+        const { dataUrl, base64 } = await compressImage(file);
+        setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+      } catch (err) {
+        console.warn('Falha a processar imagem', err);
+      }
+    }
   };
 
   const removePhoto = (index) => {
@@ -198,33 +225,70 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   };
 
   // ----------------------------------
-  // SAVE CORRIDA (Runs Table)
+  // ANALISAR CORRIDA (IA — analyze-run)
+  // ----------------------------------
+  // Fotos são só para este caminho: o registo manual (handleSaveCorrida)
+  // nunca teve anexos de foto, no vanilla nem aqui — evita duas rotas a
+  // gravar a mesma corrida de formas diferentes (uma comprimida e analisada
+  // pela IA, outra crua e sem análise nenhuma).
+  const handleAnalyzeRun = async () => {
+    if (!runPhotos.length || analyzingRun) return;
+
+    if (!runName.trim()) {
+      setAnalyzeError('Preenche o nome da corrida.');
+      return;
+    }
+    if (runKind === 'treino' && !runTrainingType) {
+      setAnalyzeError('Escolhe o tipo de treino.');
+      return;
+    }
+    if (runKind === 'competicao' && !completedRaceType) {
+      setAnalyzeError('Escolhe a disciplina.');
+      return;
+    }
+
+    setAnalyzingRun(true);
+    setAnalyzeError('');
+    try {
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+        body: {
+          images: runPhotos.map(p => p.base64),
+          mime_type: 'image/jpeg',
+          date: runDate,
+          kind: runKind,
+          name: runName.trim(),
+          name_is_auto: false,
+          effort_rpe: runEffortRpe || null,
+          training_type: runKind === 'treino' ? runTrainingType : null,
+          race_type: runKind === 'competicao' ? completedRaceType : null,
+        },
+      });
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+
+      setRuns([...runs, data.run]);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setAnalyzeError(err.message || 'Falha na análise. Tenta novamente.');
+    } finally {
+      setAnalyzingRun(false);
+    }
+  };
+
+  // ----------------------------------
+  // SAVE CORRIDA (Runs Table) — registo manual, sem IA nem fotos
   // ----------------------------------
   const handleSaveCorrida = async () => {
     if (!runName.trim()) {
       setErrorMsg('Preenche o nome da corrida.');
       return;
     }
-    
+
     setIsSubmitting(true);
     setErrorMsg('');
 
     try {
-      // 1. Upload photos if any
-      let uploadedPaths = [];
-      if (runPhotos.length > 0) {
-        for (const p of runPhotos) {
-          if (p.file) {
-            const ext = p.file.name.split('.').pop() || 'jpg';
-            const fileName = `${profile.id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-            const { error: uploadErr } = await supabase.storage.from('run-photos').upload(fileName, p.file);
-            if (!uploadErr) uploadedPaths.push(fileName);
-          } else if (p.url) {
-            uploadedPaths.push(p.url); // keep existing
-          }
-        }
-      }
-
       const distVal = parseFloat(runDistance);
       const durSecs = parseDurationToSeconds(runDuration);
       
@@ -269,7 +333,6 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         duration_seconds: durSecs,
         effort_rpe: runEffortRpe || null,
         details: Object.keys(details).length > 0 ? details : null,
-        photo_paths: uploadedPaths.length > 0 ? uploadedPaths : null
       };
 
       if (runIdToEdit) {
@@ -370,11 +433,11 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             </button>
           </div>
 
-          {runKind === 'treino' && (
+          {runKind === 'treino' ? (
             <div className="mb-4">
               <label className="text-[12px] text-slate-500 mb-1.5 block">Tipo de treino</label>
-              <select 
-                value={runTrainingType} 
+              <select
+                value={runTrainingType}
                 onChange={e => setRunTrainingType(e.target.value)}
                 className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
               >
@@ -385,13 +448,27 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                 </optgroup>
                 <optgroup label="Estruturado">
                   <option value="tempo">Ritmo (Tempo)</option>
-                  <option value="intervalado">Intervalado</option>
                   <option value="fartlek">Fartlek</option>
-                  <option value="progressivo">Progressivo</option>
-                  <option value="series">Séries</option>
+                  <option value="intervalos">Intervalos</option>
+                </optgroup>
+                <optgroup label="Trilho">
+                  <option value="subidas">Subidas</option>
+                  <option value="trail">Trail</option>
+                  <option value="tecnico">Técnico (trilho)</option>
                 </optgroup>
               </select>
               <p className="text-[10px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+            </div>
+          ) : (
+            <div className="mb-4">
+              <label className="text-[12px] text-slate-500 mb-1.5 block">Disciplina</label>
+              <select
+                value={completedRaceType}
+                onChange={e => setCompletedRaceType(e.target.value)}
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+              >
+                {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
             </div>
           )}
 
@@ -473,14 +550,15 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             </label>
           )}
 
-          <button 
-            onClick={() => alert('Análise IA será implementada na próxima fase!')}
+          <button
+            onClick={handleAnalyzeRun}
             disabled={!runPhotos.length || analyzingRun}
             className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
           >
             {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {analyzingRun ? 'A ler com IA...' : 'Analisar Corrida'}
           </button>
+          {analyzeError && <p className="text-red-500 text-[13px] font-medium mt-3">{analyzeError}</p>}
         </div>
 
         {/* Bloco 3: Detalhes Manuais */}

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, MessageSquare, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
-import { supabase } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 
 function RunIcon({ className = "w-5 h-5" }) {
@@ -42,14 +42,19 @@ function formatPace(secPerKm) {
 function runKindLabel(run) {
   if (run.kind === 'competicao') return 'Competição';
   if (run.kind === 'treino' && run.training_type) {
+    // Espelha TRAINING_TYPE_LABELS em supabase/functions/analyze-run. Cai no
+    // valor em bruto para corridas antigas gravadas com o enum anterior
+    // (intervalado/progressivo/series), que a Edge Function nunca reconheceu.
     const map = {
-      'continuo': 'Contínuo',
-      'intervalado': 'Intervalado',
-      'progressivo': 'Progressivo',
-      'longo': 'Longo',
-      'recuperacao': 'Recuperação',
-      'fartlek': 'Fartlek',
-      'series': 'Séries'
+      continuo: 'Contínuo',
+      longo: 'Longo',
+      recuperacao: 'Recuperação',
+      tempo: 'Ritmo (Tempo)',
+      fartlek: 'Fartlek',
+      intervalos: 'Intervalos',
+      subidas: 'Subidas',
+      trail: 'Trail',
+      tecnico: 'Técnico (trilho)',
     };
     return map[run.training_type] || run.training_type;
   }
@@ -67,7 +72,7 @@ function formatDatePT(isoStr) {
 
 export default function RunCard({ run, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
-  const { profile, loadInitialData } = useAppStore();
+  const { profile, loadInitialData, runs, setRuns } = useAppStore();
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -113,10 +118,23 @@ export default function RunCard({ run, onEdit, onDelete }) {
     }
   };
 
+  // Repesca os prints já guardados (run_id, sem imagens novas) e volta a
+  // analisá-los do zero. Só funciona para corridas criadas a partir de um
+  // print — a Edge Function devolve um erro claro (não crasha) se
+  // run.photo_paths estiver vazio, como acontece num registo manual.
   const handleReanalyze = async () => {
+    if (isReanalyzing) return;
     setIsReanalyzing(true);
     try {
-      alert('Reanálise enviada para o Coach...');
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+        body: { run_id: run.id, notes: run.notes || null },
+      });
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+      setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));
+    } catch (err) {
+      console.error('Error reanalyzing run:', err);
+      alert(err.message || 'Falha na reanálise. Tenta novamente.');
     } finally {
       setIsReanalyzing(false);
     }

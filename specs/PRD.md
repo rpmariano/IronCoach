@@ -71,6 +71,11 @@ A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servi
 - Listagem de próximas provas agendadas e contagem decrescente de dias.
 - Gráfico de distância percorrida semanalmente.
 - Calendário histórico: ponto verde nos dias com corrida registada, cinzento nos restantes.
+- **Análise por IA ("Analisar Corrida")**: 1 a 6 prints da app de corrida (Strava, Garmin, ...), comprimidos e normalizados para JPEG no cliente (`src/lib/image.js`), enviados para a Edge Function `analyze-run`. Extrai distância/duração/splits/métricas do relógio e **gera a nota do Coach** (`coach_notes`) sobre a corrida — é este passo, não o registo em si, que faltava para o Coach comentar uma corrida submetida.
+  - "Reanalisar" (no cartão da corrida) repesca os prints já guardados e volta a analisá-los; só funciona em corridas criadas por este caminho (com `photo_paths`), a Edge Function devolve um erro claro para as restantes.
+  - **Registo manual não tem fotos nem análise do Coach** — é a mesma separação do vanilla: fotos e IA são exclusivos do caminho de "Analisar Corrida".
+  - `training_type` (treino) e `race_type` (competição) são enums fixos partilhados com o schema do Gemini na Edge Function — as chaves usadas no formulário têm de bater certo com `TRAINING_TYPE_KEYS`/`RACE_TYPE_KEYS` em `supabase/functions/analyze-run/index.ts`, nunca inventadas no cliente. Um valor fora do enum é descartado em silêncio pela função (grava `null`), sem erro visível.
+- **Dívida registada — a mesma análise por IA não está ligada em Nutrição, Ginásio nem Corpo.** Os botões "Analisar"/"Registar com foto" desses três módulos são placeholders (`alert(...)` ou `disabled`); as Edge Functions `analyze-meal`, `analyze-gym` e `analyze-body` existem e continuam ativas, só não são chamadas por nenhum ficheiro de `src/`. Portar cada uma segue o mesmo padrão desta secção: comprimir com `compressImage`, montar o payload, invocar via `invokeEdgeFunctionWithTimeout`, e confirmar o enum de campos fixos (se existir) contra a respetiva função antes de reutilizar chaves já usadas noutro sítio da app.
 
 ### 3.5. Composição Corporal (`Body`)
 - Registo de avaliações físicas (Peso, Massa Gorda, Massa Muscular).
