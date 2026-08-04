@@ -31,9 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 24 para igualar o ambiente local onde os testes passam. Com Node 20
+      # o jsdom rebenta a carregar o undici ("webidl.util.markAsUncloneable is
+      # not a function") e nenhum teste chega a arrancar. O vite@8 também exige
+      # ^20.19.0 || >=22.12.0.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
