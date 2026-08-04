@@ -150,10 +150,10 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - **Estado da verificação**: o `aria-label` foi auditado por varredura automática de botões cujo conteúdo é só um ícone. A varredura tem falsos positivos conhecidos (botões cujo texto vive dentro de uma expressão JSX) e já deixou passar pelo menos um caso real, por isso não substitui revisão.
 
 ### 5.3. Escalas de Data (UTC vs Lisboa)
-- A **hora** da janela de lembretes é sempre avaliada em hora de Lisboa (`currentLisbonHour`), porque é uma decisão do utilizador sobre o dia dele.
-- A **data** de `water_reminder_muted_date` é comparada em **UTC** na Edge Function, para bater com o `todayISO()` do frontend vanilla que está em produção. O que importa é as duas pontas usarem a mesma escala: comparar em Lisboa contra um valor gravado em UTC faz o silenciamento não ter efeito nenhum na hora em que divergem (00:00–01:00 no horário de verão).
-- O ramo `staging/react-consolidation` tem as duas pontas em Lisboa (`lisbonTodayISO()` no cliente, `currentLisbonDate()` na função), que é o comportamento mais correto — o silenciamento passa a durar o dia do utilizador. **As duas mudanças têm de ser publicadas juntas**; publicar só uma reintroduz a divergência.
-- **Conhecido e não alterado**: `water_logs.date` e as datas de refeição são gravadas em UTC. Nessa mesma hora de divergência, um registo entra no dia anterior. Unificar todas as datas na escala de Lisboa é transversal e exigiria migrar dados já gravados, pelo que fica fora de âmbito.
+- A **hora** da janela de lembretes é avaliada em hora de Lisboa (`currentLisbonHour`), porque é uma decisão do utilizador sobre o dia dele.
+- A **data** de `water_reminder_muted_date` usa a **data de Lisboa nas duas pontas**: `lisbonTodayISO()` no cliente (`src/lib/utils.js`) e `currentLisbonDate()` na Edge Function. O que importa é serem a mesma escala — comparar numa e gravar noutra faz o silenciamento não ter efeito nenhum na hora em que divergem (00:00–01:00 no horário de verão).
+- **Ao mudar uma ponta, mudar a outra e voltar a publicar a Edge Function.** Isto já falhou duas vezes num só dia, nas duas direções, durante a transição de frontend.
+- **Conhecido e não alterado**: `water_logs.date` e as datas de refeição são gravadas em UTC, e a Edge Function consulta `water_logs` em UTC precisamente para bater com isso. Nessa hora de divergência, um registo entra no dia anterior. Unificar todas as datas em Lisboa é transversal e exigiria migrar dados já gravados, pelo que fica fora de âmbito.
 
 ### 5.4. Carregamento de Dados (dívida registada)
 - `loadInitialData` (`src/store/index.js`) busca `meals` e `water_logs` **sem limite de datas**. O PostgREST limita o número de linhas por omissão (1000 no Supabase), ordenadas por data descendente.
