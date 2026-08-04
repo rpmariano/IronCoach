@@ -1,8 +1,22 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
+
+// Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
+const mocks = vi.hoisted(() => ({ updates: [] }));
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: () => ({
+      update: (payload) => {
+        mocks.updates.push(payload);
+        return { eq: () => Promise.resolve({ error: null }) };
+      },
+    }),
+    auth: { signOut: () => Promise.resolve({ error: null }) },
+  },
+}));
 
 // Valores distintos entre si para as consultas por valor não serem ambíguas.
 const PROFILE = {
@@ -26,6 +40,7 @@ const sujarCalorias = (valor) => {
 
 describe('Perfil — rascunho vs recarregamento do perfil', () => {
   beforeEach(() => {
+    mocks.updates.length = 0;
     useAppStore.setState({
       profile: PROFILE,
       session: { user: { email: 'atleta@ironhealth.app' } },
@@ -101,7 +116,7 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     expect(useAppStore.getState().activeTab).toBe('ginasio');
   });
 
-  it('sair sem gravar reverte o rascunho para os valores do perfil', () => {
+  it('sair sem gravar reverte os campos para os valores do perfil', () => {
     render(<Perfil />);
     abrirMetas();
     sujarCalorias('2222');
@@ -110,6 +125,41 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sair sem gravar' }));
 
     expect(useAppStore.getState().activeTab).toBe('ginasio');
-    expect(useAppStore.getState().profile.calorie_goal).toBe(2100);
+    // Afirmar sobre o que está no ecrã, não sobre o store: o descartar nunca
+    // escreve no store, por isso essa asserção passaria mesmo sem reverter.
+    expect(screen.getByDisplayValue('2100')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('2222')).not.toBeInTheDocument();
+  });
+
+  it('grava só os campos alterados, sem tocar nos que o servidor também escreve', async () => {
+    useAppStore.setState({
+      profile: { ...PROFILE, water_last_activity_at: '2026-08-03T09:00:00Z', water_reminder_muted_date: null },
+    });
+    render(<Perfil />);
+    abrirMetas();
+    sujarCalorias('2222');
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    const payload = mocks.updates[0];
+    expect(payload).toEqual({ calorie_goal: 2222 });
+    /* Enviar a linha inteira escrevia por cima destes dois, que o cron dos
+       lembretes e o registo de água alteram do lado do servidor. */
+    expect(payload).not.toHaveProperty('water_last_activity_at');
+    expect(payload).not.toHaveProperty('water_reminder_muted_date');
+    expect(payload).not.toHaveProperty('id');
+  });
+
+  it('terminar sessão com alterações pendentes passa pelo aviso', () => {
+    render(<Perfil />);
+    abrirMetas();
+    sujarCalorias('2222');
+
+    // O botão de terminar sessão vive no separador Pessoal — chegar lá com o
+    // rascunho sujo já dispara o aviso, que é o comportamento a garantir.
+    fireEvent.click(screen.getByRole('button', { name: /Pessoal/ }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Tens alterações por gravar');
   });
 });

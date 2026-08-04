@@ -39,8 +39,14 @@ export default function Perfil() {
   const [subscribingPush, setSubscribingPush] = useState(false);
 
   // Destino pendente quando se tenta sair com alterações por gravar.
-  // { kind: 'tab' | 'nav', target: string }
+  // { kind: 'tab' | 'nav' | 'signout', target: string | null }
   const [leavePrompt, setLeavePrompt] = useState(null);
+
+  /* Só os campos que o utilizador mexeu vão para o UPDATE. Mandar a linha
+     inteira faria o Perfil escrever por cima de campos que o servidor também
+     altera — water_last_activity_at (cron dos lembretes e registo de água) e
+     water_reminder_muted_date — com valores que o rascunho tinha em cache. */
+  const dirtyKeys = useRef(new Set());
 
   // Metas UI
   const [metasBodyExpanded, setMetasBodyExpanded] = useState(false);
@@ -61,6 +67,7 @@ export default function Perfil() {
     const isOtherProfile = loadedProfileId.current !== profile.id;
     if (isDirty && !isOtherProfile) return;
     loadedProfileId.current = profile.id;
+    dirtyKeys.current.clear();
     setDraft(profile);
     setIsDirty(false);
   }, [profile, tab, isDirty]);
@@ -88,6 +95,7 @@ export default function Perfil() {
 
   const updateDraft = (key, value) => {
     setDraft(prev => ({ ...prev, [key]: value }));
+    dirtyKeys.current.add(key);
     setIsDirty(true);
   };
 
@@ -116,13 +124,18 @@ export default function Perfil() {
     if (!isDirty) return true;
     setIsSaving(true);
     try {
-      const updates = { ...draft };
+      const updates = {};
+      for (const key of dirtyKeys.current) updates[key] = draft[key];
       /* Ativar agora começa a contagem a partir deste momento, não do último
          registo antigo, e limpa um "silenciar resto do dia" que não deve
          sobreviver a reativar. */
       if (draft.water_reminder_enabled && !profile?.water_reminder_enabled) {
         updates.water_last_activity_at = new Date().toISOString();
         updates.water_reminder_muted_date = null;
+      }
+      if (Object.keys(updates).length === 0) {
+        setIsDirty(false);
+        return true;
       }
 
       const { error } = await supabase
@@ -133,6 +146,7 @@ export default function Perfil() {
       if (error) throw error;
 
       setProfile({ ...profile, ...updates });
+      dirtyKeys.current.clear();
       setIsDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
@@ -157,7 +171,7 @@ export default function Perfil() {
     setTab(nextTab);
   };
 
-  const goToPendingTarget = ({ kind, target }) => {
+  const goToPendingTarget = async ({ kind, target }) => {
     if (kind === 'tab') {
       setTab(target);
       return;
@@ -166,7 +180,15 @@ export default function Perfil() {
     // antes de sair para não voltar a travar o mesmo pedido.
     setNavGuard(null);
     if (kind === 'signout') {
-      supabase.auth.signOut();
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      } catch (err) {
+        // Falhar aqui deixava o utilizador num formulário sujo já sem guard.
+        console.error('Error signing out:', err);
+        alert('Não foi possível terminar a sessão. Tenta novamente.');
+        setIsDirty(true);
+      }
       return;
     }
     useAppStore.getState().setActiveTab(target);
@@ -174,6 +196,7 @@ export default function Perfil() {
 
   const discardAndLeave = () => {
     const pending = leavePrompt;
+    dirtyKeys.current.clear();
     setDraft(profile || {});
     setIsDirty(false);
     setLeavePrompt(null);

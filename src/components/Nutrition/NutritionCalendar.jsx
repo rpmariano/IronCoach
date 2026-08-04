@@ -27,7 +27,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
   /* Um agrupamento por data em vez de varrer meals e waterLogs inteiros uma
      vez por cada dia da grelha (31 varreduras completas por render, cada uma
      a somar os nutrientes de todas as refeições que batessem). */
-  const dayInfo = useMemo(() => {
+  const { mealsByDay, waterByDay } = useMemo(() => {
     const groupBy = (rows) => {
       const map = new Map();
       for (const row of rows || []) {
@@ -36,9 +36,11 @@ export default function NutritionCalendar({ onRegisterClick }) {
       }
       return map;
     };
-    const mealsByDay = groupBy(meals);
-    const waterByDay = groupBy(waterLogs);
+    // Fora do memo do dayInfo para mudar de mês não reagrupar todo o histórico.
+    return { mealsByDay: groupBy(meals), waterByDay: groupBy(waterLogs) };
+  }, [meals, waterLogs]);
 
+  const dayInfo = useMemo(() => {
     const info = new Map();
     for (const date of daysInMonth) {
       const dayStr = format(date, 'yyyy-MM-dd');
@@ -48,7 +50,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
       });
     }
     return info;
-  }, [daysInMonth, meals, waterLogs, profile]);
+  }, [daysInMonth, mealsByDay, waterByDay, profile]);
 
   return (
     <div className="space-y-4 fade-in pb-8">

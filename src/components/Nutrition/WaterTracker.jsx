@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { Droplets, Plus, Minus, GlassWater, Info, Trash2, Bell, BellOff, Clock } from 'lucide-react';
+import { lisbonTodayISO } from '../../lib/utils';
 
 const WATER_PRESETS = [200, 250, 300];
 
@@ -9,14 +10,16 @@ export default function WaterTracker() {
   const { profile, waterLogs, session, setProfile } = useAppStore();
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const remindersOn = !!profile?.water_reminder_enabled;
-  const mutedToday = profile?.water_reminder_muted_date === new Date().toISOString().slice(0, 10);
-
   // Goal from profile
   const goal = profile?.water_goal_ml || 2000;
 
   // Filter logs for today
   const todayStr = new Date().toISOString().slice(0, 10);
+
+  const remindersOn = !!profile?.water_reminder_enabled;
+  // O silenciamento é sobre o dia do utilizador (Lisboa), a mesma escala que a
+  // Edge Function usa para o comparar — ver lisbonTodayISO.
+  const mutedToday = profile?.water_reminder_muted_date === lisbonTodayISO();
   const todayLogs = useMemo(() => {
     return waterLogs.filter(log => {
       const logDate = new Date(log.created_at).toISOString().slice(0, 10);
@@ -53,15 +56,23 @@ export default function WaterTracker() {
         waterLogs: [data, ...state.waterLogs]
       }));
 
-      /* Beber conta como "atividade" e reinicia a contagem do próximo lembrete
-         — a Edge Function send-water-reminders lê este campo para saber se já
-         é devido. Sem isto os lembretes disparavam ao intervalo cru, mesmo
-         acabado de beber. */
+    } catch (err) {
+      console.error('Error adding water:', err);
+      setIsUpdating(false);
+      return;
+    }
+
+    /* Beber conta como "atividade" e reinicia a contagem do próximo lembrete —
+       a Edge Function send-water-reminders lê este campo para saber se já é
+       devido. Sem isto os lembretes disparavam ao intervalo cru, mesmo acabado
+       de beber. Falhar aqui não invalida o registo que já entrou, por isso tem
+       o seu próprio try. */
+    try {
       const nowIso = new Date().toISOString();
       await supabase.from('profiles').update({ water_last_activity_at: nowIso }).eq('id', session.user.id);
       setProfile({ ...useAppStore.getState().profile, water_last_activity_at: nowIso });
     } catch (err) {
-      console.error('Error adding water:', err);
+      console.error('Error updating water reminder activity:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -76,7 +87,7 @@ export default function WaterTracker() {
     try {
       const updates = scope === 'next'
         ? { water_last_activity_at: new Date().toISOString() }
-        : { water_reminder_muted_date: todayStr };
+        : { water_reminder_muted_date: lisbonTodayISO() };
       const { error } = await supabase.from('profiles').update(updates).eq('id', session.user.id);
       if (error) throw error;
       setProfile({ ...useAppStore.getState().profile, ...updates });

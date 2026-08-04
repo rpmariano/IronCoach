@@ -67,9 +67,14 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 ### 3.7. Perfil (`Perfil`)
 - Três sub-separadores: **Pessoal**, **Metas** e **Coach**.
 - **Regra do botão "Guardar"**: todos os campos de todos os sub-separadores são editados num rascunho local. Nada é escrito na base de dados até o utilizador premir "Guardar alterações".
-- **Aviso de saída sem gravar**: com alterações pendentes, tentar mudar de sub-separador, sair do Perfil pela barra de navegação, ou fechar/recarregar o separador do browser dispara o aviso "Tens alterações por gravar", com três opções: **Gravar e sair**, **Sair sem gravar** e **Cancelar**. A navegação fica travada até o utilizador escolher.
-  - Implementado por um `navGuard` no store (consultado por `setActiveTab`) mais um handler `beforeunload`.
-  - **Exceção**: o pedido de permissão de notificações push ao browser acontece de imediato ao ligar o interruptor dos lembretes, antes de gravar — é uma ação do browser, não um valor de formulário.
+- **Aviso de saída sem gravar**: com alterações pendentes, qualquer uma destas quatro saídas dispara o aviso "Tens alterações por gravar", com três opções — **Gravar e sair**, **Sair sem gravar** e **Cancelar**:
+  1. mudar de sub-separador;
+  2. sair do Perfil pela barra de navegação;
+  3. **terminar sessão** (a saída mais destrutiva: desmontaria o Perfil e levaria o rascunho consigo);
+  4. fechar ou recarregar o separador do browser.
+  - A navegação fica travada até o utilizador escolher. Implementado por um `navGuard` no store (consultado por `setActiveTab`, que devolve `false` quando recusa) mais um handler `beforeunload`.
+  - **Grava apenas os campos alterados.** O `UPDATE` inclui só as chaves que o utilizador mexeu. Enviar a linha inteira escrevia por cima de `water_last_activity_at` e `water_reminder_muted_date`, que o cron dos lembretes e o registo de água alteram do lado do servidor — um rascunho aberto há algum tempo reporia valores antigos e provocaria um lembrete a mais.
+  - **Exceção**: o pedido de permissão de notificações push ao browser acontece de imediato ao ligar o interruptor dos lembretes, antes de gravar — é uma ação do browser, não um valor de formulário. Se o utilizador sair sem gravar, a subscrição fica criada mas os lembretes não ficam ativos no perfil.
 
 ---
 
@@ -127,7 +132,11 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - **Exceção conhecida — cores de aba ativa**: as cores de módulo usadas no rótulo de 10px da barra de navegação ficam entre **2,54:1 e 3,96:1** sobre branco, abaixo dos 4,5:1 da WCAG AA para texto pequeno. A decisão foi manter as cores de módulo e **não** fazer o estado ativo depender apenas da cor: a aba ativa tem também uma barra indicadora acima do ícone e peso tipográfico distinto, cumprindo a WCAG 1.4.1. Esta exceção é deliberada e deve ser reavaliada se a paleta de módulos mudar.
 - **Estado da verificação**: o `aria-label` foi auditado por varredura automática de botões cujo conteúdo é só um ícone. A varredura tem falsos positivos conhecidos (botões cujo texto vive dentro de uma expressão JSX) e já deixou passar pelo menos um caso real, por isso não substitui revisão.
 
-### 5.3. Carregamento de Dados (dívida registada)
+### 5.3. Escalas de Data (UTC vs Lisboa)
+- A janela horária dos lembretes é avaliada na **hora de Lisboa**, por isso o dia a que um "Silenciar hoje" se refere também é o **dia de Lisboa** (`lisbonTodayISO()` no cliente, `currentLisbonDate()` na Edge Function). Em horário de verão, entre as 00:00 e a 01:00, a data UTC ainda é a de ontem — sem isto, um silenciamento pedido às 23:00 caducava à 01:00 em vez de ao fim da janela.
+- **Conhecido e não alterado**: `water_logs.date` e as datas de refeição continuam a ser gravadas em **UTC**. Nessa mesma hora de divergência, um registo entra no dia anterior. A Edge Function compara `water_logs` em UTC precisamente para bater com o que o cliente grava. Unificar todas as datas na escala de Lisboa é uma alteração transversal (e exigiria migrar dados já gravados), pelo que fica fora de âmbito.
+
+### 5.4. Carregamento de Dados (dívida registada)
 - `loadInitialData` (`src/store/index.js`) busca `meals` e `water_logs` **sem limite de datas**. O PostgREST limita o número de linhas por omissão (1000 no Supabase), ordenadas por data descendente.
 - **Consequência**: a partir desse volume, recuar o suficiente no calendário mostra dias a cinzento ("sem registo") que na verdade têm registos — dados errados em silêncio, não um erro visível.
 - A versão vanilla evitava isto carregando cada mês a pedido (`calendarCache` / `waterCalendarCache`, água limitada a 14 dias). Esse carregamento por mês **não foi portado** e deve ser reposto antes de o histórico de qualquer utilizador se aproximar do limite.

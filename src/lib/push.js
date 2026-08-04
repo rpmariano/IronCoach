@@ -20,14 +20,44 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export function pushSupported() {
+  // Notification faz parte do teste: em iOS Safari fora de uma PWA instalada
+  // existe serviceWorker e PushManager mas não Notification, e sem isto o
+  // requestPermission abaixo rebentava com um ReferenceError apresentado como
+  // "tenta novamente" — um convite a repetir uma condição permanente.
   return typeof navigator !== 'undefined'
     && 'serviceWorker' in navigator
     && typeof window !== 'undefined'
-    && 'PushManager' in window;
+    && 'PushManager' in window
+    && 'Notification' in window;
+}
+
+// navigator.serviceWorker.ready nunca resolve se o registo falhou (MIME type
+// errado, rewrite do host). Sem limite, o interruptor ficava preso em "a
+// subscrever" sem saída a não ser recarregar a página.
+async function serviceWorkerReady(timeoutMs = 10000) {
+  let timer;
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('service worker não ficou pronto')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // Independente do login: registar não exige sessão nem mostra nada. Sem isto,
 // navigator.serviceWorker.ready nunca resolve e a subscrição fica pendurada.
+function sameApplicationServerKey(sub, expected) {
+  const current = sub.options?.applicationServerKey;
+  if (!current) return true; // browser não expõe a chave — não dá para comparar
+  const bytes = new Uint8Array(current);
+  if (bytes.length !== expected.length) return false;
+  return bytes.every((b, i) => b === expected[i]);
+}
+
 export function registerServiceWorker() {
   if (!pushSupported()) return;
   navigator.serviceWorker.register('/sw.js').catch((e) => {
@@ -52,12 +82,21 @@ export async function ensurePushSubscription() {
       };
     }
 
-    const reg = await navigator.serviceWorker.ready;
+    const reg = await serviceWorkerReady();
+    const appServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+
     let sub = await reg.pushManager.getSubscription();
+    /* Uma subscrição existente pode estar presa a uma chave VAPID antiga —
+       nesse caso o servidor não consegue enviar-lhe nada e reaproveitá-la
+       daria um "ativado" falso. Se a chave não bater, cria-se de novo. */
+    if (sub && !sameApplicationServerKey(sub, appServerKey)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey: appServerKey,
       });
     }
 
