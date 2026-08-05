@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, RefreshCw, Award, PencilLine } from 'lucide-react';
-import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, Award, PencilLine } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 
 function formatDuration(totalSeconds) {
@@ -18,7 +18,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingSet, setIsDeletingSet] = useState(null);
-  const [isReanalyzing, setIsReanalyzing] = useState(false);
 
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState(session.notes || '');
@@ -116,28 +115,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
     } catch (err) {
       console.error('Error updating notes:', err);
       alert('Erro ao guardar observações.');
-    }
-  };
-
-  // Repesca os prints já guardados (session_id, sem imagens novas) e volta a
-  // analisá-los do zero. Só funciona para sessões criadas a partir de um
-  // print — a Edge Function devolve um erro claro (não crasha) se
-  // session.photo_paths estiver vazio, como acontece num registo manual.
-  const handleReanalyze = async () => {
-    if (isReanalyzing) return;
-    setIsReanalyzing(true);
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
-        body: { session_id: session.id, notes: session.notes || null },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
-      if (profile?.id) await loadInitialData(profile.id);
-    } catch (err) {
-      console.error('Error reanalyzing session:', err);
-      alert(err.message || 'Falha na reanálise. Tenta novamente.');
-    } finally {
-      setIsReanalyzing(false);
     }
   };
 
@@ -322,20 +299,11 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
             </div>
           )}
 
-          {/* Bottom Action Bar — editar é onde se gerem exercícios/séries por
-              completo; deixou de haver aqui uma hipótese rápida de
-              "adicionar", só editar ou eliminar a sessão toda. */}
+          {/* Bottom Action Bar — "Reanalisar" (repescar os prints e voltar a
+              extrair exercícios/séries por IA) deixou de existir como ação
+              própria: editar já cobre a correção de exercícios/séries à mão,
+              por isso só resta editar ou eliminar a sessão toda. */}
           <div className="flex items-center gap-2 pt-1">
-            {session.photo_paths?.length > 0 && (
-              <button
-                onClick={handleReanalyze}
-                disabled={isReanalyzing}
-                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-              >
-                {isReanalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                Reanalisar
-              </button>
-            )}
             {onEdit && (
               <button
                 onClick={() => onEdit(session.id)}
