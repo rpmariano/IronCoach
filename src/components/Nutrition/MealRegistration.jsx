@@ -139,13 +139,18 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
   // ----------------------------------
   // REGISTO MANUAL — adicionar é só local; a estimativa de nutrientes e o
-  // comentário do Coach só acontecem ao premir "Analisar Refeição".
+  // comentário do Coach só acontecem ao premir "Analisar Refeição". As
+  // gramas são opcionais: quando não indicadas, o Coach estima a porção
+  // típica a partir da descrição do alimento + das observações da refeição
+  // (ex.: "fiambre" com a observação "1 fatia" dá o mesmo resultado que
+  // "1 fatia de fiambre" sem observação nenhuma).
   // ----------------------------------
   const handleAddItem = () => {
     const name = itemName.trim();
-    const grams = Number(itemGrams);
     if (!name) { setErrorMsg('Escreve o nome do alimento.'); return; }
-    if (!(grams > 0)) { setErrorMsg('Indica as gramas.'); return; }
+    const trimmedGrams = itemGrams.trim();
+    const grams = trimmedGrams ? Number(trimmedGrams) : null;
+    if (trimmedGrams && !(grams > 0)) { setErrorMsg('Indica um valor de gramas válido.'); return; }
 
     setErrorMsg('');
     setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name, grams }]);
@@ -377,16 +382,17 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                   <div className="relative w-24">
                     <input
                       type="number" min="1" step="1"
-                      placeholder="g"
+                      placeholder="g (opcional)"
                       value={itemGrams}
                       onChange={e => setItemGrams(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                     />
                   </div>
                 </div>
+                <p className="text-[10px] text-slate-500 mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
                 <button
                   onClick={handleAddItem}
-                  disabled={!itemName.trim() || !itemGrams}
+                  disabled={!itemName.trim()}
                   type="button"
                   className="w-full text-[13px] font-bold rounded-xl py-2.5 flex items-center justify-center gap-1.5 border transition disabled:opacity-40"
                   style={{ borderColor: 'var(--mod-nutricao-to)', color: 'var(--mod-nutricao-to)' }}
@@ -419,7 +425,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                     ) : (
                       <div className="flex-1">
                         <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.grams}g</p>
+                        <p className="text-[10px] text-slate-400">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
                       </div>
                     )}
                     <button

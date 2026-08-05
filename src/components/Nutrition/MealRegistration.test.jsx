@@ -133,7 +133,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
 
   const addItem = (name, grams) => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
-    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: String(grams) } });
+    fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
   };
 
@@ -145,6 +145,25 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     expect(screen.getByText('Peito de frango')).toBeInTheDocument();
     expect(screen.getByText('150g')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('permite adicionar um alimento sem indicar as gramas — o Coach estima a porção', async () => {
+    const finalMeal = { id: 'meal-9', meal_items: [{ id: 'item-9' }] };
+    mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: '1 fatia de fiambre' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+
+    expect(screen.getByText('1 fatia de fiambre')).toBeInTheDocument();
+    expect(screen.getByText('Porção estimada pelo Coach')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.items).toEqual([{ name: '1 fatia de fiambre', grams: null }]);
   });
 
   it('permite adicionar e remover vários alimentos, sempre localmente', () => {

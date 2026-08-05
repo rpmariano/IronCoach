@@ -96,24 +96,43 @@ function buildPrompt(notes: string | null): string {
 }
 
 // Prompt para o registo manual de texto (sem foto): o utilizador só indica
-// nome + gramas de CADA alimento (uma lista, adicionada localmente no
-// cliente sem tocar no Gemini) — só ao finalizar é que UMA ÚNICA chamada
-// estima o conteúdo nutricional de TODOS de uma vez, tal como faria a
-// partir de uma foto, mas usando os nomes descritos em vez de reconhecimento
-// visual.
-function buildManualItemsPrompt(items: { name: string; grams: number }[]): string {
-  const list = items.map((it, i) => `${i + 1}. "${it.name}" — ${it.grams}g`).join("\n");
-  return (
-    "O utilizador registou manualmente os seguintes alimentos (sem foto), com as gramas " +
-    `exatas indicadas:\n${list}\n\n` +
+// nome de CADA alimento (uma lista, adicionada localmente no cliente sem
+// tocar no Gemini) — as gramas são opcionais; quando não indicadas, o
+// Gemini tem de estimar a porção típica a partir da descrição do alimento
+// e das observações gerais da refeição (ex.: alimento "fiambre" + observação
+// "1 fatia" tem de dar o mesmo resultado que alimento "1 fatia de fiambre"
+// sem observação nenhuma — o peso de uma fatia típica). Só ao finalizar é
+// que UMA ÚNICA chamada estima o conteúdo nutricional (e a porção, quando
+// preciso) de TODOS de uma vez, tal como faria a partir de uma foto, mas
+// usando os nomes descritos em vez de reconhecimento visual.
+function buildManualItemsPrompt(items: { name: string; grams: number | null }[], notes: string | null): string {
+  const list = items
+    .map((it, i) => `${i + 1}. "${it.name}"${it.grams != null ? ` — ${it.grams}g (valor exato dado pelo utilizador)` : " — sem gramas indicadas"}`)
+    .join("\n");
+  let prompt =
+    "O utilizador registou manualmente os seguintes alimentos (sem foto):\n" +
+    `${list}\n\n` +
     "Para CADA alimento da lista, estima o conteúdo nutricional POR 100 GRAMAS (não pela " +
     "porção total), usando valores de referência de bases de dados nutricionais padrão. " +
     "Considera o nome tal como foi escrito (pode incluir marca, forma de confeção, etc.) " +
-    "para maior precisão. O sódio é em mg por 100g. Devolve exatamente um item no array " +
-    '"items" para CADA alimento da lista, pela MESMA ORDEM em que aparecem acima, com ' +
-    "estimated_quantity_grams igual às gramas indicadas para esse alimento. " +
-    "Responde apenas com JSON estruturado conforme o schema."
-  );
+    "para maior precisão. O sódio é em mg por 100g.\n\n" +
+    "Quanto à porção (estimated_quantity_grams): quando o alimento tiver gramas indicadas, " +
+    "usa EXATAMENTE esse valor. Quando NÃO tiver, tens de estimar tu a quantidade típica em " +
+    "gramas dessa porção, combinando a descrição do alimento com as observações gerais da " +
+    "refeição abaixo (se existirem) — os dois juntos descrevem a mesma porção, por isso o " +
+    'resultado tem de ser idêntico quer a informação venha do nome do alimento, das observações, ' +
+    'ou de ambos. Por exemplo: alimento "fiambre" com observação "1 fatia" tem de dar o mesmo ' +
+    'peso que alimento "1 fatia de fiambre" sem observação nenhuma — o peso de uma fatia típica ' +
+    "de fiambre (aprox. 20g). Outros exemplos de bom senso: \"1 banana\" ≈ 120g, \"1 ovo\" ≈ 50g, " +
+    '"uma posta de bacalhau" ≈ 150g. Nunca devolvas 0 nem null nesta chave — escolhe sempre o ' +
+    "valor mais plausível para uma porção normal do alimento descrito.\n";
+  if (notes && notes.trim()) {
+    prompt += `\nObservações gerais desta refeição, escritas pelo utilizador: "${notes.trim()}"\n`;
+  }
+  prompt +=
+    '\nDevolve exatamente um item no array "items" para CADA alimento da lista, pela MESMA ' +
+    "ORDEM em que aparecem acima. Responde apenas com JSON estruturado conforme o schema.";
+  return prompt;
 }
 
 // Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
@@ -289,19 +308,23 @@ async function analyzeWithGemini(
 
 // Estima o conteúdo nutricional de TODOS os alimentos do registo manual
 // numa só chamada ao Gemini (uma por refeição, não uma por alimento). Força
-// o nome e as gramas de cada item de volta para exatamente o que o
-// utilizador escreveu, por posição — o Gemini só fornece os valores
-// nutricionais, nunca reescreve o que foi pedido.
+// o nome de cada item de volta para exatamente o que o utilizador escreveu,
+// por posição — o Gemini só fornece os valores nutricionais (e a porção,
+// quando o utilizador não a indicou), nunca reescreve o que foi pedido.
+// Quando o utilizador deu as gramas, usa-se sempre esse valor exato, mesmo
+// que o Gemini devolva algo ligeiramente diferente; só quando não deu é que
+// se aceita a estimativa de porção do Gemini (ver buildManualItemsPrompt).
 // Mais tentativas que a análise por foto (3 em vez de 1): este pedido é só
 // texto, sem imagens, por isso cada tentativa é rápida — dá para tentar mais
 // vezes num burst de 503s da Google sem se aproximar do limite de ~150s da
 // plataforma (pior caso: 4 tentativas de 30s + esperas ≈ 125s).
 async function analyzeManualItems(
-  items: { name: string; grams: number }[],
+  items: { name: string; grams: number | null }[],
+  notes: string | null,
   geminiKey: string,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
-  const parts: unknown[] = [{ text: buildManualItemsPrompt(items) }];
+  const parts: unknown[] = [{ text: buildManualItemsPrompt(items, notes) }];
   const { items: rawItems, usage } = await runGeminiItemsRequest(
     parts,
     geminiKey,
@@ -315,7 +338,7 @@ async function analyzeManualItems(
   const merged = rawItems.map((it, i) => ({
     ...it,
     name: items[i].name.slice(0, 120),
-    quantity_grams: items[i].grams,
+    quantity_grams: items[i].grams != null ? items[i].grams : it.quantity_grams,
   }));
   return { items: merged, usage };
 }
@@ -525,13 +548,19 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const rawItems = Array.isArray(body.items) ? body.items : [];
+      // As gramas são opcionais — quando o utilizador não as indica, o
+      // Gemini estima a porção típica a partir do nome do alimento e das
+      // observações da refeição (ver buildManualItemsPrompt).
       // deno-lint-ignore no-explicit-any
       const items = rawItems
-        .map((it: any) => ({
-          name: typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "",
-          grams: Number(it?.grams),
-        }))
-        .filter((it: { name: string; grams: number }) => it.name && it.grams > 0);
+        .map((it: any) => {
+          const g = Number(it?.grams);
+          return {
+            name: typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "",
+            grams: Number.isFinite(g) && g > 0 ? g : null,
+          };
+        })
+        .filter((it: { name: string; grams: number | null }) => it.name);
       if (items.length === 0) {
         return jsonResponse({ error: "Adiciona pelo menos um alimento." }, 400);
       }
@@ -541,7 +570,7 @@ Deno.serve(async (req) => {
 
       let estimated: { items: unknown[]; usage: GeminiUsage };
       try {
-        estimated = await analyzeManualItems(items, geminiKey);
+        estimated = await analyzeManualItems(items, rawNotes, geminiKey);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
       }
