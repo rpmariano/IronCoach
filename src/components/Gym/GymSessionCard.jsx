@@ -315,10 +315,10 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
             <button
               onClick={handleDeleteSession}
               disabled={isDeleting}
-              className="border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl p-2.5 flex items-center justify-center transition disabled:opacity-50"
-              aria-label="Eliminar treino"
+              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
               {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Eliminar treino
             </button>
           </div>
         </div>
