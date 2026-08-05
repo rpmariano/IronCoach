@@ -95,19 +95,23 @@ function buildPrompt(notes: string | null): string {
   return prompt;
 }
 
-// Prompt para a entrada manual de texto (sem foto): o utilizador só indica o
-// nome do alimento e a quantidade em gramas — o Gemini estima o resto
-// (calorias e macro/micronutrientes por 100g), tal como faria a partir de
-// uma foto, mas usando o nome descrito em vez de reconhecimento visual.
-function buildTextItemPrompt(name: string, grams: number): string {
+// Prompt para o registo manual de texto (sem foto): o utilizador só indica
+// nome + gramas de CADA alimento (uma lista, adicionada localmente no
+// cliente sem tocar no Gemini) — só ao finalizar é que UMA ÚNICA chamada
+// estima o conteúdo nutricional de TODOS de uma vez, tal como faria a
+// partir de uma foto, mas usando os nomes descritos em vez de reconhecimento
+// visual.
+function buildManualItemsPrompt(items: { name: string; grams: number }[]): string {
+  const list = items.map((it, i) => `${i + 1}. "${it.name}" — ${it.grams}g`).join("\n");
   return (
-    `O utilizador registou manualmente o alimento "${name}", com uma quantidade ` +
-    `de ${grams} gramas (sem foto). Estima o conteúdo nutricional deste alimento ` +
-    "POR 100 GRAMAS (não pela porção total), usando valores de referência de " +
-    "bases de dados nutricionais padrão. Considera o nome tal como foi escrito " +
-    "(pode incluir marca, forma de confeção, etc.) para maior precisão. O sódio " +
-    "é em mg por 100g. Devolve exatamente um item no array \"items\", com " +
-    `estimated_quantity_grams igual a ${grams}. ` +
+    "O utilizador registou manualmente os seguintes alimentos (sem foto), com as gramas " +
+    `exatas indicadas:\n${list}\n\n` +
+    "Para CADA alimento da lista, estima o conteúdo nutricional POR 100 GRAMAS (não pela " +
+    "porção total), usando valores de referência de bases de dados nutricionais padrão. " +
+    "Considera o nome tal como foi escrito (pode incluir marca, forma de confeção, etc.) " +
+    "para maior precisão. O sódio é em mg por 100g. Devolve exatamente um item no array " +
+    '"items" para CADA alimento da lista, pela MESMA ORDEM em que aparecem acima, com ' +
+    "estimated_quantity_grams igual às gramas indicadas para esse alimento. " +
     "Responde apenas com JSON estruturado conforme o schema."
   );
 }
@@ -283,29 +287,37 @@ async function analyzeWithGemini(
   );
 }
 
-// Estima o conteúdo nutricional de um único alimento a partir do nome +
-// gramas indicados manualmente pelo utilizador (sem foto). Devolve sempre um
-// único item com quantity_grams igual ao valor pedido, mesmo que o Gemini
-// devolva algo ligeiramente diferente.
+// Estima o conteúdo nutricional de TODOS os alimentos do registo manual
+// numa só chamada ao Gemini (uma por refeição, não uma por alimento). Força
+// o nome e as gramas de cada item de volta para exatamente o que o
+// utilizador escreveu, por posição — o Gemini só fornece os valores
+// nutricionais, nunca reescreve o que foi pedido.
 // Mais tentativas que a análise por foto (3 em vez de 1): este pedido é só
 // texto, sem imagens, por isso cada tentativa é rápida — dá para tentar mais
 // vezes num burst de 503s da Google sem se aproximar do limite de ~150s da
-// plataforma (pior caso: 4 tentativas de 20s + esperas ≈ 85s).
-async function analyzeTextItem(
-  name: string,
-  grams: number,
+// plataforma (pior caso: 4 tentativas de 30s + esperas ≈ 125s).
+async function analyzeManualItems(
+  items: { name: string; grams: number }[],
   geminiKey: string,
   // deno-lint-ignore no-explicit-any
-): Promise<{ item: any; usage: GeminiUsage }> {
-  const parts: unknown[] = [{ text: buildTextItemPrompt(name, grams) }];
-  const { items, usage } = await runGeminiItemsRequest(
+): Promise<{ items: any[]; usage: GeminiUsage }> {
+  const parts: unknown[] = [{ text: buildManualItemsPrompt(items) }];
+  const { items: rawItems, usage } = await runGeminiItemsRequest(
     parts,
     geminiKey,
-    "Não foi possível estimar valores nutricionais para este alimento. Tenta descrevê-lo de outra forma.",
+    "Não foi possível estimar valores nutricionais para estes alimentos. Tenta descrevê-los de outra forma.",
     3,
-    20000,
+    30000,
   );
-  return { item: { ...items[0], quantity_grams: grams }, usage };
+  if (rawItems.length !== items.length) {
+    throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
+  }
+  const merged = rawItems.map((it, i) => ({
+    ...it,
+    name: items[i].name.slice(0, 120),
+    quantity_grams: items[i].grams,
+  }));
+  return { items: merged, usage };
 }
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
@@ -498,77 +510,64 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
-    // ── Modo entrada manual (texto): item_name + item_grams presentes ──
-    // O utilizador só indica o nome do alimento e as gramas; o Gemini estima
-    // o resto (calorias e macro/micronutrientes por 100g) a partir do nome.
-    if (typeof body.item_name === "string" && body.item_name.trim()) {
-      const mealId = body.meal_id;
-      if (typeof mealId !== "string" || !mealId) {
-        return jsonResponse({ error: "meal_id em falta" }, 400);
+    // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
+    // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"
+    // — nada é consultado ao Gemini nesse momento. Só ao premir "Analisar
+    // Refeição" é que esta UMA ÚNICA chamada estima os valores nutricionais
+    // de TODOS os alimentos de uma vez, grava a refeição já completa e gera
+    // o comentário do Coach a partir dela (attachMealCoachNotes, partilhada
+    // com o caminho de fotos).
+    if (body.mode === "manual") {
+      if (!MEAL_TYPES.includes(body.meal_type)) {
+        return jsonResponse({ error: "Tipo de refeição inválido" }, 400);
       }
-      const itemName = body.item_name.trim().slice(0, 120);
-      const grams = Number(body.item_grams);
-      if (!(grams > 0)) {
-        return jsonResponse({ error: "Gramas inválidas" }, 400);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+        return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
+      }
+      const rawItems = Array.isArray(body.items) ? body.items : [];
+      // deno-lint-ignore no-explicit-any
+      const items = rawItems
+        .map((it: any) => ({
+          name: typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "",
+          grams: Number(it?.grams),
+        }))
+        .filter((it: { name: string; grams: number }) => it.name && it.grams > 0);
+      if (items.length === 0) {
+        return jsonResponse({ error: "Adiciona pelo menos um alimento." }, 400);
+      }
+      if (items.length > 30) {
+        return jsonResponse({ error: "Máximo de 30 alimentos por refeição." }, 400);
       }
 
-      const { data: existingMeal, error: fetchError } = await sb
-        .from("meals")
-        .select("id")
-        .eq("id", mealId)
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (fetchError) return jsonResponse({ error: `Falha a procurar refeição: ${fetchError.message}` }, 500);
-      if (!existingMeal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
-
-      let item, usage: GeminiUsage;
+      let estimated: { items: unknown[]; usage: GeminiUsage };
       try {
-        ({ item, usage } = await analyzeTextItem(itemName, grams, geminiKey));
+        estimated = await analyzeManualItems(items, geminiKey);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
       }
 
-      const { data: savedItem, error: itemError } = await sb
-        .from("meal_items")
-        .insert({ ...item, meal_id: mealId, user_id: userId })
+      const { data: meal, error: mealError } = await sb
+        .from("meals")
+        .insert({ user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes })
         .select()
         .single();
-      if (itemError) return jsonResponse({ error: `Falha a gravar alimento: ${itemError.message}` }, 500);
+      if (mealError) return jsonResponse({ error: `Falha a gravar refeição: ${mealError.message}` }, 500);
 
-      return jsonResponse({ item: savedItem, usage });
-    }
+      const { data: savedItems, error: itemsError } = await sb
+        .from("meal_items")
+        // deno-lint-ignore no-explicit-any
+        .insert((estimated.items as any[]).map((it) => ({ ...it, meal_id: meal.id, user_id: userId })))
+        .select();
+      if (itemsError) {
+        await sb.from("meals").delete().eq("id", meal.id);
+        return jsonResponse({ error: `Falha a gravar alimentos: ${itemsError.message}` }, 500);
+      }
 
-    // ── Modo finalizar (registo manual): mode "finalize" + meal_id ─────
-    // O registo manual cria a refeição vazia no cliente (sem IA, tal como o
-    // vanilla) e vai acrescentando alimentos um a um pelo modo acima. Este
-    // passo final só gera o comentário do Coach a partir dos itens já
-    // gravados — não há imagem nenhuma envolvida, por isso não passa por
-    // analyzeWithGemini. Mantém a refeição exatamente como estava se não
-    // houver itens (nada para comentar).
-    if (body.mode === "finalize" && typeof body.meal_id === "string" && body.meal_id) {
-      const mealId = body.meal_id;
-      const { data: meal, error: fetchError } = await sb
-        .from("meals")
-        .select("id, date, meal_type, notes, coach_notes, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
-        .eq("id", mealId)
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (fetchError) return jsonResponse({ error: `Falha a procurar refeição: ${fetchError.message}` }, 500);
-      if (!meal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
+      await attachMealCoachNotes(sb, userId, meal, {
+        date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+      }, geminiKey);
 
-      const totals = totalsFromItems(meal.meal_items || []);
-      await attachMealCoachNotes(sb, userId, meal, { date: meal.date, meal_type: meal.meal_type, notes: meal.notes, totals }, geminiKey);
-
-      // Devolve a refeição completa (com meal_items) para o cliente poder
-      // simplesmente substituir a entrada no store, sem outro pedido.
-      const { data: finalMeal, error: reloadError } = await sb
-        .from("meals")
-        .select("*, meal_items(*)")
-        .eq("id", mealId)
-        .single();
-      if (reloadError) return jsonResponse({ error: `Falha a reler refeição: ${reloadError.message}` }, 500);
-
-      return jsonResponse({ meal: finalMeal });
+      return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: estimated.usage });
     }
 
     // ── Modo reanálise: meal_id presente ──────────────────────────────

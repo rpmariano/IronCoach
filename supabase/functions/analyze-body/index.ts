@@ -300,6 +300,64 @@ async function analyzeWithGemini(
   return { metrics, classifications, summary, usage };
 }
 
+// Gera o resumo/comentário do Coach a partir de valores indicados manualmente
+// (sem foto) — mesmo texto e regras do resumo gerado no modo normal
+// (analyzeWithGemini), só que aqui os valores já são conhecidos, não há nada
+// para o Gemini extrair de imagem nenhuma. Best-effort: uma falha aqui nunca
+// desfaz a avaliação já gravada, só fica sem comentário.
+async function generateBodySummaryFromMetrics(
+  metrics: Record<string, number | null>,
+  notes: string | null,
+  history: unknown[],
+  geminiKey: string,
+): Promise<{ text: string | null }> {
+  const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
+  if (!hasAny) return { text: null };
+
+  const metricLines = METRIC_FIELDS
+    .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
+    .map((f) => `- ${f.label}: ${metrics[f.key]}`)
+    .join("\n");
+
+  const prompt =
+    "O utilizador registou manualmente os seguintes valores de uma avaliação de composição " +
+    `corporal (sem foto):\n${metricLines}\n\n` +
+    // deno-lint-ignore no-explicit-any
+    historyContext(history as any[]) +
+    "\n\nEscreve uma breve avaliação (2 a 4 frases, em português de Portugal) destes valores: " +
+    "o que está bom e o que merece atenção. Se existir histórico acima, compara com a avaliação " +
+    "mais recente e comenta a evolução (o que melhorou, o que piorou, ex.: peso, gordura " +
+    "corporal, massa muscular). Sê direto e prático, sem alarmismos e sem dar diagnósticos " +
+    "médicos." +
+    (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
+
+  try {
+    const res = await fetchGeminiWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+        }),
+      },
+      45000,
+      0,
+    );
+    if (!res.ok) {
+      console.warn("Body manual summary generation failed:", res.status, await res.text());
+      return { text: null };
+    }
+    const json = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return { text: text ? String(text).trim() : null };
+  } catch (e) {
+    console.warn("Body manual summary generation error:", e);
+    return { text: null };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -336,6 +394,58 @@ Deno.serve(async (req) => {
 
     const metricSelect =
       "id, date, " + METRIC_FIELDS.map((f) => f.key).join(", ");
+
+    // ── Modo manual: registo sem fotos, com análise do Coach ───────────
+    // Os valores já vêm todos do formulário (nada para o Gemini extrair de
+    // imagem nenhuma) — grava a avaliação diretamente e gera o comentário do
+    // Coach a partir deles, comparando com o histórico
+    // (generateBodySummaryFromMetrics). Sem isto, uma avaliação registada
+    // manualmente nunca tinha análise nenhuma; agora as duas formas de
+    // registo passam pelo Coach.
+    if (body.mode === "manual") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+        return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
+      }
+      const rawMetrics = (body.metrics ?? {}) as Record<string, unknown>;
+      const num = (v: unknown): number | null =>
+        typeof v === "number" && isFinite(v) && v >= 0 ? v : null;
+      const metrics: Record<string, number | null> = {};
+      for (const f of METRIC_FIELDS) metrics[f.key] = num(rawMetrics[f.key]);
+      const hasAny = Object.values(metrics).some((v) => v !== null);
+      if (!hasAny) {
+        return jsonResponse({ error: "Preenche pelo menos um valor." }, 400);
+      }
+
+      const { data: history } = await sb
+        .from("body_assessments")
+        .select(metricSelect)
+        .eq("user_id", userId)
+        .lte("date", body.date)
+        .order("date", { ascending: false })
+        .limit(HISTORY_FOR_CONTEXT);
+
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey);
+
+      const { data: assessment, error: insertError } = await sb
+        .from("body_assessments")
+        .insert({
+          user_id: userId,
+          date: body.date,
+          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+          // insert (violação de not-null) e voltava como 500 genérico (ver
+          // o mesmo footgun já corrigido em analyze-run/analyze-meal).
+          photo_paths: [],
+          status: "ready",
+          notes: rawNotes,
+          ai_summary: summaryResult.text,
+          ...metrics,
+        })
+        .select()
+        .single();
+      if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
+
+      return jsonResponse({ assessment });
+    }
 
     // ── Modo reanálise: assessment_id presente ────────────────────────
     if (typeof body.assessment_id === "string" && body.assessment_id) {

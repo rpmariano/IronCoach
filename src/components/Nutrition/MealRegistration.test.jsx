@@ -4,25 +4,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
 
-// analyze-meal é a única coisa que estes testes exercitam de facto — o
-// resto do supabase (insert/delete de meals e meal_items usados só pelo
-// caminho manual) fica com stubs inertes.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), insertMeal: vi.fn(), deleteMealItem: vi.fn(), deleteMeal: vi.fn() }));
+// analyze-meal é a única coisa que estes testes exercitam de facto —
+// "Adicionar alimento" no manual é puramente local (sem chamadas ao
+// servidor), só "Analisar Refeição" toca no Gemini, seja por foto ou manual.
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
-  supabase: {
-    from: (table) => {
-      if (table === 'meals') {
-        return {
-          insert: (payload) => ({ select: () => ({ single: () => mocks.insertMeal(payload) }) }),
-          delete: () => ({ eq: (col, val) => mocks.deleteMeal(val) }),
-        };
-      }
-      if (table === 'meal_items') {
-        return { delete: () => ({ eq: (col, val) => mocks.deleteMealItem(val) }) };
-      }
-      return {};
-    },
-  },
+  supabase: {},
   invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
 }));
 
@@ -46,9 +33,6 @@ describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () 
 
   beforeEach(() => {
     mocks.invoke.mockReset();
-    mocks.insertMeal.mockReset();
-    mocks.deleteMealItem.mockReset();
-    mocks.deleteMeal.mockReset();
     onClose.mockClear();
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
@@ -102,7 +86,6 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
 
   beforeEach(() => {
     mocks.invoke.mockReset();
-    mocks.insertMeal.mockReset();
     onClose.mockClear();
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
@@ -123,96 +106,84 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
   });
 });
 
-describe('MealRegistration — registo manual também passa pelo Coach (analyze-meal)', () => {
+describe('MealRegistration — registo manual: adicionar é local, análise só no fim (analyze-meal)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
     mocks.invoke.mockReset();
-    mocks.insertMeal.mockReset();
-    mocks.deleteMealItem.mockReset();
-    mocks.deleteMeal.mockReset();
     onClose.mockClear();
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
 
   const goManual = () => fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
 
-  it('cria a refeição vazia no primeiro alimento e estima-o via analyze-meal', async () => {
-    mocks.insertMeal.mockResolvedValue({ data: { id: 'meal-2' }, error: null });
-    mocks.invoke.mockResolvedValue({
-      data: { item: { id: 'item-1', name: 'Peito de frango', quantity_grams: 150, calories_per_100g: 165, protein_per_100g: 31, carbs_per_100g: 0, fat_per_100g: 3.6 } },
-      error: null,
-    });
+  const addItem = (name, grams) => {
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
+    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: String(grams) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+  };
+
+  it('"Adicionar alimento" só junta à lista local, sem chamar o Gemini/Coach', () => {
     render(<MealRegistration onClose={onClose} />);
     goManual();
-    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Peito de frango' } });
-    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: '150' } });
+    addItem('Peito de frango', 150);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
-
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    expect(mocks.insertMeal).toHaveBeenCalledTimes(1);
-    const [fnName, { body }] = mocks.invoke.mock.calls[0];
-    expect(fnName).toBe('analyze-meal');
-    expect(body.meal_id).toBe('meal-2');
-    expect(body.item_name).toBe('Peito de frango');
-    expect(body.item_grams).toBe(150);
-    await screen.findByText(/Peito de frango/);
+    expect(screen.getByText('Peito de frango')).toBeInTheDocument();
+    expect(screen.getByText('150g')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('só cria a refeição uma vez ao adicionar um segundo alimento', async () => {
-    mocks.insertMeal.mockResolvedValue({ data: { id: 'meal-2' }, error: null });
-    mocks.invoke.mockResolvedValue({
-      data: { item: { id: 'item-1', name: 'Arroz', quantity_grams: 100, calories_per_100g: 130, protein_per_100g: 2.7, carbs_per_100g: 28, fat_per_100g: 0.3 } },
-      error: null,
-    });
+  it('permite adicionar e remover vários alimentos, sempre localmente', () => {
     render(<MealRegistration onClose={onClose} />);
     goManual();
+    addItem('Arroz', 100);
+    addItem('Feijão', 80);
 
-    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Arroz' } });
-    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: '100' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
-    await screen.findByText(/Arroz/);
+    expect(screen.getByText('Arroz')).toBeInTheDocument();
+    expect(screen.getByText('Feijão')).toBeInTheDocument();
 
-    mocks.invoke.mockResolvedValue({
-      data: { item: { id: 'item-2', name: 'Feijão', quantity_grams: 80, calories_per_100g: 130, protein_per_100g: 9, carbs_per_100g: 20, fat_per_100g: 0.5 } },
-      error: null,
-    });
-    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Feijão' } });
-    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: '80' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
-    await screen.findByText(/Feijão/);
-
-    expect(mocks.insertMeal).toHaveBeenCalledTimes(1);
-    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Remover Arroz' }));
+    expect(screen.queryByText('Arroz')).not.toBeInTheDocument();
+    expect(screen.getByText('Feijão')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('ao finalizar, chama analyze-meal em modo finalize e fecha com a refeição completa', async () => {
-    mocks.insertMeal.mockResolvedValue({ data: { id: 'meal-2' }, error: null });
-    mocks.invoke.mockResolvedValueOnce({
-      data: { item: { id: 'item-1', name: 'Ovos', quantity_grams: 100, calories_per_100g: 155, protein_per_100g: 13, carbs_per_100g: 1, fat_per_100g: 11 } },
-      error: null,
-    });
+  it('ao "Analisar Refeição", envia todos os alimentos numa só chamada em modo manual', async () => {
+    const finalMeal = { id: 'meal-2', coach_notes: 'Boa fonte de proteína.', meal_items: [{ id: 'item-1' }, { id: 'item-2' }] };
+    mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
     render(<MealRegistration onClose={onClose} />);
     goManual();
-    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Ovos' } });
-    fireEvent.change(screen.getByPlaceholderText('g'), { target: { value: '100' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
-    await screen.findByText(/Ovos/);
-
-    const finalMeal = { id: 'meal-2', coach_notes: 'Boa fonte de proteína ao pequeno-almoço.', meal_items: [{ id: 'item-1' }] };
-    mocks.invoke.mockResolvedValueOnce({ data: { meal: finalMeal }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Almoço' }));
+    addItem('Ovos', 100);
+    addItem('Aveia', 40);
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
 
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    const [fnName, { body }] = mocks.invoke.mock.calls[1];
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
     expect(fnName).toBe('analyze-meal');
-    expect(body.mode).toBe('finalize');
-    expect(body.meal_id).toBe('meal-2');
+    expect(body.mode).toBe('manual');
+    expect(body.meal_type).toBe('almoco');
+    expect(body.items).toEqual([
+      { name: 'Ovos', grams: 100 },
+      { name: 'Aveia', grams: 40 },
+    ]);
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().meals).toEqual([finalMeal]);
+  });
+
+  it('mostra o erro da Edge Function e não fecha o formulário', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a analisar a refeição.' });
+    render(<MealRegistration onClose={onClose} />);
+    goManual();
+    addItem('Ovos', 100);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
+
+    await screen.findByText('Falha a analisar a refeição.');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useAppStore.getState().meals).toEqual([]);
   });
 
   it('não deixa finalizar sem nenhum alimento adicionado', () => {

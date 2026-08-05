@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
-import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 
@@ -22,18 +22,8 @@ const MEAL_TYPES = [
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
 
-function itemMacros(item) {
-  const factor = (Number(item.quantity_grams) || 0) / 100;
-  return {
-    calories: factor * (Number(item.calories_per_100g) || 0),
-    protein: factor * (Number(item.protein_per_100g) || 0),
-    carbs: factor * (Number(item.carbs_per_100g) || 0),
-    fat: factor * (Number(item.fat_per_100g) || 0),
-  };
-}
-
 export default function MealRegistration({ onClose }) {
-  const { profile, meals, setMeals } = useAppStore();
+  const { meals, setMeals } = useAppStore();
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -48,16 +38,14 @@ export default function MealRegistration({ onClose }) {
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Manual — cria a refeição vazia ao primeiro alimento adicionado (só
-  // nesse momento passa a existir uma linha em `meals`) e vai acrescentando
-  // alimentos um a um; cada um é estimado pelo Gemini a partir do nome (sem
-  // foto). "Analisar Refeição" no fim gera só o comentário do Coach.
-  const [mealId, setMealId] = useState(null);
-  const [manualItems, setManualItems] = useState([]);
+  // Manual — "Adicionar alimento" só acrescenta {name, grams} a uma lista
+  // local, sem tocar no servidor nem no Gemini. Só ao premir "Analisar
+  // Refeição" é que UMA ÚNICA chamada estima os valores nutricionais de
+  // TODOS os alimentos de uma vez, grava a refeição e gera o comentário do
+  // Coach — nada é consultado à IA por cada alimento adicionado.
+  const [manualItems, setManualItems] = useState([]); // [{ key, name, grams }]
   const [itemName, setItemName] = useState('');
   const [itemGrams, setItemGrams] = useState('');
-  const [isAddingItem, setIsAddingItem] = useState(false);
-  const [removingItemId, setRemovingItemId] = useState(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
@@ -118,71 +106,38 @@ export default function MealRegistration({ onClose }) {
   };
 
   // ----------------------------------
-  // REGISTO MANUAL — alimento a alimento, cada um estimado pelo Gemini a
-  // partir do nome (sem foto), depois "Analisar Refeição" gera o comentário
-  // do Coach a partir dos itens já gravados.
+  // REGISTO MANUAL — adicionar é só local; a estimativa de nutrientes e o
+  // comentário do Coach só acontecem ao premir "Analisar Refeição".
   // ----------------------------------
-  const ensureMealId = async () => {
-    if (mealId) return mealId;
-    const { data, error } = await supabase
-      .from('meals')
-      .insert({ user_id: profile.id, date, meal_type: mealType, photo_paths: [], status: 'ready', notes: notes.trim() || null })
-      .select()
-      .single();
-    if (error) throw error;
-    setMealId(data.id);
-    return data.id;
-  };
-
-  const handleAddItem = async () => {
+  const handleAddItem = () => {
     const name = itemName.trim();
     const grams = Number(itemGrams);
     if (!name) { setErrorMsg('Escreve o nome do alimento.'); return; }
     if (!(grams > 0)) { setErrorMsg('Indica as gramas.'); return; }
-    if (isAddingItem) return;
 
-    setIsAddingItem(true);
     setErrorMsg('');
-    try {
-      const id = await ensureMealId();
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: { meal_id: id, item_name: name, item_grams: grams },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
-
-      setManualItems(prev => [...prev, data.item]);
-      setItemName('');
-      setItemGrams('');
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha a estimar o alimento. Tenta novamente.');
-    } finally {
-      setIsAddingItem(false);
-    }
+    setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name, grams }]);
+    setItemName('');
+    setItemGrams('');
   };
 
-  const handleRemoveManualItem = async (itemId) => {
-    setRemovingItemId(itemId);
-    try {
-      const { error } = await supabase.from('meal_items').delete().eq('id', itemId);
-      if (error) throw error;
-      setManualItems(prev => prev.filter(i => i.id !== itemId));
-    } catch (err) {
-      console.error(err);
-      setErrorMsg('Não foi possível remover o alimento.');
-    } finally {
-      setRemovingItemId(null);
-    }
+  const handleRemoveManualItem = (key) => {
+    setManualItems(prev => prev.filter(i => i.key !== key));
   };
 
   const handleFinalizeManual = async () => {
-    if (!mealId || !manualItems.length || isFinalizing) return;
+    if (!manualItems.length || isFinalizing) return;
     setIsFinalizing(true);
     setErrorMsg('');
     try {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: { mode: 'finalize', meal_id: mealId },
+        body: {
+          mode: 'manual',
+          date,
+          meal_type: mealType,
+          notes: notes.trim() || null,
+          items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
+        },
       });
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
@@ -197,25 +152,6 @@ export default function MealRegistration({ onClose }) {
     }
   };
 
-  // Cancelar com uma refeição manual já criada mas sem itens (o utilizador
-  // nunca chegou a adicionar nada) apaga-a — não deixa refeições vazias na
-  // conta, tal como o vanilla fazia (abandonManualMealSession).
-  const handleCancel = async () => {
-    if (mealId && manualItems.length === 0) {
-      try {
-        await supabase.from('meals').delete().eq('id', mealId);
-      } catch (err) {
-        console.error('Error deleting empty meal:', err);
-      }
-    }
-    onClose();
-  };
-
-  const manualTotals = manualItems.reduce((acc, it) => {
-    const m = itemMacros(it);
-    return { calories: acc.calories + m.calories, protein: acc.protein + m.protein, carbs: acc.carbs + m.carbs, fat: acc.fat + m.fat };
-  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
   return (
     <div className="fade-in pb-8">
       <div
@@ -228,7 +164,7 @@ export default function MealRegistration({ onClose }) {
             <h2 className="text-[15px] font-semibold text-slate-700">Nova Refeição</h2>
           </div>
           <button
-            onClick={handleCancel}
+            onClick={onClose}
             type="button"
             className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
           >
@@ -267,32 +203,27 @@ export default function MealRegistration({ onClose }) {
           })}
         </div>
 
-        {/* Como queres registar? — escondido depois de já haver uma refeição
-            manual em curso, tal como na Corrida ao editar: uma vez escolhido
-            o caminho, não faz sentido saltar a meio. */}
-        {!mealId && (
-          <div className="mb-5">
-            <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => setEntryMethod('foto')}
-                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-              >
-                <Camera size={14} /> Foto (IA)
-              </button>
-              <button
-                type="button"
-                onClick={() => setEntryMethod('manual')}
-                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-              >
-                <PencilLine size={14} /> Manual
-              </button>
-            </div>
+        <div className="mb-5">
+          <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setEntryMethod('foto')}
+              style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
+              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+            >
+              <Camera size={14} /> Foto (IA)
+            </button>
+            <button
+              type="button"
+              onClick={() => setEntryMethod('manual')}
+              style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
+              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+            >
+              <PencilLine size={14} /> Manual
+            </button>
           </div>
-        )}
+        </div>
 
         {entryMethod === 'foto' ? (
           <>
@@ -378,43 +309,33 @@ export default function MealRegistration({ onClose }) {
               </div>
               <button
                 onClick={handleAddItem}
-                disabled={isAddingItem || !itemName.trim() || !itemGrams}
+                disabled={!itemName.trim() || !itemGrams}
                 type="button"
                 className="w-full text-[13px] font-bold rounded-xl py-2.5 flex items-center justify-center gap-1.5 border transition disabled:opacity-40"
                 style={{ borderColor: 'var(--mod-nutricao-to)', color: 'var(--mod-nutricao-to)' }}
               >
-                {isAddingItem
-                  ? <><Loader2 size={16} className="animate-spin" /> A estimar com IA...</>
-                  : <><Plus size={16} /> Adicionar alimento</>}
+                <Plus size={16} /> Adicionar alimento
               </button>
             </div>
 
             {manualItems.length > 0 && (
               <div className="space-y-1.5 mb-3">
-                {manualItems.map(item => {
-                  const m = itemMacros(item);
-                  return (
-                    <div key={item.id} className="flex items-center justify-between bg-white border border-slate-200/80 rounded-xl px-3 py-2">
-                      <div>
-                        <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">
-                          {Number(item.quantity_grams).toFixed(0)}g · {m.calories.toFixed(0)} kcal · P {m.protein.toFixed(1)}g · H {m.carbs.toFixed(1)}g · G {m.fat.toFixed(1)}g
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveManualItem(item.id)}
-                        disabled={removingItemId === item.id}
-                        className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
-                        aria-label={`Remover ${item.name}`}
-                      >
-                        {removingItemId === item.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                      </button>
+                {manualItems.map(item => (
+                  <div key={item.key} className="flex items-center justify-between bg-white border border-slate-200/80 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
+                      <p className="text-[10px] text-slate-400">{item.grams}g</p>
                     </div>
-                  );
-                })}
-                <p className="text-[11px] text-slate-500 text-right px-1">
-                  Total: {manualTotals.calories.toFixed(0)} kcal · P {manualTotals.protein.toFixed(1)}g · H {manualTotals.carbs.toFixed(1)}g · G {manualTotals.fat.toFixed(1)}g
-                </p>
+                    <button
+                      onClick={() => handleRemoveManualItem(item.key)}
+                      className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
+                      aria-label={`Remover ${item.name}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
               </div>
             )}
           </div>
@@ -434,8 +355,9 @@ export default function MealRegistration({ onClose }) {
 
         {/* Ações — mesmo botão do Coach nos dois caminhos: a foto e o registo
             manual acabam ambos analisados por ele, só a origem dos dados
-            muda (ver PRD 3.2). */}
-        {entryMethod === 'foto' && !mealId ? (
+            muda (ver PRD 3.2). O manual só chega aqui a servidor nenhum —
+            "Adicionar alimento" é sempre local. */}
+        {entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}
             disabled={!photos.length || isAnalyzing}

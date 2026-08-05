@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Percent, Dumbbell, Activity } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Percent, Dumbbell, Activity, Award } from 'lucide-react';
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -44,6 +44,8 @@ export default function BodyAssessmentCard({ assessment }) {
       alert('Erro ao guardar observações.');
     }
   };
+
+  const coachCommentary = assessment.ai_summary;
 
   const weight = assessment.weight_kg ? `${assessment.weight_kg} kg` : null;
   const bodyFat = assessment.body_fat_pct ? `${assessment.body_fat_pct}% Gordura` : null;
@@ -170,6 +172,19 @@ export default function BodyAssessmentCard({ assessment }) {
               })}
             </div>
           </div>
+
+          {/* ANÁLISE DO COACH */}
+          {coachCommentary && (
+            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                <Award size={16} className="text-emerald-600 shrink-0" />
+                Análise do Coach
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed font-normal">
+                {coachCommentary}
+              </p>
+            </div>
+          )}
 
           {/* Delete Action Button */}
           <button
