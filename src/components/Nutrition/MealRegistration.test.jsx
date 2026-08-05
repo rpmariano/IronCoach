@@ -7,9 +7,23 @@ import MealRegistration from './MealRegistration';
 // analyze-meal é a única coisa que estes testes exercitam de facto —
 // "Adicionar alimento" no manual é puramente local (sem chamadas ao
 // servidor), só "Analisar Refeição" toca no Gemini, seja por foto ou manual.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+// Editar não passa pelo Gemini — é só update direto de meals/meal_items.
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateMeal: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
-  supabase: {},
+  supabase: {
+    from: (table) => {
+      if (table === 'meals') {
+        return { update: (payload) => ({ eq: (col, val) => mocks.updateMeal(payload, val) }) };
+      }
+      if (table === 'meal_items') {
+        return {
+          update: (payload) => ({ eq: (col, val) => mocks.updateItem(payload, val) }),
+          delete: () => ({ eq: (col, val) => mocks.deleteItem(val) }),
+        };
+      }
+      return {};
+    },
+  },
   invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
 }));
 
@@ -191,5 +205,74 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     goManual();
 
     expect(screen.getByRole('button', { name: 'Analisar Refeição' })).toBeDisabled();
+  });
+});
+
+describe('MealRegistration — editar refeição existente: é só update dos campos, sem Coach', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+  const EXISTING_MEAL = {
+    id: 'meal-3',
+    date: '2026-01-10',
+    meal_type: 'jantar',
+    notes: 'nota antiga',
+    meal_items: [
+      { id: 'item-1', name: 'Arroz', quantity_grams: 100 },
+      { id: 'item-2', name: 'Frango', quantity_grams: 150 },
+    ],
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
+    mocks.updateItem.mockReset().mockResolvedValue({ error: null });
+    mocks.deleteItem.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    loadInitialData.mockClear();
+    useAppStore.setState({ profile: PROFILE, meals: [EXISTING_MEAL], loadInitialData });
+  });
+
+  it('pré-preenche os campos e esconde o seletor Foto/Manual e o formulário de adicionar', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    expect(screen.getByText('Editar Refeição')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Jantar' })).toBeInTheDocument();
+    expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adicionar alimento' })).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue('Arroz')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Frango')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
+  });
+
+  it('ao guardar, atualiza a refeição e os alimentos alterados, sem chamar o Gemini', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+
+    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
+    const [mealPayload, mealId] = mocks.updateMeal.mock.calls[0];
+    expect(mealId).toBe('meal-3');
+    expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'jantar', notes: 'nota antiga' });
+
+    await waitFor(() => expect(mocks.updateItem).toHaveBeenCalledTimes(2));
+    const arrozCall = mocks.updateItem.mock.calls.find(([, id]) => id === 'item-1');
+    expect(arrozCall[0]).toEqual({ name: 'Arroz', quantity_grams: 120 });
+
+    expect(mocks.deleteItem).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    await waitFor(() => expect(loadInitialData).toHaveBeenCalledWith('user-1'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('remover um alimento apaga-o ao guardar', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover Frango' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+
+    await waitFor(() => expect(mocks.deleteItem).toHaveBeenCalledWith('item-2'));
+    expect(mocks.updateItem).toHaveBeenCalledTimes(1);
+    expect(mocks.updateItem.mock.calls[0][1]).toBe('item-1');
   });
 });

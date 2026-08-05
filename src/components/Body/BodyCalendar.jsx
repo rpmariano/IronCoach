@@ -78,8 +78,9 @@ export default function BodyCalendar() {
                 <button
                   onClick={() => setSelectedDate(date)}
                   className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl text-xs transition ${
-                    isSelected ? 'bg-neutral-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
+                    isSelected ? 'bg-neutral-900 shadow-md' : 'text-slate-600 hover:bg-slate-100'
                   }`}
+                  style={isSelected ? { color: '#fff' } : undefined}
                 >
                   <span className="mb-1">{format(date, 'd')}</span>
                   <div className={`w-1 h-1 rounded-full ${statusColor}`} />

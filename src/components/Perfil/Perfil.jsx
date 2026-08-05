@@ -237,13 +237,14 @@ export default function Perfil() {
   const leaveModal = leavePrompt && (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="perfil-leave-title">
       <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
-        <h2 id="perfil-leave-title" className="text-sm font-semibold text-white">Tens alterações por gravar</h2>
+        <h2 id="perfil-leave-title" className="text-sm font-semibold" style={{ color: '#fff' }}>Tens alterações por gravar</h2>
         <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
           Se saíres agora, as alterações que fizeste neste separador não ficam guardadas.
         </p>
         <div className="mt-5 space-y-2">
           <button onClick={saveAndLeave} disabled={isSaving} type="button"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] text-white shadow-lg active:scale-95 transition disabled:opacity-60">
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] shadow-lg active:scale-95 transition disabled:opacity-60"
+            style={{ color: '#fff' }}>
             {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
             {isSaving ? 'A guardar...' : 'Gravar e sair'}
           </button>
@@ -265,10 +266,11 @@ export default function Perfil() {
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       className={`w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition ${
-        isDirty && !isSaving 
-          ? 'bg-[var(--accent)] text-white shadow-lg active:scale-95' 
+        isDirty && !isSaving
+          ? 'bg-[var(--accent)] shadow-lg active:scale-95'
           : 'bg-neutral-800 text-slate-500 cursor-not-allowed'
       }`}
+      style={isDirty && !isSaving ? { color: '#fff' } : undefined}
     >
       {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
       {isSaving ? 'A guardar...' : 'Guardar alterações'}
@@ -288,8 +290,9 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'bg-[var(--accent)] text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              tab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200'
             }`}
+            style={tab === t.key ? { color: '#fff' } : undefined}
           >
             <t.icon size={14} /> {t.label}
           </button>
@@ -298,7 +301,7 @@ export default function Perfil() {
 
       {saveSuccess && (
         <div className="fixed top-4 inset-x-4 z-50 flex justify-center fade-in">
-          <div className="bg-emerald-500 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2">
+          <div className="bg-emerald-500 px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2" style={{ color: '#fff' }}>
             ✓ Guardado com sucesso
           </div>
         </div>
@@ -312,7 +315,7 @@ export default function Perfil() {
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold text-white">Pessoal</h2>
+              <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Pessoal</h2>
             </div>
             <div className="space-y-3">
               <div>
@@ -321,7 +324,8 @@ export default function Perfil() {
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  style={{ color: '#fff' }}
                 />
               </div>
               <div>
@@ -329,7 +333,8 @@ export default function Perfil() {
                 <select
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  style={{ color: '#fff' }}
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -354,18 +359,18 @@ export default function Perfil() {
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold text-white">Avaliação Corporal</h2>
+              <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Avaliação Corporal</h2>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
                 <input type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
                 <input type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }} />
               </div>
             </div>
             
@@ -373,7 +378,7 @@ export default function Perfil() {
               className={`w-full flex items-center justify-between border border-neutral-800 rounded-xl px-3 py-2.5 ${metasBodyExpanded ? 'mb-2' : ''}`}>
               <div className="flex items-center gap-2">
                 <Target size={16} className="text-[var(--accent)]" />
-                <span className="text-sm font-semibold text-white">Objetivos corporais</span>
+                <span className="text-sm font-semibold" style={{ color: '#fff' }}>Objetivos corporais</span>
                 <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                   {BODY_METRICS.filter(m => draft['goal_' + m.key] != null).length}/{BODY_METRICS.length} definidos
                 </span>
@@ -388,7 +393,7 @@ export default function Perfil() {
                     <label className="text-[11px] text-slate-500 truncate block mb-1">{m.label}{m.unit ? ` (${m.unit})` : ''}</label>
                     <input type="number" step={m.dec === 0 ? '1' : '0.1'} value={draft['goal_' + m.key] ?? ''}
                       onChange={e => updateDraft('goal_' + m.key, e.target.value === '' ? null : parseFloat(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60" />
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }} />
                   </div>
                 ))}
               </div>
@@ -398,39 +403,39 @@ export default function Perfil() {
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-4">
               <Target size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold text-white">Nutrição & Água</h2>
+              <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Nutrição & Água</h2>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Calorias (kcal/dia)</label>
                 <input type="number" value={draft.calorie_goal || ''} onChange={e => updateDraft('calorie_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" style={{ color: '#fff' }} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Proteína (g/dia)</label>
                 <input type="number" value={draft.protein_goal || ''} onChange={e => updateDraft('protein_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" style={{ color: '#fff' }} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Hidratos (g/dia)</label>
                 <input type="number" value={draft.carbs_goal || ''} onChange={e => updateDraft('carbs_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" style={{ color: '#fff' }} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Gordura (g/dia)</label>
                 <input type="number" value={draft.fat_goal || ''} onChange={e => updateDraft('fat_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" style={{ color: '#fff' }} />
               </div>
               <div className="col-span-2">
                 <label className="text-[11px] text-slate-500 block mb-1">Meta água (ml/dia)</label>
                 <input type="number" step="50" value={draft.water_goal_ml || ''} onChange={e => updateDraft('water_goal_ml', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none" />
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" style={{ color: '#fff' }} />
               </div>
             </div>
 
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
               <div className="pr-4">
-                <p className="text-xs font-semibold text-white flex items-center gap-1.5"><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
+                <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#fff' }}><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
                 <p className="text-[11px] text-slate-500 mt-1">
                   Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
                 </p>
@@ -449,7 +454,7 @@ export default function Perfil() {
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
                   <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }}>
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -459,14 +464,14 @@ export default function Perfil() {
                   <div>
                     <label className="text-[11px] text-slate-500 block mb-1">Início</label>
                     <select value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }}>
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-[11px] text-slate-500 block mb-1">Fim</label>
                     <select value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" style={{ color: '#fff' }}>
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
@@ -491,7 +496,7 @@ export default function Perfil() {
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold text-white">Objetivos com o Coach</h2>
+              <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Objetivos com o Coach</h2>
             </div>
             <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
               O Coach analisa o teu histórico (Corpo, Nutrição, Ginásio, Corrida) e as tuas próximas provas para sugerir objetivos (na aba Metas).
@@ -518,7 +523,7 @@ export default function Perfil() {
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-2">
               <Bot size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold text-white">Contexto do Coach</h2>
+              <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Contexto do Coach</h2>
             </div>
             <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
               Descreve os teus objetivos, lesões ou preferências. O coach terá sempre isto em conta.
@@ -528,7 +533,8 @@ export default function Perfil() {
               value={draft.coach_context || ''}
               onChange={e => updateDraft('coach_context', e.target.value)}
               placeholder="Ex: Quero correr uma meia maratona em Novembro. Tenho uma lesão no joelho direito. Objetivo: ganhar massa muscular mantendo o peso."
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none resize-none placeholder-slate-600 focus:border-[var(--mod-coach-to)]/70"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-[var(--mod-coach-to)]/70"
+              style={{ color: '#fff' }}
             />
           </div>
 

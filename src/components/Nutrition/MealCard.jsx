@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, Plus, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets, Award } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, Plus, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets, Award, PencilLine } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -12,7 +12,7 @@ const MEAL_ICONS = {
   'jantar': Moon,
 };
 
-export default function MealCard({ meal }) {
+export default function MealCard({ meal, onEdit }) {
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -206,8 +206,8 @@ export default function MealCard({ meal }) {
                 />
                 <button
                   onClick={handleSaveNotes}
-                  className="tap-h-44 px-3 rounded-lg text-xs font-bold text-white transition active:scale-95"
-                  style={{ background: 'var(--mod-nutricao-to)' }}
+                  className="tap-h-44 px-3 rounded-lg text-xs font-bold transition active:scale-95"
+                  style={{ background: 'var(--mod-nutricao-to)', color: '#fff' }}
                 >
                   Guardar
                 </button>
@@ -265,10 +265,18 @@ export default function MealCard({ meal }) {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 pt-1">
+            {onEdit && (
+              <button
+                onClick={() => onEdit(meal.id)}
+                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+              >
+                <PencilLine size={14} /> Editar
+              </button>
+            )}
             <button
               onClick={handleDeleteMeal}
               disabled={isDeleting}
-              className="w-full border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
               {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Eliminar refeição

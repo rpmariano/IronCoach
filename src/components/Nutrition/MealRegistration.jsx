@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
-import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 
@@ -22,8 +22,9 @@ const MEAL_TYPES = [
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
 
-export default function MealRegistration({ onClose }) {
-  const { meals, setMeals } = useAppStore();
+export default function MealRegistration({ onClose, mealIdToEdit = null }) {
+  const { profile, meals, setMeals, loadInitialData } = useAppStore();
+  const isEditing = !!mealIdToEdit;
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -43,10 +44,41 @@ export default function MealRegistration({ onClose }) {
   // Refeição" é que UMA ÚNICA chamada estima os valores nutricionais de
   // TODOS os alimentos de uma vez, grava a refeição e gera o comentário do
   // Coach — nada é consultado à IA por cada alimento adicionado.
-  const [manualItems, setManualItems] = useState([]); // [{ key, name, grams }]
+  const [manualItems, setManualItems] = useState([]); // [{ key, name, grams, dbId? }]
   const [itemName, setItemName] = useState('');
   const [itemGrams, setItemGrams] = useState('');
   const [isFinalizing, setIsFinalizing] = useState(false);
+
+  // Edição — carrega a refeição existente (é sempre pelos campos, tal como
+  // na Corrida: sem foto nova, sem passar pelo Coach outra vez). Só se pode
+  // editar nome/gramas dos alimentos já gravados e removê-los — acrescentar
+  // um alimento NOVO exigiria estimar os valores dele com o Gemini, e editar
+  // não deve chamar o Coach.
+  const [originalItemIds, setOriginalItemIds] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!mealIdToEdit) return;
+    const meal = meals.find(m => m.id === mealIdToEdit);
+    if (!meal) return;
+    setDate(meal.date || format(new Date(), 'yyyy-MM-dd'));
+    setMealType(meal.meal_type || 'almoco');
+    setNotes(meal.notes || '');
+    const items = (meal.meal_items || []).map((it, i) => ({
+      key: it.id || `${Date.now()}-${i}`,
+      dbId: it.id,
+      name: it.name,
+      grams: it.quantity_grams,
+    }));
+    setManualItems(items);
+    setOriginalItemIds(items.map(i => i.dbId).filter(Boolean));
+    setEntryMethod('manual');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mealIdToEdit]);
+
+  const updateManualItem = (key, patch) => {
+    setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
+  };
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
   // partilhado com a Corrida); o .base64 resultante é o que vai no pedido de
@@ -152,6 +184,46 @@ export default function MealRegistration({ onClose }) {
     }
   };
 
+  // ----------------------------------
+  // GUARDAR ALTERAÇÕES (edição) — é só update dos campos, não passa pelo
+  // Coach outra vez (mesmo padrão da Corrida: editar nunca reanalisa).
+  // ----------------------------------
+  const handleSaveEdit = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setErrorMsg('');
+    try {
+      const { error: mealError } = await supabase
+        .from('meals')
+        .update({ date, meal_type: mealType, notes: notes.trim() || null })
+        .eq('id', mealIdToEdit);
+      if (mealError) throw mealError;
+
+      const currentIds = manualItems.map(i => i.dbId).filter(Boolean);
+      const removedIds = originalItemIds.filter(id => !currentIds.includes(id));
+      for (const id of removedIds) {
+        const { error } = await supabase.from('meal_items').delete().eq('id', id);
+        if (error) throw error;
+      }
+      for (const item of manualItems) {
+        if (!item.dbId) continue; // alimentos novos não se adicionam ao editar (sem IA)
+        const { error } = await supabase
+          .from('meal_items')
+          .update({ name: item.name, quantity_grams: Number(item.grams) })
+          .eq('id', item.dbId);
+        if (error) throw error;
+      }
+
+      if (profile?.id) await loadInitialData(profile.id);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Falha a guardar alterações. Tenta novamente.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="fade-in pb-8">
       <div
@@ -161,7 +233,7 @@ export default function MealRegistration({ onClose }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-            <h2 className="text-[15px] font-semibold text-slate-700">Nova Refeição</h2>
+            <h2 className="text-[15px] font-semibold text-slate-700">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
             onClick={onClose}
@@ -203,27 +275,31 @@ export default function MealRegistration({ onClose }) {
           })}
         </div>
 
-        <div className="mb-5">
-          <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => setEntryMethod('foto')}
-              style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <Camera size={14} /> Foto (IA)
-            </button>
-            <button
-              type="button"
-              onClick={() => setEntryMethod('manual')}
-              style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <PencilLine size={14} /> Manual
-            </button>
+        {/* Como queres registar? — escondido a editar: editar é sempre pelos
+            campos, sem foto nova (mesmo padrão da Corrida). */}
+        {!isEditing && (
+          <div className="mb-5">
+            <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setEntryMethod('foto')}
+                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <Camera size={14} /> Foto (IA)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMethod('manual')}
+                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <PencilLine size={14} /> Manual
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {entryMethod === 'foto' ? (
           <>
@@ -287,45 +363,65 @@ export default function MealRegistration({ onClose }) {
           </>
         ) : (
           <div className="mb-4">
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-3">
-              <p className="text-[12px] font-bold text-slate-500 mb-2.5">Adicionar alimento</p>
-              <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="Ex.: peito de frango grelhado"
-                  value={itemName}
-                  onChange={e => setItemName(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
-                />
-                <div className="relative w-24">
+            {!isEditing && (
+              <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-3">
+                <p className="text-[12px] font-bold text-slate-500 mb-2.5">Adicionar alimento</p>
+                <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
                   <input
-                    type="number" min="1" step="1"
-                    placeholder="g"
-                    value={itemGrams}
-                    onChange={e => setItemGrams(e.target.value)}
+                    type="text"
+                    placeholder="Ex.: peito de frango grelhado"
+                    value={itemName}
+                    onChange={e => setItemName(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                   />
+                  <div className="relative w-24">
+                    <input
+                      type="number" min="1" step="1"
+                      placeholder="g"
+                      value={itemGrams}
+                      onChange={e => setItemGrams(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                    />
+                  </div>
                 </div>
+                <button
+                  onClick={handleAddItem}
+                  disabled={!itemName.trim() || !itemGrams}
+                  type="button"
+                  className="w-full text-[13px] font-bold rounded-xl py-2.5 flex items-center justify-center gap-1.5 border transition disabled:opacity-40"
+                  style={{ borderColor: 'var(--mod-nutricao-to)', color: 'var(--mod-nutricao-to)' }}
+                >
+                  <Plus size={16} /> Adicionar alimento
+                </button>
               </div>
-              <button
-                onClick={handleAddItem}
-                disabled={!itemName.trim() || !itemGrams}
-                type="button"
-                className="w-full text-[13px] font-bold rounded-xl py-2.5 flex items-center justify-center gap-1.5 border transition disabled:opacity-40"
-                style={{ borderColor: 'var(--mod-nutricao-to)', color: 'var(--mod-nutricao-to)' }}
-              >
-                <Plus size={16} /> Adicionar alimento
-              </button>
-            </div>
+            )}
 
             {manualItems.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {manualItems.map(item => (
-                  <div key={item.key} className="flex items-center justify-between bg-white border border-slate-200/80 rounded-xl px-3 py-2">
-                    <div>
-                      <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
-                      <p className="text-[10px] text-slate-400">{item.grams}g</p>
-                    </div>
+                  <div key={item.key} className="flex items-center gap-2 bg-white border border-slate-200/80 rounded-xl px-3 py-2">
+                    {isEditing ? (
+                      <>
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={e => updateManualItem(item.key, { name: e.target.value })}
+                          className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent"
+                        />
+                        <input
+                          type="number" min="1"
+                          value={item.grams}
+                          onChange={e => updateManualItem(item.key, { grams: e.target.value })}
+                          className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
+                        />
+                        <span className="text-[10px] text-slate-400">g</span>
+                      </>
+                    ) : (
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
+                        <p className="text-[10px] text-slate-400">{item.grams}g</p>
+                      </div>
+                    )}
                     <button
                       onClick={() => handleRemoveManualItem(item.key)}
                       className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
@@ -335,7 +431,9 @@ export default function MealRegistration({ onClose }) {
                     </button>
                   </div>
                 ))}
-                <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
+                {!isEditing && (
+                  <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
+                )}
               </div>
             )}
           </div>
@@ -356,8 +454,19 @@ export default function MealRegistration({ onClose }) {
         {/* Ações — mesmo botão do Coach nos dois caminhos: a foto e o registo
             manual acabam ambos analisados por ele, só a origem dos dados
             muda (ver PRD 3.2). O manual só chega aqui a servidor nenhum —
-            "Adicionar alimento" é sempre local. */}
-        {entryMethod === 'foto' ? (
+            "Adicionar alimento" é sempre local. Editar é só o update dos
+            campos — não passa pelo Coach, por isso não leva o gradiente. */}
+        {isEditing ? (
+          <button
+            onClick={handleSaveEdit}
+            disabled={isSaving}
+            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+          >
+            {isSaving
+              ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
+              : <><PencilLine size={16} /> Guardar Alterações</>}
+          </button>
+        ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}
             disabled={!photos.length || isAnalyzing}

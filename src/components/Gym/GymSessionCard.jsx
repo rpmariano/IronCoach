@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Dumbbell, Users, Plus, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, RefreshCw, Award } from 'lucide-react';
+import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, RefreshCw, Award, PencilLine } from 'lucide-react';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 
@@ -14,17 +14,11 @@ function formatDuration(totalSeconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function GymSessionCard({ session, isExpanded, onToggleExpand }) {
+export default function GymSessionCard({ session, isExpanded, onToggleExpand, onEdit }) {
   const { profile, loadInitialData } = useAppStore();
-  const [isAdding, setIsAdding] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingSet, setIsDeletingSet] = useState(null);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
-
-  const [newExercise, setNewExercise] = useState('');
-  const [newReps, setNewReps] = useState('');
-  const [newWeight, setNewWeight] = useState('');
 
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState(session.notes || '');
@@ -80,28 +74,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
       if (profile?.id) await loadInitialData(profile.id);
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  const handleAddSet = async () => {
-    if (!newExercise.trim() || !newReps || !newWeight) return;
-    setIsSubmitting(true);
-    try {
-      const { error } = await supabase.from('workout_session_sets').insert({
-        workout_session_id: session.id,
-        exercise_name: newExercise.trim(),
-        reps: parseInt(newReps),
-        weight: parseFloat(newWeight)
-      });
-      if (error) throw error;
-      if (profile?.id) await loadInitialData(profile.id);
-      setNewReps('');
-      setNewWeight('');
-    } catch (e) {
-      console.error(e);
-      alert('Erro ao guardar série.');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -298,7 +270,8 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
                 />
                 <button
                   onClick={handleSaveNotes}
-                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition"
+                  className="px-3 py-1 bg-blue-600 rounded-lg text-xs font-bold hover:bg-blue-700 transition"
+                  style={{ color: '#fff' }}
                 >
                   Guardar
                 </button>
@@ -349,60 +322,9 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
             </div>
           )}
 
-          {/* Add Set Form / Button */}
-          {isAdding ? (
-            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
-              <h5 className="text-xs font-bold text-slate-800">Adicionar Série</h5>
-              <input
-                type="text"
-                placeholder="Nome do Exercício (ex: Supino Plano)"
-                value={newExercise}
-                onChange={e => setNewExercise(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  placeholder="Repetições"
-                  value={newReps}
-                  onChange={e => setNewReps(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
-                />
-                <input
-                  type="number"
-                  step="0.5"
-                  placeholder="Carga (kg)"
-                  value={newWeight}
-                  onChange={e => setNewWeight(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  onClick={() => setIsAdding(false)}
-                  className="px-3 py-1 text-xs text-slate-500 hover:text-slate-700 font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleAddSet}
-                  disabled={isSubmitting}
-                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1"
-                >
-                  {isSubmitting && <Loader2 size={12} className="animate-spin" />} Guardar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button 
-              onClick={() => setIsAdding(true)}
-              className="w-full border-2 border-dashed border-slate-200 hover:border-slate-300 rounded-xl py-2.5 text-center text-xs font-bold text-slate-500 hover:text-slate-700 transition flex items-center justify-center gap-1.5"
-            >
-              <Plus size={14} /> Adicionar Exercício / Série
-            </button>
-          )}
-
-          {/* Bottom Action Bar */}
+          {/* Bottom Action Bar — editar é onde se gerem exercícios/séries por
+              completo; deixou de haver aqui uma hipótese rápida de
+              "adicionar", só editar ou eliminar a sessão toda. */}
           <div className="flex items-center gap-2 pt-1">
             {session.photo_paths?.length > 0 && (
               <button
@@ -412,6 +334,14 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
               >
                 {isReanalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                 Reanalisar
+              </button>
+            )}
+            {onEdit && (
+              <button
+                onClick={() => onEdit(session.id)}
+                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+              >
+                <PencilLine size={14} /> Editar
               </button>
             )}
             <button

@@ -293,7 +293,7 @@ function GymSessionsCard({ gymSessions = [], onNav }) {
                   background: trained ? 'linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : 'rgba(15,23,42,0.10)',
                   boxShadow: isToday && !trained ? 'inset 0 0 0 1.5px #60a5fa' : undefined,
                 }}>
-                {trained && <span className="text-white text-[10px] font-bold">✓</span>}
+                {trained && <span className="text-[10px] font-bold" style={{ color: '#fff' }}>✓</span>}
               </div>
               <span className="text-[10px]" style={{ color: isToday ? 'var(--text-main)' : 'var(--green)', fontWeight: isToday ? 700 : 400 }}>{labels[i]}</span>
             </div>

@@ -55,7 +55,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 fade-in">
         <span className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}>
-          <User className="w-7 h-7 text-white" />
+          <User className="w-7 h-7" style={{ color: '#fff' }} />
         </span>
         <h2 className="text-sm font-bold text-slate-800 mb-1">Composição corporal</h2>
         <p className="text-xs text-slate-500 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>

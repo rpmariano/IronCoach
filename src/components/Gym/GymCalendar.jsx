@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react';
 import GymSessionCard from './GymSessionCard';
+import GymRegistration from './GymRegistration';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -11,6 +12,7 @@ export default function GymCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [expandedSessionId, setExpandedSessionId] = useState(null);
+  const [editingSessionId, setEditingSessionId] = useState(null);
 
   const daysInMonth = useMemo(() => {
     const start = startOfMonth(currentDate);
@@ -29,12 +31,17 @@ export default function GymCalendar() {
     return gymSessions.filter(s => s.date === dayStr);
   }, [gymSessions, selectedDate]);
 
+  if (editingSessionId) {
+    return <GymRegistration onClose={() => setEditingSessionId(null)} sessionIdToEdit={editingSessionId} />;
+  }
+
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Botão Novo Treino */}
       <button 
         onClick={() => setOpenCreationMode('workout')}
-        className="w-full bg-[var(--mod-ginasio-to)] text-white font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        className="w-full bg-[var(--mod-ginasio-to)] font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        style={{ color: '#fff' }}
       >
         <Dumbbell size={20} /> Novo Treino
       </button>
@@ -78,8 +85,9 @@ export default function GymCalendar() {
                 <button
                   onClick={() => setSelectedDate(date)}
                   className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl text-xs transition ${
-                    isSelected ? 'bg-neutral-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
+                    isSelected ? 'bg-neutral-900 shadow-md' : 'text-slate-600 hover:bg-slate-100'
                   }`}
+                  style={isSelected ? { color: '#fff' } : undefined}
                 >
                   <span className="mb-1">{format(date, 'd')}</span>
                   <div className={`w-1 h-1 rounded-full ${statusColor}`} />
@@ -107,11 +115,12 @@ export default function GymCalendar() {
             <p className="text-xs text-slate-500 text-center py-6">Sem treinos registados neste dia.</p>
           ) : (
             daySessions.map(session => (
-              <GymSessionCard 
-                key={session.id} 
-                session={session} 
+              <GymSessionCard
+                key={session.id}
+                session={session}
                 isExpanded={expandedSessionId === session.id}
                 onToggleExpand={() => setExpandedSessionId(expandedSessionId === session.id ? null : session.id)}
+                onEdit={setEditingSessionId}
               />
             ))
           )}

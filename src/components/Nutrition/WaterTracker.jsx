@@ -212,8 +212,8 @@ export default function WaterTracker() {
                 <BellOff size={14} className="shrink-0 text-slate-400" /> Lembretes silenciados até amanhã.
               </p>
               <button onClick={unmuteToday} disabled={isUpdating} type="button"
-                className="tap-h-44 px-3 rounded-xl text-[11px] font-bold text-white shrink-0 disabled:opacity-50 transition active:scale-95"
-                style={{ background: 'var(--blue)' }}>
+                className="tap-h-44 px-3 rounded-xl text-[11px] font-bold shrink-0 disabled:opacity-50 transition active:scale-95"
+                style={{ background: 'var(--blue)', color: '#fff' }}>
                 Reativar
               </button>
             </div>

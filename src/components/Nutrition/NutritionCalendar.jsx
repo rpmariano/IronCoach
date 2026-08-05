@@ -6,11 +6,13 @@ import { ChevronLeft, ChevronRight, Flame, Camera } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import MealCard from './MealCard';
+import MealRegistration from './MealRegistration';
 
 export default function NutritionCalendar({ onRegisterClick }) {
   const { meals, waterLogs, profile } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [editingMealId, setEditingMealId] = useState(null);
 
   const daysInMonth = useMemo(() => {
     const start = startOfMonth(currentDate);
@@ -51,6 +53,10 @@ export default function NutritionCalendar({ onRegisterClick }) {
     }
     return info;
   }, [daysInMonth, mealsByDay, waterByDay, profile]);
+
+  if (editingMealId) {
+    return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;
+  }
 
   return (
     <div className="space-y-4 fade-in pb-8">
@@ -104,9 +110,10 @@ export default function NutritionCalendar({ onRegisterClick }) {
                 <button
                   onClick={() => setSelectedDate(date)}
                   className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl text-xs transition ${
-                    isSelected ? 'bg-neutral-900 text-white shadow-md' :
+                    isSelected ? 'bg-neutral-900 shadow-md' :
                     'text-slate-600 hover:bg-slate-100'
                   }`}
+                  style={isSelected ? { color: '#fff' } : undefined}
                 >
                   <span className="leading-none">{format(date, 'd')}</span>
                   {/* Altura fixa para os dias sem ponto de água não saltarem. */}
@@ -144,7 +151,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
           <p className="text-xs text-slate-500 text-center py-6">Sem refeições registadas neste dia.</p>
         ) : (
           dayMeals.map(meal => (
-            <MealCard key={meal.id} meal={meal} />
+            <MealCard key={meal.id} meal={meal} onEdit={setEditingMealId} />
           ))
         )}
         </div>

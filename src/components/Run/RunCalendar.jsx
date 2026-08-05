@@ -126,7 +126,7 @@ export default function RunCalendar({ onNewRun }) {
             
             let btnClass = "aspect-square flex flex-col items-center justify-center rounded-xl text-xs transition ";
             if (isSelected) {
-              btnClass += "text-white font-bold";
+              btnClass += "font-bold";
             } else if (isToday) {
               btnClass += "text-slate-800 font-bold border border-slate-300";
             } else {
@@ -138,7 +138,7 @@ export default function RunCalendar({ onNewRun }) {
                 key={dateIso}
                 onClick={() => setSelectedDate(dateIso)}
                 className={btnClass}
-                style={{ background: isSelected ? 'var(--accent)' : undefined }}
+                style={{ background: isSelected ? 'var(--accent)' : undefined, color: isSelected ? '#fff' : undefined }}
               >
                 {dayNum}
                 {/* Dia selecionado tem fundo Coral, onde o cinzento não lê bem. */}

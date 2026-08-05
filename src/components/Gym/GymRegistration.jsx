@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store';
-import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -34,8 +34,38 @@ function parseDurationInput(val) {
   return null;
 }
 
-export default function GymRegistration({ onClose }) {
-  const { gymSessions, setGymSessions } = useAppStore();
+// Inverso de parseDurationInput, para pré-preencher o campo de texto ao
+// editar uma sessão já gravada (duration_seconds vem sempre em segundos).
+function formatDurationInput(totalSeconds) {
+  if (!totalSeconds) return '';
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Achata exercícios→séries em linhas prontas para workout_session_sets,
+// espelhando flattenSets em supabase/functions/analyze-gym/index.ts — mesmas
+// colunas (session_id, exercise_name, set_index, reps, weight).
+function flattenExercises(exercises) {
+  const rows = [];
+  for (const ex of exercises) {
+    const name = ex.name.trim();
+    if (!name) continue;
+    ex.sets.forEach((s, i) => {
+      const reps = s.reps === '' || s.reps === null || s.reps === undefined ? null : parseInt(s.reps);
+      const weight = s.weight === '' || s.weight === null || s.weight === undefined ? null : parseFloat(s.weight);
+      if (reps === null && weight === null) return;
+      rows.push({ exercise_name: name, set_index: i, reps, weight });
+    });
+  }
+  return rows;
+}
+
+export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
+  const { profile, gymSessions, setGymSessions, loadInitialData } = useAppStore();
+  const isEditing = !!sessionIdToEdit;
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(todayISO());
@@ -55,15 +85,53 @@ export default function GymRegistration({ onClose }) {
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Manual — métricas do relógio; séries/repetições/carga são adicionadas
-  // à sessão já criada, uma a uma, no próprio cartão do treino (não
-  // precisam de IA nem fazem parte deste registo inicial).
+  // Manual — métricas do relógio; séries/repetições/carga só se gerem ao
+  // editar uma sessão já criada (ver exercises abaixo) — não fazem parte do
+  // registo inicial (nem por foto, nem manual), tal como sempre foi.
   const [durationStr, setDurationStr] = useState('');
   const [calories, setCalories] = useState('');
   const [avgHr, setAvgHr] = useState('');
   const [maxHr, setMaxHr] = useState('');
   const [exertion, setExertion] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // Edição — exercícios/séries só se gerem aqui (a sessão já existe): editar
+  // é sempre pelos campos, sem foto nova e sem passar pelo Coach outra vez
+  // (mesmo padrão da Corrida/Refeição).
+  const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
+
+  useEffect(() => {
+    if (!sessionIdToEdit) return;
+    const session = gymSessions.find(s => s.id === sessionIdToEdit);
+    if (!session) return;
+    setDate(session.date || todayISO());
+    setKind(session.kind === 'aula' ? 'aula' : 'forca');
+    setName(session.name || '');
+    setCategories(session.categories || []);
+    setNotes(session.notes || '');
+    setDurationStr(session.duration_seconds ? formatDurationInput(session.duration_seconds) : '');
+    setCalories(session.calories_kcal ?? '');
+    setAvgHr(session.avg_hr ?? '');
+    setMaxHr(session.max_hr ?? '');
+    setExertion(session.exertion ?? '');
+
+    const grouped = new Map();
+    for (const s of session.workout_session_sets || []) {
+      const key = s.exercise_name || 'Exercício';
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(s);
+    }
+    const loadedExercises = Array.from(grouped.entries()).map(([exName, sets], i) => ({
+      key: `${Date.now()}-${i}`,
+      name: exName,
+      sets: sets
+        .sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0))
+        .map((s, j) => ({ key: s.id || `${Date.now()}-${i}-${j}`, reps: s.reps ?? '', weight: s.weight ?? '' })),
+    }));
+    setExercises(loadedExercises);
+    setEntryMethod('manual');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionIdToEdit]);
 
   const handleToggleCategory = (cat) => {
     if (categories.includes(cat)) {
@@ -185,6 +253,62 @@ export default function GymRegistration({ onClose }) {
     }
   };
 
+  // ----------------------------------
+  // GUARDAR ALTERAÇÕES (edição) — é só update dos campos + substituição das
+  // séries, não passa pelo Coach outra vez (mesmo padrão da Corrida/Refeição).
+  // ----------------------------------
+  const handleSaveEdit = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setErrorMsg('');
+    try {
+      const finalName = name.trim() || (categories.length ? categories.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
+      const { error: sessionError } = await supabase
+        .from('workout_sessions')
+        .update({
+          date,
+          kind,
+          name: finalName,
+          categories,
+          duration_seconds: parseDurationInput(durationStr),
+          calories_kcal: calories ? parseInt(calories) : null,
+          avg_hr: avgHr ? parseInt(avgHr) : null,
+          max_hr: maxHr ? parseInt(maxHr) : null,
+          exertion: exertion ? parseInt(exertion) : null,
+          notes: notes.trim() || null,
+        })
+        .eq('id', sessionIdToEdit);
+      if (sessionError) throw sessionError;
+
+      const { error: deleteError } = await supabase.from('workout_session_sets').delete().eq('session_id', sessionIdToEdit);
+      if (deleteError) throw deleteError;
+
+      const rows = flattenExercises(exercises).map(r => ({ ...r, session_id: sessionIdToEdit, user_id: profile.id }));
+      if (rows.length) {
+        const { error: setsError } = await supabase.from('workout_session_sets').insert(rows);
+        if (setsError) throw setsError;
+      }
+
+      if (profile?.id) await loadInitialData(profile.id);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Falha a guardar alterações. Tenta novamente.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Gestão local de exercícios/séries (só usada em edição)
+  const handleAddExercise = () => {
+    setExercises(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: '', sets: [{ key: `${Date.now()}-0`, reps: '', weight: '' }] }]);
+  };
+  const removeExercise = (exKey) => setExercises(prev => prev.filter(e => e.key !== exKey));
+  const updateExercise = (exKey, patch) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, ...patch } : e)));
+  const addSet = (exKey) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: [...e.sets, { key: `${Date.now()}-${e.sets.length}`, reps: '', weight: '' }] } : e)));
+  const removeSet = (exKey, setKey) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.filter(s => s.key !== setKey) } : e)));
+  const updateSet = (exKey, setKey, patch) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.map(s => (s.key === setKey ? { ...s, ...patch } : s)) } : e)));
+
   const availableCategories = GYM_CATEGORIES[kind] || GYM_CATEGORIES.forca;
   const visibleCategories = categoriesExpanded
     ? availableCategories
@@ -205,7 +329,7 @@ export default function GymRegistration({ onClose }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-[15px] font-bold text-slate-800">Novo Treino</h2>
+            <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
             onClick={onClose}
@@ -318,27 +442,31 @@ export default function GymRegistration({ onClose }) {
           />
         </div>
 
-        <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => setEntryMethod('foto')}
-              style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <Camera size={14} /> Foto (IA)
-            </button>
-            <button
-              type="button"
-              onClick={() => setEntryMethod('manual')}
-              style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <PencilLine size={14} /> Manual
-            </button>
+        {/* Como queres registar? — escondido a editar: editar é sempre pelos
+            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
+        {!isEditing && (
+          <div className="mb-4">
+            <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setEntryMethod('foto')}
+                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <Camera size={14} /> Foto (IA)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMethod('manual')}
+                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <PencilLine size={14} /> Manual
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {entryMethod === 'foto' ? (
           <>
@@ -430,7 +558,78 @@ export default function GymRegistration({ onClose }) {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
               />
             </div>
-            <p className="text-[10px] text-slate-500 -mt-2 mb-4">Séries/repetições/carga adicionam-se ao treino depois de gravado.</p>
+            {isEditing ? (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] text-slate-500">Exercícios e séries</label>
+                  <button
+                    onClick={handleAddExercise}
+                    type="button"
+                    className="text-[11px] font-bold flex items-center gap-1"
+                    style={{ color: 'var(--mod-ginasio-to)' }}
+                  >
+                    <Plus size={12} /> Adicionar exercício
+                  </button>
+                </div>
+                {exercises.length === 0 ? (
+                  <p className="text-[11px] text-slate-400">Sem exercícios ainda.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {exercises.map(ex => (
+                      <div key={ex.key} className="bg-white border border-slate-200 rounded-xl p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="text"
+                            value={ex.name}
+                            onChange={e => updateExercise(ex.key, { name: e.target.value })}
+                            placeholder="Nome do exercício"
+                            className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
+                          />
+                          <button onClick={() => removeExercise(ex.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="space-y-1.5">
+                          {ex.sets.map((s, idx) => (
+                            <div key={s.key} className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-400 w-14 shrink-0">Série {idx + 1}</span>
+                              <input
+                                type="number"
+                                value={s.reps}
+                                onChange={e => updateSet(ex.key, s.key, { reps: e.target.value })}
+                                placeholder="Reps"
+                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                              />
+                              <input
+                                type="number"
+                                step="0.5"
+                                value={s.weight}
+                                onChange={e => updateSet(ex.key, s.key, { weight: e.target.value })}
+                                placeholder="kg"
+                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                              />
+                              <button onClick={() => removeSet(ex.key, s.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => addSet(ex.key)}
+                            type="button"
+                            className="text-[11px] font-semibold"
+                            style={{ color: 'var(--mod-ginasio-to)' }}
+                          >
+                            <Plus size={11} className="inline mr-0.5" /> Série
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-500 -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
+            )}
           </>
         )}
 
@@ -448,10 +647,21 @@ export default function GymRegistration({ onClose }) {
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos: a foto e o registo
-            manual acabam ambos analisados por ele, só a origem dos dados
-            muda. */}
-        {entryMethod === 'foto' ? (
+        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
+            o registo manual acabam ambos analisados por ele. Editar é só o
+            update dos campos — não passa pelo Coach, por isso não leva o
+            gradiente. */}
+        {isEditing ? (
+          <button
+            onClick={handleSaveEdit}
+            disabled={isSaving}
+            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+          >
+            {isSaving
+              ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
+              : <><PencilLine size={16} /> Guardar Alterações</>}
+          </button>
+        ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}
             disabled={!photos.length || isAnalyzing}

@@ -139,7 +139,8 @@ export default function BodyAssessmentCard({ assessment }) {
                 />
                 <button
                   onClick={handleSaveNotes}
-                  className="px-3 py-1 bg-purple-600 text-white rounded-lg text-xs font-bold hover:bg-purple-700 transition"
+                  className="px-3 py-1 bg-purple-600 rounded-lg text-xs font-bold hover:bg-purple-700 transition"
+                  style={{ color: '#fff' }}
                 >
                   Guardar
                 </button>

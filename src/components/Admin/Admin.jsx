@@ -153,8 +153,9 @@ export default function Admin() {
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={`shrink-0 flex items-center gap-1.5 border border-neutral-700 rounded-xl py-2 px-3 text-xs font-semibold transition ${
-              activeTab === t.key ? 'bg-[var(--accent)] text-white shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
+              activeTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
             }`}
+            style={activeTab === t.key ? { color: '#fff' } : undefined}
           >
             <t.icon size={14} /> {t.label}
           </button>
@@ -169,7 +170,7 @@ export default function Admin() {
                 <Users size={16} />
                 <span className="text-xs">Utilizadores registados</span>
               </div>
-              <p className="text-2xl font-bold text-white leading-none">{users.length}</p>
+              <p className="text-2xl font-bold leading-none" style={{ color: '#fff' }}>{users.length}</p>
             </div>
             
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
@@ -177,7 +178,7 @@ export default function Admin() {
                 <Utensils size={16} />
                 <span className="text-xs">Refeições registadas</span>
               </div>
-              <p className="text-2xl font-bold text-white leading-none">{meals.length}</p>
+              <p className="text-2xl font-bold leading-none" style={{ color: '#fff' }}>{meals.length}</p>
             </div>
 
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
@@ -185,7 +186,7 @@ export default function Admin() {
                 <Bot size={16} />
                 <span className="text-xs">Mensagens ao Coach</span>
               </div>
-              <p className="text-2xl font-bold text-white leading-none">{coachMsgs.filter(m => m.role === 'user').length}</p>
+              <p className="text-2xl font-bold leading-none" style={{ color: '#fff' }}>{coachMsgs.filter(m => m.role === 'user').length}</p>
             </div>
 
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
@@ -193,7 +194,7 @@ export default function Admin() {
                 <Activity size={16} />
                 <span className="text-xs">Eventos hoje</span>
               </div>
-              <p className="text-2xl font-bold text-white leading-none">{logsToday.length}</p>
+              <p className="text-2xl font-bold leading-none" style={{ color: '#fff' }}>{logsToday.length}</p>
               <p className="text-[11px] text-slate-500 mt-1">{successToday} sucesso · {errorsToday} erro</p>
             </div>
           </div>
@@ -221,7 +222,7 @@ export default function Admin() {
             return (
               <div key={u.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 flex justify-between items-center">
                 <div className="min-w-0 pr-3">
-                  <p className="text-sm font-bold text-white truncate">{u.display_name || u.email}</p>
+                  <p className="text-sm font-bold truncate" style={{ color: '#fff' }}>{u.display_name || u.email}</p>
                   <p className="text-[10px] text-slate-500 truncate">{u.email}</p>
                   <p className="text-[9px] text-slate-600 mt-1.5">
                     Criado a {new Date(u.created_at).toLocaleDateString('pt-PT')}
@@ -260,7 +261,8 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setMetricsRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-white' : 'text-slate-300'}`}>
+                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)]' : 'text-slate-300'}`}
+                  style={metricsRange === r ? { color: '#fff' } : undefined}>
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
               ))}
@@ -276,15 +278,15 @@ export default function Admin() {
 
             <div className="grid grid-cols-3 gap-3">
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
-                <p className="text-lg font-bold text-white">{scopeMeals.length}</p>
+                <p className="text-lg font-bold" style={{ color: '#fff' }}>{scopeMeals.length}</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">Refeições</p>
               </div>
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
-                <p className="text-lg font-bold text-white">{scopeMsgs.length}</p>
+                <p className="text-lg font-bold" style={{ color: '#fff' }}>{scopeMsgs.length}</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">Msgs Coach</p>
               </div>
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
-                <p className="text-lg font-bold text-white">{selectedUserId ? 1 : activeUsers}</p>
+                <p className="text-lg font-bold" style={{ color: '#fff' }}>{selectedUserId ? 1 : activeUsers}</p>
                 <p className="text-[10px] text-slate-500 mt-0.5">Utiliz. ativos</p>
               </div>
             </div>
@@ -292,7 +294,7 @@ export default function Admin() {
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
               <div className="flex items-center gap-2 mb-3">
                 <BarChart3 size={16} className="text-[var(--accent)]" />
-                <h2 className="text-sm font-semibold text-white">Atividade por Dia</h2>
+                <h2 className="text-sm font-semibold" style={{ color: '#fff' }}>Atividade por Dia</h2>
               </div>
               <p className="text-xs text-slate-500 text-center py-6">Os gráficos detalhados requerem a biblioteca chart.js.<br/>Por agora, consulta os totais acima.</p>
             </div>
@@ -323,7 +325,8 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-white' : 'text-slate-300'}`}>
+                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)]' : 'text-slate-300'}`}
+                  style={costRange === r ? { color: '#fff' } : undefined}>
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
               ))}
@@ -337,7 +340,7 @@ export default function Admin() {
               <>
                 <div className="card rounded-2xl p-4 text-center bg-neutral-900/50 border border-neutral-800">
                   <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
-                  <p className="text-3xl font-extrabold text-white">${totalCost.toFixed(4)}</p>
+                  <p className="text-3xl font-extrabold" style={{ color: '#fff' }}>${totalCost.toFixed(4)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">{totalCalls} chamada(s) · {(totalIn + totalOut).toLocaleString('pt-PT')} tokens</p>
                 </div>
 
@@ -347,7 +350,7 @@ export default function Admin() {
                   ) : modules.map(([mod, v]) => (
                     <div key={mod} className="card rounded-xl p-3 bg-neutral-900/50 border border-neutral-800">
                       <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-xs font-semibold text-white">{mod}</p>
+                        <p className="text-xs font-semibold" style={{ color: '#fff' }}>{mod}</p>
                         <p className="text-xs font-bold text-[var(--accent)]">${geminiCost(v.input, v.output).toFixed(4)}</p>
                       </div>
                       <p className="text-[11px] text-slate-500">{v.calls} chamada(s) · {v.input.toLocaleString('pt-PT')} in / {v.output.toLocaleString('pt-PT')} out tokens</p>

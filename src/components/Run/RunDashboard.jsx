@@ -188,7 +188,7 @@ export default function RunDashboard() {
           className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
           style={{ background: 'linear-gradient(135deg, var(--mod-corrida-from), var(--mod-corrida-to))' }}
         >
-          <TrendingUp className="w-5 h-5 text-white" />
+          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
         </div>
         <div>
           <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
