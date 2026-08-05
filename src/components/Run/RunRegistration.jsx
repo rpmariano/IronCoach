@@ -94,18 +94,26 @@ function formatDuration(totalSeconds) {
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
-// Insígnia do Coach — mesmo tratamento (gradiente do módulo + ícone branco)
-// que o Bot em Coach.jsx, para o botão de analisar (foto ou manual, é o
-// mesmo Coach) não parecer um botão qualquer de submeter um formulário.
-function CoachBadge({ busy }) {
+// Gradiente do módulo Coach — o botão de analisar (foto ou manual, é o
+// mesmo Coach) usa-o no fundo todo, não só no ícone.
+const COACH_GRADIENT = 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))';
+
+// var(--mod-coach-to) é claro (#06b6d4) e var(--mod-coach-from) é escuro
+// (#155e75) — nem texto branco nem escuro tem contraste WCAG AA nas duas
+// pontas do gradiente ao mesmo tempo (medido: branco 2,43:1 no lado claro,
+// escuro 2,46:1 no lado escuro). Falamos de texto/ícone brancos com uma
+// sombra a compensar, em vez de escurecer o gradiente da marca.
+const COACH_TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.35)';
+
+function CoachIcon({ busy }) {
   return (
     <span
       className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-      style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+      style={{ background: 'rgba(0,0,0,0.18)' }}
     >
       {busy
-        ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
-        : <Sparkles className="w-3.5 h-3.5 text-white" />}
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#fff' }} />
+        : <Sparkles className="w-3.5 h-3.5" style={{ color: '#fff' }} />}
     </span>
   );
 }
@@ -484,15 +492,21 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           </div>
 
           <div className="flex flex-wrap gap-1.5 mb-3">
+            {/* Cor via style, não pela classe text-white — um override global
+                (globals.css:66, "portado do legado") força text-white para
+                #0f172a com !important; nestes botões o fundo é mesmo escuro/
+                colorido e o texto tem de ficar branco a valer. */}
             <button
               onClick={() => setRunKind('treino')}
-              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'treino' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              style={runKind === 'treino' ? { color: '#fff' } : undefined}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'treino' ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
               Treino
             </button>
             <button
               onClick={() => setRunKind('competicao')}
-              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'competicao' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              style={runKind === 'competicao' ? { color: '#fff' } : undefined}
+              className={`rounded-full px-3 py-1.5 text-[11px] font-medium transition border ${runKind === 'competicao' ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
             >
               Competição
             </button>
@@ -555,7 +569,8 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                 <button
                   key={i}
                   onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
-                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                  style={runEffortRpe === i + 1 ? { color: '#fff' } : undefined}
+                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
                 >
                   {i + 1}
                 </button>
@@ -581,14 +596,16 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                 <button
                   type="button"
                   onClick={() => setEntryMethod('foto')}
-                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                  style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
                 >
                   <Sparkles className="w-3.5 h-3.5" /> Foto (IA)
                 </button>
                 <button
                   type="button"
                   onClick={() => setEntryMethod('manual')}
-                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corrida-to)] text-white border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                  style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
+                  className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
                 >
                   <PencilLine className="w-3.5 h-3.5" /> Manual
                 </button>
@@ -604,7 +621,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                     {runPhotos.map((p, i) => (
                       <div key={i} className="relative aspect-square">
                         <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
-                        <button onClick={() => removePhoto(i)} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 text-white hover:bg-red-500 transition">
+                        <button onClick={() => removePhoto(i)} style={{ color: '#fff' }} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 hover:bg-red-500 transition">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -636,10 +653,11 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
               <button
                 onClick={handleAnalyzeRun}
                 disabled={!runPhotos.length || analyzingRun}
-                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+                style={{ background: COACH_GRADIENT, color: '#fff' }}
+                className="w-full font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
               >
-                <CoachBadge busy={analyzingRun} />
-                {analyzingRun ? 'A analisar...' : 'Analisar Corrida'}
+                <CoachIcon busy={analyzingRun} />
+                <span style={{ textShadow: COACH_TEXT_SHADOW }}>{analyzingRun ? 'A analisar...' : 'Analisar Corrida'}</span>
               </button>
             </>
           ) : (
@@ -798,11 +816,12 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           <button
             onClick={handleSaveCorrida}
             disabled={isSubmitting}
-            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            style={runIdToEdit ? undefined : { background: COACH_GRADIENT, color: '#fff' }}
+            className={`w-full font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30 ${runIdToEdit ? 'bg-[var(--accent)] text-slate-900' : ''}`}
           >
             {runIdToEdit ? (
               // Editar é só o update dos campos — não passa pelo Coach, por
-              // isso não leva a insígnia (essa é exclusiva de quem vai ser
+              // isso não leva o gradiente (esse é exclusivo de quem vai ser
               // analisado: criar, foto ou manual).
               isSubmitting
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
@@ -811,8 +830,8 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
               // Mesmo botão do caminho de fotos — as duas formas de criar
               // passam pelo Coach, por isso têm o mesmo botão.
               <>
-                <CoachBadge busy={isSubmitting} />
-                {isSubmitting ? 'A analisar...' : 'Analisar Corrida'}
+                <CoachIcon busy={isSubmitting} />
+                <span style={{ textShadow: COACH_TEXT_SHADOW }}>{isSubmitting ? 'A analisar...' : 'Analisar Corrida'}</span>
               </>
             )}
           </button>

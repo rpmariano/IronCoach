@@ -112,6 +112,7 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - **Superfícies de detalhe**: `var(--surf-detail)` nos cartões expansíveis (refeição, corrida, treino, avaliação) e `var(--surf-success-soft)` nos painéis de destaque verde.
 - **Texto Escuro**: `var(--text-main)` (`#0f172a`) para garantir legibilidade ideal.
 - **Não usar valores hexadecimais soltos** em componentes para superfícies ou cores de marca. Exceções legítimas: paletas de dados (`BODY_METRICS`, macros), configuração de gráficos e logótipos de terceiros.
+- **`text-white` não produz branco.** `globals.css` tem um bloco "Overrides de cor — portados do legado" que repinta classes inteiras de texto para o tema claro; `[class~="text-white"] { color:#0f172a !important; }` é uma delas, e por ser `!important` nem um `style` inline a vence enquanto a classe `text-white` estiver presente. Sempre que o fundo real for escuro ou colorido (badges de gradiente, pills ativos, botões sobre `var(--mod-X-to)`), usar `style={{ color: '#fff' }}` e **não** incluir `text-white` no `className` — não há forma de o branco genuíno coexistir com essa classe. O mesmo bloco tem entradas equivalentes para `text-slate-200` a `text-slate-600`, essas por design (repintam o cinzento do tema escuro legado para tons legíveis no claro).
 
 ### 4.2. Mapeamento de Cores por Módulo
 - **Nutrição**: Mapeado para `--mod-nutricao-from` / `--mod-nutricao-to`.
