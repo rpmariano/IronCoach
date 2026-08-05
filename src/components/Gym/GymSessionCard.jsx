@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Dumbbell, Users, Plus, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, RefreshCw } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { ChevronDown, ChevronUp, Dumbbell, Users, Plus, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, RefreshCw, Award } from 'lucide-react';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 
 function formatDuration(totalSeconds) {
@@ -20,6 +20,7 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingSet, setIsDeletingSet] = useState(null);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
 
   const [newExercise, setNewExercise] = useState('');
   const [newReps, setNewReps] = useState('');
@@ -31,6 +32,8 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
   const [exertionVal, setExertionVal] = useState(session.exertion ?? '');
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
+
+  const coachCommentary = session.coach_notes;
 
   const isAula = session.kind === 'aula';
   const sets = session.workout_session_sets || [];
@@ -141,6 +144,28 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
     } catch (err) {
       console.error('Error updating notes:', err);
       alert('Erro ao guardar observações.');
+    }
+  };
+
+  // Repesca os prints já guardados (session_id, sem imagens novas) e volta a
+  // analisá-los do zero. Só funciona para sessões criadas a partir de um
+  // print — a Edge Function devolve um erro claro (não crasha) se
+  // session.photo_paths estiver vazio, como acontece num registo manual.
+  const handleReanalyze = async () => {
+    if (isReanalyzing) return;
+    setIsReanalyzing(true);
+    try {
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+        body: { session_id: session.id, notes: session.notes || null },
+      });
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+      if (profile?.id) await loadInitialData(profile.id);
+    } catch (err) {
+      console.error('Error reanalyzing session:', err);
+      alert(err.message || 'Falha na reanálise. Tenta novamente.');
+    } finally {
+      setIsReanalyzing(false);
     }
   };
 
@@ -311,6 +336,19 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
             ))
           )}
 
+          {/* ANÁLISE DO COACH */}
+          {coachCommentary && (
+            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                <Award size={16} className="text-emerald-600 shrink-0" />
+                Análise do Coach
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed font-normal">
+                {coachCommentary}
+              </p>
+            </div>
+          )}
+
           {/* Add Set Form / Button */}
           {isAdding ? (
             <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
@@ -368,10 +406,12 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand }) 
           <div className="flex items-center gap-2 pt-1">
             {session.photo_paths?.length > 0 && (
               <button
-                onClick={() => alert('A reanalisar treino com a IA...')}
-                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+                onClick={handleReanalyze}
+                disabled={isReanalyzing}
+                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
               >
-                <RefreshCw size={14} /> Reanalisar
+                {isReanalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Reanalisar
               </button>
             )}
             <button

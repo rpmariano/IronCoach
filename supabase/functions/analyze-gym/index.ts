@@ -1,12 +1,16 @@
 // IronHealth · analyze-gym Edge Function
 // Modo normal: recebe 1+ prints de uma app de ginásio (Hevy, Strong, etc.),
 // analisa com Gemini e grava workout_sessions + workout_session_sets na BD.
+// Modo manual (mode: "manual"): os valores (métricas, categorias, nome) já
+// vêm do formulário, sem foto nenhuma — séries/repetições/carga continuam a
+// ser números simples que o utilizador introduz diretamente no cliente
+// depois de criada a sessão (não precisam de estimativa da IA).
 // Modo reanálise (session_id presente): repesca os prints já guardados dessa
 // sessão no Storage, volta a chamar o Gemini com as observações atualizadas,
 // e substitui os sets existentes pelos novos.
-// Ao contrário da Nutrição, não há modo de entrada manual por texto aqui —
-// séries/repetições/carga são números simples que o utilizador introduz
-// diretamente no cliente, sem precisar de estimativa da IA.
+// Após criar a sessão (foto ou manual), gera uma nota do "Coach" a partir das
+// métricas + histórico de sessões do mesmo tipo (attachGymCoachNotes) — a
+// reanálise não a regenera, mantém-se a mais antiga.
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -379,6 +383,123 @@ function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_ind
   return rows;
 }
 
+// Gera o comentário do Coach sobre uma sessão de ginásio: compara as métricas
+// desta sessão com a média das últimas sessões DO MESMO TIPO (força vs aula
+// não são comparáveis) — curto de propósito, um comentário por sessão, não
+// uma análise de tendência de treino.
+async function generateGymCoachNotes(
+  session: { date: string; kind: string; categories: string[]; metrics: GymMetrics; notes: string | null },
+  previousSessions: Array<{ date: string } & GymMetrics>,
+  geminiKey: string,
+): Promise<{ text: string | null }> {
+  if (!geminiKey) return { text: null };
+  const m = session.metrics;
+  const hasAnyMetric = Object.values(m).some((v) => v !== null);
+  if (!hasAnyMetric && session.categories.length === 0) return { text: null }; // nada para comentar
+
+  const kindLabel = session.kind === "aula" ? "Aula" : "Treino de força";
+  const recent = previousSessions.slice(0, 5);
+  const avg = (key: keyof GymMetrics): number | null => {
+    const vals = recent.map((r) => r[key]).filter((v): v is number => v !== null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const avgDuration = avg("duration_seconds");
+  const avgCalories = avg("calories_kcal");
+  const avgExertion = avg("exertion");
+
+  const contextLines = [
+    `Tipo: ${kindLabel}`,
+    session.categories.length ? `Grupos/modalidade: ${session.categories.join(", ")}` : null,
+    m.duration_seconds ? `Duração: ${Math.round(m.duration_seconds / 60)} min` : null,
+    m.calories_kcal ? `Calorias: ${m.calories_kcal} kcal` : null,
+    m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
+    m.max_hr ? `FC máxima: ${m.max_hr} bpm` : null,
+    m.exertion ? `Esforço percebido: ${m.exertion}/10` : null,
+    session.notes ? `Nota do utilizador: "${session.notes}"` : null,
+  ].filter(Boolean).join("\n");
+
+  const historyLine = recent.length
+    ? `Média das últimas ${recent.length} sessões de ${kindLabel.toLowerCase()}: ` +
+      [
+        avgDuration ? `${Math.round(avgDuration / 60)} min` : null,
+        avgCalories ? `${Math.round(avgCalories)} kcal` : null,
+        avgExertion ? `esforço ${avgExertion.toFixed(1)}/10` : null,
+      ].filter(Boolean).join(", ") + "."
+    : `Sem sessões anteriores de ${kindLabel.toLowerCase()} para comparar — comenta só o que estes dados por si só revelam.`;
+
+  const prompt =
+    `És um treinador de ginásio experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma sessão. ` +
+    `Escreve uma análise técnica curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n\n` +
+    `REGRAS:\n` +
+    `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
+    `- Nunca uses frases genéricas de louvor sem conteúdo — cada frase tem de estar ancorada num número ou comparação concreta.\n` +
+    `- Se o esforço percebido (RPE) não bater certo com a duração/intensidade, assinala isso.\n` +
+    `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo.\n`;
+
+  try {
+    const res = await fetchGeminiWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+        }),
+      },
+      45000,
+      0,
+    );
+    if (!res.ok) {
+      console.warn("Gym coach generation failed:", res.status, await res.text());
+      return { text: null };
+    }
+    const json = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return { text: text ? String(text).trim() : null };
+  } catch (e) {
+    console.warn("Gym coach generation error:", e);
+    return { text: null };
+  }
+}
+
+// Busca sessões anteriores do mesmo tipo, gera o comentário e grava-o — best-
+// effort, tal como em analyze-run/analyze-meal: uma falha aqui nunca desfaz a
+// sessão já gravada, só fica sem comentário.
+async function attachGymCoachNotes(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  session: { id: string; coach_notes?: string | null },
+  ctx: { date: string; kind: string; categories: string[]; metrics: GymMetrics; notes: string | null },
+  geminiKey: string,
+): Promise<void> {
+  try {
+    const { data: previous } = await sb
+      .from("workout_sessions")
+      .select("date, duration_seconds, calories_kcal, avg_hr, max_hr, exertion")
+      .eq("user_id", userId)
+      .eq("kind", ctx.kind)
+      .lt("date", ctx.date)
+      .order("date", { ascending: false })
+      .limit(5);
+
+    const result = await generateGymCoachNotes(
+      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, metrics: ctx.metrics, notes: ctx.notes },
+      previous || [],
+      geminiKey,
+    );
+
+    if (result.text) {
+      await sb.from("workout_sessions").update({ coach_notes: result.text }).eq("id", session.id);
+      session.coach_notes = result.text;
+    }
+  } catch (e) {
+    console.warn("attachGymCoachNotes failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -440,6 +561,51 @@ Deno.serve(async (req) => {
     // da IA, senão bastava ele desmarcar uma para ela voltar a aparecer.
     const mergeCategories = (ai: string[]): string[] =>
       userCategories.length ? userCategories : ai;
+
+    // ── Modo manual: registo sem fotos, com análise do Coach ───────────
+    // Os valores já vêm todos do formulário (nada para o Gemini extrair de
+    // imagem nenhuma) — grava a sessão diretamente e gera o comentário do
+    // Coach a partir dela, comparando com sessões anteriores do mesmo tipo
+    // (attachGymCoachNotes). Sem isto, uma sessão registada manualmente
+    // nunca tinha análise nenhuma; agora as duas formas de registo passam
+    // pelo Coach. Séries/repetições/carga continuam a ser adicionadas à
+    // sessão já criada, uma a uma, pelo cartão do treino — não fazem parte
+    // deste pedido.
+    if (body.mode === "manual") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+        return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
+      }
+      const kind = body.kind === "aula" ? "aula" : "forca";
+      const finalName = userName ??
+        (userCategories.length ? userCategories.join(" e ") : null) ??
+        (kind === "aula" ? "Aula" : "Treino");
+
+      const { data: session, error: sessionError } = await sb
+        .from("workout_sessions")
+        .insert({
+          user_id: userId,
+          date: body.date,
+          name: finalName,
+          kind,
+          categories: userCategories,
+          ...userMetrics,
+          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+          // insert (violação de not-null), como já visto em analyze-run/
+          // analyze-meal/analyze-body.
+          photo_paths: [],
+          status: "concluido",
+          notes: rawNotes,
+        })
+        .select()
+        .single();
+      if (sessionError) return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
+
+      await attachGymCoachNotes(sb, userId, session, {
+        date: body.date, kind, categories: userCategories, metrics: userMetrics, notes: rawNotes,
+      }, geminiKey);
+
+      return jsonResponse({ session });
+    }
 
     // ── Modo reanálise: session_id presente ───────────────────────────
     if (typeof body.session_id === "string" && body.session_id) {
@@ -615,6 +781,11 @@ Deno.serve(async (req) => {
       }
       savedSets = data ?? [];
     }
+
+    // 4. Comentário do Coach (best-effort — ver attachGymCoachNotes)
+    await attachGymCoachNotes(sb, userId, session, {
+      date, kind, categories: mergedCategories, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
+    }, geminiKey);
 
     return jsonResponse({
       session,
