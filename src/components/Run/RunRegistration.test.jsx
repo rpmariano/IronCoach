@@ -184,6 +184,26 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     expect(body.training_type).toBe('continuo');
   });
 
+  it('envia cadência média e máxima, zonas de FC e splits nas métricas do relógio', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-2' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.change(screen.getByPlaceholderText('Cadência média (passadas/min)'), { target: { value: '165' } });
+    fireEvent.change(screen.getByPlaceholderText('Cadência máxima (passadas/min)'), { target: { value: '182' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar zona' }));
+    const zoneSelects = screen.getAllByDisplayValue('Zona');
+    fireEvent.change(zoneSelects[zoneSelects.length - 1], { target: { value: '2' } });
+    fireEvent.change(screen.getByPlaceholderText('Minutos'), { target: { value: '20' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.cadence_spm).toBe(165);
+    expect(body.max_cadence_spm).toBe(182);
+    expect(body.hr_zones).toEqual([{ zone: 2, minutes: 20 }]);
+  });
+
   it('acrescenta a corrida devolvida (já com coach_notes) ao store e fecha o formulário', async () => {
     const newRun = { id: 'run-2', coach_notes: 'Boa consistência de pace.' };
     mocks.invoke.mockResolvedValue({ data: { run: newRun }, error: null });

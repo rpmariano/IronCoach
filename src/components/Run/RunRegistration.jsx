@@ -113,6 +113,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   // Detailed metrics
   const [elevationGain, setElevationGain] = useState('');
   const [cadence, setCadence] = useState('');
+  const [maxCadence, setMaxCadence] = useState('');
   const [calories, setCalories] = useState('');
   const [vo2Max, setVo2Max] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
@@ -183,6 +184,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         const d = r.details || {};
         setElevationGain(d.elevation_gain_m || '');
         setCadence(d.cadence_spm || '');
+        setMaxCadence(d.max_cadence_spm || '');
         setCalories(d.calories_kcal || '');
         setVo2Max(d.vo2_max || '');
         setAvgHeartRate(d.avg_heart_rate_bpm || '');
@@ -326,6 +328,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         const details = {
           elevation_gain_m: parseInt(elevationGain) || null,
           cadence_spm: parseInt(cadence) || null,
+          max_cadence_spm: parseInt(maxCadence) || null,
           calories_kcal: parseInt(calories) || null,
           vo2_max: parseFloat(vo2Max) || null,
           avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
@@ -372,6 +375,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           duration_seconds: durSecs,
           elevation_gain_m: parseInt(elevationGain) || null,
           cadence_spm: parseInt(cadence) || null,
+          max_cadence_spm: parseInt(maxCadence) || null,
           calories_kcal: parseInt(calories) || null,
           vo2_max: parseFloat(vo2Max) || null,
           avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
@@ -645,13 +649,18 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                 value={elevationGain} onChange={e=>setElevationGain(e.target.value)} 
                 className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
               />
-              <input 
-                type="number" placeholder="Cadência (passadas/min)" 
-                value={cadence} onChange={e=>setCadence(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
+              <input
+                type="number" placeholder="Cadência média (passadas/min)"
+                value={cadence} onChange={e=>setCadence(e.target.value)}
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition"
               />
-              <input 
-                type="number" placeholder="Calorias (kcal)" 
+              <input
+                type="number" placeholder="Cadência máxima (passadas/min)"
+                value={maxCadence} onChange={e=>setMaxCadence(e.target.value)}
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition"
+              />
+              <input
+                type="number" placeholder="Calorias (kcal)"
                 value={calories} onChange={e=>setCalories(e.target.value)} 
                 className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
               />

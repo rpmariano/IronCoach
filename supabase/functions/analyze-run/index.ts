@@ -84,6 +84,7 @@ const RESPONSE_SCHEMA = {
     // quando esses ecrãs estiverem entre as imagens.
     elevation_gain_m: { type: "NUMBER", nullable: true },
     cadence_spm: { type: "NUMBER", nullable: true },
+    max_cadence_spm: { type: "NUMBER", nullable: true },
     calories_kcal: { type: "NUMBER", nullable: true },
     avg_heart_rate_bpm: { type: "NUMBER", nullable: true },
     max_heart_rate_bpm: { type: "NUMBER", nullable: true },
@@ -104,7 +105,7 @@ const RESPONSE_SCHEMA = {
   required: [
     "distance_km", "duration_seconds", "warmup_minutes",
     "recovery_seconds", "splits", "official_time_seconds", "position",
-    "elevation_gain_m", "cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
+    "elevation_gain_m", "cadence_spm", "max_cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
     "max_heart_rate_bpm", "vo2_max", "hr_zones",
   ],
 };
@@ -139,8 +140,11 @@ function buildPrompt(
     "antes de decidires devolver null.\n" +
     "- official_time_seconds / position: só em competição, se o ecrã mostrar o tempo oficial de prova e/ou a " +
     "posição de chegada (classificação).\n" +
-    "- elevation_gain_m / cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece distância/tempo/pace) " +
-    "mostrar desnível acumulado (m), cadência média (passadas por minuto) ou calorias, extrai esses valores.\n" +
+    "- elevation_gain_m / cadence_spm / max_cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece " +
+    "distância/tempo/pace) mostrar desnível acumulado (m), cadência (passadas por minuto) ou calorias, extrai esses " +
+    "valores. cadence_spm é a cadência MÉDIA; se houver também uma cadência MÁXIMA visível (separada da média), " +
+    "extrai-a para max_cadence_spm — procura por 'Cadência máx'/'Max Cadence' perto do valor médio antes de " +
+    "desistir.\n" +
     "- avg_heart_rate_bpm / max_heart_rate_bpm: se houver um ecrã de frequência cardíaca, extrai a FC média e a FC " +
     "máxima da atividade. Estes dois números aparecem quase sempre juntos no mesmo ecrã — se encontrares a FC " +
     "média, procura ativamente a FC máxima ao lado ou por perto antes de desistir.\n" +
@@ -233,6 +237,7 @@ type RunExtraction = {
   position: number | null;
   elevation_gain_m: number | null;
   cadence_spm: number | null;
+  max_cadence_spm: number | null;
   calories_kcal: number | null;
   avg_heart_rate_bpm: number | null;
   max_heart_rate_bpm: number | null;
@@ -395,7 +400,7 @@ async function generateCoachNotes(
     `- Pace: ${paceStr}/km\n` +
     `- Esforço percebido (RPE): ${run.effort_rpe || "?"}/10\n` +
     (details.elevation_gain_m ? `- Desnível: ${details.elevation_gain_m}m\n` : "") +
-    (details.cadence_spm ? `- Cadência: ${details.cadence_spm}spm\n` : "") +
+    (details.cadence_spm ? `- Cadência: ${details.cadence_spm}spm${details.max_cadence_spm ? ` (máx ${details.max_cadence_spm}spm)` : ""}\n` : "") +
     (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
     (details.vo2_max ? `- VO2 max: ${details.vo2_max}\n` : "") +
@@ -614,6 +619,7 @@ async function analyzeWithGemini(
     position: num(parsed.position),
     elevation_gain_m: num(parsed.elevation_gain_m),
     cadence_spm: num(parsed.cadence_spm),
+    max_cadence_spm: num(parsed.max_cadence_spm),
     calories_kcal: num(parsed.calories_kcal),
     avg_heart_rate_bpm: num(parsed.avg_heart_rate_bpm),
     max_heart_rate_bpm: num(parsed.max_heart_rate_bpm),
@@ -633,6 +639,7 @@ async function analyzeWithGemini(
     has_duration: extraction.duration_seconds !== null,
     has_elevation: extraction.elevation_gain_m !== null,
     has_cadence: extraction.cadence_spm !== null,
+    has_max_cadence: extraction.max_cadence_spm !== null,
     has_calories: extraction.calories_kcal !== null,
     has_avg_hr: extraction.avg_heart_rate_bpm !== null,
     has_max_hr: extraction.max_heart_rate_bpm !== null,
@@ -656,6 +663,7 @@ function detailsFromExtraction(
   const d: Record<string, unknown> = {};
   if (e.elevation_gain_m) d.elevation_gain_m = e.elevation_gain_m;
   if (e.cadence_spm) d.cadence_spm = e.cadence_spm;
+  if (e.max_cadence_spm) d.max_cadence_spm = e.max_cadence_spm;
   if (e.calories_kcal) d.calories_kcal = e.calories_kcal;
   if (e.avg_heart_rate_bpm) d.avg_heart_rate_bpm = e.avg_heart_rate_bpm;
   if (e.max_heart_rate_bpm) d.max_heart_rate_bpm = e.max_heart_rate_bpm;
@@ -812,6 +820,7 @@ Deno.serve(async (req) => {
         position: int(body.position),
         elevation_gain_m: int(body.elevation_gain_m),
         cadence_spm: int(body.cadence_spm),
+        max_cadence_spm: int(body.max_cadence_spm),
         calories_kcal: int(body.calories_kcal),
         avg_heart_rate_bpm: int(body.avg_heart_rate_bpm),
         max_heart_rate_bpm: int(body.max_heart_rate_bpm),

@@ -148,12 +148,21 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const kindLabel = runKindLabel(run);
   const coachCommentary = run.coach_notes || run.ai_analysis || run.coach_analysis;
 
-  const elevation = run.elevation_gain_m ?? run.elevation_gain ?? run.elevation ?? run.metrics?.elevation_gain_m;
-  const cadence = run.cadence_spm ?? run.cadence ?? run.metrics?.cadence_spm;
-  const calories = run.calories_kcal ?? run.calories ?? run.metrics?.calories_kcal ?? run.metrics?.calories;
-  const vo2max = run.vo2_max ?? run.vo2max ?? run.metrics?.vo2_max;
-  const avgHr = run.avg_heart_rate_bpm ?? run.avg_hr ?? run.avg_heart_rate ?? run.metrics?.avg_heart_rate_bpm ?? run.metrics?.avg_hr;
-  const maxHr = run.max_heart_rate_bpm ?? run.max_hr ?? run.max_heart_rate ?? run.metrics?.max_heart_rate_bpm ?? run.metrics?.max_hr;
+  // As métricas do relógio vivem em run.details (jsonb) — ver
+  // detailsFromExtraction em supabase/functions/analyze-run/index.ts. Os
+  // outros fallbacks (run.elevation_gain_m, run.metrics?.*, ...) nunca
+  // bateram certo com o que é gravado; ficam só por segurança caso outro
+  // formato apareça no futuro.
+  const details = run.details || {};
+  const elevation = details.elevation_gain_m ?? run.elevation_gain_m ?? run.elevation_gain ?? run.elevation ?? run.metrics?.elevation_gain_m;
+  const cadence = details.cadence_spm ?? run.cadence_spm ?? run.cadence ?? run.metrics?.cadence_spm;
+  const maxCadence = details.max_cadence_spm ?? run.max_cadence_spm ?? run.metrics?.max_cadence_spm;
+  const calories = details.calories_kcal ?? run.calories_kcal ?? run.calories ?? run.metrics?.calories_kcal ?? run.metrics?.calories;
+  const vo2max = details.vo2_max ?? run.vo2_max ?? run.vo2max ?? run.metrics?.vo2_max;
+  const avgHr = details.avg_heart_rate_bpm ?? run.avg_heart_rate_bpm ?? run.avg_hr ?? run.avg_heart_rate ?? run.metrics?.avg_heart_rate_bpm ?? run.metrics?.avg_hr;
+  const maxHr = details.max_heart_rate_bpm ?? run.max_heart_rate_bpm ?? run.max_hr ?? run.max_heart_rate ?? run.metrics?.max_heart_rate_bpm ?? run.metrics?.max_hr;
+  const hrZones = details.hr_zones ?? run.hr_zones ?? run.metrics?.hr_zones;
+  const splits = details.splits ?? run.splits ?? run.metrics?.splits;
 
   // Pílulas Coloridas com Ícones (sem duplicação no cabeçalho)
   const activeChips = [
@@ -161,7 +170,8 @@ export default function RunCard({ run, onEdit, onDelete }) {
     durStr ? { key: 'dur', colorClass: 'bg-purple-100/90 text-purple-800 border-purple-200/80', icon: <Timer size={14} className="text-purple-600" />, label: durStr } : null,
     paceStr ? { key: 'pace', colorClass: 'bg-indigo-100/90 text-indigo-800 border-indigo-200/80', icon: <Gauge size={14} className="text-indigo-600" />, label: paceStr } : null,
     elevation ? { key: 'elev', colorClass: 'bg-teal-100/90 text-teal-800 border-teal-200/80', icon: <Navigation size={14} className="text-teal-600" />, label: `${elevation}m Desnível` } : null,
-    cadence ? { key: 'cad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${cadence} spm` } : null,
+    cadence ? { key: 'cad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${cadence} spm méd` } : null,
+    maxCadence ? { key: 'maxcad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${maxCadence} spm máx` } : null,
     calories ? { key: 'cal', colorClass: 'bg-orange-100/90 text-orange-800 border-orange-200/80', icon: <Flame size={14} className="text-orange-600" />, label: `${calories} kcal` } : null,
     vo2max ? { key: 'vo2', colorClass: 'bg-blue-100/90 text-blue-800 border-blue-200/80', icon: <Activity size={14} className="text-blue-600" />, label: `VO2 máx ${vo2max}` } : null,
     avgHr ? { key: 'avghr', colorClass: 'bg-rose-100/90 text-rose-800 border-rose-200/80', icon: <HeartPulse size={14} className="text-rose-600" />, label: `${avgHr} bpm méd` } : null,
@@ -251,6 +261,48 @@ export default function RunCard({ run, onEdit, onDelete }) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Zonas de FC — tempo em cada zona, lido do relógio (details.hr_zones) */}
+          {Array.isArray(hrZones) && hrZones.length > 0 && (() => {
+            const maxMinutes = Math.max(...hrZones.map(z => Number(z.minutes) || 0), 1);
+            return (
+              <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-1.5">
+                <span className="text-[11px] font-bold text-slate-500 block mb-1">Zonas de FC</span>
+                {[...hrZones].sort((a, b) => (a.zone || 0) - (b.zone || 0)).map((z, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-600 w-6 shrink-0">Z{z.zone}</span>
+                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-rose-400"
+                        style={{ width: `${Math.max(4, ((Number(z.minutes) || 0) / maxMinutes) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium w-14 text-right shrink-0">{Number(z.minutes).toFixed(0)} min</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Splits/voltas — troço a troço, lido do relógio (details.splits) */}
+          {Array.isArray(splits) && splits.length > 0 && (
+            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-500 block mb-1.5">Splits</span>
+              <div className="space-y-1">
+                {splits.map((s, i) => {
+                  const splitPace = s.distance_km && s.time_seconds ? s.time_seconds / s.distance_km : null;
+                  return (
+                    <div key={i} className="flex items-center justify-between text-[11px] text-slate-600">
+                      <span className="font-bold text-slate-500 w-6 shrink-0">{i + 1}.</span>
+                      <span className="flex-1">{s.distance_km ? `${Number(s.distance_km).toFixed(2)} km` : '—'}</span>
+                      <span className="flex-1 text-center">{s.time_seconds ? formatDuration(s.time_seconds) : '—'}</span>
+                      <span className="flex-1 text-right text-slate-400">{splitPace ? formatPace(splitPace) : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
