@@ -249,8 +249,8 @@ function FabItem({ label, color, icon, onClick }) {
       className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white border border-slate-200/80 shadow-md hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
     >
       <span
-        className="w-7 h-7 rounded-full flex items-center justify-center text-white shrink-0"
-        style={{ background: color }}
+        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+        style={{ background: color, color: '#fff' }}
       >
         {icon}
       </span>

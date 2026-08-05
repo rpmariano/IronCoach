@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, Plus, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, Plus, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets, Award } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -26,6 +26,8 @@ export default function MealCard({ meal }) {
   const n = mealNutrients(meal);
   const items = meal.meal_items || [];
   const IconComponent = MEAL_ICONS[meal.meal_type] || Utensils;
+
+  const coachCommentary = meal.coach_notes;
 
   const dateParts = meal.date ? meal.date.split('-') : [];
   const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : meal.date;
@@ -247,6 +249,19 @@ export default function MealCard({ meal }) {
               </div>
             );
           })}
+
+          {/* ANÁLISE DO COACH */}
+          {coachCommentary && (
+            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                <Award size={16} className="text-emerald-600 shrink-0" />
+                Análise do Coach
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed font-normal">
+                {coachCommentary}
+              </p>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 pt-1">

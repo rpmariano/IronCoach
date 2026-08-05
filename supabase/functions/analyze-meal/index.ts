@@ -308,6 +308,162 @@ async function analyzeTextItem(
   return { item: { ...items[0], quantity_grams: grams }, usage };
 }
 
+const MEAL_TYPE_LABELS: Record<string, string> = {
+  "pequeno-almoco": "Pequeno-almoço",
+  "lanche-manha": "Lanche da manhã",
+  "almoco": "Almoço",
+  "lanche": "Lanche",
+  "jantar": "Jantar",
+  "ceia": "Ceia",
+};
+
+type MealTotals = { calories: number; protein: number; carbs: number; fat: number };
+
+// deno-lint-ignore no-explicit-any
+function totalsFromItems(items: any[]): MealTotals {
+  return (items || []).reduce(
+    (acc, it) => {
+      const factor = (Number(it?.quantity_grams) || 0) / 100;
+      acc.calories += factor * (Number(it?.calories_per_100g) || 0);
+      acc.protein += factor * (Number(it?.protein_per_100g) || 0);
+      acc.carbs += factor * (Number(it?.carbs_per_100g) || 0);
+      acc.fat += factor * (Number(it?.fat_per_100g) || 0);
+      return acc;
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0 },
+  );
+}
+
+// Gera o comentário do Coach sobre uma refeição: compara-a com uma fatia
+// proporcional das metas diárias (não há forma leve de somar o dia todo
+// aqui sem outra ronda de queries) e com as últimas refeições do mesmo tipo,
+// para sinalizar inconsistência (ex.: almoço com muito mais gordura que o
+// habitual). Curto de propósito — é um comentário por refeição, não uma
+// análise do dia.
+async function generateMealCoachNotes(
+  meal: { date: string; meal_type: string; notes: string | null },
+  totals: MealTotals,
+  goals: { calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null },
+  previousMeals: Array<{ date: string } & MealTotals>,
+  geminiKey: string,
+): Promise<{ text: string | null }> {
+  if (!geminiKey) return { text: null };
+  if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
+
+  const typeLabel = MEAL_TYPE_LABELS[meal.meal_type] || meal.meal_type;
+
+  // Referência só para dar escala ao modelo (ex.: "isto é XX% da meta diária
+  // de proteína") — não é uma meta por refeição real, o utilizador não a
+  // define, por isso o prompt já pede para não a tratar como tal.
+  const goalLine = [
+    goals.calorie_goal ? `Meta diária de calorias: ${goals.calorie_goal} kcal` : null,
+    goals.protein_goal ? `Meta diária de proteína: ${goals.protein_goal}g` : null,
+    goals.carbs_goal ? `Meta diária de hidratos: ${goals.carbs_goal}g` : null,
+    goals.fat_goal ? `Meta diária de gordura: ${goals.fat_goal}g` : null,
+  ].filter(Boolean).join("; ");
+
+  const recent = previousMeals.slice(0, 5);
+  const avg = recent.length
+    ? recent.reduce((a, m) => ({
+        calories: a.calories + m.calories, protein: a.protein + m.protein,
+        carbs: a.carbs + m.carbs, fat: a.fat + m.fat,
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
+    : null;
+  const avgLine = avg && recent.length
+    ? `Média das últimas ${recent.length} refeições deste tipo: ${(avg.calories / recent.length).toFixed(0)} kcal, ` +
+      `P ${(avg.protein / recent.length).toFixed(0)}g, H ${(avg.carbs / recent.length).toFixed(0)}g, G ${(avg.fat / recent.length).toFixed(0)}g.`
+    : "Sem refeições anteriores deste tipo para comparar — comenta só o que estes números por si só revelam.";
+
+  const prompt =
+    `És um nutricionista/treinador direto, a comentar uma refeição que um atleta amador acabou de registar. ` +
+    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `Refeição: ${typeLabel}, ${meal.date}\n` +
+    `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
+    `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +
+    (goalLine ? `${goalLine} (referência diária, esta é só uma refeição — não esperes que bata a meta toda).\n` : "") +
+    `${avgLine}\n` +
+    (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
+    `\nREGRAS:\n` +
+    `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
+    `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
+    `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
+    `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo).\n`;
+
+  try {
+    const res = await fetchGeminiWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+        }),
+      },
+      45000,
+      0,
+    );
+    if (!res.ok) {
+      console.warn("Meal coach generation failed:", res.status, await res.text());
+      return { text: null };
+    }
+    const json = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return { text: text ? String(text).trim() : null };
+  } catch (e) {
+    console.warn("Meal coach generation error:", e);
+    return { text: null };
+  }
+}
+
+// Busca metas + refeições recentes do mesmo tipo, gera o comentário e grava-o
+// — best-effort, tal como em analyze-run: uma falha aqui nunca desfaz a
+// refeição já gravada, só fica sem comentário.
+async function attachMealCoachNotes(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  meal: { id: string; coach_notes?: string | null },
+  ctx: { date: string; meal_type: string; notes: string | null; totals: MealTotals },
+  geminiKey: string,
+): Promise<void> {
+  try {
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("calorie_goal, protein_goal, carbs_goal, fat_goal")
+      .eq("id", userId)
+      .maybeSingle();
+
+    // deno-lint-ignore no-explicit-any
+    const { data: previous } = await sb
+      .from("meals")
+      .select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+      .eq("user_id", userId)
+      .eq("meal_type", ctx.meal_type)
+      .lt("date", ctx.date)
+      .order("date", { ascending: false })
+      .limit(5);
+
+    // deno-lint-ignore no-explicit-any
+    const previousMeals = (previous || []).map((m: any) => ({ date: m.date, ...totalsFromItems(m.meal_items || []) }));
+
+    const result = await generateMealCoachNotes(
+      { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes },
+      ctx.totals,
+      profile || {},
+      previousMeals,
+      geminiKey,
+    );
+
+    if (result.text) {
+      await sb.from("meals").update({ coach_notes: result.text }).eq("id", meal.id);
+      meal.coach_notes = result.text;
+    }
+  } catch (e) {
+    console.warn("attachMealCoachNotes failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -380,6 +536,39 @@ Deno.serve(async (req) => {
       if (itemError) return jsonResponse({ error: `Falha a gravar alimento: ${itemError.message}` }, 500);
 
       return jsonResponse({ item: savedItem, usage });
+    }
+
+    // ── Modo finalizar (registo manual): mode "finalize" + meal_id ─────
+    // O registo manual cria a refeição vazia no cliente (sem IA, tal como o
+    // vanilla) e vai acrescentando alimentos um a um pelo modo acima. Este
+    // passo final só gera o comentário do Coach a partir dos itens já
+    // gravados — não há imagem nenhuma envolvida, por isso não passa por
+    // analyzeWithGemini. Mantém a refeição exatamente como estava se não
+    // houver itens (nada para comentar).
+    if (body.mode === "finalize" && typeof body.meal_id === "string" && body.meal_id) {
+      const mealId = body.meal_id;
+      const { data: meal, error: fetchError } = await sb
+        .from("meals")
+        .select("id, date, meal_type, notes, coach_notes, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .eq("id", mealId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (fetchError) return jsonResponse({ error: `Falha a procurar refeição: ${fetchError.message}` }, 500);
+      if (!meal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
+
+      const totals = totalsFromItems(meal.meal_items || []);
+      await attachMealCoachNotes(sb, userId, meal, { date: meal.date, meal_type: meal.meal_type, notes: meal.notes, totals }, geminiKey);
+
+      // Devolve a refeição completa (com meal_items) para o cliente poder
+      // simplesmente substituir a entrada no store, sem outro pedido.
+      const { data: finalMeal, error: reloadError } = await sb
+        .from("meals")
+        .select("*, meal_items(*)")
+        .eq("id", mealId)
+        .single();
+      if (reloadError) return jsonResponse({ error: `Falha a reler refeição: ${reloadError.message}` }, 500);
+
+      return jsonResponse({ meal: finalMeal });
     }
 
     // ── Modo reanálise: meal_id presente ──────────────────────────────
@@ -509,6 +698,11 @@ Deno.serve(async (req) => {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar itens: ${itemsError.message}` }, 500);
     }
+
+    // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes)
+    await attachMealCoachNotes(sb, userId, meal, {
+      date, meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+    }, geminiKey);
 
     return jsonResponse({ meal, items: savedItems, usage });
   } catch (e) {

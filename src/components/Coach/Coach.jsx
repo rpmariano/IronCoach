@@ -155,7 +155,7 @@ export default function Coach() {
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
             style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
           >
-            <Bot className="w-5 h-5 text-white" />
+            <Bot className="w-5 h-5" style={{ color: '#fff' }} />
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-800 leading-none">Coach IronHealth</h2>
@@ -183,7 +183,7 @@ export default function Coach() {
               className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-sm"
               style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
-              <Bot className="w-8 h-8 text-white" />
+              <Bot className="w-8 h-8" style={{ color: '#fff' }} />
             </div>
             <h3 className="text-sm font-bold text-slate-800 mb-1">O teu coach está pronto</h3>
             <p className="text-xs text-slate-500 leading-relaxed mb-5 max-w-xs">
@@ -317,7 +317,8 @@ export default function Coach() {
               </button>
               <button
                 onClick={handleClearConversation}
-                className="flex-1 bg-red-500 text-white text-xs font-semibold rounded-xl py-2.5 hover:bg-red-600 transition"
+                className="flex-1 bg-red-500 text-xs font-semibold rounded-xl py-2.5 hover:bg-red-600 transition"
+                style={{ color: '#fff' }}
               >
                 Limpar
               </button>

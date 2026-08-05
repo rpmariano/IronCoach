@@ -3,6 +3,7 @@ import { ImagePlus, X, Trash2, Check, Loader2, Sparkles, PencilLine, Plus } from
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
+import { CoachAnalyzeButton } from '../shared/CoachButton';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -93,30 +94,6 @@ function formatDuration(totalSeconds) {
 }
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
-
-// Gradiente do módulo Coach — o botão de analisar (foto ou manual, é o
-// mesmo Coach) usa-o no fundo todo, não só no ícone.
-const COACH_GRADIENT = 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))';
-
-// var(--mod-coach-to) é claro (#06b6d4) e var(--mod-coach-from) é escuro
-// (#155e75) — nem texto branco nem escuro tem contraste WCAG AA nas duas
-// pontas do gradiente ao mesmo tempo (medido: branco 2,43:1 no lado claro,
-// escuro 2,46:1 no lado escuro). Falamos de texto/ícone brancos com uma
-// sombra a compensar, em vez de escurecer o gradiente da marca.
-const COACH_TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.35)';
-
-function CoachIcon({ busy }) {
-  return (
-    <span
-      className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-      style={{ background: 'rgba(0,0,0,0.18)' }}
-    >
-      {busy
-        ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#fff' }} />
-        : <Sparkles className="w-3.5 h-3.5" style={{ color: '#fff' }} />}
-    </span>
-  );
-}
 
 export default function RunRegistration({ onClose, initialMode = 'corrida', dateIso = null, eventIdToEdit = null, runIdToEdit = null }) {
   const { profile, runs, raceEvents, setRuns, setRaceEvents } = useAppStore();
@@ -650,15 +627,12 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
                 </label>
               )}
 
-              <button
+              <CoachAnalyzeButton
                 onClick={handleAnalyzeRun}
                 disabled={!runPhotos.length || analyzingRun}
-                style={{ background: COACH_GRADIENT, color: '#fff' }}
-                className="w-full font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-              >
-                <CoachIcon busy={analyzingRun} />
-                <span style={{ textShadow: COACH_TEXT_SHADOW }}>{analyzingRun ? 'A analisar...' : 'Analisar Corrida'}</span>
-              </button>
+                busy={analyzingRun}
+                label="Analisar Corrida"
+              />
             </>
           ) : (
             <>
@@ -813,28 +787,29 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4"
           />
 
-          <button
-            onClick={handleSaveCorrida}
-            disabled={isSubmitting}
-            style={runIdToEdit ? undefined : { background: COACH_GRADIENT, color: '#fff' }}
-            className={`w-full font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30 ${runIdToEdit ? 'bg-[var(--accent)] text-slate-900' : ''}`}
-          >
-            {runIdToEdit ? (
-              // Editar é só o update dos campos — não passa pelo Coach, por
-              // isso não leva o gradiente (esse é exclusivo de quem vai ser
-              // analisado: criar, foto ou manual).
-              isSubmitting
+          {runIdToEdit ? (
+            // Editar é só o update dos campos — não passa pelo Coach, por
+            // isso não leva o gradiente (esse é exclusivo de quem vai ser
+            // analisado: criar, foto ou manual).
+            <button
+              onClick={handleSaveCorrida}
+              disabled={isSubmitting}
+              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            >
+              {isSubmitting
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
-                : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>
-            ) : (
-              // Mesmo botão do caminho de fotos — as duas formas de criar
-              // passam pelo Coach, por isso têm o mesmo botão.
-              <>
-                <CoachIcon busy={isSubmitting} />
-                <span style={{ textShadow: COACH_TEXT_SHADOW }}>{isSubmitting ? 'A analisar...' : 'Analisar Corrida'}</span>
-              </>
-            )}
-          </button>
+                : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>}
+            </button>
+          ) : (
+            // Mesmo botão do caminho de fotos — as duas formas de criar
+            // passam pelo Coach, por isso têm o mesmo botão.
+            <CoachAnalyzeButton
+              onClick={handleSaveCorrida}
+              disabled={isSubmitting}
+              busy={isSubmitting}
+              label="Analisar Corrida"
+            />
+          )}
             </>
           )}
 
