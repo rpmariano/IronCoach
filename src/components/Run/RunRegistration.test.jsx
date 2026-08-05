@@ -133,7 +133,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Distância')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Registar Corrida' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analisar Corrida' })).toBeInTheDocument();
   });
 
   it('esconde o seletor e vai direto aos campos manuais quando está a editar', () => {
@@ -170,7 +170,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '10' } });
     fireEvent.change(screen.getByPlaceholderText('Duração (ex.: 43m ou 37:57)'), { target: { value: '50:00' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -190,7 +190,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     render(<RunRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
@@ -201,7 +201,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     goManual();
     fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: '' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
@@ -212,7 +212,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     render(<RunRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Registar Corrida' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
     await screen.findByText('Falha a gravar corrida.');
     expect(onClose).not.toHaveBeenCalled();

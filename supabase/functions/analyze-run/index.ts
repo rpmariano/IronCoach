@@ -825,7 +825,9 @@ Deno.serve(async (req) => {
         .insert({
           user_id: userId,
           date: body.date,
-          photo_paths: null,
+          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+          // insert (violação de not-null) e voltava como 500 genérico.
+          photo_paths: [],
           kind,
           training_type: trainingType,
           details,

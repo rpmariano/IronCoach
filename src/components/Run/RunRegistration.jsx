@@ -94,6 +94,22 @@ function formatDuration(totalSeconds) {
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
+// Insígnia do Coach — mesmo tratamento (gradiente do módulo + ícone branco)
+// que o Bot em Coach.jsx, para o botão de analisar (foto ou manual, é o
+// mesmo Coach) não parecer um botão qualquer de submeter um formulário.
+function CoachBadge({ busy }) {
+  return (
+    <span
+      className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+      style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+    >
+      {busy
+        ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+        : <Sparkles className="w-3.5 h-3.5 text-white" />}
+    </span>
+  );
+}
+
 export default function RunRegistration({ onClose, initialMode = 'corrida', dateIso = null, eventIdToEdit = null, runIdToEdit = null }) {
   const { profile, runs, raceEvents, setRuns, setRaceEvents } = useAppStore();
   const [mode, setMode] = useState(initialMode); // 'corrida' (runs table) or 'prova' (raceEvents table)
@@ -620,10 +636,10 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
               <button
                 onClick={handleAnalyzeRun}
                 disabled={!runPhotos.length || analyzingRun}
-                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
               >
-                {analyzingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                {analyzingRun ? 'A ler com IA...' : 'Analisar Corrida'}
+                <CoachBadge busy={analyzingRun} />
+                {analyzingRun ? 'A analisar...' : 'Analisar Corrida'}
               </button>
             </>
           ) : (
@@ -782,11 +798,23 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
           <button
             onClick={handleSaveCorrida}
             disabled={isSubmitting}
-            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-1.5 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
           >
-            {isSubmitting
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
-              : <><PencilLine className="w-4 h-4" /> {runIdToEdit ? 'Guardar Alterações' : 'Registar Corrida'}</>}
+            {runIdToEdit ? (
+              // Editar é só o update dos campos — não passa pelo Coach, por
+              // isso não leva a insígnia (essa é exclusiva de quem vai ser
+              // analisado: criar, foto ou manual).
+              isSubmitting
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
+                : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>
+            ) : (
+              // Mesmo botão do caminho de fotos — as duas formas de criar
+              // passam pelo Coach, por isso têm o mesmo botão.
+              <>
+                <CoachBadge busy={isSubmitting} />
+                {isSubmitting ? 'A analisar...' : 'Analisar Corrida'}
+              </>
+            )}
           </button>
             </>
           )}
