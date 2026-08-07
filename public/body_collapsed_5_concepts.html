@@ -1,0 +1,184 @@
+﻿<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 Conceitos - Corpo (Estado Colapsado)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #7c3aed; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: flex; flex-direction: column; gap: 32px; max-width: 600px; margin: 0 auto; }
+  
+  .section-title { font-size: 0.75rem; font-weight: 800; color: #516071; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -16px; margin-top: 16px; }
+
+  /* ICONS */
+  .icon-body { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-chevron { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ======== 1. GLASSMORPHISM PILL (Coerente com a Corrida) ======== */
+  .v1-card {
+    background: rgba(255,255,255,0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 99px; padding: 12px 24px 12px 12px;
+    box-shadow: 0 8px 20px -5px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .v1-card:hover { transform: translateY(-2px); box-shadow: 0 12px 25px -5px rgba(124,58,237,0.15); }
+  .v1-left { display: flex; align-items: center; gap: 16px; }
+  .v1-icon-wrap { width: 48px; height: 48px; border-radius: 50%; background: #f3e8ff; color: #7c3aed; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(124,58,237,0.2); }
+  .v1-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; }
+  .v1-subtitle { font-size: 0.8rem; color: #516071; font-weight: 600; margin-top: 2px; }
+  .v1-subtitle span { color: #0f172a; font-weight: 800; }
+  .v1-dot { color: #d1d5db; margin: 0 6px; }
+  
+  /* ======== 2. MINIMAL STACK (Com Micro-Badges) ======== */
+  .v2-card {
+    background: #fff; border-radius: 20px; padding: 16px; display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #f1f5f9; cursor: pointer;
+  }
+  .v2-left { display: flex; align-items: center; gap: 16px; }
+  .v2-icon-wrap { width: 44px; height: 44px; border-radius: 12px; background: rgba(124,58,237,0.1); color: #7c3aed; display: flex; align-items: center; justify-content: center; }
+  .v2-badges { display: flex; gap: 6px; margin-top: 6px; }
+  .v2-badge { font-size: 0.7rem; font-weight: 700; background: #f1f5f9; color: #516071; padding: 2px 8px; border-radius: 6px; }
+  .v2-badge span { color: #7c3aed; font-weight: 900; margin-left: 2px; }
+  
+  /* ======== 3. NEUMORPHIC ELEVATION ======== */
+  .v3-card {
+    background: #eaeef4; border-radius: 20px; padding: 16px 20px;
+    box-shadow: 6px 6px 12px rgba(0,0,0,0.06), -6px -6px 12px rgba(255,255,255,0.9);
+    display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+  }
+  .v3-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+  .v3-sub { background: #eaeef4; box-shadow: inset 2px 2px 4px rgba(0,0,0,0.06), inset -2px -2px 4px rgba(255,255,255,0.9); padding: 6px 12px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; color: #516071; }
+  .v3-sub span { font-weight: 800; color: #7c3aed; }
+  
+  /* ======== 4. LIQUID DROP BORDER ======== */
+  .v4-card {
+    background: #fff; border-radius: 16px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.04); cursor: pointer; position: relative; overflow: hidden;
+  }
+  .v4-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    background: linear-gradient(180deg, #7c3aed, #d946ef); border-radius: 6px 0 0 6px;
+  }
+  .v4-left { padding-left: 8px; display: flex; align-items: center; gap: 12px; }
+  
+  /* ======== 5. PROGRESSIVE GRADIENT (Destaque do Valor Principal) ======== */
+  .v5-card {
+    background: linear-gradient(90deg, #f3e8ff, #fff); border-radius: 24px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.04); border: 1px solid #fff; cursor: pointer;
+  }
+  .v5-left { display: flex; align-items: center; gap: 16px; }
+  .v5-icon { background: #fff; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #7c3aed; box-shadow: 0 4px 10px rgba(124,58,237,0.1); }
+  .v5-primary-val { font-size: 1.4rem; font-weight: 900; color: #7c3aed; line-height: 1; }
+  .v5-primary-lbl { font-size: 0.7rem; font-weight: 800; color: #516071; text-transform: uppercase; }
+  .v5-sec-vals { display: flex; flex-direction: column; gap: 2px; border-left: 2px solid #e5e7eb; padding-left: 12px; margin-left: 12px; font-size: 0.75rem; font-weight: 600; color: #516071; }
+  .v5-sec-vals span { color: #0f172a; font-weight: 800; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>5 Conceitos: Detalhe do Corpo (Colapsado)</h1>
+  <p class="subtitle">Adaptação da estética translúcida para a evolução de peso e medidas</p>
+</div>
+
+<div class="grid">
+  
+  <div class="section-title">03 AGO 2026</div>
+
+  <!-- CONCEITO 1 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">1. Glassmorphism Pill (Total coerência com o cartão de Corrida)</div>
+    <div class="v1-card">
+      <div class="v1-left">
+        <div class="v1-icon-wrap">
+          <svg class="icon-body" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div>
+          <div class="v1-title">03 Ago 2026</div>
+          <div class="v1-subtitle">Peso <span>79.3 kg</span> <span class="v1-dot">•</span> Gordura <span>25.4 %</span> <span class="v1-dot">•</span> Massa <span>56.2 kg</span></div>
+        </div>
+      </div>
+      <svg class="icon-chevron" style="color:#516071" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+
+  <!-- CONCEITO 2 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">2. Minimal Stack (Métricas separadas em Micro-Badges p/ leitura rápida)</div>
+    <div class="v2-card">
+      <div class="v2-left">
+        <div class="v2-icon-wrap">
+          <svg class="icon-body" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div>
+          <div class="v1-title">03 Ago 2026</div>
+          <div class="v2-badges">
+            <div class="v2-badge">Peso <span>79.3 kg</span></div>
+            <div class="v2-badge">Gordura <span>25.4 %</span></div>
+            <div class="v2-badge">Massa <span>56.2 kg</span></div>
+          </div>
+        </div>
+      </div>
+      <svg class="icon-chevron" style="color:#516071" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+
+  <!-- CONCEITO 3 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">3. Neumorphic Elevation (O texto descansa numa calha 3D interna)</div>
+    <div class="v3-card">
+      <div>
+        <div class="v3-title">03 Ago 2026</div>
+        <div class="v3-sub">Peso <span>79.3 kg</span> &nbsp;&nbsp;|&nbsp;&nbsp; Gordura <span>25.4 %</span> &nbsp;&nbsp;|&nbsp;&nbsp; Massa <span>56.2 kg</span></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:16px">
+        <div style="color:#7c3aed"><svg class="icon-body" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <svg class="icon-chevron" style="color:#516071" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 4 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">4. Liquid Drop Border (Destaque colorido subtil apenas na margem esquerda)</div>
+    <div class="v4-card">
+      <div class="v4-left">
+        <div style="color:#7c3aed"><svg class="icon-body" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div>
+          <div class="v1-title">03 Ago 2026</div>
+          <div class="v1-subtitle">Peso <span>79.3 kg</span> <span class="v1-dot">•</span> Gordura <span>25.4 %</span> <span class="v1-dot">•</span> Massa <span>56.2 kg</span></div>
+        </div>
+      </div>
+      <svg class="icon-chevron" style="color:#516071" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+
+  <!-- CONCEITO 5 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">5. Progressive Gradient (Peso em grande destaque, restantes em secundário)</div>
+    <div class="v5-card">
+      <div class="v5-left">
+        <div class="v5-icon"><svg class="icon-body" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div>
+          <div class="v5-primary-val">79.3 <span style="font-size:0.8rem">kg</span></div>
+          <div class="v5-primary-lbl">03 Ago 2026</div>
+        </div>
+        <div class="v5-sec-vals">
+          <div>Gordura: <span>25.4 %</span></div>
+          <div>Massa Musc: <span>56.2 kg</span></div>
+        </div>
+      </div>
+      <svg class="icon-chevron" style="color:#516071" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

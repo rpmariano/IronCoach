@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conceitos de Calendário Premium - IronHealth</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #7c3aed; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: flex; flex-direction: column; gap: 48px; max-width: 600px; margin: 0 auto; }
+  .section-title { font-size: 0.85rem; font-weight: 800; color: #516071; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -16px; }
+
+  /* GENERAL GLASS CARD */
+  .cal-card {
+    background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 32px; padding: 24px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 20px;
+  }
+
+  /* ====================================================
+     CONCEITO A: HORIZONTAL WEEKLY SLIDER (Faixa Deslizante)
+     ==================================================== */
+  .weekly-header { display: flex; justify-content: space-between; align-items: center; }
+  .weekly-title { font-size: 1.05rem; font-weight: 800; color: #1e293b; }
+  .weekly-nav { display: flex; gap: 8px; }
+  .weekly-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.05); background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #64748b; }
+  .weekly-btn:hover { background: #f8fafc; color: #1e293b; }
+  
+  .weekly-strip { display: flex; justify-content: space-between; gap: 8px; width: 100%; }
+  .weekly-day {
+    flex: 1; display: flex; flex-direction: column; align-items: center; padding: 14px 8px;
+    border-radius: 20px; background: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.6);
+    cursor: pointer; transition: transform 0.2s, background 0.2s, border-color 0.2s;
+  }
+  .weekly-day:hover { transform: translateY(-2px); background: rgba(255,255,255,0.8); }
+  .weekly-day.active {
+    background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
+    border-color: #7c3aed; color: #fff;
+    box-shadow: 0 8px 20px rgba(124,58,237,0.3);
+  }
+  .wd-name { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; }
+  .weekly-day.active .wd-name { color: rgba(255,255,255,0.8); }
+  .wd-num { font-size: 1.05rem; font-weight: 900; }
+  .wd-indicator { width: 5px; height: 5px; border-radius: 50%; background: #cbd5e1; margin-top: 6px; }
+  .weekly-day.active .wd-indicator { background: #fff; }
+
+  /* ====================================================
+     CONCEITO B: HEATMAP GRID WITH BORDER GLOW (Grelha de Intensidade)
+     ==================================================== */
+  .grid-header { display: flex; justify-content: space-between; align-items: center; }
+  .grid-month { font-size: 1.1rem; font-weight: 900; color: #1e293b; }
+  .grid-toggle { display: flex; background: rgba(0,0,0,0.03); padding: 4px; border-radius: 12px; }
+  .gt-btn { border: none; padding: 6px 12px; font-size: 0.75rem; font-weight: 800; border-radius: 8px; cursor: pointer; background: transparent; color: #64748b; }
+  .gt-btn.active { background: #fff; color: #1e293b; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+
+  .calendar-grid-layout { display: flex; flex-direction: column; gap: 8px; }
+  .grid-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
+  .grid-weekday { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; }
+  
+  .grid-days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 8px; column-gap: 4px; }
+  .grid-day-cell { display: flex; justify-content: center; align-items: center; }
+  .grid-day-btn {
+    width: 38px; height: 38px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.8);
+    font-size: 0.8rem; font-weight: 700; color: #475569; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; transition: transform 0.2s;
+  }
+  .grid-day-btn:hover { transform: scale(1.05); }
+  
+  /* Intensity colors (Glass Heatmap) */
+  .intensity-none { background: rgba(255,255,255,0.3); }
+  .intensity-low { background: rgba(167,139,250,0.15); color: #7c3aed; }
+  .intensity-medium { background: rgba(167,139,250,0.35); color: #6d28d9; }
+  .intensity-high { background: rgba(167,139,250,0.65); color: #4c1d95; font-weight: 800; }
+  
+  /* Special Glowing Selected Day */
+  .grid-day-btn.selected-glow {
+    background: #7c3aed; color: #fff; border: none;
+    box-shadow: 0 0 15px rgba(124,58,237,0.5);
+  }
+  .grid-day-btn.selected-glow::after {
+    content: ''; position: absolute; -top: -3px; -bottom: -3px; -left: -3px; -right: -3px;
+    border: 2px solid #7c3aed; border-radius: 15px; opacity: 0.8;
+  }
+
+  /* ====================================================
+     CONCEITO C: SPLIT-CARD OVERVIEW (Foco no Dia)
+     ==================================================== */
+  .split-card { display: flex; gap: 24px; padding: 0 !important; overflow: hidden; }
+  .split-left {
+    flex: 1.1; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+    color: #fff; padding: 24px; display: flex; flex-direction: column; justify-content: space-between;
+    position: relative; overflow: hidden;
+  }
+  .sl-glow {
+    position: absolute; right: -40px; top: -40px; width: 120px; height: 120px;
+    background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);
+  }
+  .sl-today { font-size: 2.5rem; font-weight: 900; line-height: 1; }
+  .sl-day-details { font-size: 0.8rem; font-weight: 700; color: rgba(255,255,255,0.8); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sl-summary { display: flex; flex-direction: column; gap: 6px; margin-top: 24px; z-index: 2; }
+  .sl-sum-item { font-size: 0.75rem; font-weight: 700; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 10px; }
+
+  .split-right { flex: 1.3; padding: 24px 24px 24px 0; display: flex; flex-direction: column; gap: 14px; }
+  .sr-header { display: flex; justify-content: space-between; align-items: center; }
+  .sr-month { font-size: 0.9rem; font-weight: 800; color: #1e293b; }
+  .sr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .sr-weekday { font-size: 0.55rem; font-weight: 800; color: #94a3b8; text-align: center; text-transform: uppercase; margin-bottom: 4px; }
+  .sr-day-btn {
+    aspect-ratio: 1; border: none; background: transparent; font-size: 0.75rem; font-weight: 700; color: #475569;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 8px;
+    transition: background 0.2s;
+  }
+  .sr-day-btn:hover { background: rgba(0,0,0,0.03); }
+  .sr-day-btn.active { background: #7c3aed; color: #fff; font-weight: 800; }
+  .sr-day-btn.has-dot { position: relative; }
+  .sr-day-btn.has-dot::after {
+    content: ''; position: absolute; bottom: 3px; width: 3px; height: 3px; border-radius: 50%; background: #7c3aed;
+  }
+  .sr-day-btn.active.has-dot::after { background: #fff; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Conceitos de Calendário Premium</h1>
+  <p class="subtitle">Três propostas visuais especiais para o elemento central da aplicação</p>
+</div>
+
+<div class="grid">
+
+  <!-- CONCEITO A -->
+  <div class="section-title">Conceito A: Weekly Slider (Pílulas Horizontais)</div>
+  <div class="cal-card">
+    <div class="weekly-header">
+      <span class="weekly-title">Esta Semana</span>
+      <div class="weekly-nav">
+        <button class="weekly-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button class="weekly-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+    </div>
+    
+    <div class="weekly-strip">
+      <div class="weekly-day">
+        <span class="wd-name">Seg</span>
+        <span class="wd-num">10</span>
+        <span class="wd-indicator" style="background:#cbd5e1"></span>
+      </div>
+      <div class="weekly-day">
+        <span class="wd-name">Ter</span>
+        <span class="wd-num">11</span>
+        <span class="wd-indicator" style="background:#7c3aed"></span>
+      </div>
+      <div class="weekly-day active">
+        <span class="wd-name">Qua</span>
+        <span class="wd-num">12</span>
+        <span class="wd-indicator"></span>
+      </div>
+      <div class="weekly-day">
+        <span class="wd-name">Qui</span>
+        <span class="wd-num">13</span>
+        <span class="wd-indicator" style="background:#cbd5e1"></span>
+      </div>
+      <div class="weekly-day">
+        <span class="wd-name">Sex</span>
+        <span class="wd-num">14</span>
+        <span class="wd-indicator" style="background:#cbd5e1"></span>
+      </div>
+      <div class="weekly-day">
+        <span class="wd-name">Sáb</span>
+        <span class="wd-num">15</span>
+        <span class="wd-indicator" style="background:#7c3aed"></span>
+      </div>
+      <div class="weekly-day">
+        <span class="wd-name">Dom</span>
+        <span class="wd-num">16</span>
+        <span class="wd-indicator" style="background:#cbd5e1"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO B -->
+  <div class="section-title">Conceito B: Heatmap Grid (Grelha de Intensidade e Borda Ativa)</div>
+  <div class="cal-card">
+    <div class="grid-header">
+      <span class="grid-month">Agosto 2026</span>
+      <div class="grid-toggle">
+        <button class="gt-btn">Semana</button>
+        <button class="gt-btn active">Mês</button>
+      </div>
+    </div>
+    
+    <div class="calendar-grid-layout">
+      <div class="grid-weekdays">
+        <span class="grid-weekday">S</span><span class="grid-weekday">T</span><span class="grid-weekday">Q</span><span class="grid-weekday">Q</span><span class="grid-weekday">S</span><span class="grid-weekday">S</span><span class="grid-weekday">D</span>
+      </div>
+      
+      <div class="grid-days">
+        <!-- slots vazios -->
+        <div class="grid-day-cell"></div><div class="grid-day-cell"></div>
+        
+        <!-- dias -->
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">1</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">2</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-low">3</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">4</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">5</button></div>
+        
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">6</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">7</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-medium">8</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">9</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">10</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">11</button></div>
+        <div class="grid-day-cell">
+          <button class="grid-day-btn selected-glow">12</button>
+        </div>
+        
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">13</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-high">14</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">15</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">16</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">17</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">18</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-low">19</button></div>
+        
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">20</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-medium">21</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">22</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">23</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">24</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">25</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-high">26</button></div>
+        
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">27</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">28</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">29</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">30</button></div>
+        <div class="grid-day-cell"><button class="grid-day-btn intensity-none">31</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO C -->
+  <div class="section-title">Conceito C: Split Overview (Foco no Dia + Mini Grelha)</div>
+  <div class="cal-card split-card">
+    <div class="split-left">
+      <div class="sl-glow"></div>
+      <div>
+        <h3 class="sl-today">12</h3>
+        <span class="sl-day-details">Quarta-feira<br>Ago 2026</span>
+      </div>
+      
+      <div class="sl-summary">
+        <div class="sl-sum-item">🏃 Corrida: 11.32 km</div>
+        <div class="sl-sum-item">⚖️ Peso: 79.3 kg</div>
+      </div>
+    </div>
+    
+    <div class="split-right">
+      <div class="sr-header">
+        <span class="sr-month">Agosto 2026</span>
+      </div>
+      
+      <div class="sr-grid">
+        <span class="sr-weekday">S</span><span class="sr-weekday">T</span><span class="sr-weekday">Q</span><span class="sr-weekday">Q</span><span class="sr-weekday">S</span><span class="sr-weekday">S</span><span class="sr-weekday">D</span>
+        
+        <!-- slots vazios -->
+        <div></div><div></div>
+        
+        <button class="sr-day-btn">1</button>
+        <button class="sr-day-btn">2</button>
+        <button class="sr-day-btn has-dot">3</button>
+        <button class="sr-day-btn">4</button>
+        <button class="sr-day-btn">5</button>
+        <button class="sr-day-btn">6</button>
+        <button class="sr-day-btn">7</button>
+        <button class="sr-day-btn has-dot">8</button>
+        <button class="sr-day-btn">9</button>
+        <button class="sr-day-btn">10</button>
+        <button class="sr-day-btn">11</button>
+        <button class="sr-day-btn active has-dot">12</button>
+        <button class="sr-day-btn">13</button>
+        <button class="sr-day-btn has-dot">14</button>
+        <button class="sr-day-btn">15</button>
+        <button class="sr-day-btn">16</button>
+        <button class="sr-day-btn">17</button>
+        <button class="sr-day-btn">18</button>
+        <button class="sr-day-btn has-dot">19</button>
+        <button class="sr-day-btn">20</button>
+        <button class="sr-day-btn has-dot">21</button>
+        <button class="sr-day-btn">22</button>
+        <button class="sr-day-btn">23</button>
+        <button class="sr-day-btn">24</button>
+        <button class="sr-day-btn">25</button>
+        <button class="sr-day-btn has-dot">26</button>
+        <button class="sr-day-btn">27</button>
+        <button class="sr-day-btn">28</button>
+        <button class="sr-day-btn">29</button>
+        <button class="sr-day-btn">30</button>
+        <button class="sr-day-btn">31</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

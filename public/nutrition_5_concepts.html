@@ -1,0 +1,272 @@
+﻿<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 Novos Conceitos – Nutrição</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #065f46; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 32px; max-width: 1200px; margin: 0 auto; }
+
+  /* CORES DA APP */
+  :root {
+    --cal: #dd3c4f; --cal-glow: rgba(221,60,79,0.4);
+    --pro: #3c6cdd; --pro-glow: rgba(60,108,221,0.4);
+    --car: #8b8118; --car-glow: rgba(139,129,24,0.4);
+    --fat: #dd3cb7; --fat-glow: rgba(221,60,183,0.4);
+  }
+
+  /* BASE CARD */
+  .card {
+    background: rgba(255,255,255,0.5); backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 32px;
+    padding: 32px 24px;
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,1);
+    display: flex; flex-direction: column; align-items: center; position: relative;
+    transition: transform 0.3s ease;
+  }
+  .card:hover { transform: translateY(-4px); }
+  .c-title { font-size: 1.2rem; font-weight: 800; color: #0f172a; margin-bottom: 4px; }
+  .c-desc { font-size: 0.85rem; color: #516071; text-align: center; margin-bottom: 24px; line-height: 1.4; }
+
+  /* ======== 1. ANÉIS CONCÊNTRICOS ======== */
+  .concentric-wrap { position: relative; width: 200px; height: 200px; margin-bottom: 16px; }
+  .c-svg { width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1)); }
+  .c-bg { fill: none; stroke: rgba(255,255,255,0.6); }
+  .c-path { fill: none; stroke-linecap: round; transition: stroke-dashoffset 1s ease; animation: pulseGlow 3s infinite alternate; }
+  .c-cal { stroke: var(--cal); stroke-width: 14; stroke-dasharray: 502; stroke-dashoffset: 100; filter: drop-shadow(0 0 8px var(--cal-glow)); }
+  .c-pro { stroke: var(--pro); stroke-width: 10; stroke-dasharray: 377; stroke-dashoffset: 80; filter: drop-shadow(0 0 6px var(--pro-glow)); }
+  .c-car { stroke: var(--car); stroke-width: 10; stroke-dasharray: 282; stroke-dashoffset: 60; filter: drop-shadow(0 0 6px var(--car-glow)); }
+  .c-fat { stroke: var(--fat); stroke-width: 10; stroke-dasharray: 188; stroke-dashoffset: 40; filter: drop-shadow(0 0 6px var(--fat-glow)); }
+  
+  .c-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .c-center h2 { font-size: 1.8rem; color: var(--cal); line-height: 1; }
+  .c-center p { font-size: 0.65rem; font-weight: 700; color: #516071; text-transform: uppercase; }
+
+  /* ======== 2. TUBOS FLUÍDOS ======== */
+  .tanks-wrap { display: flex; gap: 16px; justify-content: center; width: 100%; padding: 20px 0; }
+  .tank-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .tank {
+    width: 44px; height: 140px; border-radius: 22px;
+    background: rgba(255,255,255,0.4); border: 2px solid rgba(255,255,255,0.9);
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.05), 0 8px 16px rgba(0,0,0,0.08);
+    position: relative; overflow: hidden;
+  }
+  .tank-fill { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 0 0 20px 20px; animation: waveFloat 3s infinite linear; }
+  .tank-fill::after {
+    content: ''; position: absolute; top: -10px; left: -50%; width: 200%; height: 20px;
+    background: inherit; opacity: 0.6; border-radius: 40%; animation: waveFloat 4s infinite linear reverse;
+  }
+  @keyframes waveFloat { 0% { transform: rotate(0deg) translateY(0); } 100% { transform: rotate(360deg) translateY(-2px); } }
+  .t-pro .tank-fill { background: var(--pro); height: 85%; }
+  .t-car .tank-fill { background: var(--car); height: 60%; }
+  .t-fat .tank-fill { background: var(--fat); height: 40%; }
+  .t-label { font-size: 0.75rem; font-weight: 800; color: #516071; }
+  .t-val { font-size: 0.85rem; font-weight: 700; color: #0f172a; }
+
+  /* ======== 3. DASHBOARD GLASSMORPHISM ======== */
+  .dash-wrap { display: flex; width: 100%; gap: 16px; align-items: center; }
+  .dash-left {
+    width: 120px; height: 120px; border-radius: 50%;
+    background: linear-gradient(135deg, rgba(255,255,255,0.8), rgba(255,255,255,0.2));
+    border: 1px solid #fff; box-shadow: 0 15px 25px rgba(221,60,79,0.15);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .dash-left::before {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%;
+    border: 3px solid transparent; border-top-color: var(--cal); border-right-color: var(--cal);
+    transform: rotate(45deg);
+  }
+  .dash-right { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+  .macro-pill {
+    background: rgba(255,255,255,0.6); border-radius: 12px; padding: 10px 12px;
+    border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+    position: relative; overflow: hidden; display: flex; justify-content: space-between; align-items: center;
+  }
+  .macro-pill-fill { position: absolute; top: 0; left: 0; bottom: 0; opacity: 0.15; z-index: 0; }
+  .macro-pill-content { position: relative; z-index: 1; display: flex; justify-content: space-between; width: 100%; font-size: 0.8rem; font-weight: 700; }
+  .mp-pro .macro-pill-fill { background: var(--pro); width: 85%; }
+  .mp-car .macro-pill-fill { background: var(--car); width: 60%; }
+  .mp-fat .macro-pill-fill { background: var(--fat); width: 40%; }
+  
+  /* ======== 4. TUBOS DE NÉON (BARRAS 3D) ======== */
+  .neon-wrap { width: 100%; display: flex; flex-direction: column; gap: 20px; padding-top: 10px; }
+  .neon-row { display: flex; flex-direction: column; gap: 6px; }
+  .neon-labels { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700; color: #516071; }
+  .neon-track {
+    height: 16px; border-radius: 8px; background: rgba(0,0,0,0.04);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 1px 0 rgba(255,255,255,0.8);
+    position: relative; overflow: hidden;
+  }
+  .neon-fill {
+    position: absolute; top: 0; left: 0; bottom: 0; border-radius: 8px;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.4), 0 0 10px currentColor;
+  }
+  .n-cal .neon-fill { background: var(--cal); color: var(--cal-glow); width: 80%; }
+  .n-pro .neon-fill { background: var(--pro); color: var(--pro-glow); width: 85%; }
+  .n-car .neon-fill { background: var(--car); color: var(--car-glow); width: 60%; }
+
+  /* ======== 5. SEGMENTOS CAPSULARES ======== */
+  .caps-wrap { width: 100%; display: flex; flex-direction: column; gap: 16px; }
+  .caps-row { display: flex; align-items: center; gap: 12px; }
+  .caps-icon { width: 40px; height: 40px; border-radius: 12px; background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-weight: 800; font-size: 0.8rem; }
+  .caps-track { flex: 1; display: flex; gap: 4px; }
+  .cap-seg { height: 24px; flex: 1; border-radius: 4px; background: rgba(255,255,255,0.6); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); transition: background 0.3s; }
+  .cap-seg.active { box-shadow: 0 2px 8px currentColor, inset 0 1px 2px rgba(255,255,255,0.5); }
+  
+  .cp-cal .cap-seg.active { background: var(--cal); color: var(--cal-glow); }
+  .cp-pro .cap-seg.active { background: var(--pro); color: var(--pro-glow); }
+  .cp-car .cap-seg.active { background: var(--car); color: var(--car-glow); }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>5 Novos Conceitos – Nutrição (Macros)</h1>
+  <p class="subtitle">Substituição translúcida e animada para o card de Progresso Diário</p>
+</div>
+
+<div class="grid">
+
+  <!-- Conceito 1 -->
+  <div class="card">
+    <div class="c-title">1. Anéis Concêntricos 3D</div>
+    <div class="c-desc">Estilo smartwatch, compacto e altamente visual com brilho neon nas pontas.</div>
+    
+    <div class="concentric-wrap">
+      <svg class="c-svg" viewBox="0 0 200 200">
+        <!-- Cal -->
+        <circle class="c-bg" cx="100" cy="100" r="80" stroke-width="14" />
+        <circle class="c-path c-cal" cx="100" cy="100" r="80" />
+        <!-- Pro -->
+        <circle class="c-bg" cx="100" cy="100" r="60" stroke-width="10" />
+        <circle class="c-path c-pro" cx="100" cy="100" r="60" />
+        <!-- Car -->
+        <circle class="c-bg" cx="100" cy="100" r="45" stroke-width="10" />
+        <circle class="c-path c-car" cx="100" cy="100" r="45" />
+        <!-- Fat -->
+        <circle class="c-bg" cx="100" cy="100" r="30" stroke-width="10" />
+        <circle class="c-path c-fat" cx="100" cy="100" r="30" />
+      </svg>
+      <div class="c-center">
+        <h2>2345</h2>
+        <p>kcal restantes</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conceito 2 -->
+  <div class="card">
+    <div class="c-title">2. Tubos Fluídos (Laboratório)</div>
+    <div class="c-desc">Recipientes cilíndricos de vidro com líquido animado que representa cada macro.</div>
+    
+    <div style="text-align:center; margin-bottom:12px;">
+      <span style="font-size:1.5rem; font-weight:800; color:var(--cal)">2345</span>
+      <span style="font-size:0.8rem; color:#516071; font-weight:700"> / 2700 kcal</span>
+    </div>
+    
+    <div class="tanks-wrap">
+      <div class="tank-col t-pro">
+        <div class="tank"><div class="tank-fill"></div></div>
+        <div class="t-label" style="color:var(--pro)">PRO</div>
+        <div class="t-val">145g</div>
+      </div>
+      <div class="tank-col t-car">
+        <div class="tank"><div class="tank-fill"></div></div>
+        <div class="t-label" style="color:var(--car)">CAR</div>
+        <div class="t-val">210g</div>
+      </div>
+      <div class="tank-col t-fat">
+        <div class="tank"><div class="tank-fill"></div></div>
+        <div class="t-label" style="color:var(--fat)">FAT</div>
+        <div class="t-val">52g</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conceito 3 -->
+  <div class="card">
+    <div class="c-title">3. Dashboard Glassmorphism</div>
+    <div class="c-desc">Mostrador central holográfico para calorias + cápsulas flutuantes para macros.</div>
+    
+    <div class="dash-wrap">
+      <div class="dash-left">
+        <span style="font-size:1.4rem; font-weight:900; color:var(--cal); line-height:1">2345</span>
+        <span style="font-size:0.6rem; font-weight:700; color:#516071; text-transform:uppercase; margin-top:4px">kcal rest.</span>
+      </div>
+      <div class="dash-right">
+        <div class="macro-pill mp-pro">
+          <div class="macro-pill-fill"></div>
+          <div class="macro-pill-content"><span>Proteína</span> <span style="color:var(--pro)">145g / 160g</span></div>
+        </div>
+        <div class="macro-pill mp-car">
+          <div class="macro-pill-fill"></div>
+          <div class="macro-pill-content"><span>Hidratos</span> <span style="color:var(--car)">210g / 250g</span></div>
+        </div>
+        <div class="macro-pill mp-fat">
+          <div class="macro-pill-fill"></div>
+          <div class="macro-pill-content"><span>Gordura</span> <span style="color:var(--fat)">52g / 65g</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conceito 4 -->
+  <div class="card">
+    <div class="c-title">4. Tubos de Néon 3D</div>
+    <div class="c-desc">Barras horizontais cilíndricas que parecem tubos de néon brilhantes no vidro.</div>
+    
+    <div class="neon-wrap">
+      <div class="neon-row n-cal">
+        <div class="neon-labels"><span>Calorias</span> <span style="color:var(--cal)">2345 / 2700 kcal</span></div>
+        <div class="neon-track"><div class="neon-fill"></div></div>
+      </div>
+      <div class="neon-row n-pro">
+        <div class="neon-labels"><span>Proteína</span> <span style="color:var(--pro)">145 / 160g</span></div>
+        <div class="neon-track"><div class="neon-fill"></div></div>
+      </div>
+      <div class="neon-row n-car">
+        <div class="neon-labels"><span>Hidratos</span> <span style="color:var(--car)">210 / 250g</span></div>
+        <div class="neon-track"><div class="neon-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conceito 5 -->
+  <div class="card">
+    <div class="c-title">5. Segmentos Capsulares Interativos</div>
+    <div class="c-desc">Blocos discretos que se acendem de forma escalonada, criando uma grelha.</div>
+    
+    <div class="caps-wrap">
+      <div class="caps-row cp-cal">
+        <div class="caps-icon" style="color:var(--cal)">CAL</div>
+        <div class="caps-track">
+          <div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg"></div>
+        </div>
+      </div>
+      <div class="caps-row cp-pro">
+        <div class="caps-icon" style="color:var(--pro)">PRO</div>
+        <div class="caps-track">
+          <div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg"></div>
+        </div>
+      </div>
+      <div class="caps-row cp-car">
+        <div class="caps-icon" style="color:var(--car)">CAR</div>
+        <div class="caps-track">
+          <div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg active"></div><div class="cap-seg"></div><div class="cap-seg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

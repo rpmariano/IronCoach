@@ -1,0 +1,213 @@
+﻿<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Biblioteca de Gráficos - IronHealth</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #2563eb; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 32px; max-width: 1000px; margin: 0 auto; }
+  
+  .section-title { font-size: 0.85rem; font-weight: 800; color: #516071; text-transform: uppercase; letter-spacing: 0.05em; grid-column: 1 / -1; margin-bottom: -16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; margin-top: 16px; }
+
+  /* COMPACT CIRCULAR CARD (Half Width) */
+  .circular-compact-card {
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 24px; padding: 16px;
+    box-shadow: 0 8px 20px -5px rgba(0,0,0,0.05); display: flex; flex-direction: column; align-items: center; text-align: center;
+    width: 170px; cursor: pointer; transition: transform 0.2s; border-left: 4px solid #3b82f6;
+  }
+  .circular-compact-card:hover { transform: translateY(-2px); }
+  
+  .v5-wrap { position: relative; width: 80px; height: 80px; background: #fff; border-radius: 50%; box-shadow: inset 3px 3px 6px rgba(0,0,0,0.05), inset -3px -3px 6px #fff; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .v5-svg { width: 100%; height: 100%; position: absolute; transform: rotate(-90deg); }
+  .v5-svg circle { fill: none; stroke-width: 6; stroke-linecap: round; }
+  .v5-bg { stroke: #f1f5f9; }
+  .v5-progress { stroke: #3b82f6; stroke-dasharray: 251; stroke-dashoffset: 100; filter: drop-shadow(0 2px 4px rgba(59,130,246,0.2)); }
+  .v5-inner-text { font-size: 0.9rem; font-weight: 900; color: #1e293b; z-index: 2; }
+  
+  .cc-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+  .cc-val { font-size: 1.3rem; font-weight: 900; color: #1e293b; line-height: 1.1; }
+  .cc-target { font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 2px; }
+  .cc-target span { color: #3b82f6; font-weight: 800; }
+
+  /* CHART CARDS GENERAL */
+  .chart-card {
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 28px; padding: 24px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;
+    cursor: pointer;
+  }
+  .chart-header { display: flex; justify-content: space-between; align-items: center; }
+  .chart-title { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
+  .chart-subtitle { font-size: 0.75rem; color: #64748b; font-weight: 600; }
+  
+  /* ======== LINE CHART 1: NEON GLOW SPARKLINE ======== */
+  .line-container { width: 100%; height: 160px; position: relative; margin-top: 10px; }
+  .line-svg { width: 100%; height: 100%; overflow: visible; }
+  .grid-lines line { stroke: rgba(0,0,0,0.03); stroke-width: 1; }
+  .chart-line { stroke: url(#line-glow-grad); stroke-width: 4; fill: none; stroke-linecap: round; filter: drop-shadow(0 4px 10px rgba(59,130,246,0.3)); }
+  .chart-area { fill: url(#area-grad); }
+  .line-labels-x { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; margin-top: 8px; }
+
+  /* ======== BAR CHART 1: FLOATING GLASS BARS ======== */
+  .bar-container { display: flex; align-items: flex-end; justify-content: space-between; height: 160px; padding: 10px 0; margin-top: 10px; }
+  .bar-col { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; }
+  .bar-track { width: 18px; height: 120px; background: rgba(0,0,0,0.03); border-radius: 99px; position: relative; overflow: hidden; }
+  .bar-fill {
+    position: absolute; bottom: 0; left: 0; width: 100%; border-radius: 99px;
+    background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%);
+    box-shadow: 0 4px 10px rgba(59,130,246,0.2);
+  }
+  .bar-fill.active {
+    background: linear-gradient(180deg, #f43f5e 0%, #e11d48 100%);
+    box-shadow: 0 4px 12px rgba(225,29,72,0.3);
+  }
+  .bar-lbl { font-size: 0.7rem; font-weight: 800; color: #94a3b8; }
+  .bar-lbl.active { color: #e11d48; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Biblioteca de Gráficos IronHealth</h1>
+  <p class="subtitle">Sugestões de gráficos circulares, de linha e de barras seguindo o design system</p>
+</div>
+
+<div class="grid">
+  
+  <!-- COMPACT CIRCULAR CHART (Concept 5) -->
+  <div class="section-title">1. Gráfico Circular (Conceito 5 Colapsado a Meio)</div>
+  <div style="display: flex; gap: 20px; grid-column: 1 / -1;">
+    
+    <div class="circular-compact-card">
+      <span class="cc-lbl">Proteína</span>
+      <div class="v5-wrap">
+        <svg class="v5-svg" viewBox="0 0 100 100">
+          <circle class="v5-bg" cx="50" cy="50" r="40" />
+          <circle class="v5-progress" cx="50" cy="50" r="40" />
+        </svg>
+        <div class="v5-inner-text">68%</div>
+      </div>
+      <span class="cc-val">102g</span>
+      <span class="cc-target">meta <span>150g</span></span>
+    </div>
+
+    <div class="circular-compact-card" style="border-left-color: #ec4899;">
+      <span class="cc-lbl" style="color:#f472b6;">Gordura</span>
+      <div class="v5-wrap">
+        <svg class="v5-svg" viewBox="0 0 100 100">
+          <circle class="v5-bg" cx="50" cy="50" r="40" />
+          <circle class="v5-progress" cx="50" cy="50" r="40" style="stroke: #ec4899; stroke-dashoffset: 50; filter: drop-shadow(0 2px 4px rgba(236,72,153,0.2));" />
+        </svg>
+        <div class="v5-inner-text">80%</div>
+      </div>
+      <span class="cc-val">52g</span>
+      <span class="cc-target">meta <span style="color:#ec4899">65g</span></span>
+    </div>
+
+  </div>
+
+  <!-- LINE CHART CONCEPT 1 -->
+  <div class="section-title">2. Gráfico de Linha</div>
+  
+  <div class="chart-card">
+    <div class="chart-header">
+      <div>
+        <h3 class="chart-title">Evolução do Peso</h3>
+        <span class="chart-subtitle">Últimos 7 registos (kg)</span>
+      </div>
+      <span style="font-size:0.75rem; font-weight:800; color:#10b981; background:rgba(16,185,129,0.1); padding:4px 8px; border-radius:8px;">-2.4 kg este mês</span>
+    </div>
+    
+    <div class="line-container">
+      <svg class="line-svg" viewBox="0 0 400 160">
+        <defs>
+          <linearGradient id="line-glow-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3b82f6" />
+            <stop offset="100%" stop-color="#8b5cf6" />
+          </linearGradient>
+          <linearGradient id="area-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="rgba(59,130,246,0.15)" />
+            <stop offset="100%" stop-color="rgba(59,130,246,0)" />
+          </linearGradient>
+        </defs>
+        
+        <!-- Grid lines -->
+        <g class="grid-lines">
+          <line x1="0" y1="40" x2="400" y2="40" />
+          <line x1="0" y1="80" x2="400" y2="80" />
+          <line x1="0" y1="120" x2="400" y2="120" />
+        </g>
+        
+        <!-- Gradient Area under the line -->
+        <path class="chart-area" d="M 0,160 C 50,110 80,120 120,90 C 160,60 200,85 240,75 C 280,65 320,45 400,30 L 400,160 Z" />
+        
+        <!-- Sparkline -->
+        <path class="chart-line" d="M 0,160 C 50,110 80,120 120,90 C 160,60 200,85 240,75 C 280,65 320,45 400,30" />
+        
+        <!-- Points / Nodes -->
+        <circle cx="120" cy="90" r="5" fill="#3b82f6" stroke="#fff" stroke-width="2" />
+        <circle cx="240" cy="75" r="5" fill="#3b82f6" stroke="#fff" stroke-width="2" />
+        <circle cx="400" cy="30" r="6" fill="#8b5cf6" stroke="#fff" stroke-width="2" filter="drop-shadow(0 0 5px #8b5cf6)" />
+      </svg>
+    </div>
+    <div class="line-labels-x">
+      <span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span>
+    </div>
+  </div>
+
+  <!-- BAR CHART CONCEPT 1 -->
+  <div class="section-title">3. Gráfico de Barras</div>
+  
+  <div class="chart-card">
+    <div class="chart-header">
+      <div>
+        <h3 class="chart-title">Atividade de Corrida</h3>
+        <span class="chart-subtitle">Distância semanal (km)</span>
+      </div>
+      <span style="font-size:0.75rem; font-weight:800; color:#3b82f6; background:rgba(59,130,246,0.1); padding:4px 8px; border-radius:8px;">Total: 42.5 km</span>
+    </div>
+    
+    <div class="bar-container">
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 40%"></div></div>
+        <span class="bar-lbl">S</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 65%"></div></div>
+        <span class="bar-lbl">T</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 20%"></div></div>
+        <span class="bar-lbl">Q</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 85%"></div></div>
+        <span class="bar-lbl">Q</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 50%"></div></div>
+        <span class="bar-lbl">S</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill active" style="height: 100%"></div></div>
+        <span class="bar-lbl active">S</span>
+      </div>
+      <div class="bar-col">
+        <div class="bar-track"><div class="bar-fill" style="height: 30%"></div></div>
+        <span class="bar-lbl">D</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

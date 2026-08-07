@@ -1,0 +1,274 @@
+﻿<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 Conceitos – Cartões de Detalhe (Linha do Tempo)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #3e6b82; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 40px; max-width: 1200px; margin: 0 auto; }
+
+  /* CORES DA APP */
+  :root {
+    --cal: #dd3c4f; --pro: #3c6cdd; --car: #8b8118; --fat: #dd3cb7;
+    --acc: #ec8871; --blue: #3e6b82;
+  }
+
+  /* WRAPPER GERAL DOS CONCEITOS */
+  .concept-box {
+    display: flex; flex-direction: column; position: relative;
+  }
+  .c-title { font-size: 1.1rem; font-weight: 800; color: #0f172a; margin-bottom: 4px; text-align: center; }
+  .c-desc { font-size: 0.85rem; color: #516071; text-align: center; margin-bottom: 24px; line-height: 1.4; }
+
+  .timeline-container { position: relative; padding-left: 20px; }
+
+  /* IMAGE PLACEHOLDER */
+  .food-img { width: 80px; height: 80px; border-radius: 16px; background: url('https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=200&q=80') center/cover; }
+
+  /* ======== 1. FLOATING RIBBON & BUBBLES (GLASSMORPHISM) ======== */
+  .v1-tl { border-left: 2px solid rgba(62,107,130,0.15); padding-left: 24px; position: relative; }
+  .v1-node { position: absolute; left: -7px; top: 20px; width: 12px; height: 12px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 10px rgba(236,136,113,0.8); animation: pulseV1 2s infinite alternate; }
+  @keyframes pulseV1 { from { box-shadow: 0 0 5px rgba(236,136,113,0.5); } to { box-shadow: 0 0 15px rgba(236,136,113,1); } }
+  .v1-card {
+    background: rgba(255,255,255,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 24px; padding: 16px;
+    box-shadow: 0 10px 30px -5px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 12px;
+    transition: transform 0.3s;
+  }
+  .v1-card:hover { transform: translateX(4px); }
+  .v1-header { font-size: 0.8rem; color: #516071; font-weight: 700; display: flex; justify-content: space-between; }
+  .v1-main { display: flex; gap: 16px; align-items: center; }
+  .v1-info h3 { font-size: 1rem; color: #0f172a; margin-bottom: 2px; }
+  .v1-info p { font-size: 0.8rem; color: #516071; margin-bottom: 8px; font-weight: 700; }
+  .v1-macros { display: flex; gap: 6px; }
+  .v1-badge { padding: 4px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; color: #fff; }
+
+  .v1-expand { background: rgba(233,237,243,0.5); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .v1-slider-track { height: 6px; background: rgba(0,0,0,0.05); border-radius: 3px; position: relative; }
+  .v1-slider-fill { position: absolute; left: 0; top: 0; height: 100%; width: 60%; background: var(--acc); border-radius: 3px; }
+  .v1-slider-thumb { position: absolute; left: 60%; top: 50%; transform: translate(-50%, -50%); width: 16px; height: 16px; background: #fff; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+
+  /* ======== 2. EXPANDED LAYERS (ACRÍLICO 3D) ======== */
+  .v2-tl { border-left: 3px dashed rgba(62,107,130,0.2); padding-left: 24px; position: relative; }
+  .v2-node { position: absolute; left: -10px; top: 20px; width: 17px; height: 17px; background: #eaeef4; border: 4px solid var(--acc); border-radius: 50%; }
+  .v2-card-wrap { position: relative; }
+  .v2-layer-base { background: #fff; border-radius: 20px; padding: 16px; box-shadow: 0 8px 20px rgba(62,107,130,0.08); position: relative; z-index: 2; display: flex; gap: 16px; }
+  .v2-layer-expand {
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9); border-radius: 0 0 20px 20px;
+    padding: 24px 16px 16px; margin-top: -10px; position: relative; z-index: 1;
+    border: 1px solid rgba(0,0,0,0.03); box-shadow: inset 0 10px 10px -10px rgba(0,0,0,0.05);
+  }
+  
+  /* ======== 3. NEON CYBER-TRACK ======== */
+  .v3-tl { padding-left: 30px; position: relative; }
+  .v3-line { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: rgba(236,136,113,0.2); border-radius: 2px; }
+  .v3-line-fill { position: absolute; left: 0; top: 0; height: 60%; width: 100%; background: var(--acc); border-radius: 2px; box-shadow: 0 0 10px var(--acc); }
+  .v3-node { position: absolute; left: -4px; top: 58%; width: 12px; height: 12px; background: #fff; border-radius: 50%; border: 2px solid var(--acc); box-shadow: 0 0 15px var(--acc); }
+  
+  .v3-card {
+    background: rgba(30,41,59,0.95); color: #fff; border-radius: 20px; padding: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid rgba(255,255,255,0.1);
+  }
+  .v3-card h3 { color: #f8fafc; font-size: 1rem; }
+  .v3-badge { padding: 4px 8px; border-radius: 6px; font-size: 0.7rem; font-weight: 800; background: rgba(255,255,255,0.1); border-bottom: 2px solid; }
+  .v3-slider { height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 12px; position: relative; }
+  .v3-slider-fill { height: 100%; width: 60%; background: var(--acc); border-radius: 2px; box-shadow: 0 0 8px var(--acc); }
+
+  /* ======== 4. MINIMAL LIQUID DROP ======== */
+  .v4-tl { padding-left: 30px; position: relative; border-left: 2px solid rgba(0,0,0,0.05); }
+  .v4-node {
+    position: absolute; left: -9px; top: 20px; width: 16px; height: 16px;
+    background: var(--blue); border-radius: 0 50% 50% 50%; transform: rotate(45deg);
+  }
+  .v4-card {
+    background: #fff; border-radius: 24px; padding: 16px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.03); border: 1px solid #f1f5f9;
+  }
+  .v4-img { border-radius: 50%; width: 70px; height: 70px; }
+  .v4-badge { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .v4-expand { border-top: 1px solid #f1f5f9; margin-top: 12px; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; }
+  .v4-btn { width: 32px; height: 32px; border-radius: 50%; background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-weight: 800; color: var(--blue); }
+
+  /* ======== 5. HOLOGRAPHIC PANELS & INLINE PILLS ======== */
+  .v5-tl { padding-left: 24px; position: relative; border-left: 2px solid rgba(255,255,255,0.9); }
+  .v5-card {
+    background: rgba(255,255,255,0.4); border-radius: 20px; padding: 16px;
+    box-shadow: 0 8px 25px rgba(62,107,130,0.1), inset 0 0 0 1px rgba(255,255,255,0.8);
+    position: relative; overflow: hidden;
+  }
+  /* holographic shimmer */
+  .v5-card::before {
+    content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.8), transparent);
+    transform: rotate(45deg); animation: shimmer 3s infinite linear; pointer-events: none;
+  }
+  @keyframes shimmer { 0% { transform: translateX(-100%) rotate(45deg); } 100% { transform: translateX(100%) rotate(45deg); } }
+  
+  .v5-inline-pills { display: flex; gap: 8px; margin-top: 8px; }
+  .v5-pill { flex: 1; height: 16px; border-radius: 8px; background: rgba(255,255,255,0.5); position: relative; overflow: hidden; }
+  .v5-pill-fill { position: absolute; left: 0; top: 0; height: 100%; }
+
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>5 Conceitos: Linha do Tempo (Detalhe)</h1>
+  <p class="subtitle">Adaptação da estética moderna para os cartões de Refeições, Treino e Corpo</p>
+</div>
+
+<div class="grid">
+
+  <!-- CONCEITO 1: BUBBLES -->
+  <div class="concept-box">
+    <div class="c-title">1. Ribbon & Glass Bubbles</div>
+    <div class="c-desc">Nó a pulsar; cartão em vidro fosco com editor deslizante macio.</div>
+    <div class="timeline-container v1-tl">
+      <div class="v1-node"></div>
+      <div class="v1-card">
+        <div class="v1-header"><span>08:00 | Pequeno-Almoço</span> <span>•••</span></div>
+        <div class="v1-main">
+          <div class="food-img"></div>
+          <div class="v1-info">
+            <h3>Aveia e Frutas</h3>
+            <p>345 kcal</p>
+            <div class="v1-macros">
+              <div class="v1-badge" style="background:var(--pro)">18g P</div>
+              <div class="v1-badge" style="background:var(--car)">52g C</div>
+              <div class="v1-badge" style="background:var(--fat)">9g F</div>
+            </div>
+          </div>
+        </div>
+        <div class="v1-expand">
+          <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700;"><span>Frango Grelhado</span> <span>100g</span></div>
+          <div class="v1-slider-track">
+            <div class="v1-slider-fill"></div>
+            <div class="v1-slider-thumb"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 2: ACRÍLICO 3D -->
+  <div class="concept-box">
+    <div class="c-title">2. Camadas em Acrílico 3D</div>
+    <div class="c-desc">O conteúdo secundário "escorrega" por baixo do cartão principal, criando 3D.</div>
+    <div class="timeline-container v2-tl">
+      <div class="v2-node"></div>
+      <div class="v2-card-wrap">
+        <div class="v2-layer-base">
+          <div class="food-img"></div>
+          <div>
+            <h3 style="font-size:1rem;margin-bottom:4px">Salada de Frango</h3>
+            <p style="font-size:0.85rem;color:#516071;font-weight:700">460 kcal</p>
+          </div>
+        </div>
+        <div class="v2-layer-expand">
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; font-weight:700;">
+            <span>Frango Grelhado</span>
+            <div style="display:flex; gap:8px; align-items:center">
+              <span style="background:#e2e8f0; padding:2px 8px; border-radius:4px">-</span>
+              <span>100g</span>
+              <span style="background:var(--acc); color:#fff; padding:2px 8px; border-radius:4px">+</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 3: NEON CYBER -->
+  <div class="concept-box">
+    <div class="c-title">3. Neon Cyber-Track</div>
+    <div class="c-desc">Mesmo no tema claro, o card ganha alto contraste noturno e néon brilhante.</div>
+    <div class="timeline-container v3-tl">
+      <div class="v3-line"><div class="v3-line-fill"></div></div>
+      <div class="v3-node"></div>
+      <div class="v3-card">
+        <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:rgba(255,255,255,0.6); margin-bottom:12px"><span>13:30 | Almoço</span></div>
+        <div style="display:flex; gap:16px;">
+          <div class="food-img"></div>
+          <div>
+            <h3>Salada Grelhada</h3>
+            <p style="font-size:0.85rem;color:var(--acc);font-weight:800;margin-top:2px;margin-bottom:8px">460 kcal</p>
+            <div style="display:flex; gap:4px">
+              <span class="v3-badge" style="border-color:var(--pro); color:var(--pro)">18g P</span>
+              <span class="v3-badge" style="border-color:var(--car); color:var(--car)">52g C</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:12px; margin-top:16px">
+           <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:700;"><span>Frango Grelhado</span> <span>100g</span></div>
+           <div class="v3-slider"><div class="v3-slider-fill"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 4: MINIMAL DROP -->
+  <div class="concept-box">
+    <div class="c-title">4. Minimal Liquid Drop</div>
+    <div class="c-desc">Ultralimpo. O nó é uma gota de água; macros em formato de pontos finos.</div>
+    <div class="timeline-container v4-tl">
+      <div class="v4-node"></div>
+      <div class="v4-card">
+        <div style="display:flex; gap:16px;">
+          <div class="food-img v4-img"></div>
+          <div>
+            <h3 style="font-size:1rem;color:#0f172a">Salada Saudável</h3>
+            <div style="font-size:0.8rem;color:#516071;font-weight:700;margin:4px 0">460 kcal</div>
+            <div style="font-size:0.75rem; font-weight:700; color:#516071">
+              <span class="v4-badge" style="background:var(--pro)"></span>18g 
+              <span class="v4-badge" style="background:var(--car); margin-left:8px"></span>52g 
+            </div>
+          </div>
+        </div>
+        <div class="v4-expand">
+          <div style="font-size:0.85rem; font-weight:800; color:#0f172a">Frango Grelhado</div>
+          <div style="display:flex; align-items:center; gap:12px">
+            <div class="v4-btn">-</div>
+            <span style="font-weight:800; color:var(--blue)">100g</span>
+            <div class="v4-btn">+</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 5: HOLOGRAPHIC PANELS -->
+  <div class="concept-box">
+    <div class="c-title">5. Painel Holográfico & Inline Pills</div>
+    <div class="c-desc">Brilho dinâmico nas bordas e barras de macros integradas diretamente (Inline).</div>
+    <div class="timeline-container v5-tl">
+      <div style="position:absolute; left:-6px; top:20px; width:10px; height:10px; background:#fff; border:2px solid var(--acc); border-radius:50%"></div>
+      <div class="v5-card">
+        <div style="display:flex; gap:16px;">
+          <div class="food-img" style="border-radius:12px"></div>
+          <div style="flex:1">
+            <h3 style="font-size:0.95rem;color:#0f172a">Salada Grelhada</h3>
+            <p style="font-size:0.8rem;color:#516071;font-weight:800;margin-top:2px">460 kcal</p>
+            <div class="v5-inline-pills">
+              <div class="v5-pill"><div class="v5-pill-fill" style="background:var(--pro); width:80%"></div></div>
+              <div class="v5-pill"><div class="v5-pill-fill" style="background:var(--car); width:50%"></div></div>
+              <div class="v5-pill"><div class="v5-pill-fill" style="background:var(--fat); width:20%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px; background:rgba(255,255,255,0.7); border-radius:12px; padding:12px; font-size:0.8rem; font-weight:700; display:flex; justify-content:space-between">
+          <span>Frango Grelhado</span> <span style="color:var(--acc)">100g ✏️</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

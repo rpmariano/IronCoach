@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calendários Especializados - IronHealth</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #7c3aed; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: flex; flex-direction: column; gap: 48px; max-width: 600px; margin: 0 auto; }
+  .section-title { font-size: 0.85rem; font-weight: 800; color: #516071; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -16px; }
+
+  /* GENERAL GLASS CARD */
+  .cal-card {
+    background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 32px; padding: 24px;
+    box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 20px;
+  }
+  .cal-header { display: flex; justify-content: space-between; align-items: center; }
+  .cal-month { font-size: 1.1rem; font-weight: 900; color: #1e293b; }
+  
+  .grid-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; margin-bottom: 8px; }
+  .grid-weekday { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; }
+  
+  .grid-days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 12px; column-gap: 6px; }
+  .grid-day-cell { display: flex; justify-content: center; align-items: center; }
+
+  /* ====================================================
+     CONCEITO B1: DUAL-ARC INDICATOR (Duplo Arco / Anel Partido)
+     ==================================================== */
+  .day-btn-arc {
+    width: 42px; height: 42px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.4); font-size: 0.85rem; font-weight: 700; color: #334155;
+    position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .day-btn-arc:hover { transform: scale(1.05); background: rgba(255,255,255,0.7); }
+  
+  /* SVG overlays for arcs */
+  .day-svg-overlay {
+    position: absolute; top: -2px; left: -2px; width: 46px; height: 46px;
+    transform: rotate(-90deg); pointer-events: none;
+  }
+  .day-svg-overlay circle {
+    fill: none; stroke-width: 3; stroke-linecap: round;
+  }
+  
+  /* Arc states: Left (water) and Right (food) */
+  /* Water Met: Cyan/Blue arc */
+  .arc-water { stroke: #06b6d4; stroke-dasharray: 63; stroke-dashoffset: 31.5; } /* half circle */
+  /* Food Met: Green arc */
+  .arc-food-ok { stroke: #10b981; stroke-dasharray: 63; stroke-dashoffset: -31.5; } /* half circle */
+  /* Food Exceeded: Orange/Red arc */
+  .arc-food-exceeded { stroke: #f97316; stroke-dasharray: 63; stroke-dashoffset: -31.5; }
+  
+  /* For single-record modules (e.g. running, body, gym) -> Full ring */
+  .arc-single-active { stroke: #7c3aed; stroke-dasharray: 126; stroke-dashoffset: 0; filter: drop-shadow(0 0 3px rgba(124,58,237,0.3)); }
+
+  /* Selected State */
+  .day-btn-arc.selected {
+    background: #1e293b; color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+  }
+
+  /* ====================================================
+     CONCEITO B2: CAPSULE SPLIT DOTS (Cápsulas de Status Acopladas)
+     ==================================================== */
+  .day-btn-capsule {
+    width: 42px; height: 46px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.8);
+    background: rgba(255,255,255,0.4); font-size: 0.85rem; font-weight: 700; color: #334155;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 6px 0; cursor: pointer; transition: transform 0.2s, background 0.2s;
+  }
+  .day-btn-capsule:hover { transform: scale(1.05); background: rgba(255,255,255,0.7); }
+  
+  /* Pill capsule container at bottom */
+  .day-pill-container { display: flex; gap: 3px; justify-content: center; width: 100%; padding: 0 4px; }
+  .day-mini-pill {
+    height: 4px; border-radius: 2px; flex: 1;
+  }
+  /* States for mini pills */
+  .pill-water-met { background: #06b6d4; box-shadow: 0 0 4px #06b6d4; }
+  .pill-food-met { background: #10b981; box-shadow: 0 0 4px #10b981; }
+  .pill-food-exceeded { background: #f97316; box-shadow: 0 0 4px #f97316; }
+  .pill-single { background: #c026d3; box-shadow: 0 0 4px #c026d3; } /* ex: Running */
+
+  /* Selected State */
+  .day-btn-capsule.selected {
+    background: #1e293b; color: #fff; border-color: #1e293b;
+  }
+
+  /* ====================================================
+     CONCEITO B3: GRADIENT HALO GLOW (Halo de Brilho Gradiente)
+     ==================================================== */
+  .day-btn-halo {
+    width: 40px; height: 40px; border-radius: 12px; border: none;
+    background: rgba(255,255,255,0.4); font-size: 0.85rem; font-weight: 700; color: #334155;
+    position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .day-btn-halo:hover { transform: scale(1.05); background: rgba(255,255,255,0.7); }
+  
+  /* Back glow rings representing states */
+  .day-btn-halo.water-met {
+    border: 2px solid #06b6d4;
+    background: rgba(6,182,212,0.05);
+  }
+  .day-btn-halo.food-met {
+    box-shadow: inset 0 0 6px rgba(16,185,129,0.3);
+  }
+  .day-btn-halo.water-met.food-met {
+    border-color: #06b6d4;
+    box-shadow: inset 0 0 6px rgba(16,185,129,0.5);
+  }
+  .day-btn-halo.water-met.food-exceeded {
+    border-color: #06b6d4;
+    box-shadow: inset 0 0 6px rgba(249,115,22,0.5);
+  }
+  
+  /* Indicator Dot inside */
+  .day-halo-dot {
+    position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%;
+  }
+  .dot-food-ok { background: #10b981; }
+  .dot-food-exceeded { background: #f97316; }
+  .dot-single { background: #7c3aed; }
+
+  /* Selected State */
+  .day-btn-halo.selected {
+    background: #1e293b; color: #fff;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
+  }
+
+  /* Legend Box */
+  .legend-box {
+    background: rgba(0,0,0,0.02); border-radius: 20px; padding: 16px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.75rem; font-weight: 700; color: #516071;
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .legend-indicator { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Calendários Especializados</h1>
+  <p class="subtitle">Evolução do Conceito B para gerir múltiplos registos e estados (Água, Nutrição e outros)</p>
+</div>
+
+<div class="grid">
+
+  <!-- CONCEITO B1: DUAL-ARC INDICATOR -->
+  <div class="section-title">Conceito B1: Dual-Arc Indicator (Anel Partido de Status)</div>
+  <div class="cal-card">
+    <div class="cal-header">
+      <span class="cal-month">Agosto 2026</span>
+      <span style="font-size:0.7rem; font-weight:800; color:#059669; background:rgba(5,150,105,0.1); padding:4px 8px; border-radius:8px;">Módulo Nutrição</span>
+    </div>
+    
+    <div class="grid-weekdays">
+      <span class="grid-weekday">S</span><span class="grid-weekday">T</span><span class="grid-weekday">Q</span><span class="grid-weekday">Q</span><span class="grid-weekday">S</span><span class="grid-weekday">S</span><span class="grid-weekday">D</span>
+    </div>
+    
+    <div class="grid-days">
+      <!-- Empty slots -->
+      <div class="grid-day-cell"></div><div class="grid-day-cell"></div>
+      
+      <!-- Day 1: No activity -->
+      <div class="grid-day-cell"><button class="day-btn-arc">1</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">2</button></div>
+      
+      <!-- Day 3: Only Water Met (Left Arc) -->
+      <div class="grid-day-cell">
+        <button class="day-btn-arc">3
+          <svg class="day-svg-overlay" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="21" class="arc-water" />
+          </svg>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-arc">4</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">5</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">6</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">7</button></div>
+      
+      <!-- Day 8: Water Met + Nutrition Met (Both Arcs) -->
+      <div class="grid-day-cell">
+        <button class="day-btn-arc">8
+          <svg class="day-svg-overlay" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="21" class="arc-water" />
+            <circle cx="22" cy="22" r="21" class="arc-food-ok" />
+          </svg>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-arc">9</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">10</button></div>
+      <div class="grid-day-cell"><button class="day-btn-arc">11</button></div>
+      
+      <!-- Day 12: Selected Day -->
+      <div class="grid-day-cell">
+        <button class="day-btn-arc selected">12
+          <svg class="day-svg-overlay" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="21" class="arc-water" />
+            <circle cx="22" cy="22" r="21" class="arc-food-ok" />
+          </svg>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-arc">13</button></div>
+      
+      <!-- Day 14: Water Met + Nutrition Exceeded (Cyan + Orange Arcs) -->
+      <div class="grid-day-cell">
+        <button class="day-btn-arc">14
+          <svg class="day-svg-overlay" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="21" class="arc-water" />
+            <circle cx="22" cy="22" r="21" class="arc-food-exceeded" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="legend-box">
+      <div class="legend-item"><span class="legend-indicator" style="border-left: 3px solid #06b6d4; background:none; height:12px; border-radius:0;"></span> Meta de Água Atingida</div>
+      <div class="legend-item"><span class="legend-indicator" style="border-right: 3px solid #10b981; background:none; height:12px; border-radius:0;"></span> Meta de Calorias Atingida</div>
+      <div class="legend-item"><span class="legend-indicator" style="border-right: 3px solid #f97316; background:none; height:12px; border-radius:0;"></span> Calorias Excedidas</div>
+      <div class="legend-item"><span class="legend-indicator" style="border: 2px solid #7c3aed; background:none; border-radius:50%; width:12px; height:12px;"></span> Registo Geral (Outros Módulos)</div>
+    </div>
+  </div>
+
+  <!-- CONCEITO B2: CAPSULE SPLIT DOTS -->
+  <div class="section-title">Conceito B2: Capsule Split (Cápsulas e Pílulas de Progresso)</div>
+  <div class="cal-card">
+    <div class="cal-header">
+      <span class="cal-month">Agosto 2026</span>
+      <span style="font-size:0.7rem; font-weight:800; color:#059669; background:rgba(5,150,105,0.1); padding:4px 8px; border-radius:8px;">Módulo Nutrição</span>
+    </div>
+    
+    <div class="grid-weekdays">
+      <span class="grid-weekday">S</span><span class="grid-weekday">T</span><span class="grid-weekday">Q</span><span class="grid-weekday">Q</span><span class="grid-weekday">S</span><span class="grid-weekday">S</span><span class="grid-weekday">D</span>
+    </div>
+    
+    <div class="grid-days">
+      <!-- Empty slots -->
+      <div class="grid-day-cell"></div><div class="grid-day-cell"></div>
+      
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>1</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>2</span></button></div>
+      
+      <!-- Day 3: Only Water -->
+      <div class="grid-day-cell">
+        <button class="day-btn-capsule">
+          <span>3</span>
+          <div class="day-pill-container">
+            <span class="day-mini-pill pill-water-met"></span>
+            <span class="day-mini-pill" style="background:rgba(0,0,0,0.05)"></span>
+          </div>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>4</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>5</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>6</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>7</span></button></div>
+      
+      <!-- Day 8: Water + Food Met -->
+      <div class="grid-day-cell">
+        <button class="day-btn-capsule">
+          <span>8</span>
+          <div class="day-pill-container">
+            <span class="day-mini-pill pill-water-met"></span>
+            <span class="day-mini-pill pill-food-met"></span>
+          </div>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>9</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>10</span></button></div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>11</span></button></div>
+      
+      <!-- Day 12: Selected -->
+      <div class="grid-day-cell">
+        <button class="day-btn-capsule selected">
+          <span>12</span>
+          <div class="day-pill-container">
+            <span class="day-mini-pill pill-water-met"></span>
+            <span class="day-mini-pill pill-food-met"></span>
+          </div>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-capsule"><span>13</span></button></div>
+      
+      <!-- Day 14: Water + Food Exceeded -->
+      <div class="grid-day-cell">
+        <button class="day-btn-capsule">
+          <span>14</span>
+          <div class="day-pill-container">
+            <span class="day-mini-pill pill-water-met"></span>
+            <span class="day-mini-pill pill-food-exceeded"></span>
+          </div>
+        </button>
+      </div>
+    </div>
+
+    <div class="legend-box">
+      <div class="legend-item"><span class="legend-indicator pill-water-met" style="width:14px; height:6px;"></span> Água Atingida</div>
+      <div class="legend-item"><span class="legend-indicator pill-food-met" style="width:14px; height:6px;"></span> Calorias Atingidas</div>
+      <div class="legend-item"><span class="legend-indicator pill-food-exceeded" style="width:14px; height:6px;"></span> Calorias Excedidas</div>
+      <div class="legend-item"><span class="legend-indicator pill-single" style="width:14px; height:6px;"></span> Registo Existente (Outros Módulos)</div>
+    </div>
+  </div>
+
+  <!-- CONCEITO B3: GRADIENT HALO GLOW -->
+  <div class="section-title">Conceito B3: Halo Glow (Halo Translúcido e Ponto Indicador)</div>
+  <div class="cal-card">
+    <div class="cal-header">
+      <span class="cal-month">Agosto 2026</span>
+      <span style="font-size:0.7rem; font-weight:800; color:#059669; background:rgba(5,150,105,0.1); padding:4px 8px; border-radius:8px;">Módulo Nutrição</span>
+    </div>
+    
+    <div class="grid-weekdays">
+      <span class="grid-weekday">S</span><span class="grid-weekday">T</span><span class="grid-weekday">Q</span><span class="grid-weekday">Q</span><span class="grid-weekday">S</span><span class="grid-weekday">S</span><span class="grid-weekday">D</span>
+    </div>
+    
+    <div class="grid-days">
+      <!-- Empty slots -->
+      <div class="grid-day-cell"></div><div class="grid-day-cell"></div>
+      
+      <div class="grid-day-cell"><button class="day-btn-halo">1</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">2</button></div>
+      
+      <!-- Day 3: Only Water (Cyan border) -->
+      <div class="grid-day-cell"><button class="day-btn-halo water-met">3</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">4</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">5</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">6</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">7</button></div>
+      
+      <!-- Day 8: Water + Food Met (Cyan border + Green dot) -->
+      <div class="grid-day-cell">
+        <button class="day-btn-halo water-met food-met">8
+          <span class="day-halo-dot dot-food-ok"></span>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-halo">9</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">10</button></div>
+      <div class="grid-day-cell"><button class="day-btn-halo">11</button></div>
+      
+      <!-- Day 12: Selected -->
+      <div class="grid-day-cell">
+        <button class="day-btn-halo water-met food-met selected">12
+          <span class="day-halo-dot dot-food-ok" style="background:#fff"></span>
+        </button>
+      </div>
+      <div class="grid-day-cell"><button class="day-btn-halo">13</button></div>
+      
+      <!-- Day 14: Water + Food Exceeded (Cyan border + Orange dot) -->
+      <div class="grid-day-cell">
+        <button class="day-btn-halo water-met food-exceeded">14
+          <span class="day-halo-dot dot-food-exceeded"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="legend-box">
+      <div class="legend-item"><span class="legend-indicator" style="border: 2px solid #06b6d4; background:none;"></span> Água Atingida (Borda)</div>
+      <div class="legend-item"><span class="legend-indicator dot-food-ok" style="border-radius:50%; width:10px; height:10px;"></span> Calorias Atingidas</div>
+      <div class="legend-item"><span class="legend-indicator dot-food-exceeded" style="border-radius:50%; width:10px; height:10px;"></span> Calorias Excedidas</div>
+      <div class="legend-item"><span class="legend-indicator dot-single" style="border-radius:50%; width:10px; height:10px;"></span> Outros Módulos (Treino/Peso)</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

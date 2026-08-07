@@ -1,0 +1,224 @@
+﻿<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>5 Conceitos - Próxima Prova (Home Page)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { background: #eaeef4; color: #0f172a; padding: 40px 20px; }
+  .header { text-align: center; margin-bottom: 40px; }
+  h1 { font-size: 2rem; font-weight: 800; color: #d97706; margin-bottom: 8px; }
+  p.subtitle { color: #516071; font-size: 1.1rem; }
+
+  .grid { display: flex; flex-direction: column; gap: 32px; max-width: 600px; margin: 0 auto; }
+  .section-title { font-size: 0.75rem; font-weight: 800; color: #516071; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: -16px; }
+
+  /* ICONS */
+  .icon-flag { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .icon-map-pin { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; margin-right: 4px; }
+  .icon-calendar { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; margin-right: 4px; }
+
+  /* ======== 1. COUNTDOWN ORB (Foco no contador) ======== */
+  .v1-card {
+    background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.9); border-radius: 24px; padding: 20px;
+    box-shadow: 0 10px 30px -10px rgba(217,119,6,0.15); display: flex; align-items: center; justify-content: space-between;
+    position: relative; overflow: hidden; cursor: pointer; transition: transform 0.2s;
+  }
+  .v1-card:hover { transform: translateY(-2px); }
+  .v1-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: #fbbf24; }
+  .v1-info { display: flex; flex-direction: column; gap: 4px; }
+  .v1-label-row { display: flex; align-items: center; gap: 8px; }
+  .v1-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+  .v1-tag { background: rgba(251,191,36,0.15); color: #d97706; font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+  .v1-title { font-size: 1.25rem; font-weight: 900; color: #1e293b; margin: 2px 0; }
+  .v1-sub { font-size: 0.8rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+  .v1-sub-item { display: flex; align-items: center; }
+  .v1-orb-wrap { position: relative; width: 74px; height: 74px; flex-shrink: 0; }
+  .v1-orb-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .v1-orb-bg { fill: none; stroke: #f1f5f9; stroke-width: 5; }
+  .v1-orb-progress { fill: none; stroke: #f59e0b; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 220; stroke-dashoffset: 80; } /* 65% left */
+  .v1-orb-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .v1-orb-num { font-size: 1.25rem; font-weight: 900; color: #1e293b; line-height: 1; }
+  .v1-orb-lbl { font-size: 0.55rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-top: 1px; }
+
+  /* ======== 2. GOLDEN GLASS-SLAB (Aparência Premium) ======== */
+  .v2-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,24beb,240,0.5)); border-radius: 28px; padding: 24px;
+    border: 1px solid rgba(255,255,255,0.7); box-shadow: 0 12px 35px -10px rgba(217,119,6,0.18);
+    display: flex; justify-content: space-between; align-items: center; cursor: pointer; position: relative; overflow: hidden;
+  }
+  .v2-glow { position: absolute; right: -50px; top: -50px; width: 180px; height: 180px; background: radial-gradient(circle, rgba(251,191,36,0.15) 0%, transparent 70%); pointer-events: none; }
+  .v2-left { display: flex; flex-direction: column; gap: 6px; }
+  .v2-pill-tag { background: #fef3c7; color: #d97706; font-size: 0.7rem; font-weight: 800; padding: 4px 12px; border-radius: 12px; align-self: flex-start; }
+  .v2-right { text-align: right; display: flex; flex-direction: column; justify-content: center; border-left: 2px solid rgba(251,191,36,0.2); padding-left: 24px; }
+  .v2-days { font-size: 2.2rem; font-weight: 900; color: #b45309; line-height: 1; }
+  .v2-days-lbl { font-size: 0.7rem; font-weight: 800; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ======== 3. META DAY PROGRESS (Linha de Meta) ======== */
+  .v3-card {
+    background: #ffffff; border-radius: 24px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #f1f5f9;
+    cursor: pointer; display: flex; flex-direction: column; gap: 16px;
+  }
+  .v3-top { display: flex; justify-content: space-between; align-items: center; }
+  .v3-progress-container { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .v3-progress-bar { height: 8px; background: #f1f5f9; border-radius: 8px; position: relative; overflow: visible; }
+  .v3-progress-fill { height: 100%; background: linear-gradient(90deg, #f59e0b, #d97706); border-radius: 8px; width: 60%; }
+  .v3-runner { position: absolute; left: 60%; top: -6px; transform: translateX(-50%); width: 20px; height: 20px; background: #fff; border: 3px solid #d97706; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; }
+  .v3-runner::after { content: '🏃'; font-size: 0.65rem; }
+  .v3-labels { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; }
+
+  /* ======== 4. GRADIENT HERO BANNER (Destaque Total) ======== */
+  .v4-card {
+    background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%); border-radius: 28px; padding: 24px;
+    color: #ffffff; box-shadow: 0 10px 30px rgba(217,119,6,0.3); display: flex; align-items: center; justify-content: space-between;
+    position: relative; overflow: hidden; cursor: pointer;
+  }
+  .v4-bg-logo { position: absolute; right: -5%; bottom: -10%; width: 160px; height: 160px; opacity: 0.08; color: #fff; transform: rotate(-15deg); }
+  .v4-title { font-size: 1.4rem; font-weight: 900; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .v4-sub { font-size: 0.85rem; opacity: 0.9; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .v4-badge { background: rgba(255,255,255,0.2); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: 0.65rem; font-weight: 800; padding: 4px 10px; border-radius: 8px; align-self: flex-start; }
+  .v4-right { background: rgba(255,255,255,0.2); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 12px 20px; text-align: center; }
+  .v4-days { font-size: 1.8rem; font-weight: 900; line-height: 1; }
+  .v4-days-lbl { font-size: 0.6rem; font-weight: 800; text-transform: uppercase; opacity: 0.9; margin-top: 2px; }
+
+  /* ======== 5. SPLIT GLOW CARD (Informação e Medalha) ======== */
+  .v5-card {
+    background: #fff; border-radius: 28px; padding: 0; display: flex; align-items: stretch; justify-content: space-between;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.03); border: 1px solid #f1f5f9; cursor: pointer; overflow: hidden;
+  }
+  .v5-left { padding: 24px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .v5-right { background: linear-gradient(135deg, #fef3c7, #fde68a); width: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-left: 1px dashed #fcd34d; }
+  .v5-icon-badge { width: 44px; height: 44px; border-radius: 50%; background: rgba(217,119,6,0.15); color: #d97706; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; box-shadow: 0 4px 10px rgba(217,119,6,0.1); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Próxima Prova: Conceitos Gráficos</h1>
+  <p class="subtitle">Evolução do widget focal da Home Page com foco no contador e no design system</p>
+</div>
+
+<div class="grid">
+  
+  <div class="section-title">Visualizações Propostas</div>
+
+  <!-- CONCEITO 1 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">1. Countdown Orb (Foco no contador com gráfico circular de progresso temporal)</div>
+    <div class="v1-card">
+      <div class="v1-info">
+        <div class="v1-label-row">
+          <span class="v1-lbl">Próxima Prova</span>
+          <span class="v1-tag">estrada</span>
+        </div>
+        <div class="v1-title">Corrida do Tejo</div>
+        <div class="v1-sub">
+          <div class="v1-sub-item"><svg class="icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>13 Set 2026</div>
+          <div class="v1-sub-item"><svg class="icon-map-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Lisboa</div>
+        </div>
+      </div>
+      <div class="v1-orb-wrap">
+        <svg class="v1-orb-svg" viewBox="0 0 80 80">
+          <circle class="v1-orb-bg" cx="40" cy="40" r="35" />
+          <circle class="v1-orb-progress" cx="40" cy="40" r="35" />
+        </svg>
+        <div class="v1-orb-text">
+          <span class="v1-orb-num">40</span>
+          <span class="v1-orb-lbl">Dias</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 2 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">2. Golden Glass-Slab (Aparência premium translúcida com brilho dourado e borda)</div>
+    <div class="v2-card">
+      <div class="v2-glow"></div>
+      <div class="v2-left">
+        <span class="v1-lbl" style="margin-bottom:-4px">Próxima Prova</span>
+        <div class="v1-title" style="font-size:1.4rem">Corrida do Tejo</div>
+        <div class="v1-sub" style="margin-bottom:8px">13 set 2026 &bull; Lisboa</div>
+        <span class="v2-pill-tag">estrada</span>
+      </div>
+      <div class="v2-right">
+        <span class="v2-days">40</span>
+        <span class="v2-days-lbl">dias rest.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 3 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">3. Meta Day Progress (Linha de progresso visual com runner animado no percurso)</div>
+    <div class="v3-card">
+      <div class="v3-top">
+        <div>
+          <span class="v1-lbl" style="display:block; margin-bottom:4px;">Próxima Prova</span>
+          <h2 style="font-size:1.3rem; font-weight:900; color:#1e293b">Corrida do Tejo</h2>
+          <span style="font-size:0.8rem; color:#64748b; font-weight:600">13 set 2026 &bull; Lisboa</span>
+        </div>
+        <span class="v1-tag" style="align-self:flex-start">estrada</span>
+      </div>
+      
+      <div class="v3-progress-container">
+        <div class="v3-progress-bar">
+          <div class="v3-progress-fill"></div>
+          <div class="v3-runner"></div>
+        </div>
+        <div class="v3-labels">
+          <span>Início do Plano</span>
+          <span style="color:#d97706; font-weight:800">40 dias restantes</span>
+          <span>Meta (Prova)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 4 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">4. Gradient Hero Banner (Destaque total e cor envolvente para prender o foco)</div>
+    <div class="v4-card">
+      <svg class="v4-bg-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+      <div>
+        <span class="v4-badge" style="margin-bottom:8px">Próxima Prova &bull; estrada</span>
+        <div class="v4-title">Corrida do Tejo</div>
+        <div class="v4-sub">
+          <span>13 Set 2026</span>
+          <span>&bull;</span>
+          <span>Lisboa</span>
+        </div>
+      </div>
+      <div class="v4-right">
+        <div class="v4-days">40</div>
+        <div class="v4-days-lbl">Dias</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONCEITO 5 -->
+  <div>
+    <div style="font-size:0.8rem; color:#516071; margin-bottom:8px">5. Split Glow Card (Informação separada do contador por linha tracejada + troféu)</div>
+    <div class="v5-card">
+      <div class="v5-left">
+        <span class="v1-lbl">Próxima Prova</span>
+        <div class="v1-title" style="font-size:1.3rem;">Corrida do Tejo</div>
+        <div class="v1-sub">13 Set 2026 &bull; Lisboa</div>
+        <span class="v1-tag" style="align-self:flex-start; margin-top:4px;">estrada</span>
+      </div>
+      <div class="v5-right">
+        <div class="v5-icon-badge">
+          <svg class="icon-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        </div>
+        <span style="font-size:1.6rem; font-weight:900; color:#b45309; line-height:1">40</span>
+        <span style="font-size:0.65rem; font-weight:800; color:#78350f; text-transform:uppercase; margin-top:2px;">dias rest.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
