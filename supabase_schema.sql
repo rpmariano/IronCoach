@@ -58,6 +58,29 @@ alter table profiles
   add column if not exists home_layout jsonb not null
     default '["weight_kg","body_fat_pct","gym_sessions","corrida_km","corrida_pace"]'::jsonb;
 
+-- lembretes de água (módulo de hidratação + send-water-reminders). As horas de
+-- início/fim são em hora local de Lisboa, não UTC — ver 5.3 do PRD.
+alter table profiles
+  add column if not exists water_goal_ml integer not null default 2000,
+  add column if not exists water_reminder_enabled boolean not null default false,
+  add column if not exists water_reminder_interval_minutes integer not null default 120,
+  add column if not exists water_last_activity_at timestamptz,
+  add column if not exists water_reminder_muted_date date,
+  add column if not exists water_reminder_start_hour smallint not null default 8
+    check (water_reminder_start_hour between 0 and 23),
+  add column if not exists water_reminder_end_hour smallint not null default 22
+    check (water_reminder_end_hour between 0 and 23);
+
+-- flag de administrador, lida por public.is_admin() nas políticas "admin read all"
+alter table profiles
+  add column if not exists is_admin boolean not null default false;
+
+-- Data de nascimento — nunca a idade: uma coluna `age` fica errada no primeiro
+-- aniversário. A idade deriva-se em runtime. Necessária para zonas de FC e
+-- ajuste de necessidades nutricionais.
+alter table profiles
+  add column if not exists birth_date date;
+
 -- perfil criado automaticamente no signup
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -93,6 +116,10 @@ create index meals_user_date_idx on meals(user_id, date);
 alter table meals enable row level security;
 create policy "own rows" on meals for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Análise escrita pelo especialista de nutrição (analyze-meal). Texto livre —
+-- ver specs/coach-investigacao.md para a passagem a veredito estruturado.
+alter table meals add column if not exists coach_notes text;
 
 -- ============ meal_items: itens detetados, valores por 100g ============
 -- Guardar por 100g permite reescalar a quantidade no cliente por simples
@@ -288,6 +315,27 @@ create policy "own rows" on workout_sessions for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "admin read all" on workout_sessions for select using (public.is_admin());
 
+-- Métricas da sessão, todas opcionais (vêm do registo manual ou do print).
+-- `categories` guarda os grupos musculares / tipo de aula escolhidos no cliente
+-- (ver GYM_CATEGORIES em src/components/Gym/GymRegistration.jsx) — é o que
+-- permite calcular volume semanal por grupo muscular.
+-- `exertion` é o RPE 1-10 da sessão, equivalente a runs.effort_rpe.
+alter table workout_sessions
+  add column if not exists kind text not null default 'forca'
+    check (kind in ('forca', 'aula')),
+  add column if not exists duration_seconds integer
+    check (duration_seconds is null or duration_seconds > 0),
+  add column if not exists calories_kcal integer
+    check (calories_kcal is null or calories_kcal >= 0),
+  add column if not exists avg_hr integer
+    check (avg_hr is null or (avg_hr > 0 and avg_hr < 300)),
+  add column if not exists max_hr integer
+    check (max_hr is null or (max_hr > 0 and max_hr < 300)),
+  add column if not exists categories text[] not null default '{}',
+  add column if not exists exertion smallint
+    check (exertion is null or (exertion between 1 and 10)),
+  add column if not exists coach_notes text;
+
 -- ---- sets registados numa sessão (≈ "meal_items" da Nutrição) ----
 create table workout_session_sets (
   id uuid primary key default gen_random_uuid(),
@@ -370,6 +418,9 @@ alter table runs add column if not exists effort_rpe smallint check (effort_rpe 
 -- na BD para não partir registos antigos sem nome.
 alter table runs add column if not exists name text;
 
+-- Análise escrita pelo especialista de corrida (analyze-run). Ver meals.coach_notes.
+alter table runs add column if not exists coach_notes text;
+
 -- ============ storage: prints de corridas (bucket privado) ============
 insert into storage.buckets (id, name, public)
 values ('run-photos', 'run-photos', false)
@@ -408,3 +459,52 @@ alter table race_events enable row level security;
 create policy "own rows" on race_events for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "admin read all" on race_events for select using (public.is_admin());
+
+-- Objetivo da prova em formato computável. `target_time` (text) mantém-se como
+-- o que o utilizador escreveu; estas três são o que o coach consegue calcular.
+-- Ritmo e tempo total são objetivos distintos — daí colunas separadas.
+-- Ver supabase/migrations/20260807120000_coach_data_model.sql.
+alter table race_events
+  add column if not exists target_time_seconds integer
+    check (target_time_seconds is null or target_time_seconds > 0),
+  add column if not exists target_pace_seconds_per_km integer
+    check (target_pace_seconds_per_km is null or target_pace_seconds_per_km > 0),
+  add column if not exists distance_km numeric
+    check (distance_km is null or distance_km > 0);
+
+-- ============ water_logs: registos de hidratação ============
+-- Uma linha por adição de água (não um total diário) — o Início soma por dia.
+create table if not exists water_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  date date not null,
+  amount_ml integer not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists water_logs_user_date_idx on water_logs(user_id, date);
+alter table water_logs enable row level security;
+drop policy if exists "own rows" on water_logs;
+create policy "own rows" on water_logs for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "admin read all" on water_logs;
+create policy "admin read all" on water_logs for select using (public.is_admin());
+
+-- ============ push_subscriptions: subscrições Web Push (PWA) ============
+-- Escrita por save-push-subscription, lida por send-water-reminders.
+-- `endpoint` é único: o browser reemite o mesmo endpoint para a mesma
+-- instalação, portanto o upsert por endpoint evita duplicados.
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists push_subscriptions_user_idx on push_subscriptions(user_id);
+alter table push_subscriptions enable row level security;
+drop policy if exists "own rows" on push_subscriptions;
+create policy "own rows" on push_subscriptions for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "admin read all" on push_subscriptions;
+create policy "admin read all" on push_subscriptions for select using (public.is_admin());

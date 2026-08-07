@@ -4,15 +4,13 @@ import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2 } 
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase } from '../../lib/supabase';
-
-const RACE_TYPES = [
-  { key: '5k', label: '5 km' },
-  { key: '10k', label: '10 km' },
-  { key: 'meia', label: 'Meia Maratona (21.1 km)' },
-  { key: 'maratona', label: 'Maratona (42.2 km)' },
-  { key: 'trail', label: 'Trail' },
-  { key: 'outro', label: 'Outro' }
-];
+import {
+  RACE_TYPES,
+  distanceForRaceType,
+  parseDurationToSeconds,
+  parsePaceToSeconds,
+  formatPace,
+} from '../../utils/run';
 
 function todayISO() {
   const d = new Date();
@@ -35,7 +33,10 @@ export default function RunAgenda({ onNewRun }) {
     race_type: '10k',
     name: '',
     location: '',
+    distance_km: '10',
     target_time: '',
+    // Só na UI — convertido para target_pace_seconds_per_km ao gravar.
+    target_pace: '',
     equipment: '',
     notes: ''
   });
@@ -95,14 +96,20 @@ export default function RunAgenda({ onNewRun }) {
     setEditingEventId(eventId);
     if (eventId) {
       const ev = raceEvents.find(e => e.id === eventId);
-      if (ev) setDraft({ ...ev });
+      if (ev) setDraft({
+        ...ev,
+        distance_km: ev.distance_km != null ? String(ev.distance_km) : '',
+        target_pace: formatPace(ev.target_pace_seconds_per_km),
+      });
     } else {
       setDraft({
         date: todayIso,
         race_type: '10k',
         name: '',
         location: '',
+        distance_km: '10',
         target_time: '',
+        target_pace: '',
         equipment: '',
         notes: ''
       });
@@ -121,19 +128,42 @@ export default function RunAgenda({ onNewRun }) {
 
   const handleSaveForm = async () => {
     if (!draft.name.trim()) return;
+
+    const distanceKm = parseFloat((draft.distance_km ?? '').toString().replace(',', '.'));
+    if (!distanceKm || distanceKm <= 0) {
+      alert('Indica a distância da prova — é o que permite ao coach calcular ritmo-alvo e taper.');
+      return;
+    }
+
     setIsSubmitting(true);
+
+    // Payload explícito em vez de espalhar o draft: este tem campos só de UI
+    // (target_pace) e, na edição, o registo inteiro vindo da BD (id, user_id,
+    // created_at). Enviar chaves que não são colunas faz o PostgREST rejeitar.
+    const payload = {
+      date: draft.date,
+      race_type: draft.race_type,
+      name: draft.name.trim(),
+      location: draft.location?.trim() || null,
+      distance_km: distanceKm,
+      target_time: draft.target_time?.trim() || null,
+      target_time_seconds: parseDurationToSeconds(draft.target_time),
+      target_pace_seconds_per_km: parsePaceToSeconds(draft.target_pace),
+      equipment: draft.equipment?.trim() || null,
+      notes: draft.notes?.trim() || null,
+    };
 
     try {
       if (editingEventId) {
         const { error } = await supabase
           .from('race_events')
-          .update(draft)
+          .update(payload)
           .eq('id', editingEventId);
         if (error) throw error;
-        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? { ...e, ...draft } : e));
+        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? { ...e, ...payload } : e));
       } else {
         const insertObj = {
-          ...draft,
+          ...payload,
           user_id: profile?.id,
           status: draft.date < todayIso ? 'concluida' : 'agendada'
         };
@@ -177,7 +207,9 @@ export default function RunAgenda({ onNewRun }) {
               {isPast && !done ? ' · já passou' : ''}
               {ev.location ? ` · ${ev.location}` : ''}
             </p>
+            {ev.distance_km != null && <p className="text-[11px] text-slate-500 mt-0.5">Distância: {ev.distance_km} km</p>}
             {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
+            {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}
             {ev.equipment && <p className="text-[11px] text-slate-500 mt-0.5">Equipamento: {ev.equipment}</p>}
             {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
           </div>
@@ -220,9 +252,18 @@ export default function RunAgenda({ onNewRun }) {
               onChange={e => updateDraft('date', e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]" 
             />
-            <select 
+            <select
               value={draft.race_type}
-              onChange={e => updateDraft('race_type', e.target.value)}
+              onChange={e => {
+                const key = e.target.value;
+                const implied = distanceForRaceType(key);
+                setDraft(prev => ({
+                  ...prev,
+                  race_type: key,
+                  // '10k' e afins determinam a distância; 'estrada'/'trail' não.
+                  ...(implied != null ? { distance_km: String(implied) } : {}),
+                }));
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
             >
               {RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -245,13 +286,33 @@ export default function RunAgenda({ onNewRun }) {
               onChange={e => updateDraft('location', e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
             />
-            <input 
-              type="text" 
-              maxLength={60} 
-              placeholder="Tempo-alvo (ex.: 1:45:00)" 
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              placeholder="Distância em km (ex.: 21.0975)"
+              value={draft.distance_km}
+              onChange={e => updateDraft('distance_km', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              maxLength={60}
+              placeholder="Tempo-alvo (ex.: 1:45:00)"
               value={draft.target_time}
               onChange={e => updateDraft('target_time', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]" 
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+            />
+            <input
+              type="text"
+              maxLength={20}
+              placeholder="Ritmo-alvo (ex.: 5.20 /km)"
+              value={draft.target_pace}
+              onChange={e => updateDraft('target_pace', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
             />
           </div>
           <input 

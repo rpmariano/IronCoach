@@ -3,6 +3,15 @@ import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
 import { User, Target, Bot, LogOut, ChevronDown, ChevronUp, Bell, Sparkles, Loader2, X } from 'lucide-react';
+import { ageFromBirthDate } from '../../utils/body';
+
+// Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
+// Ver 5.3 do PRD sobre escalas de data.
+function todayISO() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
 
 const BODY_METRICS = [
   { key: 'weight_kg', label: 'Peso', unit: 'kg', dec: 1 },
@@ -340,6 +349,26 @@ export default function Perfil() {
                   <option value="F">Feminino</option>
                   <option value="M">Masculino</option>
                 </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">
+                  Data de nascimento
+                  {ageFromBirthDate(draft.birth_date) != null && (
+                    <span className="text-slate-400"> · {ageFromBirthDate(draft.birth_date)} anos</span>
+                  )}
+                </label>
+                <input
+                  type="date"
+                  max={todayISO()}
+                  value={draft.birth_date || ''}
+                  onChange={e => updateDraft('birth_date', e.target.value || null)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  style={{ color: '#fff' }}
+                />
+                <p className="text-[10px] text-slate-600 mt-1">
+                  Usada para calcular as zonas de frequência cardíaca e ajustar as
+                  recomendações do coach. Guardamos a data, não a idade.
+                </p>
               </div>
             </div>
             {saveButton}

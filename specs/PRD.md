@@ -17,6 +17,12 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 - **Backend**: Supabase (Google OAuth, Postgres, Edge Functions), partilhado por todos os ambientes — **não existe base de dados de desenvolvimento separada**.
 - `index_legacy.html` é um arquivo da app anterior em JavaScript vanilla. Não é servido nem mantido; existe como referência, a par da tag `backup/master-pre-react-merge`.
 
+### 2.3. Schema: a base de dados é a fonte de verdade, não o ficheiro
+`supabase_schema.sql` é um **registo** do schema, não o que o cria. Divergiu da produção sem que nada avisasse: faltavam-lhe 18 colunas e duas tabelas inteiras (`water_logs`, `push_subscriptions`), o que levou a concluir por leitura que campos existentes estavam em falta — e quase a criá-los outra vez.
+- **Antes de afirmar que um campo não existe, consultar a base de dados**, não o ficheiro.
+- Alterações de schema vão para `supabase/migrations/`, idempotentes (`add column if not exists`), e o `supabase_schema.sql` é atualizado a par.
+- Ao corrigir a divergência, preferir emendar o ficheiro a regenerá-lo: os comentários explicam decisões que um *dump* automático deitaria fora.
+
 ### 2.1. Dois ambientes, duas raízes
 | Ramo | Host | URL | Base |
 | :-- | :-- | :-- | :-- |
@@ -87,6 +93,13 @@ A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servi
   - **Manual**: os mesmos campos de sempre (distância, duração, métricas do relógio, splits/zonas de FC, detalhe de competição), enviados para `analyze-run` em `mode: "manual"` — sem imagens, a função grava a corrida com os números tal como vieram do formulário e gera só o comentário do Coach a partir deles (`attachCoachNotes`, partilhada com o caminho de fotos). Falhar a gerar o comentário nunca desfaz a corrida já gravada.
   - **Editar uma corrida existente** é sempre pelos campos (o seletor fica escondido) e não passa pelo Coach — "Reanalisar" no cartão da corrida é a ação dedicada a isso, e só funciona em corridas com fotos guardadas (`photo_paths`); a Edge Function devolve um erro claro para as restantes.
   - `training_type` (treino) e `race_type` (competição) são enums fixos partilhados com o schema do Gemini na Edge Function — as chaves usadas no formulário têm de bater certo com `TRAINING_TYPE_KEYS`/`RACE_TYPE_KEYS` em `supabase/functions/analyze-run/index.ts`, nunca inventadas no cliente. Um valor fora do enum é descartado em silêncio pela função (grava `null`), sem erro visível.
+- **Agenda de provas (`race_events`) — o objetivo tem de ser calculável.** A tabela guardava o objetivo em `target_time`, um campo de texto livre. Os dados reais mostraram porque não serve: `"5.20 por km"`, `"50m"`, `"1:55:00"`, `"2h no total"`, `"1h 50min no total"` — **duas semânticas diferentes** (umas entradas são ritmo, outras tempo total) e nenhuma comparável por código.
+  - Colunas em vigor: **`distance_km` (NOT NULL)**, `target_time_seconds` e `target_pace_seconds_per_km`. `target_time` mantém-se como texto do utilizador e fallback de apresentação para registos anteriores à migração, nunca como base de cálculo.
+  - **A distância é obrigatória** por decisão de produto: sem ela não há ritmo-alvo, não há taper calibrado e não há forma de avaliar se o objetivo é viável. `race_type` só a determina em `5k`/`10k`/`21k`/`42k` — em `estrada`, `trail`, `ultra` e `outro` não diz nada, e eram 4 das 6 provas registadas.
+  - **Convenção do ritmo**: apresentado **sempre com ponto** a separar minutos de segundos — `5.20` são 5min20s/km, não 5,2 minutos. Na entrada aceitam-se ponto, vírgula e dois-pontos; à saída normaliza-se para ponto (`formatPace()`/`parsePaceToSeconds()` em `src/utils/run.js`).
+  - **`RACE_TYPES` vive em `src/utils/run.js`, num sítio só.** `RunRegistration.jsx` e `RunAgenda.jsx` tinham cada um a sua lista, ambas com as chaves `meia` e `maratona` — valores que o *check constraint* de `race_events.race_type` rejeita. Criar uma meia-maratona ou uma maratona falhava nos dois ecrãs, e nenhum oferecia `estrada`, que é o valor de 4 das 6 provas existentes. As chaves válidas são `5k`, `10k`, `21k`, `42k`, `estrada`, `trail`, `ultra`, `outro`, e há um teste que o verifica.
+  - Pela mesma razão, `parseDurationToSeconds`/`formatDuration` também passaram para `src/utils/run.js`: a duplicação entre os dois ecrãs foi a causa comum destes bugs. O `RunRegistration.jsx` chegou a escrever `target_time_minutes`, coluna que nunca existiu — o PostgREST rejeitava o payload inteiro e criar uma prova por esse ecrã falhava sempre, enquanto pela Agenda funcionava.
+  - **Não espalhar o rascunho no `insert`/`update`.** O formulário da Agenda tem campos que não são colunas (o ritmo em texto) e, na edição, carrega a linha inteira vinda da base de dados. O payload é montado explicitamente; enviar chaves que não são colunas faz o PostgREST rejeitar tudo.
   - **Métricas do relógio** (foto ou manual, mesmo conjunto nos dois): desnível, cadência média e máxima, calorias, FC média e máxima, VO2 máx, tempo em cada zona de FC (`hr_zones`) e splits/voltas troço a troço — tudo em `runs.details` (jsonb), nunca em colunas soltas da tabela `runs`. `RunCard.jsx` lê estes valores de `run.details.*`; ler diretamente de `run.elevation_gain_m` (ou equivalentes) nunca funciona — essas colunas não existem — e foi um bug real corrigido nesta secção (as pílulas de métricas ficavam sempre vazias, tanto em corridas por foto como manuais). Zonas de FC e splits têm blocos próprios no cartão expandido (barra por zona; tabela troço/tempo/pace por split).
 
 ### 3.5. Composição Corporal (`Body`)
@@ -101,9 +114,37 @@ A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servi
 ### 3.6. Aconselhamento do Coach (`Coach`)
 - Chat de interação assíncrona com um assistente virtual ou treinador real.
 - Recomendações personalizadas com base nos dados registados nos restantes módulos.
+- A arquitetura de dados do Coach (janelas de histórico por módulo, extensão dinâmica por *tool calling*, comportamento no chat) está em **`sdd.md`** na raiz do projeto.
+
+#### 3.6.1. Equipa de quatro coaches — direção definida, por implementar
+O Coach deixa de ser um agente único e passa a ser **uma equipa de quatro**: três especialistas (nutrição desportiva, ginásio, corrida em estrada/trail) e um **responsável de equipa** que reúne os pareceres dos outros, cruza-os com o módulo de Corpo, e é **o único que fala com o utilizador**. Os especialistas nunca dão a cara — só produzem parecer.
+
+**Estado atual**: a estrutura já existe em embrião. As Edge Functions `analyze-meal`, `analyze-run`, `analyze-gym` e `analyze-body` são os especialistas (correm no momento do registo); `coach-chat` é o responsável. O que falta é dar-lhes doutrina, contrato entre si e regras de proatividade.
+
+**Decisões de arquitetura já tomadas** (a respeitar em qualquer implementação):
+1. **Os especialistas correm na escrita, não na leitura.** Cada um analisa quando o utilizador regista e grava o resultado. O responsável lê pareceres já calculados. Orquestração ao vivo — o responsável a chamar três sub-agentes a cada interação — é 4× o custo e a latência, e fica expressamente excluída.
+2. **Parecer estruturado, não prosa.** Hoje os especialistas gravam texto livre em `coach_notes` (`ai_summary` no Corpo). Texto obriga o responsável a reinterpretar prosa vaga, que é onde nascem as invenções. Os especialistas passam a emitir *também* um veredito estruturado (veredito, confiança, flags, métricas), mantendo o texto para apresentação ao utilizador. O vocabulário de vereditos e flags vive em **TypeScript partilhado pelas funções, nunca em markdown** — um enum documentado em prosa desincroniza-se do código em semanas.
+3. **A proatividade é disparada por regras determinísticas, não por um LLM.** Uma camada de gatilhos em SQL/TS decide *quando* falar (ex.: prova a menos de 7 dias sem treino longo há 10); o modelo só escreve *o quê*. Perguntar a um LLM "devo dizer alguma coisa?" a cada abertura da app é caro e imprevisível.
+4. **Ginásio e corrida competem pelo mesmo orçamento de recuperação** e vão contradizer-se. O responsável precisa de uma regra de arbitragem explícita — a prioridade é do objetivo agendado mais próximo — e de uma regra de silêncio, sem a qual a proatividade vira ruído e o utilizador desliga as notificações.
+
+#### 3.6.2. Doutrina — onde vive e o que é
+A **doutrina** é o conjunto de regras da casa que define como *este* coach se comporta, e é o que o distingue de uma conversa genérica com um LLM. Tem duas camadas: regras de comportamento (ex.: "cada afirmação ancorada num número", "sem louvor genérico") e **limiares de domínio** (ex.: percentagem máxima de aumento de volume semanal). Os modelos já sabem ciência do desporto — alimentá-los com manuais custa tokens e muda pouco; o que muda comportamento são regras curtas, opinativas e específicas.
+
+- **Local**: `src/coach-knowledge/` — um ficheiro `_comum.md` mais um por especialista e um para o responsável. Cada agente recebe só a sua doutrina e a comum.
+- **Não vai para o `sdd.md` nem para este PRD.** A doutrina é carregada em runtime e paga-se em tokens a cada chamada; documentos de arquitetura não podem ser injetados no prompt. Os ciclos de vida também diferem: a arquitetura muda raramente e por decisão, os limiares mudam sempre que a revisão de literatura os afinar.
+- As regras que hoje estão embutidas em strings dentro de `analyze-run/index.ts` são doutrina, e devem migrar para estes ficheiros — as genéricas para `_comum.md`, para valerem nos quatro.
+- **Fase de investigação**: os limiares saem da literatura, não de arbítrio. As perguntas a responder — todas exigindo valor numérico e fonte — estão em `specs/coach-investigacao.md`, que regista também que dados a app capta e quais faltam. O NotebookLM é ferramenta de **autoria** dessa destilação, não fonte em runtime: não tem API e nenhuma Edge Function o consegue consultar.
+- Cada limiar traz um grau de **confiança**: os de consenso forte geram linguagem categórica na doutrina, os de estudo isolado geram linguagem suave. É o que impede o coach de afirmar com igual segurança coisas que não a merecem.
+
+#### 3.6.3. Avaliação
+Com quatro agentes, mexer no prompt de um pode partir o comportamento de outro sem se dar por isso. É necessário um conjunto de cenários com comportamento esperado (ex.: *utilizador com prova em 5 dias regista treino intenso → o coach trava, não elogia*), corrido antes de cada publicação. Sem isto, a afinação de prompts passa a ser às cegas.
 
 ### 3.7. Perfil (`Perfil`)
 - Três sub-separadores: **Pessoal**, **Metas** e **Coach**.
+- **Data de nascimento** (tab Pessoal): guarda-se `profiles.birth_date`, **nunca a idade**. Uma coluna com a idade fica silenciosamente errada no primeiro aniversário; a idade deriva-se em runtime com `ageFromBirthDate()` (`src/utils/body.js`). O ecrã mostra a idade calculada ao lado do rótulo, como confirmação de que a data está certa.
+  - É o que desbloqueia as zonas de frequência cardíaca — todas as fórmulas dependem da idade — e o ajuste de necessidades nutricionais. `body_assessments.metabolic_age` **não** serve para isto: é uma estimativa da balança sobre o estado metabólico, não a idade real; o seu valor está justamente em ser comparada com a idade verdadeira.
+  - A função está duplicada em três runtimes (cliente, `coach-chat`, `suggest-goals`) porque não partilham módulos. Os três têm comentário cruzado: mexer num obriga a mexer nos outros.
+  - **Uma coluna que nenhuma função selecione é uma coluna morta.** As Edge Functions escolhem colunas do perfil por lista explícita; acrescentar um campo ao Perfil sem o acrescentar a essas listas faz com que o Coach nunca o veja, por mais que o utilizador o preencha.
 - **Regra do botão "Guardar"**: todos os campos de todos os sub-separadores são editados num rascunho local. Nada é escrito na base de dados até o utilizador premir "Guardar alterações".
 - **Aviso de saída sem gravar**: com alterações pendentes, qualquer uma destas quatro saídas dispara o aviso "Tens alterações por gravar", com três opções — **Gravar e sair**, **Sair sem gravar** e **Cancelar**:
   1. mudar de sub-separador;
@@ -189,7 +230,7 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 ### 6.1. Personas do Sistema
 - **Mariana Silva (Corredora de Maratonas / Foco em Pace)**: Foco em registo por print de relógio via Gemini IA, acompanhamento da próxima prova e atalhos táteis amplos.
 - **Tiago Mendes (Ginásio & Recomposição Corporal)**: Foco em acompanhamento de volume semanal de treino, curvas de tendência corporal e metas diárias de macros.
-- **Coach André (Treinador Virtual IA)**: Assistente integrado com visão holística dos 4 módulos (*Nutrição*, *Ginásio*, *Corrida*, *Corpo*), fornecendo sugestões e respostas dinâmicas.
+- **Coach André (Treinador Virtual IA)**: Assistente integrado com visão holística dos 4 módulos (*Nutrição*, *Ginásio*, *Corrida*, *Corpo*), fornecendo sugestões e respostas dinâmicas. Com a equipa de quatro coaches (3.6.1), o André passa a ser o **responsável de equipa** — a única voz que o utilizador ouve; os três especialistas produzem parecer e não têm persona própria.
 
 ### 6.2. Documentação de Auditoria
 - As auditorias e simulações de UX estão em `.impeccable/critique/` (`ui_audit.md`, `ux_personas.md`, `ux_accessibility.md`, `ux_simulations.md`).

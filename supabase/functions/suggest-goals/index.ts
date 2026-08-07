@@ -106,6 +106,21 @@ const RACE_TYPE_LABELS: Record<string, string> = {
   "21k": "Meia maratona", "42k": "Maratona", outro: "Outro",
 };
 
+// Espelha ageFromBirthDate() em src/utils/body.js e em coach-chat/index.ts —
+// duplicado porque cliente e Edge Functions correm em runtimes diferentes.
+function ageFromBirthDate(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const born = new Date(birthDate);
+  if (isNaN(born.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - born.getFullYear();
+  const monthDiff = today.getMonth() - born.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age--;
+
+  return age >= 0 && age < 130 ? age : null;
+}
+
 function formatDuration(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -186,7 +201,11 @@ function buildPrompt(
       const eventDate = new Date(e.date + "T00:00:00Z");
       const daysUntil = Math.round((eventDate.getTime() - today.getTime()) / 86400000);
       const typeLabel = RACE_TYPE_LABELS[e.race_type] || e.race_type;
-      return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${e.target_time ? `, tempo-alvo ${e.target_time}` : ""}`;
+      const alvo = e.target_time_seconds
+        ? `, tempo-alvo ${Math.floor(e.target_time_seconds / 60)} min`
+        : (e.target_time ? `, objetivo "${e.target_time}"` : "");
+      const dist = e.distance_km ? `, ${e.distance_km} km` : "";
+      return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${dist}${alvo}`;
     }).join("\n");
 
   const runLines = runs.length === 0
@@ -233,6 +252,9 @@ function buildPrompt(
 
   const bio: string[] = [];
   if (profile?.gender) bio.push(`Género: ${profile.gender === "F" ? "feminino" : "masculino"}`);
+  // Idade já calculada — o modelo não deve derivá-la da data de nascimento.
+  const idade = ageFromBirthDate(profile?.birth_date ?? null);
+  if (idade !== null) bio.push(`Idade: ${idade} anos`);
   if (profile?.height_cm) bio.push(`Altura: ${profile.height_cm} cm`);
   if (profile?.weight_kg) bio.push(`Peso atual: ${profile.weight_kg} kg`);
 
@@ -308,7 +330,7 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
     const todayISO = new Date().toISOString().slice(0, 10);
 
-    const profileColumns = ["gender", "height_cm", "weight_kg", "coach_context", ...BODY_GOAL_KEYS, ...NUTRITION_GOAL_KEYS].join(", ");
+    const profileColumns = ["gender", "birth_date", "height_cm", "weight_kg", "coach_context", ...BODY_GOAL_KEYS, ...NUTRITION_GOAL_KEYS].join(", ");
     const { data: profile, error: profileError } = await sb
       .from("profiles")
       .select(profileColumns)
@@ -325,7 +347,7 @@ Deno.serve(async (req) => {
 
     const { data: raceEvents } = await sb
       .from("race_events")
-      .select("date, name, race_type, target_time")
+      .select("date, name, race_type, target_time, target_time_seconds, distance_km")
       .eq("user_id", userId)
       .neq("status", "concluida")
       .gte("date", todayISO)

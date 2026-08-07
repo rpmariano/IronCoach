@@ -14,6 +14,23 @@ export const BODY_METRICS = [
   { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1, color: '#198f89', good: 'up' }
 ];
 
+// Idade cronológica a partir da data de nascimento. Deriva-se sempre — nunca
+// guardamos a idade, que ficaria errada no primeiro aniversário.
+// Serve também para dar sentido a `metabolic_age`: sozinha não diz nada, é a
+// diferença face à idade real que interessa.
+export function ageFromBirthDate(birthDate) {
+  if (!birthDate) return null;
+  const born = new Date(birthDate);
+  if (isNaN(born.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - born.getFullYear();
+  const monthDiff = today.getMonth() - born.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age--;
+
+  return age >= 0 && age < 130 ? age : null;
+}
+
 export function fmtMetric(metric, val) {
   if (val === null || val === undefined) return '—';
   const num = Number(val);

@@ -449,6 +449,22 @@ const RACE_TYPE_LABELS: Record<string, string> = {
   "21k": "Meia maratona", "42k": "Maratona", outro: "Outro",
 };
 
+// Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
+// "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
+function formatPaceMinKm(secondsPerKm: number): string {
+  const m = Math.floor(secondsPerKm / 60);
+  const s = Math.round(secondsPerKm % 60);
+  return `${m}.${s.toString().padStart(2, "0")}`;
+}
+
+function formatHms(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 // Contexto das próximas provas agendadas — é a base da proactividade do
 // Coach (ex.: sugerir tapering/hidratos quando falta pouco para uma prova).
 // Inclui explicitamente "dias até à prova" para o modelo não ter de calcular
@@ -461,18 +477,50 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
     const eventDate = new Date(e.date + "T00:00:00Z");
     const daysUntil = Math.round((eventDate.getTime() - today.getTime()) / 86400000);
     const typeLabel = RACE_TYPE_LABELS[e.race_type] || e.race_type;
+    // Ritmo e tempo-alvo são objetivos distintos e vêm em colunas próprias.
+    // `target_time` (texto livre) só entra como último recurso, para provas
+    // criadas antes de os campos numéricos existirem.
+    const paceStr = e.target_pace_seconds_per_km
+      ? formatPaceMinKm(e.target_pace_seconds_per_km)
+      : (e.distance_km && e.target_time_seconds
+        ? formatPaceMinKm(Math.round(e.target_time_seconds / e.distance_km))
+        : null);
     const extras = [
       e.location ? `local: ${e.location}` : null,
-      e.target_time ? `tempo-alvo: ${e.target_time}` : null,
+      e.distance_km ? `distância: ${e.distance_km} km` : null,
+      e.target_time_seconds ? `tempo-alvo: ${formatHms(e.target_time_seconds)}` : null,
+      paceStr ? `ritmo-alvo: ${paceStr}/km` : null,
+      (!e.target_time_seconds && !e.target_pace_seconds_per_km && e.target_time)
+        ? `objetivo (texto): ${e.target_time}` : null,
     ].filter(Boolean).join(", ");
     return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
 
+// Espelha ageFromBirthDate() em src/utils/body.js — duplicado porque o cliente
+// e as Edge Functions correm em runtimes diferentes. Se um mudar, mudar o outro.
+function ageFromBirthDate(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const born = new Date(birthDate);
+  if (isNaN(born.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - born.getFullYear();
+  const monthDiff = today.getMonth() - born.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age--;
+
+  return age >= 0 && age < 130 ? age : null;
+}
+
 function buildSystemInstruction(
   coachContext: string | null,
-  biometrics: { height_cm: number | null; weight_kg: number | null; gender: string | null },
+  biometrics: {
+    height_cm: number | null;
+    weight_kg: number | null;
+    gender: string | null;
+    birth_date: string | null;
+  },
   nutritionSummary: string,
   waterSummary: string,
   gymSummary: string | null,
@@ -541,6 +589,10 @@ function buildSystemInstruction(
 
   const bio: string[] = [];
   if (biometrics.gender) bio.push(`Género: ${biometrics.gender === "F" ? "feminino" : "masculino"}`);
+  // Idade derivada da data de nascimento — o modelo recebe o número já feito
+  // para não ter de o calcular (e enganar-se) a partir da data.
+  const idade = ageFromBirthDate(biometrics.birth_date);
+  if (idade !== null) bio.push(`Idade: ${idade} anos`);
   if (biometrics.height_cm) bio.push(`Altura: ${biometrics.height_cm} cm`);
   if (biometrics.weight_kg) bio.push(`Peso: ${biometrics.weight_kg} kg`);
   if (biometrics.height_cm && biometrics.weight_kg) {
@@ -595,7 +647,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender")
+      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date")
       .eq("id", userId)
       .maybeSingle();
 
@@ -711,7 +763,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces } = await sb
       .from("race_events")
-      .select("date, name, race_type, location, target_time")
+      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -740,6 +792,7 @@ async function handler(req: Request): Promise<Response> {
     const systemInstruction = buildSystemInstruction(
       profile?.coach_context ?? null,
       {
+        birth_date: (profile?.birth_date as string | null) ?? null,
         height_cm: (profile?.height_cm as number | null) ?? null,
         weight_kg: (profile?.weight_kg as number | null) ?? null,
         gender: (profile?.gender as string | null) ?? null,
