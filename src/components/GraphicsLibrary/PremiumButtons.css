@@ -1,0 +1,78 @@
+.buttons-demo-card {
+  background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); width: 100%; max-width: 450px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+.bd-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; }
+.bd-title { font-size: 0.85rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; }
+
+/* ======== BUTTON STYLES ======== */
+.btn-premium {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 24px; font-size: 0.85rem; font-weight: 800; border-radius: 16px;
+  border: none; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+  outline: none;
+}
+.btn-premium:active { transform: scale(0.96); }
+
+/* Primary Gradient Button */
+.btn-p-gradient {
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+  color: #fff; box-shadow: 0 4px 15px rgba(217,119,6,0.3);
+}
+.btn-p-gradient:hover {
+  box-shadow: 0 6px 20px rgba(217,119,6,0.4);
+}
+
+/* Secondary Glass Button */
+.btn-p-glass {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #475569;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.btn-p-glass:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* Module Themed Buttons */
+.btn-p-module { color: #fff; }
+.btn-p-module.nutri {
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+  box-shadow: 0 4px 12px rgba(5,150,105,0.25);
+}
+.btn-p-module.nutri:hover { box-shadow: 0 6px 18px rgba(5,150,105,0.35); }
+
+.btn-p-module.run {
+  background: linear-gradient(135deg, #e879f9 0%, #c026d3 100%);
+  box-shadow: 0 4px 12px rgba(192,38,211,0.25);
+}
+.btn-p-module.run:hover { box-shadow: 0 6px 18px rgba(192,38,211,0.35); }
+
+.btn-p-module.gym {
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(37,99,235,0.25);
+}
+.btn-p-module.gym:hover { box-shadow: 0 6px 18px rgba(37,99,235,0.35); }
+
+/* Floating Action Button (FAB) */
+.btn-p-fab {
+  width: 52px; height: 52px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: #f3d5ab; color: #1e293b; border: 3px solid #fff;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+.btn-p-fab:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+}
+.btn-p-fab:active {
+  transform: translateY(0) scale(0.96);
+}

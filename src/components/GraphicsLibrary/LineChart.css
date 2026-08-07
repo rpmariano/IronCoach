@@ -1,0 +1,17 @@
+.line-chart-card {
+  background: rgba(255,255,255,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.9); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 16px;
+  cursor: pointer; max-width: 600px; width: 100%;
+}
+.lc-header { display: flex; justify-content: space-between; align-items: center; }
+.lc-title { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
+.lc-subtitle { font-size: 0.75rem; color: #64748b; font-weight: 600; }
+.lc-highlight { font-size: 0.75rem; font-weight: 800; color: #10b981; background: rgba(16,185,129,0.1); padding: 4px 8px; border-radius: 8px; }
+
+.lc-container { width: 100%; height: 160px; position: relative; margin-top: 10px; }
+.lc-svg { width: 100%; height: 100%; overflow: visible; }
+.lc-grid-lines line { stroke: rgba(0,0,0,0.03); stroke-width: 1; }
+.lc-line { stroke-width: 4; fill: none; stroke-linecap: round; }
+.lc-area { opacity: 0.15; }
+.lc-labels-x { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; margin-top: 8px; }

@@ -1,0 +1,158 @@
+.body-card-wrapper {
+  position: relative;
+  z-index: 1;
+  width: 100%; max-width: 550px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0 auto;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid rgba(255,255,255,0.85);
+}
+
+.body-card-wrapper:hover { box-shadow: 0 12px 35px -8px rgba(0,0,0,0.08); }
+
+.body-card-wrapper.collapsed {
+  border-radius: 99px;
+  box-shadow: 0 8px 20px -5px rgba(0,0,0,0.05);
+  border: 1px solid rgba(255,255,255,0.9);
+}
+
+.body-card {
+  background: rgba(255,255,255,0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  width: 100%; display: flex; flex-direction: column;
+}
+
+.body-card.collapsed-layout {
+  padding: 12px 20px 12px 12px;
+  border-radius: 99px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.body-card.expanded-layout {
+  border-radius: 28px;
+}
+
+/* Header */
+.bc-exp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 12px 20px 12px 12px; width: 100%;
+}
+
+/* Shared left elements */
+.bc-left { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.bc-icon-wrap {
+  width: 48px; height: 48px; border-radius: 50%; background: rgba(124, 58, 237, 0.15); color: #7c3aed;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(124, 58, 237, 0.2);
+  flex-shrink: 0;
+}
+.bc-content { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.bc-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bc-title { font-size: 0.95rem; font-weight: 800; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bc-sub-row { margin-top: 2px; display: flex; }
+.bc-date-sub { font-size: 0.8rem; color: #64748b; font-weight: 600; white-space: nowrap; }
+
+/* Middle macros (collapsed) */
+.bc-middle { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.bc-macro-pill { font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: flex; align-items: center; }
+.bc-macro-pill.fat { background: #fdf2f8; color: #db2777; }
+.bc-macro-pill.musc { background: #ecfdf5; color: #059669; }
+.bc-macro-pill.imc { background: #eff6ff; color: #2563eb; }
+
+/* Right elements */
+.bc-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.bc-weight-highlight { font-size: 1.15rem; font-weight: 900; color: #7c3aed; white-space: nowrap; }
+.bc-chevron-btn {
+  background: transparent; border: none; color: #64748b; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s;
+}
+.bc-chevron-btn:hover { color: #1e293b; }
+
+/* Expanded Body and layout details */
+.bc-exp-body {
+  padding: 0 20px 20px 20px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+/* Metric Pills */
+.bc-exp-pills-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px;
+}
+.bc-exp-pill {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 14px; font-size: 0.75rem; font-weight: 800;
+  border: 1px solid rgba(0,0,0,0.02);
+}
+.bc-exp-pill.purple { background: rgba(124, 58, 237, 0.08); color: #7c3aed; }
+.bc-exp-pill.pink { background: #fdf2f8; color: #db2777; }
+.bc-exp-pill.green { background: #ecfdf5; color: #059669; }
+.bc-exp-pill.blue { background: #eff6ff; color: #2563eb; }
+
+/* Observations Box */
+.bc-exp-observations {
+  background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255,255,255,0.7);
+  border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.bc-exp-obs-header { font-size: 0.75rem; font-weight: 800; color: #64748b; }
+.bc-exp-obs-text { font-size: 0.8rem; color: #475569; font-style: italic; font-weight: 500; }
+
+/* All Metrics Section */
+.bc-exp-metrics-section { display: flex; flex-direction: column; gap: 8px; }
+.bc-exp-section-title { font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.bc-exp-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.bc-metric-item-card {
+  background: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.95);
+  border-radius: 14px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.01);
+}
+.bc-metric-item-left { display: flex; align-items: center; gap: 8px; }
+.bc-metric-bullet { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.bc-metric-bullet.purple { background: #7c3aed; }
+.bc-metric-bullet.indigo { background: #4f46e5; }
+.bc-metric-bullet.pink { background: #db2777; }
+.bc-metric-bullet.green { background: #10b981; }
+.bc-metric-bullet.blue { background: #3b82f6; }
+.bc-metric-bullet.yellow { background: #ca8a04; }
+.bc-metric-bullet.teal { background: #0d9488; }
+
+.bc-metric-name { font-size: 0.85rem; font-weight: 600; color: #475569; }
+.bc-metric-val { font-size: 0.85rem; font-weight: 800; color: #1e293b; }
+
+/* Action Buttons (Editar / Eliminar identical to nutrition) */
+.bc-exp-actions-row {
+  display: flex; gap: 12px; width: 100%;
+}
+.bc-exp-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 0; border: 1.5px solid transparent; border-radius: 16px;
+  font-size: 0.85rem; font-weight: 800; cursor: pointer; transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+  outline: none;
+}
+.bc-exp-btn:active { transform: scale(0.97); }
+
+.bc-exp-edit-btn {
+  background: rgba(124, 58, 237, 0.08); border-color: rgba(124, 58, 237, 0.2);
+  color: #7c3aed;
+}
+.bc-exp-edit-btn:hover {
+  background: rgba(124, 58, 237, 0.15); border-color: rgba(124, 58, 237, 0.35);
+}
+
+.bc-exp-delete-btn {
+  background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+.bc-exp-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.35);
+}

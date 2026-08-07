@@ -1,0 +1,163 @@
+.v1-card {
+  background: rgba(255,255,255,0.75); 
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.85); border-radius: 28px;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05); 
+  transition: transform 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+  max-width: 550px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0; /* padding is handled by state-specific classes */
+}
+
+.v1-card:hover { box-shadow: 0 12px 35px -8px rgba(0,0,0,0.08); }
+
+/* =========================================================
+   ESTADO COLAPSADO
+   ========================================================= */
+.v1-card.collapsed {
+  border-radius: 99px; 
+  padding: 12px 24px 12px 12px;
+  cursor: pointer;
+}
+.v1-card.collapsed:hover { transform: translateX(4px); }
+
+.v1-collapsed-content {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+}
+.v1-c-left { display: flex; align-items: center; gap: 16px; }
+.v1-c-icon {
+  width: 48px; height: 48px; border-radius: 50%; background: rgba(5, 150, 105, 0.15); color: #059669;
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(5, 150, 105, 0.2);
+  flex-shrink: 0;
+}
+.v1-c-title { font-size: 1.05rem; font-weight: 800; color: #0f172a; }
+.v1-c-sub { font-size: 0.8rem; color: #516071; font-weight: 600; margin-top: 2px; }
+
+.v1-c-middle { display: flex; gap: 8px; align-items: center; }
+.v1-c-macro { font-size: 0.75rem; font-weight: 800; padding: 4px 10px; border-radius: 12px; display: flex; align-items: center; gap: 4px; }
+.v1-c-macro.pro { background: #e0e7ff; color: #4f46e5; }
+.v1-c-macro.car { background: #fef08a; color: #854d0e; }
+.v1-c-macro.fat { background: #fce7f3; color: #db2777; }
+
+.v1-c-right { display: flex; align-items: center; gap: 12px; }
+.v1-c-kcal { font-size: 1.15rem; font-weight: 900; color: #059669; }
+
+.v1-c-chevron-btn {
+  background: transparent; border: none; color: #64748b; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s;
+}
+.v1-c-chevron-btn:hover { color: #1e293b; }
+
+/* =========================================================
+   ESTADO EXPANDIDO
+   ========================================================= */
+.v1-card.expanded {
+  padding: 0;
+}
+
+.v1-expanded-content {
+  display: flex; flex-direction: column;
+}
+
+/* Header: exactly identical padding and behavior as collapsed card */
+.v1-exp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 12px 24px 12px 12px;
+}
+
+/* Body content of the expanded card has its own custom padding */
+.v1-exp-body {
+  padding: 0 24px 24px 24px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+
+/* Macros Row */
+.v1-exp-macros-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 8px;
+}
+.v1-exp-macro-pill {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border-radius: 14px; font-size: 0.75rem; font-weight: 800;
+  border: 1px solid rgba(0,0,0,0.02);
+}
+.v1-exp-macro-pill.kcal { background: rgba(249,115,22,0.1); color: #f97316; }
+.v1-exp-macro-pill.pro { background: #e0e7ff; color: #4f46e5; }
+.v1-exp-macro-pill.car { background: #fef08a; color: #854d0e; }
+.v1-exp-macro-pill.fat { background: #fce7f3; color: #db2777; }
+
+/* Photos Section */
+.v1-exp-photos { display: flex; flex-direction: column; gap: 8px; }
+.v1-exp-photos-header { font-size: 0.75rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.v1-exp-photos-grid { display: flex; gap: 12px; }
+.v1-exp-photo-thumb {
+  width: 90px; height: 90px; border-radius: 16px; background-size: cover; background-position: center;
+  border: 1px solid rgba(255,255,255,0.8);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* Observations Box */
+.v1-exp-observations {
+  background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255,255,255,0.7);
+  border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.v1-exp-obs-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; font-weight: 800; color: #64748b; }
+.v1-exp-obs-text { font-size: 0.8rem; color: #475569; font-style: italic; font-weight: 500; }
+
+/* Items List */
+.v1-exp-items-list { display: flex; flex-direction: column; gap: 12px; }
+.v1-exp-item-card {
+  background: rgba(255,255,255,0.9); border: 1px solid rgba(255,255,255,0.95);
+  border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.01);
+}
+.v1-exp-item-top { display: flex; justify-content: space-between; align-items: center; }
+.v1-exp-item-name { font-size: 0.95rem; font-weight: 800; color: #1e293b; }
+.v1-exp-item-delete {
+  background: transparent; border: none; color: #94a3b8; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: color 0.2s;
+}
+.v1-exp-item-delete:hover { color: #ef4444; }
+
+/* Qty capsule */
+.v1-exp-item-qty-row { display: flex; }
+.v1-exp-qty-capsule {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.02);
+  border-radius: 10px; padding: 6px 12px; font-size: 0.8rem; font-weight: 700;
+}
+.v1-exp-qty-val { color: #1e293b; font-weight: 800; }
+.v1-exp-qty-unit { color: #64748b; }
+
+.v1-exp-item-bottom { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #64748b; margin-top: 4px; }
+.v1-exp-item-bullet { color: #cbd5e1; }
+
+/* Actions Row: Edit and Delete buttons */
+.v1-exp-actions-row {
+  display: flex; gap: 12px; width: 100%;
+}
+.v1-exp-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 0; border: 1.5px solid transparent; border-radius: 16px;
+  font-size: 0.85rem; font-weight: 800; cursor: pointer; transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+  outline: none;
+}
+.v1-exp-btn:active { transform: scale(0.97); }
+
+.v1-exp-edit-btn {
+  background: rgba(5, 150, 105, 0.08); border-color: rgba(5, 150, 105, 0.2);
+  color: #059669;
+}
+.v1-exp-edit-btn:hover {
+  background: rgba(5, 150, 105, 0.15); border-color: rgba(5, 150, 105, 0.35);
+}
+
+.v1-exp-delete-btn {
+  background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+.v1-exp-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.35);
+}
