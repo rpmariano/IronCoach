@@ -449,6 +449,12 @@ const RACE_TYPE_LABELS: Record<string, string> = {
   "21k": "Meia maratona", "42k": "Maratona", outro: "Outro",
 };
 
+// Espelha EXPERIENCE_LEVELS em src/utils/experience.js — só os rótulos, o
+// código do cliente é que tem as descrições usadas na UI.
+const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
+  iniciante: "Iniciante", basico: "Básico", medio: "Médio", avancado: "Avançado",
+};
+
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
 // "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
 function formatPaceMinKm(secondsPerKm: number): string {
@@ -492,6 +498,12 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
       paceStr ? `ritmo-alvo: ${paceStr}/km` : null,
       (!e.target_time_seconds && !e.target_pace_seconds_per_km && e.target_time)
         ? `objetivo (texto): ${e.target_time}` : null,
+      // Autodeclarado para ESTA prova — pode divergir do nível geral do
+      // atleta (ver bio, mais abaixo). Quando presente, prevalece para o
+      // taper e progressão desta prova especificamente.
+      e.experience_level
+        ? `nível do atleta nesta prova: ${EXPERIENCE_LEVEL_LABELS[e.experience_level] || e.experience_level}`
+        : null,
     ].filter(Boolean).join(", ");
     return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}`;
   });
@@ -520,6 +532,7 @@ function buildSystemInstruction(
     weight_kg: number | null;
     gender: string | null;
     birth_date: string | null;
+    experience_level: string | null;
   },
   nutritionSummary: string,
   waterSummary: string,
@@ -588,6 +601,12 @@ function buildSystemInstruction(
     `(corrida) com o intervalo de datas necessário antes de responder.`;
 
   const bio: string[] = [];
+  if (biometrics.experience_level) {
+    // Nível GERAL do atleta — se uma prova concreta tiver o seu próprio
+    // nível autodeclarado (ver buildRaceEventsContext), esse prevalece para
+    // essa prova; este é o que vale para tudo o resto.
+    bio.push(`Nível geral como corredor: ${EXPERIENCE_LEVEL_LABELS[biometrics.experience_level] || biometrics.experience_level}`);
+  }
   if (biometrics.gender) bio.push(`Género: ${biometrics.gender === "F" ? "feminino" : "masculino"}`);
   // Idade derivada da data de nascimento — o modelo recebe o número já feito
   // para não ter de o calcular (e enganar-se) a partir da data.
@@ -647,7 +666,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date")
+      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level")
       .eq("id", userId)
       .maybeSingle();
 
@@ -763,7 +782,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces } = await sb
       .from("race_events")
-      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km")
+      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, experience_level")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -796,6 +815,7 @@ async function handler(req: Request): Promise<Response> {
         height_cm: (profile?.height_cm as number | null) ?? null,
         weight_kg: (profile?.weight_kg as number | null) ?? null,
         gender: (profile?.gender as string | null) ?? null,
+        experience_level: (profile?.experience_level as string | null) ?? null,
       },
       nutritionSummary,
       waterSummary,
