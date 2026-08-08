@@ -81,6 +81,15 @@ alter table profiles
 alter table profiles
   add column if not exists birth_date date;
 
+-- Nível GERAL do atleta como corredor — editável no Perfil, junto do nome,
+-- género e data de nascimento. Distinto de race_events.experience_level (o
+-- nível autodeclarado por prova, mais abaixo neste ficheiro): este é o que
+-- calibra o que é comum a todos os treinos, não ligado a uma prova em concreto.
+-- Ver supabase/migrations/20260809000000_experience_level.sql.
+alter table profiles
+  add column if not exists experience_level text
+    check (experience_level is null or experience_level in ('iniciante', 'basico', 'medio', 'avancado'));
+
 -- perfil criado automaticamente no signup
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -441,12 +450,16 @@ create policy "run own folder delete" on storage.objects for delete
   using (bucket_id = 'run-photos' and (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ============ race_events: agenda de provas (sub-tab "Agenda" da Corrida) ============
+-- `race_type` só distingue o piso (estrada/trail) — a distância é um campo à
+-- parte (`distance_km`, ver abaixo) e o antigo enum de 8 valores (5k/10k/21k/
+-- 42k/ultra/outro incluídos) foi apertado para estes dois diretamente na BD,
+-- sem passar por `supabase/migrations/`. Ver src/utils/run.js:RACE_TERRAIN_TYPES.
 create table race_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   date date not null,
   name text not null,
-  race_type text not null check (race_type in ('estrada', 'trail', 'ultra', '5k', '10k', '21k', '42k', 'outro')),
+  race_type text not null check (race_type in ('estrada', 'trail')),
   location text,
   equipment text,
   target_time text,
@@ -471,6 +484,33 @@ alter table race_events
     check (target_pace_seconds_per_km is null or target_pace_seconds_per_km > 0),
   add column if not exists distance_km numeric
     check (distance_km is null or distance_km > 0);
+
+-- `location`, `target_time`, `target_time_seconds`, `target_pace_seconds_per_km`
+-- e `distance_km` passaram a NOT NULL diretamente na BD (RunAgenda.jsx exige os
+-- cinco no formulário — ver 3.4 do PRD). Aplicado sem ficheiro de migração
+-- próprio; registado aqui a posteriori, tal como o piso e o D+ acima.
+alter table race_events
+  alter column location set not null,
+  alter column target_time set not null,
+  alter column target_time_seconds set not null,
+  alter column target_pace_seconds_per_km set not null,
+  alter column distance_km set not null;
+
+-- Site oficial e desnível acumulado (só relevante em trail — RunAgenda.jsx
+-- só mostra o campo quando race_type = 'trail'). Aplicadas diretamente na BD,
+-- sem ficheiro de migração próprio — registadas aqui a posteriori.
+alter table race_events
+  add column if not exists website text,
+  add column if not exists elevation_gain_m numeric
+    check (elevation_gain_m is null or elevation_gain_m >= 0);
+
+-- Nível AUTODECLARADO do atleta para esta prova — não herda de
+-- profiles.experience_level (ver abaixo). É a peça que resolve um avançado em
+-- estrada que é iniciante na primeira prova de trail.
+-- Ver supabase/migrations/20260809000000_experience_level.sql.
+alter table race_events
+  add column if not exists experience_level text
+    check (experience_level is null or experience_level in ('iniciante', 'basico', 'medio', 'avancado'));
 
 -- ============ water_logs: registos de hidratação ============
 -- Uma linha por adição de água (não um total diário) — o Início soma por dia.

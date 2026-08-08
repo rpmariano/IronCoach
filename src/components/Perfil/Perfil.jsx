@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
 import { User, Target, Bot, LogOut, ChevronDown, ChevronUp, Bell, Sparkles, Loader2, X } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
+import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -368,6 +369,26 @@ export default function Perfil() {
                 <p className="text-[10px] text-slate-600 mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
                   recomendações do coach. Guardamos a data, não a idade.
+                </p>
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Nível como corredor</label>
+                <select
+                  value={draft.experience_level || ''}
+                  onChange={e => updateDraft('experience_level', e.target.value || null)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  style={{ color: '#fff' }}
+                >
+                  <option value="">–</option>
+                  {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-600 mt-1">
+                  {draft.experience_level
+                    ? experienceLevelDescription(draft.experience_level)
+                    : 'Calibra a linguagem e os limiares de treino do Coach.'}
+                  {' '}Ao registares uma prova, podes indicar um nível diferente só
+                  para essa prova — por exemplo, avançado em estrada mas iniciante
+                  na primeira trail.
                 </p>
               </div>
             </div>

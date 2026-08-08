@@ -11,7 +11,7 @@ description: Agente de revisão de código pré-deploy que executa auditoria de 
 
 Ao seres invocado antes de um deploy:
 1. Executas a verificação de alteração de código (`git diff master...HEAD`).
-2. Segues rigorosamente a instrução da skill `code-review` (localizada em `~/.agents/skills/code-review/SKILL.md`).
+2. Segues rigorosamente a instrução da skill `code-review` (localizada em `.agents/skills/code-review/SKILL.md`).
 3. Analisas dois eixos em paralelo:
    - **Standards**: Conformidade com o código do repositório, boas práticas, prevenção de erros e code smells.
    - **Spec**: Conformidade com a especificação do produto (ver secção seguinte) — a alteração implementa o que foi pedido sem desviar do comportamento, arquitetura ou design documentados.

@@ -13,6 +13,7 @@ import {
   parsePaceToSeconds,
   formatPace,
 } from '../../utils/run';
+import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
 
 function todayISO() {
   const d = new Date();
@@ -32,6 +33,9 @@ const EMPTY_DRAFT = {
   race_type: 'estrada',
   distance_km: '10',
   elevation_gain_m: '',
+  // Autodeclarado pelo atleta para esta prova — não herda de
+  // profiles.experience_level. Ver src/utils/experience.js.
+  experience_level: '',
   target_time: '',
   // Só na UI — convertidos para target_time_seconds/target_pace_seconds_per_km
   // ao gravar. Ver handleTargetTimeChange/handleTargetPaceChange: mudar um
@@ -139,6 +143,7 @@ export default function RunAgenda() {
         race_type: ev.race_type || 'estrada',
         distance_km: ev.distance_km != null ? String(ev.distance_km) : '',
         elevation_gain_m: ev.elevation_gain_m != null ? String(ev.elevation_gain_m) : '',
+        experience_level: ev.experience_level || '',
         target_time: ev.target_time_seconds ? formatDuration(ev.target_time_seconds) : (ev.target_time || ''),
         target_pace: formatPace(ev.target_pace_seconds_per_km),
         website: ev.website || '',
@@ -228,6 +233,13 @@ export default function RunAgenda() {
       return false;
     }
 
+    // Autodeclarado, não herdado do Perfil: é a peça que permite a um atleta
+    // avançado em estrada marcar-se como iniciante na primeira prova de trail.
+    if (!draft.experience_level) {
+      alert('Indica o teu nível para esta prova — o coach usa-o para calibrar o plano.');
+      return false;
+    }
+
     const targetTimeSecs = parseDurationToSeconds(draft.target_time);
     const targetPaceSecs = parsePaceToSeconds(draft.target_pace);
     if (!targetTimeSecs || !targetPaceSecs) {
@@ -256,6 +268,7 @@ export default function RunAgenda() {
       location: draft.location.trim(),
       distance_km: distanceKm,
       elevation_gain_m: elevationGainM,
+      experience_level: draft.experience_level,
       target_time: draft.target_time.trim(),
       target_time_seconds: targetTimeSecs,
       target_pace_seconds_per_km: targetPaceSecs,
@@ -368,6 +381,11 @@ export default function RunAgenda() {
                 </span>
               )}
               {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
+              {ev.experience_level && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
+                  {experienceLevelLabel(ev.experience_level)}
+                </span>
+              )}
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
               {formatDatePT(ev.date)}
@@ -499,6 +517,26 @@ export default function RunAgenda() {
                 />
               </div>
             )}
+          </div>
+
+          {/* Nível do atleta para esta prova — autodeclarado, não herdado do
+              Perfil, porque um avançado numa disciplina pode ser iniciante
+              noutra ou nesta distância em particular. */}
+          <div>
+            <label className="text-[10px] text-slate-500 mb-1 block">O teu nível para esta prova <span className="text-red-400">*</span></label>
+            <select
+              value={draft.experience_level}
+              onChange={e => updateDraft('experience_level', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+            >
+              <option value="">Escolhe...</option>
+              {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
+            </select>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {draft.experience_level
+                ? experienceLevelDescription(draft.experience_level)
+                : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
+            </p>
           </div>
 
           {/* Objetivo de tempo total · Objetivo de pace — cada um recalcula o outro */}
