@@ -15,9 +15,8 @@ function getNotionToken() {
 }
 
 const NOTION_TOKEN = getNotionToken();
-const PAGE_ID = process.argv[2] || '39c70bb4-c353-81cc-8974-ee6dfe83f301';
+const ROOT_PAGE_ID = '39c70bb4-c353-81cc-8974-ee6dfe83f301';
 
-// Direct GitHub raw URLs
 const GITHUB_IMAGE_MAP = {
   'início': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg',
   'inicio': 'https://raw.githubusercontent.com/rpmariano/ironhealth/master/docs-images/ironhealth_home.jpg',
@@ -221,14 +220,13 @@ function markdownToNotionBlocks(mdContent) {
       continue;
     }
 
-    // Images - ALWAYS use GitHub raw URL based on caption or URL
+    // Images
     const imgMatch = line.match(/!\[(.*?)\]\((.*?)\)/);
     if (imgMatch) {
       const caption = imgMatch[1];
       const origUrl = imgMatch[2];
       let finalUrl = null;
 
-      // Check caption or origUrl for module matching
       const searchText = (caption + ' ' + origUrl).toLowerCase();
       for (const key of Object.keys(GITHUB_IMAGE_MAP)) {
         if (searchText.includes(key)) {
@@ -245,15 +243,13 @@ function markdownToNotionBlocks(mdContent) {
         }
       }
 
-      console.log(`Mapping image [${caption}] -> ${finalUrl}`);
-
       blocks.push({
         object: 'block',
         type: 'image',
         image: {
           type: 'external',
           external: { url: finalUrl },
-          caption: parseRichText(caption || 'IronHealth App Dashboard Screen')
+          caption: parseRichText(caption || 'IronHealth App')
         }
       });
       i++;
@@ -330,6 +326,22 @@ function markdownToNotionBlocks(mdContent) {
   return blocks;
 }
 
+async function createNotionPage(parentPageId, title, emoji) {
+  console.log(`🆕 A criar subpágina: "${title}"...`);
+  const res = await notionRequest('/pages', 'POST', {
+    parent: { page_id: parentPageId },
+    icon: { type: 'emoji', emoji: emoji },
+    properties: {
+      title: {
+        title: [
+          { text: { content: title } }
+        ]
+      }
+    }
+  });
+  return res.id;
+}
+
 async function deleteAllChildren(pageId) {
   let hasMore = true;
   let deletedCount = 0;
@@ -352,33 +364,68 @@ async function deleteAllChildren(pageId) {
   console.log(`✅ Apagados total de ${deletedCount} blocos antigos.`);
 }
 
-async function publish() {
+async function uploadPageContent(pageId, mdFileName) {
+  const mdPath = path.join(__dirname, 'docs-notion', mdFileName);
+  console.log(`📖 A ler ficheiro ${mdFileName}...`);
+  const mdContent = fs.readFileSync(mdPath, 'utf8');
+  
+  const blocks = markdownToNotionBlocks(mdContent);
+  console.log(`📦 A publicar ${blocks.length} blocos para a página ${pageId}...`);
+  
+  const chunkSize = 100;
+  for (let j = 0; j < blocks.length; j += chunkSize) {
+    const chunk = blocks.slice(j, j + chunkSize);
+    await notionRequest(`/blocks/${pageId}/children`, 'PATCH', { children: chunk });
+  }
+  console.log(`✅ Ficheiro ${mdFileName} publicado com sucesso!`);
+}
+
+async function main() {
   try {
-    console.log(`🚀 A ler ficheiro NOTION_WIKI.md...`);
-    const mdPath = path.join(__dirname, 'NOTION_WIKI.md');
-    const mdContent = fs.readFileSync(mdPath, 'utf8');
+    console.log('🏁 Iniciando publicação do Workspace IronHealth no Notion...');
 
-    console.log(`🔄 A converter Markdown em blocos nativos do Notion com URLs GitHub CDN...`);
-    const allBlocks = markdownToNotionBlocks(mdContent);
-    console.log(`📦 Total de ${allBlocks.length} blocos gerados.`);
+    // 1. Atualizar o título da página principal
+    console.log('✏️ A atualizar título da página principal...');
+    await notionRequest(`/pages/${ROOT_PAGE_ID}`, 'PATCH', {
+      properties: {
+        title: {
+          title: [
+            { text: { content: 'IronHealth v2 — Central de Documentação do Projeto' } }
+          ]
+        }
+      }
+    });
 
-    console.log(`🧹 A apagar TODOS os blocos antigos da página ${PAGE_ID}...`);
-    await deleteAllChildren(PAGE_ID);
+    // 2. Limpar a página principal
+    console.log('🧹 A limpar página principal...');
+    await deleteAllChildren(ROOT_PAGE_ID);
 
-    console.log(`📤 A publicar novos blocos na página do Notion...`);
-    const chunkSize = 100;
-    for (let j = 0; j < allBlocks.length; j += chunkSize) {
-      const chunk = allBlocks.slice(j, j + chunkSize);
-      await notionRequest(`/blocks/${PAGE_ID}/children`, 'PATCH', { children: chunk });
-      console.log(`   - Blocos ${j + 1} a ${Math.min(j + chunkSize, allBlocks.length)} adicionados.`);
+    // 3. Publicar index.md na página principal
+    console.log('📤 A publicar conteúdo da página principal (index.md)...');
+    const indexPath = path.join(__dirname, 'docs-notion', 'index.md');
+    const indexContent = fs.readFileSync(indexPath, 'utf8');
+    const indexBlocks = markdownToNotionBlocks(indexContent);
+    await notionRequest(`/blocks/${ROOT_PAGE_ID}/children`, 'PATCH', { children: indexBlocks });
+
+    // 4. Criar subpáginas e enviar conteúdos
+    const subpages = [
+      { file: '1_manual_utilizador.md', title: '📖 Manual do Utilizador', emoji: '📖' },
+      { file: '2_arquitetura_ia.md', title: '📐 Arquitetura de IA & Doutrina do Coach', emoji: '📐' },
+      { file: '3_modelo_dados.md', title: '💾 Modelo de Dados & Regras Supabase', emoji: '💾' },
+      { file: '4_qualidade_testes.md', title: '🧪 Qualidade, Testes & Processo CI', emoji: '🧪' }
+    ];
+
+    for (const sub of subpages) {
+      const subPageId = await createNotionPage(ROOT_PAGE_ID, sub.title, sub.emoji);
+      await uploadPageContent(subPageId, sub.file);
     }
 
-    console.log(`✅ Publicação limpa com URLs GitHub CDN concluída com sucesso!`);
-    console.log(`🔗 Acede à página no Notion: https://app.notion.com/p/${PAGE_ID.replace(/-/g, '')}`);
+    console.log(`🎉 TODO O WORKSPACE FOI PUBLICADO COM SUCESSO!`);
+    console.log(`🔗 Acede à página principal no Notion: https://app.notion.com/p/${ROOT_PAGE_ID.replace(/-/g, '')}`);
   } catch (err) {
-    console.error(`❌ Erro durante a publicação:`, err.message);
+    console.error('❌ Erro no processo:', err.message);
     process.exit(1);
   }
 }
 
-publish();
+main();
