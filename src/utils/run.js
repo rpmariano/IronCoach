@@ -5,33 +5,47 @@
 // divergência entre os dois que gerou o bug do target_time.
 
 // ---------------------------------------------------------------------------
-// Tipos de prova
+// Tipos e distâncias de prova (Agenda de Provas)
 // ---------------------------------------------------------------------------
 // AS CHAVES TÊM DE BATER CERTO com o check constraint de race_events.race_type
-// no schema. RunRegistration e RunAgenda tinham cada um a sua lista, ambas com
-// 'meia'/'maratona' — valores que a BD rejeita, portanto criar uma meia ou uma
-// maratona falhava em qualquer dos ecrãs. Daí a lista viver num sítio só.
-//
-// `distanceKm` é a distância oficial quando o tipo a determina; null quando não
-// (uma prova de 'estrada' ou 'trail' pode ter qualquer distância) — nesses
-// casos o utilizador tem de a indicar.
-export const RACE_TYPES = [
-  { key: '5k',      label: '5 km',                     distanceKm: 5 },
-  { key: '10k',     label: '10 km',                    distanceKm: 10 },
-  { key: '21k',     label: 'Meia Maratona (21.1 km)',  distanceKm: 21.0975 },
-  { key: '42k',     label: 'Maratona (42.2 km)',       distanceKm: 42.195 },
-  { key: 'estrada', label: 'Estrada (outra distância)', distanceKm: null },
-  { key: 'trail',   label: 'Trail',                    distanceKm: null },
-  { key: 'ultra',   label: 'Ultra Trail',              distanceKm: null },
-  { key: 'outro',   label: 'Outro',                    distanceKm: null },
+// no schema — só distingue o piso, porque é isso que muda o formulário (D+ só
+// faz sentido em trail); a distância é um campo à parte (ver abaixo).
+export const RACE_TERRAIN_TYPES = [
+  { key: 'estrada', label: 'Estrada' },
+  { key: 'trail', label: 'Trail' },
 ];
 
-export function distanceForRaceType(key) {
-  return (RACE_TYPES.find(t => t.key === key) || {}).distanceKm ?? null;
+export function raceTerrainLabel(key) {
+  return (RACE_TERRAIN_TYPES.find(t => t.key === key) || {}).label || key;
 }
 
-export function raceTypeLabel(key) {
-  return (RACE_TYPES.find(t => t.key === key) || {}).label || key;
+// Distâncias fixas que o utilizador escolhe — a mesma lista alimenta o select
+// e a pílula do cartão em RunAgenda. 21.0975/42.195 usam a distância oficial
+// (não 21/42 redondos) e têm o nome próprio da prova em vez de "X km".
+export const RACE_DISTANCE_OPTIONS = [
+  { km: 5, label: '5 km' },
+  { km: 8, label: '8 km' },
+  { km: 10, label: '10 km' },
+  { km: 15, label: '15 km' },
+  { km: 21.0975, label: 'Meia Maratona' },
+  { km: 42.195, label: 'Maratona' },
+  { km: 50, label: '50 km' },
+  { km: 60, label: '60 km' },
+  { km: 70, label: '70 km' },
+  { km: 80, label: '80 km' },
+  { km: 90, label: '90 km' },
+  { km: 100, label: '100 km' },
+];
+
+// Etiqueta da pílula a partir da distância gravada — cai para "X km" numa
+// prova antiga com uma distância fora da lista fixa (ex.: dados anteriores a
+// esta reorganização).
+export function raceDistanceLabel(km) {
+  if (km == null) return '';
+  const match = RACE_DISTANCE_OPTIONS.find(o => Math.abs(o.km - km) < 0.01);
+  if (match) return match.label;
+  const rounded = Math.round(km * 100) / 100;
+  return `${rounded} km`;
 }
 
 // Move-se de RunRegistration.jsx sem alteração de comportamento: além do

@@ -3,8 +3,9 @@ import {
   parsePaceToSeconds,
   formatPace,
   parseDurationToSeconds,
-  RACE_TYPES,
-  distanceForRaceType,
+  RACE_TERRAIN_TYPES,
+  RACE_DISTANCE_OPTIONS,
+  raceDistanceLabel,
 } from './run';
 
 describe('parsePaceToSeconds', () => {
@@ -67,28 +68,36 @@ describe('parseDurationToSeconds', () => {
   });
 });
 
-describe('RACE_TYPES', () => {
+describe('RACE_TERRAIN_TYPES', () => {
   // As chaves têm de bater certo com o check constraint de
   // race_events.race_type — divergirem foi o que impediu criar meias/maratonas.
-  const CHAVES_NA_BD = ['estrada', 'trail', 'ultra', '5k', '10k', '21k', '42k', 'outro'];
+  const CHAVES_NA_BD = ['estrada', 'trail'];
 
   it('só usa chaves aceites pela base de dados', () => {
-    for (const t of RACE_TYPES) {
+    for (const t of RACE_TERRAIN_TYPES) {
       expect(CHAVES_NA_BD).toContain(t.key);
     }
   });
+});
 
-  it('implica distância nos tipos que a determinam', () => {
-    expect(distanceForRaceType('5k')).toBe(5);
-    expect(distanceForRaceType('10k')).toBe(10);
-    expect(distanceForRaceType('21k')).toBeCloseTo(21.0975);
-    expect(distanceForRaceType('42k')).toBeCloseTo(42.195);
+describe('raceDistanceLabel', () => {
+  it('dá o nome próprio às distâncias oficiais de meia/maratona', () => {
+    expect(raceDistanceLabel(21.0975)).toBe('Meia Maratona');
+    expect(raceDistanceLabel(42.195)).toBe('Maratona');
   });
 
-  it('não inventa distância onde o tipo não a determina', () => {
-    expect(distanceForRaceType('estrada')).toBeNull();
-    expect(distanceForRaceType('trail')).toBeNull();
-    expect(distanceForRaceType('ultra')).toBeNull();
-    expect(distanceForRaceType('outro')).toBeNull();
+  it('mostra "X km" para as restantes distâncias fixas', () => {
+    for (const opt of RACE_DISTANCE_OPTIONS) {
+      if (opt.km === 21.0975 || opt.km === 42.195) continue;
+      expect(raceDistanceLabel(opt.km)).toBe(opt.label);
+    }
+  });
+
+  it('cai para "X km" numa distância fora da lista fixa', () => {
+    expect(raceDistanceLabel(12.5)).toBe('12.5 km');
+  });
+
+  it('devolve vazio sem distância', () => {
+    expect(raceDistanceLabel(null)).toBe('');
   });
 });

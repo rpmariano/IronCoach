@@ -85,7 +85,7 @@ export default function RunCalendar({ onNewRun }) {
   };
 
   if (editingRunId) {
-    return <RunRegistration onClose={() => setEditingRunId(null)} initialMode="corrida" runIdToEdit={editingRunId} />;
+    return <RunRegistration onClose={() => setEditingRunId(null)} runIdToEdit={editingRunId} />;
   }
 
   return (

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { ImagePlus, X, Trash2, Check, Loader2, Sparkles, PencilLine, Plus } from 'lucide-react';
+import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace, RACE_TYPES, distanceForRaceType } from '../../utils/run';
+import { parseDurationToSeconds, formatDuration } from '../../utils/run';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -37,9 +37,9 @@ const RUN_TRAINING_TYPES = [
 
 const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'subidas']);
 
-/* Idem para RACE_TYPE_KEYS/LABELS — usado só no detalhe de competição
-   (runs.details.race_type), não confundir com o RACE_TYPES mais abaixo, que
-   é da Agenda de Provas (tabela race_events, sem ligação ao analyze-run). */
+/* Só o detalhe de competição de uma corrida já feita (runs.details.race_type)
+   — não confundir com o tipo de prova da Agenda (tabela race_events, editada
+   em RunAgenda.jsx), que é um conceito diferente e sem ligação a esta lista. */
 const COMPLETED_RACE_TYPES = [
   { key: 'estrada', label: 'Estrada' },
   { key: 'trail', label: 'Trail' },
@@ -60,10 +60,11 @@ function todayISO() {
 // Convert "43m" or "37:57" or "1:11:26" to seconds
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
-export default function RunRegistration({ onClose, initialMode = 'corrida', dateIso = null, eventIdToEdit = null, runIdToEdit = null }) {
-  const { profile, runs, raceEvents, setRuns, setRaceEvents } = useAppStore();
-  const [mode, setMode] = useState(initialMode); // 'corrida' (runs table) or 'prova' (raceEvents table)
-  
+// A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
+// RunAgenda.jsx — este componente só regista corridas (tabela runs).
+export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
+  const { profile, runs, setRuns } = useAppStore();
+
   // --- RUNS STATE ---
   const [runKind, setRunKind] = useState('treino'); // 'treino' | 'competicao'
   const [runTrainingType, setRunTrainingType] = useState('continuo');
@@ -103,19 +104,6 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
   // isso não há risco de o utilizador preencher os dois em paralelo.
   const [entryMethod, setEntryMethod] = useState('foto'); // 'foto' | 'manual'
   
-  // --- PROVAS (AGENDA) STATE ---
-  const [raceDate, setRaceDate] = useState(dateIso || todayISO());
-  const [raceType, setRaceType] = useState('5k');
-  const [raceName, setRaceName] = useState('');
-  const [raceLocation, setRaceLocation] = useState('');
-  const [raceTargetTime, setRaceTargetTime] = useState('');
-  const [raceTargetPace, setRaceTargetPace] = useState('');
-  // Obrigatória: sem distância o coach não calcula ritmo-alvo, taper nem
-  // viabilidade do objetivo. A BD reforça isto com NOT NULL.
-  const [raceDistanceKm, setRaceDistanceKm] = useState('');
-  const [raceEquipment, setRaceEquipment] = useState('');
-  const [raceNotes, setRaceNotes] = useState('');
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Partilhado pelos dois caminhos de Corrida (foto e manual) — só um dos
   // dois blocos está visível a cada vez (ver entryMethod), por isso já não
@@ -124,22 +112,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
 
   // Load existing data if editing
   useEffect(() => {
-    if (initialMode === 'prova' && eventIdToEdit) {
-      const ev = raceEvents.find(e => e.id === eventIdToEdit);
-      if (ev) {
-        setRaceDate(ev.date || todayISO());
-        setRaceType(ev.race_type || '5k');
-        setRaceName(ev.name || '');
-        setRaceLocation(ev.location || '');
-        // target_time_seconds é a coluna computável; target_time (texto livre)
-        // fica como fallback para provas criadas antes da migração.
-        setRaceTargetTime(ev.target_time_seconds ? formatDuration(ev.target_time_seconds) : (ev.target_time || ''));
-        setRaceTargetPace(formatPace(ev.target_pace_seconds_per_km));
-        setRaceDistanceKm(ev.distance_km != null ? String(ev.distance_km) : '');
-        setRaceEquipment(ev.equipment || '');
-        setRaceNotes(ev.notes || '');
-      }
-    } else if (initialMode === 'corrida' && runIdToEdit) {
+    if (runIdToEdit) {
       const r = runs.find(r => r.id === runIdToEdit);
       if (r) {
         // Editar é sempre pelos campos — a IA por foto é só para criar (e,
@@ -178,7 +151,7 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
         }
       }
     }
-  }, [initialMode, eventIdToEdit, runIdToEdit, raceEvents, runs]);
+  }, [runIdToEdit, runs]);
 
   // Handle Photo Selection — comprime e normaliza para JPEG antes de guardar
   // (ver src/lib/image.js); o .base64 resultante é o que vai no pedido de
@@ -369,59 +342,6 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // ----------------------------------
-  // SAVE PROVA (RaceEvents Table)
-  // ----------------------------------
-  const handleSaveProva = async () => {
-    setIsSubmitting(true);
-    setErrorMsg('');
-
-    const distanceKm = parseFloat(raceDistanceKm.toString().replace(',', '.'));
-    if (!distanceKm || distanceKm <= 0) {
-      setErrorMsg('Indica a distância da prova — é o que permite ao coach calcular ritmo-alvo e taper.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const targetTimeSecs = parseDurationToSeconds(raceTargetTime);
-
-      const payload = {
-        user_id: profile.id,
-        date: raceDate,
-        race_type: raceType,
-        name: raceName.trim(),
-        location: raceLocation.trim() || null,
-        distance_km: distanceKm,
-        // Ambas: o texto preserva o que o utilizador escreveu (e é o que o
-        // RunAgenda mostra); os segundos são o que o coach consegue calcular.
-        target_time: raceTargetTime.trim() || null,
-        target_time_seconds: targetTimeSecs,
-        target_pace_seconds_per_km: parsePaceToSeconds(raceTargetPace),
-        equipment: raceEquipment.trim() || null,
-        notes: raceNotes.trim() || null,
-        status: 'agendada'
-      };
-
-      if (eventIdToEdit) {
-        const { error } = await supabase.from('race_events').update(payload).eq('id', eventIdToEdit);
-        if (error) throw error;
-        setRaceEvents(raceEvents.map(e => e.id === eventIdToEdit ? { ...e, ...payload } : e));
-      } else {
-        const { data, error } = await supabase.from('race_events').insert([payload]).select().single();
-        if (error) throw error;
-        setRaceEvents([...raceEvents, data]);
-      }
-
-      onClose();
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -812,138 +732,9 @@ export default function RunRegistration({ onClose, initialMode = 'corrida', date
     );
   };
 
-  // ----------------------------------
-  // RENDER PROVA (Race Events)
-  // ----------------------------------
-  const renderProvaForm = () => {
-    return (
-      <div className="space-y-4 fade-in">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Data da prova</label>
-            <input 
-              type="date" 
-              value={raceDate} 
-              onChange={e => setRaceDate(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Tipo de prova</label>
-            <select
-              value={raceType}
-              onChange={e => {
-                const key = e.target.value;
-                setRaceType(key);
-                // Tipos como '10k' determinam a distância; 'estrada'/'trail'
-                // não, e aí fica ao utilizador preenchê-la.
-                const implied = distanceForRaceType(key);
-                if (implied != null) setRaceDistanceKm(String(implied));
-              }}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-            >
-              {RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[11px] text-slate-500 mb-1 block">Distância (km)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            inputMode="decimal"
-            placeholder="Ex: 21.0975"
-            value={raceDistanceKm}
-            onChange={e => setRaceDistanceKm(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-
-        <div>
-          <label className="text-[11px] text-slate-500 mb-1 block">Nome da Prova</label>
-          <input 
-            type="text" 
-            placeholder="Ex: Meia Maratona de Lisboa" 
-            value={raceName} 
-            onChange={e => setRaceName(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
-          />
-        </div>
-
-        <div>
-          <label className="text-[11px] text-slate-500 mb-1 block">Localização (Opcional)</label>
-          <input 
-            type="text" 
-            placeholder="Ex: Ponte 25 de Abril" 
-            value={raceLocation} 
-            onChange={e => setRaceLocation(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]" 
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Tempo Alvo (Opcional)</label>
-            <input
-              type="text"
-              placeholder="Ex: 1:45:00"
-              value={raceTargetTime}
-              onChange={e => setRaceTargetTime(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Ritmo Alvo (Opcional)</label>
-            <input
-              type="text"
-              placeholder="Ex: 5.20 /km"
-              value={raceTargetPace}
-              onChange={e => setRaceTargetPace(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="text-[11px] text-slate-500 mb-1 block">Sapatilhas (Opcional)</label>
-          <input
-            type="text"
-            placeholder="Ex: Vaporfly"
-            value={raceEquipment}
-            onChange={e => setRaceEquipment(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-
-        <div>
-          <label className="text-[11px] text-slate-500 mb-1 block">Notas (Opcional)</label>
-          <textarea 
-            rows="2" 
-            placeholder="Logística, nutrição planeada..." 
-            value={raceNotes} 
-            onChange={e => setRaceNotes(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--accent)] resize-none" 
-          />
-        </div>
-
-        {errorMsg && <p className="text-red-500 text-xs text-center mt-2 font-medium">{errorMsg}</p>}
-
-        <button 
-          onClick={handleSaveProva}
-          disabled={isSubmitting || !raceName.trim()}
-          className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg disabled:opacity-50 mt-2"
-        >
-          {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> A guardar...</> : <><Check className="w-5 h-5" /> Agendar Prova</>}
-        </button>
-      </div>
-    );
-  };
-
   return (
     <div className="w-full max-w-lg mx-auto pb-10">
-      {mode === 'corrida' ? renderCorridaForm() : renderProvaForm()}
+      {renderCorridaForm()}
     </div>
   );
 }

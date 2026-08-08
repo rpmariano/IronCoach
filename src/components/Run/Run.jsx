@@ -55,7 +55,7 @@ export default function Run() {
       </div>
 
       {openCreationMode === 'run' ? (
-        <RunRegistration onClose={() => setOpenCreationMode(null)} initialMode="corrida" dateIso={fabDate} />
+        <RunRegistration onClose={() => setOpenCreationMode(null)} dateIso={fabDate} />
       ) : (
         <>
           {activeSubTab === 'dashboard' && <RunDashboard />}
