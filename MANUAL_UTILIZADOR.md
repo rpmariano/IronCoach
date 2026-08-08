@@ -24,7 +24,7 @@ Bem-vindo ao **IronHealth v2**, a plataforma inteligente tudo-em-um desenvolvida
 O **IronHealth** assenta em três pilares fundamentais:
 
 1. **Registo com Fricção Mínima (Multimodal por Foto/Print em 1º Lugar)**:
-   Em vez de formulários extensos, o utilizador pode simplesmente carregar uma foto da refeição, um print da app de corrida (Strava, Garmin, Nike Run Club), uma captura da balança inteligente (Renpho Health) ou do plano/ecrã de ginásio. A IA Gemini 3.6/3.0 extrai e valida automaticamente os dados estruturados.
+   Em vez de formulários extensos, o utilizador pode simplesmente carregar uma foto da refeição, um print da app de corrida (Strava, Garmin, Nike Run Club), uma captura da balança inteligente (Renpho Health) ou do plano/ecrã de ginásio. A IA Gemini Flash (latest) extrai e valida automaticamente os dados estruturados.
 2. **Dados Centralizados e Unificados**:
    Todos os módulos partilham a mesma base de dados em **Supabase Postgres**. Não existem silos entre nutrição, treino de força, corrida e composição corporal.
 3. **Coach IA Proativo em Português de Portugal (`pt-PT`)**:
@@ -42,8 +42,8 @@ flowchart TD
     B -->|Caminho Principal| C[Upload de Fotos / Capturas de Ecrã]
     B -->|Alternativa| D[Introdução Manual de Dados]
     C --> E[Edge Functions Supabase + Gemini IA]
-    E -->|JSON Estruturado| F[(Base de Dados Supabase)]
-    D --> F
+    D --> E
+    E -->|JSON / Dados Gravados| F[(Base de Dados Supabase)]
     F --> G[Dashboards em Tempo Real]
     F --> H[Coach IA Contextualizado]
 ```
@@ -57,7 +57,7 @@ sequenceDiagram
     participant C as Cliente App (Coach)
     participant EF as Edge Function (coach-chat)
     participant DB as Supabase Postgres
-    participant G as Gemini 3.6/3.0 IA
+    participant G as Gemini Flash (latest)
 
     U->>C: Envia mensagem no Chat
     C->>EF: Invoca coach-chat com JWT do Utilizador
@@ -91,7 +91,7 @@ O ecrã **Início** funciona como o painel central de comando do atleta.
 | **Consumo Calórico Fixo** | Acumulado do dia | Não | Cartão fixo no topo. Compara o total de kcal ingeridas hoje com a meta do perfil (`calorie_goal`). |
 | **Tracker de Hidratação** | Registo diário (`water_logs`) | Sim | Registo de consumo de água em mililitros. Presets rápidos de `200ml`, `250ml`, `300ml` e `500ml` ou introdução manual. |
 | **Meta de Água** | Perfil (`water_goal_ml`) | Não | Valor por defeito de `2000 ml` se não definido. |
-| **Layout Personalizável** | Perfil (`home_layout`) | Sim | Array de strings que define a ordem e visibilidade dos cartões dinâmicos. |
+| **Layout Personalizável** | Cliente App (`homeLayout`) | Sim | Configuração de estado no Zustand que define a ordem e visibilidade dos cartões dinâmicos. |
 
 ### 🧮 Fórmulas de Cálculo e Lógicas do Dashboard
 
@@ -125,7 +125,7 @@ O módulo de Nutrição gere a ingestão calórica, macronutrientes e micronutri
 * **Fotos (`meal_photos`)**: Até 6 fotos por refeição.
 * **Componentes Nutricionais por Item (`meal_items`)**:
   - Nome do alimento (`name`) — Texto obrigatório.
-  - Gramagem (`quantity_grams`) — Numérico positivo (g).
+  - Gramagem (`quantity_grams`) — Numérico positivo (g) (opcional).
   - Valores por 100g: `calories_per_100g`, `protein_per_100g`, `carbs_per_100g`, `fat_per_100g`, `fiber_per_100g`, `sugar_per_100g`, `sodium_per_100g`, `calcium_per_100g`, `iron_per_100g`, `vit_c_per_100g`, `potassium_per_100g`.
 
 ### ⚡ Regra Nutricional por 100g (Cálculo no Cliente)
@@ -134,8 +134,10 @@ Para permitir a alteração instantânea da porção pelo utilizador sem necessi
 
 $$\text{Valor Finais} = \frac{\text{Quantidade em gramas}}{100} \times \text{Valor por 100g}$$
 
-### 📅 Indicadores do Calendário de Nutrição
-No Calendário Nutricional, um dia fica assinalado com cor de alerta sempre que o consumo acumulado ultrapassa alguma das metas diárias de macronutrientes (`calorie_goal`, `protein_goal`, `carbs_goal`, `fat_goal`).
+### 📅 Indicadores do Calendário de Nutrição:
+Cada dia mostra até dois indicadores:
+- **Ponto de estado nutricional**: **verde** quando as metas diárias de calorias, hidratos e gorduras não são excedidas *e* a meta de proteína é atingida/ultrapassada; **vermelho** se qualquer uma das três primeiras for excedida *ou* a proteína ficar abaixo da meta; **cinzento** se não houver refeições nesse dia.
+- **Ponto azul-claro** (abaixo do anterior): Mostrado nos dias em que a soma dos registos de água atinge/ultrapassa a meta diária (`water_goal_ml`).
 
 ---
 
@@ -197,8 +199,8 @@ Ao carregar prints da app Renpho, a IA Gemini extrai e valida os seguintes 13 in
 
 ### ⭕ Regra dos Anéis de Progresso e Calendário
 Cada métrica possui uma meta associada (`goal_*`).
-* **Anel de Progresso**: Mostra a percentagem de aproximação à meta individual.
-* **Calendário do Corpo**: Um dia fica marcado no calendário quando alguma métrica com meta definida **se afastou** da meta em comparação com a avaliação anterior.
+* **Anel de Progresso**: Mostra graficamente a aproximação à meta individual.
+* **Calendário do Corpo**: Um dia fica assinalado com um ponto verde nos dias com avaliação física registada, cinzento nos restantes (consistente com os outros módulos).
 
 ---
 
@@ -210,7 +212,7 @@ Módulo técnico especializado para treinos de corrida e preparação para compe
 
 ### 🏃 Tipos de Evento e Categorias
 
-1. **Tipos de Evento (`kind`)**: `simples`, `treino`, `competicao`.
+1. **Tipos de Evento (`kind`)**: `treino`, `competicao`.
 2. **Categorias de Treino (`training_type`)**:
    - `continuo` (Contínuo)
    - `longo` (Treino Longo)
@@ -223,7 +225,7 @@ Módulo técnico especializado para treinos de corrida e preparação para compe
    - `tecnico` (Exercícios Técnicos de Corrida)
 3. **Escala RPE (`exertion`)**: Classificação de 1 a 10 da perceção subjetiva de esforço.
 4. **Agenda de Provas (`race_events`)**:
-   - Campos: `date` (Data), `name` (Nome da Prova), `race_type` (`estrada`, `trail`, `ultra`, `5k`, `10k`, `21k`, `42k`, `outro`), `location` (Local), `target_time` (Tempo-Alvo), `status` (`agendada` / `concluida`).
+   - Campos: `date` (Data), `name` (Nome da Prova), `race_type` (`estrada` ou `trail`), `distance_km` (Distância em km), `target_time_seconds` (Tempo-Alvo em segundos), `target_pace_seconds_per_km` (Ritmo-Alvo em seg/km), `elevation_gain_m` (Desnível Positivo em metros), `experience_level` (Nível da Prova: iniciante / básico / médio / avançado), `website` (URL da Prova).
    - Contagem Decrescente: Calculada no cliente e enviada ao Coach IA em dias restantes.
 
 ---
@@ -273,9 +275,13 @@ Através da função `suggest-goals` no Perfil, o Coach analisa todo o históric
 ## 9. Perfil, Definições & Painel Admin
 
 ### 🎨 Personalização do Perfil
-* **Biometria**: `height_cm`, `weight_kg`, `gender` (`M`/`F`).
-* **Cores de Destaque (`accent_color`)**: 12 opções vibrantes (Laranja, Âmbar, Coral, Teal, Sky, Steel, Plum, Fuchsia, Pink, Green, Lime, Turquoise).
+* **Biometria**: `height_cm`, `weight_kg`, `gender` (`M`/`F`), `birth_date` (Data de nascimento, usada para o cálculo de idade e calibração de FC).
+* **Nível de Corredor**: `experience_level` (`iniciante`, `basico`, `medio`, `avancado`), calibrando regras do Coach e limiares.
 * **Contexto Pessoal (`coach_context`)**: Campo de texto livre enviado em todas as chamadas ao Coach (ex: *"Objetivo: Sub 1h40 na Meia Maratona"*).
+
+### 💾 Regra do Botão "Guardar"
+* Todas as edições de formulário no Perfil (tab Pessoal, Metas e Coach) são guardadas localmente. Nenhuma alteração é gravada na base de dados até que o utilizador carregue ativamente em "Guardar alterações".
+* Se o utilizador tentar mudar de aba, fechar a app ou terminar a sessão com alterações pendentes, é disparado um aviso de confirmação ("Tens alterações por gravar") bloqueando a navegação até ser tomada uma decisão.
 
 ### 🛠️ Monitorização & Custos de API (`app_logs`)
 O painel de Administrador (`is_admin = true`) regista todas as chamadas ao Gemini na tabela `app_logs`, armazenando `input_tokens` e `output_tokens` para calcular em tempo real os custos de utilização da API.

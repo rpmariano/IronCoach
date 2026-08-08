@@ -1,0 +1,150 @@
+#!/bin/sh
+# =============================================================================
+# IronHealth — Pre-Push Quality Gate
+# =============================================================================
+# Este hook corre automaticamente antes de cada `git push`.
+# Se qualquer verificação falhar, o push é bloqueado.
+#
+# Fluxo:
+#   1. Correr testes (Vitest)
+#   2. Verificar build (Vite)
+#   3. Se houver alterações em supabase/, avisar
+#
+# Para saltar o hook em emergência: git push --no-verify
+# =============================================================================
+
+set -e
+
+# Cores para output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+
+echo ""
+echo "${CYAN}╔══════════════════════════════════════════════════════════╗${NC}"
+echo "${CYAN}║${NC}  ${BOLD}🎯 IronHealth Quality Orchestrator — Pre-Push Gate${NC}     ${CYAN}║${NC}"
+echo "${CYAN}╚══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Guardar directório de trabalho
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Determinar o que mudou vs remote
+REMOTE="$1"
+URL="$2"
+
+# Ler os refs que estão a ser pushed
+CHANGED_FILES=""
+while read local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        # Nova branch — comparar com master/main
+        BASE=$(git merge-base HEAD origin/master 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~10")
+        CHANGED_FILES=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
+    else
+        CHANGED_FILES=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null || echo "")
+    fi
+done
+
+VERDICT="APROVADO"
+WARNINGS=""
+ERRORS=""
+
+# ─────────────────────────────────────────────────────────────
+# 1. TEST ENGINEER — Correr Vitest
+# ─────────────────────────────────────────────────────────────
+echo "${BLUE}🧪 [1/3] Test Engineer — A correr testes...${NC}"
+echo ""
+
+cd "$REPO_ROOT"
+if npx vitest run 2>&1; then
+    echo ""
+    echo "${GREEN}   ✅ Testes passaram${NC}"
+else
+    echo ""
+    echo "${RED}   ❌ Testes falharam!${NC}"
+    ERRORS="${ERRORS}\n  - Testes Vitest falharam"
+    VERDICT="BLOQUEADO"
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────
+# 2. PWA AUDITOR (parcial) — Verificar build
+# ─────────────────────────────────────────────────────────────
+echo "${BLUE}📱 [2/3] PWA Auditor — A verificar build...${NC}"
+echo ""
+
+cd "$REPO_ROOT"
+if npm run build 2>&1; then
+    echo ""
+    echo "${GREEN}   ✅ Build bem-sucedido${NC}"
+    # Limpar dist/ gerado pelo check (não queremos poluir o working tree)
+    rm -rf dist/
+else
+    echo ""
+    echo "${RED}   ❌ Build falhou!${NC}"
+    ERRORS="${ERRORS}\n  - Build Vite falhou"
+    VERDICT="BLOQUEADO"
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────
+# 3. SUPABASE GUARDIAN — Verificar alterações ao backend
+# ─────────────────────────────────────────────────────────────
+echo "${BLUE}🔐 [3/3] Supabase Guardian — A verificar alterações ao backend...${NC}"
+echo ""
+
+SUPABASE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '(^supabase/|\.sql$|src/lib/supabase|src/store/)' || true)
+
+if [ -n "$SUPABASE_CHANGES" ]; then
+    echo "${YELLOW}   ⚠️  Detetadas alterações ao backend Supabase:${NC}"
+    echo "$SUPABASE_CHANGES" | while read -r file; do
+        echo "${YELLOW}      → $file${NC}"
+    done
+    echo ""
+    echo "${YELLOW}   Lembra-te: NÃO existe BD de desenvolvimento separada.${NC}"
+    echo "${YELLOW}   Todas as alterações afetam PRODUÇÃO diretamente.${NC}"
+    WARNINGS="${WARNINGS}\n  - Alterações Supabase detetadas (revê RLS e migrações)"
+    if [ "$VERDICT" = "APROVADO" ]; then
+        VERDICT="APROVADO COM AVISOS"
+    fi
+else
+    echo "${GREEN}   ⏭️  Sem alterações ao backend — saltado${NC}"
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────
+# RELATÓRIO FINAL
+# ─────────────────────────────────────────────────────────────
+echo "${CYAN}══════════════════════════════════════════════════════════${NC}"
+
+if [ "$VERDICT" = "BLOQUEADO" ]; then
+    echo "${RED}${BOLD}  🔴 BLOQUEADO — Push cancelado${NC}"
+    echo "${RED}  Erros encontrados:${NC}"
+    echo -e "${RED}${ERRORS}${NC}"
+    if [ -n "$WARNINGS" ]; then
+        echo "${YELLOW}  Avisos:${NC}"
+        echo -e "${YELLOW}${WARNINGS}${NC}"
+    fi
+    echo ""
+    echo "${RED}  Corrige os erros acima e tenta novamente.${NC}"
+    echo "${RED}  Em emergência: git push --no-verify${NC}"
+    echo "${CYAN}══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    exit 1
+elif [ "$VERDICT" = "APROVADO COM AVISOS" ]; then
+    echo "${YELLOW}${BOLD}  🟡 APROVADO COM AVISOS — Push permitido${NC}"
+    echo "${YELLOW}  Avisos:${NC}"
+    echo -e "${YELLOW}${WARNINGS}${NC}"
+    echo "${CYAN}══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    exit 0
+else
+    echo "${GREEN}${BOLD}  🟢 APROVADO — Push permitido${NC}"
+    echo "${CYAN}══════════════════════════════════════════════════════════${NC}"
+    echo ""
+    exit 0
+fi

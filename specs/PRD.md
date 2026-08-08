@@ -40,6 +40,13 @@ A 2026-08-04 a produção ficou em branco porque o `index.html` do SPA foi servi
 - O `public/manifest.json` usa caminhos **relativos** (`start_url: "."`, ícones sem `/` inicial), o que funciona nas duas raízes. Mantê-lo assim.
 - Não é preciso fallback de 404: a navegação é estado do Zustand mais um parâmetro `?tab=`, não rotas por caminho.
 
+### 2.4. Infraestrutura de Qualidade e Agentes
+O projeto inclui um sistema de qualidade e auditoria automatizado na pasta `.agents/` e um Git hook pre-push em `.githooks/`:
+- **Agentes (`.agents/agents/`)**: `quality_orchestrator`, `test_engineer`, `supabase_guardian`, `pwa_auditor`, `a11y_checker`, `docs_keeper`, `spec_writer`, `pre_deploy_reviewer`.
+- **Skills (`.agents/skills/`)**: `vitest`, `supabase`, `accessibility`, `pwa-development`, `code-review`, `find-skills`.
+- **Hooks do Git (`.githooks/pre-push`)**: Executado automaticamente antes de cada `git push` para rodar os testes (`vitest`) e validar o build (`vite build`), bloqueando pushes em caso de falha.
+- **Regras (`.agents/rules/auto-agents.md`)**: Diretrizes para o assistente IA invocar agentes de forma proativa durante o desenvolvimento.
+
 ---
 
 ## 3. Módulos da Aplicação
@@ -133,7 +140,7 @@ O Coach deixa de ser um agente único e passa a ser **uma equipa de quatro**: tr
 #### 3.6.2. Doutrina — onde vive e o que é
 A **doutrina** é o conjunto de regras da casa que define como *este* coach se comporta, e é o que o distingue de uma conversa genérica com um LLM. Tem duas camadas: regras de comportamento (ex.: "cada afirmação ancorada num número", "sem louvor genérico") e **limiares de domínio** (ex.: percentagem máxima de aumento de volume semanal). Os modelos já sabem ciência do desporto — alimentá-los com manuais custa tokens e muda pouco; o que muda comportamento são regras curtas, opinativas e específicas.
 
-- **Local**: `src/coach-knowledge/` — um ficheiro `_comum.md` mais um por especialista e um para o responsável. Cada agente recebe só a sua doutrina e a comum.
+- **Local (Pendente de Implementação)**: `src/coach-knowledge/` — estrutura planeada para suportar um ficheiro `_comum.md` mais um por especialista e um para o responsável. A pasta e os ficheiros ainda não estão criados no codebase atual. Cada agente receberá apenas a sua doutrina e a comum.
 - **Não vai para o `sdd.md` nem para este PRD.** A doutrina é carregada em runtime e paga-se em tokens a cada chamada; documentos de arquitetura não podem ser injetados no prompt. Os ciclos de vida também diferem: a arquitetura muda raramente e por decisão, os limiares mudam sempre que a revisão de literatura os afinar.
 - As regras que hoje estão embutidas em strings dentro de `analyze-run/index.ts` são doutrina, e devem migrar para estes ficheiros — as genéricas para `_comum.md`, para valerem nos quatro.
 - **Fase de investigação**: os limiares saem da literatura, não de arbítrio. As perguntas a responder — todas exigindo valor numérico e fonte — estão em `specs/coach-investigacao.md`, que regista também que dados a app capta e quais faltam. O NotebookLM é ferramenta de **autoria** dessa destilação, não fonte em runtime: não tem API e nenhuma Edge Function o consegue consultar.
@@ -163,6 +170,13 @@ Com quatro agentes, mexer no prompt de um pode partir o comportamento de outro s
   - **Grava apenas os campos alterados.** O `UPDATE` inclui só as chaves que o utilizador mexeu. Enviar a linha inteira escrevia por cima de `water_last_activity_at` e `water_reminder_muted_date`, que o cron dos lembretes e o registo de água alteram do lado do servidor — um rascunho aberto há algum tempo reporia valores antigos e provocaria um lembrete a mais.
   - **Exceção**: o pedido de permissão de notificações push ao browser acontece de imediato ao ligar o interruptor dos lembretes, antes de gravar — é uma ação do browser, não um valor de formulário. Se o utilizador sair sem gravar, a subscrição fica criada mas os lembretes não ficam ativos no perfil.
 
+### 3.8. Biblioteca de Gráficos & Componentes Estruturais
+- **GraphicsLibrary (`src/components/GraphicsLibrary/`)**: Biblioteca interna contendo widgets gráficos reutilizáveis para dashboards (BarChart, DetailedLineChart, PremiumCalendar, RunningCard, ExerciseCard, HydrationSqueezeCard, etc.). Consumida ativamente pela aplicação (ao contrário do `design-system/`).
+- **Componentes do Sistema**:
+  - `Layout/Layout.jsx`: Gestão de navegação, cabeçalho e posicionamento de ecrãs.
+  - `Auth/Auth.jsx`: Ecrã e fluxo de autenticação via Google OAuth.
+  - `Admin/`: Painel para monitorização de custos de API (`app_logs`).
+
 ---
 
 ## 4. Diretrizes de Design & Consistência Visual
@@ -183,6 +197,7 @@ As cores devem utilizar rigorosamente as variáveis declaradas em `globals.css`:
 - **Ginásio**: Mapeado para `--mod-ginasio-from` / `--mod-ginasio-to`.
 - **Corrida**: Mapeado para `--mod-corrida-from` / `--mod-corrida-to`.
 - **Corpo**: Mapeado para `--mod-corpo-from` / `--mod-corpo-to`.
+- **Coach**: Mapeado para `--mod-coach-from` / `--mod-coach-to`.
 - **Círculos de ícone com glifo branco** (ex.: itens do menu FAB, cabeçalhos dos dashboards) usam o **gradiente** `linear-gradient(135deg, var(--mod-X-from), var(--mod-X-to))`. O tom `-to` isolado é demasiado claro para o glifo branco atingir os 3:1 exigidos a componentes de interface.
 
 ### 4.3. Biblioteca de Componentes (`design-system/`)

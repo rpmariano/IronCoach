@@ -23,12 +23,14 @@ Dois mecanismos igualmente centrais, não um só:
 
 ## Operating Context
 
-PWA instalável (Android/iOS), Supabase (Postgres + Edge Functions) como backend, API Gemini para leitura de prints/fotos, notificações push (Web Push) para lembretes de água. Módulos: Início (resumo), Nutrição (refeições + água), Ginásio (sessões, incl. aulas de grupo), Corpo (composição corporal), Corrida (registos + agenda de provas), Coach (chat com IA).
+PWA instalável (Android/iOS), Supabase (Postgres + Edge Functions) como backend, API Gemini para leitura de prints/fotos, notificações push (Web Push) para lembretes de água. Módulos: Início (resumo), Nutrição (refeições + água), Ginásio (sessões, incl. aulas de grupo), Corpo (composição corporal), Corrida (registos + agenda de provas), Coach (chat com IA) e GraphicsLibrary (biblioteca interna de widgets gráficos reutilizáveis).
 
 ## Capabilities and Constraints
 
-- Stack: React (Vite SPA), Tailwind CSS, Zustand para gestão de estado global, Lucide Icons, Chart.js, Supabase JS SDK.
-- Design System: o módulo `design-system/` existe como catálogo de componentes com Storybook, mas **não é consumido pela aplicação** — nenhum ficheiro de `src/` o importa. A fonte de verdade dos componentes é `src/components/`, com a consistência garantida pelos tokens CSS de `src/styles/globals.css`. Ver PRD secção 4.3 para a dívida técnica registada (incompatibilidade de versões de React e dimensão da migração).
+- Stack: React (Vite SPA), Tailwind CSS, Zustand para gestão de estado global, Lucide Icons, Chart.js, Supabase JS SDK. Testes unitários e de integração implementados com Vitest + Testing Library.
+- CI/CD & Qualidade: Pipeline automático via GitHub Actions (`deploy-pages.yml`) que executa testes e build antes de publicar a app em produção (GitHub Pages).
+- Infraestrutura de Agentes & Hooks: Sistema de qualidade automatizado em `.agents/` contendo 8 agentes especializados (`quality_orchestrator`, `test_engineer`, `supabase_guardian`, `pwa_auditor`, `a11y_checker`, `docs_keeper`, `spec_writer`, `pre_deploy_reviewer`) e 6 skills (`vitest`, `supabase`, `accessibility`, `pwa-development`, `code-review`, `find-skills`) para validações de código e documentação. Um Git hook de `pre-push` (`.githooks/pre-push`) bloqueia pushes que falhem nos testes ou compilação.
+- Design System: o módulo `design-system/` existe como catálogo de componentes com Storybook, mas **não é consumido pela aplicação** — nenhum ficheiro de `src/` o importa. A fonte de verdade dos componentes é `src/components/` (e a `GraphicsLibrary/` interna), com a consistência garantida pelos tokens CSS de `src/styles/globals.css`. Ver PRD secção 4.3 para a dívida técnica registada (incompatibilidade de versões de React e dimensão da migração).
 - Botões de Sistema & Ergonomia: Alvo tátil mínimo obrigatório de **44px × 44px**, superfícies neutras para botões de navegação/ações secundárias e botão flutuante (FAB) de 56px em creme (`var(--fab-bg)`, `#f3d5ab`) — decisão de marca deliberada, não usa `var(--accent)`.
 - Registo assistido por IA em 4 módulos (refeições, corridas, avaliações corporais, sessões de ginásio), sempre com alternativa de introdução manual.
 - Idioma da interface: português (pt-PT), sem alternativa de idioma implementada.

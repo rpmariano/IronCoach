@@ -1,39 +1,52 @@
-# Software Design Document (SDD) - Arquitetura de Inteligência Artificial do Coach (IronHealth)
+# Software Design Document (SDD) — Arquitetura de Inteligência Artificial do Coach (IronHealth)
 
-Este documento especifica o design da arquitetura, os limites de contexto, o fluxo de dados e as regras de tomada de decisão do **Coach de Inteligência Artificial** no ecossistema IronHealth.
+Este documento especifica o design da arquitetura, os limites de contexto, o fluxo de dados e as regras de tomada de decisão do **Coach de Inteligência Artificial** e das Edge Functions de análise no ecossistema IronHealth.
 
 ---
 
 ## 1. Visão Geral da Arquitetura do Coach
 
-O Coach de IA atua como o cérebro centralizador do utilizador, quebrando os silos tradicionais de informação. Ele tem acesso completo e simultâneo a **todos os 4 módulos funcionais** da aplicação, bem como ao histórico de conversação do próprio chat.
+O Coach de IA atua como o cérebro centralizador do utilizador, quebrando os silos tradicionais de informação. Ele baseia-se numa arquitetura de **equipa de 4 coaches** (3 especialistas e 1 coordenador principal) que operam em duas fases: a fase de escrita (análise de registos individuais via Edge Functions `analyze-*`) e a fase de leitura/conversação (chat geral via `coach-chat`).
 
 ```mermaid
 graph TD
     A[Utilizador / Chat ou Módulo] --> B[Interface do Utilizador]
-    B --> C[Supabase Edge Function: coach-chat / analyze]
+    B --> C[Supabase Edge Functions]
     C --> D[(Base de Dados Supabase)]
     D --> E[Módulo 1: Nutrição & Água]
     D --> F[Módulo 2: Corrida & Provas]
     D --> G[Módulo 3: Ginásio & Força]
     D --> H[Módulo 4: Corpo & Composição]
-    C --> I[Gemini 1.5 / Flash LLM]
+    C --> I[Gemini Flash LLM (alias latest)]
     I --> J[Análise Cruzada de Dados]
     J --> K[Recomendações Contextuais & Objetivos]
 ```
+
+### 1.1. As 8 Edge Functions do Supabase
+As seguintes Edge Functions em Deno/TypeScript compõem a inteligência da aplicação:
+
+1. **`coach-chat`**: Engine de conversação interativa que responde a perguntas e realiza análises cruzadas.
+2. **`analyze-meal`**: Analisa fotos/prints e descrições de refeições, devolvendo macros estimados em JSON.
+3. **`analyze-run`**: Analisa prints e dados de corrida (distância, tempo, pace, splits).
+4. **`analyze-gym`**: Analisa treinos de força (volume, repetições, carga) e aulas de grupo.
+5. **`analyze-body`**: Analisa avaliações físicas (peso, gordura, músculo da balança Renpho).
+6. **`suggest-goals`**: Gera sugestões de metas de nutrição e composição corporal no Perfil.
+7. **`send-water-reminders`**: Disparada por `pg_cron` para enviar lembretes push periódicos.
+8. **`save-push-subscription`**: Grava as subscrições Web Push do browser na base de dados.
 
 ---
 
 ## 2. Janelas de Histórico Analisadas por Módulo
 
-Para otimizar o consumo de tokens e fornecer contexto relevante de forma eficiente, a IA recebe por padrão as seguintes janelas de histórico imediato em cada chamada:
+Para otimizar o consumo de tokens e fornecer contexto relevante de forma eficiente, a IA recebe por padrão as seguintes janelas de histórico imediato em cada chamada do `coach-chat`:
 
 | Módulo | Janela de Histórico Padrão | Métricas Chave Incluídas |
 | :--- | :--- | :--- |
-| **Nutrição & Água** | Últimos **7 dias** completos + dia de hoje | Consumo calórico (kcal), gramas de proteínas, hidratos e gorduras, número de refeições diárias e percentagem da meta de hidratação atual. |
+| **Nutrição & Água** | Últimos **7 dias** completos + dia de hoje | Consumo calórico (kcal), gramas de proteínas, hidratos e gorduras, número de refeições diárias. |
+| **Hidratação** | Dia de hoje | Total de água consumido hoje (ml) vs. meta diária (`water_goal_ml`). |
 | **Corrida & Provas** | Últimos **30 dias** de corridas + **Todas** as provas futuras | Distância total (km), tempo de movimento, ritmo (pace), zonas de frequência cardíaca (Z1 a Z5), desnível, cadência, calorias e VO2 máx. Lista de eventos/provas agendados ordenados por data. |
 | **Ginásio & Força** | Últimos **30 dias** de sessões e aulas | Nome da sessão, grupo muscular trabalhado, volume total em kg (séries × repetições × carga), duração, calorias gastas, nível de esforço percebido (1-10) e tipo de sessão (força ou aula). |
-| **Corpo (Composição)** | Últimas **5 avaliações** corporais | Data, peso (kg), IMC, percentagem de gordura corporal, percentagem de músculo esquelético, gordura visceral/subcutânea e classificações/etiquetas de estado. |
+| **Corpo (Composição)** | Últimas **5 avaliações** corporais | Data, peso (kg), IMC, percentagem de gordura corporal, percentagem de músculo esquelético, gordura visceral/subcutânea e parecer estruturado do Coach (`ai_summary`). |
 
 ### 🔍 Extensão Dinâmica de Histórico (Tool Calling)
 Se o utilizador solicitar uma análise fora destas janelas (ex: *"Como estava o meu peso no início do ano?"* ou *"Compara a minha nutrição deste mês com a de há 3 meses"*), o Coach invoca automaticamente as seguintes ferramentas (*function calling*) do Deno/Supabase para consultar a base de dados:
@@ -50,12 +63,10 @@ O Coach adapta as suas respostas dinamicamente em função da **secção/módulo
 ### 🟢 3.1. Recomendações no Módulo de Nutrição
 * **Foco Principal**: Ajustes calóricos, balanço de macronutrientes, hidratação e timing de refeições.
 * **Comportamento**: A IA analisa o histórico alimentar recente (últimos 7 dias) e cruza-o com o desgaste energético dos treinos registados.
-* **Exemplo**: Se o utilizador estiver no módulo de Nutrição, as dicas priorizam fontes de proteína, reposição de glicogénio ou nível de hidratação atual em face do esforço físico.
 
 ### 🟣 3.2. Recomendações no Módulo de Corrida
 * **Foco Principal**: Gestão de volume de treino semanal, controlo de intensidade (zonas de ritmo e frequência cardíaca), descanso e prevenção de lesões.
 * **Comportamento**: A IA cruza o desempenho nas corridas com o cansaço acumulado das sessões de ginásio.
-* **Exemplo**: Alertas sobre ritmo excessivo em treinos de recuperação baseando-se na frequência cardíaca registada.
 
 ### 🟡 3.3. Recomendações no Módulo de Ginásio (Força/Aulas)
 * **Foco Principal**: Progressão de carga/volume, equilíbrio entre grupos musculares e recuperação neuromuscular.
@@ -85,9 +96,21 @@ Quando o utilizador interage diretamente no separador de **Chat com o Coach**, a
 
 ## 5. Alinhamento com os Objetivos do Utilizador (Orientação a Provas)
 
-A divisão e tomada de decisão de qualquer recomendação (nutricional, corrida ou força) é sempre **orientada a objetivos**, baseando-se nas datas das provas agendadas com enfoque prioritário na **próxima prova do calendário**:
+A tomada de decisão de qualquer recomendação (nutricional, corrida ou força) é sempre **orientada a objetivos**, baseando-se nas datas das provas agendadas com enfoque prioritário na **próxima prova do calendário**:
 
 1. **Preparação de Longo Prazo**: A IA ajusta as metas diárias de calorias/proteínas e o volume de corrida/força de forma a otimizar a composição corporal para a distância da prova.
 2. **Tapering (Última Semana)**: Redução automática recomendada de volume de corrida e de cargas no ginásio para dissipar a fadiga acumulada antes da prova.
 3. **Carbo-loading (Últimos 2-3 dias)**: Aconselhamento ativo para subida substancial da meta diária de hidratos de carbono (carbs) e ingestão de água, com treinos reduzidos ao mínimo.
 4. **Pós-Prova**: Recomendação de descanso ativo, nutrição regeneradora e suspensão temporária de restrições calóricas.
+
+---
+
+## 6. Parâmetros Operacionais e Limites
+
+Para manter a consistência e o controlo de custos, a Edge Function `coach-chat` respeita os seguintes parâmetros de configuração:
+
+* **Modelo LLM**: `gemini-flash-latest` (alias dinâmico mapeado para a versão mais recente do Gemini Flash).
+* **`MAX_HISTORY`**: Máximo de **30 mensagens** no histórico da conversação recente enviado à API.
+* **`MAX_MSG_LEN`**: Comprimento máximo da mensagem de entrada do utilizador limitado a **2000 caracteres**.
+* **`MAX_TOOL_ROUNDS`**: Limite de **4 interações** sucessivas de tool calling numa única chamada de API.
+* **`TIMEOUT_MS`**: Timeout de chamada à API Gemini configurado para **40000ms**.
