@@ -337,7 +337,7 @@ export default function RunAgenda() {
   const leaveModal = leavePrompt && (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="prova-leave-title">
       <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
-        <h2 id="prova-leave-title" className="text-sm font-semibold" style={{ color: '#fff' }}>Tens alterações por gravar</h2>
+        <h2 id="prova-leave-title" className="text-sm font-semibold">Tens alterações por gravar</h2>
         <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
           Se saíres agora, as alterações que fizeste nesta prova não ficam guardadas.
         </p>

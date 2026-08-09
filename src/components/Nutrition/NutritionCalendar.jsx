@@ -113,7 +113,7 @@ export default function NutritionCalendar({ onRegisterClick }) {
                     isSelected ? 'bg-neutral-900 shadow-md' :
                     'text-slate-600 hover:bg-slate-100'
                   }`}
-                  style={isSelected ? { color: '#fff' } : undefined}
+                  style={isSelected ? { color: '#0f172a' } : undefined}
                 >
                   <span className="leading-none">{format(date, 'd')}</span>
                   {/* Altura fixa para os dias sem ponto de água não saltarem. */}
