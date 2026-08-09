@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -67,19 +67,35 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData } = useAppStore();
   const isEditing = !!sessionIdToEdit;
 
+  // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
+  // no Início — ver Home.jsx e specs/plano-de-treino.md §5.2. Só um estado de
+  // ginásio, sem 'forca'/'aula' próprio no plano — assume-se 'forca' por
+  // omissão, o mais comum; o utilizador corrige aqui se for aula.
+  const completingPlanItemRef = useRef(
+    !sessionIdToEdit ? useAppStore.getState().planItemPrefill : null
+  );
+  const planItem = completingPlanItemRef.current?.kind === 'ginasio' ? completingPlanItemRef.current : null;
+
   // Comum aos dois caminhos
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(planItem?.planned_date || todayISO());
   const [kind, setKind] = useState('forca');
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(planItem?.categories || []);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [name, setName] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(planItem?.notes || '');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
   // Corrida/Nutrição/Corpo: só um dos dois blocos fica visível/clicável a
-  // cada vez, e as duas formas passam pelo Coach.
-  const [entryMethod, setEntryMethod] = useState('foto'); // 'foto' | 'manual'
+  // cada vez, e as duas formas passam pelo Coach. Vindo do plano, entra
+  // direto em manual — os campos já estão preenchidos.
+  const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Limpa o item do plano do store assim que foi consumido para os estados
+  // iniciais acima — nunca deve reaparecer numa próxima abertura "Novo Treino".
+  useEffect(() => {
+    if (completingPlanItemRef.current) useAppStore.getState().clearPlanItemPrefill();
+  }, []);
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
@@ -88,7 +104,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // Manual — métricas do relógio; séries/repetições/carga só se gerem ao
   // editar uma sessão já criada (ver exercises abaixo) — não fazem parte do
   // registo inicial (nem por foto, nem manual), tal como sempre foi.
-  const [durationStr, setDurationStr] = useState('');
+  const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
   const [calories, setCalories] = useState('');
   const [avgHr, setAvgHr] = useState('');
   const [maxHr, setMaxHr] = useState('');
@@ -244,6 +260,17 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       if (data?.error) throw new Error(data.error);
 
       setGymSessions([data.session, ...gymSessions]);
+
+      // Se esta sessão vem do plano, marca o item como concluído — a data
+      // usada é a do formulário, que pode ter sido alterada face ao
+      // planned_date (ver specs/plano-de-treino.md §4-§5.2).
+      if (completingPlanItemRef.current) {
+        await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
+          actualDate: date,
+          sessionId: data.session.id,
+        });
+      }
+
       onClose();
     } catch (err) {
       console.error(err);

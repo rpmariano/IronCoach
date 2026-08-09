@@ -534,91 +534,1283 @@ Nas perguntas **sem** 📊, colapsar as quatro linhas de nível numa só (`Valor
 
 ---
 
+## ✅ Decisões dos Blocos 0, 1 e 2 — TODAS FECHADAS (2026-08-09)
+
+As nove pendências acumuladas nos três blocos, todas decididas. **Os blocos 0,
+1 e 2 estão prontos para converter em doutrina.**
+
+### A. Schema — campos acrescentados
+
+**A1. ✅ Frequência cardíaca em repouso → `profiles.resting_hr_bpm`**
+Pedida de forma independente por **dois** usos não relacionados: a fórmula de
+Karvonen (2.2 #4, a mais defensável para zonas de FC) e o sinal #1 de sobreuso
+(2.4 #2).
+**Decisão**: campo no Perfil (tab Pessoal), a par de `birth_date`, `gender` e
+`experience_level` — não registo diário. Nullable: quando faltar, as zonas de
+FC caem para %FCmáx simples, sem reserva.
+
+**A2. ✅ Prioridade da prova → `race_events.race_priority`**
+O taper muda radicalmente: 10-21 dias para prova principal vs. 2-4 dias para
+prova secundária (2.3 #1).
+**Decisão**: acrescentar, com omissão `a` (prova principal) — o caso mais
+comum e o mais seguro se o utilizador não pensar no assunto.
+
+### B. Conflitos entre fontes
+
+**B1. ✅ Teto do treino longo, avançado (2.1 #4)** — resolvido por contexto
+Daniels 30-32 km/150 min é a regra geral; Pfitzinger 35-38 km/180 min é
+específico de preparação de maratona. Não é ruído, é âmbito diferente.
+**Decisão**: aplicar Pfitzinger quando a prova-alvo mais próxima for
+maratona/ultra, Daniels no resto.
+
+**B2. ✅ Recuperação pós-maratona, avançado (2.3 #2)** — mostrar a faixa
+Pfitzinger/Canova 10-14 dias vs. Daniels/Galloway 26 dias, sem contexto que
+explique a diferença.
+**Decisão**: **não arbitrar — apresentar a faixa 10-26 dias ao utilizador**,
+explicando que depende de como correu a prova e de como se sente. É a decisão
+mais honesta: o atleta tem informação que a app não tem (dor residual,
+qualidade do sono, se a prova foi a fundo ou controlada), e fingir um número
+único seria inventar precisão que as fontes não dão.
+- *Implicação para a doutrina*: o coach explica o intervalo e os fatores, não
+  emite um número. É o único ponto destes três blocos onde a doutrina
+  deliberadamente **não** dá uma resposta determinística.
+
+### C. Doutrina — posição por omissão
+
+**C1. ✅ Ultra para iniciante (Bloco 1 #1 vs #2)**
+Inconsistência interna da fonte: #1 diz "não recomendado", #2 dá números na
+mesma.
+**Decisão**: o aviso da #1 prevalece. A doutrina desaconselha fortemente; os
+números da #2 servem só para medir a que distância o atleta está desse
+patamar, nunca para o habilitar.
+
+**C2. ✅ Precedência das zonas de FC do relógio (2.2 #4)**
+A literatura diz que as zonas do relógio só mandam se calibradas por teste —
+mas um print não diz qual é.
+**Decisão**: preferir sempre o cálculo próprio (Tanaka + Karvonen quando
+houver `resting_hr_bpm`; %FCmáx quando não houver) sobre as zonas extraídas do
+print. Perguntar ao utilizador se calibrou fica para quando existir um ecrã de
+definições de treino.
+
+**C3. ✅ Regra de comentário sobre cadência (2.4 #1)**
+**Decisão**: comentar cadência **apenas** quando <155 spm sustentado, e mesmo
+aí sugerir "+5-10% sobre a tua cadência atual" — nunca um valor absoluto, e
+nunca "180 spm". Fora disso, não comentar: é ruído.
+
+### D. Âmbito
+
+**D1. ✅ Cobertura da deteção de lesão (2.4 #2)**
+**Decisão**: A1 primeiro (desbloqueia o sinal de FC em repouso, passando de 1
+para 2 sinais detetáveis de 5). Integração com wearable (Garmin/Strava), que
+desbloquearia HRV, degradação de cadência intra-sessão e assimetria de
+passada, fica como projeto próprio e futuro — não é âmbito desta fase.
+
+**D2. ✅ Volume em km ou em horas**
+A fonte (Bloco 0 #1) diz que horas/semana é a métrica preferível, por ser
+independente do ritmo.
+**Decisão**: usar **horas internamente** na doutrina e nos cálculos; **mostrar
+km ao utilizador**, que é o que lhe é familiar. Ambos deriváveis de `runs`
+(`distance_km` e `duration_seconds`).
+
+**D3. ✅ Banda de volume depende da distância-alvo**
+Bloco 0 #1: os limites sobem 15-20 km/semana a partir de básico se o objetivo
+for maratona.
+**Decisão**: usar a prova mais próxima em `race_events` para escolher a banda.
+O dado já existe — é só usá-lo.
+
+---
+
 ## Respostas registadas
 
-### Bloco 0 #1 — Critérios objetivos de separação de níveis
+### Bloco 0 — RESOLVIDO (terceira ronda, fontes canónicas)
+
+**As duas primeiras rondas usaram corpus genérico de treino (planos, artigos
+de blog) e produziam dispersão porque agregavam corredores de 5k com
+maratonistas na mesma categoria.** A terceira ronda foi à metodologia
+canónica (Daniels' Running Formula, Advanced Marathoning/Faster Road Racing
+de Pfitzinger, McMillan Running Standards, Lore of Running de Noakes) e
+resolveu a dispersão ao **padronizar a distância-alvo e usar volume temporal
+(h/semana) como métrica pace-independente**. Substitui por completo as duas
+rondas anteriores nas três perguntas do Bloco 0.
+
+**Decisão de produto confirmada**: mantêm-se os 4 níveis
+(`iniciante`/`basico`/`medio`/`avancado`) — a dispersão que fazia "básico"
+parecer indistinto de "iniciante" era um artefacto das fontes genéricas, não
+uma realidade do domínio. Com fontes canónicas, básico tem banda própria e
+clara em todos os critérios.
+
+#### #1 — Critérios objetivos por nível
 
 ```
 Pergunta:  Bloco 0 #1 — critérios objetivos por nível
-Iniciante: Frequência ≥3-4 sessões/semana. Ritmo de maratona (quando existir
-           histórico de prova) >4:30h. VO2max de referência ~54/50 ml/kg/min
-           (H/M) — sinal secundário, não pedido no onboarding.
-Básico:    Ritmo de maratona 3:45h-4:30h. VO2max ~62/56 ml/kg/min (H/M).
-           Sem dado de volume/frequência/anos próprio deste nível.
-Médio:     Ritmo de maratona 3:00h-3:45h. VO2max ~71/62 ml/kg/min (H/M).
-           Sem dado de volume/frequência/anos próprio deste nível.
-Avançado:  ≥2 anos de prática consistente. Ritmo de maratona <3:00h.
-           VO2max ~75/67 ml/kg/min (H/M).
-Condições: Ritmos de maratona assumem prova plana de estrada. VO2max medido
-           em teste incremental a 14 km/h em passadeira — não comparável a
-           estimativas de relógio sem ajuste. NENHUM valor de volume semanal,
-           corrida mais longa, frequência (fora do iniciante) ou anos de
-           prática (fora do avançado) foi encontrado com corte por nível —
-           o corpus é de planos de treino, não de classificação de corredores.
-Fonte:     Running economy (Wikipedia); Treino para Maratona — Performance
-           Running; Periodização para ultramaratona (Cristiano Fetter);
-           VO2 Max Chart by Age & Gender (ACSM + 15K Powertests)
-Confiança: MÉDIA nos números que existem (ritmo de maratona, VO2max);
-           SEM DADO nos critérios que o onboarding mais precisava
-           (volume, frequência fora do iniciante, anos, corrida mais longa)
+Iniciante: Volume 15-25 km/semana (ou 1,5-3,0 h/semana), média 4-8 semanas.
+           Corrida mais longa ≤5-8 km. Frequência 2-3 sessões/semana (últimos
+           30 dias). Anos de prática <0,5 (sem interrupções >1 mês). Pace 5k
+           ≥6:30 min/km (VDOT <30).
+Básico:    Volume 25-40 km/semana (ou 3,0-4,5 h/semana), média 4-8 semanas.
+           Corrida mais longa 8-12 km. Frequência 3-4 sessões/semana. Anos de
+           prática 0,5-1,5. Pace 5k 5:30-6:30 min/km (VDOT 30-38).
+Médio:     Volume 40-60 km/semana (ou 4,5-6,5 h/semana), média 8-12 semanas.
+           Corrida mais longa 15-21,1 km. Frequência 4-5 sessões/semana.
+           Anos de prática 1,5-3. Pace 5k 4:30-5:30 min/km (VDOT 38-50).
+Avançado:  Volume 60-85 km/semana para foco 10k/meia (75-110 km/semana para
+           maratona; ou 6,5-10,0+ h/semana), média do ciclo de pico 8-12
+           semanas. Corrida mais longa ≥21,1 a ≥42,2 km. Frequência 5-7
+           sessões/semana. Anos de prática >3. Pace 5k <4:30 min/km
+           (VDOT >50).
+Condições: Padronizado para provas de estrada 10k-Meia Maratona. Se o
+           objetivo principal for Maratona, os limites inferiores de volume
+           sobem 15-20 km/semana em todos os níveis a partir de Básico.
+           Volume em TEMPO (h/semana) é a métrica preferível — elimina a
+           distorção de um corredor lento precisar de mais tempo que um
+           rápido para o mesmo volume em km.
+Fonte:     Jack Daniels — Daniels' Running Formula 4th Ed (2021); Pete
+           Pfitzinger & Philip Latter — Faster Road Racing (2014) / Advanced
+           Marathoning 3rd Ed (2019); Greg McMillan — McMillan Running
+           Standards/VDOT (2023)
+Confiança: ALTA
 ```
 
-**Veredito**: insuficiente para desenhar o onboarding sozinho. Ritmo de maratona
-não serve de pergunta de onboarding — a maioria dos iniciantes nunca correu
-uma maratona, e são precisamente quem mais precisa de ser classificado. VO2max
-não é pedível a um utilizador (exige teste de laboratório); fica como sinal
-secundário para quando `runs.details.vo2_max` já existir no histórico (relógio),
-nunca como pergunta direta. Ver proposta de produto mais abaixo.
-
-### Bloco 0 #2 — Ponderação de critérios em contradição
+#### #2 — Ponderação de critérios em contradição
 
 ```
 Pergunta:  Bloco 0 #2 — que critério pesa mais quando se contradizem
-Valor:     NÃO ENCONTRADO para uma regra de desempate de classificação.
-Condições: A fonte não resolve a pergunta feita, mas responde a uma pergunta
-           adjacente e mais valiosa: o risco de lesão é guiado pela TAXA de
-           aumento de carga, não pelo volume absoluto nem pelos anos de
-           prática. Rácio de carga aguda:crónica (ACWR) seguro exige que o
-           aumento semanal de quilometragem não exceda 10% face à semana
-           anterior, independentemente do nível de partida.
-Fonte:     How to Prevent Running Injuries: The Evidence-Based Guide
-           (Runners Connect); Periodização para ultramaratona (C. Fetter)
-Confiança: BAIXA para a pergunta original (não encontrada); MÉDIA para o
-           achado adjacente do ACWR.
+Valor:     Hierarquia de segurança de 3 fatores, com peso:
+           - Teto de carga atual (50%): volume semanal médio (km ou h/semana,
+             4-8 semanas). Capacidade metabólica/aeróbica atual.
+           - Teto de tolerância estrutural (30%): anos de prática continuada.
+             Densidade óssea, adaptação de tendões, resistência a lesão por
+             overuse.
+           - Eficiência/intensidade (20%): pace recente a distância
+             conhecida (VDOT).
+           Regra de decisão: quando os critérios se contradizem, a
+           classificação final PARA PRESCRIÇÃO desce para o nível do
+           critério mais baixo em maturidade física — nunca o mais alto.
+           Exemplo dado pela fonte: 60 km/semana mas só 8 meses de prática
+           → classificar como "Básico" para efeitos de progressão de carga,
+           apesar de ter capacidade aeróbica de "Médio", para evitar lesão.
+Condições: Para algoritmos automáticos de triagem sem treinador presencial
+           — exatamente o nosso caso.
+Fonte:     Jack Daniels — Daniels' Running Formula (2021); Pete Pfitzinger —
+           Faster Road Racing (2014); Tim Noakes — Lore of Running 4th Ed
+           (2003)
+Confiança: ALTA
 ```
 
-**Redireciona para Corrida 2.1 #1** ("aumento máximo de volume semanal antes
-de o risco de lesão subir") — é aí que este valor pertence, não no Bloco 0. O
-limiar de 10%/semana é um primeiro dado real para essa pergunta; falta ainda
-saber se difere por nível (a fonte não distingue).
+Substitui o achado qualitativo da ronda anterior (mesma direção — volume
+pesa mais para capacidade, anos pesam mais para resiliência — mas agora com
+pesos explícitos e regra de decisão determinística). O limiar ACWR de uma
+ronda ainda anterior (aumento semanal ≤10%) mantém-se válido e continua a
+pertencer a **Corrida 2.1 #1**, não a este bloco.
 
-### Bloco 0 #3 — Perguntas de onboarding preditivas do nível
+#### #3 — Perguntas de onboarding preditivas do nível
 
 ```
 Pergunta:  Bloco 0 #3 — questionário curto de perfil
-Valor:     NÃO ENCONTRADO. O corpus não contém nenhum questionário de
-           autoclassificação de nível — só protocolos adjacentes sem uso
-           aqui (check-in de periodização, taxa de sudorese, teste de VO2max
-           laboratorial).
-Confiança: — (pergunta de produto, não de literatura; ver proposta abaixo)
+Valor:     5 perguntas, ordenadas por poder preditivo, com opções JÁ
+           MAPEADAS aos 4 níveis:
+           1. Volume semanal: "Em média, quantos km correu por semana nos
+              últimos 2 meses?" <20 / 20-35 / 35-60 / >60 km (janela 8 sem.)
+           2. Frequência: "Quantos dias por semana corre habitualmente?"
+              1-2 / 3 / 4-5 / 6-7 dias (janela 30 dias)
+           3. Distância máxima: "Qual foi a corrida mais longa sem parar
+              nos últimos 3 meses?" <5 / 5-10 / 10-21 / >21 km (janela 90 d.)
+           4. Consistência temporal: "Há quanto tempo corre semanalmente sem
+              interrupções >1 mês?" <6m / 6-18m / 1,5-3a / >3a
+           5. Ritmo de teste/prova: "Tempo num teste/prova recente de 5 km?"
+              >32:30 / 27:30-32:30 / 22:30-27:30 / <22:30 min (janela 6 m.)
+Condições: Para questionário curto de onboarding em app de treino.
+Fonte:     Greg McMillan — McMillan Running Standards (2023); Jack Daniels —
+           Daniels' Running Formula (2021)
+Confiança: ALTA
 ```
 
-**Isto não é uma lacuna a preencher com mais pesquisa — é uma decisão de
-produto.** Nenhuma literatura vai desenhar o formulário de onboarding por nós;
-isso é UX de app de fitness, não ciência do desporto. Proposta a validar:
+**O algoritmo de mapeamento que faltava está resolvido pela combinação #2+#3:**
+cada pergunta bucketiza diretamente para um dos 4 níveis (0-3); combinam-se os
+5 valores com os pesos de #2 (50% volume/frequência+distância como proxies de
+carga atual, 30% consistência temporal, 20% ritmo); o nível final desce para
+o critério de maturidade mais baixo em caso de conflito, nunca sobe. Deixa de
+ser uma decisão de produto em aberto — é a regra a implementar.
 
-| Pergunta ao utilizador | Aponta para |
-|---|---|
-| Há quanto tempo corres com regularidade? (nunca / <6 meses / 6m-2 anos / >2 anos) | avançado exige ≥2 anos (único corte que a literatura deu) |
-| Quantos treinos de corrida fazes por semana, tipicamente? (0-1 / 2-3 / 4-5 / 6+) | iniciante ≈3-4/semana (único corte que a literatura deu) |
-| Já correste alguma prova oficial? Se sim, qual foi o teu tempo? (campo livre, opcional) | cruza com as faixas de ritmo de maratona quando existir, sem penalizar quem nunca correu |
-| Consegues correr 30 minutos seguidos sem parar? (sim / não / às vezes) | corte prático para "iniciante" que nenhuma fonte deu, mas que qualquer treinador recreativo usa — sinaliza quem ainda está no método caminhada/corrida |
+**Nota de implementação, ainda válida**: as perguntas 1, 2 (aqui) e 3
+correspondem a volume/frequência/corrida mais longa, computáveis a partir de
+`runs` para quem já tem histórico na app — nesse caso servem para *sugerir*
+um valor pré-preenchido que o utilizador confirma ou corrige, não para
+perguntar do zero. A pergunta 4 (consistência) é autorrelato puro, sem
+equivalente nos dados. A pergunta 5 (ritmo de teste) é computável só se
+existir uma corrida de 5k no histórico ou em `race_events`.
 
-As duas últimas são preenchimento de bom senso de treino, não de uma fonte —
-marcadas como tal para não se confundirem com as respostas da investigação.
-**Por validar contigo antes de implementar**: a lógica de mapear respostas a
-um nível (ex.: quantas destas quatro precisam de bater para "avançado") ainda
-não está decidida.
+### Bloco 1 — Objetivo e viabilidade (registo)
+
+**Resposta forte, fontes canónicas (Daniels, Pfitzinger, Higdon, Koop, McMillan,
+Noakes, Fitzgerald), confiança ALTA em tudo.** É o suficiente para implementar
+a flag `objetivo_inviavel` a sério — o aviso de maior valor do coach.
+
+#### #1 — Semanas mínimas de preparação por distância
+
+```
+Pergunta:  Bloco 1 #1 — semanas de bloco de treino por distância, por nível
+Iniciante: 5k 6-10 sem · 10k 10-14 sem · Meia 16-20 sem · Maratona 24-30 sem
+           (desaconselhada sem base sólida) · Ultra não recomendado (>30 sem
+           se tentado)
+Básico:    5k 6-8 sem · 10k 8-12 sem · Meia 12-16 sem · Maratona 18-24 sem ·
+           Ultra 24-30 sem
+Médio:     5k 4-6 sem · 10k 6-8 sem · Meia 10-12 sem · Maratona 14-18 sem ·
+           Ultra 18-24 sem
+Avançado:  5k 4-6 sem · 10k 4-6 sem · Meia 8-10 sem · Maratona 12-16 sem ·
+           Ultra 14-18 sem
+Condições: Pressupõe o volume semanal pré-requisito (#2) já cumprido ANTES da
+           primeira semana deste bloco — os dois números somam-se, não se
+           substituem. Não se aplica a atletas em recuperação de lesão
+           ortopédica nem com interrupção >3 semanas no último mês.
+Fonte:     Daniels' Running Formula 4th Ed (2021); Faster Road Racing (2014)
+           / Advanced Marathoning 3rd Ed (2019); Hal Higdon Training
+           Programs (2021); Training Essentials for Ultrarunning 2nd Ed
+           (Koop, 2021)
+Confiança: ALTA
+```
+
+#### #2 — Volume semanal pré-requisito por distância
+
+```
+Pergunta:  Bloco 1 #2 — volume de base exigido antes do bloco, por nível
+Iniciante: 5k 10-15 km/sem ≥4 sem · 10k 15-25 ≥6 sem · Meia 25-30 ≥8 sem ·
+           Maratona 35-40 ≥12 sem · Ultra 45-50 ≥16 sem
+Básico:    5k 15-20 ≥4 sem · 10k 25-30 ≥4 sem · Meia 35-40 ≥6 sem ·
+           Maratona 45-55 ≥8 sem · Ultra 55-65 ≥12 sem
+Médio:     5k 25-30 ≥3 sem · 10k 35-40 ≥4 sem · Meia 45-55 ≥6 sem ·
+           Maratona 60-70 ≥8 sem · Ultra 70-85 ≥10 sem
+Avançado:  5k 35-45 ≥3 sem · 10k 45-60 ≥4 sem · Meia 60-75 ≥4 sem ·
+           Maratona 75-95 ≥6 sem · Ultra 90-110+ ≥8 sem
+Condições: ≥80% do volume pré-requisito em Zona 1/2, sem variações >10%/
+           semana durante a janela — a mesma regra ACWR já registada em
+           Bloco 0 #2 / Corrida 2.1 #1.
+Fonte:     Faster Road Racing (2014) & Advanced Marathoning (2019),
+           Pfitzinger; Daniels' Running Formula (2021); Training Essentials
+           for Ultrarunning (Koop, 2021)
+Confiança: ALTA
+```
+
+**Nota**: este pré-requisito é *por distância-alvo*, não o volume geral do
+nível (Bloco 0 #1) — por desenho, é sempre ≤ ao volume geral desse nível,
+exceto no topo (maratona/ultra em avançado, onde pode exceder a banda geral,
+porque é volume de pico específico do ciclo, não volume sustentado o ano
+todo). Não é contradição, são perguntas diferentes.
+
+⚠️ **Inconsistência interna da própria fonte, a resolver na doutrina**: a #1
+diz que ultra "não é recomendado" para iniciante, mas a #2 dá-lhe números na
+mesma (45-50 km/semana, ≥16 semanas). Proposta: o aviso da #1 prevalece — a
+doutrina bloqueia/desaconselha fortemente ultra para iniciante, e os números
+da #2 servem só para medir *a que distância está* desse patamar, nunca para
+o habilitar.
+
+#### #3 — Ritmo de melhoria realista por bloco de treino
+
+```
+Pergunta:  Bloco 1 #3 — melhoria esperada no tempo de prova, por nível
+Iniciante: 5-15% de redução (≈15-45 seg/km), bloco de 8-12 semanas
+Básico:    3-5% (≈10-20 seg/km, +1 a +2 VDOT), bloco de 8-12 semanas
+Médio:     1,5-3% (≈5-10 seg/km, +1 VDOT), bloco de 10-16 semanas
+Avançado:  0,5-1,5% (≈2-5 seg/km, +0,5 a +1 VDOT), bloco de 12-16 semanas
+Condições: Sem alteração drástica de peso/saúde durante o ciclo. O limite
+           superior da faixa aplica-se a quem faz o primeiro programa
+           estruturado de intervalado dentro do respetivo nível.
+Fonte:     Daniels' Running Formula 4th Ed (2021); McMillan Running
+           Standards (2023); Lore of Running 4th Ed (Noakes, 2003)
+Confiança: ALTA
+```
+
+#### #4 — Objetivo ambicioso vs. irrealista
+
+```
+Pergunta:  Bloco 1 #4 — corte entre exigente e desaconselhável
+Valor:     Ambicioso mas alcançável: 1,0-3,0% de melhoria (+1 VDOT) face ao
+           desempenho testado nos últimos 30-60 dias, num bloco de 8-12
+           semanas. Irrealista/desaconselhável: >5,0% de melhoria (+2 VDOT)
+           no mesmo ciclo, sem alteração substancial de composição corporal.
+Condições: Assume composição corporal estável. NÃO SE APLICA a iniciantes
+           nos primeiros 6 meses — aí, melhorias >5% são adaptação
+           neuromuscular normal, não sinal de objetivo arriscado. Ver #3:
+           a faixa de iniciante (5-15%) já reflete isto: a regra geral desta
+           pergunta e a faixa por nível da #3 não se contradizem, só se
+           aplicam a públicos diferentes — manter as duas juntas na doutrina,
+           nunca só a regra geral sem a exceção.
+Fonte:     Daniels' Running Formula (2021); McMillan Running Standards
+           (2023); 80/20 Running (Fitzgerald, 2014)
+Confiança: ALTA
+```
+
+#### #5 — Progressão natural de distâncias
+
+```
+Pergunta:  Bloco 1 #5 — sequência de distâncias e permanência mínima por nível
+Iniciante: 5k → 10k → Meia (maratona/ultra desaconselhados). ≥12-16 sem em
+           5k com ≥2-3 provas antes de subir a 10k; ≥16-24 sem em 10k com
+           ≥2 provas antes de subir a Meia.
+Básico:    5k/10k → Meia → Maratona. ≥8-12 sem por degrau, ≥1-2 provas
+           oficiais concluídas antes de transitar.
+Médio:     10k → Meia → Maratona/Ultra, sequência flexível. ≥1 ciclo
+           específico completo (10-16 sem) e ≥1 prova na distância inferior
+           nos últimos 6 meses.
+Avançado:  Livre — qualquer distância-alvo sem progressão linear obrigatória.
+           Só exige 1 ciclo específico de 12-18 semanas para a distância.
+Condições: Prevenção de lesão por sobrecarga óssea/tendinosa. Saltar a
+           permanência mínima correlaciona-se com mais lesões por overuse.
+Fonte:     Faster Road Racing (Pfitzinger, 2014); Daniels' Running Formula
+           (2021); Run Fast (Higdon, 2016)
+Confiança: ALTA
+```
+
+#### #6 — Compatibilidade entre perda de gordura e melhoria de performance
+
+```
+Pergunta:  Bloco 1 #6 — perda de gordura e performance em simultâneo
+Valor:     Compatíveis sob défice moderado: 200-500 kcal/dia (≤15% do GETD),
+           perda de 0,25-0,50 kg/semana (≤0,7% da massa corporal/semana),
+           proteína mantida em 1,6-2,2 g/kg/dia. Incompatíveis quando: défice
+           >500 kcal/dia (>20% GETD), perda >1,0% da massa/semana, gordura
+           corporal no piso fisiológico essencial (6-8% homens, 14-16%
+           mulheres), ou durante taper (últimas 3-4 semanas pré-prova).
+Condições: Aplica-se em fases de base/volume moderado. Não se aplica em
+           blocos de alta intensidade metabólica (VO2máx/capacidade
+           anaeróbica) nem no taper.
+Fonte:     Racing Weight (Fitzgerald, 2012); Sports Nutrition 3rd Ed
+           (Jeukendrup, 2018); Clinical Sports Nutrition 6th Ed (Burke, 2021)
+Confiança: ALTA
+```
+
+**Liga diretamente a Nutrição 4.1 #5 e 4.2** (défice calórico máximo, ritmo de
+perda de peso, piso de gordura) — mesma pergunta, respostas devem bater
+certo. Quando essas perguntas forem respondidas, cruzar os números: se
+divergirem das faixas daqui, é a mesma pergunta com respostas diferentes e
+precisa de reconciliação, não de duas respostas independentes na doutrina.
+
+### Bloco 2.1 — Corrida: carga e progressão (registo)
+
+Cinco perguntas, fontes canónicas (Gabbett, Daniels, Pfitzinger, Friel,
+McMillan, ACSM, Coyle), confiança ALTA em todas.
+
+#### #1 — Aumento máximo de volume e ACWR
+
+```
+Pergunta:  Corrida 2.1 #1 — aumento máximo semanal, por nível + ACWR
+Iniciante: ≤5-10%/semana (ou +2-3 km/semana absoluto), média 4 semanas
+Básico:    ≤10%/semana (ou +3-5 km/semana absoluto)
+Médio:     ≤10%/semana (ou +5-8 km/semana absoluto)
+Avançado:  ≤10%/semana (ou +8-10 km/semana absoluto, validado por ACWR)
+ACWR:      SEM DIFERENCIAÇÃO POR NÍVEL — fórmula e faixas de risco uniformes.
+           Carga aguda = últimos 7 dias; carga crónica = média móvel de 28
+           dias. Faixa segura 0,80-1,30 · risco acrescido 1,31-1,49 ·
+           perigo (risco exponencial) ≥1,50.
+Condições: Para volume com intensidade constante. Não se aplica quando
+           volume E intensidade (Z3-Z5) sobem na mesma semana.
+Fonte:     The training-injury prevention paradox (Gabbett, 2016); Daniels'
+           Running Formula (2021); Faster Road Racing (Pfitzinger, 2014)
+Confiança: ALTA
+```
+
+**Fecha o ciclo do Bloco 0 #2**: aquele registo tinha ficado com "falta saber
+se o limiar de 10%/semana difere por nível" — resposta: o teto percentual não
+difere (todos ≤10%, só o iniciante mais apertado a 5-10%), mas o teto
+**absoluto em km** difere muito (de +2-3 até +8-10 km/semana). Implementação
+real: usar os dois — o percentual como regra simples, o ACWR (aguda:crónica)
+como validação mais rigorosa quando há 4 semanas de histórico.
+
+#### #2 — Frequência semanal mínima e ótima
+
+```
+Pergunta:  Corrida 2.1 #2 — frequência de treino, por nível
+Iniciante: mínima 2-3 sessões/semana · ótima 3
+Básico:    mínima 3 · ótima 3-4
+Médio:     mínima 3-4 · ótima 4-5
+Avançado:  mínima 4-5 · ótima 5-7 (podendo incluir 1-2 dias bidiários)
+Condições: "Sessão" = corrida contínua/fracionada ≥20-30 min. Não conta
+           força nem treino cruzado.
+Fonte:     Daniels' Running Formula (2021); Advanced Marathoning 3rd Ed
+           (Pfitzinger, 2019); ACSM Guidelines 11th Ed (2021)
+Confiança: ALTA
+```
+
+Reforça, não contradiz, os números de frequência já registados em Bloco 0
+#1 — fonte independente a confirmar o mesmo intervalo.
+
+#### #3 — Periodicidade e redução da semana de descarga
+
+```
+Pergunta:  Corrida 2.1 #3 — descarga: de quanto em quanto tempo, que corte
+Iniciante: a cada 2-3 semanas · corte de 20-30% face ao pico anterior
+Básico:    a cada 3 semanas · corte de 20-25%
+Médio:     a cada 3-4 semanas · corte de 20-25%
+Avançado:  a cada 3-4 semanas (ciclos 3:1 ou 4:1) · corte de 15-20%
+           (mantendo intensidade dos treinos-chave)
+Condições: Corte aplica-se ao volume; intensidade dos treinos qualitativos
+           (Z3-Z5) mantém-se — reduz-se repetições/treino longo, não a
+           intensidade.
+Fonte:     The Triathlete's Training Bible 5th Ed (Friel, 2020); Faster
+           Road Racing (Pfitzinger, 2014); Daniels' Running Formula (2021)
+Confiança: ALTA
+```
+
+#### #4 — Percentagem e teto do treino longo
+
+```
+Pergunta:  Corrida 2.1 #4 — treino longo: % do volume semanal e teto absoluto
+Iniciante: 25-33% do volume · teto ≤10-12 km OU ≤75-90 min (o que vier primeiro)
+Básico:    25-30% · teto ≤16-18 km OU ≤105-120 min
+Médio:     25-30% · teto ≤25-28 km OU ≤150 min
+Avançado:  20-25% (raramente >30%) · teto 30-32 km/150 min (Daniels, regra
+           geral) OU 35-38 km/180 min (Pfitzinger, específico de preparação
+           de maratona)
+Condições: Para longos em estrada/plano. Em trail com D+ significativo, o
+           teto deve ser regulado por TEMPO, não por distância.
+Fonte:     Daniels' Running Formula 4th Ed (2021); Advanced Marathoning 3rd
+           Ed (Pfitzinger, 2019); McMillan Running Standards (2023)
+Confiança: ALTA
+```
+
+**O "conflito" do avançado não é ruído, é contexto**: Daniels dá a regra
+geral, Pfitzinger dá o número específico para quem prepara maratona. Proposta:
+usar o teto de Pfitzinger quando `race_events` mais próxima for maratona, o
+de Daniels caso contrário — não uma escolha arbitrária entre os dois.
+
+**Liga a Corrida 2.3 #13** (fator de conversão D+↔distância plana, ainda em
+aberto) — é essa resposta que vai permitir aplicar esta regra do treino longo
+a corridas de trail, hoje só coberta para estrada/plano.
+
+#### #5 — Redução e regresso após interrupção
+
+```
+Pergunta:  Corrida 2.1 #5 — quanto reduzir e quanto tempo para regressar
+Valor:     SEM DIFERENÇA POR NÍVEL — as tabelas de destreino assentam no
+           tempo cronológico parado, transversal a todos os níveis.
+           1 semana parado:  0% de corte, retoma a 100%; 1ª semana só Z1/Z2;
+                              regresso ao ponto anterior em 1 semana.
+           2 semanas parado: corte de 25% (retoma a 75%); perda de VO2max
+                              ~2-3%; regresso em 1-2 semanas.
+           4 semanas parado: corte de 50% na 1ª sem. (retoma 50%), 25% na
+                              2ª (retoma 75%); perda de VO2max ~4-6%;
+                              regresso em 3-4 semanas.
+           8+ semanas:       corte de 50-67% (retoma 33-50%), progressão
+                              +10%/semana; perda de VO2max ~8-16%; regresso
+                              em 6-12 semanas — regra prática do rácio 1:1
+                              entre tempo parado e tempo de reconstrução.
+Condições: Para paragens não associadas a lesão musculoesquelética grave
+           (férias, doença ligeira, compromissos). Regresso PÓS-LESÃO exige
+           escala de dor (EVA) ≤2/10 — condição adicional que a app não
+           consegue verificar sozinha (ver lacuna "histórico de lesões" no
+           topo deste documento).
+Fonte:     Daniels' Running Formula 4th Ed (2021, cap. Layoff & Detraining);
+           Advanced Marathoning (Pfitzinger, 2019); Detraining and Retention
+           of Training-Induced Adaptations (Coyle, 1986)
+Confiança: ALTA
+```
+
+### Bloco 2.2 — Corrida: intensidade (registo)
+
+Cinco perguntas, fontes canónicas (Seiler, Fitzgerald, Daniels, Pfitzinger,
+Hudson, Galloway, Tanaka, Karvonen, ACSM, Borg, Foster, Meeusen), confiança
+ALTA em todas.
+
+#### #1 — Distribuição de intensidade
+
+```
+Pergunta:  Corrida 2.2 #1 — % LIT vs. MIT/HIT, por nível
+Iniciante: 90-100% Z1/Z2 · 0-10% Z3. Modelo 80/20 estrito NÃO se aplica —
+           exige base prévia de 6-12 semanas contínuas sem lesão e
+           ≥20-25 km/semana já construídos.
+Básico:    85-90% Z1/Z2 · 10-15% Z3/Z4
+Médio:     80% Z1/Z2 · 20% Z3/Z5 (modelo 80/20 clássico, Fitzgerald/Seiler)
+Avançado:  75-80% Z1/Z2 · 20-25% Z3/Z5 (polarizado ou piramidal, conforme
+           fase do macrociclo)
+Condições: Medir por tempo em zona (min/semana) ou distância, não por
+           contagem de sessões. Não se aplica a treino de sprint puro/força
+           explosiva.
+Fonte:     What is Best Practice for Training Intensity Distribution?
+           (Seiler, 2010); 80/20 Running (Fitzgerald, 2014); Daniels'
+           Running Formula 4th Ed (2021)
+Confiança: ALTA
+```
+
+#### #2 — Ponto de introdução de trabalho de qualidade
+
+```
+Pergunta:  Corrida 2.2 #2 — quando introduzir cada tipo de treino, por nível
+Iniciante: Limiar/intervalos desaconselhados nas primeiras 6-12 semanas.
+           Subidas curtas/fartlek suave: após ≥4-6 semanas contínuas,
+           15-20 km/semana ≥4 semanas.
+Básico:    Subidas/fartlek desde a semana 1. Limiar após ≥4 semanas de base
+           (25-30 km/semana ≥4 sem). Intervalos após ≥6-8 semanas
+           (30-35 km/semana ≥6 sem).
+Médio:     Subidas/fartlek/limiar desde semanas 1-2 do ciclo específico
+           (35-40 km/semana ≥4 sem). Intervalos na fase específica, semanas
+           3-4 (40-45 km/semana ≥4 sem).
+Avançado:  Todos os tipos desde a semana 1 da preparação específica, com
+           ≥50-60 km/semana sustentados na fase de base/transição.
+Condições: "Trabalho de qualidade" = sessão estruturada ≥limiar
+           aeróbico/VT1 (Z3-Z5).
+Fonte:     Daniels' Running Formula 4th Ed (2021); Faster Road Racing
+           (Pfitzinger, 2014); Run Faster from the 5K to the Marathon
+           (Hudson, 2008)
+Confiança: ALTA
+```
+
+**Relacionado com Bloco 1 #2, não duplicado**: aqui o pré-requisito é para
+introduzir um TIPO de treino (limiar, intervalos); em Bloco 1 #2 é para
+começar um bloco de preparação de PROVA inteiro. Números parecidos,
+perguntas diferentes — mantêm-se registados em separado.
+
+#### #3 — Método caminhada/corrida
+
+```
+Pergunta:  Corrida 2.2 #3 — rácios, progressão, critério para corrida contínua
+Valor:     4 fases em 8 semanas, sessões de 20-30 min:
+           Fase 1 (sem. 1-2): 1 min corrida / 1,5-2 min caminhada, 6-8x
+           Fase 2 (sem. 3-4): 2-3 min corrida / 1-2 min caminhada, 5-6x
+           Fase 3 (sem. 5-6): 5-8 min corrida / 1-2 min caminhada, 3-4x
+           Fase 4 (sem. 7-8): 10-15 min corrida / 1 min caminhada, 2-3x
+           Critério para passar a corrida contínua: completar 30 min
+           acumulados no rácio da Fase 4, com RPE ≤4/10 (Borg CR10) e
+           FC <80% FCmáx, durante 2-3 sessões consecutivas, sem dor
+           articular/muscular residual no dia seguinte.
+Condições: Só para sedentários/iniciantes de nível zero. NÃO se aplica a
+           quem regressa de pausa com histórico prévio consolidado — esse
+           caso é o de Corrida 2.1 #5 (regresso após interrupção), não este.
+Fonte:     Galloway's Book on Running (2002); Couch to 5K/NHS (2023);
+           Daniels' Running Formula (2021)
+Confiança: ALTA
+```
+
+#### #4 — Fórmula de zonas de FC e precedência do relógio
+
+```
+Pergunta:  Corrida 2.2 #4 — que fórmula usar, quando o relógio manda
+Valor:     FCmáx: Tanaka et al. (2001) — 208 - (0,7 × idade), erro
+           ±7-11 bpm. Aplicada via Karvonen (FC de reserva): FCalvo =
+           FCrepouso + % × (FCmáx - FCrepouso).
+           Precedência do relógio: as zonas automáticas NÃO têm precedência
+           se vierem da estimativa genérica de fábrica (220-idade). TÊM
+           precedência absoluta se calibradas por teste laboratorial
+           (ergospirometria) ou teste de campo validado com cinta ECG.
+Condições: Adultos saudáveis 20-70 anos. Não se aplica sob medicação que
+           altera resposta cardíaca (betabloqueadores) nem com arritmia
+           diagnosticada.
+Fonte:     Age-predicted maximal heart rate revisited (Tanaka, JACC 2001);
+           The effects of training on heart rate (Karvonen, 1957); ACSM
+           Guidelines 11th Ed (2021)
+Confiança: ALTA
+```
+
+⚠️ **Duas lacunas de dados reais, encontradas por esta resposta**:
+
+1. **Karvonen exige FC de repouso — a app não a captura em lado nenhum.**
+   Sem ela, não dá para aplicar a fórmula preferida. Ou se acrescenta o
+   campo (ao Perfil, como `birth_date`/`experience_level`), ou o cálculo cai
+   para uma fórmula mais simples (% de FCmáx, sem reserva) quando faltar.
+2. **A regra de precedência não é verificável com os dados que temos.**
+   `runs.details.hr_zones` vem extraído de um print — não há como saber se
+   as zonas do relógio no print foram calibradas por teste ou são a
+   estimativa genérica de fábrica. Sem uma pergunta direta ao utilizador
+   ("as tuas zonas foram calibradas?"), a doutrina não consegue aplicar
+   esta regra como está escrita — só pode assumir uma posição por omissão
+   (ex.: preferir sempre o cálculo próprio, Tanaka+Karvonen, sobre as
+   zonas extraídas).
+
+#### #5 — Discrepância RPE/pace como sinal de fadiga
+
+```
+Pergunta:  Corrida 2.2 #5 — que discrepância é sinal acionável
+Valor:     Aumento ≥2 pontos na escala RPE Borg CR10 para manter o mesmo
+           pace, OU queda de pace ≥5-8% (≥15-20 seg/km) para o mesmo RPE.
+           Confirmação: persistir ≥2-3 sessões consecutivas.
+           Ação: cortar 50% do volume do dia, ou cancelar a sessão de
+           intensidade agendada e substituir por Z1/descanso total.
+Condições: Em condições ambientais normais. NÃO se aplica isoladamente com
+           variação térmica >8-10°C no dia, desidratação aguda, ou treino
+           com D+ invulgarmente elevado — a app não captura temperatura,
+           por isso este filtro de falso-positivo não é automatizável por
+           agora; fica como nota para não sinalizar fadiga em dias que só
+           foram mais quentes ou mais montanhosos que o habitual.
+Fonte:     Borg's Perceived Exertion and Pain Scales (1998); Monitoring
+           training in athletes with reference to overtraining syndrome
+           (Foster, 1998); ECSS/ACSM Consensus on overtraining (Meeusen,
+           2013)
+Confiança: ALTA
+```
+
+**Resolve Corrida 2.2 #10 do questionário original** (a pergunta genérica
+"que discrepância é sinal de fadiga") com números concretos e acionáveis —
+era uma das perguntas sem 📊, agora tem resposta única e completa.
+
+### Corrida 2.3 — Prova (registo)
+
+Quatro perguntas, fontes canónicas (Mujika/Padilla, Pfitzinger, Daniels,
+Noakes, Galloway, ITRA, Minetti, Naismith, Riegel, Vigneron), confiança
+ALTA em todas. **Fecha o bloco 2.3 por completo** — incluindo a conversão de
+trail, referenciada como pendente desde Corrida 2.1 #4.
+
+#### #1 — Taper: dias e redução, por nível e distância
+
+```
+Pergunta:  Corrida 2.3 #1 — taper: quantos dias antes, que corte de volume
+Iniciante: 10k 5-7 dias (-20-30%) · Meia 7-10 dias (-30-40%) · Maratona
+           10-14 dias (-40-50%) · Ultra/Trail 14 dias (-40-50%). Intensidade:
+           mantém-se integral nas poucas sessões residuais, só a duração corta.
+Básico:    10k 7 dias (-30%) · Meia 10-12 dias (-35-45%) · Maratona 14-21
+           dias (-40-50%) · Ultra/Trail 14-21 dias (-45-50%). Ritmo de prova
+           a 100% nas sessões-chave, repetições/minutos cortados 40-50%.
+Médio:     10k 7-10 dias (-30-40%) · Meia 10-14 dias (-40-50%) · Maratona
+           14-21 dias (-50-60%) · Ultra/Trail 14-21 dias (-50-60%).
+           Intensidade Z3-Z5 mantida a 100%; frequência reduzida ≤20%.
+Avançado:  10k 7-10 dias (-30-40%) · Meia 10-14 dias (-40-50%) · Maratona
+           21 dias com redução exponencial (sem. -3: -20%, -2: -40%,
+           -1: -60%) · Ultra/Trail 21 dias (-50-60%). Intensidade-alvo a
+           100% até 3-4 dias antes do evento.
+Condições: Para prova de objetivo principal (A-race). Provas secundárias
+           (B/C-race) levam taper de só 2-4 dias, corte de 20-30%.
+Fonte:     Scientific Bases for Precompetition Tapering Strategies (Mujika
+           & Padilla, 2003); Advanced Marathoning 3rd Ed (Pfitzinger, 2019);
+           Daniels' Running Formula 4th Ed (2021)
+Confiança: ALTA
+```
+
+✅ **Gap de dados RESOLVIDO** (entretanto implementado): a distinção A/B/C
+existe agora em `race_events.race_priority` — `RACE_PRIORITIES` em
+`src/utils/run.js` (`a` Principal / `b` Secundária / `c` Treino), com omissão
+`a`. A doutrina já consegue escolher entre o taper longo (A-race, valores da
+tabela acima) e o curto (B/C-race, 2-4 dias, -20-30%).
+
+#### #2 — Dias de recuperação pós-esforço máximo
+
+```
+Pergunta:  Corrida 2.3 #2 — quantos dias sem intensidade após cada distância
+Iniciante: 5k/10k 5-7 dias · Meia 14-21 dias · Maratona 28-35 dias ·
+           Ultra 35-42+ dias
+Básico:    5k/10k 4-6 dias · Meia 10-14 dias · Maratona 21-28 dias ·
+           Ultra 28-35 dias
+Médio:     5k/10k 3-5 dias · Meia 7-10 dias · Maratona 14-21 dias ·
+           Ultra 21-28 dias
+Avançado:  5k/10k 2-3 dias (só Z1 regenerativo) · Meia 5-7 dias · Maratona
+           EM CONFLITO — 10-14 dias (Pfitzinger/Canova) vs. 26 dias, regra
+           "1 dia por milha em esforço máximo" (Daniels/Galloway) ·
+           Ultra 14-21 dias
+Condições: Para provas a 100% do limite fisiológico. Define o período antes
+           do qual não se deve fazer treino de alta intensidade (Z4/Z5) ou
+           nova prova — não proíbe corrida leve (Z1) após 2-4 dias de
+           repouso total.
+Fonte:     Daniels' Running Formula 4th Ed (2021); Advanced Marathoning 3rd
+           Ed (Pfitzinger, 2019); Lore of Running 4th Ed (Noakes, 2003);
+           Galloway's Book on Running (2002)
+Confiança: ALTA
+```
+
+**Conflito não resolvido, proposta**: 10-14 vs. 26 dias é uma discrepância
+grande para o único ponto avançado+maratona. Seguindo a mesma lógica de
+segurança já usada no Bloco 0 #2 (em conflito, desce para o mais
+conservador), proponho adotar os 26 dias como omissão — mas fica por
+confirmar contigo antes de ir para doutrina.
+
+#### #3 — Trail: fator de conversão D+ → distância plana
+
+```
+Pergunta:  Corrida 2.3 #3 — quantos metros de D+ equivalem a 1 km plano
+Valor:     Fator padrão (ITRA/Naismith): 100 m D+ = 1,0 km plano.
+           Tabela por declive (Minetti et al., 2002):
+             0-5% (suave):    100 m D+ = 0,8-1,0 km
+             6-15% (moderado): 100 m D+ = 1,0-1,2 km
+             16-25% (acentuado): 100 m D+ = 1,2-1,5 km
+             >25% (muito íngreme/power hiking): 100 m D+ = 1,5-2,0 km
+           Descida: declive -5% a -10% reduz custo ~10-20%; declive
+           >-15% aumenta dano muscular (contração excêntrica), anulando
+           o ganho metabólico.
+Condições: Para trilho de característica técnica regular. Piso muito
+           técnico (pedra solta, lama, neve) soma +10-20% ao tempo estimado.
+Fonte:     ITRA Evaluation Criteria; Energy cost of walking and running at
+           extreme uphill and downhill slopes (Minetti, J Appl Physiol,
+           2002); Naismith's Rule (1892)
+Confiança: ALTA
+```
+
+**Implementável já com os dados existentes, em dois níveis:**
+- **MVP, imediato**: fator fixo 1:100 (Naismith) sobre `elevation_gain_m` —
+  `distância_equivalente_km = distance_km + (elevation_gain_m / 100)`.
+  Aplica-se a `runs.details.elevation_gain_m` e a `race_events.elevation_gain_m`.
+- **Refinamento, requer mais dados**: a tabela por declive precisa do
+  declive médio (`elevation_gain_m / distance_km` é só uma aproximação
+  grosseira — não capta subidas/descidas dentro da mesma corrida). O ajuste
+  de descida e a penalização de piso técnico não são aplicáveis de todo —
+  a app não captura desnível negativo (D-) nem technicidade do terreno.
+
+#### #4 — Previsão de tempo entre distâncias
+
+```
+Pergunta:  Corrida 2.3 #4 — relação defensável e margem de erro
+Valor:     Fórmula de Riegel: T2 = T1 × (D2/D1)^b
+           b = 1,06 (Riegel original, 1977) para atletas com boa base
+           aeróbica. b = 1,07-1,10 (Vigneron et al., 2020) — ajuste para
+           amadores (iniciante/básico), por terem menos volume de treino.
+           Margem de erro: ±2-4% entre distâncias adjacentes (5k→10k,
+           10k→meia); ±6-12% em extrapolação longa (5k→maratona) — tende
+           a subestimar o tempo se faltar o volume de treino específico
+           da distância-alvo.
+           Alternativa: tabelas VDOT (Daniels), ±2-3% de erro, MAS só válida
+           se o atleta já tiver cumprido o volume de treino específico
+           exigido pela distância-alvo.
+Condições: Para prova em asfalto/plano, 10-15°C, nível de treino estável.
+           NÃO se aplica a trail com desnível — aí usa-se a #3.
+Fonte:     Athletic Records and Efficiency Performance (Riegel, American
+           Scientist, 1981); Daniels' Running Formula 4th Ed (2021);
+           Predicting marathon finish time using Riegel's formula
+           (Vigneron, 2020)
+Confiança: ALTA
+```
+
+**Regra de implementação por nível**: usar b=1,07-1,10 para iniciante/básico,
+b=1,06 para médio/avançado — o próprio nível (Bloco 0) decide qual expoente
+aplicar. **Liga a Bloco 1 #2**: a condição "só válida com o volume de treino
+específico já cumprido" é exatamente o pré-requisito de volume por distância
+já registado ali — sem esse volume, a previsão de tempo não é fiável e a
+margem de erro sobe para os 6-12%.
+
+### Corrida 2.4 — Técnica e sinais de alerta (registo)
+
+Duas perguntas, confiança ALTA nas duas. **Fecha o Bloco 2 (Corrida) por
+completo.** Mas é o registo com maior distância entre o que a literatura sabe
+e o que a app consegue medir — ver avaliação de implementabilidade abaixo.
+
+#### #1 — Cadência: faixa-alvo ou individual?
+
+```
+Pergunta:  Corrida 2.4 #1 — existe faixa defensável ou é individual?
+Valor:     INDIVIDUAL — depende de estatura/comprimento dos membros, massa
+           corporal, velocidade e nível de treino. O mito dos "180 spm para
+           todos" é rejeitado pela biomecânica moderna.
+           MAS existem dois números defensáveis:
+           - Faixa fisiológica funcional: 160-180 spm em ritmo aeróbico.
+           - Sinal vermelho: cadência cronicamente <155 spm associa-se a
+             sobrepassada (overstriding) e a +15-20% de força de impacto
+             no joelho e anca.
+           Correção, quando indicada: aumentar +5-10% sobre a cadência
+           autosselecionada do próprio corredor — nunca impor um valor
+           absoluto.
+Condições: Para corrida contínua aeróbica (Z1-Z3). A cadência sobe
+           naturalmente com a velocidade — 180-200+ spm em ritmos de Z4/Z5
+           é normal, não é sinal de nada.
+Fonte:     Effects of Step Rate Manipulation on Foot Strike Mechanics
+           (Heiderscheit, MSSE 2011); Daniels' Running Formula 4th Ed
+           (2021); Is There a Pathomechanical Association Between Running
+           Kinematics and Lower Limb Injuries? (Bramah, AJSM 2018);
+           Influence of step rate in biomechanics of running (Schubert, 2014)
+Confiança: ALTA
+```
+
+**Resolve a pergunta original de forma acionável.** A pergunta era "existe
+faixa alvo ou é individual — se for individual, dizê-lo para o coach não
+recomendar um número universal". A resposta é as duas coisas: é individual
+(logo, **nunca recomendar 180 spm**), mas o piso de 155 spm é um sinal real
+e verificável. Implementável já: `runs.details.cadence_spm` existe.
+
+**Regra de doutrina proposta**: comentar cadência apenas quando <155 spm
+sustentado, e mesmo aí sugerir "+5-10% sobre a tua cadência atual", nunca um
+valor absoluto. Fora disso, não comentar — é ruído.
+
+#### #2 — Sinais mensuráveis que precedem lesão por sobreuso
+
+```
+Pergunta:  Corrida 2.4 #2 — que sinais precedem lesão por sobreuso
+Valor:     1. FC em repouso (FCR): +≥5-7 bpm acima da média móvel de 7-14
+              dias, mantido ≥2-3 dias consecutivos.
+           2. HRV (rMSSD): queda >1,5 desvios-padrão abaixo da média basal
+              de 7 dias, ≥2-3 dias consecutivos.
+           3. Degradação de cadência intra-sessão: queda >3-5% (ou >5 spm)
+              entre a 1ª e a 2ª metade da mesma corrida, em plano, a ritmo
+              e FC constantes.
+           4. Deriva cardíaca / discrepância RPE-ritmo: FC +5-8% a ritmo
+              constante, OU +≥2 pontos Borg CR10 para o mesmo pace, ≥2
+              sessões consecutivas.
+           5. Assimetria de tempo de contacto com o solo (GCT balance):
+              desvio E/D >2,5-3,0% (pior que 51,5/48,5) em piso plano.
+Condições: Em condições normais de saúde e temperatura. Alteração isolada
+           num único dia (desidratação, álcool, jet lag, calor) NÃO
+           confirma sobreuso.
+Fonte:     ECSS/ACSM Consensus on overtraining (Meeusen, 2013); Training
+           adaptation and heart rate variability in elite endurance
+           athletes (Plews, 2013); Is There a Standardized Footstrike
+           Pattern and Cadence for Optimal Running Economy? (Moore, Sports
+           Med 2016); Monitoring training (Foster, 1998); Firstbeat/Garmin
+           Biomechanical Metrics Standard (2023)
+Confiança: ALTA
+```
+
+⚠️ **Avaliação de implementabilidade: 1 de 5 sinais é detetável hoje.**
+
+| Sinal | Detetável? | Porquê |
+|---|---|---|
+| 1. FC em repouso | ❌ | Não capturamos FC de repouso em lado nenhum. **Mesma lacuna já identificada em 2.2 #4** (Karvonen precisa dela) — dois usos independentes a pedir o mesmo campo. |
+| 2. HRV (rMSSD) | ❌ | Não capturado, e não aparece em prints de corrida — viria de app de wearable (Garmin Connect, Whoop), não de um screenshot de treino. |
+| 3. Degradação de cadência intra-sessão | ❌ | Só temos `cadence_spm` **média** da corrida inteira. Os splits guardam apenas `distance_km` e `time_seconds` — sem cadência nem FC por troço, não dá para comparar 1ª vs. 2ª metade. |
+| 4. Deriva cardíaca / RPE-ritmo | ⚠️ metade | A deriva cardíaca precisa de FC ao longo do tempo (só temos média) — **não detetável**. A parte RPE-vs-ritmo **é** detetável e já está registada em 2.2 #5, com os mesmos limiares. |
+| 5. Assimetria GCT | ❌ | Não capturado. Métrica de relógio topo de gama, raramente visível num print. |
+
+**Consequência para o produto**: a flag `risco_lesao` — que identifiquei como
+"o alerta de maior valor para o utilizador" quando escrevi esta pergunta — é
+hoje largamente **não implementável** como a literatura a descreve. O que
+sobra é a metade RPE/ritmo (já coberta) e o piso de cadência de #1.
+
+**Três caminhos possíveis, nenhum decidido aqui**:
+1. **Aceitar a cobertura parcial** — implementar só o que dá (RPE/ritmo +
+   cadência <155), e assumir que a deteção de lesão é fraca por agora.
+2. **Capturar FC de repouso** — um campo no Perfil ou um registo diário
+   rápido. Desbloqueia o sinal #1 *e* a fórmula de Karvonen (2.2 #4). É o
+   melhor retorno por esforço dos três.
+3. **Integração com wearable** (Garmin Connect/Strava API) em vez de prints
+   — desbloquearia #2, #3 e #5 de uma vez, mas é um projeto próprio, muito
+   maior do que acrescentar um campo.
+
+### Bloco 3 — Ginásio ao serviço da corrida (registo)
+
+Onze perguntas, fontes canónicas (Blagrove, Rønnestad/Mujika, ACSM, NSCA,
+Schoenfeld, Beattie, Verkhoshansky, Gabbett, Doma, Izquierdo), confiança ALTA
+em todas.
+
+#### #1 — Papel da força por nível
+
+```
+Iniciante: 80% coordenação intermuscular/aprendizagem motora/resiliência
+           tecidual · 20% economia de corrida · 0% potência (desaconselhada)
+Básico:    60% prevenção de lesão e reforço articular/tendinoso · 30%
+           economia via adaptações neurais · 10% potência inicial
+Médio:     45% economia de corrida e pico de força máxima · 35% prevenção e
+           estabilidade pélvica/core · 20% potência e RFD
+Avançado:  40% economia e recrutamento de unidades motoras de limiar
+           elevado · 40% potência, RFD e rigidez do tendão de Aquiles ·
+           20% prevenção e manutenção estrutural
+Condições: A transição de prioridades pressupõe padrões fundamentais já
+           consolidados (agachamento, dobradiça da anca, afundo, elevação
+           pélvica).
+Fonte:     Strength and Conditioning for Endurance Running (Blagrove, 2015);
+           Optimizing strength training for running and cycling performance
+           (Rønnestad & Mujika, 2014); ACSM Progression Models (2009)
+Confiança: ALTA
+```
+
+#### #2 — Séries semanais por grupo muscular
+
+```
+Iniciante: desenvolvimento 4-6 séries/grupo/semana · manutenção 2-3 (-50%)
+Básico:    desenvolvimento 6-8 · manutenção 3-4 (-50%)
+Médio:     desenvolvimento 8-10 · manutenção 3-5 (-50-60% nas últimas 4-6
+           semanas pré-prova)
+Avançado:  desenvolvimento 8-12 (cargas ≥80% 1RM) · manutenção 4-6
+           (-50-60%, mantendo a carga em kg)
+Condições: Séries de trabalho efetivas (RIR 2-3) dos grupos principais dos
+           membros inferiores. Não conta aquecimento.
+Fonte:     Science and Development of Muscle Hypertrophy 2nd Ed
+           (Schoenfeld, 2020); Blagrove (2015); Beattie et al. (2014)
+Confiança: ALTA
+```
+
+#### #3 — Grupos musculares prioritários
+
+```
+Primários: 1. Tricípite sural (solear + gémeos) — absorção de impacto até
+              6-8× o peso corporal, restituição de energia elástica
+           2. Quadríceps — atenuação de carga no apoio, propulsão em subida
+           3. Isquiotibiais + glúteo máximo — extensão da anca, travagem
+              excêntrica no fim da oscilação
+           4. Glúteo médio e mínimo — estabilização pélvica no plano frontal
+              (previne valgo dinâmico e queda pélvica)
+Secundár.: core/eretores, flexores da anca, tibial anterior, adutores,
+           estabilizadores escapulares
+Fonte:     Blagrove (2015); The biomechanics of running (Novacheck, 1998);
+           Muscular strategy shift in human running (Dorn, 2012)
+Confiança: ALTA
+```
+
+#### #4 — Interferência: intervalo entre pernas e corrida de qualidade
+
+```
+Valor:     Corrida de qualidade PRIMEIRO (manhã), ginásio ao fim do dia:
+           6-9 horas de separação no mesmo dia.
+           Ginásio PRIMEIRO: 24 horas até corrida de alta intensidade ou
+           treino longo — ressíntese de glicogénio e recuperação da fadiga
+           neuromuscular excêntrica.
+Condições: Para força de membros inferiores com cargas ≥70% 1RM. Não se
+           aplica a sessões só de membros superiores ou mobilidade leve.
+Fonte:     The effects of strength training on the physiological
+           determinants of running performance (Doma & Deakin, 2013);
+           Rønnestad & Mujika (2014); Interference Effect Protocol
+           (Baar, 2014)
+Confiança: ALTA
+```
+
+**Era a pergunta que resolvia o conflito entre dois especialistas** — e a
+resposta é boa, mas ver a lacuna crítica abaixo: **não temos hora do dia**.
+
+#### #5 — Progressão de carga
+
+```
+Iniciante: +2,5-5,0 kg (+5-10%) a cada 1-2 semanas. Critério: completar o
+           topo das repetições prescritas em todas as séries com RPE ≤7
+           (RIR ≥3) e técnica perfeita.
+Básico:    +2,5-5,0 kg (+2,5-5%) a cada 2-3 semanas. Critério: regra das 2
+           repetições — conseguir +2 reps além do alvo na última série, em
+           2 treinos consecutivos, com RIR ≥2.
+Médio:     +1,25-2,5 kg (+2-3%) a cada 3-4 semanas ou na transição de bloco.
+           Critério: manter RIR 2 sem degradação da velocidade concêntrica.
+Avançado:  +1,0-2,5 kg (+1-2%) a cada 4-6 semanas, periodização ondulatória.
+           Critério: perda de velocidade intrassérie <10-15% (VBT) ou
+           reavaliação periódica de 1RM.
+Fonte:     ACSM Progression Models (2009); NSCA Essentials 4th Ed (Baechle
+           & Earle, 2016); Developing Explosive Power Through VBT (Mann, 2016)
+Confiança: ALTA
+```
+
+#### #6 — Volume-carga semanal que sinaliza risco
+
+```
+Valor:     >10-15% de aumento do volume-carga semanal (Σ séries × reps ×
+           kg), face à média móvel das 4 semanas anteriores = risco
+           acrescido. >20% num único microciclo = risco elevado de lesão
+           miotendinosa, sobretudo combinado com a carga de corrida.
+Condições: Somatório dos membros inferiores. Não se aplica ao arranque de
+           um programa do zero (fase de habituação neuromuscular).
+Fonte:     The training-injury prevention paradox (Gabbett, 2016);
+           Schoenfeld (2020)
+Confiança: ALTA
+```
+
+**Coerente com Corrida 2.1 #1** — mesmo autor (Gabbett), mesma lógica de
+ACWR, limiar quase igual (10% corrida, 10-15% ginásio). Bom sinal de
+consistência entre os dois módulos.
+
+#### #7 — Intervalo entre sessões do mesmo grupo
+
+```
+Valor:     48-72 h entre sessões do mesmo grupo de membros inferiores.
+           Baixo volume/manutenção (2-4 séries, RIR ≥3): 48 h.
+           Alto volume/desenvolvimento (6-10 séries, RIR 1-2): 72 h.
+Condições: Estímulos ≥70% 1RM.
+Fonte:     ACSM Guidelines 11th Ed (2021); How many times per week should a
+           muscle be trained? (Schoenfeld, Sports Med 2016)
+Confiança: ALTA
+```
+
+#### #8 — Volume mínimo de manutenção em bloco de prova
+
+```
+Iniciante: 1 sessão/semana, 20-30 min, 2-3 séries/grupo (33-50% do volume
+           de desenvolvimento)
+Básico:    1 sessão/semana, 30 min, 2-3 séries/grupo, mantendo a carga em kg
+Médio:     1-2 sessões/semana, 20-30 min, 3-4 séries/grupo (33%), com
+           intenção de velocidade máxima concêntrica e cargas ≥80% 1RM
+Avançado:  1-2 sessões/semana, 20 min, 3-4 séries/grupo (30-40%), foco em
+           pico de força (1-5 reps ≥85% 1RM), repetições ao mínimo para
+           eliminar fadiga metabólica
+Condições: A manutenção exige manter a CARGA (kg ou %1RM); corta-se séries
+           e repetições, nunca o peso.
+Fonte:     Exercise dosage needed to maintain muscle mass and strength
+           (Bickel, MSSE 2011); In-season strength maintenance training in
+           endurance athletes (Rønnestad, 2010/2015)
+Confiança: ALTA
+```
+
+#### #9 — Pliometria
+
+```
+Iniciante: desaconselhada (0 contactos de alta intensidade). Baixo impacto
+           (skipping, corda) só após ≥12 semanas de força de base.
+Básico:    baixa-moderada (corda, box jumps baixos, saltos bipodais).
+           40-60 contactos/sessão, 1×/semana. Pré-requisito: ≥6 meses de
+           força continuada + agachamento com peso corporal estável.
+           Recuperação: 48 h.
+Médio:     moderada-elevada (bounding, saltos unipodais, drop jumps baixos).
+           60-80 contactos/sessão, 1-2×/semana. Pré-requisito: ≥1 ano de
+           força + agachamento ≥1,2-1,5× peso corporal. Recuperação: 48-72 h.
+Avançado:  alta intensidade/choque (depth jumps, hurdle jumps unipodais).
+           80-120 contactos/sessão, 1-2×/semana. Pré-requisito: ≥2 anos de
+           força pesada + agachamento ≥1,5-1,8× peso corporal.
+           Recuperação: 72 h.
+Condições: Medido por contactos do pé com o solo. Exige superfície com
+           absorção (relva, pista, tapete) — desaconselhado em asfalto/betão.
+Fonte:     Supertraining (Verkhoshansky, 2009); NSCA Essentials (Baechle &
+           Earle, 2016); Effects of plyometric training on endurance runners
+           (Ramirez-Campillo, 2014)
+Confiança: ALTA
+```
+
+#### #10 — Faixas de repetições
+
+```
+Valor:     Força máxima/adaptação neural: 1-5 reps (≥85% 1RM), descanso 2-5 min
+           Hipertrofia: 6-12 reps (65-80% 1RM), descanso 60-90 s
+           Resistência muscular local: 15-25+ reps (<60% 1RM), descanso 30-60 s
+Nota:      A literatura especializada DESACONSELHA a faixa de resistência
+           muscular (15-25+) para corredores de fundo — essa qualidade já é
+           desenvolvida pela própria corrida. Recomenda 3-6 reps com ≥80% 1RM,
+           para maximizar economia de corrida e rigidez tendinosa sem
+           hipertrofia desnecessária.
+Fonte:     ACSM Progression Models (2009); Blagrove (2015); Beattie (2014)
+Confiança: ALTA
+```
+
+**Regra de doutrina forte**: quando um corredor faz séries longas (15+ reps)
+no ginásio, o coach deve sinalizá-lo — não é "treino a mais", é treino do
+tipo errado para o objetivo dele.
+
+#### #11 — Treino até à falha
+
+```
+Valor:     0% das séries de membros inferiores para corredor em ciclo ativo.
+           Todas as séries de pernas devem terminar com RIR 2-4 (RPE 6-8).
+           Falha concêntrica (RIR 0) limitada a ≤5% de séries secundárias
+           de membros superiores/core.
+Custo:     Recuperação neuromuscular sobe de 48 h para 72-96 h. Marcadores
+           de dano muscular (CK) +30-50%. Esgota glicogénio local. Reduz
+           economia de corrida e produção de força durante 3-4 dias.
+Condições: Para quem corre em simultâneo a média/elevada intensidade.
+Fonte:     Differential effects of strength training leading to failure
+           versus not to failure (Izquierdo, 2006); Physiological responses
+           to resistance exercise taken to failure vs. non-failure (2016);
+           Does Training to Failure Maximize Muscle Hypertrophy?
+           (Schoenfeld & Grgic, 2019)
+Confiança: ALTA
+```
+
+---
+
+⚠️ **Avaliação de implementabilidade — Bloco 3**
+
+Dados disponíveis: `workout_sessions.categories` (grupos ao nível da SESSÃO),
+`kind`, `exertion` (RPE da sessão), `duration_seconds`, `avg_hr`/`max_hr`;
+`workout_session_sets.exercise_name` (texto livre), `reps`, `weight`,
+`set_index`.
+
+| Pergunta | Implementável? | Nota |
+|---|---|---|
+| #6 volume-carga semanal | ✅ **Totalmente** | Σ reps × weight é computável exatamente. A métrica mais limpa de todo o bloco. |
+| #7 intervalo entre sessões | ✅ | Via `categories` + `date`. |
+| #10 faixas de repetições | ✅ | `reps` por série. Permite sinalizar séries longas demais para corredor. |
+| #5 progressão de carga | ⚠️ parcial | Peso/reps ao longo do tempo: sim. Critérios de RIR por série: não — só temos `exertion` da sessão inteira. |
+| #2 séries por grupo | ⚠️ aproximado | `categories` é da SESSÃO, não da série. Numa sessão com `['Pernas','Glúteos']` e 12 séries, não sabemos a divisão. Só dá para aproximar (ex.: dividir por igual). |
+| #8 volume de manutenção | ⚠️ aproximado | Mesma limitação de #2. |
+| #1 papel da força | ⚠️ doutrina só | Não é métrica, é orientação de linguagem — aplicável sem dados. |
+| #3 grupos prioritários | ❌ granularidade | A literatura fala de solear, gémeos, quadríceps, glúteo médio. Temos `Pernas` e `Glúteos`. Não dá para distinguir. |
+| #4 interferência | ❌ **falta a hora** | Ver abaixo — é a lacuna mais séria. |
+| #9 pliometria | ❌ | Contactos do pé com o solo não são capturados. O rácio agachamento/peso corporal seria computável por `exercise_name` + `profiles.weight_kg`, mas depende de texto livre. |
+| #11 falha/RIR | ⚠️ parcial | `exertion` é da sessão, não por série. Dá para sinalizar sessões de RPE muito alto, não séries individuais até à falha. |
+
+🔲 **DECISÃO PENDENTE E1 — hora do dia em treinos e corridas**
+
+A regra de interferência (#4) é **a pergunta que resolve o conflito entre o
+especialista de ginásio e o de corrida** — e distingue dois cenários que
+levam a recomendações opostas:
+- Corrida de qualidade de manhã + ginásio à noite: **6-9 h chegam**.
+- Ginásio primeiro: **24 h** até à corrida de qualidade.
+
+**`workout_sessions.date` e `runs.date` são `DATE` — sem hora.** O
+`created_at` não serve: é quando o registo foi criado (pode ser dias depois,
+ao carregar o print), não quando o treino aconteceu.
+
+Consequência: só conseguimos detetar "ginásio e corrida no mesmo dia", sem
+saber se respeitaram as 6-9 h nem qual veio primeiro. A doutrina fica
+limitada a um aviso genérico em vez da regra real.
+
+- *Opção 1*: acrescentar hora (opcional) a `workout_sessions` e `runs`.
+  Implementa a regra a sério, mas é mais um campo em dois formulários.
+- *Opção 2*: acrescentar só a ordem ("o que fizeste primeiro hoje?") quando
+  há os dois no mesmo dia. Mais leve, resolve metade (qual veio primeiro),
+  não resolve o intervalo.
+- *Opção 3*: aceitar o aviso genérico — "fizeste ginásio de pernas e corrida
+  de qualidade no mesmo dia, atenção ao intervalo entre eles".
+- **Sem recomendação forte**: depende de quanto valorizas esta regra face ao
+  atrito de mais campos. A #4 foi identificada como "a pergunta mais
+  importante do módulo" quando o questionário foi escrito.
+
+### Bloco 4.1 — Nutrição: base diária (registo)
+
+Seis perguntas, fontes canónicas (ACSM/AND Position Statement, ISSN, Burke,
+Jeukendrup, Mifflin, Cunningham, IOC RED-S Consensus, NATA), confiança ALTA
+em todas.
+
+#### #1 — Proteína (g/kg/dia)
+
+```
+Iniciante: manutenção 1,2-1,4 · perda de gordura 1,6-1,8 · ganho 1,6-2,0
+Básico:    manutenção 1,4-1,6 · perda de gordura 1,8-2,0 · ganho 1,6-2,0
+Médio:     manutenção 1,6-1,8 · perda de gordura 2,0-2,2 · ganho 1,8-2,2
+Avançado:  manutenção 1,6-2,0 · perda de gordura 2,0-2,4 · ganho 1,8-2,2
+Escala:    +0,1-0,2 g/kg/dia por cada +20 km/semana acima dos 30 km/semana
+           (oxidação de aminoácidos como fonte energética em longos)
+Condições: Distribuir em doses de 0,3-0,4 g/kg por refeição, a cada 3-4 h
+           (3-5 refeições/dia).
+Fonte:     ACSM/AND Joint Position Statement — Nutrition and Athletic
+           Performance (2016); ISSN Position Stand — Protein and Exercise
+           (Jäger, 2017); Clinical Sports Nutrition 6th Ed (Burke, 2021)
+Confiança: ALTA
+```
+
+**Totalmente implementável**: `profiles.weight_kg` × fator do nível, mais o
+escalamento por volume semanal (computável de `runs`). A meta deixa de ser um
+número fixo em `profiles.protein_goal` e passa a ser derivada.
+
+#### #2 — Hidratos (g/kg/dia)
+
+```
+Iniciante: descanso/leve 3,0-5,0 · treino moderado (~1h) 4,0-5,0
+Básico:    descanso 3,0-4,0 · treino (1h moderado/intenso) 5,0-7,0
+Médio:     descanso 4,0-5,0 · treino (1-2h, qualidade ou longo) 6,0-8,0
+Avançado:  descanso/rodagem leve 5,0-6,0 · treino intenso ou longo (2-3h)
+           8,0-10,0 (até 10-12 nas 36-48h de carga pré-maratona)
+Condições: Periodizar dia a dia conforme duração e intensidade da sessão
+           agendada — "fuel for the work required", não um valor fixo.
+Fonte:     Carbohydrates for training and competition (Burke, J Sports Sci
+           2011); ACSM Position Statement (2016); Sports Nutrition 3rd Ed
+           (Jeukendrup, 2018)
+Confiança: ALTA
+```
+
+⚠️ **Implica meta variável, não fixa.** Hoje `profiles.carbs_goal` é um valor
+único. A doutrina exige que a meta de hidratos mude conforme o treino do dia
+— dia de descanso e dia de treino longo pedem valores muito diferentes (num
+avançado, 5 vs. 10 g/kg = o dobro). Ou a meta passa a ser calculada por dia,
+ou o coach avalia contra a faixa certa sem alterar a meta guardada.
+
+#### #3 — Mínimo de gordura e risco hormonal
+
+```
+Valor:     Mínimo: 20-25% do GETD OU 0,8-1,0 g/kg/dia.
+           Risco (RED-S): <20% das calorias ou <0,5-0,7 g/kg/dia
+           cronicamente → supressão do eixo hipotálamo-hipófise-gonadal:
+           queda de testosterona (H), perturbações menstruais/amenorreia e
+           queda de estrogénio (M), redução da densidade mineral óssea,
+           má absorção de vitaminas lipossolúveis (A, D, E, K).
+Condições: Pode descer a 15-20% temporariamente nas 24-48h de carga de
+           hidratos pré-maratona, para evitar lentidão gástrica.
+Fonte:     IOC Consensus Statement on RED-S (Mountjoy, 2018/2023); ISSN
+           Position Stand — Diets and Body Composition (Aragon, 2017);
+           Clinical Sports Nutrition 6th Ed (Burke, 2021)
+Confiança: ALTA
+```
+
+#### #4 — Estimativa calórica e validade da bioimpedância
+
+```
+Valor:     TMB, por ordem de preferência:
+           1. Cunningham (1980), se massa magra conhecida por DXA:
+              TMB = 500 + (22 × massa magra kg)
+           2. Mifflin-St Jeor (1990), se % de gordura desconhecida:
+              H: (10×peso) + (6,25×altura cm) − (5×idade) + 5
+              M: (10×peso) + (6,25×altura cm) − (5×idade) − 161
+           GETD = (TMB × fator de atividade não-treino 1,2-1,4) + custo do
+           treino. Custo da corrida ≈ 1,0 kcal/kg/km.
+           BIA: o TMB de balança doméstica NÃO é recomendado para cálculo
+           de precisão — erro de ±10-20% (±200-400 kcal/dia), por
+           sensibilidade a hidratação, temperatura da pele, conteúdo
+           gastrointestinal e hora da medição.
+           Disponibilidade energética (EA) = (GETD − custo do treino) /
+           kg de massa magra. Manter ≥45 kcal/kg LBM/dia; nunca <30.
+Fonte:     A new predictive equation for resting energy expenditure
+           (Mifflin, Am J Clin Nutr 1990); A reevaluation of the basal
+           metabolic rate submodel (Cunningham, 1980); ACSM Position Stand
+           (2016); Is bioelectrical impedance accurate? (Dehghan &
+           Merchant, 2008)
+Confiança: ALTA
+```
+
+✅ **Responde por antecipação a Bloco 5 #10** ("BMR da balança vs. fórmula:
+qual usar quando divergem?"). Resposta: **a fórmula ganha sempre**. O
+`body_assessments.bmr_kcal` do Renpho tem erro de ±200-400 kcal/dia — não
+serve de base a cálculo calórico. Fica como valor informativo apenas.
+
+✅ **Mifflin-St Jeor é computável hoje**: precisa de peso, altura, idade e
+sexo — temos os quatro (`weight_kg`, `height_cm`, `birth_date`, `gender`).
+Foi exatamente para isto que o `birth_date` foi acrescentado.
+
+⚠️ **Cunningham não é utilizável**: exige massa magra por DXA. Temos
+`lean_body_mass_kg`, mas vem da mesma bioimpedância que esta resposta
+desaconselha — usá-la seria contornar o próprio aviso da fonte.
+
+#### #5 — Défice calórico máximo por nível
+
+```
+Iniciante: 300-500 kcal/dia (15-20% do GETD) · perda 0,5 kg/semana (≤0,7%)
+Básico:    300-500 kcal/dia (15-20%) · perda 0,5 kg/semana (≤0,7%)
+Médio:     250-400 kcal/dia (10-15%) · perda 0,25-0,4 kg/semana (≤0,5%)
+Avançado:  200-300 kcal/dia (5-10%) · perda 0,2-0,3 kg/semana (≤0,3-0,4%)
+Alto vol.: DÉFICE A ZERO — manutenção estrita em semanas de pico de volume,
+           blocos de alta intensidade e taper. Manter défice nessas fases
+           eleva exponencialmente o risco de perda de massa magra,
+           supressão imunitária e overreaching não funcional.
+Condições: Proteína no limite superior do nível (1,8-2,4 g/kg/dia) durante
+           as fases de défice.
+Fonte:     Racing Weight (Fitzgerald, 2012); Clinical Sports Nutrition 6th
+           Ed (Burke, 2021); Evidence-based recommendations for natural
+           bodybuilding contest preparation (Helms, 2014)
+Confiança: ALTA
+```
+
+✅ **Reconciliação com Bloco 1 #6 — confirmada, sem contradição.** Aquele
+registo deu o envelope geral (200-500 kcal/dia, ≤0,7%/semana, proteína
+1,6-2,2 g/kg); este decompõe-no por nível dentro do mesmo envelope. Os
+extremos batem certo: o topo (500 kcal, 0,7%) é de iniciante/básico, o fundo
+(200 kcal, 0,3%) é de avançado. A única extensão é a proteína até 2,4 g/kg
+em avançado sob défice — coerente com #1. **Podem ir as duas para a doutrina
+sem reconciliação adicional.**
+
+#### #6 — Hidratação
+
+```
+Valor:     Base diária (fora do treino): 30-40 ml/kg/dia.
+           Durante o treino: 400-800 ml/h, ajustado à taxa de sudação e ao
+           clima.
+           Pós-treino (padrão de referência): pesar antes e depois; repor
+           1,2-1,5 L por cada 1,0 kg perdido (120-150% do défice) nas 2-4 h
+           seguintes, com 500-700 mg de sódio por litro.
+Condições: Valores para clima temperado (15-25°C). Acima de 30°C a sudação
+           pode passar de 1,5-2,0 L/h, exigindo 300-600 mg/h de sódio
+           planeado para evitar hiponatremia.
+Fonte:     NATA Position Statement — Fluid Replacement for Athletes (2017);
+           ACSM Position Stand — Exercise and Fluid Replacement (2007);
+           Sports Nutrition 3rd Ed (Jeukendrup, 2018)
+Confiança: ALTA
+```
+
+✅ **`profiles.water_goal_ml` deixa de precisar de ser fixo** (hoje 2000 por
+omissão): 30-40 ml/kg × `weight_kg` dá a base, e o treino do dia acrescenta
+400-800 ml/h. Um corredor de 70 kg passa de "2000 ml" genérico para
+2,1-2,8 L base + reposição.
+
+---
+
+⚠️ **Avaliação de implementabilidade — Bloco 4.1**
+
+| Pergunta | Implementável? | Nota |
+|---|---|---|
+| #1 proteína | ✅ | `weight_kg` × nível + escalamento por volume de `runs` |
+| #4 TMB/GETD | ✅ | Mifflin-St Jeor com os 4 campos que já temos; custo da corrida = 1 kcal/kg/km sobre `distance_km` |
+| #5 défice | ✅ | Derivado do GETD + peso; a regra de "défice zero em pico" exige saber a fase do plano |
+| #6 hidratação base | ✅ | 30-40 ml/kg sobre `weight_kg` |
+| #3 gordura mínima | ✅ | `fat` das refeições vs. 0,8-1,0 g/kg — alarme de RED-S computável |
+| #2 hidratos | ⚠️ meta variável | Precisa de meta por dia, não fixa — ver aviso acima |
+| #6 reposição pós-treino | ❌ | Exige pesagem antes/depois do treino; não capturamos peso associado a uma corrida |
+| #4 Cunningham | ❌ | Exige massa magra por DXA; a nossa vem de BIA, desaconselhada pela própria fonte |
+
+🔲 **DECISÃO PENDENTE N1 — metas fixas vs. derivadas**
+
+`profiles` guarda `calorie_goal`, `protein_goal`, `carbs_goal`, `fat_goal` e
+`water_goal_ml` como **valores fixos**, definidos à mão. A doutrina desta
+secção calcula todos eles a partir de peso, altura, idade, sexo, nível e
+volume de treino — e no caso dos hidratos, **muda de dia para dia**.
+
+- *Opção 1*: o coach passa a calcular e a sugerir as metas, e o utilizador
+  aceita ou substitui. As colunas mantêm-se, mas ganham um valor sugerido.
+- *Opção 2*: as metas passam a ser sempre derivadas; as colunas viram
+  override opcional (null = usar o cálculo).
+- *Opção 3*: nada muda no schema; o coach compara a ingestão com a faixa
+  correta internamente e comenta, sem tocar nas metas do utilizador.
+- **Recomendação**: opção 3 para já (zero risco, zero migração), evoluindo
+  para a 1 quando houver confiança nos cálculos. A 2 é a mais correta a
+  prazo mas mexe no que o utilizador já configurou.
 
 O campo **Confiança** não é decorativo: limiares de confiança baixa devem gerar
 linguagem mais suave na doutrina ("considera", "pode valer a pena") em vez de

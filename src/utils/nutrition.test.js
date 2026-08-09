@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNutrientStatus, dayWaterGoalMet } from './nutrition';
+import { dayNutrientStatus, dayWaterGoalMet, planAffectsDay } from './nutrition';
 
 const DAY = '2026-08-03';
 const OTHER_DAY = '2026-08-02';
@@ -71,6 +71,61 @@ describe('dayNutrientStatus', () => {
     // Sem meta de calorias, mas com meta de gordura excedida.
     const meals = [meal({ calories: 9000, protein: 0, carbs: 0, fat: 80 })];
     expect(dayNutrientStatus(meals, DAY, { fat_goal: 70 })).toBe('over');
+  });
+
+  it('não marca "over" por calorias/hidratos num dia de longão do plano', () => {
+    const meals = [meal({ calories: 2800, protein: 160, carbs: 400, fat: 65 })];
+    const planItems = [{ kind: 'corrida', training_type: 'longo', status: 'pendente', planned_date: DAY }];
+    expect(dayNutrientStatus(meals, DAY, GOALS, planItems)).toBe('ok');
+  });
+
+  it('continua a marcar "over" por gordura mesmo em dia de longão', () => {
+    // O heurístico só isenta calorias/hidratos — gordura continua a valer.
+    const meals = [meal({ calories: 1800, protein: 160, carbs: 200, fat: 90 })];
+    const planItems = [{ kind: 'corrida', training_type: 'longo', status: 'pendente', planned_date: DAY }];
+    expect(dayNutrientStatus(meals, DAY, GOALS, planItems)).toBe('over');
+  });
+
+  it('sem plano, comportamento é idêntico ao de antes (planItems omitido)', () => {
+    const meals = [meal({ calories: 2100, protein: 160, carbs: 200, fat: 60 })];
+    expect(dayNutrientStatus(meals, DAY, GOALS)).toBe('over');
+  });
+});
+
+describe('planAffectsDay', () => {
+  const longRun = (overrides = {}) => ({
+    kind: 'corrida', status: 'pendente', planned_date: DAY, training_type: 'longo', ...overrides,
+  });
+
+  it('true para um treino longo pendente nesse dia', () => {
+    expect(planAffectsDay([longRun()], DAY)).toBe(true);
+  });
+
+  it('true por distância ≥15km mesmo sem training_type "longo"', () => {
+    expect(planAffectsDay([longRun({ training_type: 'continuo', target_distance_km: 18 })], DAY)).toBe(true);
+  });
+
+  it('false para distância curta que não seja marcada como longo', () => {
+    expect(planAffectsDay([longRun({ training_type: 'continuo', target_distance_km: 8 })], DAY)).toBe(false);
+  });
+
+  it('usa actual_date quando o item já foi concluído, não planned_date', () => {
+    const item = longRun({ status: 'concluido', planned_date: OTHER_DAY, actual_date: DAY });
+    expect(planAffectsDay([item], DAY)).toBe(true);
+    expect(planAffectsDay([item], OTHER_DAY)).toBe(false);
+  });
+
+  it('ignora itens cancelados', () => {
+    expect(planAffectsDay([longRun({ status: 'cancelado' })], DAY)).toBe(false);
+  });
+
+  it('ignora itens de ginásio', () => {
+    expect(planAffectsDay([longRun({ kind: 'ginasio' })], DAY)).toBe(false);
+  });
+
+  it('false sem itens ou plano indefinido', () => {
+    expect(planAffectsDay([], DAY)).toBe(false);
+    expect(planAffectsDay(undefined, DAY)).toBe(false);
   });
 });
 

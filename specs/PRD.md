@@ -52,9 +52,10 @@ O projeto inclui um sistema de qualidade e auditoria automatizado na pasta `.age
 ## 3. Módulos da Aplicação
 
 ### 3.1. Painel Inicial (Home)
-- Ecrã principal com cartões de estatísticas rápidas.
-- Permite visualizar o progresso da ingestão de água, calorias consumidas, treinos realizados na semana e metas em falta.
+- Três cartões fixos, sempre visíveis: **Próxima Prova**, **Nutrição** (hoje) e **Água** (hoje).
 - Acesso rápido a registos através de um Menu de Ação Flutuante (FAB).
+- **Plano da semana** ocupa o espaço abaixo dos três cartões fixos — ver `specs/plano-de-treino.md` para o desenho completo. Lista os itens `pendente` de `coach_plan_items` (ordenados por data), cada um com duas ações: **Concluir** (leva ao ecrã de registo de Corrida/Ginásio com os campos pré-preenchidos a partir do item) e **Cancelar**. Itens nunca expiram sozinhos — ficam `pendente` até uma das duas ações.
+- **A antiga grelha personalizável de cartões foi removida** (2026-08-10) — `HOME_CARD_DEFS`, `CustomizePanel`, o botão "Personalizar" e o campo `profiles.home_layout` deixaram de ser consumidos pelo cliente. A coluna mantém-se na BD (não foi eliminada), mas está morta: nenhum código lê nem escreve nela. Se a personalização voltar a fazer sentido, é reconstruída do zero — a leitura antiga da grelha e do plano no mesmo espaço não coexistiam bem.
 
 ### 3.2. Nutrição (`Nutrition`)
 - Registo diário de refeições e ingestão de água.

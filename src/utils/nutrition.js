@@ -103,10 +103,31 @@ export function mealNutrients(meal) {
   return total;
 }
 
+/* Um dia "de carga" — tem um item do plano de treino de corrida longa nesse
+   dia (concluído ou ainda pendente). A doutrina completa (specs/
+   coach-investigacao.md, Bloco 4.1) calcula a meta exata por g/kg de peso e
+   por volume — depende do motor de doutrina em src/coach-knowledge/, ainda
+   por construir. Este é o heurístico mínimo que já resolve o essencial: não
+   marcar 'over' um dia em que o atleta comeu mais porque tinha um longão do
+   plano nesse dia — o que seria penalizar visualmente o que o próprio coach
+   recomendou. Considera só o próprio dia; a extensão à véspera (carga de
+   hidratos pré-longo) fica para quando o motor de doutrina existir. */
+export function planAffectsDay(planItems, dateStr) {
+  return (planItems || []).some(item => {
+    if (item.status === 'cancelado') return false;
+    if (item.kind !== 'corrida') return false;
+    const relevantDate = item.status === 'concluido' ? item.actual_date : item.planned_date;
+    if (relevantDate !== dateStr) return false;
+    const isLong = item.training_type === 'longo' || (Number(item.target_distance_km) || 0) >= 15;
+    return isLong;
+  });
+}
+
 /* Estado nutricional de um dia no calendário: 'none' sem refeições, 'ok' com as
    metas cumpridas, 'over' caso contrário. A proteína é a única macro em que o
-   problema é ficar ABAIXO da meta — nas outras três o problema é excedê-la. */
-export function dayNutrientStatus(meals, dateStr, profile) {
+   problema é ficar ABAIXO da meta — nas outras três o problema é excedê-la.
+   `planItems` é opcional — sem ele, o comportamento é exatamente o de antes. */
+export function dayNutrientStatus(meals, dateStr, profile, planItems) {
   const dayMeals = (meals || []).filter(m => m.date === dateStr);
   if (dayMeals.length === 0) return 'none';
 
@@ -120,8 +141,12 @@ export function dayNutrientStatus(meals, dateStr, profile) {
   });
 
   const p = profile || {};
-  // Sem meta definida, a macro nunca conta como excedida (Infinity).
+  const highLoadDay = planAffectsDay(planItems, dateStr);
+  // Sem meta definida, a macro nunca conta como excedida (Infinity). Num dia
+  // de longão do plano, calorias e hidratos também nunca contam como
+  // excedidos — ver planAffectsDay acima.
   const exceededCapped = ['calories', 'carbs', 'fat'].some(key => {
+    if (highLoadDay && (key === 'calories' || key === 'carbs')) return false;
     const goalKey = MACROS.find(m => m.key === key).goalKey;
     return totals[key] > (Number(p[goalKey]) || Infinity);
   });

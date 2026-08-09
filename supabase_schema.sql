@@ -90,6 +90,15 @@ alter table profiles
   add column if not exists experience_level text
     check (experience_level is null or experience_level in ('iniciante', 'basico', 'medio', 'avancado'));
 
+-- FC em repouso — pedida por dois usos independentes: fórmula de Karvonen
+-- (zonas de FC mais precisas que %FCmáx simples) e linha de base do sinal de
+-- sobreuso (subida sustentada de 5-7 bpm precede lesão). Nullable: sem ela as
+-- zonas caem para %FCmáx. Ver specs/coach-investigacao.md, Corrida 2.2 #4/2.4 #2
+-- e supabase/migrations/20260809120000_resting_hr_race_priority.sql.
+alter table profiles
+  add column if not exists resting_hr_bpm integer
+    check (resting_hr_bpm is null or (resting_hr_bpm between 25 and 120));
+
 -- perfil criado automaticamente no signup
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -512,6 +521,14 @@ alter table race_events
   add column if not exists experience_level text
     check (experience_level is null or experience_level in ('iniciante', 'basico', 'medio', 'avancado'));
 
+-- Prioridade da prova — decide o taper: principal leva 10-21 dias de
+-- polimento, prova de treino leva só 2-4. Omissão 'a' porque errar por excesso
+-- de taper é mais seguro que por defeito. Ver Corrida 2.3 #1 em
+-- specs/coach-investigacao.md.
+alter table race_events
+  add column if not exists race_priority text not null default 'a'
+    check (race_priority in ('a', 'b', 'c'));
+
 -- ============ water_logs: registos de hidratação ============
 -- Uma linha por adição de água (não um total diário) — o Início soma por dia.
 create table if not exists water_logs (
@@ -548,3 +565,50 @@ create policy "own rows" on push_subscriptions for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "admin read all" on push_subscriptions;
 create policy "admin read all" on push_subscriptions for select using (public.is_admin());
+
+-- ============ coach_plans / coach_plan_items: plano de treino acordado ============
+-- Ver specs/plano-de-treino.md. Os objetivos de nutrição do dia NÃO são
+-- gravados aqui — calculam-se a partir destes itens (src/utils/nutrition.js),
+-- para uma mudança de data corrigir os dois dias sozinha.
+create table if not exists coach_plans (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'proposto' check (status in ('proposto', 'aceite', 'recusado')),
+  period_start date not null,
+  period_end date not null,
+  summary text,
+  created_at timestamptz not null default now(),
+  accepted_at timestamptz
+);
+create index if not exists coach_plans_user_idx on coach_plans(user_id, period_start desc);
+alter table coach_plans enable row level security;
+create policy "own rows" on coach_plans for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "admin read all" on coach_plans for select using (public.is_admin());
+
+-- Cada treino do plano. Nunca expira sozinho — fica 'pendente' até o atleta
+-- confirmar ou cancelar. actual_date pode divergir de planned_date; é essa
+-- divergência que corrige os objetivos de nutrição dos dois dias.
+create table if not exists coach_plan_items (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references coach_plans(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  planned_date date not null,
+  kind text not null check (kind in ('corrida', 'ginasio')),
+  training_type text,
+  categories text[] not null default '{}',
+  target_distance_km numeric check (target_distance_km is null or target_distance_km > 0),
+  target_duration_min integer check (target_duration_min is null or target_duration_min > 0),
+  notes text,
+  status text not null default 'pendente' check (status in ('pendente', 'concluido', 'cancelado')),
+  actual_date date,
+  completed_run_id uuid references runs(id) on delete set null,
+  completed_session_id uuid references workout_sessions(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists coach_plan_items_plan_idx on coach_plan_items(plan_id);
+create index if not exists coach_plan_items_user_date_idx on coach_plan_items(user_id, planned_date);
+alter table coach_plan_items enable row level security;
+create policy "own rows" on coach_plan_items for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "admin read all" on coach_plan_items for select using (public.is_admin());

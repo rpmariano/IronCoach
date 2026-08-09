@@ -14,7 +14,13 @@ export const useAppStore = create((set, get) => ({
   runs: [],
   waterLogs: [],
   raceEvents: [],
-  
+  coachPlans: [],
+  coachPlanItems: [],
+  // Item do plano em vias de ser concluído — posto pelo Início mesmo antes de
+  // navegar para o registo (RunRegistration/GymRegistration), que o consome
+  // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
+  planItemPrefill: null,
+
   // Coach State
   coachMessages: [],
   coachLoading: false,
@@ -22,7 +28,6 @@ export const useAppStore = create((set, get) => ({
   
   // UI State
   activeTab: 'home',
-  homeLayout: ['weight_kg', 'body_fat_pct', 'protein_today', 'corrida_km', 'corrida_pace', 'gym_sessions', 'gym_volume'],
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout'
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
@@ -55,6 +60,41 @@ export const useAppStore = create((set, get) => ({
   setGymSessions: (sessions) => set({ gymSessions: sessions }),
   setBodyAssessments: (assessments) => set({ bodyAssessments: assessments }),
   setRaceEvents: (events) => set({ raceEvents: events }),
+  setCoachPlans: (plans) => set({ coachPlans: plans }),
+  setCoachPlanItems: (items) => set({ coachPlanItems: items }),
+  setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
+  clearPlanItemPrefill: () => set({ planItemPrefill: null }),
+
+  // Marca um item como concluído — chamado pelo próprio ecrã de registo
+  // (RunRegistration/GymRegistration) depois de gravar a corrida/sessão que
+  // o cumpre. actualDate pode divergir de planned_date; é essa divergência
+  // que corrige os objetivos de nutrição dos dois dias (ver
+  // src/utils/nutrition.js e specs/plano-de-treino.md §4).
+  completePlanItem: async (itemId, { actualDate, runId = null, sessionId = null }) => {
+    const updates = {
+      status: 'concluido',
+      actual_date: actualDate,
+      completed_run_id: runId,
+      completed_session_id: sessionId,
+    };
+    const { error } = await supabase.from('coach_plan_items').update(updates).eq('id', itemId);
+    if (error) { console.error('Error completing plan item:', error); return false; }
+    set((state) => ({
+      coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, ...updates } : i),
+    }));
+    return true;
+  },
+
+  // Cancelar não apaga — sai da lista ativa e deixa de contar para
+  // objetivos de nutrição, mas fica no histórico do plano.
+  cancelPlanItem: async (itemId) => {
+    const { error } = await supabase.from('coach_plan_items').update({ status: 'cancelado' }).eq('id', itemId);
+    if (error) { console.error('Error cancelling plan item:', error); return false; }
+    set((state) => ({
+      coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, status: 'cancelado' } : i),
+    }));
+    return true;
+  },
 
   // Fetch initial user data (called after login)
   loadInitialData: async (userId) => {
@@ -78,7 +118,9 @@ export const useAppStore = create((set, get) => ({
         { data: bodyAssessments },
         { data: waterLogs },
         { data: coachMsgs },
-        { data: raceEvents }
+        { data: raceEvents },
+        { data: coachPlans },
+        { data: coachPlanItems }
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -86,7 +128,9 @@ export const useAppStore = create((set, get) => ({
         supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
         supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-        supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true })
+        supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
+        supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
+        supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true })
       ]);
 
       set({
@@ -96,7 +140,9 @@ export const useAppStore = create((set, get) => ({
         bodyAssessments: bodyAssessments || [],
         waterLogs: waterLogs || [],
         coachMessages: coachMsgs || [],
-        raceEvents: raceEvents || []
+        raceEvents: raceEvents || [],
+        coachPlans: coachPlans || [],
+        coachPlanItems: coachPlanItems || []
       });
 
     } catch (err) {

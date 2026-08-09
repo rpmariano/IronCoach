@@ -1,23 +1,12 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
-import { SlidersHorizontal, Flag, Bell, X, Egg, Wheat, Droplets, Scale, Percent, Activity, Dumbbell, Droplet } from 'lucide-react';
+import { Flag, Bell, Check, X as XIcon, Dumbbell as DumbbellIcon, Footprints } from 'lucide-react';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
-}
-
-function currentWeekDates() {
-  const sunday = new Date();
-  sunday.setDate(sunday.getDate() - sunday.getDay());
-  const dates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(sunday);
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-  return { dates, labels: ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] };
 }
 
 function statCardBg(color) {
@@ -33,24 +22,6 @@ function statCardBg(color) {
 const WATER_WAVE_PATH_1 = "M0 10 C 25 20 25 0 50 10 S 75 0 100 10 S 125 20 150 10 S 175 0 200 10 V20 H0 Z";
 const WATER_WAVE_PATH_2 = "M0 10 C 25 0 25 20 50 10 S 75 20 100 10 S 125 0 150 10 S 175 20 200 10 V20 H0 Z";
 const WATER_QUICK_AMOUNTS = [200, 250, 300];
-
-// Card definitions — mirrors HOME_CARD_DEFS + CANONICAL_HOME_ORDER from legacy
-const HOME_CARD_DEFS = [
-  { key: 'protein_today',  label: 'Proteína hoje',    module: 'Nutrição', size: 'half', icon: Egg },
-  { key: 'carbs_today',    label: 'Hidratos hoje',    module: 'Nutrição', size: 'half', icon: Wheat },
-  { key: 'fat_today',      label: 'Gordura hoje',     module: 'Nutrição', size: 'half', icon: Droplets },
-  { key: 'weight_kg',      label: 'Peso',             module: 'Corpo',    size: 'half', icon: Scale },
-  { key: 'body_fat_pct',   label: 'Gordura corporal', module: 'Corpo',    size: 'half', icon: Percent },
-  { key: 'bmi',            label: 'IMC',              module: 'Corpo',    size: 'half', icon: Activity },
-  { key: 'muscle_mass_kg', label: 'Massa muscular',   module: 'Corpo',    size: 'half', icon: Dumbbell },
-  { key: 'body_water_pct', label: 'Água corporal',    module: 'Corpo',    size: 'half', icon: Droplet },
-  { key: 'gym_sessions',   label: 'Treinos (semana)', module: 'Ginásio',  size: 'full' },
-  { key: 'gym_volume',     label: 'Volume (semana)',  module: 'Ginásio',  size: 'full' },
-  { key: 'corrida_km',     label: 'Distância (semana)', module: 'Corrida', size: 'full' },
-  { key: 'corrida_pace',   label: 'Melhor Pace',      module: 'Corrida',  size: 'full' },
-];
-const CANONICAL_HOME_ORDER = HOME_CARD_DEFS.map(d => d.key);
-const DEFAULT_HOME_LAYOUT = ['weight_kg', 'body_fat_pct', 'protein_today', 'corrida_km', 'corrida_pace', 'gym_sessions', 'gym_volume'];
 
 // ─── SVG ring ────────────────────────────────────────────────────────────────
 function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
@@ -216,263 +187,102 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
   );
 }
 
-// ─── Nutrient mini card ──────────────────────────────────────────────────────
-function NutrientMiniCard({ label, value, goal, color, onNav }) {
-  const pct = goal > 0 ? (value / goal) * 100 : 0;
-  return (
-    <button onClick={onNav} className="text-left rounded-2xl p-3.5 active:scale-[0.98] transition w-full" style={statCardBg(color)}>
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2 truncate" style={{ color: 'var(--green)' }}>{label}</h2>
-      <div className="flex items-center gap-3">
-        <div className="relative shrink-0" style={{ width: 52, height: 52 }}>
-          <RingSvg pct={pct} size={52} stroke={5} color={color} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-base font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>
-            {value.toFixed(0)}<span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>g</span>
-          </p>
-          <p className="text-[10px] mt-1 truncate" style={{ color: 'var(--green)' }}>
-            {goal > 0 ? `meta ${goal.toFixed(0)}g` : 'Sem meta'}
-          </p>
-        </div>
-      </div>
-    </button>
-  );
-}
+// ─── Plano da semana ───────────────────────────────────────────────────────
+// Ver specs/plano-de-treino.md. Ocupa o espaço da antiga grelha
+// personalizável — essa deixou de fazer sentido com o plano acordado com o
+// Coach a ocupar o mesmo lugar central do Início.
+const WEEKDAY_LABELS_LONG = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-// ─── Body mini card ──────────────────────────────────────────────────────────
-function BodyMiniCard({ label, value, prevValue, goal, unit, color, dec = 1, onNav }) {
-  const hasVal = value !== null && value !== undefined;
-  const hasGoal = hasVal && goal > 0;
-  const pct = hasGoal ? Math.max(0, Math.min(100, 100 - Math.abs(value - goal) / goal * 100)) : 0;
-  const delta = (prevValue !== null && prevValue !== undefined && hasVal) ? (value - prevValue) : null;
+function PlanItemRow({ item, onComplete, onCancel }) {
+  const isPast = item.planned_date < todayISO();
+  const d = new Date(item.planned_date + 'T00:00:00');
+  const dayLabel = WEEKDAY_LABELS_LONG[d.getDay()].slice(0, 3);
+  const isRun = item.kind === 'corrida';
+
+  const title = isRun
+    ? [item.training_type ? item.training_type[0].toUpperCase() + item.training_type.slice(1) : 'Corrida',
+        item.target_distance_km ? `${item.target_distance_km} km` : null]
+        .filter(Boolean).join(' · ')
+    : [item.categories?.length ? item.categories.join('/') : 'Ginásio',
+        item.target_duration_min ? `${item.target_duration_min} min` : null]
+        .filter(Boolean).join(' · ');
 
   return (
-    <button onClick={onNav} className="text-left rounded-2xl p-3.5 active:scale-[0.98] transition w-full" style={statCardBg(color)}>
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2 truncate" style={{ color: 'var(--green)' }}>{label}</h2>
-      <div className="flex items-center gap-3">
-        <div className="relative shrink-0" style={{ width: 52, height: 52 }}>
-          <RingSvg pct={hasGoal ? pct : 0} size={52} stroke={5} color={color} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-base font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>
-            {hasVal ? `${value}` : '—'}<span className="text-xs font-semibold" style={{ color: 'var(--green)' }}>{unit}</span>
-          </p>
-          <p className="text-[10px] mt-1 truncate" style={{ color: 'var(--green)' }}>{hasGoal ? `meta ${goal}${unit}` : 'Sem objetivo'}</p>
-          {delta !== null && (
-            <p className="text-[10px] font-semibold mt-0.5" style={{ color: delta < 0 ? 'var(--color-success)' : 'var(--color-error)' }}>
-              {delta < 0 ? '▼' : '▲'} {Math.abs(delta).toFixed(dec)}{unit}
-            </p>
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-// ─── Gym streak card ─────────────────────────────────────────────────────────
-function GymSessionsCard({ gymSessions = [], onNav }) {
-  const { dates: days, labels } = currentWeekDates();
-  const today = todayISO();
-  const trainedDates = new Set(gymSessions.map(s => s.date));
-  const count = gymSessions.filter(s => days.includes(s.date)).length;
-
-  return (
-    <button onClick={onNav} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-ginasio-to)')}>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Ginásio · Esta semana</h2>
-        <p className="text-xs font-bold" style={{ color: 'var(--text-main)' }}>{count} {count === 1 ? 'sessão' : 'sessões'}</p>
-      </div>
-      <div className="flex items-center gap-1.5">
-        {days.map((d, i) => {
-          const trained = trainedDates.has(d);
-          const isToday = d === today;
-          return (
-            <div key={d} className="flex flex-col items-center gap-1 flex-1">
-              <div className="w-full aspect-square rounded-lg flex items-center justify-center"
-                style={{
-                  background: trained ? 'linear-gradient(135deg,var(--mod-ginasio-from),var(--mod-ginasio-to))' : 'rgba(15,23,42,0.10)',
-                  boxShadow: isToday && !trained ? 'inset 0 0 0 1.5px #60a5fa' : undefined,
-                }}>
-                {trained && <span className="text-[10px] font-bold" style={{ color: '#fff' }}>✓</span>}
-              </div>
-              <span className="text-[10px]" style={{ color: isToday ? 'var(--text-main)' : 'var(--green)', fontWeight: isToday ? 700 : 400 }}>{labels[i]}</span>
-            </div>
-          );
-        })}
-      </div>
-    </button>
-  );
-}
-
-// ─── Gym volume card ─────────────────────────────────────────────────────────
-function GymVolumeCard({ gymSessions = [], onNav }) {
-  const { dates: days, labels } = currentWeekDates();
-  const today = todayISO();
-  const byDay = {};
-  gymSessions.forEach(s => {
-    const vol = (s.logs || []).reduce((sum, l) => sum + ((l.weight || 0) * (l.reps || 0) * (l.sets || 1)), 0);
-    byDay[s.date] = (byDay[s.date] || 0) + vol;
-  });
-  const perDay = days.map(d => byDay[d] || 0);
-  const total = perDay.reduce((a, b) => a + b, 0);
-  const maxDay = Math.max(...perDay, 1);
-
-  return (
-    <button onClick={onNav} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-ginasio-to)')}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Ginásio · Volume</h2>
-      </div>
-      <p className="text-2xl font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>
-        {Math.round(total)}<span className="text-xs font-semibold" style={{ color: 'var(--green)' }}> kg</span>
-      </p>
-      <p className="text-[10px] mt-1 mb-3" style={{ color: 'var(--green)' }}>esta semana</p>
-      <div className="flex items-end gap-1.5" style={{ height: 28 }}>
-        {perDay.map((kg, i) => (
-          <div key={i} className="flex-1 rounded-sm" style={{ height: kg > 0 ? Math.max(4, kg / maxDay * 28) : 3, background: kg > 0 ? 'var(--mod-ginasio-to)' : 'rgba(15,23,42,0.10)' }} />
-        ))}
-      </div>
-      <div className="flex items-center gap-1.5 mt-1">
-        {days.map((d, i) => (
-          <span key={d} className="flex-1 text-center text-[10px]" style={{ color: d === today ? 'var(--text-main)' : 'var(--green)', fontWeight: d === today ? 700 : 400 }}>{labels[i]}</span>
-        ))}
-      </div>
-    </button>
-  );
-}
-
-// ─── Run km card ─────────────────────────────────────────────────────────────
-function RunKmCard({ runs = [], onNav }) {
-  const { dates: days, labels } = currentWeekDates();
-  const today = todayISO();
-  const perDay = days.map(d => runs.filter(r => r.date === d).reduce((s, r) => s + (r.distance_km || 0), 0));
-  const weekKm = perDay.reduce((a, b) => a + b, 0);
-  const maxDay = Math.max(...perDay, 0.1);
-
-  return (
-    <button onClick={onNav} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-corrida-to)')}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Corrida · Distância</h2>
-      </div>
-      <p className="text-2xl font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>
-        {weekKm.toFixed(1)}<span className="text-xs font-semibold" style={{ color: 'var(--green)' }}> km</span>
-      </p>
-      <p className="text-[10px] mt-1 mb-3" style={{ color: 'var(--green)' }}>esta semana</p>
-      <div className="flex items-end gap-1.5" style={{ height: 28 }}>
-        {perDay.map((km, i) => (
-          <div key={i} className="flex-1 rounded-sm" style={{ height: km > 0 ? Math.max(4, km / maxDay * 28) : 3, background: km > 0 ? 'var(--mod-corrida-to)' : 'rgba(15,23,42,0.10)' }} />
-        ))}
-      </div>
-      <div className="flex items-center gap-1.5 mt-1">
-        {days.map((d, i) => (
-          <span key={d} className="flex-1 text-center text-[10px]" style={{ color: d === today ? 'var(--text-main)' : 'var(--green)', fontWeight: d === today ? 700 : 400 }}>{labels[i]}</span>
-        ))}
-      </div>
-    </button>
-  );
-}
-
-// ─── Run pace card ────────────────────────────────────────────────────────────
-function RunPaceCard({ runs = [], onNav }) {
-  const FAST = 180, SLOW = 480;
-  const paceQualityPct = (sec) => Math.max(0, Math.min(100, (SLOW - sec) / (SLOW - FAST) * 100));
-  const formatPace = (sec) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  };
-  const bestPace = (minKm) => {
-    const eligible = runs.filter(r => (r.distance_km || 0) >= minKm && r.duration_seconds);
-    if (!eligible.length) return null;
-    const paces = eligible.map(r => Math.round(r.duration_seconds / r.distance_km));
-    return Math.min(...paces);
-  };
-
-  const b5 = bestPace(5);
-  const b10 = bestPace(10);
-  const b21 = bestPace(21);
-
-  const Bucket = ({ label, pace }) => (
-    <div className="flex-1 min-w-0">
-      <div className="flex items-baseline justify-between gap-2 mb-1">
-        <p className="text-[10px]" style={{ color: 'var(--green)' }}>{label}</p>
-        <p className="text-sm font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>
-          {pace ? formatPace(pace) : <span style={{ color: 'var(--green)', fontSize: 11 }}>Sem dados</span>}
+    <div className="flex items-center gap-2.5 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--brd-800)' }}>
+      <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: isRun ? 'color-mix(in srgb, var(--mod-corrida-to) 15%, transparent)' : 'color-mix(in srgb, var(--mod-ginasio-to) 15%, transparent)' }}>
+        {isRun
+          ? <Footprints size={15} style={{ color: 'var(--mod-corrida-to)' }} />
+          : <DumbbellIcon size={15} style={{ color: 'var(--mod-ginasio-to)' }} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: isPast ? 'var(--color-error)' : 'var(--green)' }}>
+          {dayLabel}{isPast ? ' · em atraso' : ''}
         </p>
+        <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-main)' }}>{title}</p>
+        {item.notes && <p className="text-[10px] truncate" style={{ color: 'var(--green)' }}>{item.notes}</p>}
       </div>
-      <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(15,23,42,0.10)' }}>
-        <div className="h-full rounded-full" style={{ width: pace ? `${paceQualityPct(pace)}%` : '0%', background: 'var(--mod-corrida-from)', transition: 'width .4s ease' }} />
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button onClick={() => onComplete(item)} aria-label="Marcar como concluído"
+          className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+          style={{ background: 'var(--color-success)', color: '#fff' }}>
+          <Check size={16} />
+        </button>
+        <button onClick={() => onCancel(item)} aria-label="Cancelar este treino"
+          className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+          style={{ background: 'rgba(15,23,42,0.08)', color: 'var(--green)' }}>
+          <XIcon size={16} />
+        </button>
       </div>
     </div>
   );
-
-  return (
-    <button onClick={onNav} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-corrida-to)')}>
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2.5" style={{ color: 'var(--green)' }}>Corrida · Melhor pace</h2>
-      <div className="flex items-start gap-3">
-        <Bucket label="5 km+" pace={b5} />
-        <Bucket label="10 km+" pace={b10} />
-        <Bucket label="21 km+" pace={b21} />
-      </div>
-    </button>
-  );
 }
 
-// ─── Personalizar panel ───────────────────────────────────────────────────────
-function CustomizePanel({ activeLayout, onToggle, onClose }) {
-  const activeSet = new Set(activeLayout);
-  const modules = [...new Set(HOME_CARD_DEFS.map(d => d.module))];
+function WeeklyPlanCard({ planItems = [], onComplete, onCancel, onNav }) {
+  const today = todayISO();
+  // Só o plano mais recente aceite conta — planos recusados ou substituídos
+  // não devem continuar a aparecer.
+  const pending = planItems
+    .filter(i => i.status === 'pendente')
+    .sort((a, b) => a.planned_date.localeCompare(b.planned_date));
+
+  if (pending.length === 0) {
+    return (
+      <button onClick={() => onNav('coach')} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-coach-to)')}>
+        <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--green)' }}>Plano da semana</h2>
+        <p className="text-xs" style={{ color: 'var(--green)' }}>
+          Sem treinos acordados. Pede ao Coach um plano para a próxima semana.
+        </p>
+      </button>
+    );
+  }
 
   return (
-    <div className="rounded-2xl p-4" style={statCardBg('var(--accent)')}>
+    <div className="rounded-2xl p-3.5" style={statCardBg('var(--mod-coach-to)')}>
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-sm font-bold" style={{ color: 'var(--text-main)' }}>Personalizar Início</h2>
-        <button onClick={onClose} className="text-xs font-semibold" style={{ color: 'var(--accent-ink)' }}>Concluir</button>
+        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Plano da semana</h2>
+        <button onClick={() => onNav('coach')} className="text-[10px] font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Ver no Coach</button>
       </div>
-      <p className="text-[11px] mb-3 leading-relaxed" style={{ color: 'var(--green)' }}>
-        Escolhe os cartões que queres ver. A posição é sempre agrupada por módulo — o cartão de calorias é sempre o primeiro e não se pode desativar.
-      </p>
-      {modules.map(mod => (
-        <div key={mod}>
-          <h3 className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: 'var(--green)' }}>{mod}</h3>
-          <div className="space-y-1.5 mb-3">
-            {HOME_CARD_DEFS.filter(d => d.module === mod).map(d => {
-              const on = activeSet.has(d.key);
-              return (
-                <div key={d.key} className="flex items-center gap-2 rounded-xl px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.5)', border: '1px solid var(--brd-800)' }}>
-                  <span className="text-xs flex-1 truncate" style={{ color: 'var(--text-main)' }}>{d.label}</span>
-                  <button onClick={() => onToggle(d.key)} type="button"
-                    className="w-9 h-5 rounded-full relative transition shrink-0"
-                    style={{ background: on ? 'var(--accent)' : 'var(--brd-700)' }}>
-                    <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: on ? 16 : 2 }} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      <div>
+        {pending.map(item => (
+          <PlanItemRow key={item.id} item={item} onComplete={onComplete} onCancel={onCancel} />
+        ))}
+      </div>
     </div>
   );
 }
 
 // ─── Main Home component ──────────────────────────────────────────────────────
+// Só os 3 cartões fixos (Próxima Prova, Nutrição, Água) + o Plano da semana.
+// A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
 export default function Home() {
-  const { profile, meals, runs, gymSessions, bodyAssessments, waterLogs, raceEvents, setActiveTab } = useAppStore();
-  const [homeEditMode, setHomeEditMode] = useState(false);
-  const [localLayout, setLocalLayout] = useState(
-    () => profile?.home_layout || DEFAULT_HOME_LAYOUT
-  );
+  const {
+    profile, meals, waterLogs, raceEvents, coachPlanItems,
+    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
+  } = useAppStore();
   const [localWaterLogs, setLocalWaterLogs] = useState([]);
 
   const effectiveWaterLogs = [...(waterLogs || []), ...localWaterLogs];
-
-  const activeLayout = useMemo(() => {
-    const saved = profile?.home_layout;
-    const activeSet = new Set(saved?.length ? saved : DEFAULT_HOME_LAYOUT);
-    return CANONICAL_HOME_ORDER.filter(k => activeSet.has(k));
-  }, [profile]);
-
-  const [editLayout, setEditLayout] = useState(activeLayout);
 
   const handleNav = (tab) => setActiveTab(tab);
 
@@ -481,78 +291,30 @@ export default function Home() {
     setLocalWaterLogs(prev => [tempLog, ...prev]);
   };
 
-  const handleToggleCard = (key) => {
-    setEditLayout(prev => {
-      const set = new Set(prev);
-      if (set.has(key)) set.delete(key); else set.add(key);
-      return CANONICAL_HOME_ORDER.filter(k => set.has(k));
-    });
+  // "Concluir" não marca logo — deixa isso ao ecrã de registo, que grava o
+  // completePlanItem só depois de a corrida/sessão real estar gravada (ver
+  // RunRegistration/GymRegistration). Aqui só passamos o item a pré-preencher
+  // e navegamos para o ecrã certo — specs/plano-de-treino.md §5.2.
+  const handleCompleteItem = (item) => {
+    setPlanItemPrefill(item);
+    if (item.kind === 'corrida') {
+      setActiveTab('corrida');
+      useAppStore.getState().setOpenCreationMode('run');
+    } else {
+      setActiveTab('ginasio');
+      useAppStore.getState().setOpenCreationMode('workout');
+    }
   };
 
-  const today = todayISO();
-
-  const todayTotals = useMemo(() => (meals || []).filter(m => m.date === today).reduce((acc, m) => ({
-    calories: acc.calories + (m.calories || 0),
-    protein: acc.protein + (m.protein || 0),
-    carbs: acc.carbs + (m.carbs || 0),
-    fat: acc.fat + (m.fat || 0),
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 }), [meals, today]);
-
-  const lastTwo = (key) => {
-    const vals = [];
-    for (const a of (bodyAssessments || [])) {
-      if (a[key] !== null && a[key] !== undefined) { vals.push(a[key]); if (vals.length === 2) break; }
+  const handleCancelItem = (item) => {
+    if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
+      cancelPlanItem(item.id);
     }
-    return [vals[0] ?? null, vals[1] ?? null];
-  };
-
-  const [weightNow, weightPrev] = lastTwo('weight_kg');
-  const [fatNow, fatPrev] = lastTwo('body_fat_pct');
-  const [bmiNow, bmiPrev] = lastTwo('bmi');
-  const [muscleNow, musclePrev] = lastTwo('muscle_mass_kg');
-  const [waterPctNow, waterPctPrev] = lastTwo('body_water_pct');
-
-  const currentLayout = homeEditMode ? editLayout : activeLayout;
-
-  const renderCard = (key) => {
-    const def = HOME_CARD_DEFS.find(d => d.key === key);
-    const isFull = def?.size === 'full';
-
-    let card = null;
-    switch (key) {
-      case 'protein_today': card = <NutrientMiniCard label="Proteína hoje" value={todayTotals.protein} goal={Number(profile?.protein_goal) || 0} color="var(--data-proteina)" onNav={() => handleNav('nutricao')} />; break;
-      case 'carbs_today':   card = <NutrientMiniCard label="Hidratos hoje" value={todayTotals.carbs} goal={Number(profile?.carbs_goal) || 0} color="var(--data-hidratos)" onNav={() => handleNav('nutricao')} />; break;
-      case 'fat_today':     card = <NutrientMiniCard label="Gordura hoje" value={todayTotals.fat} goal={Number(profile?.fat_goal) || 0} color="var(--data-gordura)" onNav={() => handleNav('nutricao')} />; break;
-      case 'weight_kg':     card = <BodyMiniCard label="Peso" value={weightNow} prevValue={weightPrev} goal={Number(profile?.goal_weight_kg) || 0} unit="kg" color="var(--data-peso)" onNav={() => handleNav('corpo')} />; break;
-      case 'body_fat_pct':  card = <BodyMiniCard label="Gordura corporal" value={fatNow} prevValue={fatPrev} goal={Number(profile?.goal_body_fat_pct) || 0} unit="%" color="var(--data-gordura-corporal)" onNav={() => handleNav('corpo')} />; break;
-      case 'bmi':           card = <BodyMiniCard label="IMC" value={bmiNow} prevValue={bmiPrev} goal={0} unit="" dec={1} color="var(--data-imc)" onNav={() => handleNav('corpo')} />; break;
-      case 'muscle_mass_kg': card = <BodyMiniCard label="Massa muscular" value={muscleNow} prevValue={musclePrev} goal={0} unit="kg" color="var(--data-musculo-esqueletico)" onNav={() => handleNav('corpo')} />; break;
-      case 'body_water_pct': card = <BodyMiniCard label="Água corporal" value={waterPctNow} prevValue={waterPctPrev} goal={0} unit="%" color="var(--data-agua-corporal)" onNav={() => handleNav('corpo')} />; break;
-      case 'gym_sessions':  card = <GymSessionsCard gymSessions={gymSessions} onNav={() => handleNav('ginasio')} />; break;
-      case 'gym_volume':    card = <GymVolumeCard gymSessions={gymSessions} onNav={() => handleNav('ginasio')} />; break;
-      case 'corrida_km':    card = <RunKmCard runs={runs} onNav={() => handleNav('corrida')} />; break;
-      case 'corrida_pace':  card = <RunPaceCard runs={runs} onNav={() => handleNav('corrida')} />; break;
-      default: return null;
-    }
-
-    return (
-      <div key={key} className={isFull ? 'col-span-2' : ''} style={{ display: 'block' }}>
-        {card}
-      </div>
-    );
   };
 
   return (
     <div className="space-y-4 fade-in">
-      {/* Título + Personalizar */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Início</h2>
-        <button onClick={() => setHomeEditMode(m => !m)}
-          className="tap-h-44 flex items-center gap-1 text-[11px] font-semibold rounded-full px-3.5 active:scale-95 transition"
-          style={{ color: 'var(--green)', border: '1px solid var(--brd-800)' }}>
-          <SlidersHorizontal size={12} /> Personalizar
-        </button>
-      </div>
+      <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Início</h2>
 
       {/* Próxima Prova */}
       <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
@@ -563,20 +325,8 @@ export default function Home() {
       {/* Água — sempre visível */}
       <WaterHomeCard waterLogs={effectiveWaterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
 
-      {/* Painel de personalização OU grelha de cartões */}
-      {homeEditMode ? (
-        <CustomizePanel
-          activeLayout={editLayout}
-          onToggle={handleToggleCard}
-          onClose={() => setHomeEditMode(false)}
-        />
-      ) : (
-        currentLayout.length > 0 && (
-          <div className="grid grid-cols-2 gap-2.5">
-            {currentLayout.map(key => renderCard(key))}
-          </div>
-        )
-      )}
+      {/* Plano da semana — ver specs/plano-de-treino.md */}
+      <WeeklyPlanCard planItems={coachPlanItems} onComplete={handleCompleteItem} onCancel={handleCancelItem} onNav={handleNav} />
     </div>
   );
 }

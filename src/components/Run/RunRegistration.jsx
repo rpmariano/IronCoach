@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -65,14 +65,23 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns } = useAppStore();
 
+  // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
+  // no Início (ver Home.jsx e specs/plano-de-treino.md §5.2). Consumido uma
+  // única vez no mount seguinte; guardado num ref para o handler de gravação
+  // saber a que item ligar o registo, sem precisar de o repetir no estado.
+  const completingPlanItemRef = useRef(
+    !runIdToEdit ? useAppStore.getState().planItemPrefill : null
+  );
+  const planItem = completingPlanItemRef.current?.kind === 'corrida' ? completingPlanItemRef.current : null;
+
   // --- RUNS STATE ---
   const [runKind, setRunKind] = useState('treino'); // 'treino' | 'competicao'
-  const [runTrainingType, setRunTrainingType] = useState('continuo');
-  const [runDate, setRunDate] = useState(dateIso || todayISO());
+  const [runTrainingType, setRunTrainingType] = useState(planItem?.training_type || 'continuo');
+  const [runDate, setRunDate] = useState(planItem?.planned_date || dateIso || todayISO());
   const [runName, setRunName] = useState('Corrida de Hoje');
   
   // Basic metrics
-  const [runDistance, setRunDistance] = useState('');
+  const [runDistance, setRunDistance] = useState(planItem?.target_distance_km ? String(planItem.target_distance_km) : '');
   const [runDuration, setRunDuration] = useState('');
   const [runEffortRpe, setRunEffortRpe] = useState(0); // 0-10
   
@@ -102,13 +111,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // Um único cartão, forma de introdução escolhida em vez de 2 blocos
   // sempre visíveis — só um dos dois fica ativo/clicável a cada vez, por
   // isso não há risco de o utilizador preencher os dois em paralelo.
-  const [entryMethod, setEntryMethod] = useState('foto'); // 'foto' | 'manual'
+  // Vindo do plano, entra direto em manual — os campos já estão preenchidos,
+  // não faz sentido pedir foto/IA por cima.
+  const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Partilhado pelos dois caminhos de Corrida (foto e manual) — só um dos
   // dois blocos está visível a cada vez (ver entryMethod), por isso já não
   // há risco de a mesma mensagem aparecer em dois sítios ao mesmo tempo.
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Limpa o item do plano do store assim que foi consumido para os estados
+  // iniciais acima — nunca deve reaparecer numa próxima abertura "Nova Corrida".
+  useEffect(() => {
+    if (completingPlanItemRef.current) useAppStore.getState().clearPlanItemPrefill();
+  }, []);
 
   // Load existing data if editing
   useEffect(() => {
@@ -338,6 +355,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (data?.error) throw new Error(data.error);
 
       setRuns([...runs, data.run]);
+
+      // Se esta corrida vem do plano, marca o item como concluído — a data
+      // usada é a que ficou no formulário (runDate), que pode ter sido
+      // alterada face ao planned_date; é essa divergência que corrige os
+      // objetivos de nutrição dos dois dias (ver specs/plano-de-treino.md §4).
+      if (completingPlanItemRef.current) {
+        await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
+          actualDate: runDate,
+          runId: data.run.id,
+        });
+      }
+
       onClose();
     } catch (err) {
       console.error(err);

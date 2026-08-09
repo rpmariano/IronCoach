@@ -9,7 +9,7 @@ import MealCard from './MealCard';
 import MealRegistration from './MealRegistration';
 
 export default function NutritionCalendar({ onRegisterClick }) {
-  const { meals, waterLogs, profile } = useAppStore();
+  const { meals, waterLogs, profile, coachPlanItems } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editingMealId, setEditingMealId] = useState(null);
@@ -47,12 +47,12 @@ export default function NutritionCalendar({ onRegisterClick }) {
     for (const date of daysInMonth) {
       const dayStr = format(date, 'yyyy-MM-dd');
       info.set(dayStr, {
-        status: dayNutrientStatus(mealsByDay.get(dayStr) || [], dayStr, profile),
+        status: dayNutrientStatus(mealsByDay.get(dayStr) || [], dayStr, profile, coachPlanItems),
         waterMet: dayWaterGoalMet(waterByDay.get(dayStr) || [], dayStr, profile),
       });
     }
     return info;
-  }, [daysInMonth, mealsByDay, waterByDay, profile]);
+  }, [daysInMonth, mealsByDay, waterByDay, profile, coachPlanItems]);
 
   if (editingMealId) {
     return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;
