@@ -9,6 +9,8 @@
 #   1. Correr testes (Vitest)
 #   2. Verificar build (Vite)
 #   3. Se houver alterações em supabase/, avisar
+#   4. Revisão real por IA do diff (claude -p) — só bloqueia com veredito
+#      🔴 recebido com sucesso; falha de infraestrutura nunca bloqueia.
 #
 # Para saltar o hook em emergência: git push --no-verify
 # =============================================================================
@@ -39,14 +41,17 @@ URL="$2"
 
 # Ler os refs que estão a ser pushed
 CHANGED_FILES=""
+BASE_SHA=""
+LOCAL_SHA=""
 while read local_ref local_sha remote_ref remote_sha; do
+    LOCAL_SHA="$local_sha"
     if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
         # Nova branch — comparar com master/main
-        BASE=$(git merge-base HEAD origin/master 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~10")
-        CHANGED_FILES=$(git diff --name-only "$BASE" HEAD 2>/dev/null || echo "")
+        BASE_SHA=$(git merge-base HEAD origin/master 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || echo "HEAD~10")
     else
-        CHANGED_FILES=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null || echo "")
+        BASE_SHA="$remote_sha"
     fi
+    CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$LOCAL_SHA" 2>/dev/null || echo "")
 done
 
 VERDICT="APROVADO"
@@ -56,7 +61,7 @@ ERRORS=""
 # ─────────────────────────────────────────────────────────────
 # 1. TEST ENGINEER — Correr Vitest
 # ─────────────────────────────────────────────────────────────
-echo "${BLUE}🧪 [1/3] Test Engineer — A correr testes...${NC}"
+echo "${BLUE}🧪 [1/4] Test Engineer — A correr testes...${NC}"
 echo ""
 
 cd "$REPO_ROOT"
@@ -74,7 +79,7 @@ echo ""
 # ─────────────────────────────────────────────────────────────
 # 2. PWA AUDITOR (parcial) — Verificar build
 # ─────────────────────────────────────────────────────────────
-echo "${BLUE}📱 [2/3] PWA Auditor — A verificar build...${NC}"
+echo "${BLUE}📱 [2/4] PWA Auditor — A verificar build...${NC}"
 echo ""
 
 cd "$REPO_ROOT"
@@ -94,7 +99,7 @@ echo ""
 # ─────────────────────────────────────────────────────────────
 # 3. SUPABASE GUARDIAN — Verificar alterações ao backend
 # ─────────────────────────────────────────────────────────────
-echo "${BLUE}🔐 [3/3] Supabase Guardian — A verificar alterações ao backend...${NC}"
+echo "${BLUE}🔐 [3/4] Supabase Guardian — A verificar alterações ao backend...${NC}"
 echo ""
 
 SUPABASE_CHANGES=$(echo "$CHANGED_FILES" | grep -E '(^supabase/|\.sql$|src/lib/supabase|src/store/)' || true)
@@ -113,6 +118,72 @@ if [ -n "$SUPABASE_CHANGES" ]; then
     fi
 else
     echo "${GREEN}   ⏭️  Sem alterações ao backend — saltado${NC}"
+fi
+echo ""
+
+# ─────────────────────────────────────────────────────────────
+# 4. REVISÃO POR IA — claude -p sobre o diff real
+# ─────────────────────────────────────────────────────────────
+# Só corre se testes e build já tiverem passado — não vale a pena gastar uma
+# chamada real ao modelo sobre código que já sabemos estar partido.
+#
+# Corre sem a ferramenta Bash (bloqueada por política de conta em modo
+# --dangerously-skip-permissions/headless) — o diff é calculado aqui, em
+# shell, e passado como texto no prompt. O modelo pode Read/Grep/Glob
+# ficheiros do repositório para mais contexto (ex.: specs/PRD.md), mas não
+# corre comandos.
+#
+# Falha de infraestrutura (sem `claude` no PATH, sem rede, timeout, erro da
+# API) NUNCA bloqueia o push — só um veredito 🔴 recebido com sucesso o faz.
+# Os testes e o build continuam a ser o gate real; isto é uma camada extra.
+echo "${BLUE}🤖 [4/4] Revisão por IA — a analisar o diff...${NC}"
+echo ""
+
+if [ "$VERDICT" = "BLOQUEADO" ]; then
+    echo "${YELLOW}   ⏭️  Saltado — testes ou build já falharam${NC}"
+elif ! command -v claude >/dev/null 2>&1; then
+    echo "${YELLOW}   ⏭️  Saltado — comando 'claude' não encontrado nesta máquina${NC}"
+else
+    DIFF_TEXT=$(git diff "$BASE_SHA" "$LOCAL_SHA" 2>/dev/null | head -c 40000)
+
+    if [ -z "$DIFF_TEXT" ]; then
+        echo "${GREEN}   ⏭️  Sem diferenças de código a rever — saltado${NC}"
+    else
+        AI_PROMPT="Revê este diff antes de ir para produção (repositório IronHealth, specs/PRD.md é a spec — podes lê-la para contexto). Aponta só problemas reais: bugs, desvio da spec, más práticas. Termina sempre a resposta com uma linha exatamente neste formato: VEREDITO: <emoji> <motivo curto numa frase>
+onde <emoji> é 🟢 (sem problemas), 🟡 (avisos não-bloqueantes) ou 🔴 (bug real ou desvio grave da spec).
+
+DIFF:
+${DIFF_TEXT}"
+
+        # O prompt vai por stdin, não como argumento — um diff grande excede
+        # o limite de tamanho da linha de comandos no Windows ("Argument
+        # list too long"), que já aconteceu ao testar isto.
+        AI_OUTPUT=$(cd "$REPO_ROOT" && printf '%s' "$AI_PROMPT" | timeout 90 claude -p --dangerously-skip-permissions 2>&1) && AI_EXIT=0 || AI_EXIT=$?
+
+        if [ "$AI_EXIT" -ne 0 ]; then
+            echo "${YELLOW}   ⚠️  Revisão por IA falhou (infraestrutura) — não bloqueia, só aviso${NC}"
+            echo "${YELLOW}   $(echo "$AI_OUTPUT" | head -3)${NC}"
+            WARNINGS="${WARNINGS}\n  - Revisão por IA não conseguiu correr (ver output acima)"
+            if [ "$VERDICT" = "APROVADO" ]; then
+                VERDICT="APROVADO COM AVISOS"
+            fi
+        else
+            echo "$AI_OUTPUT" | grep -v "^VEREDITO:" || true
+            echo ""
+            AI_LINE=$(echo "$AI_OUTPUT" | grep "^VEREDITO:" | tail -1)
+            echo "${BOLD}   $AI_LINE${NC}"
+
+            if echo "$AI_LINE" | grep -q "🔴"; then
+                ERRORS="${ERRORS}\n  - Revisão por IA: ${AI_LINE}"
+                VERDICT="BLOQUEADO"
+            elif echo "$AI_LINE" | grep -q "🟡"; then
+                WARNINGS="${WARNINGS}\n  - Revisão por IA: ${AI_LINE}"
+                if [ "$VERDICT" = "APROVADO" ]; then
+                    VERDICT="APROVADO COM AVISOS"
+                fi
+            fi
+        fi
+    fi
 fi
 echo ""
 
