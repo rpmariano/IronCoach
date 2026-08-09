@@ -9,7 +9,15 @@ import MealCard from './MealCard';
 import MealRegistration from './MealRegistration';
 
 export default function NutritionCalendar({ onRegisterClick }) {
-  const { meals, waterLogs, profile, coachPlanItems } = useAppStore();
+  const { meals, waterLogs, profile, coachPlans, coachPlanItems } = useAppStore();
+
+  /* Só treinos de planos ACEITES ajustam os objetivos do dia — uma proposta
+     que o atleta ainda não aceitou (ou recusou) não deve mexer no calendário.
+     Ver specs/plano-de-treino.md §4-§5.1. */
+  const activePlanItems = useMemo(() => {
+    const acceptedIds = new Set((coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    return (coachPlanItems || []).filter(i => acceptedIds.has(i.plan_id));
+  }, [coachPlans, coachPlanItems]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editingMealId, setEditingMealId] = useState(null);
@@ -47,12 +55,12 @@ export default function NutritionCalendar({ onRegisterClick }) {
     for (const date of daysInMonth) {
       const dayStr = format(date, 'yyyy-MM-dd');
       info.set(dayStr, {
-        status: dayNutrientStatus(mealsByDay.get(dayStr) || [], dayStr, profile, coachPlanItems),
+        status: dayNutrientStatus(mealsByDay.get(dayStr) || [], dayStr, profile, activePlanItems),
         waterMet: dayWaterGoalMet(waterByDay.get(dayStr) || [], dayStr, profile),
       });
     }
     return info;
-  }, [daysInMonth, mealsByDay, waterByDay, profile, coachPlanItems]);
+  }, [daysInMonth, mealsByDay, waterByDay, profile, activePlanItems]);
 
   if (editingMealId) {
     return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;

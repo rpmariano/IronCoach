@@ -126,6 +126,8 @@ O projeto inclui um sistema de qualidade e auditoria automatizado na pasta `.age
 - Chat de interação assíncrona com um assistente virtual ou treinador real.
 - Recomendações personalizadas com base nos dados registados nos restantes módulos.
 - A arquitetura de dados do Coach (janelas de histórico por módulo, extensão dinâmica por *tool calling*, comportamento no chat) está em **`sdd.md`** na raiz do projeto.
+- **Ferramentas de *function calling*** (`buildTools()` em `coach-chat`): três de leitura — `get_nutrition_history`, `get_gym_history`, `get_running_history`, usadas quando a pergunta sai das janelas já no contexto — e uma **de escrita**, `propose_training_plan`, que cria um plano de treino pendente de aceitação. Ver `specs/plano-de-treino.md` §5.1. Sendo a única que escreve, valida tudo antes de gravar e faz *rollback* do plano se os itens falharem.
+- **O Coach é retrospetivo por omissão** e só é prospetivo em dois casos: provas agendadas (`race_events`, que existem no futuro) e planos que ele próprio propôs e o atleta aceitou. Fora disso, corrige e educa sobre o que já aconteceu — a app regista dados *após* a realização, e o coach não pode adivinhar o treino de hoje.
 
 #### 3.6.1. Equipa de quatro coaches — direção definida, por implementar
 O Coach deixa de ser um agente único e passa a ser **uma equipa de quatro**: três especialistas (nutrição desportiva, ginásio, corrida em estrada/trail) e um **responsável de equipa** que reúne os pareceres dos outros, cruza-os com o módulo de Corpo, e é **o único que fala com o utilizador**. Os especialistas nunca dão a cara — só produzem parecer.

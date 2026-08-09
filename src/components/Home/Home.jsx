@@ -193,7 +193,7 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
 // Coach a ocupar o mesmo lugar central do Início.
 const WEEKDAY_LABELS_LONG = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-function PlanItemRow({ item, onComplete, onCancel }) {
+function PlanItemRow({ item, onComplete, onCancel, readOnly = false }) {
   const isPast = item.planned_date < todayISO();
   const d = new Date(item.planned_date + 'T00:00:00');
   const dayLabel = WEEKDAY_LABELS_LONG[d.getDay()].slice(0, 3);
@@ -222,28 +222,72 @@ function PlanItemRow({ item, onComplete, onCancel }) {
         <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-main)' }}>{title}</p>
         {item.notes && <p className="text-[10px] truncate" style={{ color: 'var(--green)' }}>{item.notes}</p>}
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <button onClick={() => onComplete(item)} aria-label="Marcar como concluído"
-          className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+      {!readOnly && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button onClick={() => onComplete(item)} aria-label="Marcar como concluído"
+            className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+            style={{ background: 'var(--color-success)', color: '#fff' }}>
+            <Check size={16} />
+          </button>
+          <button onClick={() => onCancel(item)} aria-label="Cancelar este treino"
+            className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+            style={{ background: 'rgba(15,23,42,0.08)', color: 'var(--green)' }}>
+            <XIcon size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Proposta ainda por aceitar — o coach criou-a no chat, o atleta decide aqui.
+// Enquanto 'proposto', os treinos não contam para nada (nem aparecem como
+// treinos a fazer, nem ajustam objetivos de nutrição).
+function PlanProposalCard({ plan, items, onRespond }) {
+  const its = items
+    .filter(i => i.plan_id === plan.id)
+    .sort((a, b) => a.planned_date.localeCompare(b.planned_date));
+
+  return (
+    <div className="rounded-2xl p-3.5" style={statCardBg('var(--mod-coach-to)')}>
+      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--green)' }}>
+        O Coach propôs um plano
+      </h2>
+      {plan.summary && <p className="text-xs mb-2" style={{ color: 'var(--text-main)' }}>{plan.summary}</p>}
+      <div className="mb-3">
+        {its.map(item => (
+          <PlanItemRow key={item.id} item={item} readOnly />
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => onRespond(plan.id, true)}
+          className="tap-h-44 flex-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition"
           style={{ background: 'var(--color-success)', color: '#fff' }}>
-          <Check size={16} />
+          <Check size={15} /> Aceitar
         </button>
-        <button onClick={() => onCancel(item)} aria-label="Cancelar este treino"
-          className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
+        <button onClick={() => onRespond(plan.id, false)}
+          className="tap-h-44 flex-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition"
           style={{ background: 'rgba(15,23,42,0.08)', color: 'var(--green)' }}>
-          <XIcon size={16} />
+          <XIcon size={15} /> Recusar
         </button>
       </div>
     </div>
   );
 }
 
-function WeeklyPlanCard({ planItems = [], onComplete, onCancel, onNav }) {
-  const today = todayISO();
-  // Só o plano mais recente aceite conta — planos recusados ou substituídos
-  // não devem continuar a aparecer.
+function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onRespond, onNav }) {
+  // Uma proposta por aceitar tem precedência — mostra-se essa em vez da lista
+  // de treinos, para a decisão não ficar escondida.
+  const proposal = plans.find(p => p.status === 'proposto');
+  if (proposal) {
+    return <PlanProposalCard plan={proposal} items={planItems} onRespond={onRespond} />;
+  }
+
+  // Só itens de planos aceites — um plano recusado deixa os itens em
+  // 'pendente' na BD, mas nunca devem aparecer como treinos a fazer.
+  const acceptedPlanIds = new Set(plans.filter(p => p.status === 'aceite').map(p => p.id));
   const pending = planItems
-    .filter(i => i.status === 'pendente')
+    .filter(i => i.status === 'pendente' && acceptedPlanIds.has(i.plan_id))
     .sort((a, b) => a.planned_date.localeCompare(b.planned_date));
 
   if (pending.length === 0) {
@@ -277,8 +321,8 @@ function WeeklyPlanCard({ planItems = [], onComplete, onCancel, onNav }) {
 // A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
 export default function Home() {
   const {
-    profile, meals, waterLogs, raceEvents, coachPlanItems,
-    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
+    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
+    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, respondToPlan,
   } = useAppStore();
   const [localWaterLogs, setLocalWaterLogs] = useState([]);
 
@@ -326,7 +370,14 @@ export default function Home() {
       <WaterHomeCard waterLogs={effectiveWaterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
 
       {/* Plano da semana — ver specs/plano-de-treino.md */}
-      <WeeklyPlanCard planItems={coachPlanItems} onComplete={handleCompleteItem} onCancel={handleCancelItem} onNav={handleNav} />
+      <WeeklyPlanCard
+        plans={coachPlans}
+        planItems={coachPlanItems}
+        onComplete={handleCompleteItem}
+        onCancel={handleCancelItem}
+        onRespond={respondToPlan}
+        onNav={handleNav}
+      />
     </div>
   );
 }

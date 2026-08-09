@@ -1,9 +1,10 @@
 # Spec — Plano de Treino Acordado com o Coach
 
-Estado: **base de dados, store, Início e conclusão de treinos implementados
-(2026-08-10). Falta a emissão da proposta pelo coach-chat (§5.1) — sem isso,
-não há forma de criar um plano; o resto do fluxo (§5.2-§5.4) já funciona
-sobre planos criados diretamente na base de dados.**
+Estado: **implementado (2026-08-10).** O ciclo completo funciona: o coach
+propõe no chat (`propose_training_plan`), o atleta aceita/recusa no Início,
+conclui cada treino pelo ecrã de registo pré-preenchido, e os objetivos de
+nutrição ajustam-se em consequência. Falta apenas o refinamento do cálculo
+nutricional (ver §4 — o heurístico atual só cobre o próprio dia de um longo).
 Contexto: `specs/coach-investigacao.md` (doutrina e limiares), PRD 3.1 (Início),
 3.2 (Nutrição), 3.4 (Corrida), 3.6 (Coach).
 
@@ -138,6 +139,26 @@ prosa bonita — a Edge Function tem de extrair "longão, 15 km, 10/08" e
 gravá-lo. É o mesmo mecanismo de veredito estruturado descrito no PRD 3.6.1;
 sem ele, o coach recomenda e a app não fica a saber de nada.
 
+**Como está implementado**: `propose_training_plan`, uma quarta ferramenta no
+mecanismo de *function calling* que o `coach-chat` já usava para ler histórico.
+É a **única que escreve** — as outras três só leem — daí três cuidados
+próprios:
+
+- **Valida tudo antes de gravar qualquer coisa.** Um item inválido a meio
+  deixaria um plano meio criado, que o atleta veria como proposta legítima.
+- **`training_type` vai como `enum` no schema da ferramenta**, com as mesmas
+  chaves de `runs.training_type`. O modelo não consegue inventar um tipo que
+  o *check constraint* rejeitaria.
+- **Rollback explícito**: se os itens falharem depois do plano estar gravado,
+  o plano é apagado. Sem isso ficava uma proposta vazia visível no Início.
+
+O resultado da ferramenta volta ao modelo, que menciona a proposta na resposta
+final. A função devolve `plan_proposed: true` ao cliente, que recarrega os
+planos para a proposta aparecer no Início sem refrescar a página.
+
+**Enquanto `proposto`, os itens não contam para nada** — não aparecem como
+treinos a fazer nem ajustam objetivos de nutrição. Só depois de `aceite`.
+
 ### 5.2. Concluir um treino
 
 É este passo que resolve o problema mais difícil — saber se o treino acordado
@@ -210,7 +231,8 @@ perde essa escolha.
 | `src/components/Run/RunRegistration.jsx` | consome `planItemPrefill` do store no mount; ao gravar manualmente, chama `completePlanItem` | ✅ |
 | `src/components/Gym/GymRegistration.jsx` | idem | ✅ |
 | `src/store/index.js` | `coachPlans`/`coachPlanItems` carregados em `loadInitialData`; `completePlanItem`/`cancelPlanItem`/`planItemPrefill` | ✅ |
-| `supabase/functions/coach-chat/index.ts` | emitir a proposta estruturada; ler o plano ativo para contexto | ❌ **por fazer** — sem isto não há forma de criar um plano a partir do chat |
+| `supabase/functions/coach-chat/index.ts` | ferramenta `propose_training_plan` (a única de escrita); `buildPlanContext()` dá ao coach os treinos que já propôs e continuam por resolver; devolve `plan_proposed` ao cliente | ✅ |
+| `src/components/Coach/Coach.jsx` | recarrega os planos quando `plan_proposed`; **corrigido bug pré-existente** — lia `data.reply`, campo que a função nunca devolveu, pelo que mostrava sempre o texto de fallback em vez da resposta real | ✅ |
 
 ## 8. Questões em aberto
 

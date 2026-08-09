@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -246,4 +246,136 @@ Deno.test("runGetGymHistory propaga erro de query", async () => {
   const sb = makeGymSb([], { message: "falha db" });
   const result = await runGetGymHistory(sb, "user-1", { start_date: "2026-07-01", end_date: "2026-07-31" });
   assertStringIncludes(result, "Erro ao consultar dados: falha db");
+});
+
+// ── propose_training_plan ────────────────────────────────────────────────
+// Ao contrário das outras ferramentas, esta ESCREVE — o mock regista o que foi
+// inserido e apagado, para os testes verificarem que nada fica gravado quando
+// a validação falha, e que o rollback acontece quando os itens falham.
+// deno-lint-ignore no-explicit-any
+function makePlanSb(opts: { planError?: any; itemsError?: any } = {}) {
+  const calls = { planInserts: [] as any[], itemInserts: [] as any[], deletes: [] as string[] };
+  const sb = {
+    from: (table: string) => {
+      if (table === "coach_plans") {
+        return {
+          // deno-lint-ignore no-explicit-any
+          insert: (row: any) => {
+            calls.planInserts.push(row);
+            return {
+              select: () => ({
+                single: () => Promise.resolve(
+                  opts.planError
+                    ? { data: null, error: opts.planError }
+                    : { data: { id: "plan-1", ...row }, error: null },
+                ),
+              }),
+            };
+          },
+          delete: () => ({
+            eq: (_col: string, id: string) => {
+              calls.deletes.push(id);
+              return Promise.resolve({ error: null });
+            },
+          }),
+        };
+      }
+      return {
+        // deno-lint-ignore no-explicit-any
+        insert: (rows: any[]) => {
+          calls.itemInserts.push(...rows);
+          return Promise.resolve({ error: opts.itemsError || null });
+        },
+      };
+    },
+  };
+  return { sb, calls };
+}
+
+const VALID_PLAN = {
+  period_start: "2026-08-10",
+  period_end: "2026-08-16",
+  summary: "4 treinos, base aeróbica",
+  items: [
+    { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
+    { planned_date: "2026-08-16", kind: "corrida", training_type: "longo", target_distance_km: 18, notes: "Z2" },
+  ],
+};
+
+Deno.test("runProposeTrainingPlan grava plano e itens", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+  assertStringIncludes(result, "Plano criado com 2 treino(s)");
+  assertEquals(calls.planInserts.length, 1);
+  assertEquals(calls.planInserts[0].status, "proposto");
+  assertEquals(calls.itemInserts.length, 2);
+  assertEquals(calls.itemInserts[0].plan_id, "plan-1");
+  assertEquals(calls.itemInserts[1].training_type, "longo");
+});
+
+Deno.test("runProposeTrainingPlan rejeita training_type inválido sem gravar nada", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "sprint_maluco" }],
+  });
+  assertStringIncludes(result, "não é válido");
+  assertEquals(calls.planInserts.length, 0);
+});
+
+Deno.test("runProposeTrainingPlan rejeita item fora do período do plano", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-09-30", kind: "corrida" }],
+  });
+  assertStringIncludes(result, "fora do período");
+  assertEquals(calls.planInserts.length, 0);
+});
+
+Deno.test("runProposeTrainingPlan rejeita kind desconhecido", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-10", kind: "natacao" }],
+  });
+  assertStringIncludes(result, 'kind tem de ser "corrida" ou "ginasio"');
+});
+
+Deno.test("runProposeTrainingPlan rejeita plano sem treinos", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [] });
+  assertStringIncludes(result, "pelo menos um treino");
+});
+
+Deno.test("runProposeTrainingPlan rejeita datas mal formadas", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, period_start: "10/08/2026" });
+  assertStringIncludes(result, "YYYY-MM-DD");
+});
+
+Deno.test("runProposeTrainingPlan limita o número de treinos", async () => {
+  const { sb, calls } = makePlanSb();
+  const items = Array.from({ length: 20 }, () => ({ planned_date: "2026-08-10", kind: "corrida" }));
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items });
+  assertStringIncludes(result, "demasiados treinos");
+  assertEquals(calls.planInserts.length, 0);
+});
+
+Deno.test("runProposeTrainingPlan não deixa training_type num item de ginásio", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-10", kind: "ginasio", training_type: "longo", categories: ["Pernas"] }],
+  });
+  assertEquals(calls.itemInserts[0].training_type, null);
+  assertEquals(calls.itemInserts[0].categories, ["Pernas"]);
+});
+
+Deno.test("runProposeTrainingPlan apaga o plano se os itens falharem", async () => {
+  const { sb, calls } = makePlanSb({ itemsError: { message: "constraint violada" } });
+  const result = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+  assertStringIncludes(result, "Erro ao gravar os treinos");
+  // Sem isto ficaria uma proposta vazia visível ao atleta.
+  assertEquals(calls.deletes, ["plan-1"]);
 });

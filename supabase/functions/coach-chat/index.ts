@@ -78,10 +78,78 @@ const RUNNING_TOOL = {
   },
 };
 
+// Espelha TRAINING_TYPE_KEYS em supabase/functions/analyze-run/index.ts e o
+// check constraint de runs.training_type. Um valor fora desta lista faria o
+// insert do item do plano rebentar, por isso vai como enum no schema da
+// ferramenta — o modelo não consegue inventar um tipo novo.
+const RUN_TRAINING_TYPES = [
+  "continuo", "longo", "recuperacao", "tempo", "fartlek",
+  "intervalos", "subidas", "trail", "tecnico",
+];
+
+// Ferramenta de ESCRITA — as três acima só leem. Grava um plano de treino em
+// coach_plans/coach_plan_items com status 'proposto'; o atleta aceita ou
+// recusa depois, no cliente. Sem isto, o coach recomendaria treinos em prosa
+// bonita e a app não ficava a saber de nada — ver specs/plano-de-treino.md §5.1.
+const PROPOSE_PLAN_TOOL = {
+  name: "propose_training_plan",
+  description:
+    "Propõe ao atleta um plano de treinos para um período (tipicamente a próxima semana). " +
+    "Usa esta função SEMPRE que o utilizador pedir um plano, sugestões de treinos para os " +
+    "próximos dias, ou o que deve fazer numa semana — em vez de listares os treinos apenas " +
+    "no texto da resposta. A proposta fica pendente de aceitação pelo atleta, que a vê no " +
+    "ecrã Início. Depois de a criares, menciona na tua resposta que a proposta está lá para " +
+    "ele aceitar. NÃO uses esta função para responder a perguntas sobre treinos já feitos, " +
+    "nem quando o utilizador só quer uma opinião sem plano concreto.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      period_start: { type: "STRING", description: "Primeiro dia do plano, formato YYYY-MM-DD" },
+      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD" },
+      summary: {
+        type: "STRING",
+        description: "Resumo curto do plano numa frase, ex.: \"4 treinos, foco em base aeróbica\"",
+      },
+      items: {
+        type: "ARRAY",
+        description: "Os treinos do plano, um por dia de treino. Não incluir dias de descanso.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            planned_date: { type: "STRING", description: "Dia do treino, formato YYYY-MM-DD" },
+            kind: { type: "STRING", enum: ["corrida", "ginasio"], description: "Tipo de treino" },
+            training_type: {
+              type: "STRING",
+              enum: RUN_TRAINING_TYPES,
+              description: "Só para kind=corrida. Tipo de treino de corrida.",
+            },
+            categories: {
+              type: "ARRAY",
+              items: { type: "STRING" },
+              description:
+                "Só para kind=ginasio. Grupos musculares ou modalidade, ex.: [\"Pernas\", \"Glúteos\"] " +
+                "ou [\"HIIT\"].",
+            },
+            target_distance_km: { type: "NUMBER", description: "Só para kind=corrida. Distância alvo em km." },
+            target_duration_min: { type: "NUMBER", description: "Duração alvo em minutos." },
+            notes: {
+              type: "STRING",
+              description: "Instrução curta ao atleta, ex.: \"Z2, fácil, sem olhar ao ritmo\"",
+            },
+          },
+          required: ["planned_date", "kind"],
+        },
+      },
+    },
+    required: ["period_start", "period_end", "items"],
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
-// das janelas já incluídas no contexto (ex: "compara Maio com hoje").
+// das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
+// quando pede um plano de treinos.
 function buildTools() {
-  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL] }];
+  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL] }];
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -443,6 +511,93 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
   return `Corridas de ${start_date} a ${end_date} (${data.length}):\n${summariseRuns(data).join("\n")}`;
 }
 
+// Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
+// e o limite trava uma resposta descontrolada do modelo a criar dezenas de
+// linhas na base de dados.
+const MAX_PLAN_ITEMS = 14;
+
+// Executa a function call propose_training_plan: grava o plano com estado
+// 'proposto' e os respetivos itens. Ao contrário das outras três ferramentas,
+// esta ESCREVE — daí a validação apertada de cada campo antes do insert.
+// Ver specs/plano-de-treino.md §3 e §5.1.
+// deno-lint-ignore no-explicit-any
+export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
+  const { period_start, period_end, summary, items } = args || {};
+
+  if (!period_start || !period_end || !ISO_DATE_RE.test(period_start) || !ISO_DATE_RE.test(period_end)) {
+    return "Erro: period_start e period_end têm de ser datas no formato YYYY-MM-DD.";
+  }
+  if (period_start > period_end) return "Erro: period_start é posterior a period_end.";
+  if (!Array.isArray(items) || items.length === 0) {
+    return "Erro: o plano tem de ter pelo menos um treino em items.";
+  }
+  if (items.length > MAX_PLAN_ITEMS) {
+    return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
+  }
+
+  // Valida tudo ANTES de gravar seja o que for — um item inválido a meio
+  // deixaria um plano meio criado, que o atleta veria como proposta legítima.
+  const rows = [];
+  for (const [i, item] of items.entries()) {
+    const n = i + 1;
+    if (!item?.planned_date || !ISO_DATE_RE.test(item.planned_date)) {
+      return `Erro no treino ${n}: planned_date tem de ser uma data YYYY-MM-DD.`;
+    }
+    if (item.planned_date < period_start || item.planned_date > period_end) {
+      return `Erro no treino ${n}: planned_date (${item.planned_date}) está fora do período do plano.`;
+    }
+    if (item.kind !== "corrida" && item.kind !== "ginasio") {
+      return `Erro no treino ${n}: kind tem de ser "corrida" ou "ginasio".`;
+    }
+    if (item.kind === "corrida" && item.training_type && !RUN_TRAINING_TYPES.includes(item.training_type)) {
+      return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${RUN_TRAINING_TYPES.join(", ")}.`;
+    }
+    const distance = Number(item.target_distance_km);
+    const duration = Number(item.target_duration_min);
+    rows.push({
+      user_id: userId,
+      planned_date: item.planned_date,
+      kind: item.kind,
+      // O schema já limita training_type a corridas, mas o modelo pode enganar-se
+      // — forçar null no ginásio evita gravar um tipo de corrida numa sessão de
+      // ginásio (não rebentaria, mas ficaria incoerente).
+      training_type: item.kind === "corrida" && item.training_type ? item.training_type : null,
+      categories: item.kind === "ginasio" && Array.isArray(item.categories) ? item.categories : [],
+      target_distance_km: item.kind === "corrida" && distance > 0 ? distance : null,
+      target_duration_min: duration > 0 ? Math.round(duration) : null,
+      notes: typeof item.notes === "string" && item.notes.trim() ? item.notes.trim() : null,
+    });
+  }
+
+  const { data: plan, error: planErr } = await sb
+    .from("coach_plans")
+    .insert({
+      user_id: userId,
+      status: "proposto",
+      period_start,
+      period_end,
+      summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
+    })
+    .select()
+    .single();
+
+  if (planErr || !plan) return `Erro ao gravar o plano: ${planErr?.message || "sem resposta da base de dados"}`;
+
+  const { error: itemsErr } = await sb
+    .from("coach_plan_items")
+    .insert(rows.map((r) => ({ ...r, plan_id: plan.id })));
+
+  if (itemsErr) {
+    // Sem os itens o plano é uma casca vazia — apaga-o para o atleta não ver
+    // uma proposta sem treinos nenhuns.
+    await sb.from("coach_plans").delete().eq("id", plan.id);
+    return `Erro ao gravar os treinos do plano: ${itemsErr.message}`;
+  }
+
+  return `Plano criado com ${rows.length} treino(s), de ${period_start} a ${period_end}. ` +
+    `Está pendente de aceitação — o atleta vê-o no ecrã Início e decide se aceita.`;
+}
+
 // ── Agenda de provas ─────────────────────────────────────────────────────
 const RACE_TYPE_LABELS: Record<string, string> = {
   estrada: "Estrada", trail: "Trail", ultra: "Ultra", "5k": "5 km", "10k": "10 km",
@@ -453,6 +608,14 @@ const RACE_TYPE_LABELS: Record<string, string> = {
 // código do cliente é que tem as descrições usadas na UI.
 const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
   iniciante: "Iniciante", basico: "Básico", medio: "Médio", avancado: "Avançado",
+};
+
+// Espelha RACE_PRIORITIES em src/utils/run.js. Determina o taper: prova
+// principal leva 10-21 dias de polimento, prova de treino leva só 2-4.
+const RACE_PRIORITY_LABELS: Record<string, string> = {
+  a: "prova principal (taper completo)",
+  b: "prova secundária (taper curto)",
+  c: "prova de treino (sem taper)",
 };
 
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
@@ -504,10 +667,33 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
       e.experience_level
         ? `nível do atleta nesta prova: ${EXPERIENCE_LEVEL_LABELS[e.experience_level] || e.experience_level}`
         : null,
+      // Decide o taper: principal leva 10-21 dias de polimento, treino leva
+      // só 2-4. Ver specs/coach-investigacao.md, Corrida 2.3 #1.
+      e.race_priority
+        ? `prioridade: ${RACE_PRIORITY_LABELS[e.race_priority] || e.race_priority}`
+        : null,
     ].filter(Boolean).join(", ");
     return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
+}
+
+// Contexto dos treinos que o coach já propôs e ainda estão por resolver —
+// evita propor um plano por cima de outro que o atleta ainda não aceitou nem
+// recusou, e dá-lhe memória do que combinou. Ver specs/plano-de-treino.md.
+// deno-lint-ignore no-explicit-any
+function buildPlanContext(items: any[], todayISO: string): string | null {
+  if (!items || items.length === 0) return null;
+  const lines = items.map((i) => {
+    const desc = i.kind === "corrida"
+      ? [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
+        .filter(Boolean).join(" ")
+      : ["ginásio", i.categories?.length ? i.categories.join("/") : null,
+        i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
+    const atraso = i.planned_date < todayISO ? " — JÁ PASSOU, por resolver" : "";
+    return `- ${i.planned_date}: ${desc}${i.notes ? ` (${i.notes})` : ""}${atraso}`;
+  });
+  return `Treinos que já propuseste e continuam por fazer ou cancelar:\n${lines.join("\n")}`;
 }
 
 // Espelha ageFromBirthDate() em src/utils/body.js — duplicado porque o cliente
@@ -533,12 +719,14 @@ function buildSystemInstruction(
     gender: string | null;
     birth_date: string | null;
     experience_level: string | null;
+    resting_hr_bpm: number | null;
   },
   nutritionSummary: string,
   waterSummary: string,
   gymSummary: string | null,
   runningSummary: string | null,
   raceEventsContext: string | null,
+  planContext: string | null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -598,7 +786,16 @@ function buildSystemInstruction(
     `corridas dos últimos 30 dias. Se a pergunta do utilizador precisar de dados fora dessas ` +
     `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
     `função get_nutrition_history (nutrição), get_gym_history (ginásio) ou get_running_history ` +
-    `(corrida) com o intervalo de datas necessário antes de responder.`;
+    `(corrida) com o intervalo de datas necessário antes de responder.\n\n` +
+    `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
+    `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
+    `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
+    `aceita-a no ecrã Início. Antes de propores, tem em conta o histórico recente (não subas ` +
+    `o volume mais de 10% face à média das últimas semanas), o nível do atleta e as provas ` +
+    `agendadas — uma prova principal próxima muda o plano (taper). Depois de criares a ` +
+    `proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
+    `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
+    `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.`;
 
   const bio: string[] = [];
   if (biometrics.experience_level) {
@@ -619,6 +816,33 @@ function buildSystemInstruction(
     const bmi = biometrics.weight_kg / (h * h);
     bio.push(`IMC: ${bmi.toFixed(1)}`);
   }
+  // FC de repouso + zonas já calculadas. A fórmula preferida é Karvonen (FC de
+  // reserva), que precisa da FC de repouso; sem ela cai-se para %FCmáx simples,
+  // menos preciso. FCmáx por Tanaka (208 − 0,7 × idade), mais defensável que a
+  // clássica 220 − idade. Ver specs/coach-investigacao.md, Corrida 2.2 #4.
+  if (biometrics.resting_hr_bpm) {
+    bio.push(`FC em repouso: ${biometrics.resting_hr_bpm} bpm`);
+  }
+  if (idade !== null) {
+    const fcMax = Math.round(208 - 0.7 * idade);
+    if (biometrics.resting_hr_bpm) {
+      const reserva = fcMax - biometrics.resting_hr_bpm;
+      const z = (pct: number) => Math.round(biometrics.resting_hr_bpm! + pct * reserva);
+      bio.push(
+        `Zonas de FC (Karvonen, FCmáx estimada ${fcMax} bpm por Tanaka): ` +
+        `Z1 ${z(0.50)}-${z(0.60)} · Z2 ${z(0.60)}-${z(0.70)} · Z3 ${z(0.70)}-${z(0.80)} · ` +
+        `Z4 ${z(0.80)}-${z(0.90)} · Z5 ${z(0.90)}-${fcMax} bpm`,
+      );
+    } else {
+      bio.push(
+        `Zonas de FC (%FCmáx, FCmáx estimada ${fcMax} bpm por Tanaka — menos ` +
+        `precisas por falta de FC em repouso no perfil): Z1 ${Math.round(fcMax * 0.50)}-` +
+        `${Math.round(fcMax * 0.60)} · Z2 ${Math.round(fcMax * 0.60)}-${Math.round(fcMax * 0.70)} · ` +
+        `Z3 ${Math.round(fcMax * 0.70)}-${Math.round(fcMax * 0.80)} · Z4 ${Math.round(fcMax * 0.80)}-` +
+        `${Math.round(fcMax * 0.90)} · Z5 ${Math.round(fcMax * 0.90)}-${fcMax} bpm`,
+      );
+    }
+  }
   if (bio.length) {
     sys += `\n\nDados biométricos do utilizador:\n${bio.join("\n")}`;
   }
@@ -632,6 +856,7 @@ function buildSystemInstruction(
   if (gymSummary) sys += `\n\n${gymSummary}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
+  if (planContext) sys += `\n\n${planContext}`;
 
   return sys;
 }
@@ -666,7 +891,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level")
+      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm")
       .eq("id", userId)
       .maybeSingle();
 
@@ -782,12 +1007,24 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces } = await sb
       .from("race_events")
-      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, experience_level")
+      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, experience_level, race_priority")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
       .limit(5);
     const raceEventsContext = buildRaceEventsContext(upcomingRaces || [], todayISO);
+
+    // ── Treinos do plano por resolver ────────────────────────────────────
+    // Só os 'pendente' — itens concluídos já aparecem no histórico de
+    // corridas/treinos, e cancelados não interessam ao coach.
+    const { data: pendingPlanItems } = await sb
+      .from("coach_plan_items")
+      .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes")
+      .eq("user_id", userId)
+      .eq("status", "pendente")
+      .order("planned_date", { ascending: true })
+      .limit(20);
+    const planContext = buildPlanContext(pendingPlanItems || [], todayISO);
 
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
     const { data: history } = await sb
@@ -816,12 +1053,14 @@ async function handler(req: Request): Promise<Response> {
         weight_kg: (profile?.weight_kg as number | null) ?? null,
         gender: (profile?.gender as string | null) ?? null,
         experience_level: (profile?.experience_level as string | null) ?? null,
+        resting_hr_bpm: (profile?.resting_hr_bpm as number | null) ?? null,
       },
       nutritionSummary,
       waterSummary,
       gymSummary,
       runningSummary,
       raceEventsContext,
+      planContext,
     );
 
     // deno-lint-ignore no-explicit-any
@@ -873,6 +1112,10 @@ async function handler(req: Request): Promise<Response> {
     // tokens) antes de chegar à resposta final que o utilizador vê.
     const totalUsage: GeminiUsage = { input_tokens: 0, output_tokens: 0 };
 
+    // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
+    // recarregar os itens para a proposta aparecer sem refrescar a página.
+    let planWasProposed = false;
+
     let geminiJson: Record<string, unknown> | undefined;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const isLastAllowedRound = round === MAX_TOOL_ROUNDS;
@@ -923,6 +1166,9 @@ async function handler(req: Request): Promise<Response> {
           result = await runGetGymHistory(sb, userId, args || {});
         } else if (name === "get_running_history") {
           result = await runGetRunningHistory(sb, userId, args || {});
+        } else if (name === "propose_training_plan") {
+          result = await runProposeTrainingPlan(sb, userId, args || {});
+          planWasProposed = planWasProposed || result.startsWith("Plano criado");
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }
@@ -980,10 +1226,17 @@ async function handler(req: Request): Promise<Response> {
         model_message: { id: null, role: "model", content: replyText, created_at: new Date().toISOString() },
         suggestions,
         usage: totalUsage,
+        plan_proposed: planWasProposed,
       });
     }
 
-    return jsonResponse({ user_message: userMsg, model_message: modelMsg, suggestions, usage: totalUsage });
+    return jsonResponse({
+      user_message: userMsg,
+      model_message: modelMsg,
+      suggestions,
+      usage: totalUsage,
+      plan_proposed: planWasProposed,
+    });
 
   } catch (e) {
     console.error("Erro inesperado:", e);

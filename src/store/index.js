@@ -65,6 +65,33 @@ export const useAppStore = create((set, get) => ({
   setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
 
+  // Recarrega planos e itens — usado pelo Coach quando a resposta criou uma
+  // proposta (plan_proposed), para o Início a mostrar sem refrescar a página.
+  reloadCoachPlans: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return;
+    const [{ data: plans }, { data: items }] = await Promise.all([
+      supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
+      supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
+    ]);
+    set({ coachPlans: plans || [], coachPlanItems: items || [] });
+  },
+
+  // Aceitar/recusar uma proposta do coach. Enquanto 'proposto', os itens não
+  // contam para nada — nem aparecem como treinos a fazer, nem ajustam
+  // objetivos de nutrição. Ver specs/plano-de-treino.md §5.1.
+  respondToPlan: async (planId, accept) => {
+    const updates = accept
+      ? { status: 'aceite', accepted_at: new Date().toISOString() }
+      : { status: 'recusado' };
+    const { error } = await supabase.from('coach_plans').update(updates).eq('id', planId);
+    if (error) { console.error('Error responding to plan:', error); return false; }
+    set((state) => ({
+      coachPlans: state.coachPlans.map(p => p.id === planId ? { ...p, ...updates } : p),
+    }));
+    return true;
+  },
+
   // Marca um item como concluído — chamado pelo próprio ecrã de registo
   // (RunRegistration/GymRegistration) depois de gravar a corrida/sessão que
   // o cumpre. actualDate pode divergir de planned_date; é essa divergência

@@ -48,7 +48,8 @@ export default function Coach() {
     setCoachSuggestions,
     clearCoachChat,
     profile,
-    session
+    session,
+    reloadCoachPlans
   } = useAppStore();
 
   const [inputStr, setInputStr] = useState('');
@@ -101,13 +102,21 @@ export default function Coach() {
           content: `**Erro:** ${typeof error === 'string' ? error : error.message || 'Não foi possível responder.'}`
         });
       } else {
+        // A função devolve a resposta em model_message.content — `data.reply`
+        // nunca existiu no payload, o que fazia cair sempre no texto de
+        // fallback e esconder a resposta real do coach.
         addCoachMessage({
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: data?.reply || 'Desculpa, não consegui obter uma resposta de momento.'
+          content: data?.model_message?.content || 'Desculpa, não consegui obter uma resposta de momento.'
         });
         if (Array.isArray(data?.suggestions)) {
           setCoachSuggestions(data.suggestions);
+        }
+        // O coach criou um plano nesta resposta — recarrega os itens para a
+        // proposta aparecer no Início sem ser preciso refrescar a página.
+        if (data?.plan_proposed) {
+          await reloadCoachPlans();
         }
       }
     } catch (err) {
