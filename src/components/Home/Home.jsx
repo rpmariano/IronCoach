@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
 import { Flag, Bell, Check, X as XIcon, Dumbbell as DumbbellIcon, Footprints } from 'lucide-react';
+import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -62,30 +63,25 @@ function NextRaceCard({ raceEvents = [], onNav }) {
     </button>
   );
 
-  const daysUntil = Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
-  const countLabel = daysUntil === 0 ? 'Hoje!' : daysUntil === 1 ? '1 dia' : `${daysUntil} dias`;
-  const countColor = daysUntil === 0 ? 'var(--color-error)' : daysUntil <= 7 ? 'var(--color-alert)' : 'var(--text-main)';
+  const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
+  
+  const maxDays = 84; 
+  const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
+  
+  const dateObj = new Date(next.date + 'T00:00:00');
+  const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
-    <button onClick={() => onNav('corrida')} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg(color)}>
-      <div className="flex items-center justify-between mb-1.5">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Próxima Prova</h2>
-        {next.race_type && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: `color-mix(in srgb, ${color} 15%, transparent)`, color: `color-mix(in srgb, ${color} 45%, var(--text-main))` }}>
-            {next.race_type}
-          </span>
-        )}
-      </div>
-      <div className="flex items-end justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-sm font-bold truncate" style={{ color: 'var(--text-main)' }}>{next.name}</p>
-          <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--green)' }}>
-            {next.date}{next.location ? ` · ${next.location}` : ''}
-          </p>
-        </div>
-        <p className="text-xl font-extrabold leading-none shrink-0" style={{ color: countColor }}>{countLabel}</p>
-      </div>
-    </button>
+    <div onClick={() => onNav('corrida')} className="cursor-pointer active:scale-[0.99] transition-transform w-full">
+      <PremiumNextRaceCard 
+        title={next.name}
+        date={formattedDate}
+        location={next.location || 'Não definida'}
+        tag={next.race_type || 'Prova'}
+        daysRemaining={daysUntil}
+        progressPercentage={progressPercentage}
+      />
+    </div>
   );
 }
 
