@@ -430,3 +430,34 @@ ajustar a proteína para 165 g, confirmei a escrita na BD
 (`protein_goal_set_by_coach=true`) e o selo "Coach" a aparecer no Perfil.
 Dados de teste repostos (proteína, flags, mensagens do chat) depois da
 verificação.
+
+## 13. Doutrina em src/coach-knowledge/ (2026-08-11)
+
+Converte `specs/coach-investigacao.md` (8 blocos, 73 perguntas) em ficheiros
+consultáveis por assunto — `src/coach-knowledge/00-*.md` a `07-*.md`, mais
+um `README.md` com o mapa de cobertura (o que já está wired em código vs. o
+que ainda não). Gerado por script (não transcrito à mão) para garantir
+fidelidade byte-a-byte com a investigação original — ver
+`src/coach-knowledge/README.md` para a explicação de como cada Edge Function
+usa isto (regras numéricas viram constantes TS duplicadas, nunca importadas
+diretamente — cada função só empacota a sua própria pasta).
+
+**Fechado o gap que ficou por resolver no §9**: o campo `meal_suggestion`
+(no plano, no resumo diário, no comentário de refeições) passa a citar a
+doutrina do Bloco 7 em vez do conhecimento geral do Gemini — distribuição de
+macros por refeição, equivalência proteína/alimento do INSA/PortFIR, comida
+pré-prova, e a instrução explícita de somar os alimentos em vez de copiar
+ementas de exemplo (a mesma imprecisão que a própria investigação apontou na
+resposta original).
+
+Verificado com um pedido real no chat ("que comer antes/depois do longão de
+sábado") — a resposta citou os alimentos exatos da doutrina (pão branco/mel,
+aveia+banana, skyr, arroz/massa/batata-doce), não sugestões genéricas.
+71 testes Deno (coach-chat) + 166 Vitest, todos verdes. Três funções
+reimplantadas (`coach-chat`, `coach-daily-summary`, `analyze-meal`).
+
+**Por fazer, documentado no README da doutrina**: só o Bloco 7 e parte do
+Bloco 0/2.3 estão de facto wired em código. Os restantes (progressão de
+carga, RED-S automático, doutrina de ginásio, hierarquia de alarmes
+centralizada) continuam só como referência de leitura — a investigação está
+completa, a implementação não.

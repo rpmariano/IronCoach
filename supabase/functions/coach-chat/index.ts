@@ -778,6 +778,43 @@ const RACE_PRIORITY_LABELS: Record<string, string> = {
   c: "prova de treino (sem taper)",
 };
 
+// Doutrina de nutrição condensada — ver src/coach-knowledge/07-sugestoes-alimentares.md
+// (fonte: specs/coach-investigacao.md, Bloco 7). Antes desta constante, o
+// campo meal_suggestion do propose_training_plan e qualquer sugestão de
+// refeição no chat vinham do conhecimento geral do Gemini, não da literatura
+// registada — nada impedia inconsistência entre pedidos. Duplicado por
+// necessidade: cada Edge Function só empacota a sua própria pasta (mesma
+// razão da triplicação de DIETARY_RESTRICTION_INFO).
+const MEAL_DOCTRINE =
+  `DOUTRINA DE NUTRIÇÃO (Bloco 7 da investigação — ACSM/AND 2016, ISSN ` +
+  `Nutrient Timing/Kerksick 2017, Burke 2021, INSA/PortFIR). Usa isto sempre ` +
+  `que sugerires ou comentares uma refeição, não o teu conhecimento geral:\n` +
+  `- Dia leve/descanso (<60 min Z1-Z2): pequeno-almoço 20-25% kcal, almoço ` +
+  `30-35%, lanche 10-15%, jantar 25-30%, ceia opcional 5-10%. Proteína ` +
+  `0,3-0,4 g/kg por refeição, 3-5 doses espaçadas 3-4h.\n` +
+  `- Dia de treino exigente (>60 min Z3-Z5): hidratos concentram-se na ` +
+  `janela peri-treino (40-50% do total diário). Pré (1-3h antes): 1,0-2,0 ` +
+  `g/kg hidratos fáceis + 0,2-0,3 g/kg proteína. Durante (>75 min): 30-90 ` +
+  `g/h hidratos. Pós (0-2h): 1,0-1,2 g/kg hidratos + 20-40 g proteína.\n` +
+  `- Equivalência proteína por 100 g (INSA/PortFIR, não a tabela americana): ` +
+  `frango/peru peito 30-31, vaca magra 28-30, salmão/atum fresco 24-26, ovo ` +
+  `inteiro 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, ` +
+  `lentilhas/grão/feijão cozidos 8-9, whey 24 g/scoop de 30 g. SOMA sempre ` +
+  `os alimentos até bateres a meta em g/kg — nunca cites uma ementa de ` +
+  `exemplo sem verificar que a soma fecha as contas.\n` +
+  `- Pré-prova, 24-48h antes (provas >60-90 min): prioriza arroz branco, ` +
+  `massa branca, pão branco, batata sem pele, banana madura, mel, frango/ ` +
+  `peru/claras/peixe branco. Evita integrais, leguminosas, crucíferas, ` +
+  `frutos secos, fritos, queijos curados, lactose (se sensível), picante, ` +
+  `bebidas com gás.\n` +
+  `- Erros a vigiar e sinalizar: treinar em jejum antes de sessões Z3-Z5 ou ` +
+  `longos; défice >500-700 kcal/dia; dieta low-carb em endurance; inovar ` +
+  `alimentação no dia da prova; beber só água em longos de calor >2h ` +
+  `(risco de hiponatremia).\n` +
+  `Tudo isto é SUGESTÃO EDUCATIVA, nunca prescrição — usa "considera"/` +
+  `"costuma ajudar", não imposição. As restrições alimentares do atleta ` +
+  `(se indicadas abaixo) têm sempre precedência sobre esta doutrina geral.`;
+
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
 // "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
 function formatPaceMinKm(secondsPerKm: number): string {
@@ -964,7 +1001,8 @@ export function buildSystemInstruction(
     `agendadas — uma prova principal próxima muda o plano (taper). Depois de criares a ` +
     `proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
-    `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.`;
+    `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    MEAL_DOCTRINE;
 
   const bio: string[] = [];
   if (biometrics.experience_level) {

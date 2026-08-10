@@ -399,6 +399,16 @@ export function dietaryRestrictionsPromptBlock(
   );
 }
 
+// Doutrina de nutrição condensada — ver src/coach-knowledge/07-sugestoes-alimentares.md
+// (fonte: specs/coach-investigacao.md, Bloco 7). Quarta cópia — mesma razão da
+// triplicação de DIETARY_RESTRICTION_INFO, acima.
+const MEAL_DOCTRINE =
+  `Ao dares a sugestão final, usa esta doutrina (Bloco 7, ACSM/AND 2016, INSA/PortFIR), não ` +
+  `o teu conhecimento geral: por refeição, a proteína alvo ronda 0,3-0,4 g/kg do peso do ` +
+  `atleta; em dia de treino exigente os hidratos concentram-se antes/depois do treino. ` +
+  `Equivalência prática (por 100 g): frango/peru peito 30-31 g proteína, salmão/atum 24-26, ` +
+  `ovo 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, lentilhas/grão 8-9.`;
+
 const MEAL_TYPE_LABELS: Record<string, string> = {
   "pequeno-almoco": "Pequeno-almoço",
   "lanche-manha": "Lanche da manhã",
@@ -483,7 +493,8 @@ async function generateMealCoachNotes(
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
     `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
-    (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`);
+    (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
+    `\n${MEAL_DOCTRINE}\n`;
 
   try {
     const res = await fetchGeminiWithTimeout(

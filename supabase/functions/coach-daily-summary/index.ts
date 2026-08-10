@@ -41,6 +41,21 @@ const DIETARY_RESTRICTION_LABELS: Record<string, string> = {
   sem_gluten: "Sem glúten",
 };
 
+// Doutrina de nutrição condensada — ver src/coach-knowledge/07-sugestoes-alimentares.md
+// (fonte: specs/coach-investigacao.md, Bloco 7). Terceira cópia — mesma razão
+// da duplicação de DIETARY_RESTRICTION_LABELS, ver a nota em analyze-meal/index.ts.
+const MEAL_DOCTRINE =
+  `Doutrina de nutrição a seguir SEMPRE que preencheres meal_suggestion (Bloco 7 da ` +
+  `investigação — ACSM/AND 2016, ISSN Nutrient Timing, Burke 2021, INSA/PortFIR):\n` +
+  `- Dia leve/descanso: pequeno-almoço 20-25% kcal, almoço 30-35%, lanche 10-15%, jantar ` +
+  `25-30%. Proteína 0,3-0,4 g/kg por refeição.\n` +
+  `- Dia de treino exigente: hidratos concentram-se peri-treino. Pré (1-3h antes): 1,0-2,0 ` +
+  `g/kg hidratos fáceis. Pós (0-2h): 1,0-1,2 g/kg hidratos + 20-40 g proteína.\n` +
+  `- Equivalência proteína/100g (INSA/PortFIR): frango/peru peito 30-31, salmão/atum 24-26, ` +
+  `ovo 12,5 (≈6g/ovo), skyr/grego 0% 10-12, tofu firme 12-15, lentilhas/grão 8-9.\n` +
+  `- Pré-prova 24-48h: arroz branco, massa branca, batata sem pele, banana madura, mel; ` +
+  `evita integrais, leguminosas, fritos, picante.`;
+
 const MEAL_TYPE_LABELS: Record<string, string> = {
   "pequeno-almoco": "Pequeno-almoço",
   "lanche-manha": "Lanche da manhã",
@@ -176,7 +191,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `sugiras o que elas proíbem. Se houver sinais de alarme no contexto, não sugiras ementas: ` +
     `levanta a preocupação em vez disso (mesmo campo).\n` +
     `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
-    `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n`;
+    `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n\n` +
+    MEAL_DOCTRINE;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,

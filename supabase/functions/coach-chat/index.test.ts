@@ -634,3 +634,30 @@ Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta", ()
   assertStringIncludes(sys, "autorizou-te a escrever");
   assertEquals(sys.includes("NÃO tentes a ferramenta"), false);
 });
+
+// ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
+// Ver src/coach-knowledge/07-sugestoes-alimentares.md. Antes disto, o campo
+// meal_suggestion vinha do conhecimento geral do Gemini, não da literatura
+// registada na investigação.
+
+Deno.test("o prompt inclui a doutrina de distribuição de macros por refeição", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "20-25% kcal");
+  assertStringIncludes(sys, "peri-treino");
+});
+
+Deno.test("o prompt inclui a tabela de equivalência proteína/alimento do INSA/PortFIR", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "INSA/PortFIR");
+  assertStringIncludes(sys, "frango/peru peito 30-31");
+});
+
+Deno.test("o prompt lembra o modelo de somar em vez de copiar ementas de exemplo", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "SOMA sempre");
+});
+
+Deno.test("a doutrina de nutrição reforça sugestão educativa, não prescrição", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "SUGESTÃO EDUCATIVA");
+});
