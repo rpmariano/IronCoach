@@ -123,6 +123,57 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
 
+  // Hydration Actions
+  addWaterLog: async (amount, userId) => {
+    try {
+      const now = new Date();
+      // lisbon timezone date string
+      const dateStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Lisbon' }); 
+      const newLog = {
+        user_id: userId,
+        amount_ml: amount,
+        date: dateStr,
+        created_at: now.toISOString()
+      };
+      
+      const { data, error } = await supabase.from('water_logs').insert(newLog).select().single();
+      if (error) throw error;
+      
+      // Update local store for immediate feedback
+      set(state => ({ waterLogs: [data, ...state.waterLogs] }));
+      
+      // Update profile last activity (fire and forget to not block UI)
+      supabase.from('profiles').update({ water_last_activity_at: now.toISOString() }).eq('id', userId).then(({error: err}) => {
+        if(!err) {
+          set(state => ({ profile: { ...state.profile, water_last_activity_at: now.toISOString() } }));
+        }
+      });
+      return data;
+    } catch (err) {
+      console.error('Error in addWaterLog:', err);
+      return null;
+    }
+  },
+  
+  snoozeWaterReminder: async (userId, scope = 'next') => {
+    try {
+      // lisbon time helper
+      const lisbonDateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Lisbon' }); 
+      const updates = scope === 'next'
+        ? { water_last_activity_at: new Date().toISOString() }
+        : { water_reminder_muted_date: lisbonDateStr };
+        
+      const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+      if (error) throw error;
+      
+      set(state => ({ profile: { ...state.profile, ...updates } }));
+      return true;
+    } catch (err) {
+      console.error('Error snoozing water reminder:', err);
+      return false;
+    }
+  },
+
   // Fetch initial user data (called after login)
   loadInitialData: async (userId) => {
     try {

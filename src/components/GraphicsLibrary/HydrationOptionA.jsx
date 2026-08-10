@@ -1,17 +1,31 @@
-import React, { useState } from 'react';
-import { Bell, BellOff } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Bell, BellOff, Droplets, Clock } from 'lucide-react';
+import useAppStore from '../../store';
 import './HydrationOptionA.css';
 
 export default function HydrationOptionA({ 
   currentMl = 1800, 
   goalMl = 2500,
-  onLogWater
+  onLogWater,
+  profile
 }) {
-  const [remindersOn, setRemindersOn] = useState(true);
+  const { snoozeWaterReminder } = useAppStore();
+  const [showBellMenu, setShowBellMenu] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowBellMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const percentage = goalMl > 0 ? Math.min(100, Math.round((currentMl / goalMl) * 100)) : 0;
-  // 565 is the approx circumference of the circle with r=90 (2 * pi * 90)
-  const strokeDashoffset = 565 - (565 * percentage) / 100;
+  const remaining = Math.max(0, goalMl - currentMl);
 
   const handleAddWater = (e, amount) => {
     e.preventDefault();
@@ -24,51 +38,81 @@ export default function HydrationOptionA({
   const handleToggleBell = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    setRemindersOn(!remindersOn);
+    setShowBellMenu(prev => !prev);
   };
 
-  return (
-    <div className="hydro-neon-card">
-      <div className="hydro-neon-header">
-        <button 
-          className="hydro-neon-bell" 
-          onClick={handleToggleBell}
-          aria-label="Toggle reminders"
-          title={remindersOn ? "Desativar lembretes" : "Ativar lembretes"}
-        >
-          {remindersOn ? <Bell size={18} /> : <BellOff size={18} />}
-        </button>
-        <div className="hydro-neon-pct">{percentage}%</div>
-      </div>
+  const handleSnooze = (e, scope) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (profile?.id) {
+      snoozeWaterReminder(profile.id, scope);
+    }
+    setShowBellMenu(false);
+  };
 
-      <div className="hydro-neon-circle-wrap">
-        <svg className="hydro-neon-svg" viewBox="0 0 200 200">
-          <circle className="hydro-neon-bg" cx="100" cy="100" r="90" />
-          <circle 
-            className="hydro-neon-progress" 
-            cx="100" cy="100" r="90" 
-            style={{ strokeDashoffset }}
-          />
-        </svg>
-        <div className="hydro-neon-inner-text">
-          <div className="hydro-neon-amount">{currentMl}</div>
-          <div className="hydro-neon-unit">ml</div>
+  // Determine if reminders are muted for today
+  const isMutedToday = profile?.water_reminder_muted_date === new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Lisbon' });
+
+  return (
+    <div className="hydro-nrc-card">
+      <div className="hydro-nrc-glow"></div>
+      
+      <div className="hydro-nrc-left">
+        <div className="hydro-nrc-header-row">
+          <span className="hydro-nrc-lbl">Hidratação Diária</span>
+          <span className="hydro-nrc-tag">hoje</span>
+        </div>
+        
+        <h2 className="hydro-nrc-title">Mantém-te hidratado 💧</h2>
+        
+        <div className="hydro-nrc-sub">
+          <div className="hydro-nrc-sub-item hydro-bell-wrapper" ref={menuRef}>
+            <div className="hydro-bell-btn" onClick={handleToggleBell}>
+              {isMutedToday ? <BellOff size={14} /> : <Bell size={14} />}
+              <span>{isMutedToday ? 'Silenciado' : 'Lembretes ativos'}</span>
+            </div>
+            
+            {showBellMenu && (
+              <div className="hydro-bell-menu">
+                <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'next')}>
+                  Ocultar próximo alarme
+                </button>
+                <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'today')}>
+                  Desativar para hoje
+                </button>
+              </div>
+            )}
+          </div>
+          
+          <div className="hydro-nrc-sub-item">
+            <Droplets size={14} style={{ marginRight: '4px', color: '#0ea5e9' }} />
+            Faltam: {remaining}ml
+          </div>
+        </div>
+
+        <div className="hydro-nrc-progress-container">
+          <div className="hydro-nrc-progress-bar">
+            <div className="hydro-nrc-progress-fill" style={{ width: `${percentage}%` }}></div>
+            <div className="hydro-nrc-runner" style={{ left: `${percentage}%` }}>
+              <Droplets size={12} color="#0ea5e9" />
+            </div>
+          </div>
+          <div className="hydro-nrc-progress-labels">
+            <span>Início</span>
+            <span style={{ color: '#0ea5e9', fontWeight: 800 }}>{percentage}%</span>
+            <span>Meta</span>
+          </div>
+        </div>
+        
+        <div className="hydro-nrc-actions">
+          <button className="hydro-nrc-btn" onClick={(e) => handleAddWater(e, 200)}>+ 200 ml</button>
+          <button className="hydro-nrc-btn" onClick={(e) => handleAddWater(e, 250)}>+ 250 ml</button>
         </div>
       </div>
 
-      <div className="hydro-neon-buttons">
-        <button 
-          className="hydro-neon-btn" 
-          onClick={(e) => handleAddWater(e, 200)}
-        >
-          +200ml
-        </button>
-        <button 
-          className="hydro-neon-btn" 
-          onClick={(e) => handleAddWater(e, 250)}
-        >
-          +250ml
-        </button>
+      <div className="hydro-nrc-right">
+        <span className="hydro-nrc-days">{currentMl}</span>
+        <span className="hydro-nrc-days-lbl">ml bebidos</span>
       </div>
     </div>
   );

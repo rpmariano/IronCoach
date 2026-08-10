@@ -156,7 +156,8 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
       <HydrationOptionA 
         currentMl={total} 
         goalMl={goal} 
-        onLogWater={onLogWater} 
+        onLogWater={onLogWater}
+        profile={profile}
       />
     </div>
   );
@@ -298,16 +299,15 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, respondToPlan,
+    addWaterLog
   } = useAppStore();
-  const [localWaterLogs, setLocalWaterLogs] = useState([]);
-
-  const effectiveWaterLogs = [...(waterLogs || []), ...localWaterLogs];
 
   const handleNav = (tab) => setActiveTab(tab);
 
   const handleLogWater = (ml) => {
-    const tempLog = { id: `__tmp_${Date.now()}`, date: todayISO(), amount_ml: ml };
-    setLocalWaterLogs(prev => [tempLog, ...prev]);
+    if (profile?.id) {
+      addWaterLog(ml, profile.id);
+    }
   };
 
   // "Concluir" não marca logo — deixa isso ao ecrã de registo, que grava o
@@ -342,7 +342,7 @@ export default function Home() {
       <NutritionHeroCard meals={meals} profile={profile} onNav={handleNav} />
 
       {/* Água — sempre visível */}
-      <WaterHomeCard waterLogs={effectiveWaterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
+      <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
 
       {/* Plano da semana — ver specs/plano-de-treino.md */}
       <WeeklyPlanCard
