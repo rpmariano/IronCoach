@@ -63,7 +63,7 @@ export default function HydrationOptionA({
           <span className="hydro-nrc-tag">hoje</span>
         </div>
         
-        <div className="hydro-nrc-sub" style={{ marginTop: '12px' }}>
+        <div className="hydro-nrc-sub">
           <div className="hydro-nrc-sub-item hydro-bell-wrapper" ref={menuRef}>
             <button 
               type="button"
