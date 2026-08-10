@@ -1,7 +1,15 @@
 import React, { useMemo } from 'react';
 import { Utensils, Info } from 'lucide-react';
-import { todayISO } from '../../utils/date';
 import './NutritionOptionA.css';
+
+function todayISO() {
+  const d = new Date();
+  const tzDate = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }));
+  const yyyy = tzDate.getFullYear();
+  const mm = String(tzDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(tzDate.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
   const today = todayISO();
