@@ -185,14 +185,21 @@
 .hydro-bell-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   color: #64748b;
   cursor: pointer;
   transition: color 0.2s;
+  background: transparent;
+  border: none;
+  padding: 8px;
+  margin-left: -8px;
+  border-radius: 50%;
 }
 
 .hydro-bell-btn:hover {
   color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.05);
 }
 
 .hydro-bell-menu {

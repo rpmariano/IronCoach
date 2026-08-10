@@ -65,9 +65,15 @@ export default function HydrationOptionA({
         
         <div className="hydro-nrc-sub" style={{ marginTop: '12px' }}>
           <div className="hydro-nrc-sub-item hydro-bell-wrapper" ref={menuRef}>
-            <div className="hydro-bell-btn" onClick={handleToggleBell} title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}>
+            <button 
+              type="button"
+              className="hydro-bell-btn" 
+              onClick={handleToggleBell} 
+              title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+              aria-label={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+            >
               {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
-            </div>
+            </button>
             
             {showBellMenu && (
               <div className="hydro-bell-menu">
