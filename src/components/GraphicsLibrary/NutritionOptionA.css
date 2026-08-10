@@ -142,7 +142,7 @@
   justify-content: center;
   border-left: 2px solid rgba(16, 185, 129, 0.1);
   padding-left: 24px;
-  min-width: 100px;
+  min-width: 120px;
   width: 120px;
   flex-shrink: 0;
   z-index: 1;

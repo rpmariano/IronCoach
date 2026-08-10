@@ -44,7 +44,7 @@
 /* Right Section with vertical divider and countdown layout of 2 */
 .nrc-right {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  border-left: 2px solid rgba(217,119,6,0.15); padding-left: 24px; min-width: 100px; z-index: 2;
+  border-left: 2px solid rgba(217,119,6,0.15); padding-left: 24px; min-width: 120px; width: 120px; flex-shrink: 0; z-index: 2;
 }
 .nrc-days { font-size: 2.2rem; font-weight: 900; color: #b45309; line-height: 1; }
 .nrc-days-lbl { font-size: 0.65rem; font-weight: 800; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
