@@ -48,7 +48,7 @@ export const RACE_DISTANCE_OPTIONS = [
 export const RACE_PRIORITIES = [
   { key: 'a', label: 'Principal', description: 'Objetivo da época — leva taper completo.' },
   { key: 'b', label: 'Secundária', description: 'Importante, mas não é o foco — taper curto.' },
-  { key: 'c', label: 'Treino', description: 'Corrida a sério dentro do plano — sem taper.' },
+  { key: 'c', label: 'Treino', description: 'Corrida a sério dentro do plano — taper curto (2-4 dias).' },
 ];
 
 export function racePriorityLabel(key) {

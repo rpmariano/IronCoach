@@ -775,7 +775,7 @@ const DIETARY_RESTRICTION_INFO: Record<string, { label: string; rule: string }> 
 const RACE_PRIORITY_LABELS: Record<string, string> = {
   a: "prova principal (taper completo)",
   b: "prova secundária (taper curto)",
-  c: "prova de treino (sem taper)",
+  c: "prova de treino (taper curto, 2-4 dias)",
 };
 
 // Doutrina de nutrição condensada — ver src/coach-knowledge/07-sugestoes-alimentares.md
