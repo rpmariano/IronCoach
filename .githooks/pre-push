@@ -43,7 +43,9 @@ URL="$2"
 CHANGED_FILES=""
 BASE_SHA=""
 LOCAL_SHA=""
+LOCAL_REF=""
 while read local_ref local_sha remote_ref remote_sha; do
+    LOCAL_REF="$local_ref"
     LOCAL_SHA="$local_sha"
     if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
         # Nova branch — comparar com master/main
@@ -65,7 +67,21 @@ echo "${BLUE}🧪 [1/4] Test Engineer — A correr testes...${NC}"
 echo ""
 
 cd "$REPO_ROOT"
-if npx vitest run 2>&1; then
+
+if [ "$LOCAL_REF" != "refs/heads/master" ] && [ "$LOCAL_REF" != "refs/heads/main" ]; then
+    echo "${YELLOW}   (Otimização DEV: a correr apenas testes relacionados com ficheiros alterados)${NC}"
+    if [ -z "$CHANGED_FILES" ]; then
+        TEST_CMD="echo 'Nenhum ficheiro alterado para testar.'"
+    else
+        # Converter newlines para espaços para o eval não interpretar ficheiros como comandos shell separados
+        CHANGED_FILES_SPACES=$(echo "$CHANGED_FILES" | tr '\n' ' ')
+        TEST_CMD="npx vitest related --run --passWithNoTests $CHANGED_FILES_SPACES"
+    fi
+else
+    TEST_CMD="npx vitest run"
+fi
+
+if eval "$TEST_CMD" 2>&1; then
     echo ""
     echo "${GREEN}   ✅ Testes passaram${NC}"
 else

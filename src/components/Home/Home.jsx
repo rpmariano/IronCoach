@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
 import { Flag, Bell, Check, X as XIcon, Dumbbell as DumbbellIcon, Footprints } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
+import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -145,40 +146,18 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
   const today = todayISO();
   const goal = Number(profile?.water_goal_ml) || 2000;
   const total = useMemo(() => waterLogs.filter(w => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0), [waterLogs, today]);
-  const pct = goal > 0 ? Math.min(100, Math.round((total / goal) * 100)) : 0;
 
   return (
-    <div onClick={() => onNav('nutricao')} role="button" tabIndex={0}
-      className="water-home-card w-full text-left rounded-2xl p-3.5 relative overflow-hidden active:scale-[0.98] transition cursor-pointer"
-      style={statCardBg('var(--blue)')}>
-      <div className="water-glass-fill" style={{ height: `${pct}%` }}>
-        <svg className="water-wave-svg" viewBox="0 0 200 20" preserveAspectRatio="none"><path d={WATER_WAVE_PATH_1} /></svg>
-        <svg className="water-wave-svg w2" viewBox="0 0 200 20" preserveAspectRatio="none"><path d={WATER_WAVE_PATH_2} /></svg>
-      </div>
-      <div className="relative z-10 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--green)' }}>Água hoje</h2>
-          <p className="text-3xl font-black leading-none" style={{ color: 'var(--text-main)' }}>
-            {total}<span className="text-sm font-bold" style={{ color: 'var(--green)' }}> /{goal} ml</span>
-          </p>
-          <p className="text-xs mt-1.5" style={{ color: 'var(--green)' }}>
-            {goal > 0 && total >= goal ? 'Meta atingida! 🎉' : `${pct}% da meta diária`}
-          </p>
-        </div>
-        <button onClick={e => e.stopPropagation()} className="tap-44 shrink-0 rounded-full flex items-center justify-center active:scale-90 transition"
-          style={{ background: 'white', border: '1px solid color-mix(in srgb, var(--blue) 30%, transparent)' }}>
-          <Bell size={16} style={{ color: 'var(--blue-dark)' }} />
-        </button>
-      </div>
-      <div className="relative z-10 flex gap-2 mt-4">
-        {WATER_QUICK_AMOUNTS.map(ml => (
-          <button key={ml} onClick={e => { e.stopPropagation(); onLogWater(ml); }} type="button"
-            className="tap-h-44 flex items-center justify-center text-[11px] font-semibold rounded-full px-4 active:scale-95 transition"
-            style={{ color: '#334155', background: 'white', border: '1px solid color-mix(in srgb, var(--blue) 30%, transparent)' }}>
-            +{ml}
-          </button>
-        ))}
-      </div>
+    <div 
+      onClick={() => onNav('nutricao')} 
+      role="button" tabIndex={0}
+      className="cursor-pointer transition active:scale-[0.99] w-full"
+    >
+      <HydrationOptionA 
+        currentMl={total} 
+        goalMl={goal} 
+        onLogWater={onLogWater} 
+      />
     </div>
   );
 }
