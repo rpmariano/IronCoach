@@ -520,6 +520,475 @@
     width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: #f3d5ab; color: #1e293b; border: 3px solid #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   }
+
+/* ======== INJECTED FINAL WIDGET CSS ======== */
+.next-race-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(254,243,199,0.45));
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.8); border-radius: 28px; padding: 24px;
+  box-shadow: 0 12px 35px -10px rgba(217,119,6,0.12);
+  display: flex; gap: 24px; align-items: stretch; justify-content: space-between;
+  position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
+  cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+}
+.next-race-card:hover {
+  transform: translateY(-2px); box-shadow: 0 16px 40px -10px rgba(217,119,6,0.18);
+}
+.nrc-glow {
+  position: absolute; right: -50px; top: -50px; width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(251,191,36,0.2) 0%, transparent 70%);
+  pointer-events: none; z-index: 1;
+}
+.nrc-left { flex: 1; display: flex; flex-direction: column; gap: 12px; z-index: 2; }
+.nrc-header-row { display: flex; align-items: center; gap: 10px; }
+.nrc-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.nrc-tag { background: rgba(251,191,36,0.2); color: #b45309; font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+
+.nrc-title { font-size: 1.35rem; font-weight: 900; color: #1e293b; line-height: 1.2; }
+.nrc-sub { font-size: 0.8rem; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+.nrc-sub-item { display: flex; align-items: center; }
+
+/* Progress Bar from Concept 3, colored like 4 */
+.nrc-progress-container { width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.nrc-progress-bar { height: 8px; background: rgba(0,0,0,0.05); border-radius: 8px; position: relative; }
+.nrc-progress-fill {
+  height: 100%; background: linear-gradient(90deg, #fbbf24 0%, #d97706 100%);
+  border-radius: 8px; transition: width 0.5s ease;
+}
+.nrc-runner {
+  position: absolute; top: -6px; transform: translateX(-50%);
+  width: 20px; height: 20px; background: #fff; border: 3px solid #d97706;
+  border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: flex; align-items: center; justify-content: center;
+  transition: left 0.5s ease;
+}
+.nrc-runner::after { content: '🏃'; font-size: 0.65rem; }
+.nrc-progress-labels { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; }
+
+/* Right Section with vertical divider and countdown layout of 2 */
+.nrc-right {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-left: 2px solid rgba(217,119,6,0.15); padding-left: 24px; min-width: 120px; width: 120px; flex-shrink: 0; z-index: 2;
+}
+.nrc-days { font-size: 2.2rem; font-weight: 900; color: #b45309; line-height: 1; }
+.nrc-days-lbl { font-size: 0.65rem; font-weight: 800; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+.hydro-nrc-card {
+  position: relative;
+  background: #fdfdf9; /* creamy light background */
+  border-radius: 32px;
+  display: flex;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  padding: 24px;
+  gap: 24px;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.hydro-nrc-glow {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(253, 253, 249, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hydro-nrc-left {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.hydro-nrc-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hydro-nrc-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.hydro-nrc-tag {
+  background: #e0f2fe;
+  color: #0284c7;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.hydro-nrc-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.hydro-nrc-sub {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.hydro-nrc-sub-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  position: relative;
+}
+
+.hydro-nrc-progress-container {
+  margin-top: auto;
+  width: 100%;
+}
+
+.hydro-nrc-progress-bar {
+  position: relative;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.hydro-nrc-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+  border-radius: 6px;
+  transition: width 0.5s ease-out;
+}
+
+.hydro-nrc-runner {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border: 3px solid #0ea5e9;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.5s ease-out;
+}
+
+.hydro-nrc-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.hydro-nrc-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(14, 165, 233, 0.1);
+  padding-left: 24px;
+  min-width: 120px;
+  width: 120px;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.hydro-nrc-days {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #0ea5e9;
+  line-height: 1;
+}
+
+.hydro-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.hydro-nrc-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hydro-nrc-btn {
+  flex: 1;
+  background: #f0f9ff;
+  color: #0ea5e9;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 6px 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hydro-nrc-btn:hover {
+  background: #e0f2fe;
+}
+
+/* Bell Dropdown Styles */
+.hydro-bell-wrapper {
+  position: relative;
+  margin-left: -4px; /* visually align */
+  display: inline-flex;
+}
+
+.hydro-bell-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.hydro-bell-btn:hover {
+  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.hydro-bell-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  width: 220px;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.hydro-bell-item {
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.hydro-bell-item:last-child {
+  border-bottom: none;
+}
+
+.hydro-bell-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.nutri-nrc-card {
+  position: relative;
+  background: #fdfdf9; /* creamy light background */
+  border-radius: 32px;
+  display: flex;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  padding: 24px;
+  gap: 24px;
+  align-items: stretch;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  text-align: left;
+}
+
+.nutri-nrc-card:active {
+  transform: scale(0.99);
+}
+
+.nutri-nrc-glow {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 250px;
+  height: 250px;
+  /* Emerald/Green glow for nutrition */
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(253, 253, 249, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.nutri-nrc-left {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.nutri-nrc-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.nutri-nrc-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.nutri-nrc-tag {
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.nutri-nrc-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.nutri-nrc-sub-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  position: relative;
+}
+
+.nutri-nrc-progress-container {
+  margin-top: auto;
+  width: 100%;
+}
+
+.nutri-nrc-progress-bar {
+  position: relative;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.nutri-nrc-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #10b981);
+  border-radius: 6px;
+  transition: width 0.5s ease-out;
+}
+
+/* If over calorie limit, turn red */
+.nutri-nrc-progress-fill.over-limit {
+  background: linear-gradient(90deg, #fb7185, #e11d48);
+}
+
+.nutri-nrc-runner {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border: 3px solid #10b981;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.5s ease-out;
+}
+.nutri-nrc-runner.over-limit {
+  border-color: #e11d48;
+  box-shadow: 0 2px 8px rgba(225, 29, 72, 0.2);
+}
+
+.nutri-nrc-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.nutri-nrc-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(16, 185, 129, 0.1);
+  padding-left: 24px;
+  min-width: 120px;
+  width: 120px;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.nutri-nrc-days {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #10b981;
+  line-height: 1;
+}
+
+.nutri-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #16a34a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+/* ======== END INJECTED FINAL WIDGET CSS ======== */
 </style>
 </head>
 <body>
