@@ -1,0 +1,56 @@
+.hydro-a-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 32px;
+  padding: 32px 24px;
+  box-shadow: 0 8px 32px rgba(14, 165, 233, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+.hydro-a-header { text-align: center; margin-bottom: 24px; }
+.hydro-a-header p { font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.hydro-a-header h2 { font-size: 1.4rem; font-weight: 900; color: #0f172a; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+.hydro-a-circle { position: relative; width: 200px; height: 200px; margin-bottom: 24px; }
+.hydro-a-svg { width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.4)); }
+.hydro-a-svg circle { fill: none; stroke-width: 10; stroke-linecap: round; }
+.hydro-a-bg { stroke: #e2e8f0; stroke-width: 6; }
+.hydro-a-progress { stroke: #06b6d4; stroke-dasharray: 565; stroke-dashoffset: 158; transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1); } 
+
+.hydro-a-inner { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.hydro-a-bottle-svg { margin-bottom: 8px; opacity: 0.8; filter: drop-shadow(0 2px 4px rgba(6, 182, 212, 0.2)); }
+.hydro-a-percent { font-size: 2rem; font-weight: 900; color: #06b6d4; line-height: 1; text-shadow: 0 0 12px rgba(6, 182, 212, 0.3); }
+.hydro-a-status { font-size: 0.7rem; font-weight: 800; color: #0891b2; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;}
+
+.hydro-a-labels { width: 100%; display: flex; justify-content: space-between; margin-bottom: 24px; padding: 0 12px; }
+.hydro-a-labels .current { font-size: 1.1rem; font-weight: 900; color: #0f172a; }
+.hydro-a-labels .total { font-size: 0.9rem; font-weight: 700; color: #64748b; }
+
+.hydro-a-buttons { display: flex; gap: 16px; width: 100%; }
+.hydro-a-btn { 
+  flex: 1; 
+  background: #06b6d4; 
+  color: #fff; 
+  border: none; 
+  border-radius: 20px; 
+  padding: 16px 0; 
+  font-size: 1.1rem; 
+  font-weight: 800; 
+  cursor: pointer; 
+  transition: all 0.2s; 
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4); 
+}
+.hydro-a-btn:hover { 
+  transform: translateY(-2px); 
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.6); 
+  background: #0891b2;
+}
+.hydro-a-btn:active {
+  transform: scale(0.95);
+}

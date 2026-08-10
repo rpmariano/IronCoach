@@ -1,0 +1,57 @@
+.hydro-b-card {
+  background: radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, #0ea5e9 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, var(--surf-800, #f1f5f9));
+  border-style: solid;
+  border-width: 1px 1px 1px 3px;
+  border-color: var(--brd-700, #e2e8f0) var(--brd-700, #e2e8f0) var(--brd-700, #e2e8f0) color-mix(in srgb, #0ea5e9 70%, var(--brd-700, #e2e8f0));
+  border-radius: 32px;
+  padding: 32px 24px;
+  box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 4px 14px -5px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+.hydro-b-header { text-align: center; margin-bottom: 24px; }
+.hydro-b-header p { font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.hydro-b-header h2 { font-size: 1.4rem; font-weight: 900; color: #0f172a; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+.hydro-b-circle { position: relative; width: 190px; height: 190px; margin-bottom: 24px; }
+.hydro-b-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.hydro-b-svg circle { fill: none; stroke-width: 14; stroke-linecap: round; }
+.hydro-b-bg { stroke: rgba(15,23,42,0.06); }
+.hydro-b-progress { stroke: #0ea5e9; stroke-dasharray: 565; stroke-dashoffset: 158; transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1); } 
+
+.hydro-b-inner { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+.hydro-b-bottle-svg { margin-bottom: 8px; opacity: 0.7; }
+.hydro-b-percent { font-size: 2.2rem; font-weight: 900; color: #0f172a; line-height: 1; letter-spacing: -1px; }
+.hydro-b-status { font-size: 0.75rem; font-weight: 800; color: #0ea5e9; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px;}
+
+.hydro-b-labels { width: 100%; display: flex; justify-content: space-between; margin-bottom: 24px; padding: 0 12px; }
+.hydro-b-labels .current { font-size: 1.1rem; font-weight: 900; color: #0f172a; }
+.hydro-b-labels .total { font-size: 0.9rem; font-weight: 700; color: #64748b; }
+
+.hydro-b-buttons { display: flex; gap: 16px; width: 100%; }
+.hydro-b-btn { 
+  flex: 1; 
+  background: rgba(255, 255, 255, 0.8); 
+  color: #0ea5e9; 
+  border: 2px solid rgba(14, 165, 233, 0.2); 
+  border-radius: 20px; 
+  padding: 16px 0; 
+  font-size: 1.1rem; 
+  font-weight: 800; 
+  cursor: pointer; 
+  transition: all 0.2s; 
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+.hydro-b-btn:hover { 
+  transform: translateY(-2px); 
+  background: #ffffff;
+  border-color: rgba(14, 165, 233, 0.5);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.1); 
+}
+.hydro-b-btn:active {
+  transform: scale(0.95);
+}
