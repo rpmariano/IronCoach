@@ -7,6 +7,10 @@
   overflow: hidden;
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.02);
+  padding: 24px;
+  gap: 24px;
+  align-items: stretch;
+  justify-content: space-between;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   text-align: left;
@@ -30,7 +34,6 @@
 
 .nutri-nrc-left {
   flex: 1;
-  padding: 24px;
   position: relative;
   z-index: 1;
   display: flex;
