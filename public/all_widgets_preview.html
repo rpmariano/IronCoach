@@ -90,33 +90,41 @@
   .nrc-days { font-size: 2.2rem; font-weight: 900; color: #b45309; line-height: 1; }
   .nrc-days-lbl { font-size: 0.65rem; font-weight: 800; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
 
-  /* ======== 1. HYDRATION SQUEEZE CARD ======== */
-  .hydro-card {
-    background: #ffffff; border-radius: 32px; padding: 32px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-    display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 380px; margin: 0 auto;
-  }
-  .hydro-header { text-align: center; margin-bottom: 24px; }
-  .hydro-header p { font-size: 0.65rem; font-weight: 800; color: #4b6274; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-  .hydro-header h2 { font-size: 1.4rem; font-weight: 900; color: #1e293b; display: flex; align-items: center; justify-content: center; gap: 6px; }
-  .hydro-circle { position: relative; width: 180px; height: 180px; margin-bottom: 32px; }
-  .hydro-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-  .hydro-svg circle { fill: none; stroke-width: 8; stroke-linecap: round; }
-  .hydro-bg { stroke: #e3e8eb; }
-  .hydro-progress { stroke: #578297; stroke-dasharray: 565; stroke-dashoffset: 158; } 
-  .hydro-inner { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-  .hydro-percent { font-size: 1.6rem; font-weight: 900; color: #1e293b; line-height: 1; margin-top: 4px; }
-  .hydro-status { font-size: 0.6rem; font-weight: 800; color: #578297; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;}
-  .hydro-bar-container { width: 100%; margin-bottom: 8px; display: flex; gap: 2px; }
-  .hydro-bar-segment { flex: 1; height: 16px; background: #e3e8eb; }
-  .hydro-bar-segment.active { background: #578297; }
-  .hydro-bar-segment:first-child { border-radius: 8px 0 0 8px; }
-  .hydro-bar-segment:last-child { border-radius: 0 8px 8px 0; }
-  .hydro-bar-segment.partial { background: linear-gradient(90deg, #578297 50%, #e3e8eb 50%); }
-  .hydro-labels { width: 100%; display: flex; justify-content: space-between; margin-bottom: 24px; }
-  .hydro-labels .current { font-size: 1rem; font-weight: 900; color: #1e293b; }
-  .hydro-labels .total { font-size: 0.85rem; font-weight: 600; color: #4b6274; }
-  .hydro-buttons { display: flex; gap: 16px; width: 100%; }
-  .hydro-btn { flex: 1; background: #e28a71; color: #fff; border: none; border-radius: 20px; padding: 16px 0; font-size: 1.1rem; font-weight: 800; cursor: pointer; box-shadow: 0 6px 15px rgba(226,138,113,0.3); }
+  /* ======== 1. HYDRATION CARD (OPTION A - Neon) ======== */
+  .hydro-neon-card { position: relative; background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 24px; padding: 24px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6); display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 380px; margin: 0 auto; overflow: hidden; }
+  .hydro-neon-card::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.1) 45%, rgba(255, 255, 255, 0.5) 50%, rgba(255, 255, 255, 0.1) 55%, transparent 100%); transform: rotate(30deg); pointer-events: none; opacity: 0.5; }
+  .hydro-neon-header { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; position: relative; z-index: 2; }
+  .hydro-neon-bell { color: #64748b; background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); }
+  .hydro-neon-pct { font-size: 1.1rem; font-weight: 700; color: #64748b; letter-spacing: 0.5px; }
+  .hydro-neon-circle-wrap { position: relative; width: 180px; height: 180px; margin: 10px 0 24px 0; z-index: 2; }
+  .hydro-neon-svg { width: 100%; height: 100%; transform: rotate(-90deg); filter: drop-shadow(0 0 12px rgba(0, 238, 255, 0.6)); }
+  .hydro-neon-svg circle { fill: none; stroke-width: 12; stroke-linecap: round; }
+  .hydro-neon-bg { stroke: rgba(0, 0, 0, 0.03); }
+  .hydro-neon-progress { stroke: #00eeff; stroke-dasharray: 565; stroke-dashoffset: 158; }
+  .hydro-neon-inner-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .hydro-neon-amount { font-size: 2.5rem; font-weight: 800; color: #0ea5e9; line-height: 1; text-shadow: 0 0 15px rgba(14, 165, 233, 0.3); }
+  .hydro-neon-unit { font-size: 1rem; font-weight: 600; color: #38bdf8; margin-top: 4px; }
+  .hydro-neon-buttons { display: flex; gap: 16px; width: 100%; z-index: 2; }
+  .hydro-neon-btn { flex: 1; background: transparent; color: #00eeff; border: 2px solid #00eeff; border-radius: 14px; padding: 12px 0; font-size: 1.1rem; font-weight: 700; cursor: pointer; display: flex; justify-content: center; align-items: center; box-shadow: 0 0 10px rgba(0, 238, 255, 0.2), inset 0 0 10px rgba(0, 238, 255, 0.1); text-shadow: 0 0 5px rgba(0, 238, 255, 0.5); }
+
+  /* ======== 1b. HYDRATION CARD (OPTION B - Aqua) ======== */
+  .hydro-b-card { background: radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, #0ea5e9 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, #f1f5f9); border: solid 1px #e2e8f0; border-right: 3px solid color-mix(in srgb, #0ea5e9 70%, #e2e8f0); border-radius: 32px; padding: 32px 24px; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 380px; margin: 0 auto; box-shadow: 0 1px 2px rgba(15,23,42,0.06), inset 0 1px 0 rgba(255,255,255,0.6); }
+  .hydro-b-header { text-align: center; margin-bottom: 24px; width: 100%; display: flex; justify-content: space-between; align-items: flex-start;}
+  .hydro-b-header-text p { font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+  .hydro-b-header-text h2 { font-size: 1.4rem; font-weight: 900; color: #0f172a; }
+  .hydro-b-circle { position: relative; width: 190px; height: 190px; margin-bottom: 24px; }
+  .hydro-b-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .hydro-b-svg circle { fill: none; stroke-width: 14; stroke-linecap: round; }
+  .hydro-b-bg { stroke: rgba(15,23,42,0.06); }
+  .hydro-b-progress { stroke: #0ea5e9; stroke-dasharray: 565; stroke-dashoffset: 158; } 
+  .hydro-b-inner { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+  .hydro-b-percent { font-size: 2.2rem; font-weight: 900; color: #0f172a; line-height: 1; letter-spacing: -1px; }
+  .hydro-b-status { font-size: 0.75rem; font-weight: 800; color: #0ea5e9; text-transform: uppercase; margin-top: 4px;}
+  .hydro-b-labels { width: 100%; display: flex; justify-content: space-between; margin-bottom: 24px; padding: 0 12px; }
+  .hydro-b-labels .current { font-size: 1.1rem; font-weight: 900; color: #0f172a; }
+  .hydro-b-labels .total { font-size: 0.9rem; font-weight: 700; color: #64748b; }
+  .hydro-b-buttons { display: flex; gap: 16px; width: 100%; }
+  .hydro-b-btn { flex: 1; background: rgba(255, 255, 255, 0.8); color: #0ea5e9; border: 2px solid rgba(14, 165, 233, 0.2); border-radius: 20px; padding: 16px 0; font-size: 1.1rem; font-weight: 800; cursor: pointer; }
 
   /* ======== 2. NUTRITION MACRO CARD ======== */
   .nutri-card {
@@ -692,41 +700,64 @@
 
       <div class="component-card">
         <div class="component-meta">
-          <span class="component-name">HydrationSqueezeCard.jsx</span>
+          <span class="component-name">HydrationOptionA.jsx (Neon Glass)</span>
           <span class="module-tag tag-nutri">Nutrição</span>
         </div>
-        <div class="component-render">
-          <div class="hydro-card">
-            <div class="hydro-header">
-              <p>Daily Hydration</p>
-              <h2>Mantém-te hidratado 💧</h2>
+        <div class="component-render" style="background: #e2e8f0; padding: 40px 20px;">
+          <div class="hydro-neon-card">
+            <div class="hydro-neon-header">
+              <div class="hydro-neon-bell">🔔</div>
+              <div class="hydro-neon-pct">72%</div>
             </div>
-            <div class="hydro-circle">
-              <svg class="hydro-svg" viewBox="0 0 200 200">
-                <circle class="hydro-bg" cx="100" cy="100" r="90" />
-                <circle class="hydro-progress" cx="100" cy="100" r="90" />
+            <div class="hydro-neon-circle-wrap">
+              <svg class="hydro-neon-svg" viewBox="0 0 200 200">
+                <circle class="hydro-neon-bg" cx="100" cy="100" r="90" />
+                <circle class="hydro-neon-progress" cx="100" cy="100" r="90" />
               </svg>
-              <div class="hydro-inner">
-                <svg style="margin-bottom:4px;" width="44" height="70" viewBox="0 0 44 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2L14 10H30L32 2H12Z" fill="#578297"/>
-                  <path d="M8 12L4 26V66C4 68.2091 5.79086 70 8 70H36C38.2091 70 40 68.2091 40 66V26L36 12H8Z" fill="#e3e8eb"/>
-                  <path d="M4 36V66C4 68.2091 5.79086 70 8 70H36C38.2091 70 40 68.2091 40 66V36H4Z" fill="#8baebf"/>
-                </svg>
-                <div class="hydro-percent">72%</div>
-                <div class="hydro-status">Hidratado</div>
+              <div class="hydro-neon-inner-text">
+                <div class="hydro-neon-amount">1800</div>
+                <div class="hydro-neon-unit">ml</div>
               </div>
             </div>
-            <div class="hydro-bar-container">
-              <div class="hydro-bar-segment active"></div><div class="hydro-bar-segment active"></div>
-              <div class="hydro-bar-segment active"></div><div class="hydro-bar-segment active"></div>
-              <div class="hydro-bar-segment active"></div><div class="hydro-bar-segment partial"></div>
-              <div class="hydro-bar-segment"></div><div class="hydro-bar-segment"></div>
+            <div class="hydro-neon-buttons">
+              <button class="hydro-neon-btn">+200ml</button>
+              <button class="hydro-neon-btn">+250ml</button>
             </div>
-            <div class="hydro-labels">
-              <span class="current">1800 ml</span><span class="total">/ 2500 ml</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="component-card">
+        <div class="component-meta">
+          <span class="component-name">HydrationOptionB.jsx (Aqua Light)</span>
+          <span class="module-tag tag-nutri">Nutrição</span>
+        </div>
+        <div class="component-render" style="background: #f8fafc; padding: 40px 20px;">
+          <div class="hydro-b-card">
+            <div class="hydro-b-header">
+              <div class="hydro-b-header-text" style="text-align: left;">
+                <p>Daily Hydration</p>
+                <h2 style="margin:0;">Mantém-te hidratado 💧</h2>
+              </div>
+              <div class="hydro-neon-bell" style="width:32px; height:32px; font-size:0.8rem; background:white; border:1px solid #e2e8f0; color:#0f172a; box-shadow:none;">🔔</div>
             </div>
-            <div class="hydro-buttons">
-              <button class="hydro-btn">+ 200 ml</button><button class="hydro-btn">+ 250 ml</button>
+            <div class="hydro-b-circle">
+              <svg class="hydro-b-svg" viewBox="0 0 200 200">
+                <circle class="hydro-b-bg" cx="100" cy="100" r="90" />
+                <circle class="hydro-b-progress" cx="100" cy="100" r="90" />
+              </svg>
+              <div class="hydro-b-inner">
+                <div class="hydro-b-percent">72%</div>
+                <div class="hydro-b-status">Hidratado</div>
+              </div>
+            </div>
+            <div class="hydro-b-labels">
+              <span class="current">1800 ml</span>
+              <span class="total">/ 2500 ml</span>
+            </div>
+            <div class="hydro-b-buttons">
+              <button class="hydro-b-btn">+ 200 ml</button>
+              <button class="hydro-b-btn">+ 250 ml</button>
             </div>
           </div>
         </div>
@@ -1520,6 +1551,109 @@
             <span class="ccc-val">102g</span>
             <span class="ccc-target">meta <span>150g</span></span>
           </div>
+        </div>
+      </div>
+
+      <div class="component-card">
+        <div class="component-meta">
+          <span class="component-name">MuscleAnatomy2D.jsx</span>
+          <span class="module-tag tag-gym">Ginásio</span>
+        </div>
+        <div class="component-render" style="flex-direction: column; gap: 16px; justify-content: center; align-items: center; background: #ffffff;">
+          <div style="font-size:0.75rem; font-weight:800; color:#64748b;">ATIVAÇÃO: FRENTE & COSTAS (2D FLAT)</div>
+          <div style="display: flex; flex-direction: row; gap: 24px; justify-content: center; width: 100%;">
+            
+            <!-- ANTERIOR (FRENTE) -->
+            <div style="width:100%; padding:0.5rem; max-width:140px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">PEITO & ABS</span>
+              <svg class="rbh" width="100%" height="100%" viewBox="0 0 100 200">
+                <!-- PEITO & ABS (ATIVADOS EM #E11D48) -->
+                <polygon points="51.83 41.63 51.02 55.10 57.95 57.95 67.75 55.51 70.61 47.34 62.04 41.63 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="29.79 46.53 31.42 55.51 40.81 57.95 48.16 55.10 47.75 42.04 37.55 42.04 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="56.32 59.18 57.95 64.08 58.36 77.95 58.36 92.65 56.32 98.36 55.10 104.08 51.42 107.75 51.02 84.48 50.61 67.34 51.02 57.14 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="43.67 58.77 48.57 57.14 48.97 67.34 48.57 84.48 48.16 107.34 44.48 103.67 40.81 91.42 40.81 78.36 41.22 64.48 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                
+                <!-- RESTO DO CORPO (NEUTRO EM #E2E8F0) -->
+                <g style="fill:#e2e8f0; stroke:#cbd5e1; stroke-width:0.5px;">
+                  <polygon points="52.65 110.20 54.28 124.89 60 110.20 62.04 100 64.89 94.28 60 92.65 56.73 104.48"></polygon>
+                  <polygon points="47.75 110.61 44.89 125.30 42.04 115.91 40.40 113.06 39.59 107.34 37.95 102.44 34.69 93.87 39.59 92.24 41.63 99.18 43.67 105.30"></polygon>
+                  <polygon points="34.69 98.77 37.14 108.16 37.14 127.75 34.28 137.14 31.02 132.65 29.38 120 28.16 111.42 29.38 100.81 32.24 94.69"></polygon>
+                  <polygon points="63.26 105.71 64.48 100 66.93 94.69 70.20 101.22 71.02 111.83 68.16 133.06 65.30 137.55 62.44 128.57 62.04 111.42"></polygon>
+                  <polygon points="38.77 129.38 38.36 112.24 41.22 118.36 44.48 129.38 42.85 135.10 40 146.12 36.32 146.53 35.51 140"></polygon>
+                  <polygon points="59.59 145.71 55.51 128.97 60.81 113.87 61.22 130.20 64.08 139.59 62.85 146.53"></polygon>
+                  <polygon points="32.65 138.36 26.53 145.71 25.71 136.73 25.71 127.34 26.93 114.28 29.38 133.46"></polygon>
+                  <polygon points="71.83 113.06 73.87 124.08 73.87 140.40 72.65 145.71 66.53 138.36 70.20 133.46"></polygon>
+                  <polygon points="33.87 140 34.69 143.26 35.51 147.34 36.32 151.02 35.10 156.73 29.79 156.73 27.34 152.65 27.34 147.34 30.20 144.08"></polygon>
+                  <polygon points="65.71 140 72.24 147.75 72.24 152.24 69.79 157.14 64.89 156.73 62.85 151.02"></polygon>
+                  <polygon points="71.42 160.40 73.46 153.46 76.73 161.22 79.59 167.75 78.36 187.75 79.59 195.51 74.69 195.51"></polygon>
+                  <polygon points="24.89 194.69 27.75 164.89 28.16 160.40 26.12 154.28 24.89 157.55 22.44 161.63 20.81 167.75 22.04 188.16 20.81 195.51"></polygon>
+                  <polygon points="72.65 195.10 69.79 159.18 65.30 158.36 64.08 162.44 64.08 165.30 65.71 177.14"></polygon>
+                  <polygon points="35.51 158.36 35.91 162.44 35.91 166.93 35.10 172.24 35.10 176.73 32.24 182.04 30.61 187.34 26.93 194.69 27.34 187.75 28.16 180.40 28.57 175.51 28.97 169.79 29.79 164.08 30.20 158.77"></polygon>
+                  <polygon points="16.73 68.16 17.95 71.42 22.85 66.12 28.97 53.87 27.75 49.38 20.40 55.91"></polygon>
+                  <polygon points="71.42 49.38 70.20 54.69 76.32 66.12 81.63 71.83 82.85 68.97 78.77 55.51"></polygon>
+                  <polygon points="69.38 55.51 69.38 61.63 75.91 72.65 77.55 70.20 75.51 67.34"></polygon>
+                  <polygon points="22.44 69.38 29.79 55.51 29.79 60.81 22.85 73.06"></polygon>
+                  <polygon points="6.12 88.57 10.20 75.10 14.69 70.20 16.32 74.28 19.18 73.46 4.48 97.55 0 100"></polygon>
+                  <polygon points="84.48 69.79 83.26 73.46 80 73.06 95.10 98.36 100 100.40 93.46 89.38 89.79 76.32"></polygon>
+                  <polygon points="77.55 72.24 77.55 77.55 80.40 84.08 85.30 89.79 92.24 101.22 94.69 99.59"></polygon>
+                  <polygon points="6.93 101.22 13.46 90.61 18.77 84.08 21.63 77.14 21.22 71.83 4.89 98.77"></polygon>
+                  <polygon points="55.51 23.67 50.61 33.46 50.61 39.18 61.63 40 70.61 44.89 69.38 36.73 63.26 35.10 58.36 30.61"></polygon>
+                  <polygon points="28.97 44.89 30.20 37.14 36.32 35.10 41.22 30.20 44.48 24.48 48.97 33.87 48.57 39.18 37.95 39.59"></polygon>
+                  <polygon points="78.36 53.06 79.59 47.75 79.18 41.22 75.91 37.95 71.02 36.32 72.24 42.85 71.42 47.34"></polygon>
+                  <polygon points="28.16 47.34 21.22 53.06 20 47.75 20.40 40.81 24.48 37.14 28.57 37.14 26.93 43.26"></polygon>
+                  <polygon points="42.44 2.85 40 11.83 42.04 19.59 46.12 23.26 49.79 25.30 54.69 22.44 57.55 19.18 59.18 10.20 57.14 2.44 49.79 0"></polygon>
+                  <polygon points="68.57 63.26 67.34 57.14 58.77 59.59 60 64.08 60.40 83.26 65.71 78.77 66.53 69.79"></polygon>
+                  <polygon points="33.87 78.36 33.06 71.83 31.02 63.26 32.24 57.14 40.81 59.18 39.18 63.26 39.18 83.67"></polygon>
+                </g>
+              </svg>
+            </div>
+
+            <!-- POSTERIOR (COSTAS) -->
+            <div style="width:100%; padding:0.5rem; max-width:140px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+              <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">COSTAS & GÉMEOS</span>
+              <svg class="rbh" width="100%" height="100%" viewBox="0 0 100 200">
+                <!-- UPPER BACK & CALVES (ATIVADOS EM #E11D48) -->
+                <polygon points="31.06 38.72 28.08 48.93 28.51 55.31 34.04 75.31 47.23 71.06 47.23 66.38 36.59 54.04 33.61 41.27 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="68.93 38.72 71.91 49.36 71.48 56.17 65.95 75.31 52.76 71.06 52.76 66.38 63.40 54.46 66.38 41.70 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="29.36 160.42 28.51 167.23 24.68 179.57 23.82 192.76 25.53 197.02 28.51 193.19 29.78 180 31.91 171.06 31.91 166.80 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="37.44 165.10 35.31 167.65 33.19 171.91 31.06 180.42 30.21 191.91 34.04 200 38.72 190.63 39.14 168.93 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="62.97 165.10 61.27 168.51 61.70 190.63 66.38 199.57 70.63 191.91 68.93 179.57 66.80 170.21 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                <polygon points="70.63 160.42 72.34 168.51 75.74 179.14 76.59 192.76 74.46 196.59 72.34 193.61 70.63 179.57 68.08 168.08 " style="fill:#e11d48; stroke:#cbd5e1; stroke-width:0.5px;"></polygon>
+                
+                <!-- RESTO DO CORPO POSTERIOR (NEUTRO EM #E2E8F0) -->
+                <g style="fill:#e2e8f0; stroke:#cbd5e1; stroke-width:0.5px;">
+                  <polygon points="50.63 0 45.95 0.85 40.85 5.53 40.42 12.76 45.10 20 55.74 20 59.14 13.61 59.57 4.68 55.74 1.27"></polygon>
+                  <polygon points="44.68 21.70 47.65 21.70 47.23 38.29 47.65 64.68 38.29 53.19 35.31 40.85 31.06 36.59 39.14 33.19 43.82 27.23"></polygon>
+                  <polygon points="52.34 21.70 55.74 21.70 56.59 27.23 60.85 32.76 68.93 36.59 64.68 40.42 61.70 53.19 52.34 64.68 53.19 38.29"></polygon>
+                  <polygon points="29.36 37.02 22.97 39.14 17.44 44.25 18.29 53.61 24.25 49.36 27.23 46.38"></polygon>
+                  <polygon points="71.06 37.02 78.29 39.57 82.55 44.68 81.70 53.61 74.89 48.93 72.34 45.10"></polygon>
+                  <polygon points="26.80 49.78 17.87 55.74 14.46 72.34 16.59 81.70 21.70 63.82 26.80 55.74"></polygon>
+                  <polygon points="73.61 50.21 82.12 55.74 85.95 73.19 83.40 82.12 77.87 62.97 73.19 55.74"></polygon>
+                  <polygon points="26.80 58.29 26.80 68.51 22.97 75.31 19.14 77.44 22.55 65.53"></polygon>
+                  <polygon points="72.76 58.29 77.02 64.68 80.42 77.44 76.59 75.31 72.76 68.93"></polygon>
+                  <polygon points="47.65 72.76 34.46 77.02 35.31 83.40 49.36 102.12 46.80 82.97"></polygon>
+                  <polygon points="52.34 72.76 65.53 77.02 64.68 83.40 50.63 102.12 53.19 83.82"></polygon>
+                  <polygon points="86.38 75.74 91.06 83.40 93.19 94.04 100 106.38 96.17 104.25 88.08 89.36 84.25 83.82"></polygon>
+                  <polygon points="13.61 75.74 8.93 83.82 6.80 93.61 0 106.38 3.82 104.25 12.34 88.51 15.74 82.97"></polygon>
+                  <polygon points="81.27 79.57 77.44 77.87 79.14 84.68 91.06 103.82 93.19 108.93 94.46 104.68"></polygon>
+                  <polygon points="18.72 79.57 22.12 77.87 20.85 84.25 9.36 102.97 6.80 108.51 5.10 104.68"></polygon>
+                  <polygon points="44.68 99.57 30.21 108.51 29.78 118.72 31.48 125.95 47.23 121.27 49.36 114.89"></polygon>
+                  <polygon points="55.31 99.14 51.06 114.46 52.34 120.85 68.08 125.95 69.78 119.14 69.36 108.51"></polygon>
+                  <polygon points="48.08 122.97 44.68 122.97 41.27 125.53 45.10 144.25 48.51 135.74 48.93 129.36"></polygon>
+                  <polygon points="51.91 122.55 55.74 123.40 59.14 125.95 54.89 144.25 51.91 136.17 51.06 129.36"></polygon>
+                  <polygon points="28.93 122.12 31.06 129.36 36.59 125.95 35.31 135.31 34.46 150.21 29.36 158.29 28.93 146.80 27.65 141.27 27.23 131.48"></polygon>
+                  <polygon points="71.48 121.70 69.36 128.93 63.82 125.95 65.53 136.59 66.38 150.21 71.06 158.29 71.48 147.65 72.76 142.12 73.61 131.91"></polygon>
+                  <polygon points="38.72 125.53 44.25 145.95 40.42 166.80 36.17 152.76 37.02 135.31"></polygon>
+                  <polygon points="61.70 125.53 63.40 136.17 64.25 153.19 60 166.80 56.17 146.38"></polygon>
+                  <polygon points="34.46 153.19 31.06 159.14 33.61 166.38 37.44 162.55"></polygon>
+                  <polygon points="66.38 153.61 62.97 162.97 66.80 166.38 69.36 159.14"></polygon>
+                  <polygon points="28.51 195.74 30.21 195.74 33.61 201.70 30.63 220 28.51 213.61 26.80 198.29"></polygon>
+                  <polygon points="69.78 195.74 71.91 195.74 73.61 198.29 71.91 213.19 70.21 219.57 67.23 202.12"></polygon>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <p style="font-size: 0.7rem; color: #94a3b8; text-align: center; max-width: 250px;"> Renderizado nativamente em SVG pelo React (react-body-highlighter).</p>
         </div>
       </div>
 
