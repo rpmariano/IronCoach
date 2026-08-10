@@ -5,6 +5,8 @@ import { ensurePushSubscription } from '../../lib/push';
 import { User, Target, Bot, LogOut, ChevronDown, ChevronUp, Bell, Sparkles, Loader2, X } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
+import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
+import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -107,6 +109,14 @@ export default function Perfil() {
     setDraft(prev => ({ ...prev, [key]: value }));
     dirtyKeys.current.add(key);
     setIsDirty(true);
+  };
+
+  /* Edição manual de uma meta que o Coach pode escrever (proteína/gordura,
+     ver DECISÃO N1) — desliga a flag de origem, porque o valor deixa de ser
+     "do coach" no momento em que o atleta o substitui pelo seu. */
+  const updateCoachableGoal = (key, flagKey, value) => {
+    updateDraft(key, value);
+    if (draft[flagKey]) updateDraft(flagKey, false);
   };
 
   /* Ligar o interruptor pede a permissão ao browser e subscreve o push de
@@ -368,8 +378,7 @@ export default function Perfil() {
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
               </div>
-              <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Nível como corredor</label>
+              <ExperienceLevelHelp label="Nível como corredor" variant="dark">
                 <select
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
@@ -385,6 +394,71 @@ export default function Perfil() {
                   {' '}Ao registares uma prova, podes indicar um nível diferente só
                   para essa prova — por exemplo, avançado em estrada mas iniciante
                   na primeira trail.
+                </p>
+              </ExperienceLevelHelp>
+              {/* Restrições alimentares — pré-requisito das sugestões do Coach.
+                  Sem isto o Coach não fica calado, fica errado: sugere frango a
+                  um vegetariano. Ver specs/coach-investigacao.md, Bloco 7 #5. */}
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">Restrições alimentares</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {DIETARY_RESTRICTIONS.map(r => {
+                    const ativa = (draft.dietary_restrictions || []).includes(r.key);
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        aria-pressed={ativa}
+                        onClick={() => updateDraft(
+                          'dietary_restrictions',
+                          normalizeRestrictions(toggleRestriction(draft.dietary_restrictions, r.key))
+                        )}
+                        className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
+                          ativa
+                            ? 'bg-[var(--accent)]/20 border-[var(--accent)]/60 text-[var(--accent)]'
+                            : 'bg-neutral-900 border-neutral-800 text-slate-400'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-slate-600 mt-1">
+                  Podes escolher mais que uma. Vegetariano e vegano excluem-se —
+                  escolher um desliga o outro. Sem nada selecionado, o Coach
+                  assume que comes de tudo.
+                </p>
+                <input
+                  type="text"
+                  placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
+                  value={draft.dietary_notes || ''}
+                  onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
+                  className="w-full mt-2 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                />
+                <p className="text-[10px] text-slate-600 mt-1">
+                  O Coach trata isto como regra absoluta e nunca sugere nada que
+                  a contrarie.
+                </p>
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
+                <input
+                  type="number"
+                  min="25"
+                  max="120"
+                  inputMode="numeric"
+                  placeholder="Ex.: 52"
+                  value={draft.resting_hr_bpm ?? ''}
+                  onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  style={{ color: '#fff' }}
+                />
+                <p className="text-[10px] text-slate-600 mt-1">
+                  Mede ao acordar, antes de te levantares. Torna as zonas de
+                  frequência cardíaca mais precisas e permite ao Coach detetar
+                  fadiga acumulada — uma subida sustentada face ao teu normal é
+                  dos primeiros sinais de sobretreino.
                 </p>
               </div>
             </div>
@@ -458,9 +532,21 @@ export default function Perfil() {
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Proteína (g/dia)</label>
-                <input type="number" value={draft.protein_goal || ''} onChange={e => updateDraft('protein_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
+                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                  Proteína (g/dia)
+                  {draft.protein_goal_set_by_coach && (
+                    <span title="Meta definida pelo Coach" className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide"
+                      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
+                      Coach
+                    </span>
+                  )}
+                </label>
+                <input type="number" value={draft.protein_goal || ''}
+                  onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
+                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={draft.protein_goal_set_by_coach
+                    ? { border: '1px solid var(--mod-coach-to)', boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)' }
+                    : { border: '1px solid rgb(38 38 38)' }} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Hidratos (g/dia)</label>
@@ -468,15 +554,50 @@ export default function Perfil() {
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Gordura (g/dia)</label>
-                <input type="number" value={draft.fat_goal || ''} onChange={e => updateDraft('fat_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
+                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                  Gordura (g/dia)
+                  {draft.fat_goal_set_by_coach && (
+                    <span title="Meta definida pelo Coach" className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide"
+                      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
+                      Coach
+                    </span>
+                  )}
+                </label>
+                <input type="number" value={draft.fat_goal || ''}
+                  onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
+                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={draft.fat_goal_set_by_coach
+                    ? { border: '1px solid var(--mod-coach-to)', boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)' }
+                    : { border: '1px solid rgb(38 38 38)' }} />
               </div>
               <div className="col-span-2">
                 <label className="text-[11px] text-slate-500 block mb-1">Meta água (ml/dia)</label>
                 <input type="number" step="50" value={draft.water_goal_ml || ''} onChange={e => updateDraft('water_goal_ml', parseInt(e.target.value) || null)}
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
               </div>
+            </div>
+
+            {/* Autorização para o Coach escrever proteína/gordura — DECISÃO N1,
+                camada 1 (specs/coach-investigacao.md). Só estas duas: calorias e
+                hidratos são metas variáveis, mudam com o treino do dia e nunca se
+                escrevem aqui. */}
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
+              <div className="pr-4">
+                <p className="text-xs font-semibold flex items-center gap-1.5">
+                  <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
+                </p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Deixa o Coach escrever a proteína e a gordura diretamente aqui, quando lhas pedires
+                  no chat. Os campos que ele definir ficam marcados com "Coach"; editá-los à mão devolve o controlo a ti.
+                </p>
+              </div>
+              <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
+                aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
+                aria-pressed={!!draft.coach_can_set_nutrition_goals}
+                className="w-11 h-6 rounded-full relative transition shrink-0"
+                style={{ background: draft.coach_can_set_nutrition_goals ? 'var(--mod-coach-to)' : 'rgb(64 64 64)' }}>
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.coach_can_set_nutrition_goals ? 'left-5' : 'left-0.5'}`}></span>
+              </button>
             </div>
 
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">

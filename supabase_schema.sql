@@ -99,6 +99,48 @@ alter table profiles
   add column if not exists resting_hr_bpm integer
     check (resting_hr_bpm is null or (resting_hr_bpm between 25 and 120));
 
+-- Restrições alimentares — pré-requisito das sugestões alimentares do Coach.
+-- text[] em vez de tabela de junção porque as combinações são reais
+-- (vegetariano E sem lactose) mas o conjunto é pequeno, fechado e lido sempre
+-- junto com o resto do perfil. NULL/vazio = come de tudo; "omnivoro" não é um
+-- valor guardado. Vegetariano e vegano nunca coexistem — resolvido aqui uma
+-- vez, em vez de em cada sítio que lê o campo.
+-- Ver specs/coach-investigacao.md, Bloco 7 #5, src/utils/diet.js e
+-- supabase/migrations/20260810120000_dietary_restrictions.sql.
+alter table profiles
+  add column if not exists dietary_restrictions text[];
+
+alter table profiles
+  drop constraint if exists profiles_dietary_restrictions_valid;
+
+alter table profiles
+  add constraint profiles_dietary_restrictions_valid check (
+    dietary_restrictions is null
+    or (
+      dietary_restrictions <@ array['vegetariano', 'vegano', 'sem_lactose', 'sem_gluten']::text[]
+      and not ('vegetariano' = any (dietary_restrictions) and 'vegano' = any (dietary_restrictions))
+    )
+  );
+
+-- Alergias que a lista fechada não exprime (frutos secos, marisco). Existe por
+-- segurança, não por otimização — o Coach trata-o como restrição absoluta.
+alter table profiles
+  add column if not exists dietary_notes text;
+
+-- Autorização do atleta para o Coach escrever metas ESTÁVEIS (proteína,
+-- gordura) diretamente no perfil — DECISÃO N1, camada 1. Nunca calorias nem
+-- hidratos: essas são metas variáveis (camada 2), calculadas por dia, não
+-- gravadas. As duas flags *_set_by_coach marcam a origem do valor atual, só
+-- para o Perfil colorir o campo — uma edição manual do atleta desliga-as.
+-- Ver specs/coach-investigacao.md, DECISÃO N1, e
+-- supabase/migrations/20260811130000_coach_nutrition_goals_toggle.sql.
+alter table profiles
+  add column if not exists coach_can_set_nutrition_goals boolean not null default false;
+alter table profiles
+  add column if not exists protein_goal_set_by_coach boolean not null default false;
+alter table profiles
+  add column if not exists fat_goal_set_by_coach boolean not null default false;
+
 -- perfil criado automaticamente no signup
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -594,12 +636,16 @@ create table if not exists coach_plan_items (
   plan_id uuid not null references coach_plans(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   planned_date date not null,
-  kind text not null check (kind in ('corrida', 'ginasio')),
+  -- 'descanso' existe para um dia sem treino poder ter meal_suggestion.
+  kind text not null check (kind in ('corrida', 'ginasio', 'descanso')),
   training_type text,
   categories text[] not null default '{}',
   target_distance_km numeric check (target_distance_km is null or target_distance_km > 0),
   target_duration_min integer check (target_duration_min is null or target_duration_min > 0),
   notes text,
+  -- Sugestão alimentar do dia, em texto livre. Educativa, nunca prescritiva
+  -- — ver specs/coach-investigacao.md, Bloco 7. Não altera as metas do dia.
+  meal_suggestion text,
   status text not null default 'pendente' check (status in ('pendente', 'concluido', 'cancelado')),
   actual_date date,
   completed_run_id uuid references runs(id) on delete set null,
@@ -612,3 +658,23 @@ alter table coach_plan_items enable row level security;
 create policy "own rows" on coach_plan_items for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "admin read all" on coach_plan_items for select using (public.is_admin());
+
+-- ============ coach_daily_summary: resumo diário rotativo do Início ============
+-- Gerado 1x/dia (primeira abertura do dia), cacheado — não a cada abertura.
+-- Ver specs/plano-de-treino.md §11 e supabase/functions/coach-daily-summary.
+create table if not exists coach_daily_summary (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  date date not null,
+  recap text,
+  warnings text,
+  meal_suggestion text,
+  tomorrow_prep text,
+  generated_at timestamptz not null default now(),
+  unique (user_id, date)
+);
+create index if not exists coach_daily_summary_user_date_idx on coach_daily_summary(user_id, date desc);
+alter table coach_daily_summary enable row level security;
+create policy "own rows" on coach_daily_summary for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "admin read all" on coach_daily_summary for select using (public.is_admin());

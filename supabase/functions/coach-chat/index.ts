@@ -112,12 +112,22 @@ const PROPOSE_PLAN_TOOL = {
       },
       items: {
         type: "ARRAY",
-        description: "Os treinos do plano, um por dia de treino. Não incluir dias de descanso.",
+        description:
+          "Um item por DIA com conteúdo — não é obrigatório cobrir todos os dias do período. " +
+          "Um dia sem treino mas com sugestão alimentar relevante (véspera de longão, dia de " +
+          "recuperação) entra como kind=descanso com meal_suggestion preenchida. Dias sem " +
+          "treino e sem nada a dizer não devem entrar de todo.",
         items: {
           type: "OBJECT",
           properties: {
             planned_date: { type: "STRING", description: "Dia do treino, formato YYYY-MM-DD" },
-            kind: { type: "STRING", enum: ["corrida", "ginasio"], description: "Tipo de treino" },
+            kind: {
+              type: "STRING",
+              enum: ["corrida", "ginasio", "descanso"],
+              description:
+                "Tipo de dia. 'descanso' é um dia SEM treino — usa-o só quando tiveres " +
+                "sugestão alimentar ou nota que justifique o dia aparecer no plano.",
+            },
             training_type: {
               type: "STRING",
               enum: RUN_TRAINING_TYPES,
@@ -136,6 +146,17 @@ const PROPOSE_PLAN_TOOL = {
               type: "STRING",
               description: "Instrução curta ao atleta, ex.: \"Z2, fácil, sem olhar ao ritmo\"",
             },
+            meal_suggestion: {
+              type: "STRING",
+              description:
+                "Sugestão alimentar para este dia, ligada à carga do treino — o que comer " +
+                "antes, durante e depois, com alimentos concretos e porções aproximadas. " +
+                "É uma SUGESTÃO EDUCATIVA, nunca uma prescrição: escreve em tom de " +
+                "\"considera\"/\"costuma resultar\", não de imposição. Respeita sempre as " +
+                "restrições alimentares do atleta indicadas no contexto — nunca sugiras um " +
+                "alimento que elas excluam. Se detetares sinais de alarme (perda de peso " +
+                "rápida, ingestão muito baixa), não sugiras ementas: levanta a preocupação.",
+            },
           },
           required: ["planned_date", "kind"],
         },
@@ -145,11 +166,44 @@ const PROPOSE_PLAN_TOOL = {
   },
 };
 
+// Escreve metas ESTÁVEIS de nutrição (proteína, gordura) diretamente no
+// perfil — DECISÃO N1, camada 1 (specs/coach-investigacao.md). Nunca
+// calorias nem hidratos: essas são metas VARIÁVEIS (camada 2), mudam com o
+// treino do dia e vivem na análise, não numa coluna fixa — escrevê-las aqui
+// contrariaria a própria decisão que motivou esta ferramenta.
+//
+// A autorização (profiles.coach_can_set_nutrition_goals) é verificada no
+// EXECUTOR (runUpdateNutritionGoals), não aqui — a ferramenta fica sempre
+// visível ao modelo, mas recusa escrever sem o interruptor ligado, e diz ao
+// modelo para orientar o atleta a ativá-lo no Perfil.
+const UPDATE_GOALS_TOOL = {
+  name: "update_nutrition_goals",
+  description:
+    "Escreve a meta diária de PROTEÍNA e/ou GORDURA (em gramas) diretamente no perfil do " +
+    "atleta. Usa só quando o atleta pedir explicitamente para o Coach ajustar estes valores " +
+    "(ex.: \"define a minha proteína\", \"ajusta a gordura ao meu novo peso\"), nunca por " +
+    "iniciativa própria. NUNCA uses para calorias ou hidratos — essas metas variam por dia " +
+    "consoante o treino e não se escrevem aqui; fala delas só na resposta em texto. Requer " +
+    "que o atleta tenha ativado a autorização no Perfil — se a ferramenta devolver erro de " +
+    "autorização, diz ao atleta onde a ativar, não repitas a chamada.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      protein_goal: { type: "NUMBER", description: "Nova meta diária de proteína, em gramas. Omite se não for para mudar." },
+      fat_goal: { type: "NUMBER", description: "Nova meta diária de gordura, em gramas. Omite se não for para mudar." },
+      rationale: {
+        type: "STRING",
+        description: "Uma frase curta a justificar o valor (ex.: \"1,8 g/kg para os 72 kg atuais\")",
+      },
+    },
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos.
 function buildTools() {
-  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL] }];
+  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL] }];
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -546,14 +600,26 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (item.planned_date < period_start || item.planned_date > period_end) {
       return `Erro no treino ${n}: planned_date (${item.planned_date}) está fora do período do plano.`;
     }
-    if (item.kind !== "corrida" && item.kind !== "ginasio") {
-      return `Erro no treino ${n}: kind tem de ser "corrida" ou "ginasio".`;
+    if (item.kind !== "corrida" && item.kind !== "ginasio" && item.kind !== "descanso") {
+      return `Erro no treino ${n}: kind tem de ser "corrida", "ginasio" ou "descanso".`;
     }
     if (item.kind === "corrida" && item.training_type && !RUN_TRAINING_TYPES.includes(item.training_type)) {
       return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${RUN_TRAINING_TYPES.join(", ")}.`;
     }
+    const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
+      ? item.meal_suggestion.trim()
+      : null;
+    const itemNotes = typeof item.notes === "string" && item.notes.trim() ? item.notes.trim() : null;
+    // Um dia de descanso sem sugestão nem nota não tem nada para mostrar — só
+    // ocuparia uma linha vazia no plano. Rejeitar aqui ensina o modelo a não
+    // encher o plano com dias vazios só para "cobrir a semana".
+    if (item.kind === "descanso" && !mealSuggestion && !itemNotes) {
+      return `Erro no treino ${n}: um dia de descanso precisa de meal_suggestion ou notes — ` +
+        `caso contrário não o incluas no plano.`;
+    }
     const distance = Number(item.target_distance_km);
     const duration = Number(item.target_duration_min);
+    const isTraining = item.kind === "corrida" || item.kind === "ginasio";
     rows.push({
       user_id: userId,
       planned_date: item.planned_date,
@@ -564,8 +630,11 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       training_type: item.kind === "corrida" && item.training_type ? item.training_type : null,
       categories: item.kind === "ginasio" && Array.isArray(item.categories) ? item.categories : [],
       target_distance_km: item.kind === "corrida" && distance > 0 ? distance : null,
-      target_duration_min: duration > 0 ? Math.round(duration) : null,
-      notes: typeof item.notes === "string" && item.notes.trim() ? item.notes.trim() : null,
+      // Num dia de descanso não há duração para cumprir — o modelo por vezes
+      // preenche na mesma, e ficaria um "0 min" sem sentido no cartão.
+      target_duration_min: isTraining && duration > 0 ? Math.round(duration) : null,
+      notes: itemNotes,
+      meal_suggestion: mealSuggestion,
     });
   }
 
@@ -598,6 +667,58 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     `Está pendente de aceitação — o atleta vê-o no ecrã Início e decide se aceita.`;
 }
 
+// Limites de bom senso — não são a doutrina completa (essa vive em
+// src/coach-knowledge/, ainda por construir), só travam valores que não
+// podem estar certos para nenhum atleta humano (ex.: 5g ou 900g de proteína).
+const MIN_GRAMS_GOAL = 20;
+const MAX_GRAMS_GOAL = 400;
+
+// Executa a function call update_nutrition_goals: escreve protein_goal e/ou
+// fat_goal no perfil, SÓ se o atleta tiver ativado
+// profiles.coach_can_set_nutrition_goals. Ver a nota junto de UPDATE_GOALS_TOOL
+// sobre porque a verificação vive aqui e não na declaração da ferramenta.
+// deno-lint-ignore no-explicit-any
+export async function runUpdateNutritionGoals(sb: any, userId: string, args: any): Promise<string> {
+  const { protein_goal, fat_goal } = args || {};
+  const hasProtein = protein_goal !== undefined && protein_goal !== null;
+  const hasFat = fat_goal !== undefined && fat_goal !== null;
+
+  if (!hasProtein && !hasFat) {
+    return "Erro: indica pelo menos protein_goal ou fat_goal.";
+  }
+  for (const [label, v] of [["protein_goal", protein_goal], ["fat_goal", fat_goal]] as const) {
+    if (v === undefined || v === null) continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < MIN_GRAMS_GOAL || n > MAX_GRAMS_GOAL) {
+      return `Erro: ${label} tem de ser um número entre ${MIN_GRAMS_GOAL} e ${MAX_GRAMS_GOAL} (gramas).`;
+    }
+  }
+
+  const { data: profile, error: profileErr } = await sb
+    .from("profiles")
+    .select("coach_can_set_nutrition_goals")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileErr) return `Erro a verificar autorização: ${profileErr.message}`;
+  if (!profile?.coach_can_set_nutrition_goals) {
+    return "Erro: o atleta ainda não autorizou o Coach a escrever metas de nutrição. " +
+      "Explica que pode ativar isto no Perfil, separador Metas, e não tentes de novo nesta resposta.";
+  }
+
+  // deno-lint-ignore no-explicit-any
+  const updates: Record<string, any> = {};
+  if (hasProtein) { updates.protein_goal = Math.round(Number(protein_goal)); updates.protein_goal_set_by_coach = true; }
+  if (hasFat) { updates.fat_goal = Math.round(Number(fat_goal)); updates.fat_goal_set_by_coach = true; }
+
+  const { error: updateErr } = await sb.from("profiles").update(updates).eq("id", userId);
+  if (updateErr) return `Erro ao gravar metas: ${updateErr.message}`;
+
+  const parts = [];
+  if (hasProtein) parts.push(`proteína para ${updates.protein_goal} g/dia`);
+  if (hasFat) parts.push(`gordura para ${updates.fat_goal} g/dia`);
+  return `Meta atualizada: ${parts.join(" e ")}. Já está gravado no perfil do atleta.`;
+}
+
 // ── Agenda de provas ─────────────────────────────────────────────────────
 const RACE_TYPE_LABELS: Record<string, string> = {
   estrada: "Estrada", trail: "Trail", ultra: "Ultra", "5k": "5 km", "10k": "10 km",
@@ -608,6 +729,45 @@ const RACE_TYPE_LABELS: Record<string, string> = {
 // código do cliente é que tem as descrições usadas na UI.
 const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
   iniciante: "Iniciante", basico: "Básico", medio: "Médio", avancado: "Avançado",
+};
+
+// Espelha DIETARY_RESTRICTIONS em src/utils/diet.js. Duplicado de propósito:
+// o bundle de deploy da Edge Function não leva ficheiros de fora da sua
+// pasta, por isso importar do cliente partiria em produção. Se mexeres num,
+// mexe no outro — src/utils/diet.test.js trava as chaves do lado do cliente.
+//
+// Ao contrário dos outros rótulos aqui, isto não é decoração: cada entrada
+// desloca alvos numéricos que os alarmes usam (o limiar de ferro de um
+// vegetariano é 1,8× o de um omnívoro). Ver Bloco 7 #5 da investigação.
+const DIETARY_RESTRICTION_INFO: Record<string, { label: string; rule: string }> = {
+  vegetariano: {
+    label: "Vegetariano",
+    rule:
+      "sem carne nem peixe (come ovos e lacticínios). Alternativas: tofu, tempeh, seitan, ovos, " +
+      "lacticínios, leguminosas com cereais. Ferro: 1,8× o valor de um omnívoro, com vitamina C " +
+      "à refeição e sem café/chá/cálcio à mesma hora. Proteína: +10-20% face ao alvo normal.",
+  },
+  vegano: {
+    label: "Vegano",
+    rule:
+      "sem qualquer produto animal — nem ovos nem lacticínios. Alternativas: tofu, tempeh, seitan, " +
+      "proteína de ervilha ou arroz, soja texturizada, leguminosas com cereais. B12: suplementação " +
+      "obrigatória (250 µg/dia ou 2000 µg/semana), não substituível por alimentos. Ferro: 1,8× o " +
+      "valor de um omnívoro. Proteína: +10-20%. Creatina 3-5 g/dia e ómega-3 de microalgas.",
+  },
+  sem_lactose: {
+    label: "Sem lactose",
+    rule:
+      "evita leite e derivados frescos. Alternativas: produtos sem lactose, queijos curados, " +
+      "bebidas vegetais enriquecidas, whey isolate. Vigiar cálcio e vitamina D.",
+  },
+  sem_gluten: {
+    label: "Sem glúten",
+    rule:
+      "evita trigo, centeio e cevada. Alternativas: arroz, batata, batata-doce, tapioca, milho, " +
+      "quinoa, trigo sarraceno, aveia certificada. Chegar aos 10-12 g/kg de hidratos é mais " +
+      "difícil sem exceder fibra — prioriza arroz branco, tapioca e fécula de batata.",
+  },
 };
 
 // Espelha RACE_PRIORITIES em src/utils/run.js. Determina o taper: prova
@@ -688,10 +848,16 @@ function buildPlanContext(items: any[], todayISO: string): string | null {
     const desc = i.kind === "corrida"
       ? [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
         .filter(Boolean).join(" ")
+      : i.kind === "descanso"
+      ? "descanso"
       : ["ginásio", i.categories?.length ? i.categories.join("/") : null,
         i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
-    const atraso = i.planned_date < todayISO ? " — JÁ PASSOU, por resolver" : "";
-    return `- ${i.planned_date}: ${desc}${i.notes ? ` (${i.notes})` : ""}${atraso}`;
+    // Um dia de descanso nunca está "em atraso" — não há nada para concluir.
+    const atraso = i.kind !== "descanso" && i.planned_date < todayISO
+      ? " — JÁ PASSOU, por resolver"
+      : "";
+    const refeicao = i.meal_suggestion ? ` [sugestão alimentar já dada: ${i.meal_suggestion}]` : "";
+    return `- ${i.planned_date}: ${desc}${i.notes ? ` (${i.notes})` : ""}${refeicao}${atraso}`;
   });
   return `Treinos que já propuseste e continuam por fazer ou cancelar:\n${lines.join("\n")}`;
 }
@@ -711,7 +877,7 @@ function ageFromBirthDate(birthDate: string | null): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
-function buildSystemInstruction(
+export function buildSystemInstruction(
   coachContext: string | null,
   biometrics: {
     height_cm: number | null;
@@ -720,6 +886,9 @@ function buildSystemInstruction(
     birth_date: string | null;
     experience_level: string | null;
     resting_hr_bpm: number | null;
+    dietary_restrictions: string[] | null;
+    dietary_notes: string | null;
+    coach_can_set_nutrition_goals: boolean | null;
   },
   nutritionSummary: string,
   waterSummary: string,
@@ -847,9 +1016,51 @@ function buildSystemInstruction(
     sys += `\n\nDados biométricos do utilizador:\n${bio.join("\n")}`;
   }
 
+  // Restrições alimentares — regra dura, não preferência. Sem isto o coach
+  // não fica calado, fica errado: sugere frango a um vegetariano e perde a
+  // confiança do utilizador à primeira sugestão. Ver Bloco 7 #5.
+  //
+  // Só entra no prompt quando existe alguma restrição: afirmar "não tem
+  // restrições" gastaria tokens em todos os pedidos da larga maioria dos
+  // utilizadores, sem mudar nada na resposta.
+  const dieta: string[] = [];
+  for (const key of biometrics.dietary_restrictions ?? []) {
+    const info = DIETARY_RESTRICTION_INFO[key];
+    if (info) dieta.push(`- ${info.label}: ${info.rule}`);
+  }
+  const notasDieta = biometrics.dietary_notes?.trim();
+  if (notasDieta) {
+    dieta.push(
+      `- Alergias/recusas declaradas pelo atleta: "${notasDieta}". Trata isto como ` +
+      `restrição absoluta mesmo que não percebas o motivo.`,
+    );
+  }
+  if (dieta.length) {
+    sys +=
+      `\n\nMUITO IMPORTANTE — restrições alimentares do utilizador. Nunca sugiras, num plano, ` +
+      `numa refeição ou num exemplo, alimentos que violem o que está abaixo. Isto não é uma ` +
+      `preferência a contornar: sugerir um alimento proibido é pior do que não sugerir nada. ` +
+      // Sem nomear nutrientes aqui: enumerá-los no preâmbulo fá-los aparecer
+      // no prompt de quem não os tem: um vegetariano come ovos e lacticínios,
+      // e vê-se mandado suplementar B12 por causa de uma frase genérica.
+      `Os ajustes numéricos indicados abaixo substituem os alvos normais.\n` +
+      dieta.join("\n");
+  }
+
   if (coachContext && coachContext.trim()) {
     sys += `\n\nPerfil e objetivos do utilizador (definido pelo próprio):\n${coachContext.trim()}`;
   }
+
+  // Só menciona a ferramenta update_nutrition_goals quando está disponível —
+  // sem isto o modelo tentava-a às cegas e recebia sempre o erro de
+  // autorização, gastando uma ronda de function-calling à toa.
+  sys += biometrics.coach_can_set_nutrition_goals
+    ? `\n\nO atleta autorizou-te a escrever a meta de proteína e/ou gordura diretamente no ` +
+      `perfil dele com a ferramenta update_nutrition_goals — usa-a quando ele pedir para ` +
+      `ajustares esses valores.`
+    : `\n\nNÃO tentes a ferramenta update_nutrition_goals — o atleta ainda não autorizou o ` +
+      `Coach a escrever metas no perfil. Se ele pedir para ajustares proteína/gordura, diz-lhe ` +
+      `para ativar isso primeiro no Perfil, separador Metas.`;
 
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;
@@ -891,7 +1102,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm")
+      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
       .eq("id", userId)
       .maybeSingle();
 
@@ -1019,7 +1230,7 @@ async function handler(req: Request): Promise<Response> {
     // corridas/treinos, e cancelados não interessam ao coach.
     const { data: pendingPlanItems } = await sb
       .from("coach_plan_items")
-      .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes")
+      .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
       .eq("user_id", userId)
       .eq("status", "pendente")
       .order("planned_date", { ascending: true })
@@ -1054,6 +1265,9 @@ async function handler(req: Request): Promise<Response> {
         gender: (profile?.gender as string | null) ?? null,
         experience_level: (profile?.experience_level as string | null) ?? null,
         resting_hr_bpm: (profile?.resting_hr_bpm as number | null) ?? null,
+        dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
+        dietary_notes: (profile?.dietary_notes as string | null) ?? null,
+        coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
       },
       nutritionSummary,
       waterSummary,
@@ -1115,6 +1329,7 @@ async function handler(req: Request): Promise<Response> {
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
     let planWasProposed = false;
+    let goalsWereUpdated = false;
 
     let geminiJson: Record<string, unknown> | undefined;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -1169,12 +1384,22 @@ async function handler(req: Request): Promise<Response> {
         } else if (name === "propose_training_plan") {
           result = await runProposeTrainingPlan(sb, userId, args || {});
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
+        } else if (name === "update_nutrition_goals") {
+          result = await runUpdateNutritionGoals(sb, userId, args || {});
+          goalsWereUpdated = goalsWereUpdated || result.startsWith("Meta atualizada");
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }
         responseParts.push({ functionResponse: { name, response: { result } } });
       }
-      contents.push({ role: "function", parts: responseParts });
+      // "function" era o role documentado para devolver resultados de tools,
+      // mas confirmado em produção (2026-08-11): a geração atual por trás do
+      // alias "-latest" já não o aceita — 400 INVALID_ARGUMENT, "Role
+      // 'function' is not supported". O erro lista os roles válidos e "user"
+      // está entre eles; é o que a API aceita hoje para devolver
+      // functionResponse. Mesma classe de instabilidade que already motivou
+      // não fixar thinkingConfig (ver comentário em callGemini).
+      contents.push({ role: "user", parts: responseParts });
     }
 
     const rawText: string | undefined =
@@ -1227,6 +1452,7 @@ async function handler(req: Request): Promise<Response> {
         suggestions,
         usage: totalUsage,
         plan_proposed: planWasProposed,
+        goals_updated: goalsWereUpdated,
       });
     }
 
@@ -1236,6 +1462,7 @@ async function handler(req: Request): Promise<Response> {
       suggestions,
       usage: totalUsage,
       plan_proposed: planWasProposed,
+      goals_updated: goalsWereUpdated,
     });
 
   } catch (e) {

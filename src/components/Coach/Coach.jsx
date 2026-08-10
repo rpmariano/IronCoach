@@ -48,6 +48,7 @@ export default function Coach() {
     setCoachSuggestions,
     clearCoachChat,
     profile,
+    setProfile,
     session,
     reloadCoachPlans
   } = useAppStore();
@@ -117,6 +118,13 @@ export default function Coach() {
         // proposta aparecer no Início sem ser preciso refrescar a página.
         if (data?.plan_proposed) {
           await reloadCoachPlans();
+        }
+        // O coach escreveu proteína/gordura no perfil nesta resposta (DECISÃO
+        // N1) — recarrega para o Perfil mostrar já o novo valor, com o
+        // selo "Coach", sem ser preciso refrescar a página.
+        if (data?.goals_updated && profile?.id) {
+          const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+          if (freshProfile) setProfile(freshProfile);
         }
       }
     } catch (err) {

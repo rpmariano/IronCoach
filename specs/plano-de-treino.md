@@ -248,3 +248,185 @@ perde essa escolha.
    o plano ajusta o dia, o acordo duradouro muda a linha de base. Convém
    desenhar as duas em conjunto para a interface não ficar confusa sobre de
    onde vem cada número.
+
+## 9. Sugestão alimentar por dia (2026-08-11)
+
+Implementa a **forma de entrega 2** decidida no Bloco 7 da investigação: a
+sugestão alimentar colada ao treino do dia — *"o que comer no dia em que vais
+fazer isto"*.
+
+### Modelo
+
+| Alteração | Porquê |
+|---|---|
+| `coach_plan_items.meal_suggestion text` | Texto livre, não macros estruturadas. O enquadramento decidido é **sugestão educativa, nunca prescrição**; um campo numérico convidaria a app a tratá-lo como meta, que é exatamente o que não pode acontecer. As metas do dia continuam a sair de `planAffectsDay()`. |
+| `kind` passa a aceitar `'descanso'` | Um dia sem treino pode ter sugestão alimentar (véspera de longão, recuperação). Sem este valor não havia onde a pendurar. Não afeta nutrição — `planAffectsDay()` exige `kind='corrida'`. |
+
+Um item `descanso` sem `meal_suggestion` **nem** `notes` é rejeitado na Edge
+Function: só ocuparia uma linha vazia, e a rejeição ensina o modelo a não
+encher o plano de dias vazios para "cobrir a semana".
+
+### Interface
+
+`WeeklyPlanCard` saiu de `Home.jsx` para ficheiro próprio e mudou de forma:
+
+- **Horizonte fixo de 7 dias**, sempre. Antes listava só os itens pendentes, o
+  que fazia o cartão encolher ao longo da semana — e um dia sem treino
+  desaparecia, mesmo tendo sugestão alimentar.
+- **Resumo + expansão**, no molde do `MealCard`: a linha fechada diz o
+  essencial, o detalhe abre a pedido. Sete dias abertos seriam ilegíveis.
+- Um item concluído aparece no dia em que **aconteceu** (`actual_date`), não no
+  planeado — a mesma regra de `planAffectsDay()`.
+- A sugestão usa a pele da "Análise do Coach" do `MealCard`, para o atleta
+  reconhecer a voz, com rodapé fixo a marcar que é sugestão e não prescrição.
+
+### Verificado
+
+Migração aplicada e espelhada em `supabase_schema.sql`; 41 testes Deno e 145
+Vitest verdes; render confirmado no browser com uma sugestão temporária,
+reposta a `null` depois.
+
+### Por fazer
+
+O modelo **pode** preencher `meal_suggestion`, mas nada na doutrina lhe diz
+ainda *o que* escrever — as tabelas do Bloco 7 #1/#2 (distribuição por refeição
+e equivalência g/kg→alimentos INSA/PortFIR) só entram quando existir
+`src/coach-knowledge/`. Até lá as sugestões saem do conhecimento geral do
+modelo, não da literatura registada.
+
+## 10. Correção de meals.coach_notes (2026-08-11)
+
+O comentário automático por refeição (Bloco 7, forma de entrega 1) já
+existia — `analyze-meal` gera `coach_notes` a cada refeição registada,
+comparando com a meta diária e a média das últimas 5 refeições do mesmo
+tipo. Nunca foi preciso desenhar o gatilho de propósito: acontece sempre,
+em todos os modos de registo (foto e manual).
+
+O que faltava era a correção: o prompt não sabia nada sobre restrições
+alimentares. Um vegetariano podia receber "adiciona frango" como sugestão
+final — exatamente o cenário que motivou o campo `dietary_restrictions`.
+
+Corrigido: `attachMealCoachNotes` passa a incluir `dietary_restrictions` e
+`dietary_notes` na busca ao perfil, e `dietaryRestrictionsPromptBlock()`
+(nova função, testada isoladamente) monta o bloco de restrições que entra no
+prompt do Gemini, com a mesma regra dura usada no `coach-chat`: nunca sugerir
+o que a restrição proíbe, mesmo em troca de não sugerir nada.
+
+Esta é a **terceira cópia** de `DIETARY_RESTRICTION_INFO` (a primeira em
+`src/utils/diet.js`, a segunda em `coach-chat/index.ts`) — cada Edge Function
+empacota só a sua pasta, por isso não há forma de partilhar código entre
+elas sem um passo de build extra. Se as restrições mudarem, mudar as três.
+
+Verificado: 7 testes Deno novos, os 41 existentes do `coach-chat` continuam
+verdes. Função `analyze-meal` reimplantada (v20).
+
+## 11. Card-resumo do Coach na Home (2026-08-11)
+
+Implementa a **forma de entrega 3** decidida no Bloco 7: um card rotativo no
+Início com até quatro mensagens independentes — recapitulação recente, avisos
+de hoje, sugestão de refeição, preparação para amanhã.
+
+### Geração — decisão
+
+1x por dia, cacheado, gerado na **primeira abertura da app nesse dia** — não a
+cada abertura. Mantém o custo de Gemini proporcional a utilizadores ativos por
+dia, não a aberturas da app. Troca aceite: o resumo pode ficar desatualizado
+se o atleta treinar a meio do dia — aceitável para um resumo; os alarmes
+continuam a sair de `dayNutrientStatus`, calculado ao vivo. Um botão
+"Atualizar" no card força regeneração (`force: true`).
+
+### Modelo
+
+`coach_daily_summary` — uma linha por `(user_id, date)`, upsert na segunda
+geração do mesmo dia (nunca acumula). Cada mensagem é uma coluna nullable —
+o card só mostra as preenchidas.
+
+### Edge Function
+
+`coach-daily-summary`: sem `force`, devolve a linha de hoje se existir sem
+chamar o Gemini. Contexto enviado: metas diárias, refeições/água de hoje,
+corridas/ginásio dos últimos 7 dias, itens do plano de hoje e amanhã, próxima
+prova, restrições alimentares (mesma regra dura das outras funções — nunca
+sugerir o que a restrição proíbe). É a **quarta cópia** de
+`DIETARY_RESTRICTION_INFO` — ver a nota em `analyze-meal/index.ts`.
+
+### Interface
+
+`CoachDailySummaryCard` — mesma família visual do `NextRaceCard` (glass, glow
+radial, 28px de raio), paleta cyan do módulo Coach. Navegação manual por
+toque entre mensagens (sem rotação automática por temporizador). Estado de
+carregamento com esqueleto; estado vazio quando não há nada a assinalar.
+
+### Verificado
+
+Migração aplicada e espelhada; Edge Function testada (8 testes Deno na função
+pura de contexto) e reimplantada; store com 7 testes; componente com 8 testes
+RTL — **um deles apanhou um bug real**: um campo com só espaços em branco
+("  ") não era filtrado como ausente, por não haver `.trim()` antes do
+filtro. Corrigido antes de fechar a tarefa.
+
+Confirmado ponta a ponta no browser com dados reais: o Gemini gerou uma
+recapitulação real a partir do histórico ("Estás sem treinar há 5 dias...").
+160 testes Vitest + 41 Deno (coach-chat) + 8 (analyze-meal) + 8 (coach-daily-summary)
+= todos verdes; build limpo.
+
+## 12. Toggle de metas escritas pelo Coach (2026-08-11)
+
+Implementa a **camada 1** da DECISÃO N1: o Coach pode escrever proteína e
+gordura diretamente no perfil, mas só se o atleta autorizar, e o valor fica
+marcado como "definido pelo Coach" na interface.
+
+### Porque só proteína e gordura
+
+DECISÃO N1 distingue metas **estáveis** (proteína, gordura — mudam com peso e
+nível, não com o dia) de metas **variáveis** (calorias, hidratos, água — mudam
+por dia consoante o treino, calculadas em `planAffectsDay()`, nunca gravadas
+fixas). Escrever calorias/hidratos aqui contrariaria a própria decisão que
+motivou esta funcionalidade — por isso a ferramenta do Coach nem aceita esses
+campos.
+
+### Modelo
+
+`profiles.coach_can_set_nutrition_goals` (autorização), `protein_goal_set_by_coach`
+e `fat_goal_set_by_coach` (origem do valor atual, só para a UI). Uma edição
+manual do atleta desliga a flag correspondente — o valor deixa de ser "do
+coach" no momento em que é substituído.
+
+### Coach
+
+Nova ferramenta `update_nutrition_goals`. A autorização é verificada no
+**executor**, não na declaração — a ferramenta fica sempre visível ao modelo,
+mas recusa escrever sem o interruptor ligado, dizendo ao modelo para orientar
+o atleta a ativá-lo. O prompt já avisa antecipadamente se a autorização está
+ligada ou não, para o modelo não gastar uma ronda de function-calling a
+tentar às cegas.
+
+### Interface
+
+Perfil → Metas → toggle "O Coach pode ajustar as metas", com a mesma
+estética do toggle de lembretes de água. Os campos de Proteína e Gordura
+mostram um selo "Coach" (cor do módulo Coach) quando o valor atual veio dele;
+editar o campo à mão remove o selo e grava as duas mudanças juntas (valor +
+flag) na mesma gravação.
+
+### Bug real encontrado e corrigido
+
+Ao testar a ferramenta ponta a ponta, o `coach-chat` devolveu 502 com
+`"Role 'function' is not supported"` — a geração atual do Gemini por trás do
+alias `-latest` deixou de aceitar `role: "function"` no turno que devolve o
+resultado de uma tool, algo que já **todas** as ferramentas anteriores
+(`get_nutrition_history`, `propose_training_plan`, etc.) usavam. Não era um
+bug desta funcionalidade — era latente em todo o loop de function-calling, e
+só se tornou visível porque foi a primeira vez nesta sessão que o loop correu
+sob a geração de modelo nova. Corrigido para `role: "user"`, que a API aceita.
+Mesma classe de instabilidade que o comentário sobre `thinkingConfig` já
+documentava para este alias.
+
+### Verificado
+
+52 testes Deno (`coach-chat`) + 166 Vitest, todos verdes. Testado ponta a
+ponta no browser: liguei o toggle no Perfil, pedi ao Coach no chat para
+ajustar a proteína para 165 g, confirmei a escrita na BD
+(`protein_goal_set_by_coach=true`) e o selo "Coach" a aparecer no Perfil.
+Dados de teste repostos (proteína, flags, mensagens do chat) depois da
+verificação.

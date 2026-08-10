@@ -343,6 +343,62 @@ async function analyzeManualItems(
   return { items: merged, usage };
 }
 
+// Espelha DIETARY_RESTRICTION_INFO em supabase/functions/coach-chat/index.ts
+// (que por sua vez espelha DIETARY_RESTRICTIONS em src/utils/diet.js).
+// Triplicado, não duplicado — cada Edge Function empacota só a sua própria
+// pasta, por isso nenhuma pode importar de fora. Se mexeres numa cópia, mexe
+// nas outras duas.
+//
+// Antes desta correção, generateMealCoachNotes comentava a refeição sem
+// nunca saber que o atleta tem uma restrição — o comentário automático podia
+// sugerir "acrescenta frango" a um vegetariano. Ver specs/coach-investigacao.md,
+// Bloco 7 #5: esta lacuna não deixa o Coach calado, deixa-o ERRADO.
+const DIETARY_RESTRICTION_INFO: Record<string, { label: string; rule: string }> = {
+  vegetariano: {
+    label: "Vegetariano",
+    rule: "sem carne nem peixe (come ovos e lacticínios). Alternativas: tofu, tempeh, seitan, ovos, lacticínios, leguminosas com cereais.",
+  },
+  vegano: {
+    label: "Vegano",
+    rule: "sem qualquer produto animal — nem ovos nem lacticínios. Alternativas: tofu, tempeh, seitan, proteína de ervilha ou arroz, soja texturizada, leguminosas com cereais.",
+  },
+  sem_lactose: {
+    label: "Sem lactose",
+    rule: "evita leite e derivados frescos. Alternativas: produtos sem lactose, queijos curados, bebidas vegetais enriquecidas, whey isolate.",
+  },
+  sem_gluten: {
+    label: "Sem glúten",
+    rule: "evita trigo, centeio e cevada. Alternativas: arroz, batata, batata-doce, tapioca, milho, quinoa, trigo sarraceno, aveia certificada.",
+  },
+};
+
+// Bloco de texto com as restrições do atleta, pronto a entrar no prompt do
+// comentário — string vazia quando não há nada a dizer, para não gastar
+// tokens a afirmar ausência em todos os pedidos da larga maioria dos
+// utilizadores. Exportado para teste direto (sem precisar de mockar o Gemini).
+export function dietaryRestrictionsPromptBlock(
+  restrictions: string[] | null | undefined,
+  notes: string | null | undefined,
+): string {
+  const linhas: string[] = [];
+  for (const key of restrictions ?? []) {
+    const info = DIETARY_RESTRICTION_INFO[key];
+    if (info) linhas.push(`- ${info.label}: ${info.rule}`);
+  }
+  const notasLimpas = typeof notes === "string" ? notes.trim() : "";
+  if (notasLimpas) {
+    linhas.push(
+      `- Alergias/recusas declaradas pelo atleta: "${notasLimpas}". Trata isto como ` +
+      `restrição absoluta mesmo que não percebas o motivo.`,
+    );
+  }
+  if (linhas.length === 0) return "";
+  return (
+    `\nRESTRIÇÕES ALIMENTARES DO ATLETA — nunca sugiras, na tua recomendação final, um ` +
+    `alimento que as viole. Isto é mais grave do que não sugerir nada:\n${linhas.join("\n")}\n`
+  );
+}
+
 const MEAL_TYPE_LABELS: Record<string, string> = {
   "pequeno-almoco": "Pequeno-almoço",
   "lanche-manha": "Lanche da manhã",
@@ -381,6 +437,7 @@ async function generateMealCoachNotes(
   goals: { calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null },
   previousMeals: Array<{ date: string } & MealTotals>,
   geminiKey: string,
+  diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
 ): Promise<{ text: string | null }> {
   if (!geminiKey) return { text: null };
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
@@ -409,6 +466,8 @@ async function generateMealCoachNotes(
       `P ${(avg.protein / recent.length).toFixed(0)}g, H ${(avg.carbs / recent.length).toFixed(0)}g, G ${(avg.fat / recent.length).toFixed(0)}g.`
     : "Sem refeições anteriores deste tipo para comparar — comenta só o que estes números por si só revelam.";
 
+  const restricoes = dietaryRestrictionsPromptBlock(diet.dietary_restrictions, diet.dietary_notes);
+
   const prompt =
     `És um nutricionista/treinador direto, a comentar uma refeição que um atleta amador acabou de registar. ` +
     `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
@@ -418,11 +477,13 @@ async function generateMealCoachNotes(
     (goalLine ? `${goalLine} (referência diária, esta é só uma refeição — não esperes que bata a meta toda).\n` : "") +
     `${avgLine}\n` +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
+    restricoes +
     `\nREGRAS:\n` +
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
-    `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo).\n`;
+    `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
+    (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`);
 
   try {
     const res = await fetchGeminiWithTimeout(
@@ -465,7 +526,7 @@ async function attachMealCoachNotes(
   try {
     const { data: profile } = await sb
       .from("profiles")
-      .select("calorie_goal, protein_goal, carbs_goal, fat_goal")
+      .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes")
       .eq("id", userId)
       .maybeSingle();
 
@@ -488,6 +549,10 @@ async function attachMealCoachNotes(
       profile || {},
       previousMeals,
       geminiKey,
+      {
+        dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
+        dietary_notes: (profile?.dietary_notes as string | null) ?? null,
+      },
     );
 
     if (result.text) {

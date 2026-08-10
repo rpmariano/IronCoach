@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
+import { todayISO } from '../lib/utils';
 
 export const useAppStore = create((set, get) => ({
   // Auth & Profile State
@@ -16,6 +17,11 @@ export const useAppStore = create((set, get) => ({
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
+  // Resumo diário do Coach (card rotativo do Início) — null até carregar,
+  // depois {recap, warnings, meal_suggestion, tomorrow_prep, date, ...}.
+  // Ver specs/plano-de-treino.md §11.
+  dailySummary: null,
+  dailySummaryLoading: false,
   // Item do plano em vias de ser concluído — posto pelo Início mesmo antes de
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
@@ -121,6 +127,30 @@ export const useAppStore = create((set, get) => ({
       coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, status: 'cancelado' } : i),
     }));
     return true;
+  },
+
+  // Resumo diário do Coach — 1x por dia, cacheado no servidor
+  // (coach_daily_summary). Não refaz o pedido se já houver um resumo de HOJE
+  // em memória, a não ser que force=true (botão "Atualizar" do card) ou
+  // reload=true (montagem do Início, para apanhar o resumo gerado por outra
+  // sessão/dispositivo no mesmo dia). Ver specs/plano-de-treino.md §11.
+  loadDailySummary: async ({ force = false, reload = false } = {}) => {
+    const today = todayISO();
+    const current = get().dailySummary;
+    if (!force && !reload && current?.date === today) return current;
+
+    set({ dailySummaryLoading: true });
+    try {
+      const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
+      if (error) { console.error('Error loading daily summary:', error); return null; }
+      if (data?.summary) {
+        set({ dailySummary: data.summary });
+        return data.summary;
+      }
+      return null;
+    } finally {
+      set({ dailySummaryLoading: false });
+    }
   },
 
   // Hydration Actions

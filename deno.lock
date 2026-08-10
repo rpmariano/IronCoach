@@ -1,0 +1,49 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14",
+    "jsr:@supabase/supabase-js@2": "2.110.3"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    },
+    "@supabase/supabase-js@2.110.3": {
+      "integrity": "e3d4a9b6b654eef79062701b912e0b3731acf4f0824864678b4b37acb7471475"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@supabase/supabase-js@^2.111.0",
+        "npm:@tailwindcss/vite@^4.3.3",
+        "npm:@testing-library/jest-dom@7",
+        "npm:@testing-library/react@^16.3.2",
+        "npm:@testing-library/user-event@^14.6.1",
+        "npm:@vitejs/plugin-react@^6.0.5",
+        "npm:chart.js@^4.5.1",
+        "npm:clsx@^2.1.1",
+        "npm:date-fns@^4.4.0",
+        "npm:jsdom@^30.0.1",
+        "npm:lucide-react@^1.28.0",
+        "npm:puppeteer-core@^25.4.0",
+        "npm:react-body-highlighter@^2.0.5",
+        "npm:react-chartjs-2@^5.3.1",
+        "npm:react-dom@^19.2.8",
+        "npm:react@^19.2.8",
+        "npm:tailwind-merge@^3.6.0",
+        "npm:tailwindcss@^4.3.3",
+        "npm:vite@^8.2.0",
+        "npm:vitest@^4.1.10",
+        "npm:zustand@^5.0.14"
+      ]
+    }
+  }
+}

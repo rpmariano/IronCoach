@@ -2,7 +2,7 @@
 
 Versão limpa de `coach-investigacao.md`, sem referências a colunas, flags ou
 schema. **Cada bloco é um pedido separado** — colar o preâmbulo seguido de um
-bloco de cada vez. São 67 perguntas em 12 blocos; num só pedido dariam
+bloco de cada vez. São 73 perguntas em 13 blocos; num só pedido dariam
 respostas rasas.
 
 Trazer as respostas de volta tal como vierem; a conversão em doutrina é depois.
@@ -284,3 +284,38 @@ resto como NÃO ENCONTRADO.
    especialmente o que não se deve dizer a um iniciante.
 5. Com que frequência deve um plano de treino ser ajustado? Ajustar
    demasiadas vezes prejudica a adaptação?
+
+---
+
+## BLOCO 7 — Sugestões alimentares (6 perguntas)
+
+Contexto: o treinador já sabe os alvos diários (g/kg de proteína e hidratos,
+défice máximo, mínimo de gordura, timing antes/depois do treino). O que falta
+é a ponte entre saber os números e conseguir **sugerir comida concreta**.
+
+Não se trata de prescrever dietas nem planos semanais rígidos. O objetivo é
+que o treinador possa: (a) corrigir uma refeição já registada, (b) sugerir o
+que comer à volta de um treino específico, e (c) escrever um resumo diário
+com avisos e sugestões. Sempre como sugestão educativa, nunca prescrição.
+
+1. Como se distribuem as calorias e os macronutrientes pelas refeições do
+   dia? Dá as percentagens típicas por refeição (pequeno-almoço, almoço,
+   lanche, jantar, ceia) e diz se e como essa distribuição muda em dia de
+   treino face a dia de descanso.
+2. Qual o conteúdo de proteína, hidratos e gordura por 100 g dos alimentos
+   mais comuns na dieta portuguesa? Interessa-me sobretudo a ponte prática:
+   quantos gramas de cada alimento são precisos para atingir 20-30 g de
+   proteína numa refeição, ou 60-80 g de hidratos.
+3. [POR NÍVEL] Que estrutura deve ter um dia alimentar de um corredor?
+   Quantas refeições, com que composição, e quanta complexidade é razoável
+   pedir a cada nível de praticante?
+4. Que alimentos concretos são recomendados e quais devem ser evitados nas
+   24 a 48 horas antes de uma prova longa? Preciso de exemplos de alimentos,
+   não só dos limiares de fibra e gordura.
+5. Como adaptar recomendações alimentares a restrições comuns — vegetariano,
+   vegan, intolerância à lactose, doença celíaca? Em cada caso, que alvos
+   nutricionais se tornam mais difíceis de atingir e que alimentos os
+   compensam?
+6. Quais são os erros alimentares mais comuns em corredores amadores? Dá-os
+   por ordem de frequência e diz o impacto de cada um no rendimento ou na
+   saúde.

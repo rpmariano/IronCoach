@@ -7,13 +7,17 @@ import { supabase } from '../../lib/supabase';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
+  RACE_PRIORITIES,
   raceDistanceLabel,
+  racePriorityLabel,
+  racePriorityDescription,
   parseDurationToSeconds,
   formatDuration,
   parsePaceToSeconds,
   formatPace,
 } from '../../utils/run';
 import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
+import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 
 function todayISO() {
   const d = new Date();
@@ -36,6 +40,8 @@ const EMPTY_DRAFT = {
   // Autodeclarado pelo atleta para esta prova — não herda de
   // profiles.experience_level. Ver src/utils/experience.js.
   experience_level: '',
+  // Decide o taper: principal leva 10-21 dias de polimento, treino leva 2-4.
+  race_priority: 'a',
   target_time: '',
   // Só na UI — convertidos para target_time_seconds/target_pace_seconds_per_km
   // ao gravar. Ver handleTargetTimeChange/handleTargetPaceChange: mudar um
@@ -144,6 +150,7 @@ export default function RunAgenda() {
         distance_km: ev.distance_km != null ? String(ev.distance_km) : '',
         elevation_gain_m: ev.elevation_gain_m != null ? String(ev.elevation_gain_m) : '',
         experience_level: ev.experience_level || '',
+        race_priority: ev.race_priority || 'a',
         target_time: ev.target_time_seconds ? formatDuration(ev.target_time_seconds) : (ev.target_time || ''),
         target_pace: formatPace(ev.target_pace_seconds_per_km),
         website: ev.website || '',
@@ -269,6 +276,7 @@ export default function RunAgenda() {
       distance_km: distanceKm,
       elevation_gain_m: elevationGainM,
       experience_level: draft.experience_level,
+      race_priority: draft.race_priority,
       target_time: draft.target_time.trim(),
       target_time_seconds: targetTimeSecs,
       target_pace_seconds_per_km: targetPaceSecs,
@@ -384,6 +392,12 @@ export default function RunAgenda() {
               {ev.experience_level && (
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
                   {experienceLevelLabel(ev.experience_level)}
+                </span>
+              )}
+              {/* Só quando não é a principal — o caso comum não precisa de etiqueta. */}
+              {ev.race_priority && ev.race_priority !== 'a' && (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
+                  {racePriorityLabel(ev.race_priority)}
                 </span>
               )}
             </p>
@@ -522,8 +536,9 @@ export default function RunAgenda() {
           {/* Nível do atleta para esta prova — autodeclarado, não herdado do
               Perfil, porque um avançado numa disciplina pode ser iniciante
               noutra ou nesta distância em particular. */}
-          <div>
-            <label className="text-[10px] text-slate-500 mb-1 block">O teu nível para esta prova <span className="text-red-400">*</span></label>
+          <ExperienceLevelHelp
+            label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
+          >
             <select
               value={draft.experience_level}
               onChange={e => updateDraft('experience_level', e.target.value)}
@@ -536,6 +551,21 @@ export default function RunAgenda() {
               {draft.experience_level
                 ? experienceLevelDescription(draft.experience_level)
                 : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
+            </p>
+          </ExperienceLevelHelp>
+
+          {/* Prioridade da prova — decide o taper (polimento pré-prova). */}
+          <div>
+            <label className="text-[10px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
+            <select
+              value={draft.race_priority}
+              onChange={e => updateDraft('race_priority', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+            >
+              {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+            </select>
+            <p className="text-[10px] text-slate-400 mt-1">
+              {racePriorityDescription(draft.race_priority)}
             </p>
           </div>
 

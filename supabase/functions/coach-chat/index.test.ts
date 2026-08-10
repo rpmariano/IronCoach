@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateNutritionGoals, buildSystemInstruction } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -339,7 +339,7 @@ Deno.test("runProposeTrainingPlan rejeita kind desconhecido", async () => {
     ...VALID_PLAN,
     items: [{ planned_date: "2026-08-10", kind: "natacao" }],
   });
-  assertStringIncludes(result, 'kind tem de ser "corrida" ou "ginasio"');
+  assertStringIncludes(result, 'kind tem de ser "corrida", "ginasio" ou "descanso"');
 });
 
 Deno.test("runProposeTrainingPlan rejeita plano sem treinos", async () => {
@@ -378,4 +378,259 @@ Deno.test("runProposeTrainingPlan apaga o plano se os itens falharem", async () 
   assertStringIncludes(result, "Erro ao gravar os treinos");
   // Sem isto ficaria uma proposta vazia visível ao atleta.
   assertEquals(calls.deletes, ["plan-1"]);
+});
+
+// ── Restrições alimentares no prompt ────────────────────────────────────────
+// Ver specs/coach-investigacao.md, Bloco 7 #5. Estes testes existem porque a
+// falha aqui é silenciosa e cara: o coach continua a responder, só que sugere
+// frango a um vegetariano.
+
+const BIO_BASE = {
+  height_cm: null, weight_kg: null, gender: null, birth_date: null,
+  experience_level: null, resting_hr_bpm: null,
+  dietary_restrictions: null as string[] | null, dietary_notes: null as string | null,
+  coach_can_set_nutrition_goals: false as boolean | null,
+};
+
+function sysCom(restrictions: string[] | null, notes: string | null): string {
+  return buildSystemInstruction(
+    null,
+    { ...BIO_BASE, dietary_restrictions: restrictions, dietary_notes: notes },
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null,
+  );
+}
+
+Deno.test("sem restrições não gasta tokens a afirmar ausência", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("restrições alimentares do utilizador"), false);
+  assertEquals(sysCom([], "  ").includes("restrições alimentares do utilizador"), false);
+});
+
+Deno.test("vegano traz B12 e o multiplicador de ferro para o prompt", () => {
+  const sys = sysCom(["vegano"], null);
+  assertStringIncludes(sys, "Vegano");
+  assertStringIncludes(sys, "B12");
+  // Este número recalibra o alarme de ferro do Bloco 4.2 #2 — se sair do
+  // prompt, o alarme volta a estar calibrado para um omnívoro.
+  assertStringIncludes(sys, "1,8×");
+});
+
+Deno.test("vegetariano não manda suplementar B12", () => {
+  // Come ovos e lacticínios; mandá-lo suplementar mina a credibilidade do resto.
+  const sys = sysCom(["vegetariano"], null);
+  assertStringIncludes(sys, "Vegetariano");
+  assertEquals(sys.includes("B12"), false);
+});
+
+Deno.test("combina várias restrições no mesmo prompt", () => {
+  const sys = sysCom(["vegetariano", "sem_lactose"], null);
+  assertStringIncludes(sys, "Vegetariano");
+  assertStringIncludes(sys, "Sem lactose");
+});
+
+Deno.test("as notas de alergia entram em bruto e marcadas como absolutas", () => {
+  const sys = sysCom(null, "alergia a frutos secos");
+  assertStringIncludes(sys, "alergia a frutos secos");
+  assertStringIncludes(sys, "restrição absoluta");
+});
+
+Deno.test("uma chave desconhecida é ignorada em vez de rebentar", () => {
+  // Um valor antigo na BD não deve impedir o coach de responder.
+  const sys = sysCom(["inventada"], null);
+  assertEquals(sys.includes("restrições alimentares do utilizador"), false);
+});
+
+// ─── sugestão alimentar nos itens do plano (Bloco 7, forma de entrega 2) ────
+
+Deno.test("runProposeTrainingPlan grava a sugestão alimentar do dia", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{
+      planned_date: "2026-08-16",
+      kind: "corrida",
+      training_type: "longo",
+      target_distance_km: 18,
+      meal_suggestion: "  Ao pequeno-almoço, 80 g de aveia com banana.  ",
+    }],
+  });
+  assertStringIncludes(result, "Plano criado com 1 treino(s)");
+  assertEquals(calls.itemInserts[0].meal_suggestion, "Ao pequeno-almoço, 80 g de aveia com banana.");
+});
+
+Deno.test("uma sugestão alimentar em branco fica null, não string vazia", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-16", kind: "corrida", meal_suggestion: "   " }],
+  });
+  assertEquals(calls.itemInserts[0].meal_suggestion, null);
+});
+
+Deno.test("aceita um dia de descanso que traga sugestão alimentar", async () => {
+  // É este o caso que motivou o kind 'descanso': véspera de longão, sem
+  // treino, mas com algo a dizer sobre o que comer.
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{
+      planned_date: "2026-08-15",
+      kind: "descanso",
+      meal_suggestion: "Reforça os hidratos ao jantar.",
+    }],
+  });
+  assertStringIncludes(result, "Plano criado com 1 treino(s)");
+  assertEquals(calls.itemInserts[0].kind, "descanso");
+  assertEquals(calls.itemInserts[0].training_type, null);
+  assertEquals(calls.itemInserts[0].target_distance_km, null);
+  assertEquals(calls.itemInserts[0].categories.length, 0);
+});
+
+Deno.test("um dia de descanso vazio é rejeitado sem gravar nada", async () => {
+  // Sem sugestão nem nota, o dia só ocuparia uma linha vazia no plano.
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-15", kind: "descanso" }],
+  });
+  assertStringIncludes(result, "precisa de meal_suggestion ou notes");
+  assertEquals(calls.planInserts.length, 0);
+  assertEquals(calls.itemInserts.length, 0);
+});
+
+Deno.test("um dia de descanso com nota mas sem refeição é aceite", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-15", kind: "descanso", notes: "Descanso total." }],
+  });
+  assertStringIncludes(result, "Plano criado com 1 treino(s)");
+  assertEquals(calls.itemInserts[0].notes, "Descanso total.");
+});
+
+Deno.test("descarta a duração que o modelo ponha num dia de descanso", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{
+      planned_date: "2026-08-15",
+      kind: "descanso",
+      target_duration_min: 45,
+      meal_suggestion: "Prato de massa ao jantar.",
+    }],
+  });
+  assertEquals(calls.itemInserts[0].target_duration_min, null);
+});
+
+// ─── update_nutrition_goals — DECISÃO N1, camada 1 ──────────────────────────
+// Ver specs/coach-investigacao.md, DECISÃO N1. Só proteína e gordura (metas
+// estáveis); calorias e hidratos são metas variáveis e não passam por aqui.
+
+function makeGoalsSb(opts: { authorized?: boolean; profileError?: any; updateError?: any } = {}) {
+  const calls: { updates: any[] } = { updates: [] };
+  const sb = {
+    from: (table: string) => {
+      if (table !== "profiles") throw new Error(`tabela inesperada: ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve(
+              opts.profileError
+                ? { data: null, error: opts.profileError }
+                : { data: { coach_can_set_nutrition_goals: opts.authorized ?? true }, error: null },
+            ),
+          }),
+        }),
+        // deno-lint-ignore no-explicit-any
+        update: (row: any) => {
+          calls.updates.push(row);
+          return { eq: () => Promise.resolve({ error: opts.updateError ?? null }) };
+        },
+      };
+    },
+  };
+  return { sb, calls };
+}
+
+Deno.test("recusa escrever sem autorização, mesmo com valores válidos", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: false });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  assertStringIncludes(result, "não autorizou");
+  assertEquals(calls.updates.length, 0);
+});
+
+Deno.test("com autorização, grava a proteína e marca a origem", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150.4 });
+  assertStringIncludes(result, "Meta atualizada");
+  assertEquals(calls.updates[0].protein_goal, 150); // arredondado
+  assertEquals(calls.updates[0].protein_goal_set_by_coach, true);
+  assertEquals(calls.updates[0].fat_goal, undefined); // não mexe no que não foi pedido
+});
+
+Deno.test("grava proteína e gordura ao mesmo tempo", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
+  assertEquals(calls.updates[0].protein_goal, 140);
+  assertEquals(calls.updates[0].fat_goal, 70);
+  assertEquals(calls.updates[0].fat_goal_set_by_coach, true);
+});
+
+Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const result = await runUpdateNutritionGoals(sb, "user-1", {});
+  assertStringIncludes(result, "Erro");
+  assertEquals(calls.updates.length, 0);
+});
+
+Deno.test("rejeita um valor fora do intervalo plausível", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 900 });
+  assertStringIncludes(result, "Erro");
+  assertEquals(calls.updates.length, 0);
+});
+
+Deno.test("rejeita um valor negativo ou zero", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { fat_goal: 0 });
+  assertStringIncludes(result, "Erro");
+  assertEquals(calls.updates.length, 0);
+});
+
+Deno.test("nunca aceita calorie_goal nem carbs_goal — metas variáveis não passam por aqui", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  // deno-lint-ignore no-explicit-any
+  await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150, calorie_goal: 3000, carbs_goal: 400 } as any);
+  assertEquals(calls.updates[0].calorie_goal, undefined);
+  assertEquals(calls.updates[0].carbs_goal, undefined);
+});
+
+Deno.test("propaga o erro se a leitura do perfil falhar", async () => {
+  const { sb, calls } = makeGoalsSb({ profileError: { message: "timeout" } });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  assertStringIncludes(result, "timeout");
+  assertEquals(calls.updates.length, 0);
+});
+
+Deno.test("propaga o erro se a escrita falhar", async () => {
+  const { sb } = makeGoalsSb({ authorized: true, updateError: { message: "conflito" } });
+  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  assertStringIncludes(result, "conflito");
+});
+
+// ─── autorização no system prompt ────────────────────────────────────────
+
+Deno.test("sem autorização, o prompt diz ao modelo para não tentar a ferramenta", () => {
+  const sys = sysCom(null, null); // BIO_BASE tem coach_can_set_nutrition_goals: false
+  assertStringIncludes(sys, "NÃO tentes a ferramenta update_nutrition_goals");
+});
+
+Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta", () => {
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null,
+  );
+  assertStringIncludes(sys, "autorizou-te a escrever");
+  assertEquals(sys.includes("NÃO tentes a ferramenta"), false);
 });

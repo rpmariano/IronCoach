@@ -1,0 +1,66 @@
+/* Card-resumo do Coach — mesma família visual do NextRaceCard (glass,
+   glow radial, 28px de raio), com a paleta cyan do módulo Coach em vez do
+   âmbar da corrida. Ver specs/plano-de-treino.md §11. */
+
+.cds-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(207,250,254,0.45));
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.8); border-radius: 28px; padding: 20px;
+  box-shadow: 0 12px 35px -10px rgba(6,182,212,0.14);
+  position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
+}
+.cds-glow {
+  position: absolute; right: -50px; top: -60px; width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(34,211,238,0.22) 0%, transparent 70%);
+  pointer-events: none; z-index: 1;
+}
+
+.cds-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: relative; z-index: 2; }
+.cds-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+.cds-refresh {
+  width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  color: #0e7490; background: rgba(6,182,212,0.12); transition: transform 0.2s;
+}
+.cds-refresh:active { transform: scale(0.9) rotate(45deg); }
+.cds-refresh[data-spinning="true"] svg { animation: cds-spin 0.9s linear infinite; }
+@keyframes cds-spin { to { transform: rotate(360deg); } }
+
+.cds-body { position: relative; z-index: 2; margin-top: 12px; min-height: 64px; }
+
+/* Truque de altura automática pela mais alta: todas as mensagens ocupam a
+   MESMA célula da grelha (grid-area 1/1 abaixo), por isso a linha herda a
+   altura da maior delas — sem JS a medir nada e sem o cartão saltar de
+   tamanho ao trocar de mensagem dentro do mesmo resumo. */
+.cds-stack { display: grid; }
+.cds-stack > .cds-msg { grid-area: 1 / 1; }
+
+.cds-msg {
+  display: flex; align-items: flex-start; gap: 10px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+.cds-msg[data-active="true"] { opacity: 1; pointer-events: auto; }
+.cds-msg-icon {
+  width: 30px; height: 30px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.cds-msg-title { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.cds-msg-text { font-size: 0.83rem; line-height: 1.45; color: #334155; font-weight: 500; }
+
+.cds-empty { font-size: 0.8rem; color: #64748b; padding: 4px 0 2px; }
+.cds-skeleton { display: flex; flex-direction: column; gap: 8px; }
+.cds-skeleton-line { height: 10px; border-radius: 6px; background: linear-gradient(90deg, rgba(148,163,184,0.15), rgba(148,163,184,0.3), rgba(148,163,184,0.15)); background-size: 200% 100%; animation: cds-shimmer 1.4s ease-in-out infinite; }
+.cds-skeleton-line:nth-child(1) { width: 85%; }
+.cds-skeleton-line:nth-child(2) { width: 60%; }
+@keyframes cds-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.cds-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; position: relative; z-index: 2; }
+.cds-dots { display: flex; gap: 5px; }
+.cds-dot { width: 6px; height: 6px; border-radius: 999px; background: rgba(6,182,212,0.25); transition: all 0.2s; }
+.cds-dot[data-active="true"] { background: #06b6d4; width: 16px; }
+.cds-nav { display: flex; gap: 4px; }
+.cds-nav-btn {
+  width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  color: #0e7490; background: rgba(6,182,212,0.10);
+}
+.cds-nav-btn:active { transform: scale(0.9); }
+.cds-nav-btn:disabled { opacity: 0.3; }

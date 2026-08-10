@@ -163,3 +163,77 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('Tens alterações por gravar');
   });
 });
+
+// ─── Autorização do Coach para escrever metas — DECISÃO N1, camada 1 ───────
+// Ver specs/coach-investigacao.md. Só proteína e gordura; calorias e
+// hidratos são metas variáveis e não têm este mecanismo.
+describe('Perfil — metas escritas pelo Coach', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+    });
+  });
+
+  it('o interruptor começa desligado quando o perfil não o tem definido', () => {
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.getByLabelText('Ativar autorização do Coach')).toBeInTheDocument();
+  });
+
+  it('ligar o interruptor marca o campo como alterado e grava-o', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    fireEvent.click(screen.getByLabelText('Ativar autorização do Coach'));
+    expect(screen.getByLabelText('Desativar autorização do Coach')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({ coach_can_set_nutrition_goals: true });
+  });
+
+  it('mostra o selo "Coach" quando a proteína foi definida pelo Coach', () => {
+    useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+  });
+
+  it('não mostra selo nenhum quando nada foi definido pelo Coach', () => {
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+  });
+
+  it('editar à mão a proteína marcada pelo Coach desliga a origem e grava as duas mudanças', async () => {
+    useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue('155'), { target: { value: '160' } });
+    // O selo desaparece assim que o atleta edita — o valor já não é "do coach".
+    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({ protein_goal: 160, protein_goal_set_by_coach: false });
+  });
+
+  it('editar a gordura definida pelo coach também desliga só a sua própria flag', async () => {
+    useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true, fat_goal_set_by_coach: true } });
+    render(<Perfil />);
+    abrirMetas();
+
+    fireEvent.change(screen.getByDisplayValue('71'), { target: { value: '75' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+
+    expect(mocks.updates[0]).toEqual({ fat_goal: 75, fat_goal_set_by_coach: false });
+    // A proteína não foi tocada — a sua flag não deve ir no payload.
+    expect(mocks.updates[0]).not.toHaveProperty('protein_goal_set_by_coach');
+  });
+});

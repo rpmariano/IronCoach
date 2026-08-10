@@ -1599,32 +1599,36 @@ Dados disponíveis: `workout_sessions.categories` (grupos ao nível da SESSÃO),
 | #9 pliometria | ❌ | Contactos do pé com o solo não são capturados. O rácio agachamento/peso corporal seria computável por `exercise_name` + `profiles.weight_kg`, mas depende de texto livre. |
 | #11 falha/RIR | ⚠️ parcial | `exertion` é da sessão, não por série. Dá para sinalizar sessões de RPE muito alto, não séries individuais até à falha. |
 
-🔲 **DECISÃO PENDENTE E1 — hora do dia em treinos e corridas**
+✅ **DECISÃO E1 — RESOLVIDA (2026-08-10): não acrescentar hora; aplicar a
+regra ao PROPOR, não ao detetar.**
 
-A regra de interferência (#4) é **a pergunta que resolve o conflito entre o
-especialista de ginásio e o de corrida** — e distingue dois cenários que
-levam a recomendações opostas:
-- Corrida de qualidade de manhã + ginásio à noite: **6-9 h chegam**.
-- Ginásio primeiro: **24 h** até à corrida de qualidade.
+A regra de interferência (#4) distingue dois cenários com recomendações
+opostas: corrida de qualidade de manhã + ginásio à noite (**6-9 h chegam**),
+ou ginásio primeiro (**24 h** até à corrida de qualidade).
 
-**`workout_sessions.date` e `runs.date` são `DATE` — sem hora.** O
-`created_at` não serve: é quando o registo foi criado (pode ser dias depois,
-ao carregar o print), não quando o treino aconteceu.
+O problema registado era que `workout_sessions.date` e `runs.date` são `DATE`,
+sem hora — só se detetava "os dois no mesmo dia", nunca o intervalo nem a
+ordem. As opções em cima da mesa eram acrescentar hora, acrescentar ordem, ou
+aceitar um aviso genérico.
 
-Consequência: só conseguimos detetar "ginásio e corrida no mesmo dia", sem
-saber se respeitaram as 6-9 h nem qual veio primeiro. A doutrina fica
-limitada a um aviso genérico em vez da regra real.
+**O plano de treino (specs/plano-de-treino.md) abriu um quarto caminho, que é
+melhor que os três.** O coach passou a ser quem *propõe* os treinos — logo
+controla a ordem e o espaçamento **antes** de acontecerem:
 
-- *Opção 1*: acrescentar hora (opcional) a `workout_sessions` e `runs`.
-  Implementa a regra a sério, mas é mais um campo em dois formulários.
-- *Opção 2*: acrescentar só a ordem ("o que fizeste primeiro hoje?") quando
-  há os dois no mesmo dia. Mais leve, resolve metade (qual veio primeiro),
-  não resolve o intervalo.
-- *Opção 3*: aceitar o aviso genérico — "fizeste ginásio de pernas e corrida
-  de qualidade no mesmo dia, atenção ao intervalo entre eles".
-- **Sem recomendação forte**: depende de quanto valorizas esta regra face ao
-  atrito de mais campos. A #4 foi identificada como "a pergunta mais
-  importante do módulo" quando o questionário foi escrito.
+- Ao propor, nunca coloca corrida de qualidade e ginásio de pernas em
+  conflito: ou os separa por ≥24 h, ou põe a corrida de manhã e o ginásio ao
+  fim do dia no mesmo item de plano, com a nota explícita.
+- Retrospetivamente, mantém-se o aviso genérico da *Opção 3* — quando o
+  atleta treinou por fora do plano e os dois caíram no mesmo dia.
+
+**Porque é a melhor resolução**: prevenir custa zero atrito ao utilizador
+(nenhum campo novo em dois formulários), e é mais útil do que detetar — um
+aviso depois do treino feito não desfaz a interferência. A deteção
+retrospetiva fica como rede, não como mecanismo principal.
+
+→ **A doutrina de `corrida.md` e `ginasio.md` tem de conter esta regra na
+forma prescritiva** ("ao propor, separar X"), não só na descritiva ("se
+aconteceram juntos, avisar").
 
 ### Bloco 4.1 — Nutrição: base diária (registo)
 
@@ -1795,22 +1799,973 @@ omissão): 30-40 ml/kg × `weight_kg` dá a base, e o treino do dia acrescenta
 | #6 reposição pós-treino | ❌ | Exige pesagem antes/depois do treino; não capturamos peso associado a uma corrida |
 | #4 Cunningham | ❌ | Exige massa magra por DXA; a nossa vem de BIA, desaconselhada pela própria fonte |
 
-🔲 **DECISÃO PENDENTE N1 — metas fixas vs. derivadas**
+✅ **DECISÃO N1 — RESOLVIDA (2026-08-10): metas de perfil são a LINHA DE
+BASE; a variação diária vive na análise, não na meta.**
 
 `profiles` guarda `calorie_goal`, `protein_goal`, `carbs_goal`, `fat_goal` e
-`water_goal_ml` como **valores fixos**, definidos à mão. A doutrina desta
-secção calcula todos eles a partir de peso, altura, idade, sexo, nível e
-volume de treino — e no caso dos hidratos, **muda de dia para dia**.
+`water_goal_ml` como valores fixos. A doutrina calcula-os a partir de peso,
+altura, idade, sexo, nível e volume — e no caso dos hidratos, **muda de dia
+para dia** (5 vs. 10 g/kg entre descanso e longão, num avançado).
 
-- *Opção 1*: o coach passa a calcular e a sugerir as metas, e o utilizador
-  aceita ou substitui. As colunas mantêm-se, mas ganham um valor sugerido.
-- *Opção 2*: as metas passam a ser sempre derivadas; as colunas viram
-  override opcional (null = usar o cálculo).
-- *Opção 3*: nada muda no schema; o coach compara a ingestão com a faixa
-  correta internamente e comenta, sem tocar nas metas do utilizador.
-- **Recomendação**: opção 3 para já (zero risco, zero migração), evoluindo
-  para a 1 quando houver confiança nos cálculos. A 2 é a mais correta a
-  prazo mas mexe no que o utilizador já configurou.
+A tensão resolveu-se ao perceber que a app é **retrospetiva por desenho**
+(PRD 3.6): não pode saber o treino de hoje antes de ele acontecer, logo não
+pode definir prospetivamente a meta de hoje. A pergunta *"quanto devo comer
+hoje?"* é prospetiva e não tem resposta possível; *"a alimentação de ontem
+foi adequada ao treino que fiz?"* é retrospetiva e responde-se bem.
+
+**Resolução em três camadas:**
+
+1. **Metas estáveis** (proteína, gordura) — o coach pode escrevê-las no
+   perfil, com o *toggle* de autorização e a cor do módulo Coach a marcar a
+   origem. Mudam com o peso e o nível, não com o dia.
+2. **Metas variáveis** (calorias, hidratos, água) — a coluna guarda a **linha
+   de base** (dia sem treino). O acréscimo do treino do dia vive na análise
+   do coach, nunca na meta gravada.
+3. **Exceção prospetiva: quando existe plano aceite.** Aí o coach *sabe* o
+   treino de amanhã, porque foi ele que o propôs — e o `dayNutrientStatus`
+   ajusta o dia a partir dos itens do plano (`planAffectsDay()` em
+   `src/utils/nutrition.js`). Nunca gravado: calculado, para uma mudança de
+   data corrigir os dois dias sozinha.
+
+**Estado**: a camada 3 está implementada (heurístico mínimo — só isenta
+calorias/hidratos no dia de um longo do plano). As camadas 1 e 2 dependem do
+*toggle* de autorização no Perfil, ainda por construir.
+
+### Bloco 4.2 — Nutrição: segurança (registo)
+
+Quatro perguntas, fontes canónicas (IOC Consensus RED-S, Loucks, Peeling, Sim,
+Garthe, Hew-Butler, ACSM, OMS), confiança ALTA em todas. **É o registo com
+maior distância entre o que a literatura sabe e o que a app consegue medir —
+pior até do que Corrida 2.4 #2.**
+
+#### #1 — RED-S: limiar, sinais, consequências
+
+```
+Valor:     Disponibilidade energética (EA) = (ingestão − gasto do exercício)
+           / massa magra em kg. Ótima ≥45 kcal/kg FFM/dia · subclínica
+           30-45 · limiar RED-S <30 (média mantida ≥5-7 dias).
+           Sinais: ingestão desproporcionalmente baixa face ao gasto (EA
+           <30); perda rápida/involuntária de peso com gordura corporal no
+           piso fisiológico (<6-8% homens, <14-16% mulheres); amenorreia/
+           oligomenorreia ≥3 meses (mulheres); queda de testosterona livre/
+           líbido/ereções matinais (homens); FC de repouso <40 bpm (fora de
+           adaptação de elite); histórico recorrente de fraturas de stress.
+Consequên.: Supressão tiroideia (T3 livre) e do eixo LH/FSH; redução do pico
+           de massa óssea, osteopenia/osteoporose precoce; TMB reduzida;
+           imunossupressão; disfunção endotelial; menos síntese proteica e
+           queda de performance.
+Fonte:     IOC Consensus Statement on RED-S (Mountjoy, 2018/2023); Low
+           energy availability, not physiological stress, suppresses LH
+           pulsatility in exercising women (Loucks, 2004); ACSM Position
+           Stand (2016)
+Confiança: ALTA
+```
+
+⚠️ **Avaliação de implementabilidade — a mais severa de todo o documento.**
+
+| Sinal | Implementável? | Nota |
+|---|---|---|
+| EA <30 kcal/kg FFM | ⚠️ com reserva | Ingestão: computável de `meals`. Gasto do exercício: ≈1 kcal/kg/km (Nutrição 4.1 #4), computável. Massa magra: só temos `lean_body_mass_kg` por BIA — a mesma fonte que a #4 de 4.1 já desaconselhou para cálculo de precisão. O numerador é bom, o denominador é fraco. |
+| Gordura no piso fisiológico | ✅ | `body_assessments.body_fat_pct` vs. limiares já registados em 4.1 #3 e Bloco 1 #6. |
+| FC de repouso <40 bpm | ✅ **novo** | `profiles.resting_hr_bpm` foi acrescentado entretanto (outra frente de trabalho) — este sinal passou de não capturável a capturável. |
+| Amenorreia/testosterona/líbido | ❌ | Não há campo, nem é razoável pedir — dados clínicos sensíveis, fora do âmbito de registo casual numa app de treino. |
+| Histórico de fraturas de stress | ❌ | Mesma lacuna "histórico de lesões" já listada no topo do documento. |
+
+**Consequência honesta**: o EA calculado é uma **estimativa fraca de uma
+estimativa fraca** (BIA para massa magra, aproximação para gasto de
+exercício) — não deve gerar um alarme automático sozinho. O que pode: gordura
+no piso + perda rápida + (agora) FC de repouso elevada, três sinais
+independentes e mais fiáveis, a apontar na mesma direção. É esse conjunto,
+não o EA isolado, que deveria disparar o alarme de RED-S na doutrina.
+
+#### #2 — Ferro
+
+```
+Valor:     RDA geral: homens 8 mg/dia, mulheres (idade fértil) 18 mg/dia.
+           Corredores de resistência precisam de +30-50% — 11-14 mg/dia
+           (homens). Limiar de preocupação: ferritina sérica <30 µg/L
+           (fase 1 de défice); alvo ótimo para transporte de O2 ≥50 µg/L.
+Mecanismo: (1) hemólise por impacto plantar — destrói glóbulos vermelhos a
+           cada passada; (2) hepcidina elevada pós-esforço (pico 3-6h,
+           via IL-6) bloqueia a absorção intestinal de ferro por algumas
+           horas; (3) perdas gastrointestinais (isquemia esplâncnica) e
+           0,5-1,0 mg de ferro por litro de suor.
+Condições: Suplementação oral só com ferritina confirmada <30 µg/L e
+           orientação médica — risco de hemocromatose por sobrecarga.
+Fonte:     Iron status and the endurance athlete (Peeling, 2008/2014); Iron
+           considerations for the athlete (Sim, 2019); IOC/ACSM Joint
+           Position Statement (2016)
+Confiança: ALTA
+```
+
+✅ **Parcialmente implementável, e é uma boa notícia**: `meal_items.iron_mg_per_100g`
+existe — a ingestão diária de ferro já é computável e comparável ao limiar de
+11-14 mg/dia do corredor (não à RDA geral de 8, que subestimaria o risco).
+❌ A ferritina sérica — o marcador realmente diagnóstico — não é capturável;
+é um valor de análise ao sangue, fora do que uma app de registo casual pode
+pedir. O alarme fica limitado a "ingestão baixa", nunca a "défice confirmado".
+
+#### #3 — Ritmo de perda de peso
+
+```
+Valor:     ≤0,5-0,7% da massa corporal/semana (0,25-0,50 kg/semana para
+           70 kg), défice de 250-500 kcal/dia. Acima de 1,0%/semana ou
+           défice >500 kcal/dia: perda de massa magra, depleção de
+           glicogénio, RPE mais alto, queda de rendimento em prova.
+Fonte:     Racing Weight (Fitzgerald, 2012); Effect of two different
+           weight-loss rates on body composition and strength-related
+           performance in elite athletes (Garthe, 2011); ACSM Position
+           Stand (2016)
+Confiança: ALTA
+```
+
+**Terceira confirmação independente do mesmo número — não é achado novo, é
+convergência.** Bloco 1 #6 e Nutrição 4.1 #5 já tinham chegado exatamente ao
+mesmo intervalo (0,5-0,7%/semana, 250-500 kcal/dia), com fontes diferentes de
+cada vez. As três batem certo ao dígito. Não requer reconciliação nenhuma —
+é o tipo de convergência que sobe a confiança do número, mesmo sem subir a
+etiqueta de "ALTA" que já tinha.
+
+#### #4 — Sódio: treino/calor vs. limite diário
+
+```
+Valor:     Durante treino longo (>75-90 min) ou calor (>25°C): 300-600 mg
+           sódio/hora (até 600-1000+ mg/h em "salty sweaters"). Limite geral
+           de saúde (OMS/DGS): <2000 mg/dia. Resolução: o sódio consumido
+           durante o exercício não se soma ao limite diário de repouso —
+           repõe défice agudo do compartimento extracelular, prevenindo
+           hiponatremia associada ao exercício (EAH). Fora do treino, vale
+           o limite de 2000 mg/dia; durante treino longo/calor, repor
+           50-80% das perdas estimadas por sudação.
+Condições: Aplica-se a treinos >90 min ou ambiente quente/húmido. Não se
+           aplica a treinos <60 min.
+Fonte:     ACSM Position Statement — Exercise and Fluid Replacement (2007);
+           3rd International EAH Consensus (Hew-Butler, 2015); OMS; Sports
+           Nutrition 3rd Ed (Jeukendrup, 2018)
+Confiança: ALTA
+```
+
+**Resolve a pergunta de conciliação do questionário original** ("como
+concilia com o limite de saúde geral") — a resposta não é um número único, é
+uma regra de contabilização em dois compartimentos (repouso vs. exercício).
+
+⚠️ **Implementável em metade**: `meal_items.sodium_per_100g` existe — o
+orçamento diário de repouso é computável. A necessidade de reposição durante
+o treino depende de duração (temos, `runs.duration_seconds`) e temperatura
+ambiente (não temos — mesma lacuna já registada em Corrida 2.2 #5). Sem
+temperatura, o coach pode aplicar o mínimo do intervalo (300 mg/h) para
+treinos longos, mas não distinguir um dia fresco de um dia de calor extremo.
+
+### Bloco 4.3 — Nutrição: treino e prova (registo)
+
+Cinco perguntas, fontes canónicas (ACSM, Burke, Jeukendrup, Bussau, Lis,
+Viribay, ISSN/Grgic, Spriet), confiança ALTA em todas. **Fecha a Nutrição por
+completo (4.1, 4.2, 4.3).** Traz as duas primeiras perguntas totalmente
+computáveis de todo o bloco de Nutrição — sem gaps nenhuns.
+
+#### #1 — Nutrição antes e depois do treino
+
+```
+Valor:     Antes: hidratos 1,0-4,0 g/kg, escalado ao tempo de digestão
+           disponível (3-4h antes: 2,0-4,0 g/kg refeição sólida; 1h antes:
+           1,0 g/kg snack leve). Proteína 0,3-0,4 g/kg (20-30g). Gordura e
+           fibra baixas-moderadas, para não atrasar o esvaziamento gástrico.
+           Depois: hidratos 1,0-1,2 g/kg/hora nas primeiras 2-4h se a
+           sessão seguinte for em <24h; ou 1,0 g/kg na primeira refeição
+           em rotina normal de 24h de descanso. Proteína 0,3-0,5 g/kg
+           (20-40g) com ≥2,5-3,0g de leucina, nas 0-2h após o treino.
+Condições: Para treino Z3-Z5 ou sessões >60 min. Rodagens curtas em Z1
+           (<45 min) dispensam ingestão prévia e seguem o padrão alimentar
+           habitual.
+Fonte:     ACSM Position Stand (2016); Clinical Sports Nutrition 6th Ed
+           (Burke, 2021); A Step Towards Personalized Sports Nutrition
+           (Jeukendrup, Sports Med 2014)
+Confiança: ALTA
+```
+
+⚠️ **Mesma lacuna já registada no topo do documento**: `meals.meal_type` é
+um slot (`almoco`, `lanche`...), não uma hora exata — não dá para verificar
+"comeu nas 0-2h após o treino", só "comeu no mesmo dia, num slot plausível".
+A doutrina fica ao nível de "refeição anterior/seguinte ao treino", como já
+estava previsto.
+
+#### #2 — Hidratos por hora durante a prova
+
+```
+Valor:     <45 min: nenhum. 45-75 min: bochecho ou até 30 g/h. 1,0-2,5h
+           (10k intenso a meia): 30-60 g/h (glicose/maltodextrina).
+           >2,5-3,0h (maratona/ultra): 60-90 g/h, fonte múltipla
+           (glicose:frutose 2:1 ou 1:0,8). >4-6h (ultra-resistência):
+           até 90-120 g/h, com treino intestinal prévio.
+           Limite de absorção: fonte única (SGLT1) ~60 g/h; fontes
+           múltiplas (SGLT1+GLUT5) ~90-120 g/h, requer 4-6 semanas de
+           habituação intestinal.
+Condições: Ingerir 100-150 ml de água por cada 15-20g de hidratos, para
+           evitar hiperosmolaridade gastrointestinal.
+Fonte:     A Step Towards Personalized Sports Nutrition (Jeukendrup, Sports
+           Med 2014); Effects of 120 g/h of Carbohydrates during a Mountain
+           Marathon (Viribay, Nutrients 2020); ACSM Position Stand (2016)
+Confiança: ALTA
+```
+
+⚠️ **Só serve para aconselhar, não para verificar.** A duração da prova é
+computável (`race_events`/`runs`), por isso o coach pode dizer *"para 3h de
+maratona, precisas de 60-90 g/h"* — mas não há forma de registar o que o
+atleta realmente ingeriu durante a corrida (géis, bebida isotónica). Fica
+recomendação prévia, nunca comparação com o que aconteceu.
+
+#### #3 — Carga de hidratos (carb-loading)
+
+```
+Valor:     Indicada para provas >90 min contínuos — meia para corredores
+           mais lentos, obrigatória para maratona/ultra. Em 5k/10k
+           (<60-75 min) não melhora e só traz peso indesejado (~3g de água
+           por cada 1g de glicogénio armazenado). Duração: 24-48h antes.
+           Quantidade: 10-12 g/kg/dia. Acompanhar de fibra <10-15 g/dia e
+           gordura <15-20% das calorias, para conforto intestinal.
+Fonte:     Carbohydrate loading in human muscle: an improved 1-day protocol
+           (Bussau, Eur J Appl Physiol 2002); Carbohydrates for training
+           and competition (Burke, 2011); ACSM Position Stand (2016)
+Confiança: ALTA
+```
+
+✅ **Totalmente computável, sem gaps.** `race_events.distance_km` decide se a
+prova qualifica (>90 min de esforço estimado); `race_events.date` dá a
+contagem decrescente para acionar o gatilho nas 24-48h antes;
+`profiles.weight_kg` dá o alvo em gramas; `meals`/`meal_items` dão a
+ingestão real de hidratos e fibra para comparar. É a primeira pergunta de
+todo o bloco de Nutrição a não ter nenhuma reserva.
+
+#### #4 — Fibra: alvo diário e limite pré-prova
+
+```
+Valor:     Alvo diário: 25 g/dia (mulheres) a 38 g/dia (homens), ou
+           ~14g/1000 kcal. Nas 24-48h antes da prova: reduzir para
+           <10-15 g/dia.
+Condições: A restrição pré-prova esvazia o resíduo fecal acumulado,
+           reduzindo peso e o risco de diarreia induzida pelo exercício
+           ("runner's trots") ou cólicas durante a prova.
+Fonte:     ACSM Position Stand (2016); Clinical Sports Nutrition 6th Ed
+           (Burke, 2021); Gastrointestinal Complaints During Exercise (Lis,
+           2018)
+Confiança: ALTA
+```
+
+✅ **Também totalmente computável.** `meal_items.fiber_per_100g` existe —
+alvo diário e restrição pré-prova são ambos verificáveis com o que já
+temos, cruzado com `race_events.date` para saber quando entra a janela de
+restrição.
+
+#### #5 — Cafeína
+
+```
+Valor:     Dose ergogénica: 3-6 mg/kg (210-420 mg para 70 kg). Doses
+           adicionais de 1-2 mg/kg nas fases finais de maratonas/ultras.
+           Acima de 9 mg/kg não traz ganho extra e piora efeitos
+           colaterais. Momento: 60 min antes do início.
+           Contraindicações: arritmias/taquicardia de repouso, hipertensão
+           não controlada, ansiedade aguda, insónia, úlcera péptica,
+           gravidez (limite 200 mg/dia), medicação simpaticomimética.
+Condições: Testar sempre em treino antes de usar em prova. O protocolo de
+           "desabituação" 7 dias antes não mostra vantagem clara sobre
+           manter o hábito normal.
+Fonte:     ISSN Position Stand — Caffeine and Exercise Performance (Guest,
+           JISSN 2021); ACSM Position Stand (2016); Exercise and Sport
+           Performance with Low Doses of Caffeine (Spriet, Sports Med 2014)
+Confiança: ALTA
+```
+
+❌ **Não implementável — gap novo, não registado antes.** Cafeína não é um
+nutriente capturado em `meal_items` (a lista para — calorias, proteína,
+hidratos, gordura, fibra, açúcar, sódio, ferro, cálcio, vitamina C,
+potássio). E as contraindicações são informação clínica/pessoal (arritmia,
+hipertensão, gravidez), da mesma categoria dos sinais de RED-S em 4.2 #1 —
+fora do que é razoável pedir num registo casual. A doutrina pode recomendar
+a dose e o momento; não pode verificar nada.
+
+**Nutrição está fechada.** Dois blocos totalmente resolvidos (#3, #4), um
+parcial mas com boa cobertura (#1, #2), um gap novo e genuíno (#5, cafeína)
+que se junta ao já conhecido de RED-S (4.2 #1) na categoria "informação
+clínica que a app não deve tentar capturar".
+
+### Bloco 5 — Corpo (registo)
+
+Onze perguntas, fontes canónicas (ACSM, Dehghan & Merchant, Fosbøl & Zerahn,
+Levitsky, Garthe, Aragon & Schoenfeld, McDonald, Mountjoy/IOC, WHO,
+Jeukendrup, Meeusen, Plews, Noakes), confiança ALTA em todas. Cruza fortemente
+com blocos anteriores — mais do que qualquer ronda até agora.
+
+#### #1 — Fiabilidade das métricas por bioimpedância
+
+```
+Fiáveis:   Peso corporal (±0,1-0,2 kg). Média móvel de longo prazo (nunca
+           valor absoluto de um dia) de % de gordura e massa magra — só
+           para tendência direcional.
+Não fiável: Massa muscular esquelética, proteína, massa óssea, idade
+           metabólica, gordura visceral (escala própria), água corporal em
+           valor diário absoluto, TMB. Erro de ±10-25% vs. DEXA/4-compartimentos
+           — equações proprietárias hiper-sensíveis a hidratação, glicogénio
+           e conteúdo gastrointestinal.
+Condições: Tendência exige padronização rígida — medição matinal, em jejum,
+           pós-micção, sem líquidos nem exercício nas 12h anteriores.
+Fonte:     ACSM Guidelines 11th Ed (2021); Is bioelectrical impedance
+           accurate for clinical studies? (Dehghan & Merchant, 2008);
+           Contemporary methods of body composition assessment (Fosbøl &
+           Zerahn, 2015)
+Confiança: ALTA
+```
+
+⚠️ **Ambiguidade de mapeamento aos nossos 13 campos.** A resposta nomeia
+"massa magra" (fiável em tendência) e "massa muscular esquelética" (não
+fiável) — mas `body_assessments` tem **três** campos de músculo distintos:
+`skeletal_muscle_pct` (bate certo com "esquelética" → não fiável),
+`lean_body_mass_kg` (bate certo com "massa magra" → fiável em tendência), e
+`muscle_mass_kg`, que a resposta **não nomeia diretamente**.
+
+✅ **DECIDIDO (2026-08-10): `muscle_mass_kg` trata-se como NÃO FIÁVEL.** Está
+conceptualmente mais próximo de "massa muscular esquelética" (explicitamente
+não fiável) do que de "massa magra" — e a regra de segurança que temos usado
+em todo o documento manda escolher o lado conservador quando a fonte não
+desambigua. Consequência prática: dos três campos de músculo, **só
+`lean_body_mass_kg` pode ser citado pelo coach, e mesmo assim apenas como
+tendência de longo prazo**, nunca como valor absoluto de um dia.
+
+**Confirma o que já sabíamos**: `bmr_kcal` não fiável — mesma conclusão de
+Nutrição 4.1 #4. `visceral_fat` só serve com a tabela de correspondência
+clínica — ver #8 abaixo.
+
+#### #2 — Variação de peso: real vs. água
+
+```
+Valor:     Oscilação >1,0-1,5 kg em 24-48h = só água/glicogénio/conteúdo
+           gastrointestinal. Alteração mantida >0,5-1,0 kg ao longo de
+           14-21 dias (comparando médias semanais) = tecido real.
+Fonte:     Racing Weight (Fitzgerald, 2012); ACSM Position Stand (2016);
+           Monitoring body weight daily (Levitsky, 2006)
+Confiança: ALTA
+```
+
+#### #3 — Média móvel para tendência fiável
+
+```
+Valor:     7-14 dias (7 mínimo, para anular ciclo de treino e retenção
+           hídrica). Em mulheres, 14-28 dias — para anular a fase lútea do
+           ciclo menstrual.
+Fonte:     Monitoring body weight daily (Levitsky, 2006); Racing Weight
+           (Fitzgerald, 2012)
+Confiança: ALTA
+```
+
+#### #4 — Ritmo de perda de gordura
+
+```
+Valor:     0,5-1,0% da massa corporal/semana (0,35-0,70 kg para 70 kg).
+           Com gordura corporal já baixa, reduz para ≤0,5%/semana.
+Condições: Exige proteína 1,8-2,4 g/kg/dia e treino de força, para
+           preservar massa magra.
+Fonte:     Effect of two different weight-loss rates on body composition
+           (Garthe, 2011); ACSM Position Stand (2016); Racing Weight
+           (Fitzgerald, 2012)
+Confiança: ALTA
+```
+
+⚠️ **Discrepância pequena com três rondas anteriores.** Bloco 1 #6, Nutrição
+4.1 #5 e Nutrição 4.2 #3 convergiram exatamente em 0,5-0,7%/semana; esta dá
+0,5-1,0%. O piso (0,5%) bate certo nas quatro — só o teto diverge (0,7% vs.
+1,0%). Segue a mesma regra de segurança já usada quando as fontes discordam:
+fica o valor mais conservador, **0,7%/semana**, como teto por omissão — 1,0%
+só quando a resposta #7 permitir explicitamente (nível médio/avançado, com
+suporte especializado).
+
+#### #5 — Ritmo de ganho de massa muscular, por nível
+
+```
+Iniciante: 1,0-1,5 kg/mês homens (0,5-0,75 mulheres), 0-6 meses de treino
+Básico:    0,5-1,0 kg/mês homens (0,25-0,5 mulheres), 6-18 meses
+Médio:     0,25-0,5 kg/mês homens (0,12-0,25 mulheres), 1,5-3 anos
+Avançado:  0,1-0,25 kg/mês homens (<0,1 mulheres) ou teto genético, >3 anos
+Condições: Exige treino de força hipertrófico + superavit ligeiro
+           (+200-300 kcal/dia). NÃO se aplica em défice calórico nem em
+           volume de corrida >60 km/semana (efeito de interferência).
+Fonte:     Gaining Muscle Mass Model (Aragon & Schoenfeld, 2013/2020);
+           Model for Genetic Muscular Potential (McDonald, 2009)
+Confiança: ALTA
+```
+
+**Liga a Ginásio #1** (papel da força por nível) e à interferência corrida↔
+ginásio já registada em Bloco 3 #4 — mais um ponto de contacto entre módulos
+sobre a mesma ideia: alto volume de corrida compete com hipertrofia.
+
+#### #6 — % de gordura corporal: faixas e piso
+
+```
+Geral:     10-20% homens · 18-28% mulheres
+Endurance: 6-12% homens · 14-20% mulheres
+Piso RED-S: <5-6% homens · <12-14% mulheres
+Fonte:     ACSM Guidelines 11th Ed (2021); IOC RED-S Consensus (2018/2023);
+           Physiology of Sport and Exercise (Wilmore & Costill)
+Confiança: ALTA
+```
+
+⚠️ **Discrepância pequena com Nutrição 4.2 #1.** Aquela resposta (RED-S) deu
+o piso em 6-8% homens/14-16% mulheres; esta dá 5-6%/12-14%. Diferença de
+1-2 pontos percentuais, provavelmente por serem fontes independentes a
+arredondar o mesmo intervalo real de forma diferente. Mesma regra: fica o
+**mais alto** (mais cedo a soar o alarme) — 6-8% homens, 14-16% mulheres —
+como já estava.
+
+#### #7 — "Peso de prova" em amadores
+
+```
+Valor:     Perder só gordura melhora VO2máx relativo em ~1,0% por cada 1,0%
+           de gordura perdida — ~1,4-2,0 seg/km por kg de gordura.
+           MAS: 15-30% de prevalência de comportamento alimentar
+           desordenado (EAT-26) em corredores recreativos incentivados a
+           atingir "peso ideal de corrida".
+           Iniciante/Básico: NÃO promover — foco 100% em regularidade e
+           hábitos. Médio/Avançado: só com suporte nutricional
+           especializado, base de treino estável, e disponibilidade
+           energética ≥45 kcal/kg LBM/dia mantida.
+Fonte:     Racing Weight (Fitzgerald, 2012); IOC Consensus on Eating
+           Disorders in Sport (2018); Female Athlete Triad/RED-S Coalition
+           (Joy, 2014)
+Confiança: ALTA
+```
+
+**Resolve a pergunta que tinha ficado marcada como "decisão de produto, não
+só doutrina".** Já não é preciso decidir às cegas — há dado epidemiológico
+real (15-30% de prevalência de comportamento desordenado) a apontar a
+resposta: nunca promover a iniciante/básico, e mesmo em médio/avançado só
+com salvaguardas explícitas.
+
+#### #8 — Gordura visceral: limiares e correspondência clínica
+
+```
+Escala Renpho (1-59): 1-9 saudável (<100 cm² área visceral) · 10-14 alerta
+           (100-130 cm²) · ≥15 risco elevado (>130 cm²)
+Clínico:   Perímetro de cintura ≥94 cm homens/≥80 cm mulheres (risco);
+           ≥102/≥88 cm (risco muito alto). Rácio cintura/anca >0,90 homens/
+           >0,85 mulheres.
+Condições: A escala da balança é só rastreio; o perímetro tem precedência
+           médica para avaliação real de risco cardiovascular.
+Fonte:     WHO Waist Circumference and Waist-Hip Ratio Report (2011);
+           Renpho BIA Technical Standards; NCEP-ATP III Criteria
+Confiança: ALTA
+```
+
+✅ **Implementável já, com reserva.** `body_assessments.visceral_fat` existe
+e a escala 1-59 tem agora bandas de ação claras (≥15 = risco elevado). O
+padrão-ouro clínico (perímetro de cintura, rácio cintura/anca) não é
+capturável — não há campos para isso — mas não é preciso: a escala Renpho
+sozinha já dá um sinal acionável.
+
+#### #9 — Água corporal: faixa e queda súbita
+
+```
+Valor:     Faixa normal: 50-65% homens (mais massa muscular = limite
+           superior), 45-60% mulheres.
+           Queda súbita: >1,5-2,0% em 24-48h (ou >1,5 kg de massa hídrica)
+           = desidratação aguda ou depleção de glicogénio (1g glicogénio
+           retém ~3g água) — degrada 3-5% da capacidade aeróbica de
+           imediato.
+Fonte:     ACSM Position Stand — Exercise and Fluid Replacement (2007);
+           Sports Nutrition 3rd Ed (Jeukendrup, 2018)
+Confiança: ALTA
+```
+
+#### #10 — Precedência: TMB da balança vs. fórmula
+
+```
+Valor:     Fórmula (Mifflin-St Jeor ou Cunningham) tem PRECEDÊNCIA ABSOLUTA
+           sobre o TMB da balança. Erro da balança: 15-25% (±250-400
+           kcal/dia) — não mede VO2 basal nem usa calorimetria indireta.
+Fonte:     Mifflin (Am J Clin Nutr, 1990); Dehghan & Merchant (2008); ACSM
+           Guidelines (2021)
+Confiança: ALTA
+```
+
+**Confirma Nutrição 4.1 #4 ao dígito — não é achado novo.** Mesma pergunta,
+mesma resposta, fonte em comum (Dehghan & Merchant, ACSM). Não requer ação
+adicional; já estava decidido.
+
+#### #11 — Sinais de sobretreino em métricas corporais
+
+```
+Valor:     1. Queda súbita de peso >1,5-2,0% em 48-72h sem défice
+              voluntário (depleção de glicogénio + catabolismo).
+           2. Queda de água corporal >1,0-1,5% ao longo de 3-5 dias.
+           3. FC de repouso +≥5-7 bpm acima da média de 7 dias, ≥3 dias.
+           4. HRV (rMSSD): queda >1,5 DP da linha de base, ≥3 dias.
+Condições: Medido ao acordar, em repouso absoluto, antes de cafeína/líquidos.
+Fonte:     ECSS/ACSM Consensus on overtraining (Meeusen, 2013); Training
+           adaptation and heart rate variability (Plews, 2013); Lore of
+           Running 4th Ed (Noakes, 2003)
+Confiança: ALTA
+```
+
+**Estende Corrida 2.4 #2, não duplica.** Os sinais #3 e #4 (FC repouso, HRV)
+são exatamente os mesmos já registados ali — mesmos limiares, fontes em
+comum (Meeusen, Plews). Os sinais #1 e #2 (queda de peso, queda de água) são
+**novos**, específicos de métricas corporais. Junto com o `resting_hr_bpm`
+já disponível, ficam 3 dos 4 sinais parcialmente ao alcance: peso e água
+vêm de `body_assessments`, FC de repouso do perfil. Só o HRV continua fora
+de alcance (exige wearable, não um print).
+
+---
+
+**Bloco 5 fechado.** Restam duas discrepâncias pequenas registadas (#4 e #6,
+ambas resolvidas pela regra do valor mais conservador) e uma ambiguidade de
+mapeamento (#1, `muscle_mass_kg`). Falta só o Bloco 6 (Head Coach) para a
+investigação estar completa.
+
+### Bloco 6 — Head Coach: arbitragem e comunicação (registo)
+
+Cinco perguntas, fontes canónicas (Fitzgerald, Burke, ACSM, IOC REDs CAT,
+Meeusen, Magill & Anderson, Wulf, NSCA, Daniels, Blagrove, Issurin,
+Verkhoshansky & Siff, Bompa), confiança ALTA em todas.
+
+**Este bloco vinha marcado no questionário como "parcialmente de produto, não
+de literatura pura" — e essa reserva revelou-se desnecessária.** As cinco
+perguntas voltaram com fontes canónicas e números concretos, incluindo as de
+comunicação, que assentam em literatura de aprendizagem motora (Magill,
+Wulf). Não é preciso decidir nada por intuição.
+
+#### #1 — Conflito entre composição corporal e prova
+
+```
+Valor:     A preparação da prova tem prioridade de 100%. A partir de 21-28
+           dias antes (pico + início do taper), o défice calórico
+           voluntário vai a ZERO — ingestão na manutenção, com
+           disponibilidade energética ≥45 kcal/kg FFM/dia.
+Condições: Só para provas A. Provas B/C não acionam esta regra.
+Fonte:     Racing Weight (Fitzgerald, 2012); Clinical Sports Nutrition 6th
+           Ed (Burke, 2021); ACSM Position Stand (2016)
+Confiança: ALTA
+```
+
+✅ **Totalmente implementável, e liga peças já existentes.** A data e a
+prioridade da prova estão em `race_events` (`date`, `race_priority` — este
+último acrescentado entretanto). O limiar de 21-28 dias é um gatilho
+proativo direto. Confirma o que Nutrição 4.1 #5 já dizia ("défice a zero em
+fases de pico"), agora com o número de dias explícito.
+
+#### #2 — Hierarquia de alarmes
+
+```
+Valor:     Cinco condições, por gravidade decrescente:
+           G1 (risco vital): dor torácica em esforço, síncope/pré-síncope,
+              palpitações/arritmia, FCR +≥15 bpm com tonturas → urgência.
+           G2 (lesão óssea de stress): dor óssea focal ao carregar peso
+              (EVA ≥4-5/10), tíbia/fémur/metatarsos → parar impacto,
+              ortopedia.
+           G3 (RED-S grave): EA <30 kcal/kg FFM/dia crónica, perda
+              involuntária >1,5%/semana, amenorreia >3 meses, EAT-26
+              positivo → suspender alta intensidade, intervenção
+              multidisciplinar.
+           G4 (sobretreino não funcional): queda de desempenho ≥14-21 dias
+              + HRV suprimida (>2 DP por ≥5-7 dias) + perturbação de sono/
+              humor → suspender plano, repouso.
+           G5 (lesão músculo-tendinosa): dor EVA ≥4/10 que altera a
+              passada → suspender até EVA ≤2/10.
+Condições: Prevalece sobre qualquer plano de treino ativo.
+Fonte:     IOC RED-S Clinical Assessment Tool v2 (REDs CAT, 2023);
+           ECSS/ACSM Consensus on overtraining (Meeusen, 2013); ACSM
+           Guidelines (2021)
+Confiança: ALTA
+```
+
+⚠️ **Implementável em ~2 de 5 — e por boas razões.** G1 (sintomas
+cardíacos), G2 e G5 (dor com escala EVA) dependem de sintomas que o atleta
+teria de reportar; não há campo, e criar um formulário de sintomas é uma
+decisão de produto com implicações sérias (a app passaria a parecer um
+instrumento clínico). G3 é parcialmente detetável — perda de peso >1,5%/
+semana e EA estimada, com as reservas já registadas em Nutrição 4.2 #1. G4
+depende de HRV, que não capturamos.
+
+**Nota importante para a doutrina**: mesmo o que não é detetável deve estar
+escrito. O coach não consegue *detetar* dor torácica, mas se o atleta a
+mencionar no chat, a doutrina tem de o mandar parar e procurar ajuda médica
+— nunca continuar a otimizar o treino. É exatamente para isto que a
+hierarquia serve.
+
+#### #3 — Quantidade de informação e vocabulário, por nível
+
+```
+Iniciante: 1-2 recomendações/semana. Profundidade nula (estágio cognitivo).
+           Só sensação de esforço ("ritmo de conversa"), sem acrónimos —
+           nada de VDOT, VO2máx, rMSSD, RIR.
+Básico:    2-3/semana. Profundidade baixa-moderada (estágio associativo).
+           Conceitos funcionais: zonas Z1-Z3, pace min/km, séries e
+           repetições, proteína/hidratos.
+Médio:     3-4/microciclo. Justificações fisiológicas: limiar anaeróbico,
+           regra 80/20, rácio de carga. Termos: RPE Borg, RIR, tapering,
+           g/kg de macros.
+Avançado:  4-5+/microciclo, análise multi-métrica. Terminologia científica
+           completa: VDOT, HRV/rMSSD, GCT balance, ACWR, EA em kcal/kg FFM.
+Fonte:     Motor Learning and Control 11th Ed (Magill & Anderson, 2017);
+           Attentional focus and motor learning (Wulf, 2013); NSCA
+           Essentials 4th Ed (Baechle & Earle, 2016)
+Confiança: ALTA
+```
+
+✅ **A resposta mais diretamente aplicável de todo o questionário.** Não
+precisa de dados nenhuns além de `experience_level`, que já existe nas duas
+variantes (perfil e por prova). Traduz-se quase literalmente em regras de
+`_comum.md`: quantas recomendações por resposta, que vocabulário é permitido,
+que acrónimos estão proibidos a cada nível.
+
+#### #4 — Temas contraindicados por nível
+
+```
+Iniciante: peso de prova/restrição calórica; métricas avançadas (oscilação
+           vertical, watts, HRV, deriva cardíaca, GCT); alta intensidade
+           anaeróbica (Z5, intervalos de VO2máx); pliometria de impacto;
+           treino em jejum ou depleção de hidratos; contagem minuciosa de
+           calorias/macros.
+Básico:    maratona/ultra sem base em 10k/21k; força até à falha (RIR 0);
+           taper prolongado de 3 semanas; suplementação complexa
+           (bicarbonato, nitratos) antes da dieta base consolidada;
+           sessões duplas no mesmo dia.
+Médio:     volume sem semanas de descarga (deload a cada 3-4 semanas);
+           défice calórico na fase de pico; copiar planos de elite
+           (>100 km/semana).
+Avançado:  alterações não testadas de nutrição/equipamento nas 48-72h
+           pré-prova; ignorar sinais biométricos persistentes (HRV baixa,
+           FCR alta) para cumprir a prescrição; eliminar por completo o
+           treino de força no período competitivo.
+Fonte:     Racing Weight (Fitzgerald, 2012); IOC RED-S Consensus
+           (2018/2023); Daniels' Running Formula 4th Ed (2021); Strength
+           and Conditioning for Endurance Running (Blagrove, 2015)
+Confiança: ALTA
+```
+
+✅ **Vira lista de exclusão direta na doutrina.** Cruza com o que já estava
+registado noutros blocos e confirma-o: "peso de prova" contraindicado a
+iniciante (= Bloco 5 #7), força até à falha (= Ginásio #11), maratona sem
+base (= Bloco 1 #5), défice em fase de pico (= Nutrição 4.1 #5 e Bloco 6 #1).
+Não há contradições — é a mesma doutrina vista do ângulo da comunicação.
+
+#### #5 — Frequência de ajuste do plano
+
+```
+Valor:     Ajuste programado a cada 7-14 dias, no fim de cada microciclo.
+           Micro-ajustes reativos só com sinal claro: dor EVA ≥4/10, FCR
+           +≥5 bpm por 2 dias, HRV baixa, ou mudança imprevista de agenda.
+           Ajustar demais PREJUDICA: adaptações estruturais e enzimáticas
+           (biogénese mitocondrial, densidade capilar, remodelação de
+           tendões, síntese de hemoglobina) exigem estímulo consistente
+           por 14-21 dias. Mudar a cada 2-3 dias introduz "ruído de
+           adaptação", impede supercompensação, gera stress psicológico e
+           invalida a avaliação de causa-efeito.
+Fonte:     Block Periodization (Issurin, 2008); Daniels' Running Formula
+           4th Ed (2021); Supertraining (Verkhoshansky & Siff, 2009);
+           Periodization 6th Ed (Bompa, 2015)
+Confiança: ALTA
+```
+
+✅ **Valida por acaso o desenho do plano de treino.** A spec
+`plano-de-treino.md` assumiu planos semanais sem justificação fisiológica —
+era intuição de produto. Esta resposta confirma que 7-14 dias é exatamente a
+janela certa, e explica porquê. O que a spec **não** tem, e devia passar a
+ter: a regra de não substituir um plano ativo sem sinal claro. A instrução
+do `coach-chat` já diz ao modelo para não propor por cima de um plano
+pendente sem o utilizador pedir — o que se revela alinhado com a literatura,
+por sorte mais do que por desenho.
+
+---
+
+## 🏁 Investigação completa
+
+Todos os blocos estão fechados: **0** (níveis), **1** (viabilidade), **2**
+(corrida: 2.1-2.4), **3** (ginásio), **4** (nutrição: 4.1-4.3), **5**
+(corpo), **6** (head coach). ~70 perguntas, esmagadora maioria com confiança
+ALTA e fontes canónicas.
+
+### O que fazer a seguir
+
+1. **Converter em `src/coach-knowledge/`** — `_comum.md` (Bloco 6 #3 e #4 dão
+   quase por inteiro as regras de comunicação e a lista de exclusão), mais um
+   ficheiro por especialista.
+2. **Fechar as três decisões pendentes** listadas ao longo do documento:
+   E1 (hora do dia em treinos, para a regra de interferência do Ginásio #4),
+   N1 (metas fixas vs. derivadas — parcialmente resolvida pela discussão do
+   plano de treino), e a ambiguidade de `muscle_mass_kg` no Bloco 5 #1.
+3. **Definir o vocabulário de vereditos** (PRD 3.6.1) — as flags que os
+   especialistas emitem. Os blocos registados já nomeiam candidatas ao longo
+   do texto (`sobrecarga`, `objetivo_inviavel`, `defice_excessivo`,
+   `risco_lesao`, ...).
+
+### Padrões que emergiram da recolha
+
+- **Convergência entre fontes independentes**: o ritmo de perda de peso
+  apareceu quatro vezes, por caminhos diferentes, sempre no mesmo intervalo.
+  O mesmo com o limiar de 10%/semana de aumento de volume (Gabbett, em
+  corrida e ginásio). Quando isso acontece, a confiança no número é maior do
+  que a etiqueta "ALTA" sozinha sugere.
+- **A literatura sabe muito mais do que a app consegue medir.** Vários
+  achados de alto valor — HRV, assimetria de passada, ferritina, sintomas
+  clínicos — exigem dados que não capturamos, e em vários casos **não
+  devemos** capturar (informação clínica sensível). A doutrina deve incluí-los
+  na mesma, para o coach saber reagir quando o atleta os mencionar no chat.
+- **Duas lacunas de dados repetiram-se em perguntas independentes**: FC de
+  repouso (pedida por Karvonen e por sobretreino — entretanto resolvida) e
+  temperatura ambiente (pedida pelo sódio e pelo filtro de falso-positivo de
+  fadiga — continua em aberto).
+
+---
+
+# BLOCO 7 — Sugestões alimentares
+
+**Respostas registadas (2026-08-10).** Seis perguntas, confiança ALTA em
+todas. Fontes: ACSM/AND, ISSN Nutrient Timing (Kerksick), Burke, Jeukendrup,
+Lis, Venderley & Campbell, Rogerson, Fitzgerald — e, na #2, a **Tabela de
+Composição de Alimentos do INSA/PortFIR**, que é a referência portuguesa.
+
+## Porque existe este bloco
+
+Ficou uma assimetria por resolver: o coach já consegue **propor treinos** como
+dados estruturados (`propose_training_plan`), mas em nutrição só sabe comentar
+retrospetivamente. O objetivo original de "sugerir planos alimentares"
+perdeu-se pelo caminho.
+
+Os blocos 4.1, 4.2 e 4.3 já dão os **alvos** — g/kg de proteína e hidratos por
+nível, distribuição por refeição (0,3-0,4 g/kg a cada 3-4h), défice máximo,
+mínimo de gordura, timing peri-treino. O que falta é a ponte entre saber os
+números e **sugerir comida concreta**: quantos gramas de que alimento.
+
+## Desenho decidido (2026-08-10)
+
+Um "plano alimentar semanal" a espelhar o plano de treino seria ~40 entradas
+por semana (5-6 refeições × 7 dias) — atrito alto, adesão baixa. **Decidiu-se
+não criar uma entidade de plano alimentar.** Em vez disso, três formas de
+entrega, todas em cima do que já existe:
+
+1. **Correção de refeições registadas.** O coach comenta uma refeição já
+   introduzida — *"o teu pequeno-almoço tem 12 g de proteína, devia ter
+   25-30 g"*. Retrospetivo, acionável, zero atrito. Já hoje há
+   `meals.coach_notes`; é onde isto encaixa.
+
+2. **Sugestão integrada no cartão do treino planeado.** O item do plano já
+   mostra *"longão 18 km, domingo"* — passa a poder mostrar também o que
+   comer à volta dele (véspera, antes, depois). Reutiliza `coach_plan_items`,
+   sem entidade nova. É aqui que os alvos de 4.3 #1 e #3 (peri-treino, carga
+   de hidratos) ganham forma concreta.
+
+3. **Cartão de resumo do Coach no Início.** Várias mensagens curtas: o que se
+   passou recentemente, avisos para hoje, sugestão de refeição, preparação
+   para amanhã. É a materialização da proatividade descrita no PRD 3.6.1 #3 —
+   **gatilhos determinísticos decidem quando falar, o modelo só escreve o
+   quê**. Peça nova, precisa de desenho próprio (quando gera, onde guarda,
+   que custo por geração).
+
+## Enquadramento de segurança — decidido, não negociável
+
+Sugerir alimentação aproxima-se de aconselhamento nutricional, que em Portugal
+é ato regulado. Acresce o que o Bloco 5 #7 registou: **15-30% de prevalência
+de comportamento alimentar desordenado** em corredores recreativos
+incentivados a perseguir um peso ideal.
+
+Duas regras, a escrever na doutrina antes de qualquer implementação:
+
+- **Sugestão educativa, nunca prescrição.** O enquadramento é explícito na
+  interface, não escondido num rodapé.
+- **A hierarquia de alarmes do Bloco 6 #2 tem precedência absoluta.** Havendo
+  sinal de RED-S, perda de peso rápida ou gordura corporal no piso
+  fisiológico, o coach **recusa sugerir plano alimentar** e emite alerta. Não
+  é "sugere com cuidado" — é não sugere.
+
+## Respostas
+
+### #1 — Distribuição de calorias e macros pelas refeições
+
+```
+Descanso/leve (<60 min Z1-Z2):
+  Pequeno-almoço 20-25% kcal · 0,3-0,4 g/kg proteína · 1,0-1,5 g/kg hidratos
+  Almoço         30-35% · 0,3-0,4 g/kg P · 1,0-1,5 g/kg H
+  Lanche         10-15% · 15-20 g P · 0,5 g/kg H
+  Jantar         25-30% · 0,3-0,4 g/kg P · 1,0 g/kg H
+  Ceia (opc.)     5-10% · 20-30 g P lenta (caseína) · <0,5 g/kg H
+Treino exigente (>60 min Z3-Z5):
+  Hidratos concentram-se na janela peri-treino, que passa a levar 40-50% do
+  total diário.
+  Pré (1-3h antes): 1,0-2,0 g/kg H fáceis + 0,2-0,3 g/kg P
+  Intra (>75 min):  30-90 g/h H
+  Pós (0-2h):       1,0-1,2 g/kg H + 0,3-0,4 g/kg P (20-40 g)
+  Restantes refeições mantêm 0,3-0,4 g/kg de proteína; as gorduras preenchem
+  as calorias que sobram fora da janela.
+Condições: 3-6 treinos/semana. Fracionar proteína em 3-5 doses de
+           0,3-0,4 g/kg, espaçadas 3-4h — limiar ótimo de síntese proteica.
+Fonte:     ACSM/AND Joint Position Statement (2016); ISSN Nutrient Timing
+           (Kerksick, 2017); Clinical Sports Nutrition 6th Ed (Burke, 2021)
+Confiança: ALTA
+```
+
+✅ **Computável, e resolve a granularidade que faltava.** `meals.meal_type` é
+exatamente o slot que estas percentagens usam (`pequeno-almoco`, `almoco`,
+`lanche`, `jantar`, `ceia`) — dá para verificar se o pequeno-almoço tem os
+20-25% que devia. É a peça que faltava para a **correção de refeições**
+(forma de entrega 1): sem isto o coach só sabia o total do dia, agora sabe
+qual a refeição que está mal.
+
+### #2 — Equivalência prática: g/kg → alimentos
+
+```
+Proteína por 100 g (porção comestível, cozinhado):
+  Frango/peru peito 30-31 · Vaca magra 28-30 · Porco lombo 27-29
+  Salmão/atum fresco 24-26 · Atum conserva natural 25
+  Ovo inteiro 12,5 (≈6,0-6,5 g/ovo) · Claras 11
+  Quark/Skyr/Grego 0% 10-12 · Tofu firme 12-15
+  Lentilhas/grão/feijão cozidos 8-9 · Whey 80% → 24 g/scoop de 30 g
+Fonte:     Tabela de Composição de Alimentos INSA/PortFIR; USDA FoodData
+           Central
+Confiança: ALTA
+```
+
+✅ **É a ponte que motivou este bloco inteiro.** Sem isto, o coach sabia
+"precisas de 1,8 g/kg" e não sabia dizer "150 g de frango". A fonte ser o
+**INSA/PortFIR** importa: é a tabela portuguesa, não a americana — os
+alimentos e as porções batem certo com o que o utilizador come.
+
+⚠️ **O exemplo da resposta não fecha as contas.** Para 70 kg a 1,8 g/kg
+(126 g), a ementa dada soma ~119 g — fica 7 g curta. Não invalida os valores
+por 100 g (esses estão certos), mas significa que **o coach tem de somar, não
+copiar ementas de exemplo**. A doutrina deve dizer isso explicitamente.
+
+### #3 — Estrutura do dia alimentar, por nível
+
+```
+Iniciante: 3-4 refeições fixas. Sem timing complexo nem intra-treino. Regra
+           do prato (⅓ proteína magra, ⅓ hidratos complexos, ⅓ vegetais),
+           hidratação pela sede.
+Básico:    4-5 refeições. Periodização simples — mais hidratos ao lanche e
+           jantar em dias longos/intensos; mais vegetais e gordura boa nos
+           dias de descanso.
+Médio:     5 refeições calculadas em g/kg e alinhadas ao horário do treino.
+           Intra-treino estruturado >75 min (30-60 g/h) e variação diária
+           real de hidratos (4 g/kg descanso vs. 7 g/kg dia de qualidade).
+Avançado:  5-6 estímulos periodizados, com dupla sessão quando aplicável.
+           Intra-treino 60-90+ g/h com rácio glicose:frutose, suplementação
+           validada (nitratos, beta-alanina, cafeína), periodização de
+           glicogénio, carga 10-12 g/kg pré-prova.
+Condições: A complexidade acompanha a maturidade — evitar sobrecarga
+           cognitiva nos níveis iniciais (ver Bloco 6 #3).
+Fonte:     Clinical Sports Nutrition 6th Ed (Burke, 2021); Jeukendrup
+           (2014); ACSM Position Stand (2016)
+Confiança: ALTA
+```
+
+**Coerente com Bloco 6 #3 e #4, e a própria fonte remete para lá.** Um
+iniciante não recebe "4 g/kg vs 7 g/kg" — recebe "regra do prato". É a mesma
+doutrina de comunicação, agora aplicada à nutrição.
+
+### #4 — Alimentos pré-prova (24-48h)
+
+```
+Recomendados: arroz branco, massa branca, pão branco/torradas, batata sem
+           pele, puré, tapioca, aveia fina coada, corn flakes, banana madura,
+           compotas sem pedaços, mel. Proteína magra em porção moderada:
+           frango/peru, claras, fiambre de peru, peixe branco. Água,
+           isotónicos, sumo de maçã/uva coado.
+Evitar:    integrais, aveia grossa, leguminosas, vegetais crus e crucíferas,
+           frutos secos e sementes, fruta com casca/grainhas, figos, ameixas.
+           Fritos, molhos gordos, carnes gordas, queijos curados, abacate,
+           pastelaria. Lactose (se sensível), polióis (sorbitol/xilitol),
+           picante, bebidas com gás.
+Condições: 24-48h antes de provas >60-90 min.
+Fonte:     Burke (2021); Gastrointestinal Complaints During Exercise (Lis,
+           2018); ACSM Position Stand (2016)
+Confiança: ALTA
+```
+
+✅ **Traduz em alimentos os limiares que 4.3 #4 já tinha dado em gramas**
+(fibra <10-15 g, gordura <15-20%). É o que permite ao coach dizer "arroz
+branco em vez de integral" em vez de "reduz a fibra para 12 g".
+
+### #5 — Restrições alimentares
+
+```
+Vegetariano/vegano:
+  Substitutos: tofu, tempeh, seitan, proteína de ervilha/arroz, soja
+  texturizada, cereais + leguminosas.
+  Alvos críticos: B12 (suplementação obrigatória — 250 µg/dia ou
+  2000 µg/semana); ferro não-heme (absorção 2-20% vs. 15-35% do heme →
+  precisa de 1,8× o valor de omnívoro, com vitamina C à refeição e sem
+  café/chá/cálcio); proteína +10-20% pela menor digestibilidade e leucina;
+  creatina 3-5 g/dia e ómega-3 de microalgas.
+Sem lactose:
+  Substitutos: lactose-free, queijos curados (<0,1 g), bebidas vegetais
+  enriquecidas, whey isolate, proteína vegetal.
+  Alvos críticos: cálcio e vitamina D.
+Sem glúten:
+  Substitutos: arroz, batata, batata-doce, tapioca, milho, quinoa, trigo
+  sarraceno, aveia certificada.
+  Alvo crítico: a carga de hidratos (10-12 g/kg) fica MAIS DIFÍCIL sem
+  exceder fibra — muitos produtos sem glúten usam farinhas integrais e
+  sementes. Priorizar arroz branco, tapioca, fécula de batata.
+Fonte:     Vegetarian diets: nutritional considerations for athletes
+           (Venderley & Campbell, 2006); Vegan diets: practical advice for
+           athletes (Rogerson, JISSN 2017); ACSM (2016); Burke (2021)
+Confiança: ALTA
+```
+
+🔴 **LACUNA CRÍTICA — não existe campo de restrições alimentares.**
+Confirmado por consulta ao schema: `profiles` não tem nada de dieta,
+restrição, alergia ou preferência.
+
+**É a lacuna mais grave de todo o documento, e por uma razão diferente das
+outras.** As lacunas anteriores (HRV, ferritina, temperatura) limitam o que o
+coach *consegue* dizer. Esta faz o coach dizer coisas **erradas**: sugerir
+150 g de frango a um vegetariano, ou massa a um celíaco. Nas outras o coach
+fica calado; nesta perde a confiança do utilizador à primeira sugestão.
+
+**Consequência**: nenhuma das três formas de entrega do Bloco 7 deve ser
+implementada antes de existir este campo. Não é "seria bom ter" — é
+pré-requisito.
+
+Também liga a 4.2 #2 (ferro): o limiar de preocupação de um vegetariano é
+1,8× o de um omnívoro. Sem saber a dieta, o alarme de ferro está calibrado
+para a pessoa errada.
+
+### #6 — Erros mais comuns em corredores amadores
+
+```
+1. Treinar em jejum por rotina (Z3-Z5 ou longos sem hidratos) → cortisol
+   elevado, catabolismo, incapacidade de atingir os ritmos prescritos.
+2. Défice excessivo e fobia ao peso (>500-700 kcal/dia em fase de aumento de
+   volume) → LEA/RED-S, fraturas de stress, amenorreia/queda de testosterona.
+3. Subestimar hidratos (low-carb/cetogénica em endurance, onde o glicogénio
+   é ≥80% da via energética acima de VT1) → fadiga crónica, perda de potência
+   aeróbica.
+4. Inovar no dia da prova (géis novos, pequeno-almoço diferente, cafeína não
+   testada) → distúrbios gastrointestinais.
+5. Hidratação incorreta em longos/calor — só água em >2h de calor
+   (hiponatremia) ou sub-hidratação >2% da massa corporal.
+Fonte:     Lis (2018); Racing Weight (Fitzgerald, 2012); ACSM Position Stand
+           (2016); Jeukendrup (2014)
+Confiança: ALTA
+```
+
+✅ **Sem contradições com o já registado — confirma quatro blocos anteriores.**
+O erro #2 bate certo com o teto de 500 kcal/dia (4.1 #5 e Bloco 1 #6); o #4
+com 4.3 #5 (testar cafeína em treino) e Bloco 6 #4 (nada não testado nas
+48-72h); o #5 com 4.2 #4 (sódio e hiponatremia). O #1 e o #3 são novos e
+**detetáveis**: treino em jejum vê-se por ausência de refeição antes de uma
+sessão Z3-Z5 registada; hidratos cronicamente baixos veem-se de `meal_items`.
+
+**Valor prático**: é a lista do que o coach deve *procurar* antes de o atleta
+perguntar — alimenta a forma de entrega 3 (cartão de resumo no Início).
+
+---
+
+## Balanço do Bloco 7
+
+**O melhor bloco em implementabilidade de toda a investigação** — quatro das
+seis perguntas são diretamente utilizáveis (#1, #2, #4, #6), e as outras duas
+são doutrina de comunicação (#3) e o pré-requisito bloqueante (#5).
+
+**Uma única coisa impede avançar**: o campo de restrições alimentares. Está
+registado acima como 🔴 porque é diferente em natureza de tudo o resto — não
+limita o coach, faz o coach errar.
 
 O campo **Confiança** não é decorativo: limiares de confiança baixa devem gerar
 linguagem mais suave na doutrina ("considera", "pode valer a pena") em vez de

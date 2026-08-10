@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
-import { Flag, Bell, Check, X as XIcon, Dumbbell as DumbbellIcon, Footprints } from 'lucide-react';
+import { Flag } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
+import WeeklyPlanCard from './WeeklyPlanCard';
+import CoachDailySummaryCard from './CoachDailySummaryCard';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -110,135 +112,6 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
   );
 }
 
-// ─── Plano da semana ───────────────────────────────────────────────────────
-// Ver specs/plano-de-treino.md. Ocupa o espaço da antiga grelha
-// personalizável — essa deixou de fazer sentido com o plano acordado com o
-// Coach a ocupar o mesmo lugar central do Início.
-const WEEKDAY_LABELS_LONG = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-
-function PlanItemRow({ item, onComplete, onCancel, readOnly = false }) {
-  const isPast = item.planned_date < todayISO();
-  const d = new Date(item.planned_date + 'T00:00:00');
-  const dayLabel = WEEKDAY_LABELS_LONG[d.getDay()].slice(0, 3);
-  const isRun = item.kind === 'corrida';
-
-  const title = isRun
-    ? [item.training_type ? item.training_type[0].toUpperCase() + item.training_type.slice(1) : 'Corrida',
-        item.target_distance_km ? `${item.target_distance_km} km` : null]
-        .filter(Boolean).join(' · ')
-    : [item.categories?.length ? item.categories.join('/') : 'Ginásio',
-        item.target_duration_min ? `${item.target_duration_min} min` : null]
-        .filter(Boolean).join(' · ');
-
-  return (
-    <div className="flex items-center gap-2.5 py-2 border-b last:border-b-0" style={{ borderColor: 'var(--brd-800)' }}>
-      <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: isRun ? 'color-mix(in srgb, var(--mod-corrida-to) 15%, transparent)' : 'color-mix(in srgb, var(--mod-ginasio-to) 15%, transparent)' }}>
-        {isRun
-          ? <Footprints size={15} style={{ color: 'var(--mod-corrida-to)' }} />
-          : <DumbbellIcon size={15} style={{ color: 'var(--mod-ginasio-to)' }} />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: isPast ? 'var(--color-error)' : 'var(--green)' }}>
-          {dayLabel}{isPast ? ' · em atraso' : ''}
-        </p>
-        <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-main)' }}>{title}</p>
-        {item.notes && <p className="text-[10px] truncate" style={{ color: 'var(--green)' }}>{item.notes}</p>}
-      </div>
-      {!readOnly && (
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button onClick={() => onComplete(item)} aria-label="Marcar como concluído"
-            className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
-            style={{ background: 'var(--color-success)', color: '#fff' }}>
-            <Check size={16} />
-          </button>
-          <button onClick={() => onCancel(item)} aria-label="Cancelar este treino"
-            className="tap-44 rounded-full flex items-center justify-center active:scale-90 transition"
-            style={{ background: 'rgba(15,23,42,0.08)', color: 'var(--green)' }}>
-            <XIcon size={16} />
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Proposta ainda por aceitar — o coach criou-a no chat, o atleta decide aqui.
-// Enquanto 'proposto', os treinos não contam para nada (nem aparecem como
-// treinos a fazer, nem ajustam objetivos de nutrição).
-function PlanProposalCard({ plan, items, onRespond }) {
-  const its = items
-    .filter(i => i.plan_id === plan.id)
-    .sort((a, b) => a.planned_date.localeCompare(b.planned_date));
-
-  return (
-    <div className="rounded-2xl p-3.5" style={statCardBg('var(--mod-coach-to)')}>
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--green)' }}>
-        O Coach propôs um plano
-      </h2>
-      {plan.summary && <p className="text-xs mb-2" style={{ color: 'var(--text-main)' }}>{plan.summary}</p>}
-      <div className="mb-3">
-        {its.map(item => (
-          <PlanItemRow key={item.id} item={item} readOnly />
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <button onClick={() => onRespond(plan.id, true)}
-          className="tap-h-44 flex-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition"
-          style={{ background: 'var(--color-success)', color: '#fff' }}>
-          <Check size={15} /> Aceitar
-        </button>
-        <button onClick={() => onRespond(plan.id, false)}
-          className="tap-h-44 flex-1 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 transition"
-          style={{ background: 'rgba(15,23,42,0.08)', color: 'var(--green)' }}>
-          <XIcon size={15} /> Recusar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onRespond, onNav }) {
-  // Uma proposta por aceitar tem precedência — mostra-se essa em vez da lista
-  // de treinos, para a decisão não ficar escondida.
-  const proposal = plans.find(p => p.status === 'proposto');
-  if (proposal) {
-    return <PlanProposalCard plan={proposal} items={planItems} onRespond={onRespond} />;
-  }
-
-  // Só itens de planos aceites — um plano recusado deixa os itens em
-  // 'pendente' na BD, mas nunca devem aparecer como treinos a fazer.
-  const acceptedPlanIds = new Set(plans.filter(p => p.status === 'aceite').map(p => p.id));
-  const pending = planItems
-    .filter(i => i.status === 'pendente' && acceptedPlanIds.has(i.plan_id))
-    .sort((a, b) => a.planned_date.localeCompare(b.planned_date));
-
-  if (pending.length === 0) {
-    return (
-      <button onClick={() => onNav('coach')} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg('var(--mod-coach-to)')}>
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--green)' }}>Plano da semana</h2>
-        <p className="text-xs" style={{ color: 'var(--green)' }}>
-          Sem treinos acordados. Pede ao Coach um plano para a próxima semana.
-        </p>
-      </button>
-    );
-  }
-
-  return (
-    <div className="rounded-2xl p-3.5" style={statCardBg('var(--mod-coach-to)')}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Plano da semana</h2>
-        <button onClick={() => onNav('coach')} className="text-[10px] font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Ver no Coach</button>
-      </div>
-      <div>
-        {pending.map(item => (
-          <PlanItemRow key={item.id} item={item} onComplete={onComplete} onCancel={onCancel} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Home component ──────────────────────────────────────────────────────
 // Só os 3 cartões fixos (Próxima Prova, Nutrição, Água) + o Plano da semana.
 // A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
@@ -281,6 +154,9 @@ export default function Home() {
   return (
     <div className="space-y-4 fade-in">
       <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Início</h2>
+
+      {/* Resumo do Coach — ver specs/plano-de-treino.md §11 */}
+      <CoachDailySummaryCard />
 
       {/* Próxima Prova */}
       <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
