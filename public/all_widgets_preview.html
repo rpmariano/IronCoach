@@ -521,14 +521,16 @@
     background: #f3d5ab; color: #1e293b; border: 3px solid #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   }
 
+
 /* ======== INJECTED FINAL WIDGET CSS ======== */
 .next-race-card {
-  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(254,243,199,0.45));
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.8); border-radius: 28px; padding: 24px;
-  box-shadow: 0 12px 35px -10px rgba(217,119,6,0.12);
+  position: relative; overflow: hidden;
+  background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.05), inset 0 2px 10px rgba(255,255,255,0.6);
   display: flex; gap: 24px; align-items: stretch; justify-content: space-between;
-  position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
+  max-width: 600px; margin: 0 auto;
+  height: 192px;
   cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
 }
 .next-race-card:hover {
@@ -539,8 +541,8 @@
   background: radial-gradient(circle, rgba(251,191,36,0.2) 0%, transparent 70%);
   pointer-events: none; z-index: 1;
 }
-.nrc-left { flex: 1; display: flex; flex-direction: column; gap: 12px; z-index: 2; }
-.nrc-header-row { display: flex; align-items: center; gap: 10px; }
+.nrc-left { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 0; z-index: 2; }
+.nrc-header-row { display: flex; align-items: center; justify-content: space-between; }
 .nrc-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
 .nrc-tag { background: rgba(251,191,36,0.2); color: #b45309; font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
 
@@ -562,7 +564,6 @@
   display: flex; align-items: center; justify-content: center;
   transition: left 0.5s ease;
 }
-.nrc-runner::after { content: '🏃'; font-size: 0.65rem; }
 .nrc-progress-labels { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; }
 
 /* Right Section with vertical divider and countdown layout of 2 */
@@ -575,17 +576,20 @@
 
 .hydro-nrc-card {
   position: relative;
-  background: #fdfdf9; /* creamy light background */
-  border-radius: 32px;
-  display: flex;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
   overflow: hidden;
-  width: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 28px;
   padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  display: flex;
   gap: 24px;
   align-items: stretch;
   justify-content: space-between;
+  width: 100%;
+  height: 192px;
 }
 
 .hydro-nrc-glow {
@@ -605,6 +609,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
 }
 
 .hydro-nrc-header-row {
@@ -821,17 +826,20 @@
 
 .nutri-nrc-card {
   position: relative;
-  background: #fdfdf9; /* creamy light background */
-  border-radius: 32px;
-  display: flex;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
   overflow: hidden;
-  width: 100%;
-  border: 1px solid rgba(0, 0, 0, 0.02);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 28px;
   padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  display: flex;
   gap: 24px;
   align-items: stretch;
   justify-content: space-between;
+  width: 100%;
+  height: 192px;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   text-align: left;
@@ -859,6 +867,7 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
 }
 
 .nutri-nrc-header-row {
@@ -989,6 +998,7 @@
 }
 
 /* ======== END INJECTED FINAL WIDGET CSS ======== */
+
 </style>
 </head>
 <body>
