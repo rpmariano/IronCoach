@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, BellOff, Droplets, Clock } from 'lucide-react';
-import useAppStore from '../../store';
+import { useAppStore } from '../../store';
 import './HydrationOptionA.css';
 
 export default function HydrationOptionA({ 
