@@ -141,13 +141,15 @@
   align-items: center;
   justify-content: center;
   border-left: 2px solid rgba(16, 185, 129, 0.1);
-  padding: 0 24px;
-  min-width: 120px;
+  padding-left: 24px;
+  min-width: 100px;
+  width: 120px;
+  flex-shrink: 0;
   z-index: 1;
 }
 
 .nutri-nrc-days {
-  font-size: 2.8rem;
+  font-size: 2.2rem;
   font-weight: 900;
   color: #10b981;
   line-height: 1;
