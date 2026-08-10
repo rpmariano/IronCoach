@@ -3,15 +3,14 @@
    âmbar da corrida. Ver specs/plano-de-treino.md §11. */
 
 .cds-card {
-  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(207,250,254,0.45));
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.8); border-radius: 28px; padding: 20px;
-  box-shadow: 0 12px 35px -10px rgba(6,182,212,0.14);
   position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
+  background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
 }
 .cds-glow {
-  position: absolute; right: -50px; top: -60px; width: 180px; height: 180px;
-  background: radial-gradient(circle, rgba(34,211,238,0.22) 0%, transparent 70%);
+  position: absolute; right: -50px; top: -50px; width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
   pointer-events: none; z-index: 1;
 }
 
@@ -19,7 +18,8 @@
 .cds-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
 .cds-refresh {
   width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
-  color: #0e7490; background: rgba(6,182,212,0.12); transition: transform 0.2s;
+  color: #0891b2; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: all 0.2s; cursor: pointer;
 }
 .cds-refresh:active { transform: scale(0.9) rotate(45deg); }
 .cds-refresh[data-spinning="true"] svg { animation: cds-spin 0.9s linear infinite; }
@@ -60,7 +60,12 @@
 .cds-nav { display: flex; gap: 4px; }
 .cds-nav-btn {
   width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
-  color: #0e7490; background: rgba(6,182,212,0.10);
+  color: #0891b2; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: all 0.2s; cursor: pointer;
 }
-.cds-nav-btn:active { transform: scale(0.9); }
-.cds-nav-btn:disabled { opacity: 0.3; }
+.cds-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+.cds-nav-btn:active:not(:disabled) { transform: scale(0.9); }
+.cds-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }

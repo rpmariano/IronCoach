@@ -524,6 +524,7 @@
 
 
 
+
 /* ======== INJECTED FINAL WIDGET CSS ======== */
 .next-race-card {
   position: relative; overflow: hidden;
@@ -999,7 +1000,80 @@
   margin-top: 4px;
 }
 
+/* Card-resumo do Coach — mesma família visual do NextRaceCard (glass,
+   glow radial, 28px de raio), com a paleta cyan do módulo Coach em vez do
+   âmbar da corrida. Ver specs/plano-de-treino.md §11. */
+
+.cds-card {
+  position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
+  background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+}
+.cds-glow {
+  position: absolute; right: -50px; top: -50px; width: 180px; height: 180px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
+  pointer-events: none; z-index: 1;
+}
+
+.cds-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; position: relative; z-index: 2; }
+.cds-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+.cds-refresh {
+  width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  color: #0891b2; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: all 0.2s; cursor: pointer;
+}
+.cds-refresh:active { transform: scale(0.9) rotate(45deg); }
+.cds-refresh[data-spinning="true"] svg { animation: cds-spin 0.9s linear infinite; }
+@keyframes cds-spin { to { transform: rotate(360deg); } }
+
+.cds-body { position: relative; z-index: 2; margin-top: 12px; min-height: 64px; }
+
+/* Truque de altura automática pela mais alta: todas as mensagens ocupam a
+   MESMA célula da grelha (grid-area 1/1 abaixo), por isso a linha herda a
+   altura da maior delas — sem JS a medir nada e sem o cartão saltar de
+   tamanho ao trocar de mensagem dentro do mesmo resumo. */
+.cds-stack { display: grid; }
+.cds-stack > .cds-msg { grid-area: 1 / 1; }
+
+.cds-msg {
+  display: flex; align-items: flex-start; gap: 10px;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+.cds-msg[data-active="true"] { opacity: 1; pointer-events: auto; }
+.cds-msg-icon {
+  width: 30px; height: 30px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.cds-msg-title { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.cds-msg-text { font-size: 0.83rem; line-height: 1.45; color: #334155; font-weight: 500; }
+
+.cds-empty { font-size: 0.8rem; color: #64748b; padding: 4px 0 2px; }
+.cds-skeleton { display: flex; flex-direction: column; gap: 8px; }
+.cds-skeleton-line { height: 10px; border-radius: 6px; background: linear-gradient(90deg, rgba(148,163,184,0.15), rgba(148,163,184,0.3), rgba(148,163,184,0.15)); background-size: 200% 100%; animation: cds-shimmer 1.4s ease-in-out infinite; }
+.cds-skeleton-line:nth-child(1) { width: 85%; }
+.cds-skeleton-line:nth-child(2) { width: 60%; }
+@keyframes cds-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.cds-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 14px; position: relative; z-index: 2; }
+.cds-dots { display: flex; gap: 5px; }
+.cds-dot { width: 6px; height: 6px; border-radius: 999px; background: rgba(6,182,212,0.25); transition: all 0.2s; }
+.cds-dot[data-active="true"] { background: #06b6d4; width: 16px; }
+.cds-nav { display: flex; gap: 4px; }
+.cds-nav-btn {
+  width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  color: #0891b2; background: rgba(255, 255, 255, 0.5); border: 1px solid rgba(6, 182, 212, 0.2);
+  transition: all 0.2s; cursor: pointer;
+}
+.cds-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(6, 182, 212, 0.4);
+}
+.cds-nav-btn:active:not(:disabled) { transform: scale(0.9); }
+.cds-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
 /* ======== END INJECTED FINAL WIDGET CSS ======== */
+
 
 
 
@@ -1026,6 +1100,57 @@
     <p class="category-subtitle">Elementos interativos e informativos para a tela principal de foco e acompanhamento diário.</p>
     
     <div class="component-grid">
+      
+      <!-- COACH DAILY SUMMARY CARD -->
+      <div class="component-card">
+        <div class="component-meta">
+          <span class="component-name">CoachDailySummaryCard.jsx</span>
+          <span class="module-tag" style="background: rgba(6,182,212,0.1); color: #0891b2;">Coach AI</span>
+        </div>
+        <div class="component-render" style="padding: 16px;">
+          <div class="cds-card">
+            <div class="cds-glow"></div>
+            <div class="cds-header">
+              <span class="cds-lbl">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>
+                Resumo do Coach
+              </span>
+              <button type="button" class="cds-refresh">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+              </button>
+            </div>
+            <div class="cds-body">
+              <div class="cds-stack">
+                <div class="cds-msg" data-active="true">
+                  <span class="cds-msg-icon" style="background: rgba(180, 83, 9, 0.1); color: #b45309;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-triangle"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                  </span>
+                  <div style="min-width: 0;">
+                    <p class="cds-msg-title" style="color: #b45309;">Aviso de hoje</p>
+                    <p class="cds-msg-text">Tens dois treinos de ginásio pendentes para hoje e ainda não registaste nenhuma refeição — garante que te alimentas bem antes de treinar.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="cds-footer">
+              <div class="cds-dots">
+                <div class="cds-dot"></div>
+                <div class="cds-dot" data-active="true"></div>
+                <div class="cds-dot"></div>
+                <div class="cds-dot"></div>
+              </div>
+              <div class="cds-nav">
+                <button type="button" class="cds-nav-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <button type="button" class="cds-nav-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       
       <div class="component-card">
         <div class="component-meta">
