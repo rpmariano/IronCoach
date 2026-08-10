@@ -27,8 +27,8 @@
   position: absolute;
   top: -50px;
   right: -50px;
-  width: 250px;
-  height: 250px;
+  width: 180px;
+  height: 180px;
   /* Emerald/Green glow for nutrition */
   background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(253, 253, 249, 0) 70%);
   z-index: 0;
