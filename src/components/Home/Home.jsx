@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import { Flag, Bell, Check, X as XIcon, Dumbbell as DumbbellIcon, Footprints } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
+import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -86,60 +87,6 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   );
 }
 
-// ─── Nutrição Hero ─────────────────────────────────────────────────────────
-function NutritionHeroCard({ meals = [], profile = {}, onNav }) {
-  const today = todayISO();
-  const calGoal = Number(profile?.calorie_goal) || 0;
-  const proteinGoal = Number(profile?.protein_goal) || 0;
-  const totals = useMemo(() => {
-    return meals.filter(m => m.date === today).reduce((acc, m) => ({
-      calories: acc.calories + (m.calories || 0),
-      protein: acc.protein + (m.protein || 0),
-    }), { calories: 0, protein: 0 });
-  }, [meals, today]);
-
-  const remaining = calGoal - totals.calories;
-  const pct = calGoal > 0 ? (totals.calories / calGoal) * 100 : 0;
-  const mealsToday = meals.filter(m => m.date === today).length;
-
-  let status = null;
-  if (calGoal > 0 && totals.calories > calGoal) status = { color: 'var(--color-error)', label: 'Calorias acima da meta' };
-  else if (proteinGoal > 0 && totals.protein >= proteinGoal) status = { color: 'var(--color-success)', label: 'Proteína no alvo' };
-  else if (proteinGoal > 0) status = { color: 'var(--color-warn)', label: `Faltam ${(proteinGoal - totals.protein).toFixed(0)}g de proteína` };
-
-  const desc = calGoal > 0
-    ? `${mealsToday} refeição(ões) registada(s) hoje. Estás a ${Math.round(Math.min(100, pct))}% da meta diária.`
-    : `${mealsToday} refeição(ões) registada(s) hoje. Define a tua meta no Perfil.`;
-
-  return (
-    <button onClick={() => onNav('nutricao')} className="w-full text-left rounded-3xl p-5 active:scale-[0.99] transition" style={statCardBg('var(--accent)')}>
-      <h2 className="text-[11px] font-semibold uppercase tracking-wider mb-4" style={{ color: 'var(--green)' }}>Hoje · Nutrição</h2>
-      <div className="flex items-center gap-5">
-        <div className="relative shrink-0" style={{ width: 104, height: 104 }}>
-          <RingSvg pct={pct} size={104} stroke={9} color="var(--accent)" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-extrabold leading-none" style={{ color: 'var(--text-main)' }}>{totals.calories.toFixed(0)}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wide mt-1" style={{ color: 'var(--green)' }}>
-              {calGoal > 0 ? `de ${calGoal.toFixed(0)} kcal` : 'kcal'}
-            </span>
-          </div>
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-lg font-bold leading-tight" style={{ color: 'var(--text-main)' }}>
-            {calGoal > 0 ? (remaining >= 0 ? `Restam ${remaining.toFixed(0)} kcal` : `${Math.abs(remaining).toFixed(0)} kcal acima`) : 'Sem meta definida'}
-          </p>
-          <p className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--green)' }}>{desc}</p>
-          {status && (
-            <p className="flex items-center gap-1.5 mt-2.5 text-xs font-semibold" style={{ color: status.color }}>
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: status.color, opacity: 0.8 }} />
-              {status.label}
-            </p>
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
 
 // ─── Água Home card ───────────────────────────────────────────────────────────
 function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
@@ -339,7 +286,7 @@ export default function Home() {
       <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
 
       {/* Nutrição Hero — sempre visível */}
-      <NutritionHeroCard meals={meals} profile={profile} onNav={handleNav} />
+      <NutritionOptionA meals={meals} profile={profile} onNav={handleNav} />
 
       {/* Água — sempre visível */}
       <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />

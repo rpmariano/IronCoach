@@ -1,0 +1,85 @@
+import React, { useMemo } from 'react';
+import { Utensils, Info } from 'lucide-react';
+import { todayISO } from '../../utils/date';
+import './NutritionOptionA.css';
+
+export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
+  const today = todayISO();
+  const calGoal = Number(profile?.calorie_goal) || 0;
+  const proteinGoal = Number(profile?.protein_goal) || 0;
+  
+  const totals = useMemo(() => {
+    return meals.filter(m => m.date === today).reduce((acc, m) => ({
+      calories: acc.calories + (m.calories || 0),
+      protein: acc.protein + (m.protein || 0),
+    }), { calories: 0, protein: 0 });
+  }, [meals, today]);
+
+  const remaining = calGoal - totals.calories;
+  const isOverLimit = calGoal > 0 && remaining < 0;
+  
+  const percentage = calGoal > 0 ? Math.min(100, Math.round((totals.calories / calGoal) * 100)) : 0;
+  const mealsToday = meals.filter(m => m.date === today).length;
+
+  let proteinStatus = null;
+  if (proteinGoal > 0 && totals.protein >= proteinGoal) proteinStatus = { color: '#16a34a', label: 'Proteína no alvo' };
+  else if (proteinGoal > 0) proteinStatus = { color: '#d97706', label: `Faltam ${(proteinGoal - totals.protein).toFixed(0)}g de proteína` };
+
+  const barColor = isOverLimit ? 'over-limit' : '';
+
+  return (
+    <div 
+      className="nutri-nrc-card"
+      onClick={() => onNav('nutricao')} 
+      role="button" 
+      tabIndex={0}
+    >
+      <div className="nutri-nrc-glow"></div>
+      
+      <div className="nutri-nrc-left">
+        <div className="nutri-nrc-header-row">
+          <span className="nutri-nrc-lbl">Nutrição Diária</span>
+          <span className="nutri-nrc-tag">hoje</span>
+        </div>
+        
+        {/* We omit the title h2 to match the shorter dimension of the hydration card */}
+        
+        <div className="nutri-nrc-sub">
+          <div className="nutri-nrc-sub-item">
+            <Utensils size={14} style={{ marginRight: '6px', color: '#10b981' }} />
+            {mealsToday} refeições registadas
+          </div>
+          {proteinStatus && (
+            <div className="nutri-nrc-sub-item">
+              <Info size={14} style={{ marginRight: '6px', color: proteinStatus.color }} />
+              <span style={{ color: proteinStatus.color }}>{proteinStatus.label}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="nutri-nrc-progress-container">
+          <div className="nutri-nrc-progress-bar">
+            <div className={`nutri-nrc-progress-fill ${barColor}`} style={{ width: `${percentage}%` }}></div>
+            <div className={`nutri-nrc-runner ${barColor}`} style={{ left: `${percentage}%` }}>
+              <Utensils size={12} color={isOverLimit ? '#e11d48' : '#10b981'} />
+            </div>
+          </div>
+          <div className="nutri-nrc-progress-labels">
+            <span>Início</span>
+            <span style={{ color: isOverLimit ? '#e11d48' : '#10b981', fontWeight: 800 }}>
+              {calGoal > 0 ? (isOverLimit ? `${Math.abs(remaining).toFixed(0)} kcal acima` : `Restam ${remaining.toFixed(0)}`) : 'Sem meta'}
+            </span>
+            <span>Meta</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="nutri-nrc-right">
+        <span className="nutri-nrc-days" style={{ color: isOverLimit ? '#e11d48' : '#10b981' }}>
+          {totals.calories.toFixed(0)}
+        </span>
+        <span className="nutri-nrc-days-lbl" style={{ color: isOverLimit ? '#be123c' : '#16a34a' }}>kcal</span>
+      </div>
+    </div>
+  );
+}

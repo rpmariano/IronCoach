@@ -155,6 +155,412 @@
   .pill-fat .nutri-pill-bg { background: #fce7f3; width: 80%; }
   .pill-fat .nutri-pill-val { color: #db2777; }
 
+.hydro-nrc-card {
+  position: relative;
+  background: #fdfdf9; /* creamy light background */
+  border-radius: 32px;
+  display: flex;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.02);
+}
+
+.hydro-nrc-glow {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.15) 0%, rgba(253, 253, 249, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hydro-nrc-left {
+  flex: 1;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.hydro-nrc-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.hydro-nrc-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.hydro-nrc-tag {
+  background: #e0f2fe;
+  color: #0284c7;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.hydro-nrc-title {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.hydro-nrc-sub {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.hydro-nrc-sub-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  position: relative;
+}
+
+.hydro-nrc-progress-container {
+  margin-top: auto;
+  width: 100%;
+}
+
+.hydro-nrc-progress-bar {
+  position: relative;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.hydro-nrc-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+  border-radius: 6px;
+  transition: width 0.5s ease-out;
+}
+
+.hydro-nrc-runner {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border: 3px solid #0ea5e9;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.5s ease-out;
+}
+
+.hydro-nrc-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.hydro-nrc-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(14, 165, 233, 0.1);
+  padding: 0 24px;
+  min-width: 120px;
+  z-index: 1;
+}
+
+.hydro-nrc-days {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #0ea5e9;
+  line-height: 1;
+}
+
+.hydro-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+.hydro-nrc-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.hydro-nrc-btn {
+  flex: 1;
+  background: #f0f9ff;
+  color: #0ea5e9;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 0.85rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hydro-nrc-btn:hover {
+  background: #e0f2fe;
+}
+
+/* Bell Dropdown Styles */
+.hydro-bell-wrapper {
+  position: relative;
+  margin-left: -4px; /* visually align */
+  display: inline-flex;
+}
+
+.hydro-bell-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s;
+  background: transparent;
+  border: none;
+  padding: 8px;
+  margin-left: -8px;
+  border-radius: 50%;
+}
+
+.hydro-bell-btn:hover {
+  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.hydro-bell-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  width: 220px;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.hydro-bell-item {
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.hydro-bell-item:last-child {
+  border-bottom: none;
+}
+
+.hydro-bell-item:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+
+.nutri-nrc-card {
+  position: relative;
+  background: #fdfdf9; /* creamy light background */
+  border-radius: 32px;
+  display: flex;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  text-align: left;
+}
+
+.nutri-nrc-card:active {
+  transform: scale(0.99);
+}
+
+.nutri-nrc-glow {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 250px;
+  height: 250px;
+  /* Emerald/Green glow for nutrition */
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(253, 253, 249, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.nutri-nrc-left {
+  flex: 1;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.nutri-nrc-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.nutri-nrc-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.nutri-nrc-tag {
+  background: #dcfce7;
+  color: #16a34a;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+}
+
+.nutri-nrc-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+.nutri-nrc-sub-item {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  position: relative;
+}
+
+.nutri-nrc-progress-container {
+  margin-top: auto;
+  width: 100%;
+}
+
+.nutri-nrc-progress-bar {
+  position: relative;
+  height: 12px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.nutri-nrc-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #10b981);
+  border-radius: 6px;
+  transition: width 0.5s ease-out;
+}
+
+/* If over calorie limit, turn red */
+.nutri-nrc-progress-fill.over-limit {
+  background: linear-gradient(90deg, #fb7185, #e11d48);
+}
+
+.nutri-nrc-runner {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  background: #fff;
+  border: 3px solid #10b981;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.5s ease-out;
+}
+.nutri-nrc-runner.over-limit {
+  border-color: #e11d48;
+  box-shadow: 0 2px 8px rgba(225, 29, 72, 0.2);
+}
+
+.nutri-nrc-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.nutri-nrc-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(16, 185, 129, 0.1);
+  padding: 0 24px;
+  min-width: 120px;
+  z-index: 1;
+}
+
+.nutri-nrc-days {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #10b981;
+  line-height: 1;
+}
+
+.nutri-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #16a34a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+
   /* ======== ESTILO BASE "GLASS PILL" PARA TODOS OS DETALHES COLAPSADOS ======== */
   .glass-pill {
     background: rgba(255,255,255,0.7); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
@@ -698,30 +1104,46 @@
         </div>
       </div>
 
-      <div class="component-card">
+            <div class="component-card">
         <div class="component-meta">
-          <span class="component-name">HydrationOptionA.jsx (Neon Glass)</span>
+          <span class="component-name">HydrationOptionA.jsx (NextRaceCard Aesthetic)</span>
           <span class="module-tag tag-nutri">Nutrição</span>
         </div>
         <div class="component-render" style="background: #e2e8f0; padding: 40px 20px;">
-          <div class="hydro-neon-card">
-            <div class="hydro-neon-header">
-              <div class="hydro-neon-bell">🔔</div>
-              <div class="hydro-neon-pct">72%</div>
-            </div>
-            <div class="hydro-neon-circle-wrap">
-              <svg class="hydro-neon-svg" viewBox="0 0 200 200">
-                <circle class="hydro-neon-bg" cx="100" cy="100" r="90" />
-                <circle class="hydro-neon-progress" cx="100" cy="100" r="90" />
-              </svg>
-              <div class="hydro-neon-inner-text">
-                <div class="hydro-neon-amount">1800</div>
-                <div class="hydro-neon-unit">ml</div>
+          <div class="hydro-nrc-card">
+            <div class="hydro-nrc-glow"></div>
+            <div class="hydro-nrc-left">
+              <div class="hydro-nrc-header-row">
+                <span class="hydro-nrc-lbl">Hidratação Diária</span>
+                <span class="hydro-nrc-tag">hoje</span>
+              </div>
+              <div class="hydro-nrc-sub" style="margin-top: 12px;">
+                <div class="hydro-nrc-sub-item hydro-bell-wrapper">
+                  <button class="hydro-bell-btn">🔔</button>
+                </div>
+                <div class="hydro-nrc-sub-item" style="color: #64748b; font-size: 0.85rem; font-weight: 600;">
+                  <span style="color:#0ea5e9; margin-right:4px;">💧</span> Faltam: 700ml
+                </div>
+              </div>
+              <div class="hydro-nrc-progress-container">
+                <div class="hydro-nrc-progress-bar">
+                  <div class="hydro-nrc-progress-fill" style="width: 72%;"></div>
+                  <div class="hydro-nrc-runner" style="left: 72%;">💧</div>
+                </div>
+                <div class="hydro-nrc-progress-labels">
+                  <span>Início</span>
+                  <span style="color: #0ea5e9; font-weight: 800;">72%</span>
+                  <span>Meta</span>
+                </div>
+              </div>
+              <div class="hydro-nrc-actions">
+                <button class="hydro-nrc-btn">+ 200 ml</button>
+                <button class="hydro-nrc-btn">+ 250 ml</button>
               </div>
             </div>
-            <div class="hydro-neon-buttons">
-              <button class="hydro-neon-btn">+200ml</button>
-              <button class="hydro-neon-btn">+250ml</button>
+            <div class="hydro-nrc-right">
+              <span class="hydro-nrc-days">1800</span>
+              <span class="hydro-nrc-days-lbl">ml</span>
             </div>
           </div>
         </div>
@@ -729,41 +1151,46 @@
 
       <div class="component-card">
         <div class="component-meta">
-          <span class="component-name">HydrationOptionB.jsx (Aqua Light)</span>
+          <span class="component-name">NutritionOptionA.jsx (NextRaceCard Aesthetic)</span>
           <span class="module-tag tag-nutri">Nutrição</span>
         </div>
-        <div class="component-render" style="background: #f8fafc; padding: 40px 20px;">
-          <div class="hydro-b-card">
-            <div class="hydro-b-header">
-              <div class="hydro-b-header-text" style="text-align: left;">
-                <p>Daily Hydration</p>
-                <h2 style="margin:0;">Mantém-te hidratado 💧</h2>
+        <div class="component-render" style="background: #e2e8f0; padding: 40px 20px;">
+          <div class="nutri-nrc-card">
+            <div class="nutri-nrc-glow"></div>
+            <div class="nutri-nrc-left">
+              <div class="nutri-nrc-header-row">
+                <span class="nutri-nrc-lbl">Nutrição Diária</span>
+                <span class="nutri-nrc-tag">hoje</span>
               </div>
-              <div class="hydro-neon-bell" style="width:32px; height:32px; font-size:0.8rem; background:white; border:1px solid #e2e8f0; color:#0f172a; box-shadow:none;">🔔</div>
-            </div>
-            <div class="hydro-b-circle">
-              <svg class="hydro-b-svg" viewBox="0 0 200 200">
-                <circle class="hydro-b-bg" cx="100" cy="100" r="90" />
-                <circle class="hydro-b-progress" cx="100" cy="100" r="90" />
-              </svg>
-              <div class="hydro-b-inner">
-                <div class="hydro-b-percent">72%</div>
-                <div class="hydro-b-status">Hidratado</div>
+              <div class="nutri-nrc-sub">
+                <div class="nutri-nrc-sub-item">
+                  <span style="color:#10b981; margin-right:6px;">🍽️</span> 3 refeições registadas
+                </div>
+                <div class="nutri-nrc-sub-item">
+                  <span style="color:#16a34a; margin-right:6px;">ℹ️</span> <span style="color:#16a34a;">Proteína no alvo</span>
+                </div>
+              </div>
+              <div class="nutri-nrc-progress-container">
+                <div class="nutri-nrc-progress-bar">
+                  <div class="nutri-nrc-progress-fill" style="width: 85%;"></div>
+                  <div class="nutri-nrc-runner" style="left: 85%;">🍽️</div>
+                </div>
+                <div class="nutri-nrc-progress-labels">
+                  <span>Início</span>
+                  <span style="color: #10b981; font-weight: 800;">Restam 355</span>
+                  <span>Meta</span>
+                </div>
               </div>
             </div>
-            <div class="hydro-b-labels">
-              <span class="current">1800 ml</span>
-              <span class="total">/ 2500 ml</span>
-            </div>
-            <div class="hydro-b-buttons">
-              <button class="hydro-b-btn">+ 200 ml</button>
-              <button class="hydro-b-btn">+ 250 ml</button>
+            <div class="nutri-nrc-right">
+              <span class="nutri-nrc-days" style="color: #10b981;">2145</span>
+              <span class="nutri-nrc-days-lbl" style="color: #16a34a;">kcal</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="component-card">
+<div class="component-card">
         <div class="component-meta">
           <span class="component-name">NutritionMacroCard.jsx</span>
           <span class="module-tag tag-nutri">Nutrição</span>
