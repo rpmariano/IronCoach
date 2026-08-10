@@ -75,7 +75,7 @@ export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
           <div className="nutri-nrc-progress-labels">
             <span>Início</span>
             <span style={{ color: isOverLimit ? '#e11d48' : '#10b981', fontWeight: 800 }}>
-              {calGoal > 0 ? (isOverLimit ? `${Math.abs(remaining).toFixed(0)} kcal acima` : `Restam ${remaining.toFixed(0)}`) : 'Sem meta'}
+              {calGoal > 0 ? (isOverLimit ? `${Math.abs(remaining).toFixed(0)} kcal acima` : `Faltam ${remaining.toFixed(0)} kcal`) : 'Sem meta'}
             </span>
             <span>Meta</span>
           </div>

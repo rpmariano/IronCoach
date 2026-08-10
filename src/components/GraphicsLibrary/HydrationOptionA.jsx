@@ -89,7 +89,7 @@ export default function HydrationOptionA({
           
           <div className="hydro-nrc-sub-item">
             <Droplets size={14} style={{ marginRight: '4px', color: '#0ea5e9' }} />
-            Faltam: {remaining}ml
+            Faltam {remaining} ml
           </div>
         </div>
 

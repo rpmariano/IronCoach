@@ -1,4 +1,5 @@
 import React from 'react';
+import { Footprints } from 'lucide-react';
 import './NextRaceCard.css';
 
 export default function NextRaceCard({
@@ -16,7 +17,7 @@ export default function NextRaceCard({
       <div className="nrc-left">
         <div className="nrc-header-row">
           <span className="nrc-lbl">Próxima Prova</span>
-          <span className="nrc-tag">{tag}</span>
+          <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
         </div>
         
         <h2 className="nrc-title">{title}</h2>
@@ -39,19 +40,21 @@ export default function NextRaceCard({
         <div className="nrc-progress-container">
           <div className="nrc-progress-bar">
             <div className="nrc-progress-fill" style={{ width: `${progressPercentage}%` }}></div>
-            <div className="nrc-runner" style={{ left: `${progressPercentage}%` }}></div>
+            <div className="nrc-runner" style={{ left: `${progressPercentage}%` }}>
+              <Footprints size={12} strokeWidth={2.5} color="#d97706" />
+            </div>
           </div>
           <div className="nrc-progress-labels">
             <span>Início do Plano</span>
-            <span style={{ color: '#d97706', fontWeight: 800 }}>{daysRemaining} dias restantes</span>
-            <span>Meta (Prova)</span>
+            <span style={{ color: '#d97706', fontWeight: 800 }}>Faltam {daysRemaining} dias</span>
+            <span>Meta</span>
           </div>
         </div>
       </div>
 
       <div className="nrc-right">
         <span className="nrc-days">{daysRemaining}</span>
-        <span className="nrc-days-lbl">dias rest.</span>
+        <span className="nrc-days-lbl">dias</span>
       </div>
     </div>
   );

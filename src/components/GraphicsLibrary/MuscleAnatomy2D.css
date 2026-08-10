@@ -1,0 +1,38 @@
+/* MuscleAnatomy2D.css */
+
+.muscle-anatomy-2d-container {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+  background-color: var(--surface-bg, #ffffff);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.anatomy-svg-wrapper {
+  width: 48%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 
+  O react-body-highlighter gera SVGs inline.
+  As áreas não ativadas têm class "muscle".
+  Podemos forçar a cor neutra do corpo aqui para ficar mais elegante.
+*/
+.anatomy-svg-wrapper svg path {
+  /* Cor base do corpo mais refinada que o default (slate-200) */
+  fill: #e2e8f0; 
+  stroke: #cbd5e1; /* Borda leve nos músculos */
+  stroke-width: 1px;
+  transition: fill 0.3s ease;
+}
+
+/* O pacote aplica inline-styles de preenchimento quando os músculos estão ativos.
+   A transição acima garante que a mudança seja suave ao carregar */
