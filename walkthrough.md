@@ -48,6 +48,8 @@ Estes componentes seguem o padrão **Seamless Lock-Header** (o cabeçalho colaps
   * **Descrição**: Gráfico de linha detalhado com eixos X e Y completos, marcas de escala (ticks), linhas de grelha horizontais, legenda superior ("Calorias" e "Meta") e curva de spline vermelha com área de gradiente semitransparente.
 * [`BarChart.jsx`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/BarChart.jsx) & [`.css`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/BarChart.css):
   * **Descrição**: Histograma semanal com barras em cápsula 3D, destacando automaticamente o dia de pico com cores do módulo.
+* [`MuscleAnatomy2D.jsx`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/MuscleAnatomy2D.jsx) & [`.css`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/MuscleAnatomy2D.css):
+  * **Descrição**: Mapa vetorial dinâmico (2D Flat) do corpo humano suportando **visão Frontal (Anterior) e Traseira (Posterior)** importado via `react-body-highlighter`. Permite receber um array de músculos ativados via props (ex: `activeMuscles={['chest', 'abs']}`) e a prop `type="anterior" | "posterior"`, preenchendo os músculos com o vermelho da IronHealth. Os SVGs e CSS foram personalizados para remover fundos genéricos e adotar o tom cinza-neutro da interface (slate-200).
 
 ### 4. Calendários & Botões Interativos
 * [`PremiumCalendar.jsx`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/PremiumCalendar.jsx) & [`.css`](file:///c:/Users/rpmar/IronHealth/src/components/GraphicsLibrary/PremiumCalendar.css):

@@ -80,3 +80,4 @@ Invocar automaticamente quando:
 2. O assistente deve **informar o utilizador** de que está a correr um agente (ex: "Vou correr o test_engineer para gerar testes para este componente novo")
 3. Se um agente reportar problemas, o assistente deve **corrigir os problemas antes de prosseguir**, não apenas reportá-los
 4. Os relatórios dos agentes devem ser **apresentados de forma sucinta** ao utilizador, não em formato bruto
+5. **NUNCA realizar commits ou pushes (`git commit`, `git push`) diretamente na branch `master` sem autorização explícita e inequívoca do utilizador.** Quaisquer alterações de código devem ficar pendentes no workspace local até aprovação expressa do utilizador.

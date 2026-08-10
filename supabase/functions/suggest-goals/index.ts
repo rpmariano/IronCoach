@@ -111,6 +111,11 @@ const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
   iniciante: "Iniciante", basico: "Básico", medio: "Médio", avancado: "Avançado",
 };
 
+// Espelha RACE_PRIORITIES em src/utils/run.js.
+const RACE_PRIORITY_LABELS: Record<string, string> = {
+  a: "prova principal", b: "prova secundária", c: "prova de treino",
+};
+
 // Espelha ageFromBirthDate() em src/utils/body.js e em coach-chat/index.ts —
 // duplicado porque cliente e Edge Functions correm em runtimes diferentes.
 function ageFromBirthDate(birthDate: string | null): number | null {
@@ -214,7 +219,10 @@ function buildPrompt(
       const nivel = e.experience_level
         ? `, nível nesta prova: ${EXPERIENCE_LEVEL_LABELS[e.experience_level] || e.experience_level}`
         : "";
-      return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${dist}${alvo}${nivel}`;
+      const prioridade = e.race_priority
+        ? `, ${RACE_PRIORITY_LABELS[e.race_priority] || e.race_priority}`
+        : "";
+      return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${dist}${alvo}${nivel}${prioridade}`;
     }).join("\n");
 
   const runLines = runs.length === 0
@@ -267,6 +275,7 @@ function buildPrompt(
   // Idade já calculada — o modelo não deve derivá-la da data de nascimento.
   const idade = ageFromBirthDate(profile?.birth_date ?? null);
   if (idade !== null) bio.push(`Idade: ${idade} anos`);
+  if (profile?.resting_hr_bpm) bio.push(`FC em repouso: ${profile.resting_hr_bpm} bpm`);
   if (profile?.height_cm) bio.push(`Altura: ${profile.height_cm} cm`);
   if (profile?.weight_kg) bio.push(`Peso atual: ${profile.weight_kg} kg`);
 
@@ -342,7 +351,7 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
     const todayISO = new Date().toISOString().slice(0, 10);
 
-    const profileColumns = ["gender", "birth_date", "experience_level", "height_cm", "weight_kg", "coach_context", ...BODY_GOAL_KEYS, ...NUTRITION_GOAL_KEYS].join(", ");
+    const profileColumns = ["gender", "birth_date", "experience_level", "resting_hr_bpm", "height_cm", "weight_kg", "coach_context", ...BODY_GOAL_KEYS, ...NUTRITION_GOAL_KEYS].join(", ");
     const { data: profile, error: profileError } = await sb
       .from("profiles")
       .select(profileColumns)
@@ -359,7 +368,7 @@ Deno.serve(async (req) => {
 
     const { data: raceEvents } = await sb
       .from("race_events")
-      .select("date, name, race_type, target_time, target_time_seconds, distance_km, experience_level")
+      .select("date, name, race_type, target_time, target_time_seconds, distance_km, experience_level, race_priority")
       .eq("user_id", userId)
       .neq("status", "concluida")
       .gte("date", todayISO)
