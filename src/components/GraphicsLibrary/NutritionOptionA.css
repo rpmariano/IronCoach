@@ -92,9 +92,9 @@
 
 .nutri-nrc-progress-bar {
   position: relative;
-  height: 12px;
-  background: #f1f5f9;
-  border-radius: 6px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
   margin-bottom: 8px;
   width: 100%;
 }
