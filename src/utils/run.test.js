@@ -5,7 +5,10 @@ import {
   parseDurationToSeconds,
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
+  RACE_PRIORITIES,
   raceDistanceLabel,
+  racePriorityLabel,
+  racePriorityDescription,
 } from './run';
 
 describe('parsePaceToSeconds', () => {
@@ -77,6 +80,29 @@ describe('RACE_TERRAIN_TYPES', () => {
     for (const t of RACE_TERRAIN_TYPES) {
       expect(CHAVES_NA_BD).toContain(t.key);
     }
+  });
+});
+
+describe('RACE_PRIORITIES', () => {
+  // Mesmo padrão do teste acima: as chaves têm de bater certo com o check
+  // constraint de race_events.race_priority.
+  const CHAVES_NA_BD = ['a', 'b', 'c'];
+
+  it('só usa chaves aceites pela base de dados', () => {
+    for (const p of RACE_PRIORITIES) {
+      expect(CHAVES_NA_BD).toContain(p.key);
+    }
+  });
+
+  it('tem etiqueta e descrição em todas — a UI mostra as duas', () => {
+    for (const p of RACE_PRIORITIES) {
+      expect(racePriorityLabel(p.key)).toBeTruthy();
+      expect(racePriorityDescription(p.key)).toBeTruthy();
+    }
+  });
+
+  it('a omissão da BD (a) existe na lista', () => {
+    expect(RACE_PRIORITIES.some(p => p.key === 'a')).toBe(true);
   });
 });
 
