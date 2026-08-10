@@ -63,13 +63,10 @@ export default function HydrationOptionA({
           <span className="hydro-nrc-tag">hoje</span>
         </div>
         
-        <h2 className="hydro-nrc-title">Mantém-te hidratado 💧</h2>
-        
-        <div className="hydro-nrc-sub">
+        <div className="hydro-nrc-sub" style={{ marginTop: '12px' }}>
           <div className="hydro-nrc-sub-item hydro-bell-wrapper" ref={menuRef}>
-            <div className="hydro-bell-btn" onClick={handleToggleBell}>
-              {isMutedToday ? <BellOff size={14} /> : <Bell size={14} />}
-              <span>{isMutedToday ? 'Silenciado' : 'Lembretes ativos'}</span>
+            <div className="hydro-bell-btn" onClick={handleToggleBell} title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}>
+              {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
             </div>
             
             {showBellMenu && (
@@ -112,7 +109,7 @@ export default function HydrationOptionA({
 
       <div className="hydro-nrc-right">
         <span className="hydro-nrc-days">{currentMl}</span>
-        <span className="hydro-nrc-days-lbl">ml bebidos</span>
+        <span className="hydro-nrc-days-lbl">ml</span>
       </div>
     </div>
   );
