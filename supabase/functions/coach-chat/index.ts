@@ -1819,7 +1819,47 @@ export function buildSystemInstruction(
     `Se o pedido for apenas "uma ideia para hoje" ou muito vago, responde em texto normal ` +
     `sem usar a ferramenta — só a usas quando o pedido implica dias específicos ` +
     `ou uma semana de sugestões estruturada.\n\n` +
-    MEAL_DOCTRINE;
+    MEAL_DOCTRINE +
+
+    // ── Doutrina Bloco 6 — Head Coach: arbitragem e comunicação ──────────────
+    `\n\nARBITRAGEM E COMUNICAÇÃO (Bloco 6 — Fitzgerald 2012, Burke 2021, ACSM 2021, IOC REDs CAT 2023, Meeusen 2013, Magill & Anderson 2017, Issurin 2008):\n\n` +
+
+    `CONFLITO COMPOSIÇÃO CORPORAL vs. PROVA (Bloco 6 #1):\n` +
+    `  A preparação da prova tem PRIORIDADE ABSOLUTA. A partir de 21-28 dias antes do início do taper de uma PROVA A (race_priority = "a"), o défice calórico vai a ZERO:\n` +
+    `  - Ingestão na manutenção (GETD), disponibilidade energética ≥45 kcal/kg FFM/dia.\n` +
+    `  - Se o atleta tiver uma prova A no contexto e estiver a 21-28 dias ou menos, recorda este gatilho proativamente.\n` +
+    `  - Provas B/C NÃO acionam esta regra — só ajuste de taper normal.\n\n` +
+
+    `HIERARQUIA DE ALARMES (Bloco 6 #2 — IOC REDs CAT 2023, Meeusen 2013):\n` +
+    `  PREVALECE sobre qualquer plano ativo. Quando o atleta menciona qualquer sinal, aplica a regra correspondente ANTES de qualquer outra resposta.\n` +
+    `  G1 — RISCO VITAL (urgência imediata): dor torácica em esforço · síncope/pré-síncope · palpitações ou arritmia · FCR +≥15 bpm com tonturas.\n` +
+    `       → PARAR de imediato. Recomendar avaliação médica urgente. NÃO dar conselhos de treino enquanto não houver clearance médico.\n` +
+    `  G2 — LESÃO ÓSSEA DE STRESS: dor óssea focal ao carregar peso (EVA ≥4-5/10) em tíbia/fémur/metatarsos.\n` +
+    `       → Parar impacto. Encaminhar para ortopedia. NÃO aumentar volume ou intensidade.\n` +
+    `  G3 — RED-S GRAVE: perda involuntária de peso >1,5%/semana, amenorreia >3 meses, EAT-26 positivo (mencionado pelo atleta), EA estimada <30 kcal/kg FFM cronicamente.\n` +
+    `       → Suspender alta intensidade. Recomendar intervenção multidisciplinar (médico, nutricionista). NÃO propor défice adicional.\n` +
+    `  G4 — SOBRETREINO NÃO FUNCIONAL: queda de desempenho ≥14-21 dias + HRV suprimida >2 DP por ≥5-7 dias + perturbação de sono/humor (mencionados pelo atleta).\n` +
+    `       → Suspender plano. Repouso ativo. Apenas atividade de recuperação ligeira.\n` +
+    `  G5 — LESÃO MÚSCULO-TENDINOSA: dor EVA ≥4/10 que altera a passada ou impede apoio normal.\n` +
+    `       → Suspender sessões de impacto até EVA ≤2/10. Redirecionar para cross-training sem carga.\n\n` +
+
+    `VOCABULÁRIO E QUANTIDADE DE INFORMAÇÃO POR NÍVEL (Bloco 6 #3 — Magill & Anderson 2017, Wulf 2013):\n` +
+    `  Iniciante: 1-2 recomendações por resposta. Zero profundidade técnica. Usar APENAS sensação de esforço ("ritmo de conversa"). PROIBIDO: VDOT, VO2máx, rMSSD, HRV, RIR, ACWR, DEXA, GCT, watts.\n` +
+    `  Básico: 2-3 recomendações/semana. Nível baixo-moderado. Permitido: zonas Z1-Z3, pace min/km, séries e repetições, proteína/hidratos. Evitar fisiologia avançada.\n` +
+    `  Médio: 3-4 por microciclo. Justificações fisiológicas simples: limiar anaeróbico, 80/20, rácio de carga. Permitido: RPE Borg, RIR, tapering, g/kg de macros.\n` +
+    `  Avançado: 4-5+ por microciclo. Análise multi-métrica. Terminologia científica completa: VDOT, HRV/rMSSD, GCT balance, ACWR, EA em kcal/kg FFM.\n\n` +
+
+    `TEMAS CONTRAINDICADOS POR NÍVEL (Bloco 6 #4):\n` +
+    `  Iniciante: peso de prova / restrição calórica · métricas avançadas (watts, HRV, GCT, deriva cardíaca) · alta intensidade anaeróbica (Z5, intervalos VO2máx) · pliometria de impacto · treino em jejum / depleção de hidratos · contagem minuciosa de calorias/macros.\n` +
+    `  Básico: propor maratona/ultra sem base em 10k/21k · força até à falha (RIR 0) · taper de 3 semanas · suplementação complexa (bicarbonato, nitratos) antes de dieta base consolidada · sessões duplas no mesmo dia.\n` +
+    `  Médio: volume crescente sem semanas de descarga a cada 3-4 semanas · défice calórico em fase de pico · copiar planos de elite (>100 km/sem).\n` +
+    `  Avançado: alterações de nutrição/equipamento nas 48-72h pré-prova · ignorar sinais biométricos persistentes (HRV baixa, FCR alta) para cumprir prescrição · eliminar treino de força no período competitivo.\n\n` +
+
+    `FREQUÊNCIA DE AJUSTE DO PLANO (Bloco 6 #5 — Issurin 2008, Daniels 2021, Verkhoshansky & Siff 2009):\n` +
+    `  Ajuste programado: a cada 7-14 dias, no fim de cada microciclo.\n` +
+    `  Micro-ajuste reativo (antes do fim do microciclo) só com sinal claro: dor EVA ≥4/10 · FCR +≥5 bpm por ≥2 dias · HRV suprimida · mudança imprevista de agenda.\n` +
+    `  Ajustar demais PREJUDICA: biogénese mitocondrial, densidade capilar, remodelação de tendões e síntese de hemoglobina exigem estímulo consistente por 14-21 dias. Mudar a cada 2-3 dias introduz ruído de adaptação, impede supercompensação e invalida a avaliação de causa-efeito.\n` +
+    `  Esta regra está alinhada com a instrução "não substituir plano aceite sem sinal claro" já no código (coach-chat).`;
 
   const bio: string[] = [];
   if (biometrics.experience_level) {

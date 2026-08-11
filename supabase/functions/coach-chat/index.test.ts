@@ -1522,3 +1522,67 @@ Deno.test("bodyMetricsLine aparece no system prompt quando passada", () => {
   );
   assertStringIncludes(sys, "72.0 kg");
 });
+
+// ─── Bloco 6 — doutrina no system prompt ─────────────────────────────────────
+
+Deno.test("o prompt inclui regra de défice zero a 21-28 dias de uma prova A (Bloco 6 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CONFLITO COMPOSIÇÃO CORPORAL vs. PROVA");
+  assertStringIncludes(sys, "21-28 dias");
+  assertStringIncludes(sys, "PROVA A");
+  assertStringIncludes(sys, "défice calórico vai a ZERO");
+});
+
+Deno.test("o prompt inclui hierarquia de alarmes G1-G5 com ações (Bloco 6 #2)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "HIERARQUIA DE ALARMES");
+  assertStringIncludes(sys, "G1 — RISCO VITAL");
+  assertStringIncludes(sys, "dor torácica");
+  assertStringIncludes(sys, "G3 — RED-S GRAVE");
+  assertStringIncludes(sys, "G5 — LESÃO MÚSCULO-TENDINOSA");
+});
+
+Deno.test("o prompt inclui instrução de parar e encaminhar médico para G1 (Bloco 6 #2)", () => {
+  const sys = sysCom(null, null);
+  // O coach deve parar tudo ao ouvir sintomas cardíacos — verificamos que a
+  // instrução "clearance médico" está presente (não só a menção dos sintomas).
+  assertStringIncludes(sys, "clearance médico");
+  assertStringIncludes(sys, "NÃO dar conselhos de treino");
+});
+
+Deno.test("o prompt inclui vocabulário por nível com proibição de acrónimos em iniciante (Bloco 6 #3)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "VOCABULÁRIO E QUANTIDADE DE INFORMAÇÃO");
+  assertStringIncludes(sys, "1-2 recomendações");
+  assertStringIncludes(sys, "ritmo de conversa");
+  assertStringIncludes(sys, "PROIBIDO: VDOT");
+});
+
+Deno.test("o prompt inclui temas contraindicados por nível — lista por nível (Bloco 6 #4)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "TEMAS CONTRAINDICADOS POR NÍVEL");
+  // Iniciante — proibir restrição calórica
+  assertStringIncludes(sys, "peso de prova / restrição calórica");
+  // Básico — proibir maratona sem base
+  assertStringIncludes(sys, "propor maratona/ultra sem base");
+  // Médio — proibir défice em fase de pico
+  assertStringIncludes(sys, "défice calórico em fase de pico");
+  // Avançado — não ignorar sinais biométricos
+  assertStringIncludes(sys, "ignorar sinais biométricos persistentes");
+});
+
+Deno.test("o prompt inclui frequência de ajuste 7-14 dias com razão fisiológica (Bloco 6 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "FREQUÊNCIA DE AJUSTE DO PLANO");
+  // A janela já estava parcialmente no prompt (DURAÇÃO DO PLANO) — verificamos
+  // que a nova secção Bloco 6 também a afirma e cita as fontes.
+  assertStringIncludes(sys, "Verkhoshansky");
+  assertStringIncludes(sys, "ruído de adaptação");
+});
+
+Deno.test("o prompt inclui micro-ajuste reativo apenas com sinal claro (Bloco 6 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "Micro-ajuste reativo");
+  assertStringIncludes(sys, "EVA ≥4/10");
+  assertStringIncludes(sys, "+≥5 bpm");
+});
