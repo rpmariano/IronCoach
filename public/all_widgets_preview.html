@@ -515,7 +515,7 @@
   .btn-p-module { color: #fff; }
   .btn-p-module.nutri { background: linear-gradient(135deg, #34d399 0%, #059669 100%); box-shadow: 0 4px 12px rgba(5,150,105,0.25); }
   .btn-p-module.run { background: linear-gradient(135deg, #e879f9 0%, #c026d3 100%); box-shadow: 0 4px 12px rgba(192,38,211,0.25); }
-  .btn-p-module.gym { background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%); box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
+  .btn-p-gym { background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%); box-shadow: 0 4px 12px rgba(37,99,235,0.25); }
   .btn-p-fab {
     width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: #f3d5ab; color: #1e293b; border: 3px solid #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
@@ -766,9 +766,10 @@
 
 /* Bell Dropdown Styles */
 .hydro-bell-wrapper {
-  position: relative;
-  margin-left: -4px; /* visually align */
-  display: inline-flex;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2;
 }
 
 .hydro-bell-btn {
@@ -795,7 +796,7 @@
 .hydro-bell-menu {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   margin-top: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -1690,6 +1691,14 @@
         <div class="component-render" style="background: #e2e8f0; padding: 40px 20px;">
           <div class="hydro-nrc-card">
             <div class="hydro-nrc-glow"></div>
+            
+            <!-- Bell Dropdown Absolute Top Right -->
+            <div class="hydro-bell-wrapper">
+              <button type="button" class="hydro-bell-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bell"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+              </button>
+            </div>
+
             <div class="hydro-nrc-left">
               <div class="hydro-nrc-header-row">
                 <span class="hydro-nrc-lbl">Hidratação Diária</span>
