@@ -13,7 +13,33 @@
   align-items: stretch;
   justify-content: space-between;
   width: 100%;
-  height: 192px;
+  min-height: 192px;
+  height: auto;
+}
+
+@media (max-width: 480px) {
+  .hydro-nrc-card {
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .hydro-nrc-right {
+    min-width: 80px !important;
+    width: 80px !important;
+    padding-left: 12px !important;
+  }
+  
+  .hydro-nrc-days {
+    font-size: 1.8rem !important;
+  }
+  
+  .hydro-nrc-actions {
+    flex-wrap: wrap;
+  }
+  
+  .hydro-nrc-btn {
+    min-width: 100px;
+  }
 }
 
 .hydro-nrc-glow {
