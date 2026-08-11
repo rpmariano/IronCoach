@@ -208,12 +208,52 @@ const UPDATE_GOALS_TOOL = {
   },
 };
 
+// Guarda sugestões alimentares nos coach_plan_items do plano aceite em curso
+// (ou cria um plano alimentar proposto se não houver plano ativo).
+// Ferramenta dedicada para não conflituar com a regra de proteção de microciclo
+// da propose_training_plan — sugestões alimentares não são um plano de treino.
+const SAVE_MEALS_TOOL = {
+  name: "save_meal_suggestions",
+  description:
+    "Grava sugestões alimentares para dias concretos, visíveis no ecrã Início (Plano da semana). " +
+    "Usa esta ferramenta SEMPRE que o atleta pedir sugestões de refeições para um ou mais dias " +
+    "específicos (ex.: 'o que devo comer esta semana?', 'sugestão de refeição para amanhã', " +
+    "'plano alimentar para 7 dias'). NÃO uses para comentários genéricos de nutrição no texto — " +
+    "só quando o atleta quer recomendações estruturadas por dia para ver no plano. " +
+    "Podes usar esta ferramenta mesmo quando há um plano de treino ativo — ela não interfere.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      suggestions: {
+        type: "ARRAY",
+        description: "Lista de sugestões, uma por dia.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            date: { type: "STRING", description: "Data no formato YYYY-MM-DD." },
+            meal: {
+              type: "STRING",
+              description:
+                "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
+                "(pequeno-almoço, almoço, jantar e snacks se relevantes), quantidades " +
+                "aproximadas e racional nutricional em 2-4 frases.",
+            },
+          },
+          required: ["date", "meal"],
+        },
+        minItems: 1,
+        maxItems: 14,
+      },
+    },
+    required: ["suggestions"],
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
-// quando pede um plano de treinos.
+// quando pede um plano de treinos ou sugestões alimentares.
 function buildTools() {
-  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL] }];
-  // UPDATE_GOALS_TOOL é o antigo update_nutrition_goals, expandido a todos os campos.
+  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL] }];
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -755,6 +795,109 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   return `Metas atualizadas: ${parts.join(", ")}. Já estão gravadas no perfil do atleta.`;
 }
 
+// ── Sugestões alimentares ────────────────────────────────────────────────
+// Grava meal_suggestion em coach_plan_items existentes (plano ativo aceite)
+// ou cria um plano proposto de descanso para datas fora do plano ativo.
+// Não conflitua com a regra de proteção de microciclo — é independente de
+// propose_training_plan.
+// deno-lint-ignore no-explicit-any
+export async function runSaveMealSuggestions(sb: any, userId: string, args: any): Promise<string> {
+  const { suggestions } = args || {};
+  if (!Array.isArray(suggestions) || suggestions.length === 0) {
+    return "Erro: 'suggestions' tem de ser uma lista com pelo menos uma sugestão ({date, meal}).";
+  }
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  // Buscar plano ativo (aceite, em curso ou futuro cujo período ainda não terminou).
+  const { data: activePlan, error: planErr } = await sb
+    .from("coach_plans")
+    .select("id, period_start, period_end")
+    .eq("user_id", userId)
+    .eq("status", "aceite")
+    .gte("period_end", todayISO)
+    .order("period_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (planErr) return `Erro ao buscar plano ativo: ${planErr.message}`;
+
+  const saved: string[] = [];
+  const outside: { date: string; meal: string }[] = [];
+
+  for (const s of suggestions) {
+    const { date, meal } = s || {};
+    if (!date || !meal) continue;
+    const isInsidePlan =
+      activePlan &&
+      date >= activePlan.period_start &&
+      date <= activePlan.period_end;
+
+    if (isInsidePlan) {
+      // Tentar atualizar item existente para esse dia.
+      const { data: existing } = await sb
+        .from("coach_plan_items")
+        .select("id")
+        .eq("plan_id", activePlan.id)
+        .eq("day", date)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        const { error: upErr } = await sb
+          .from("coach_plan_items")
+          .update({ meal_suggestion: meal })
+          .eq("id", existing.id);
+        if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
+      } else {
+        // Não existe item para este dia — criar um de descanso com a sugestão.
+        const { error: insErr } = await sb.from("coach_plan_items").insert({
+          plan_id: activePlan.id,
+          day: date,
+          kind: "descanso",
+          meal_suggestion: meal,
+        });
+        if (insErr) return `Erro ao inserir sugestão para ${date}: ${insErr.message}`;
+      }
+      saved.push(date);
+    } else {
+      outside.push({ date, meal });
+    }
+  }
+
+  // Para datas fora do plano ativo, criar um plano proposto dedicado.
+  if (outside.length > 0) {
+    const dates = outside.map((o) => o.date).sort();
+    const periodStart = dates[0];
+    const periodEnd = dates[dates.length - 1];
+
+    const { data: newPlan, error: createErr } = await sb
+      .from("coach_plans")
+      .insert({
+        user_id: userId,
+        status: "proposto",
+        period_start: periodStart,
+        period_end: periodEnd,
+        notes: "Sugestões alimentares do Coach",
+      })
+      .select("id")
+      .single();
+    if (createErr) return `Erro ao criar plano para sugestões: ${createErr.message}`;
+
+    const items = outside.map((o) => ({
+      plan_id: newPlan.id,
+      day: o.date,
+      kind: "descanso",
+      meal_suggestion: o.meal,
+    }));
+    const { error: itemsErr } = await sb.from("coach_plan_items").insert(items);
+    if (itemsErr) return `Erro ao inserir itens de sugestão: ${itemsErr.message}`;
+    outside.forEach((o) => saved.push(o.date));
+  }
+
+  if (saved.length === 0) return "Nenhuma sugestão válida para gravar.";
+  return `Sugestões alimentares gravadas para: ${saved.sort().join(", ")}. Estão visíveis no ecrã Início.`;
+}
+
 // ── Agenda de provas ─────────────────────────────────────────────────────
 const RACE_TYPE_LABELS: Record<string, string> = {
   estrada: "Estrada", trail: "Trail", ultra: "Ultra", "5k": "5 km", "10k": "10 km",
@@ -1085,13 +1228,13 @@ export function buildSystemInstruction(
     `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
     `SUGESTÕES ALIMENTARES NO PLANO: quando o atleta pedir sugestões de refeições para dias ` +
     `concretos (ex.: "o que devo comer amanhã?", "sugestão de refeições para esta semana"), ` +
-    `usa propose_training_plan com itens de kind="descanso" e o campo meal_suggestion preenchido ` +
+    `usa SEMPRE a ferramenta save_meal_suggestions com a lista de {date, meal} para cada dia ` +
     `— assim as sugestões aparecem no ecrã Início (Plano da semana) e não ficam só no chat. ` +
-    `Inclui um item "descanso" por cada dia para que a sugestão fique visível nesse dia. ` +
-    `Se houver já treinos nesse dia (no plano aceite), a sugestão alimentar complementa-os; ` +
-    `não repitas o treino, cria só o item descanso com meal_suggestion para esse dia. ` +
+    `A ferramenta trata automaticamente de planos ativos (adiciona ao dia existente) e de ` +
+    `datas fora do plano (cria entradas propostas). NÃO uses propose_training_plan para ` +
+    `sugestões alimentares — essa ferramenta é apenas para microciclos de treino. ` +
     `Se o pedido for apenas "uma ideia para hoje" ou muito vago, responde em texto normal ` +
-    `sem criar plano — só usa a ferramenta quando o pedido implica dias específicos ` +
+    `sem usar a ferramenta — só a usas quando o pedido implica dias específicos ` +
     `ou uma semana de sugestões estruturada.\n\n` +
     MEAL_DOCTRINE;
 
@@ -1563,6 +1706,8 @@ async function handler(req: Request): Promise<Response> {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
+        } else if (name === "save_meal_suggestions") {
+          result = await runSaveMealSuggestions(sb, userId, args || {});
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }

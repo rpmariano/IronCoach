@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, buildSystemInstruction, buildPlanContext } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -722,4 +722,144 @@ Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
   assertStringIncludes(sys, "FC de repouso");
   assertStringIncludes(sys, "HRV");
   assertStringIncludes(sys, "Mudança imprevista de agenda");
+});
+
+// ─── runSaveMealSuggestions ──────────────────────────────────────────────────
+
+// deno-lint-ignore no-explicit-any
+function makeMealsSb(opts: {
+  activePlan?: { id: string; period_start: string; period_end: string } | null;
+  existingItem?: { id: string } | null;
+  planError?: any;
+  insertPlanError?: any;
+  insertItemsError?: any;
+  updateError?: any;
+} = {}): { sb: any; calls: any } {
+  const calls: any = { updates: [], inserts: [], planInserts: [] };
+
+  const sb = {
+    from(table: string) {
+      return {
+        select(_cols: string) { return this; },
+        eq(_col: string, _val: unknown) { return this; },
+        gte(_col: string, _val: unknown) { return this; },
+        order(_col: string, _opts: unknown) { return this; },
+        limit(_n: number) { return this; },
+        async maybeSingle() {
+          if (table === "coach_plans") return { data: opts.activePlan ?? null, error: opts.planError ?? null };
+          if (table === "coach_plan_items") return { data: opts.existingItem ?? null, error: null };
+          return { data: null, error: null };
+        },
+        async single() {
+          calls.planInserts.push(this._insertData);
+          if (opts.insertPlanError) return { data: null, error: opts.insertPlanError };
+          return { data: { id: "new-plan-id" }, error: null };
+        },
+        update(data: any) {
+          calls.updates.push(data);
+          return {
+            eq(_col: string, _val: unknown) { return this; },
+            async then(resolve: any) { resolve({}); },
+            // make awaitable
+            get [Symbol.toStringTag]() { return "Promise"; },
+          };
+        },
+        insert(data: any) {
+          const isArray = Array.isArray(data);
+          if (isArray) calls.inserts.push(...data);
+          else { this._insertData = data; calls.inserts.push(data); }
+          const self = this;
+          const ret: any = {
+            _insertData: data,
+            select(_c: string) { return this; },
+            async single() {
+              if (opts.insertPlanError) return { data: null, error: opts.insertPlanError };
+              return { data: { id: "new-plan-id" }, error: null };
+            },
+            async then(resolve: any) {
+              if (opts.insertItemsError && isArray) resolve({ error: opts.insertItemsError });
+              else if (opts.updateError && !isArray) resolve({ error: opts.updateError });
+              else resolve({ error: null });
+            },
+          };
+          return ret;
+        },
+        _insertData: null as any,
+      };
+    },
+  };
+  return { sb, calls };
+}
+
+Deno.test("save_meal_suggestions: rejeita lista vazia", async () => {
+  const { sb } = makeMealsSb();
+  const result = await runSaveMealSuggestions(sb, "u1", { suggestions: [] });
+  assertStringIncludes(result, "Erro");
+});
+
+Deno.test("save_meal_suggestions: grava no item existente do plano ativo", async () => {
+  const { sb, calls } = makeMealsSb({
+    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
+    existingItem: { id: "item-1" },
+  });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-12", meal: "Frango com arroz" }],
+  });
+  assertStringIncludes(result, "2026-08-12");
+  assertStringIncludes(result, "gravadas");
+  assertEquals(calls.updates[0].meal_suggestion, "Frango com arroz");
+});
+
+Deno.test("save_meal_suggestions: cria item descanso quando não existe item no plano ativo para esse dia", async () => {
+  const { sb, calls } = makeMealsSb({
+    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
+    existingItem: null,
+  });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-13", meal: "Salmão com batata doce" }],
+  });
+  assertStringIncludes(result, "gravadas");
+  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-13");
+  assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
+});
+
+Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano ativo", async () => {
+  const { sb, calls } = makeMealsSb({
+    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-14" },
+  });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }],
+  });
+  assertStringIncludes(result, "gravadas");
+  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-20");
+  assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
+});
+
+Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async () => {
+  const { sb, calls } = makeMealsSb({ activePlan: null });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-15", meal: "Ovos mexidos com tosta" }],
+  });
+  assertStringIncludes(result, "gravadas");
+  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-15");
+  assertEquals(inserted?.kind, "descanso");
+});
+
+Deno.test("save_meal_suggestions: propaga erro da criação do plano", async () => {
+  const { sb } = makeMealsSb({
+    activePlan: null,
+    insertPlanError: { message: "permission denied" },
+  });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-15", meal: "Banana e iogurte" }],
+  });
+  assertStringIncludes(result, "permission denied");
+});
+
+Deno.test("o prompt instrui a usar save_meal_suggestions em vez de propose_training_plan para refeições", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "save_meal_suggestions");
+  assertEquals(sys.includes("usa propose_training_plan com itens de kind=\"descanso\""), false);
 });
