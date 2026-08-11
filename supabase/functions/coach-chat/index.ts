@@ -661,7 +661,7 @@ function formatDuration(totalSeconds: number): string {
 }
 
 // deno-lint-ignore no-explicit-any
-function summariseRuns(runs: any[]): string[] {
+export function summariseRuns(runs: any[]): string[] {
   return runs.map((r) => {
     const kindLabel = r.kind === "treino"
       ? `Treino${r.training_type ? ` (${RUN_TRAINING_TYPE_LABELS[r.training_type] || r.training_type})` : ""}`
@@ -673,7 +673,15 @@ function summariseRuns(runs: any[]): string[] {
     const cadStr = r.cadence_spm != null
       ? `${Math.round(r.cadence_spm)} spm${r.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
       : null;
-    const parts = [distance, duration, pace, cadStr].filter(Boolean);
+    // FC média — sinal de deriva/fadiga (Bloco 2.4 #2): FC alta para o pace
+    // indica sobretreino, calor ou fadiga acumulada. Sem FC de reserva por run
+    // usamos o limiar simples de 90% FCmáx (Tanaka: 208−0,7×idade) como proxy.
+    // A idade não está disponível aqui (só no biometrics do buildSystemInstruction),
+    // por isso mostramos o valor absoluto e deixamos o modelo aplicar o limiar.
+    const hrStr = r.avg_heart_rate_bpm != null
+      ? `FC média ${Math.round(r.avg_heart_rate_bpm)} bpm`
+      : null;
+    const parts = [distance, duration, pace, cadStr, hrStr].filter(Boolean);
     return `- ${r.date}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
@@ -736,7 +744,7 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
 
   const { data, error } = await sb
     .from("runs")
-    .select("date, kind, training_type, distance_km, duration_seconds")
+    .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm, avg_heart_rate_bpm")
     .eq("user_id", userId)
     .gte("date", start_date)
     .lte("date", end_date)
@@ -2112,7 +2120,7 @@ async function handler(req: Request): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm")
+      .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm, avg_heart_rate_bpm")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)

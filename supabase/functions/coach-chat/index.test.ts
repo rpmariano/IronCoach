@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, type BodyAssessmentRow } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -1585,4 +1585,43 @@ Deno.test("o prompt inclui micro-ajuste reativo apenas com sinal claro (Bloco 6 
   assertStringIncludes(sys, "Micro-ajuste reativo");
   assertStringIncludes(sys, "EVA ≥4/10");
   assertStringIncludes(sys, "+≥5 bpm");
+});
+
+// ─── Bloco 2.4 — summariseRuns: FC média (avg_heart_rate_bpm) ────────────────
+
+// deno-lint-ignore no-explicit-any
+function makeRunSummary(overrides: Record<string, unknown> = {}): unknown {
+  return {
+    date: "2026-08-10",
+    kind: "treino",
+    training_type: "rodagem",
+    distance_km: 10,
+    duration_seconds: 3600,
+    cadence_spm: null,
+    avg_heart_rate_bpm: null,
+    ...overrides,
+  };
+}
+
+Deno.test("summariseRuns: FC média aparece na linha quando avg_heart_rate_bpm registado", () => {
+  const lines = summariseRuns([makeRunSummary({ avg_heart_rate_bpm: 148 })]);
+  assertStringIncludes(lines[0], "FC média 148 bpm");
+});
+
+Deno.test("summariseRuns: sem FC média quando avg_heart_rate_bpm é null", () => {
+  const lines = summariseRuns([makeRunSummary({ avg_heart_rate_bpm: null })]);
+  assertEquals(lines[0].includes("FC média"), false);
+});
+
+Deno.test("summariseRuns: flag cadência<155 ainda funciona em conjunto com FC", () => {
+  const lines = summariseRuns([makeRunSummary({ cadence_spm: 148, avg_heart_rate_bpm: 152 })]);
+  assertStringIncludes(lines[0], "⚠cadência<155");
+  assertStringIncludes(lines[0], "FC média 152 bpm");
+});
+
+Deno.test("summariseRuns: sem flag cadência quando cadence_spm ≥ 155", () => {
+  const lines = summariseRuns([makeRunSummary({ cadence_spm: 162, avg_heart_rate_bpm: 140 })]);
+  assertEquals(lines[0].includes("⚠cadência<155"), false);
+  assertStringIncludes(lines[0], "162 spm");
+  assertStringIncludes(lines[0], "FC média 140 bpm");
 });
