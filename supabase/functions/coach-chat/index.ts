@@ -1311,6 +1311,92 @@ function ageFromBirthDate(birthDate: string | null): number | null {
   return age >= 0 && age < 130 ? age : null;
 }
 
+// ─── Bloco 4 — Targets nutricionais calculados ────────────────────────────────
+// Computa valores de referência a partir dos dados do perfil, para que o modelo
+// não os tenha de derivar a partir dos campos brutos (e possivelmente errar).
+//
+// Fontes: Mifflin-St Jeor (1990); ACSM/AND 2016; ISSN Jäger 2017; Burke 2021.
+
+// Proteína de manutenção (g/kg/dia), faixa inferior e superior por nível.
+const PROTEIN_MAINT: Record<string, [number, number]> = {
+  iniciante: [1.2, 1.4],
+  basico:    [1.4, 1.6],
+  medio:     [1.6, 1.8],
+  avancado:  [1.6, 2.0],
+};
+
+export function buildNutritionTargets(opts: {
+  weightKg:        number | null;
+  heightCm:        number | null;
+  age:             number | null;
+  gender:          string | null;
+  level:           string | null;
+  restingHrBpm:    number | null;
+  waterGoalMl:     number | null;
+  proteinGoal:     number | null;
+  calorieGoal:     number | null;
+  weeklyVolumeKm:  number | null;
+}): string | null {
+  const { weightKg, heightCm, age, gender, level, restingHrBpm,
+          waterGoalMl, proteinGoal, calorieGoal, weeklyVolumeKm } = opts;
+  const lines: string[] = [];
+
+  // TMB (Mifflin-St Jeor) + GETD estimado (Bloco 4.1 #4)
+  if (weightKg && heightCm && age && gender) {
+    const tmb = (gender === "feminino" || gender === "F" || gender === "f")
+      ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161
+      : (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
+    const tmbR = Math.round(tmb);
+    // Custo de corrida: 1 kcal/kg/km; GETD = TMB × 1,3 (atividade leve não-treino)
+    const runCost = weeklyVolumeKm ? Math.round((weeklyVolumeKm * weightKg) / 7) : 0;
+    const getd    = Math.round(tmb * 1.3) + runCost;
+    lines.push(`TMB estimada (Mifflin-St Jeor): ${tmbR} kcal/dia`);
+    lines.push(`GETD estimado: ${getd} kcal/dia (TMB×1,3 + ${runCost} kcal custo de corrida/dia)`);
+    if (calorieGoal) {
+      const diff = calorieGoal - getd;
+      if (diff < -500) {
+        lines.push(`⚠ META DE CALORIAS (${calorieGoal} kcal) abaixo do GETD em ${Math.abs(diff)} kcal — excede o défice seguro para corredor (máximo 300-500 kcal/dia)`);
+      }
+    }
+  }
+
+  // Proteína de manutenção por nível + escalamento por volume (Bloco 4.1 #1)
+  if (weightKg && level && PROTEIN_MAINT[level]) {
+    const [pMin, pMax] = PROTEIN_MAINT[level];
+    // +0,15 g/kg/dia (média de 0,1-0,2) por cada +20 km/sem acima de 30 km/sem
+    const bonus = (weeklyVolumeKm && weeklyVolumeKm > 30)
+      ? Math.round(((weeklyVolumeKm - 30) / 20) * 0.15 * 10) / 10
+      : 0;
+    const gMin = Math.round((pMin + bonus) * weightKg);
+    const gMax = Math.round((pMax + bonus) * weightKg);
+    const volNote = bonus > 0 ? `, +${bonus} g/kg p/ volume de ${weeklyVolumeKm} km/sem` : "";
+    lines.push(`Proteína recomendada (manutenção, nível ${level}${volNote}): ${gMin}-${gMax} g/dia`);
+    if (proteinGoal && proteinGoal < gMin) {
+      lines.push(`  → Meta atual (${proteinGoal} g) abaixo do mínimo recomendado (${gMin} g)`);
+    }
+  }
+
+  // Hidratação base (Bloco 4.1 #6)
+  if (weightKg) {
+    const hMin = Math.round(weightKg * 30);
+    const hMax = Math.round(weightKg * 40);
+    lines.push(`Hidratação base (30-40 ml/kg × ${weightKg} kg): ${hMin}-${hMax} ml/dia (excluindo reposição de treino)`);
+    if (waterGoalMl && waterGoalMl < hMin) {
+      lines.push(`  → Meta de água atual (${waterGoalMl} ml) abaixo do mínimo calculado (${hMin} ml)`);
+    }
+  }
+
+  // RED-S: FC em repouso <40 bpm (Bloco 4.2 #1) — novo campo, antes não capturável
+  if (restingHrBpm !== null && restingHrBpm < 40) {
+    lines.push(
+      `⚠ RED-S — FC em repouso: ${restingHrBpm} bpm < 40 bpm (fora de adaptação de elite) — avaliar em conjunto com ingestão calórica, composição corporal e sintomas (Bloco 4.2 #1)`,
+    );
+  }
+
+  if (lines.length === 0) return null;
+  return `Targets nutricionais calculados (doutrina Bloco 4.1):\n${lines.map((l) => `- ${l}`).join("\n")}`;
+}
+
 export function buildSystemInstruction(
   coachContext: string | null,
   biometrics: {
@@ -1324,6 +1410,7 @@ export function buildSystemInstruction(
     dietary_notes: string | null;
     coach_can_set_nutrition_goals: boolean | null;
   },
+  nutritionTargetsLine: string | null,
   nutritionSummary: string,
   waterSummary: string,
   gymSummary: string | null,
@@ -1392,6 +1479,80 @@ export function buildSystemInstruction(
     `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
     `função get_nutrition_history (nutrição), get_gym_history (ginásio) ou get_running_history ` +
     `(corrida) com o intervalo de datas necessário antes de responder.\n\n` +
+    // ── Doutrina Bloco 4.1 — Nutrição base diária ───────────────────────────
+    `NUTRIÇÃO — BASE DIÁRIA (Bloco 4.1 — ACSM/AND 2016, ISSN, Burke 2021):\n` +
+    `PROTEÍNA (g/kg/dia) por nível e objetivo:\n` +
+    `  Iniciante: manutenção 1,2-1,4 · perda gordura 1,6-1,8 · ganho 1,6-2,0\n` +
+    `  Básico:    manutenção 1,4-1,6 · perda 1,8-2,0 · ganho 1,6-2,0\n` +
+    `  Médio:     manutenção 1,6-1,8 · perda 2,0-2,2 · ganho 1,8-2,2\n` +
+    `  Avançado:  manutenção 1,6-2,0 · perda 2,0-2,4 · ganho 1,8-2,2\n` +
+    `  Escalamento por volume: +0,1-0,2 g/kg/dia por cada +20 km/sem acima de 30 km/sem.\n` +
+    `  Distribuição: 3-5 refeições/dia, 0,3-0,4 g/kg por refeição a cada 3-4h.\n` +
+    `HIDRATOS: meta variável por dia — "fuel for the work required" (Burke 2011).\n` +
+    `  Iniciante: descanso 3,0-5,0 · treino moderado (~1h) 4,0-5,0 g/kg\n` +
+    `  Básico:    descanso 3,0-4,0 · treino (1h intenso) 5,0-7,0 g/kg\n` +
+    `  Médio:     descanso 4,0-5,0 · treino (1-2h longo/qualidade) 6,0-8,0 g/kg\n` +
+    `  Avançado:  descanso 5,0-6,0 · treino intenso (2-3h) 8,0-10,0 g/kg; até 10-12 nas 36-48h pré-maratona\n` +
+    `  NOTA: profiles.carbs_goal é a linha de base (dia sem treino). O acréscimo do treino vive na análise, não na meta guardada.\n` +
+    `GORDURA:\n` +
+    `  Mínimo: 20-25% do GETD OU 0,8-1,0 g/kg/dia.\n` +
+    `  Alarme RED-S: <20% calorias ou <0,5-0,7 g/kg cronicamente → supressão hormonal (eixo LH/FSH), amenorreia (M), queda de testosterona (H), redução de densidade óssea.\n` +
+    `  Pode descer a 15-20% nas 24-48h de carb-loading pré-maratona.\n` +
+    `TMB E GETD (Mifflin-St Jeor 1990 — mais rigoroso que 220-idade):\n` +
+    `  H: (10×peso) + (6,25×altura cm) − (5×idade) + 5\n` +
+    `  M: (10×peso) + (6,25×altura cm) − (5×idade) − 161\n` +
+    `  GETD = TMB × fator atividade não-treino (1,2-1,4) + custo corrida (≈1,0 kcal/kg/km).\n` +
+    `  BIA: body_assessments.bmr_kcal NÃO usar para cálculo (erro ±200-400 kcal/dia) — informativo apenas.\n` +
+    `  Os targets calculados no contexto abaixo mostram a estimativa Mifflin para este atleta.\n` +
+    `DÉFICE CALÓRICO MÁXIMO por nível:\n` +
+    `  Iniciante/Básico: 300-500 kcal/dia (15-20%) · perda ≤0,5 kg/sem (≤0,7% do peso).\n` +
+    `  Médio:            250-400 kcal/dia (10-15%) · perda ≤0,25-0,40 kg/sem.\n` +
+    `  Avançado:         200-300 kcal/dia (5-10%) · perda ≤0,20-0,30 kg/sem.\n` +
+    `  Alto volume/taper/blocos intensos: DÉFICE ZERO — manutenção estrita (risco de perda de massa magra, supressão imunitária, overreaching).\n` +
+    `  Durante qualquer fase de défice: proteína no limite superior do nível (1,8-2,4 g/kg).\n` +
+    `HIDRATAÇÃO:\n` +
+    `  Base diária: 30-40 ml/kg/dia (excluindo reposição de treino).\n` +
+    `  Durante treino: 400-800 ml/h, ajustado a taxa de sudação e clima.\n` +
+    `  Pós-treino: repor 1,2-1,5 L por 1,0 kg de peso perdido nas 2-4h, com 500-700 mg sódio/L.\n` +
+    `  Clima >30°C: sudação pode passar 1,5-2,0 L/h; planear 300-600 mg/h de sódio para evitar hiponatremia.\n` +
+    `  Sódio durante treino longo (>90 min): 300-600 mg/h — NÃO se soma ao limite de repouso (<2000 mg/dia OMS).\n\n` +
+    // ── Doutrina Bloco 4.2 — Segurança ──────────────────────────────────────
+    `NUTRIÇÃO — SEGURANÇA (Bloco 4.2 — IOC Mountjoy 2018/2023, Loucks 2004, Peeling 2008):\n` +
+    `RED-S — disponibilidade energética (EA) = (ingestão − gasto exercício) / massa magra. Ótima ≥45 kcal/kg FFM/dia · subclínica 30-45 · limiar RED-S <30 (mantido ≥5-7 dias).\n` +
+    `Sinais — alarmar quando ≥2-3 apontam na mesma direção (nenhum sinal isolado confirma RED-S):\n` +
+    `  1. Ingestão calórica cronicamente baixa face ao GETD (EA <30 kcal/kg FFM estimado)\n` +
+    `  2. Gordura corporal no piso fisiológico: <6-8% (H) ou <14-16% (M) — verificável em body_assessments\n` +
+    `  3. FC em repouso <40 bpm (verificável em profiles.resting_hr_bpm) — o contexto assinala se presente\n` +
+    `  4. Perda rápida/involuntária de peso; amenorreia ≥3 meses (M); queda de líbido/testosterona (H)\n` +
+    `Consequências: supressão tiroideia (T3), redução de pico de massa óssea, imunossupressão, queda de performance.\n` +
+    `FERRO (Peeling 2008/2014, Sim 2019): RDA geral H 8 mg/dia, M 18 mg/dia. Corredores de resistência: +30-50% → H ~11-14 mg/dia.\n` +
+    `  Mecanismos: hemólise plantar + hepcidina pós-esforço (pico 3-6h) + perdas GI + ferro no suor.\n` +
+    `  Suplementação oral: só com ferritina <30 µg/L confirmada por análise — risco de hemocromatose por sobrecarga.\n` +
+    `RITMO DE PERDA DE PESO (Garthe 2011): ≤0,5-0,7% da massa corporal/semana, défice 250-500 kcal/dia.\n` +
+    `  >1,0%/sem ou défice >500 kcal/dia: perda de massa magra, depleção de glicogénio, queda de rendimento.\n\n` +
+    // ── Doutrina Bloco 4.3 — Treino e prova ─────────────────────────────────
+    `NUTRIÇÃO — TREINO E PROVA (Bloco 4.3 — ACSM, Burke 2021, Jeukendrup 2014):\n` +
+    `PRÉ-TREINO (para treino Z3-Z5 ou >60 min):\n` +
+    `  3-4h antes: 2,0-4,0 g/kg hidratos (refeição sólida) + 0,3-0,4 g/kg proteína. Gordura e fibra baixas.\n` +
+    `  1h antes:   1,0 g/kg hidratos (snack leve). Rodagem <45 min Z1: sem ingestão prévia especial.\n` +
+    `PÓS-TREINO:\n` +
+    `  Hidratos: 1,0-1,2 g/kg/h nas 2-4h se sessão seguinte em <24h; ou 1,0 g/kg na 1.ª refeição.\n` +
+    `  Proteína: 0,3-0,5 g/kg (20-40g) com ≥2,5-3,0g leucina, nas 0-2h após o treino.\n` +
+    `HIDRATOS DURANTE A PROVA (Jeukendrup 2014, Viribay 2020):\n` +
+    `  <45 min: nenhum. · 45-75 min: bochecho ou até 30 g/h.\n` +
+    `  1,0-2,5h: 30-60 g/h (glicose/maltodextrina).\n` +
+    `  >2,5-3,0h: 60-90 g/h, fontes múltiplas (glicose:frutose 2:1 ou 1:0,8).\n` +
+    `  >4-6h: até 90-120 g/h (requer 4-6 semanas de habituação intestinal).\n` +
+    `  Ingerir 100-150 ml água por cada 15-20g de hidratos.\n` +
+    `CARB-LOADING (Bussau 2002, Burke 2011) — indicado quando prova >90 min:\n` +
+    `  Nas 24-48h antes: 10-12 g/kg/dia de hidratos · fibra <10-15 g/dia · gordura <15-20% das calorias.\n` +
+    `  NÃO indicado em 5k/10k (<75 min) — só traz peso extra (~3g água por 1g glicogénio).\n` +
+    `  Quando o contexto mostrar prova dentro de 24-48h e distância >22 km, relembrar proativamente.\n` +
+    `FIBRA:\n` +
+    `  Alvo diário: 25 g/dia (M) a 38 g/dia (H), ou ~14g/1000 kcal.\n` +
+    `  24-48h antes da prova: reduzir para <10-15 g/dia (esvaziar resíduo fecal, evitar cólicas).\n` +
+    `CAFEÍNA (ISSN Guest 2021): dose ergogénica 3-6 mg/kg (210-420 mg para 70 kg), 60 min antes.\n` +
+    `  Acima de 9 mg/kg: sem ganho extra, mais efeitos colaterais. Testar sempre em treino antes da prova.\n\n` +
     // ── Doutrina Bloco 3 — Ginásio ao serviço da corrida ────────────────────
     `GINÁSIO AO SERVIÇO DA CORRIDA (Bloco 3 — Blagrove 2015, Rønnestad/Mujika 2014, Schoenfeld 2020, Gabbett 2016):\n` +
     `PAPEL DA FORÇA por nível (transição pressupõe padrões fundamentais consolidados):\n` +
@@ -1631,6 +1792,7 @@ export function buildSystemInstruction(
 
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;
+  if (nutritionTargetsLine) sys += `\n\n${nutritionTargetsLine}`;
   if (gymSummary) sys += `\n\n${gymSummary}`;
   if (gymMetricsLine) sys += `\n${gymMetricsLine}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
@@ -1817,6 +1979,23 @@ async function handler(req: Request): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
     );
 
+    // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
+    const ageFromBirth = profile?.birth_date
+      ? Math.floor((Date.now() - new Date(profile.birth_date as string).getTime()) / (365.25 * 24 * 3600 * 1000))
+      : null;
+    const nutritionTargetsLine = buildNutritionTargets({
+      weightKg:      (profile?.weight_kg as number | null) ?? null,
+      heightCm:      (profile?.height_cm as number | null) ?? null,
+      age:           ageFromBirth,
+      gender:        (profile?.gender as string | null) ?? null,
+      level:         (profile?.experience_level as string | null) ?? null,
+      restingHrBpm:  (profile?.resting_hr_bpm as number | null) ?? null,
+      waterGoalMl:   (profile?.water_goal_ml as number | null) ?? null,
+      proteinGoal:   (profile?.protein_goal as number | null) ?? null,
+      calorieGoal:   (profile?.calorie_goal as number | null) ?? null,
+      weeklyVolumeKm,
+    });
+
     // ── Treinos do plano ────────────────────────────────────────────────
     // Plano PROPOSTO: existe um plano com status='proposto' e os seus itens.
     // O atleta ainda não aceitou — não devemos propor outro por cima.
@@ -1899,6 +2078,7 @@ async function handler(req: Request): Promise<Response> {
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
         coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
       },
+      nutritionTargetsLine,
       nutritionSummary,
       waterSummary,
       gymSummary,

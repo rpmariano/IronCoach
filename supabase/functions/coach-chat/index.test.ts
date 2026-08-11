@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -396,7 +396,7 @@ function sysCom(restrictions: string[] | null, notes: string | null): string {
   return buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: restrictions, dietary_notes: notes },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
 }
 
@@ -641,7 +641,7 @@ Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com 
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "autorizou-te a escrever metas");
   assertStringIncludes(sys, "Queres que atualize agora");
@@ -1154,4 +1154,200 @@ Deno.test("o prompt inclui treino até à falha com custo de recuperação (Bloc
   assertStringIncludes(sys, "TREINO ATÉ À FALHA");
   assertStringIncludes(sys, "RIR 2-4");
   assertStringIncludes(sys, "72-96 h");
+});
+
+// ─── Bloco 4.1 — buildNutritionTargets ───────────────────────────────────────
+
+Deno.test("buildNutritionTargets: retorna null se peso ou altura ou idade em falta", () => {
+  // Sem dados suficientes, a função não deve produzir linhas nem lançar erro.
+  assertEquals(buildNutritionTargets({
+    weightKg: null, heightCm: null, age: null, gender: null, level: null,
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  }), null);
+});
+
+Deno.test("buildNutritionTargets: calcula TMB e GETD com Mifflin-St Jeor (homem)", () => {
+  // H 70 kg, 175 cm, 35 anos → TMB = (10×70)+(6,25×175)−(5×35)+5 = 700+1093,75−175+5 = 1623,75 ≈ 1624
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "1624 kcal/dia");
+  assertStringIncludes(out!, "GETD estimado");
+});
+
+Deno.test("buildNutritionTargets: calcula TMB e GETD com Mifflin-St Jeor (mulher)", () => {
+  // M 60 kg, 165 cm, 30 anos → TMB = (10×60)+(6,25×165)−(5×30)−161 = 600+1031,25−150−161 = 1320,25 ≈ 1320
+  const out = buildNutritionTargets({
+    weightKg: 60, heightCm: 165, age: 30, gender: "feminino", level: "basico",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "1320 kcal/dia");
+});
+
+Deno.test("buildNutritionTargets: custo de corrida incluído no GETD quando weeklyVolumeKm > 0", () => {
+  // 70 kg, 40 km/sem → custo = round(40×70/7) = round(400) = 400 kcal/dia
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: 40,
+  });
+  assertStringIncludes(out!, "400 kcal custo de corrida");
+});
+
+Deno.test("buildNutritionTargets: proteína recomendada para nível medio sem volume extra", () => {
+  // medio manutenção 1,6-1,8 g/kg · 70 kg → 112-126 g/dia
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "112-126 g/dia");
+});
+
+Deno.test("buildNutritionTargets: bónus de proteína por volume >30 km/sem", () => {
+  // 70 km/sem → (70-30)/20 * 0,15 = 0,30 (arred 0,3) → 1,9-2,1 g/kg · 70 kg = 133-147 g/dia
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: 70,
+  });
+  assertStringIncludes(out!, "+0.3 g/kg p/ volume");
+});
+
+Deno.test("buildNutritionTargets: alerta meta de proteína abaixo do mínimo", () => {
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: 80, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "abaixo do mínimo recomendado");
+  assertStringIncludes(out!, "80 g");
+});
+
+Deno.test("buildNutritionTargets: hidratação base 30-40 ml/kg calculada a partir do peso", () => {
+  // 70 kg → 2100-2800 ml/dia
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "2100-2800 ml/dia");
+});
+
+Deno.test("buildNutritionTargets: alerta meta de água abaixo do mínimo Bloco 4.1", () => {
+  // meta 1500 ml < mínimo 2100 ml
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: null, waterGoalMl: 1500, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "abaixo do mínimo");
+});
+
+// ─── Bloco 4.2 — RED-S e FC de repouso ───────────────────────────────────────
+
+Deno.test("buildNutritionTargets: flag RED-S quando resting_hr_bpm < 40", () => {
+  const out = buildNutritionTargets({
+    weightKg: 55, heightCm: 165, age: 28, gender: "feminino", level: "avancado",
+    restingHrBpm: 37, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertStringIncludes(out!, "RED-S");
+  assertStringIncludes(out!, "< 40 bpm");
+});
+
+Deno.test("buildNutritionTargets: sem flag RED-S quando resting_hr_bpm normal", () => {
+  const out = buildNutritionTargets({
+    weightKg: 70, heightCm: 175, age: 35, gender: "masculino", level: "medio",
+    restingHrBpm: 55, waterGoalMl: null, proteinGoal: null, calorieGoal: null,
+    weeklyVolumeKm: null,
+  });
+  assertEquals(out?.includes("RED-S") ?? false, false);
+});
+
+// ─── Bloco 4 — doutrina no system prompt ─────────────────────────────────────
+
+Deno.test("o prompt inclui doutrina de proteína por nível com tabela (Bloco 4.1 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NUTRIÇÃO — BASE DIÁRIA");
+  assertStringIncludes(sys, "PROTEÍNA (g/kg/dia)");
+  assertStringIncludes(sys, "manutenção 1,2-1,4");
+});
+
+Deno.test("o prompt inclui hidratos variáveis por nível e tipo de dia (Bloco 4.1 #2)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "fuel for the work required");
+  assertStringIncludes(sys, "HIDRATOS");
+});
+
+Deno.test("o prompt inclui GETD com fórmula Mifflin-St Jeor (Bloco 4.1 #4)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "Mifflin-St Jeor");
+  assertStringIncludes(sys, "GETD");
+});
+
+Deno.test("o prompt inclui défice calórico máximo por nível com limite máximo (Bloco 4.1 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "DÉFICE CALÓRICO MÁXIMO");
+  assertStringIncludes(sys, "500 kcal/dia");
+});
+
+Deno.test("o prompt inclui doutrina RED-S com limiar EA e sinais clínicos (Bloco 4.2 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "RED-S");
+  assertStringIncludes(sys, "<30 (mantido");
+  assertStringIncludes(sys, "FC em repouso <40");
+});
+
+Deno.test("o prompt inclui timing peri-treino Bloco 4.3 #1", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "PRÉ-TREINO");
+  assertStringIncludes(sys, "PÓS-TREINO");
+  assertStringIncludes(sys, "leucina");
+});
+
+Deno.test("o prompt inclui carb-loading para provas >90 min (Bloco 4.3 #3)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CARB-LOADING");
+  assertStringIncludes(sys, "10-12 g/kg/dia");
+});
+
+Deno.test("o prompt inclui hidratos por hora durante a prova (Bloco 4.3 #2)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "60-90 g/h");
+  assertStringIncludes(sys, "fontes múltiplas");
+});
+
+Deno.test("o prompt inclui cafeína com dose e momento (Bloco 4.3 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CAFEÍNA");
+  assertStringIncludes(sys, "3-6 mg/kg");
+  assertStringIncludes(sys, "60 min antes");
+});
+
+// ─── nutritionTargetsLine entra no system prompt ──────────────────────────────
+
+Deno.test("nutritionTargetsLine aparece no system prompt quando passada", () => {
+  const line = "Targets nutricionais calculados (doutrina Bloco 4.1):\n- TMB estimada: 1624 kcal/dia";
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, dietary_restrictions: null, dietary_notes: null },
+    line, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "TMB estimada: 1624 kcal/dia");
+});
+
+Deno.test("nutritionTargetsLine null não introduz linha em branco espúria", () => {
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, dietary_restrictions: null, dietary_notes: null },
+    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  // Não deve haver "undefined" ou "null" no prompt
+  assertEquals(sys.includes("undefined"), false);
+  assertEquals(sys.includes("null"), false);
 });
