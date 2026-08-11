@@ -6,12 +6,14 @@ const hydroCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary'
 const nutriCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary', 'NutritionOptionA.css');
 const nextRaceCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary', 'NextRaceCard.css');
 const coachCssPath = path.join(__dirname, 'src', 'components', 'Home', 'CoachDailySummaryCard.css');
+const weeklyPlanCssPath = path.join(__dirname, 'src', 'components', 'Home', 'WeeklyPlanCard.css');
 
 let previewHtml = fs.readFileSync(previewPath, 'utf8');
 const hydroCss = fs.readFileSync(hydroCssPath, 'utf8');
 const nutriCss = fs.readFileSync(nutriCssPath, 'utf8');
 const nextRaceCss = fs.readFileSync(nextRaceCssPath, 'utf8');
 const coachCss = fs.readFileSync(coachCssPath, 'utf8');
+const weeklyPlanCss = fs.readFileSync(weeklyPlanCssPath, 'utf8');
 
 const injection = `
 /* ======== INJECTED FINAL WIDGET CSS ======== */
@@ -19,6 +21,7 @@ ${nextRaceCss}
 ${hydroCss}
 ${nutriCss}
 ${coachCss}
+${weeklyPlanCss}
 /* ======== END INJECTED FINAL WIDGET CSS ======== */
 `;
 

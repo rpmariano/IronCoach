@@ -525,6 +525,7 @@
 
 
 
+
 /* ======== INJECTED FINAL WIDGET CSS ======== */
 .next-race-card {
   position: relative; overflow: hidden;
@@ -1072,7 +1073,378 @@
 .cds-nav-btn:active:not(:disabled) { transform: scale(0.9); }
 .cds-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
+/* src/components/Home/WeeklyPlanCard.css */
+
+/* ======== MAIN CARD (Wrapper) ======== */
+.wpc-card {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.wpc-glow-coach {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, rgba(255, 255, 255, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.wpc-content {
+  position: relative;
+  z-index: 1;
+}
+
+.wpc-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.wpc-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.wpc-coach-link {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #06b6d4;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: color 0.2s;
+}
+
+.wpc-coach-link:hover {
+  color: #0891b2;
+}
+
+/* ======== INNER DAY CARD ======== */
+.wpc-day-card {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+  transition: opacity 0.2s, box-shadow 0.2s, border-color 0.2s;
+  margin-bottom: 12px;
+}
+
+.wpc-day-card:last-child {
+  margin-bottom: 0;
+}
+
+.wpc-day-card.is-today {
+  border-color: rgba(6, 182, 212, 0.4); /* Cyan highlight */
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.05);
+}
+
+.wpc-day-card.is-empty {
+  opacity: 0.65;
+}
+
+/* Day Card Inner Glows */
+.wpc-day-glow {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 120px;
+  height: 120px;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 50%;
+}
+
+.wpc-day-glow.run {
+  background: radial-gradient(circle, rgba(192, 38, 211, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+.wpc-day-glow.gym {
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+.wpc-day-glow.nutri {
+  background: radial-gradient(circle, rgba(5, 150, 105, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+.wpc-day-content {
+  position: relative;
+  z-index: 1;
+}
+
+.wpc-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wpc-day-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.wpc-icon-wrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wpc-icon-wrap.run {
+  background: rgba(192, 38, 211, 0.15);
+  color: #c026d3;
+}
+
+.wpc-icon-wrap.gym {
+  background: rgba(37, 99, 235, 0.15);
+  color: #2563eb;
+}
+
+.wpc-icon-wrap.nutri {
+  background: rgba(5, 150, 105, 0.15);
+  color: #059669;
+}
+
+.wpc-icon-wrap.empty {
+  background: rgba(15, 23, 42, 0.05);
+  color: #64748b;
+}
+
+.wpc-day-info {
+  min-width: 0;
+}
+
+.wpc-day-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+}
+
+.wpc-day-date {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-left: 6px;
+}
+
+.wpc-today-tag {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+  vertical-align: middle;
+}
+
+.wpc-day-summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wpc-day-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.wpc-meal-indicator {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+
+.wpc-chevron {
+  color: #94a3b8;
+  transition: color 0.2s;
+}
+
+.wpc-day-header:hover .wpc-chevron {
+  color: #475569;
+}
+
+/* ======== EXPANDED DETAILS ======== */
+.wpc-day-details {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wpc-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wpc-detail-title {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.wpc-detail-status {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #059669;
+}
+
+.wpc-past-warning {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #ef4444;
+}
+
+/* Info Boxes */
+.wpc-info-box {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+}
+
+.wpc-info-box-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 6px;
+}
+
+.wpc-info-box-header.nutri {
+  color: #059669;
+}
+
+.wpc-info-box-text {
+  font-size: 0.8rem;
+  color: #1e293b;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.wpc-info-box-disclaimer {
+  font-size: 0.65rem;
+  color: #10b981;
+  opacity: 0.8;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+/* Glass Buttons */
+.wpc-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.wpc-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-radius: 14px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s, border-color 0.2s;
+  border: 1px solid transparent;
+}
+
+.wpc-btn:active {
+  transform: scale(0.97);
+}
+
+.wpc-btn-primary {
+  background: rgba(5, 150, 105, 0.1);
+  border-color: rgba(5, 150, 105, 0.2);
+  color: #059669;
+}
+
+.wpc-btn-primary:hover {
+  background: rgba(5, 150, 105, 0.15);
+  border-color: rgba(5, 150, 105, 0.3);
+}
+
+.wpc-btn-secondary {
+  background: rgba(15, 23, 42, 0.03);
+  border-color: rgba(15, 23, 42, 0.05);
+  color: #64748b;
+}
+
+.wpc-btn-secondary:hover {
+  background: rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+/* Proposal Card Specifics */
+.wpc-proposal-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #06b6d4;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.wpc-proposal-summary {
+  font-size: 0.85rem;
+  color: #1e293b;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
 /* ======== END INJECTED FINAL WIDGET CSS ======== */
+
 
 
 
@@ -1100,6 +1472,119 @@
     <p class="category-subtitle">Elementos interativos e informativos para a tela principal de foco e acompanhamento diário.</p>
     
     <div class="component-grid">
+      
+      <!-- WEEKLY PLAN CARD -->
+      <div class="component-card">
+        <div class="component-meta">
+          <span class="component-name">WeeklyPlanCard.jsx</span>
+          <span class="module-tag tag-global" style="background: rgba(6,182,212,0.1); color: #0891b2;">Coach AI</span>
+        </div>
+        <div class="component-render" style="padding: 16px;">
+          
+          <div class="wpc-card">
+            <div class="wpc-glow-coach"></div>
+            <div class="wpc-content">
+              <div class="wpc-header-row">
+                <span class="wpc-lbl">Plano da semana</span>
+                <button type="button" class="wpc-coach-link">Ver no Coach</button>
+              </div>
+              
+              <!-- Dia de Treino de Corrida (Expandido) -->
+              <div class="wpc-day-card is-today">
+                <div class="wpc-day-glow run"></div>
+                <div class="wpc-day-content">
+                  <div class="wpc-day-header">
+                    <div class="wpc-day-left">
+                      <div class="wpc-icon-wrap run">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-footprints"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></svg>
+                      </div>
+                      <div class="wpc-day-info">
+                        <h4 class="wpc-day-title">Terça <span class="wpc-day-date">11/08</span><span class="wpc-today-tag">Hoje</span></h4>
+                        <p class="wpc-day-summary">Recuperação · 6 km</p>
+                      </div>
+                    </div>
+                    <div class="wpc-day-right">
+                      <button type="button" class="tap-44 wpc-chevron">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-up"><path d="m18 15-6-6-6 6"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div class="wpc-day-details fade-in">
+                    <div class="wpc-detail-item">
+                      <div class="wpc-info-box">
+                        <div class="wpc-info-box-header">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sticky-note"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z"/><path d="M15 3v4a2 2 0 0 0 2 2h4"/></svg> Instruções do Coach
+                        </div>
+                        <p class="wpc-info-box-text">Corrida leve em Z2 (~6:15/km) para testar as pernas.</p>
+                      </div>
+                      
+                      <div class="wpc-actions">
+                        <button type="button" class="wpc-btn wpc-btn-primary">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check"><path d="M20 6 9 17l-5-5"/></svg> Concluir
+                        </button>
+                        <button type="button" class="wpc-btn wpc-btn-secondary">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Dia de Descanso/Nutrição -->
+              <div class="wpc-day-card">
+                <div class="wpc-day-glow nutri"></div>
+                <div class="wpc-day-content">
+                  <div class="wpc-day-header">
+                    <div class="wpc-day-left">
+                      <div class="wpc-icon-wrap empty">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-moon"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                      </div>
+                      <div class="wpc-day-info">
+                        <h4 class="wpc-day-title">Quarta <span class="wpc-day-date">12/08</span></h4>
+                        <p class="wpc-day-summary">Descanso</p>
+                      </div>
+                    </div>
+                    <div class="wpc-day-right">
+                      <span class="wpc-meal-indicator" title="Tem sugestão alimentar">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-utensils"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+                      </span>
+                      <button type="button" class="tap-44 wpc-chevron">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Dia de Ginásio Fechado -->
+              <div class="wpc-day-card">
+                <div class="wpc-day-glow gym"></div>
+                <div class="wpc-day-content">
+                  <div class="wpc-day-header">
+                    <div class="wpc-day-left">
+                      <div class="wpc-icon-wrap gym">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-dumbbell"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"/><path d="m21.5 21.5-1.4-1.4"/><path d="M3.9 3.9 2.5 2.5"/><path d="M6.404 2.757a2 2 0 1 0-2.829 2.828l1.768-1.767a2 2 0 1 0 2.829 2.828L1.808 12.914a2 2 0 1 0-2.828-2.829l1.767 1.768a2 2 0 1 0 2.829 2.829z"/></svg>
+                      </div>
+                      <div class="wpc-day-info">
+                        <h4 class="wpc-day-title">Quinta <span class="wpc-day-date">13/08</span></h4>
+                        <p class="wpc-day-summary">Costas/Core · 40 min</p>
+                      </div>
+                    </div>
+                    <div class="wpc-day-right">
+                      <button type="button" class="tap-44 wpc-chevron">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
       
       <!-- COACH DAILY SUMMARY CARD -->
       <div class="component-card">
