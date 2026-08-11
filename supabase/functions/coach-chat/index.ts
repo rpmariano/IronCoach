@@ -576,7 +576,11 @@ function summariseRuns(runs: any[]): string[] {
     const distance = r.distance_km != null ? `${Number(r.distance_km).toFixed(2)} km` : null;
     const duration = r.duration_seconds != null ? formatDuration(r.duration_seconds) : null;
     const pace = formatPace(r.distance_km, r.duration_seconds);
-    const parts = [distance, duration, pace].filter(Boolean);
+    // Cadência — só mostra quando registada; assinala sobrepassada (<155 spm) per 2.4 #1.
+    const cadStr = r.cadence_spm != null
+      ? `${Math.round(r.cadence_spm)} spm${r.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
+      : null;
+    const parts = [distance, duration, pace, cadStr].filter(Boolean);
     return `- ${r.date}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
@@ -587,6 +591,41 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
     return `Corridas (últimos ${windowDays} dias): sem corridas registadas.`;
   }
   return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)):\n${summariseRuns(runs).join("\n")}`;
+}
+
+// ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
+// Acute = km nas últimas 7 noites · Chronic = média de 4 semanas (28 dias).
+// Faixas: seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50.
+// Fonte: Gabbett 2016 — The training-injury prevention paradox.
+// deno-lint-ignore no-explicit-any
+export function computeACWR(
+  runs: any[],
+  todayISO: string,
+): { acuteKm: number; chronicWeeklyKm: number; ratio: number; zone: string } | null {
+  if (!runs || runs.length === 0) return null;
+  const todayMs = new Date(todayISO + "T00:00:00Z").getTime();
+  const acuteCutMs   = todayMs - 7  * 86400000; // últimos 7 dias
+  const chronicCutMs = todayMs - 28 * 86400000; // últimas 4 semanas
+  const acuteKm = runs
+    .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= acuteCutMs)
+    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+  const chronicTotal = runs
+    .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= chronicCutMs)
+    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+  const chronicWeeklyKm = chronicTotal / 4;
+  // Com menos de 1 km/semana de média crónica o rácio é matematicamente inútil.
+  if (chronicWeeklyKm < 1) return null;
+  const ratio = acuteKm / chronicWeeklyKm;
+  const zone = ratio >= 1.50 ? "PERIGO(≥1,50)"
+    : ratio >= 1.31 ? "risco_acrescido(1,31-1,49)"
+    : ratio < 0.80  ? "possível_destreino(<0,80)"
+    : "seguro(0,80-1,30)";
+  return {
+    acuteKm:          Math.round(acuteKm          * 10) / 10,
+    chronicWeeklyKm:  Math.round(chronicWeeklyKm  * 10) / 10,
+    ratio:            Math.round(ratio             * 100) / 100,
+    zone,
+  };
 }
 
 // Executa a function call get_running_history: corridas num intervalo.
@@ -1196,6 +1235,7 @@ export function buildSystemInstruction(
   waterSummary: string,
   gymSummary: string | null,
   runningSummary: string | null,
+  acwrLine: string | null,
   raceEventsContext: string | null,
   planContext: string | null,
 ): string {
@@ -1258,13 +1298,59 @@ export function buildSystemInstruction(
     `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
     `função get_nutrition_history (nutrição), get_gym_history (ginásio) ou get_running_history ` +
     `(corrida) com o intervalo de datas necessário antes de responder.\n\n` +
+    // ── Doutrina Bloco 2.1 — Carga e progressão ─────────────────────────────
+    `CARGA E PROGRESSÃO DE CORRIDA (Bloco 2.1 — Daniels 2021, Pfitzinger 2014, Gabbett 2016):\n` +
+    `Teto de aumento semanal de volume por nível (percentual OU absoluto — usar o mais restritivo):\n` +
+    `  Iniciante: ≤5-10 % OU ≤+2-3 km/sem\n` +
+    `  Básico:    ≤10 % OU ≤+3-5 km/sem\n` +
+    `  Médio:     ≤10 % OU ≤+5-8 km/sem\n` +
+    `  Avançado:  ≤10 % OU ≤+8-10 km/sem\n` +
+    `  Nunca subir volume E intensidade (Z3-Z5) na mesma semana.\n` +
+    `ACWR (rácio aguda:crónica, Gabbett 2016): seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50 (risco exponencial de lesão/sobretreino). Se o contexto mostrar ACWR em zona de risco, reflete isso no plano antes de propor aumentos.\n` +
+    `DESCARGA (semana de recuperação):\n` +
+    `  Iniciante: de 2-3 em 2-3 sem · corte de 20-30 % do volume\n` +
+    `  Básico:    de 3 em 3 sem     · corte de 20-25 %\n` +
+    `  Médio:     de 3-4 em 3-4 sem · corte de 20-25 %\n` +
+    `  Avançado:  de 3-4 em 3-4 sem (ciclos 3:1 ou 4:1) · corte de 15-20 %\n` +
+    `  Corte aplica-se ao VOLUME; manter intensidade dos treinos-chave (Z3-Z5).\n` +
+    `TREINO LONGO (% volume semanal / teto absoluto — o que vier primeiro):\n` +
+    `  Iniciante: 25-33 % · ≤10-12 km ou ≤90 min\n` +
+    `  Básico:    25-30 % · ≤16-18 km ou ≤120 min\n` +
+    `  Médio:     25-30 % · ≤25-28 km ou ≤150 min\n` +
+    `  Avançado:  20-25 % · ≤30-32 km/150 min (Daniels) ou ≤38 km/180 min em prep. maratona (Pfitzinger)\n` +
+    `REGRESSO APÓS PAUSA (sem lesão grave — escala destreino Coyle 1986/Daniels 2021):\n` +
+    `  1 sem: retoma a 100 % (só Z1/Z2 na 1.ª semana).\n` +
+    `  2 sem: retoma a 75 %; recupera em 1-2 sem.\n` +
+    `  4 sem: 1.ª sem 50 %, 2.ª sem 75 %; recupera em 3-4 sem.\n` +
+    `  8+ sem: 1.ª sem 33-50 %, +10 %/sem; recupera em 6-12 sem (regra 1:1 parado:reconstrução).\n` +
+    `  Pós-lesão músculo-esquelética: condição adicional EVA ≤2/10 — a app não consegue verificar.\n\n` +
+    // ── Doutrina Bloco 2.2 — Intensidade ─────────────────────────────────────
+    `INTENSIDADE DE CORRIDA (Bloco 2.2 — Seiler 2010, Fitzgerald 2014, Daniels 2021):\n` +
+    `Distribuição por nível (medir por TEMPO nas zonas, não n.º de sessões):\n` +
+    `  Iniciante: 90-100 % Z1/Z2 · 0-10 % Z3 (modelo 80/20 NÃO se aplica — exige ≥6-12 sem contínuas e ≥20-25 km/sem já construídos)\n` +
+    `  Básico:    85-90 % Z1/Z2 · 10-15 % Z3/Z4\n` +
+    `  Médio:     80 % Z1/Z2 · 20 % Z3/Z5 (modelo 80/20 clássico, Fitzgerald/Seiler)\n` +
+    `  Avançado:  75-80 % Z1/Z2 · 20-25 % Z3/Z5 (polarizado ou piramidal conforme fase)\n` +
+    `Quando introduzir trabalho de qualidade (≥Z3):\n` +
+    `  Iniciante: fartlek suave após ≥4-6 sem contínuas e ≥15-20 km/sem (≥4 sem). Intervalos/limiar: ≥6-12 sem contínuas.\n` +
+    `  Básico:    subidas/fartlek desde sem 1. Limiar após ≥4 sem a 25-30 km/sem. Intervalos após ≥6-8 sem a 30-35 km/sem.\n` +
+    `  Médio:     subidas/fartlek/limiar desde sem 1-2 do ciclo (≥35-40 km/sem ×4 sem). Intervalos na fase específica (sem 3-4).\n` +
+    `  Avançado:  todos os tipos desde sem 1 (≥50-60 km/sem na base).\n` +
+    `SINAL DE FADIGA AGUDA (RPE/pace — Foster 1998, Meeusen 2013): RPE ≥+2 pontos Borg CR10 para o mesmo pace, OU pace caiu ≥5-8 % (≥15-20 seg/km) para o mesmo RPE, ≥2-3 sessões consecutivas → cortar 50 % do volume do dia ou cancelar sessão de intensidade e substituir por Z1/descanso.\n\n` +
+    // ── Doutrina Bloco 2.4 — Cadência e sinais biomecânicos ──────────────────
+    `CADÊNCIA E TÉCNICA (Bloco 2.4 — Heiderscheit MSSE 2011, Daniels 2021, Bramah AJSM 2018):\n` +
+    `NÃO recomendar 180 spm como alvo universal — é individual (depende de estatura, massa, velocidade). O mito dos "180 para todos" é rejeitado pela biomecânica moderna.\n` +
+    `Faixa funcional em Z1-Z3: 160-180 spm. Em Z4/Z5: 180-200+ spm é normal.\n` +
+    `SINAL VERMELHO: cadência crónica <155 spm associa-se a overstriding e +15-20 % de força de impacto no joelho/anca.\n` +
+    `Se a cadência de um run for <155 spm (assinalado com ⚠cadência<155 no contexto): sugerir aumento de +5-10 % sobre a cadência ATUAL do próprio atleta — nunca um valor absoluto.\n` +
+    `Fora disso (155-180 spm em Z1-Z3), não comentar cadência — é ruído.\n\n` +
     `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
     `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
     `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
-    `aceita-a no ecrã Início. Antes de propores, tem em conta o histórico recente (não subas ` +
-    `o volume mais de 10% face à média das últimas semanas), o nível do atleta e as provas ` +
-    `agendadas — uma prova principal próxima muda o plano (taper). Depois de criares a ` +
-    `proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
+    `aceita-a no ecrã Início. Antes de propores, tem em conta o histórico recente, o nível ` +
+    `do atleta e as provas agendadas — uma prova principal próxima muda o plano (taper). ` +
+    `Respeita os limiares de carga acima (ACWR, % semanal, frequência por nível). ` +
+    `Depois de criares a proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
     `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
@@ -1412,6 +1498,7 @@ export function buildSystemInstruction(
   sys += `\n\n${waterSummary}`;
   if (gymSummary) sys += `\n\n${gymSummary}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
+  if (acwrLine) sys += `\n${acwrLine}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
 
@@ -1549,12 +1636,20 @@ async function handler(req: Request): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds")
+      .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
       .order("date", { ascending: false });
     const runningSummary = buildRunningSummary(recentRuns || [], RUNNING_WINDOW_DAYS);
+
+    // ACWR — calculado sobre os mesmos recentRuns (30 dias cobre as 28 noites
+    // necessárias para a carga crónica). Incluído no contexto como valor pré-
+    // calculado para o modelo não ter de o derivar a partir das linhas brutas.
+    const acwr = computeACWR(recentRuns || [], todayISO);
+    const acwrLine = acwr
+      ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
+      : null;
 
     // ── Próximas provas agendadas (base da proactividade do Coach) ───────
     // Inclui desde ontem (não só a partir de hoje) para o Coach poder
@@ -1670,6 +1765,7 @@ async function handler(req: Request): Promise<Response> {
       waterSummary,
       gymSummary,
       runningSummary,
+      acwrLine,
       raceEventsContext,
       planContext,
     );

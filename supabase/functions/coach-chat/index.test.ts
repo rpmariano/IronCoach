@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -396,7 +396,7 @@ function sysCom(restrictions: string[] | null, notes: string | null): string {
   return buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: restrictions, dietary_notes: notes },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null,
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null,
   );
 }
 
@@ -641,7 +641,7 @@ Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com 
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null,
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null,
   );
   assertStringIncludes(sys, "autorizou-te a escrever metas");
   assertStringIncludes(sys, "Queres que atualize agora");
@@ -862,4 +862,133 @@ Deno.test("o prompt instrui a usar save_meal_suggestions em vez de propose_train
   const sys = sysCom(null, null);
   assertStringIncludes(sys, "save_meal_suggestions");
   assertEquals(sys.includes("usa propose_training_plan com itens de kind=\"descanso\""), false);
+});
+
+// ─── Bloco 2.1 — computeACWR ─────────────────────────────────────────────────
+
+const TODAY_ACWR = "2026-08-11";
+
+// Cria runs simples para ACWR: data + distância.
+function makeRun(daysAgo: number, km: number) {
+  const d = new Date("2026-08-11T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return { date: d.toISOString().slice(0, 10), distance_km: km };
+}
+
+Deno.test("computeACWR devolve null com lista vazia", () => {
+  assertEquals(computeACWR([], TODAY_ACWR), null);
+});
+
+Deno.test("computeACWR devolve null quando crónica < 1 km/sem", () => {
+  // Apenas 1 run de 0,5 km nas últimas 4 semanas → crónica = 0,125 < 1
+  assertEquals(computeACWR([makeRun(3, 0.5)], TODAY_ACWR), null);
+});
+
+Deno.test("computeACWR zona segura: 40 km/sem crónica, 40 km aguda → rácio 1,00", () => {
+  // 40 km nas 4 semanas = 10 km/sem crónica; 10 km nos últimos 7 dias = acute
+  // Para rácio 1.0: aguda = crónica → usamos 40 km distribuídos + 10 km na última semana
+  const runs = [
+    makeRun(1,  5), makeRun(3,  5), // 10 km aguda (7 dias)
+    makeRun(8,  8), makeRun(15, 8), makeRun(22, 8), makeRun(25, 6), // + 30 km  → total 40 km/4 sem
+  ];
+  // crónica = (10+30)/4 = 10; aguda = 10 → ratio = 1.0
+  const r = computeACWR(runs, TODAY_ACWR);
+  assertEquals(r?.zone, "seguro(0,80-1,30)");
+  assertEquals(r?.ratio, 1.0);
+});
+
+Deno.test("computeACWR zona PERIGO: aguda muito alta relativamente à crónica", () => {
+  // Crónica: 20 km/4 sem = 5 km/sem; Aguda: 10 km em 7 dias → rácio 2,0
+  const runs = [
+    makeRun(1, 5), makeRun(3, 5),   // 10 km aguda
+    makeRun(10, 4), makeRun(18, 4), makeRun(26, 4), makeRun(27, 8), // + 20 km crónica = 10+20=30/4=7.5
+  ];
+  // vamos usar valores que deem claramente ≥1.5
+  const runs2 = [
+    makeRun(1, 30), // 30 km na última semana (aguda)
+    makeRun(9, 5),  makeRun(16, 5), makeRun(23, 5), // 15 km nas 3 semanas anteriores → total 45/4=11.25 crónica
+  ];
+  // rácio = 30 / 11.25 = 2.67
+  const r = computeACWR(runs2, TODAY_ACWR);
+  assertEquals(r?.zone, "PERIGO(≥1,50)");
+});
+
+Deno.test("computeACWR zona risco_acrescido: rácio entre 1.31 e 1.49", () => {
+  // crónica = 10 km/sem; aguda = 14 km → rácio ~1.40
+  const runs = [
+    makeRun(2, 7), makeRun(5, 7),   // 14 km aguda
+    makeRun(9, 10), makeRun(16, 10), makeRun(23, 10), // +30 km fora dos 7 dias → total 44/4=11 crónica
+  ];
+  // rácio = 14 / (44/4) = 14/11 ≈ 1.27 → ainda seguro. Ajustar.
+  const runs2 = [
+    makeRun(2, 14),                   // 14 km aguda
+    makeRun(9, 5), makeRun(16, 5), makeRun(23, 5), // 15 km fora dos 7 → total 29/4 = 7.25 crónica
+  ];
+  // rácio = 14 / 7.25 ≈ 1.93 → PERIGO. Vamos acertar.
+  const runs3 = [
+    makeRun(2, 13),                   // 13 km aguda
+    makeRun(9, 4), makeRun(16, 4), makeRun(23, 4), makeRun(3, 2), // +10 km fora → total 23/4=5.75 ... 13/5.75=2.26 PERIGO
+    // melhor: crónica ≈ 10 km/sem → 40 km total; aguda = 13,5 km → ratio 1.35
+  ];
+  const runs4 = [
+    makeRun(2, 6), makeRun(4, 7),     // 13 km aguda (7 dias)
+    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → total 40/4=10 crónica → ratio 1.3 (seguro)
+  ];
+  // Rácio 1.3 já é seguro. Para risco_acrescido preciso de 1.31-1.49.
+  const runs5 = [
+    makeRun(2, 7), makeRun(4, 7),     // 14 km aguda
+    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → 41/4 = 10.25 crónica → ratio = 14/10.25 ≈ 1.37
+  ];
+  const r = computeACWR(runs5, TODAY_ACWR);
+  assertEquals(r?.zone, "risco_acrescido(1,31-1,49)");
+});
+
+Deno.test("computeACWR zona destreino: aguda < 80% da crónica", () => {
+  // crónica = 10 km/sem (40 km/4 sem); aguda = 7 km → ratio = 0.70 < 0.80
+  const runs = [
+    makeRun(2, 7),                    // 7 km aguda
+    makeRun(10, 10), makeRun(17, 10), makeRun(24, 10), makeRun(27, 10), // 40 km → 10 km/sem crónica
+  ];
+  const r = computeACWR(runs, TODAY_ACWR);
+  assertEquals(r?.zone, "possível_destreino(<0,80)");
+});
+
+// ─── Bloco 2.1-2.2-2.4 — doutrina no system prompt ───────────────────────────
+
+Deno.test("o prompt inclui tabela de aumento semanal de volume por nível (Bloco 2.1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CARGA E PROGRESSÃO");
+  assertStringIncludes(sys, "Iniciante: ≤5-10");
+  assertStringIncludes(sys, "ACWR");
+});
+
+Deno.test("o prompt inclui as faixas de risco ACWR com limiar ≥1,50 para PERIGO", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "PERIGO ≥1,50");
+  assertStringIncludes(sys, "0,80-1,30");
+});
+
+Deno.test("o prompt inclui doutrina de descarga por nível (Bloco 2.1 #3)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "DESCARGA");
+  assertStringIncludes(sys, "corte de 20-30");
+});
+
+Deno.test("o prompt inclui regresso após pausa com regra 1:1 (Bloco 2.1 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "REGRESSO APÓS PAUSA");
+  assertStringIncludes(sys, "1:1");
+});
+
+Deno.test("o prompt inclui distribuição de intensidade 80/20 por nível (Bloco 2.2 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "INTENSIDADE DE CORRIDA");
+  assertStringIncludes(sys, "80/20");
+  assertStringIncludes(sys, "80 % Z1/Z2 · 20 %");
+});
+
+Deno.test("o prompt proíbe recomendar 180 spm como universal (Bloco 2.4 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NÃO recomendar 180 spm como alvo universal");
+  assertStringIncludes(sys, "155 spm");
 });

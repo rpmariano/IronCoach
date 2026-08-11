@@ -49,9 +49,10 @@ modelo de duas formas:
 |---|---|
 | 0 — Níveis | ✅ `src/utils/experience.js`, `ExperienceLevelHelp.jsx`, `coach-chat` (bio) |
 | 1 — Objetivo/viabilidade | ✅ `src/utils/raceViability.js` (32 testes); `RunAgenda.jsx` mostra ⚠ por prova; `coach-chat` inclui flags `OBJETIVO_INVIAVEL` no contexto de provas; duplicado em TypeScript em `coach-chat/index.ts` (sem acesso a `src/`) |
-| 2.1/2.2 — Carga, intensidade | ⚠️ Parcial — zonas de FC e taper estão no `coach-chat` como texto de prompt; ACWR não é calculado |
+| 2.1 — Carga/progressão | ✅ Doutrina no prompt (tabela de % por nível, ACWR, descarga, treino longo, regresso após pausa); ACWR calculado em tempo real de `recentRuns` e incluído no contexto |
+| 2.2 — Intensidade | ✅ Distribuição 80/20 por nível no prompt; quando introduzir qualidade por nível; sinal RPE/pace; zonas FC Tanaka+Karvonen calculadas de `birth_date`+`resting_hr_bpm` |
 | 2.3 — Prova | ✅ Taper por prioridade (`race_priority`) no `coach-chat` |
-| 2.4 — Técnica/sinais | ❌ Não wired |
+| 2.4 — Técnica/sinais | ⚠️ Parcial — cadência <155 spm flagged por run (⚠ no contexto); doutrina "nunca 180 spm" no prompt. FC repouso trend, HRV, GCT balance, cadência intra-sessão: não capturáveis sem integração wearable |
 | 3 — Ginásio | ❌ Não wired — sem sugestões de treino de força específicas |
 | 4.1/4.2/4.3 — Nutrição | ⚠️ Metas gerais em `profiles.*_goal`; RED-S/défice não são verificados automaticamente |
 | 5 — Corpo | ⚠️ Parcial — `muscle_mass_kg` marcado não-fiável nas notas, sem enforcement no código |
