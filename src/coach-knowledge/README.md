@@ -53,7 +53,7 @@ modelo de duas formas:
 | 2.2 — Intensidade | ✅ Distribuição 80/20 por nível no prompt; quando introduzir qualidade por nível; sinal RPE/pace; zonas FC Tanaka+Karvonen calculadas de `birth_date`+`resting_hr_bpm` |
 | 2.3 — Prova | ✅ Taper por prioridade (`race_priority`) no `coach-chat` |
 | 2.4 — Técnica/sinais | ⚠️ Parcial — cadência <155 spm flagged por run (⚠ no contexto); doutrina "nunca 180 spm" no prompt. FC repouso trend, HRV, GCT balance, cadência intra-sessão: não capturáveis sem integração wearable |
-| 3 — Ginásio | ❌ Não wired — sem sugestões de treino de força específicas |
+| 3 — Ginásio | ✅ Doutrina completa no prompt (papel por nível, grupos prioritários, séries/sem, faixas reps, progressão, interferência, manutenção, pliometria, falha); `computeGymMetrics` deteta spike volume-carga pernas (#6), intervalo <48h (#7) e séries ≥15 reps (#10); `highRepSets` tracking em `summariseSessions` |
 | 4.1/4.2/4.3 — Nutrição | ⚠️ Metas gerais em `profiles.*_goal`; RED-S/défice não são verificados automaticamente |
 | 5 — Corpo | ⚠️ Parcial — `muscle_mass_kg` marcado não-fiável nas notas, sem enforcement no código |
 | 6 — Head Coach | ⚠️ Parcial — hierarquia de alarmes não centralizada, cada módulo decide os seus |

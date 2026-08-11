@@ -446,8 +446,9 @@ export type GymSessionSummary = {
   name: string;
   kind: "forca" | "aula";
   categories: string[];
-  volume: number;
-  sets: number;
+  volume: number;     // Σ reps × weight (kg) — só séries com ambos preenchidos
+  sets: number;       // contagem de séries efetivas
+  highRepSets: number; // séries com reps ≥ 15 (faixa desaconselhada para corredor)
   durationSeconds: number | null;
   calories: number | null;
   avgHr: number | null;
@@ -463,8 +464,13 @@ export function summariseSessions(sessions: any[]): GymSessionSummary[] {
   return sessions.map((s) => {
     let volume = 0;
     let sets = 0;
+    let highRepSets = 0;
     for (const st of (s.workout_session_sets || [])) {
-      if (st.reps != null && st.weight != null) { volume += st.reps * st.weight; sets += 1; }
+      if (st.reps != null && st.weight != null) {
+        volume += st.reps * st.weight;
+        sets += 1;
+        if (st.reps >= 15) highRepSets += 1; // Bloco 3 #10 — faixa desaconselhada para corredor
+      }
     }
     return {
       date: s.date,
@@ -473,6 +479,7 @@ export function summariseSessions(sessions: any[]): GymSessionSummary[] {
       categories: Array.isArray(s.categories) ? s.categories : [],
       volume,
       sets,
+      highRepSets,
       durationSeconds: s.duration_seconds ?? null,
       calories: s.calories_kcal ?? null,
       avgHr: s.avg_hr ?? null,
@@ -513,6 +520,92 @@ function buildGymSummary(sessions: any[], windowDays: number): string {
   }
   return `Treinos de ginásio (últimos ${windowDays} dias, ${rows.length} concluído(s)):\n` +
     rows.map(formatSessionLine).join("\n");
+}
+
+// ─── Bloco 3 — Métricas de ginásio computadas ────────────────────────────────
+//
+// Calcula sinais que a doutrina (03-ginasio.md) prevê como detetáveis:
+//   #6  volume-carga spike (Σ reps×weight, semana atual vs média 4 sem)
+//   #7  intervalo mínimo entre sessões de pernas (<48 h = aviso)
+//   #10 séries longas (≥15 reps) em sessões de pernas = tipo errado p/ corredor
+//
+// Recebe os rows já processados por summariseSessions para não recalcular.
+// Devolve uma string de linhas de aviso, ou null se não houver nada a sinalizar.
+
+// Grupos de pernas reconhecidos. Capitalização é inconsistente nos registos —
+// comparamos em lowercase.
+const LEG_CATS = new Set(["pernas", "glúteos", "gluteos", "posterior", "quadríceps",
+  "quadriceps", "isquiotibiais", "gémeos", "gemeos", "solear"]);
+
+function isLegSession(row: GymSessionSummary): boolean {
+  return row.categories.some((c) => LEG_CATS.has(c.toLowerCase()));
+}
+
+export function computeGymMetrics(rows: GymSessionSummary[], todayISO: string): string | null {
+  const flags: string[] = [];
+
+  // ── #6 — Spike de volume-carga semanal (apenas sessões de pernas) ─────────
+  // Semana atual = últimos 7 dias; crónica = média das 4 semanas anteriores.
+  const todayMs = new Date(todayISO + "T00:00:00Z").getTime();
+  const week0Cut = todayMs - 7  * 86400000; // início semana atual
+  const week4Cut = todayMs - 35 * 86400000; // início da janela de 4 semanas
+
+  const legRows = rows.filter(isLegSession);
+
+  const curWeekVol = legRows
+    .filter((r) => new Date(r.date + "T00:00:00Z").getTime() >= week0Cut)
+    .reduce((s, r) => s + r.volume, 0);
+
+  const prevRows = legRows.filter((r) => {
+    const ms = new Date(r.date + "T00:00:00Z").getTime();
+    return ms >= week4Cut && ms < week0Cut;
+  });
+  const prevWeeklyAvg = prevRows.length > 0
+    ? prevRows.reduce((s, r) => s + r.volume, 0) / 4
+    : null;
+
+  if (prevWeeklyAvg !== null && prevWeeklyAvg > 0 && curWeekVol > 0) {
+    const pct = Math.round(((curWeekVol - prevWeeklyAvg) / prevWeeklyAvg) * 100);
+    if (pct >= 20) {
+      flags.push(
+        `⚠ VOLUME-CARGA PERNAS: +${pct}% face à média das 4 semanas — RISCO ELEVADO de lesão miotendinosa (Bloco 3 #6; limite seguro ≤10-15%)`,
+      );
+    } else if (pct >= 10) {
+      flags.push(
+        `⚠ VOLUME-CARGA PERNAS: +${pct}% face à média das 4 semanas — risco acrescido (limite recomendado ≤10-15%)`,
+      );
+    }
+  }
+
+  // ── #7 — Intervalo entre sessões de pernas (<48 h) ────────────────────────
+  const legDates = legRows
+    .map((r) => new Date(r.date + "T00:00:00Z").getTime())
+    .sort((a, b) => a - b);
+  for (let i = 1; i < legDates.length; i++) {
+    const diffH = (legDates[i] - legDates[i - 1]) / 3600000;
+    if (diffH < 48) {
+      const d1 = new Date(legDates[i - 1]).toISOString().slice(0, 10);
+      const d2 = new Date(legDates[i]).toISOString().slice(0, 10);
+      flags.push(
+        `⚠ INTERVALO PERNAS: sessões de ${d1} e ${d2} com apenas ${Math.round(diffH)} h de separação — mínimo recomendado 48 h (Bloco 3 #7)`,
+      );
+      break; // um aviso chega — evitar spam de linhas
+    }
+  }
+
+  // ── #10 — Séries longas (≥15 reps) em sessões de pernas ──────────────────
+  const recentCut = todayMs - 14 * 86400000; // últimas 2 semanas
+  const highRepSessions = legRows.filter(
+    (r) => r.highRepSets > 0 && new Date(r.date + "T00:00:00Z").getTime() >= recentCut,
+  );
+  if (highRepSessions.length > 0) {
+    const total = highRepSessions.reduce((s, r) => s + r.highRepSets, 0);
+    flags.push(
+      `⚠ SÉRIES LONGAS PERNAS: ${total} série(s) com ≥15 reps nas últimas 2 semanas — faixa desaconselhada para corredor (resistência muscular local já desenvolvida pela corrida); preferir 3-6 reps ≥80% 1RM (Bloco 3 #10)`,
+    );
+  }
+
+  return flags.length > 0 ? flags.join("\n") : null;
 }
 
 // Executa a function call get_gym_history: treinos concluídos num intervalo.
@@ -1234,6 +1327,7 @@ export function buildSystemInstruction(
   nutritionSummary: string,
   waterSummary: string,
   gymSummary: string | null,
+  gymMetricsLine: string | null,
   runningSummary: string | null,
   acwrLine: string | null,
   raceEventsContext: string | null,
@@ -1298,6 +1392,47 @@ export function buildSystemInstruction(
     `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
     `função get_nutrition_history (nutrição), get_gym_history (ginásio) ou get_running_history ` +
     `(corrida) com o intervalo de datas necessário antes de responder.\n\n` +
+    // ── Doutrina Bloco 3 — Ginásio ao serviço da corrida ────────────────────
+    `GINÁSIO AO SERVIÇO DA CORRIDA (Bloco 3 — Blagrove 2015, Rønnestad/Mujika 2014, Schoenfeld 2020, Gabbett 2016):\n` +
+    `PAPEL DA FORÇA por nível (transição pressupõe padrões fundamentais consolidados):\n` +
+    `  Iniciante: 80% coordenação/aprendizagem motora/resiliência tecidual · 20% economia de corrida · 0% potência (desaconselhada)\n` +
+    `  Básico:    60% prevenção/reforço articular-tendinoso · 30% economia via adaptações neurais · 10% potência inicial\n` +
+    `  Médio:     45% economia e pico de força máxima · 35% prevenção e estabilidade pélvica/core · 20% potência e RFD\n` +
+    `  Avançado:  40% economia e recrutamento de UMs de limiar elevado · 40% potência, RFD e rigidez do tendão de Aquiles · 20% prevenção\n` +
+    `GRUPOS PRIORITÁRIOS: 1.º tricípite sural (solear+gémeos) · 2.º quadríceps · 3.º isquiotibiais+glúteo máximo · 4.º glúteo médio/mínimo (estabilização pélvica). Secundários: core/eretores, flexores da anca, tibial anterior.\n` +
+    `SÉRIES/SEMANA por grupo (membros inferiores, séries de trabalho efetivas RIR 2-3):\n` +
+    `  Iniciante: desenvolvimento 4-6 · manutenção 2-3 (-50%)\n` +
+    `  Básico:    desenvolvimento 6-8 · manutenção 3-4 (-50%)\n` +
+    `  Médio:     desenvolvimento 8-10 · manutenção 3-5 (-50-60% nas últimas 4-6 sem pré-prova)\n` +
+    `  Avançado:  desenvolvimento 8-12 (≥80% 1RM) · manutenção 4-6 (-50-60%, mantendo a carga em kg)\n` +
+    `FAIXAS DE REPETIÇÕES:\n` +
+    `  Força máxima/adaptação neural: 1-5 reps (≥85% 1RM), descanso 2-5 min — PREFERIDA para corredor.\n` +
+    `  Hipertrofia: 6-12 reps (65-80% 1RM), descanso 60-90 s — aceitável.\n` +
+    `  Resistência muscular local (15+ reps): DESACONSELHADA para corredor — essa qualidade já é desenvolvida pela corrida. Se detetares séries ≥15 reps no contexto, sinalizar (⚠ SÉRIES LONGAS PERNAS).\n` +
+    `PROGRESSÃO DE CARGA por nível:\n` +
+    `  Iniciante: +2,5-5,0 kg a cada 1-2 sem · critério: completar topo das reps em todas as séries com RPE ≤7.\n` +
+    `  Básico:    +2,5-5,0 kg a cada 2-3 sem · critério: +2 reps além do alvo na última série, em 2 treinos consecutivos.\n` +
+    `  Médio:     +1,25-2,5 kg a cada 3-4 sem ou na transição de bloco · critério: manter RIR 2 sem degradar velocidade concêntrica.\n` +
+    `  Avançado:  +1,0-2,5 kg a cada 4-6 sem, periodização ondulatória · critério: perda de velocidade intrassérie <10-15%.\n` +
+    `VOLUME-CARGA SPIKE (#6): >10-15% de aumento do Σ(séries×reps×kg) face à média móvel das 4 semanas = risco acrescido; >20% = risco elevado de lesão miotendinosa. O contexto pode conter alertas ⚠ VOLUME-CARGA PERNAS.\n` +
+    `INTERVALO ENTRE SESSÕES (#7): 48-72 h entre sessões do mesmo grupo de membros inferiores. Baixo volume (2-4 séries): 48 h; alto volume (6-10 séries): 72 h. O contexto pode conter alertas ⚠ INTERVALO PERNAS.\n` +
+    `TREINO ATÉ À FALHA (#11): 0% das séries de pernas para corredor em ciclo ativo. Todas as séries de pernas: RIR 2-4 (RPE 6-8). Falha (RIR 0) só em ≤5% das séries secundárias de superiores/core.\n` +
+    `  Custo da falha: recuperação neuromuscular 72-96 h (vs. 48 h), CK +30-50%, glicogénio local esgotado, economia de corrida reduzida 3-4 dias.\n` +
+    `INTERFERÊNCIA CORRIDA+GINÁSIO (#4 — prescritivo, ao propor plano):\n` +
+    `  Corrida de qualidade + ginásio de pernas NO MESMO DIA: só se corrida PRIMEIRO (manhã), ginásio ao final (noite), separados por ≥6-9 h.\n` +
+    `  Ginásio de pernas PRIMEIRO: aguardar ≥24 h até qualquer corrida de qualidade (Z3+) ou treino longo.\n` +
+    `  Ao propor um microciclo, nunca colocar corrida de qualidade e ginásio de pernas em conflito — ou separa os dias, ou agenda a corrida de manhã e o ginásio ao final com nota explícita.\n` +
+    `PLIOMETRIA por nível (contactos do pé com o solo):\n` +
+    `  Iniciante: desaconselhada. Baixo impacto (skipping, corda) só após ≥12 sem de força de base.\n` +
+    `  Básico:    40-60 contactos/sessão, 1×/sem · pré-req: ≥6 meses de força + agachamento estável.\n` +
+    `  Médio:     60-80 contactos/sessão, 1-2×/sem · pré-req: ≥1 ano de força + agachamento ≥1,2-1,5× peso corporal.\n` +
+    `  Avançado:  80-120 contactos/sessão, 1-2×/sem · pré-req: ≥2 anos de força pesada + agachamento ≥1,5-1,8× peso corporal.\n` +
+    `VOLUME DE MANUTENÇÃO em bloco de prova/taper:\n` +
+    `  Iniciante: 1 sessão/sem, 20-30 min, 2-3 séries/grupo.\n` +
+    `  Básico:    1 sessão/sem, 30 min, 2-3 séries/grupo, mantendo a carga em kg.\n` +
+    `  Médio:     1-2 sessões/sem, 20-30 min, 3-4 séries/grupo (33%), velocidade máxima concêntrica, ≥80% 1RM.\n` +
+    `  Avançado:  1-2 sessões/sem, 20 min, 3-4 séries/grupo (30-40%), 1-5 reps ≥85% 1RM (eliminar fadiga metabólica).\n` +
+    `  Regra: corta-se SÉRIES e REPS, nunca a carga (kg ou %1RM).\n\n` +
     // ── Doutrina Bloco 2.1 — Carga e progressão ─────────────────────────────
     `CARGA E PROGRESSÃO DE CORRIDA (Bloco 2.1 — Daniels 2021, Pfitzinger 2014, Gabbett 2016):\n` +
     `Teto de aumento semanal de volume por nível (percentual OU absoluto — usar o mais restritivo):\n` +
@@ -1497,6 +1632,7 @@ export function buildSystemInstruction(
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;
   if (gymSummary) sys += `\n\n${gymSummary}`;
+  if (gymMetricsLine) sys += `\n${gymMetricsLine}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
   if (acwrLine) sys += `\n${acwrLine}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
@@ -1628,6 +1764,8 @@ async function handler(req: Request): Promise<Response> {
       .lte("date", todayISO)
       .order("date", { ascending: false });
     const gymSummary = buildGymSummary(gymSessions || [], GYM_WINDOW_DAYS);
+    const gymRows = summariseSessions(gymSessions || []);
+    const gymMetricsLine = computeGymMetrics(gymRows, todayISO);
 
     // ── Corridas dos últimos 30 dias ──────────────────────────────────────
     const RUNNING_WINDOW_DAYS = 30;
@@ -1764,6 +1902,7 @@ async function handler(req: Request): Promise<Response> {
       nutritionSummary,
       waterSummary,
       gymSummary,
+      gymMetricsLine,
       runningSummary,
       acwrLine,
       raceEventsContext,

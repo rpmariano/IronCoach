@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -396,7 +396,7 @@ function sysCom(restrictions: string[] | null, notes: string | null): string {
   return buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: restrictions, dietary_notes: notes },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null,
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
 }
 
@@ -641,7 +641,7 @@ Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com 
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
-    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null,
+    "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "autorizou-te a escrever metas");
   assertStringIncludes(sys, "Queres que atualize agora");
@@ -991,4 +991,167 @@ Deno.test("o prompt proíbe recomendar 180 spm como universal (Bloco 2.4 #1)", (
   const sys = sysCom(null, null);
   assertStringIncludes(sys, "NÃO recomendar 180 spm como alvo universal");
   assertStringIncludes(sys, "155 spm");
+});
+
+// ─── Bloco 3 — computeGymMetrics ─────────────────────────────────────────────
+
+const TODAY_GYM = "2026-08-11";
+
+// Cria um GymSessionSummary mínimo com os campos necessários para os testes.
+// deno-lint-ignore no-explicit-any
+function makeGymRow(daysAgo: number, cats: string[], volume: number, highRepSets = 0): any {
+  const d = new Date("2026-08-11T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return {
+    date: d.toISOString().slice(0, 10),
+    name: "Treino",
+    kind: "forca",
+    categories: cats,
+    volume,
+    sets: 4,
+    highRepSets,
+    durationSeconds: null,
+    calories: null,
+    avgHr: null,
+    maxHr: null,
+    exertion: null,
+  };
+}
+
+Deno.test("computeGymMetrics devolve null sem sessões", () => {
+  assertEquals(computeGymMetrics([], TODAY_GYM), null);
+});
+
+Deno.test("computeGymMetrics devolve null sem sessões de pernas", () => {
+  const rows = [makeGymRow(2, ["Peito", "Costas"], 3000)];
+  assertEquals(computeGymMetrics(rows, TODAY_GYM), null);
+});
+
+Deno.test("computeGymMetrics deteta spike de volume-carga ≥20% (RISCO ELEVADO)", () => {
+  // crónica: 1000 kg/sem nas 4 semanas anteriores; semana atual: 1300 kg (+30%)
+  const rows = [
+    // 4 semanas anteriores (dias 8-35)
+    makeGymRow(10, ["Pernas"], 1000),
+    makeGymRow(17, ["Pernas"], 1000),
+    makeGymRow(24, ["Pernas"], 1000),
+    makeGymRow(31, ["Pernas"], 1000),
+    // semana atual (últimos 7 dias)
+    makeGymRow(3,  ["Pernas"], 1300),
+  ];
+  const result = computeGymMetrics(rows, TODAY_GYM);
+  assertStringIncludes(result!, "RISCO ELEVADO");
+  assertStringIncludes(result!, "VOLUME-CARGA PERNAS");
+});
+
+Deno.test("computeGymMetrics deteta spike de volume-carga 10-19% (risco acrescido)", () => {
+  // crónica: 1000 kg/sem; semana atual: 1120 kg (+12%)
+  const rows = [
+    makeGymRow(10, ["Pernas"], 1000),
+    makeGymRow(17, ["Pernas"], 1000),
+    makeGymRow(24, ["Pernas"], 1000),
+    makeGymRow(31, ["Pernas"], 1000),
+    makeGymRow(3,  ["Pernas"], 1120),
+  ];
+  const result = computeGymMetrics(rows, TODAY_GYM);
+  assertStringIncludes(result!, "risco acrescido");
+});
+
+Deno.test("computeGymMetrics não sinaliza quando o aumento está dentro dos limites", () => {
+  // crónica: 1000 kg/sem; semana atual: 1080 kg (+8%) — abaixo dos 10%
+  const rows = [
+    makeGymRow(10, ["Pernas"], 1000),
+    makeGymRow(17, ["Pernas"], 1000),
+    makeGymRow(24, ["Pernas"], 1000),
+    makeGymRow(31, ["Pernas"], 1000),
+    makeGymRow(3,  ["Pernas"], 1080),
+  ];
+  assertEquals(computeGymMetrics(rows, TODAY_GYM), null);
+});
+
+Deno.test("computeGymMetrics deteta intervalo <48 h entre sessões de pernas", () => {
+  // duas sessões de Pernas com 1 dia de diferença (24 h < 48 h)
+  const rows = [
+    makeGymRow(1, ["Pernas"], 500),
+    makeGymRow(2, ["Pernas"], 500),
+  ];
+  const result = computeGymMetrics(rows, TODAY_GYM);
+  assertStringIncludes(result!, "INTERVALO PERNAS");
+  assertStringIncludes(result!, "24 h");
+});
+
+Deno.test("computeGymMetrics não sinaliza intervalo ≥48 h entre sessões de pernas", () => {
+  // duas sessões separadas por 3 dias (72 h)
+  const rows = [
+    makeGymRow(1, ["Pernas"], 500),
+    makeGymRow(4, ["Pernas"], 500),
+  ];
+  assertEquals(computeGymMetrics(rows, TODAY_GYM), null);
+});
+
+Deno.test("computeGymMetrics deteta séries longas (≥15 reps) em sessões de pernas", () => {
+  const rows = [makeGymRow(3, ["Pernas"], 800, 3)]; // 3 séries com ≥15 reps
+  const result = computeGymMetrics(rows, TODAY_GYM);
+  assertStringIncludes(result!, "SÉRIES LONGAS PERNAS");
+  assertStringIncludes(result!, "3 série(s)");
+});
+
+Deno.test("computeGymMetrics não sinaliza séries longas em sessões de não-pernas", () => {
+  const rows = [makeGymRow(3, ["Peito"], 800, 5)];
+  assertEquals(computeGymMetrics(rows, TODAY_GYM), null);
+});
+
+Deno.test("computeGymMetrics não sinaliza séries longas antigas (>14 dias)", () => {
+  const rows = [makeGymRow(20, ["Pernas"], 800, 3)]; // 3 semanas atrás
+  assertEquals(computeGymMetrics(rows, TODAY_GYM), null);
+});
+
+Deno.test("summariseSessions conta highRepSets corretamente", () => {
+  const session = {
+    date: "2026-08-10", name: "Pernas", kind: "forca", categories: ["Pernas"],
+    duration_seconds: null, calories_kcal: null, avg_hr: null, max_hr: null, exertion: null,
+    workout_session_sets: [
+      { reps: 8,  weight: 80 },  // OK
+      { reps: 15, weight: 40 },  // highRep
+      { reps: 20, weight: 30 },  // highRep
+      { reps: 5,  weight: 100 }, // OK
+    ],
+  };
+  const [row] = summariseSessions([session]);
+  assertEquals(row.highRepSets, 2);
+  assertEquals(row.sets, 4);
+});
+
+// ─── Bloco 3 — doutrina no system prompt ─────────────────────────────────────
+
+Deno.test("o prompt inclui doutrina de ginásio com grupos prioritários (Bloco 3 #3)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "GINÁSIO AO SERVIÇO DA CORRIDA");
+  assertStringIncludes(sys, "tricípite sural");
+  assertStringIncludes(sys, "glúteo médio");
+});
+
+Deno.test("o prompt inclui regra de faixas de repetições com aviso 15+ reps (Bloco 3 #10)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "15+ reps");
+  assertStringIncludes(sys, "DESACONSELHADA para corredor");
+});
+
+Deno.test("o prompt inclui regra de interferência corrida+ginásio prescritiva (Bloco 3 #4)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "INTERFERÊNCIA CORRIDA+GINÁSIO");
+  assertStringIncludes(sys, "≥24 h");
+  assertStringIncludes(sys, "≥6-9 h");
+});
+
+Deno.test("o prompt inclui volume de manutenção em bloco de prova (Bloco 3 #8)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "VOLUME DE MANUTENÇÃO");
+  assertStringIncludes(sys, "corta-se SÉRIES e REPS, nunca a carga");
+});
+
+Deno.test("o prompt inclui treino até à falha com custo de recuperação (Bloco 3 #11)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "TREINO ATÉ À FALHA");
+  assertStringIncludes(sys, "RIR 2-4");
+  assertStringIncludes(sys, "72-96 h");
 });
