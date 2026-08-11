@@ -146,6 +146,19 @@ export default function Perfil() {
     try {
       const updates = {};
       for (const key of dirtyKeys.current) updates[key] = draft[key];
+
+      /* resting_hr_bpm: o check constraint do Postgres aceita NULL ou 25-120.
+         Durante a digitação o utilizador pode ter um inteiro intermédio fora
+         desse range (ex: escreve "5" antes de completar "52"). Se for o caso,
+         descarta silenciosamente em vez de deixar o Postgres rejeitar tudo. */
+      if ('resting_hr_bpm' in updates) {
+        const hr = updates.resting_hr_bpm;
+        if (hr !== null && (hr < 25 || hr > 120 || isNaN(hr))) {
+          delete updates.resting_hr_bpm;
+          dirtyKeys.current.delete('resting_hr_bpm');
+        }
+      }
+
       /* Ativar agora começa a contagem a partir deste momento, não do último
          registo antigo, e limpa um "silenciar resto do dia" que não deve
          sobreviver a reativar. */
@@ -452,7 +465,6 @@ export default function Perfil() {
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
                   className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
-                  style={{ color: '#fff' }}
                 />
                 <p className="text-[10px] text-slate-600 mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
