@@ -237,3 +237,60 @@ describe('Perfil — metas escritas pelo Coach', () => {
     expect(mocks.updates[0]).not.toHaveProperty('protein_goal_set_by_coach');
   });
 });
+
+// ─── FC em repouso — validação pré-save ──────────────────────────────────────
+// Bug corrigido: parseInt durante a digitação produzia valores intermédios
+// (ex: "5" ao escrever "52") que violavam o CHECK constraint do Postgres
+// (25-120 bpm) e devolviam erro 400. Correção: descartar silenciosamente no
+// handleSave sem bloquear outros campos.
+//
+// Nota: quando o único campo sujo é descartado, o handleSave retorna cedo
+// (updates vazio, isDirty → false) sem chamar o Supabase. O teste verifica
+// que o botão "Guardar" desaparece (isDirty=false) sem erro, confirmando que
+// o discard foi silencioso e não ficou em loop nem lançou alerta.
+describe('Perfil — FC em repouso (resting_hr_bpm)', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: { ...PROFILE, resting_hr_bpm: 52 },
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+    });
+  });
+
+  it('um valor fora do intervalo (5) é descartado silenciosamente — save completa sem erro', async () => {
+    render(<Perfil />);
+    // A tab Pessoal é a default — o input resting_hr_bpm já está visível.
+    fireEvent.change(screen.getByDisplayValue('52'), { target: { value: '5' } });
+    const saveBtn = screen.getByRole('button', { name: /Guardar altera/ });
+    // Botão está ativo porque isDirty=true.
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+
+    // O save completa: isDirty→false → botão fica desativado (sempre no DOM mas disabled).
+    // Se houvesse erro (alert), isDirty ficaria true e o botão mantinha-se ativo.
+    await waitFor(() => expect(saveBtn).toBeDisabled());
+    // Nenhuma chamada ao Supabase — updates era vazio após descartar o campo.
+    expect(mocks.updates.length).toBe(0);
+  });
+
+  it('um valor dentro do intervalo (58) é gravado normalmente', async () => {
+    render(<Perfil />);
+    fireEvent.change(screen.getByDisplayValue('52'), { target: { value: '58' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({ resting_hr_bpm: 58 });
+  });
+
+  it('um valor muito alto (200) também é descartado silenciosamente', async () => {
+    render(<Perfil />);
+    fireEvent.change(screen.getByDisplayValue('52'), { target: { value: '200' } });
+    const saveBtn = screen.getByRole('button', { name: /Guardar altera/ });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => expect(saveBtn).toBeDisabled());
+    expect(mocks.updates.length).toBe(0);
+  });
+});

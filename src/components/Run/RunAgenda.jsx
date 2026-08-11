@@ -394,9 +394,16 @@ export default function RunAgenda() {
                   {experienceLevelLabel(ev.experience_level)}
                 </span>
               )}
-              {/* Só quando não é a principal — o caso comum não precisa de etiqueta. */}
-              {ev.race_priority && ev.race_priority !== 'a' && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
+              {/* Pílula de prioridade A/B/C — cor diferente por nível. */}
+              {ev.race_priority && (
+                <span className={[
+                  'text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                  ev.race_priority === 'a'
+                    ? 'bg-amber-50 border-amber-300 text-amber-700'
+                    : ev.race_priority === 'b'
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-slate-50 border-slate-300 text-slate-500',
+                ].join(' ')}>
                   {racePriorityLabel(ev.race_priority)}
                 </span>
               )}
