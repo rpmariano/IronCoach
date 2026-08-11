@@ -915,24 +915,44 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
 // evita propor um plano por cima de outro que o atleta ainda não aceitou nem
 // recusou, e dá-lhe memória do que combinou. Ver specs/plano-de-treino.md.
 // deno-lint-ignore no-explicit-any
-function buildPlanContext(items: any[], todayISO: string): string | null {
-  if (!items || items.length === 0) return null;
-  const lines = items.map((i) => {
-    const desc = i.kind === "corrida"
-      ? [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
-        .filter(Boolean).join(" ")
-      : i.kind === "descanso"
-      ? "descanso"
-      : ["ginásio", i.categories?.length ? i.categories.join("/") : null,
-        i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
-    // Um dia de descanso nunca está "em atraso" — não há nada para concluir.
-    const atraso = i.kind !== "descanso" && i.planned_date < todayISO
-      ? " — JÁ PASSOU, por resolver"
-      : "";
-    const refeicao = i.meal_suggestion ? ` [sugestão alimentar já dada: ${i.meal_suggestion}]` : "";
-    return `- ${i.planned_date}: ${desc}${i.notes ? ` (${i.notes})` : ""}${refeicao}${atraso}`;
-  });
-  return `Treinos que já propuseste e continuam por fazer ou cancelar:\n${lines.join("\n")}`;
+// deno-lint-ignore no-explicit-any
+function describeItem(i: any): string {
+  if (i.kind === "corrida") {
+    return [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
+      .filter(Boolean).join(" ");
+  }
+  if (i.kind === "descanso") return "descanso";
+  return ["ginásio", i.categories?.length ? i.categories.join("/") : null,
+    i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
+}
+
+// deno-lint-ignore no-explicit-any
+export function buildPlanContext(pendingItems: any[], activeItems: any[], todayISO: string): string | null {
+  const sections: string[] = [];
+
+  // Plano PROPOSTO (aguarda aceitação do atleta)
+  if (pendingItems.length > 0) {
+    const lines = pendingItems.map((i) => {
+      const atraso = i.kind !== "descanso" && i.planned_date < todayISO ? " — JÁ PASSOU" : "";
+      const refeicao = i.meal_suggestion ? ` [sugestão alimentar: ${i.meal_suggestion}]` : "";
+      return `  - ${i.planned_date}: ${describeItem(i)}${i.notes ? ` (${i.notes})` : ""}${refeicao}${atraso}`;
+    });
+    sections.push(`PLANO PROPOSTO (aguarda aceitação do atleta — não propões outro sem ele decidir):\n${lines.join("\n")}`);
+  }
+
+  // Plano ACEITE em curso (itens futuros ou de hoje ainda pendentes)
+  if (activeItems.length > 0) {
+    const lines = activeItems.map((i) => {
+      const refeicao = i.meal_suggestion ? ` [sugestão alimentar: ${i.meal_suggestion}]` : "";
+      return `  - ${i.planned_date}: ${describeItem(i)}${i.notes ? ` (${i.notes})` : ""}${refeicao}`;
+    });
+    sections.push(
+      `PLANO ACEITE EM CURSO (microciclo ativo — NÃO propões plano novo a não ser que o atleta ` +
+      `refira explicitamente um dos sinais de interrupção abaixo):\n${lines.join("\n")}`
+    );
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : null;
 }
 
 // Espelha ageFromBirthDate() em src/utils/body.js — duplicado porque o cliente
@@ -1038,6 +1058,19 @@ export function buildSystemInstruction(
     `proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
+    `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
+    `explicitamente um dos seguintes sinais de interrupção:\n` +
+    `  • Dor com EVA ≥ 4/10 (ex.: "a minha perna dói muito", "tenho dores fortes")\n` +
+    `  • FC de repouso subiu ≥ 5 bpm face ao normal por 2 ou mais dias seguidos\n` +
+    `  • HRV significativamente abaixo da linha de base\n` +
+    `  • Mudança imprevista de agenda que torna o plano impraticável (viagem, doença, emergência)\n` +
+    `Se detetares um desses sinais, dizes ao atleta que o sinal sugere interromper o microciclo, ` +
+    `explicas brevemente porquê (ex.: "uma FC de repouso elevada durante dias é um dos primeiros ` +
+    `sinais de sobretreino — continuar sem adaptar aumenta o risco"), e perguntas se quer um ` +
+    `plano ajustado. Se não houver sinal claro mas o atleta pedir mesmo assim um novo plano, ` +
+    `lembras-lhe que o microciclo atual tem ainda X dias e que interrompê-lo sem motivo ` +
+    `fisiológico reduz as adaptações — e deixas a decisão ao atleta.\n\n` +
     `DURAÇÃO DO PLANO (doutrina Issurin 2008, Daniels 2021, Bompa 2015): a janela ideal de ` +
     `um microciclo é 7-14 dias. Adaptações estruturais (biogénese mitocondrial, densidade ` +
     `capilar, síntese de hemoglobina) exigem estímulo consistente por 14-21 dias; mudar a ` +
@@ -1329,17 +1362,55 @@ async function handler(req: Request): Promise<Response> {
       .limit(5);
     const raceEventsContext = buildRaceEventsContext(upcomingRaces || [], todayISO);
 
-    // ── Treinos do plano por resolver ────────────────────────────────────
-    // Só os 'pendente' — itens concluídos já aparecem no histórico de
-    // corridas/treinos, e cancelados não interessam ao coach.
-    const { data: pendingPlanItems } = await sb
-      .from("coach_plan_items")
-      .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
+    // ── Treinos do plano ────────────────────────────────────────────────
+    // Plano PROPOSTO: existe um plano com status='proposto' e os seus itens.
+    // O atleta ainda não aceitou — não devemos propor outro por cima.
+    const { data: proposedPlans } = await sb
+      .from("coach_plans")
+      .select("id")
       .eq("user_id", userId)
-      .eq("status", "pendente")
-      .order("planned_date", { ascending: true })
-      .limit(20);
-    const planContext = buildPlanContext(pendingPlanItems || [], todayISO);
+      .eq("status", "proposto")
+      .limit(1);
+    const proposedPlanId = proposedPlans?.[0]?.id ?? null;
+    // deno-lint-ignore no-explicit-any
+    let proposedItems: any[] = [];
+    if (proposedPlanId) {
+      const { data } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
+        .eq("plan_id", proposedPlanId)
+        .eq("status", "pendente")
+        .order("planned_date", { ascending: true })
+        .limit(20);
+      proposedItems = data || [];
+    }
+
+    // Plano ACEITE em curso: microciclo que ainda tem dias futuros.
+    // O modelo precisa de saber que existe para não propor outro sem sinal claro.
+    const { data: activePlans } = await sb
+      .from("coach_plans")
+      .select("id, period_end")
+      .eq("user_id", userId)
+      .eq("status", "aceite")
+      .gte("period_end", todayISO)
+      .order("period_start", { ascending: false })
+      .limit(1);
+    const activePlanId = activePlans?.[0]?.id ?? null;
+    // deno-lint-ignore no-explicit-any
+    let activePlanItems: any[] = [];
+    if (activePlanId) {
+      const { data } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
+        .eq("plan_id", activePlanId)
+        .eq("status", "pendente")
+        .gte("planned_date", todayISO)
+        .order("planned_date", { ascending: true })
+        .limit(20);
+      activePlanItems = data || [];
+    }
+
+    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
     const { data: history } = await sb

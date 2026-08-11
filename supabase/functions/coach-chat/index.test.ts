@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, buildSystemInstruction } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, buildSystemInstruction, buildPlanContext } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -673,4 +673,53 @@ Deno.test("o prompt lembra o modelo de somar em vez de copiar ementas de exemplo
 Deno.test("a doutrina de nutrição reforça sugestão educativa, não prescrição", () => {
   const sys = sysCom(null, null);
   assertStringIncludes(sys, "SUGESTÃO EDUCATIVA");
+});
+
+// ─── buildPlanContext — plano activo ─────────────────────────────────────────
+
+const TODAY = "2026-08-11";
+
+// deno-lint-ignore no-explicit-any
+function makeItem(date: string, kind: string, extra: any = {}): any {
+  return { planned_date: date, kind, training_type: null, categories: null,
+    target_distance_km: null, target_duration_min: null, notes: null, meal_suggestion: null, ...extra };
+}
+
+Deno.test("sem itens em nenhum plano, devolve null", () => {
+  assertEquals(buildPlanContext([], [], TODAY), null);
+});
+
+Deno.test("plano proposto aparece com aviso de não propor outro", () => {
+  const ctx = buildPlanContext([makeItem("2026-08-12", "corrida")], [], TODAY);
+  assertStringIncludes(ctx!, "PLANO PROPOSTO");
+  assertStringIncludes(ctx!, "aguarda aceitação");
+});
+
+Deno.test("plano aceite em curso aparece com proibição de novo plano", () => {
+  const ctx = buildPlanContext([], [makeItem("2026-08-12", "ginasio")], TODAY);
+  assertStringIncludes(ctx!, "PLANO ACEITE EM CURSO");
+  assertStringIncludes(ctx!, "NÃO propões plano novo");
+});
+
+Deno.test("plano aceite e proposto ao mesmo tempo aparecem os dois", () => {
+  const ctx = buildPlanContext(
+    [makeItem("2026-08-15", "corrida")],
+    [makeItem("2026-08-12", "ginasio")],
+    TODAY,
+  );
+  assertStringIncludes(ctx!, "PLANO PROPOSTO");
+  assertStringIncludes(ctx!, "PLANO ACEITE EM CURSO");
+});
+
+Deno.test("item com meal_suggestion aparece no contexto", () => {
+  const ctx = buildPlanContext([], [makeItem("2026-08-12", "descanso", { meal_suggestion: "Salmão com arroz" })], TODAY);
+  assertStringIncludes(ctx!, "Salmão com arroz");
+});
+
+Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "EVA ≥ 4");
+  assertStringIncludes(sys, "FC de repouso");
+  assertStringIncludes(sys, "HRV");
+  assertStringIncludes(sys, "Mudança imprevista de agenda");
 });
