@@ -51,7 +51,7 @@
 .nrc-days-lbl { font-size: 0.65rem; font-weight: 800; color: #78350f; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
 
 @media (max-width: 480px) {
-  .nrc-card {
+  .next-race-card {
     padding: 16px;
     gap: 12px;
   }

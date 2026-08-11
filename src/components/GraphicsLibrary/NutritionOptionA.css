@@ -185,10 +185,4 @@
   .nutri-nrc-days {
     font-size: 1.8rem !important;
   }
-  .nutri-nrc-actions {
-    flex-wrap: wrap;
-  }
-  .nutri-nrc-btn {
-    min-width: 100px;
-  }
 }
