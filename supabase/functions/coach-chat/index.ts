@@ -957,6 +957,54 @@ const RACE_PRIORITY_LABELS: Record<string, string> = {
   c: "prova de treino (taper curto, 2-4 dias)",
 };
 
+// ─── Bloco 1 — Objetivo e viabilidade ───────────────────────────────────────
+// Espelha src/utils/raceViability.js (duplicado por necessidade: as Edge
+// Functions não têm acesso a src/). Alterações aqui devem ser espelhadas lá.
+// Fontes: Daniels' Running Formula 4th Ed (2021), Pfitzinger, Higdon, Koop.
+
+// Semanas mínimas de preparação por nível × distância (limite INFERIOR da faixa).
+const VIAB_MIN_WEEKS: Record<string, Record<string, number | null>> = {
+  iniciante: { "5k":  6, "10k": 10, "meia": 16, "maratona": 24, "ultra": null },
+  basico:    { "5k":  6, "10k":  8, "meia": 12, "maratona": 18, "ultra":   24 },
+  medio:     { "5k":  4, "10k":  6, "meia": 10, "maratona": 14, "ultra":   18 },
+  avancado:  { "5k":  4, "10k":  4, "meia":  8, "maratona": 12, "ultra":   14 },
+};
+
+// Volume semanal pré-requisito por nível × distância (km/semana, limite inferior).
+const VIAB_MIN_VOL: Record<string, Record<string, number>> = {
+  iniciante: { "5k": 10, "10k": 15, "meia": 25, "maratona": 35, "ultra": 45 },
+  basico:    { "5k": 15, "10k": 25, "meia": 35, "maratona": 45, "ultra": 55 },
+  medio:     { "5k": 25, "10k": 35, "meia": 45, "maratona": 60, "ultra": 70 },
+  avancado:  { "5k": 35, "10k": 45, "meia": 60, "maratona": 75, "ultra": 90 },
+};
+
+function viabCatDist(km: number | null): string | null {
+  if (!km) return null;
+  if (km <=  5.5) return "5k";
+  if (km <= 11.0) return "10k";
+  if (km <= 22.5) return "meia";
+  if (km <= 50.0) return "maratona";
+  return "ultra";
+}
+
+function assessViability(
+  distanceKm: number | null,
+  level: string | null,
+  weeksToRace: number,
+  weeklyVolumeKm: number | null,
+): string[] {
+  const flags: string[] = [];
+  if (weeksToRace <= 0) return flags;
+  const cat = viabCatDist(distanceKm);
+  if (!cat || !level || !VIAB_MIN_WEEKS[level]) return flags;
+  if (cat === "ultra" && level === "iniciante") flags.push("ultra_para_iniciante");
+  const minW = VIAB_MIN_WEEKS[level][cat];
+  if (minW != null && weeksToRace < minW) flags.push("tempo_insuficiente");
+  const minV = VIAB_MIN_VOL[level][cat];
+  if (minV != null && weeklyVolumeKm != null && weeklyVolumeKm < minV) flags.push("volume_insuficiente");
+  return flags;
+}
+
 // Doutrina de nutrição condensada — ver src/coach-knowledge/07-sugestoes-alimentares.md
 // (fonte: specs/coach-investigacao.md, Bloco 7). Antes desta constante, o
 // campo meal_suggestion do propose_training_plan e qualquer sugestão de
@@ -1015,12 +1063,18 @@ function formatHms(totalSeconds: number): string {
 // Inclui explicitamente "dias até à prova" para o modelo não ter de calcular
 // datas por conta própria.
 // deno-lint-ignore no-explicit-any
-function buildRaceEventsContext(events: any[], todayISO: string): string | null {
+function buildRaceEventsContext(
+  events: any[],
+  todayISO: string,
+  weeklyVolumeKm: number | null,
+  profileLevel: string | null,
+): string | null {
   if (events.length === 0) return null;
   const today = new Date(todayISO + "T00:00:00Z");
   const lines = events.map((e) => {
     const eventDate = new Date(e.date + "T00:00:00Z");
     const daysUntil = Math.round((eventDate.getTime() - today.getTime()) / 86400000);
+    const weeksUntil = Math.floor(daysUntil / 7);
     const typeLabel = RACE_TYPE_LABELS[e.race_type] || e.race_type;
     // Ritmo e tempo-alvo são objetivos distintos e vêm em colunas próprias.
     // `target_time` (texto livre) só entra como último recurso, para provas
@@ -1030,6 +1084,7 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
       : (e.distance_km && e.target_time_seconds
         ? formatPaceMinKm(Math.round(e.target_time_seconds / e.distance_km))
         : null);
+    const effectiveLevel = e.experience_level || profileLevel;
     const extras = [
       e.location ? `local: ${e.location}` : null,
       e.distance_km ? `distância: ${e.distance_km} km` : null,
@@ -1049,7 +1104,18 @@ function buildRaceEventsContext(events: any[], todayISO: string): string | null 
         ? `prioridade: ${RACE_PRIORITY_LABELS[e.race_priority] || e.race_priority}`
         : null,
     ].filter(Boolean).join(", ");
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}`;
+    // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel)
+    const viabFlags = daysUntil > 0
+      ? assessViability(e.distance_km ?? null, effectiveLevel, weeksUntil, weeklyVolumeKm)
+      : [];
+    const viabLines = viabFlags.map((f) => {
+      if (f === "ultra_para_iniciante") return "⚠ OBJETIVO_INVIAVEL: ultra desaconselhado para iniciante";
+      if (f === "tempo_insuficiente")   return `⚠ OBJETIVO_INVIAVEL: tempo insuficiente (${weeksUntil} sem. disponíveis)`;
+      if (f === "volume_insuficiente")  return `⚠ OBJETIVO_INVIAVEL: volume insuficiente (média ${weeklyVolumeKm} km/sem)`;
+      return `⚠ OBJETIVO_INVIAVEL: ${f}`;
+    });
+    const viabSuffix = viabLines.length > 0 ? `\n  ${viabLines.join("\n  ")}` : "";
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
@@ -1503,7 +1569,20 @@ async function handler(req: Request): Promise<Response> {
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
       .limit(5);
-    const raceEventsContext = buildRaceEventsContext(upcomingRaces || [], todayISO);
+    // Volume médio semanal das últimas 4 semanas — usado pelo Bloco 1 para
+    // avaliar a viabilidade do objetivo (flag volume_insuficiente).
+    const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
+    const cutoff4wMs = new Date(todayISO + "T00:00:00Z").getTime() - 4 * 7 * 86400000;
+    const vol4w = runs4w
+      .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= cutoff4wMs)
+      .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+    const weeklyVolumeKm = runs4w.length > 0 ? Math.round((vol4w / 4) * 10) / 10 : null;
+    const raceEventsContext = buildRaceEventsContext(
+      upcomingRaces || [],
+      todayISO,
+      weeklyVolumeKm,
+      (profile?.experience_level as string | null) ?? null,
+    );
 
     // ── Treinos do plano ────────────────────────────────────────────────
     // Plano PROPOSTO: existe um plano com status='proposto' e os seus itens.

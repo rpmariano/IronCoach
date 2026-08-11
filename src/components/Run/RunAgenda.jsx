@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon } from 'lucide-react';
+import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase } from '../../lib/supabase';
@@ -18,6 +18,7 @@ import {
 } from '../../utils/run';
 import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
+import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 
 function todayISO() {
   const d = new Date();
@@ -52,7 +53,10 @@ const EMPTY_DRAFT = {
 };
 
 export default function RunAgenda() {
-  const { raceEvents, profile, setRaceEvents, setNavGuard } = useAppStore();
+  const { raceEvents, profile, runs, setRaceEvents, setNavGuard } = useAppStore();
+
+  // Volume médio semanal das últimas 4 semanas — base da flag volume_insuficiente.
+  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayISO()), [runs]);
   const [editingEventId, setEditingEventId] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -374,6 +378,25 @@ export default function RunAgenda() {
     const isPast = ev.date < todayIso;
     const done = ev.status === 'concluida';
 
+    // Viabilidade do objetivo — Bloco 1 da doutrina do Coach.
+    // Só avalia provas futuras não concluídas; usa o nível declarado para ESTA
+    // prova se existir, senão cai para o nível geral do perfil.
+    const weeksToRace = Math.floor(
+      (new Date(ev.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
+    );
+    const viability = !done ? assessRaceViability({
+      distanceKm: ev.distance_km,
+      experienceLevel: ev.experience_level || profile?.experience_level,
+      weeksToRace,
+      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    }) : { flags: [], isViable: true };
+
+    const FLAG_LABELS = {
+      ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
+      tempo_insuficiente:   `Tempo insuficiente — faltam ${weeksToRace} sem.`,
+      volume_insuficiente:  `Volume insuficiente — média ${weeklyVol} km/sem`,
+    };
+
     return (
       <div key={ev.id} className={`card rounded-2xl p-4 ${done ? 'opacity-60' : ''}`}>
         <div className="flex items-start justify-between gap-3">
@@ -413,6 +436,17 @@ export default function RunAgenda() {
               {isPast && !done ? ' · já passou' : ''}
               {ev.location ? ` · ${ev.location}` : ''}
             </p>
+            {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
+            {viability.flags.length > 0 && (
+              <div className="mt-1.5 flex flex-col gap-0.5">
+                {viability.flags.map(flag => (
+                  <p key={flag} className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'var(--color-warn)' }}>
+                    <AlertTriangle size={10} />
+                    {FLAG_LABELS[flag] || flag}
+                  </p>
+                ))}
+              </div>
+            )}
             {ev.elevation_gain_m != null && <p className="text-[11px] text-slate-500 mt-0.5">D+: {ev.elevation_gain_m} m</p>}
             {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
             {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}

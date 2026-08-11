@@ -48,7 +48,7 @@ modelo de duas formas:
 | Bloco | Wired em código? |
 |---|---|
 | 0 — Níveis | ✅ `src/utils/experience.js`, `ExperienceLevelHelp.jsx`, `coach-chat` (bio) |
-| 1 — Objetivo/viabilidade | ⚠️ Não wired — `objetivo_inviavel` ainda não existe como flag calculada |
+| 1 — Objetivo/viabilidade | ✅ `src/utils/raceViability.js` (32 testes); `RunAgenda.jsx` mostra ⚠ por prova; `coach-chat` inclui flags `OBJETIVO_INVIAVEL` no contexto de provas; duplicado em TypeScript em `coach-chat/index.ts` (sem acesso a `src/`) |
 | 2.1/2.2 — Carga, intensidade | ⚠️ Parcial — zonas de FC e taper estão no `coach-chat` como texto de prompt; ACWR não é calculado |
 | 2.3 — Prova | ✅ Taper por prioridade (`race_priority`) no `coach-chat` |
 | 2.4 — Técnica/sinais | ❌ Não wired |
