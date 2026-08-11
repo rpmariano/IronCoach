@@ -145,6 +145,10 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
                       <Award size={14} /> Sugestão alimentar
                     </div>
                     <p className="wpc-info-box-text">{item.meal_suggestion}</p>
+                    <p className="wpc-info-box-disclaimer">
+                      Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
+                      dúvida clínica, fala com um nutricionista.
+                    </p>
                   </div>
                 )}
 
