@@ -81,8 +81,6 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
 
   return (
     <div className={`wpc-day-card ${isToday ? 'is-today' : ''} ${empty ? 'is-empty' : ''}`}>
-      {!empty && <div className={`wpc-day-glow ${kindClass}`}></div>}
-      
       <div className="wpc-day-content">
         <div className="wpc-day-header" onClick={toggle}>
           <div className="wpc-day-left">
