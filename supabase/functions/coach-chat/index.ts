@@ -171,34 +171,37 @@ const PROPOSE_PLAN_TOOL = {
   },
 };
 
-// Escreve metas ESTÁVEIS de nutrição (proteína, gordura) diretamente no
-// perfil — DECISÃO N1, camada 1 (specs/coach-investigacao.md). Nunca
-// calorias nem hidratos: essas são metas VARIÁVEIS (camada 2), mudam com o
-// treino do dia e vivem na análise, não numa coluna fixa — escrevê-las aqui
-// contrariaria a própria decisão que motivou esta ferramenta.
+// Escreve objetivos do atleta diretamente no perfil — macronutrientes, água e
+// objetivos corporais. A autorização (profiles.coach_can_set_nutrition_goals)
+// é verificada no EXECUTOR (runUpdateGoals), não aqui — a ferramenta fica
+// sempre visível ao modelo, mas recusa escrever sem o interruptor ligado.
 //
-// A autorização (profiles.coach_can_set_nutrition_goals) é verificada no
-// EXECUTOR (runUpdateNutritionGoals), não aqui — a ferramenta fica sempre
-// visível ao modelo, mas recusa escrever sem o interruptor ligado, e diz ao
-// modelo para orientar o atleta a ativá-lo no Perfil.
+// FLUXO OBRIGATÓRIO: o modelo NÃO deve chamar esta ferramenta por iniciativa
+// própria. Deve primeiro PROPOR o valor em texto, perguntar "Queres que
+// atualize?", e só chamar a ferramenta quando o atleta confirmar. Ver prompt.
 const UPDATE_GOALS_TOOL = {
-  name: "update_nutrition_goals",
+  name: "update_goals",
   description:
-    "Escreve a meta diária de PROTEÍNA e/ou GORDURA (em gramas) diretamente no perfil do " +
-    "atleta. Usa só quando o atleta pedir explicitamente para o Coach ajustar estes valores " +
-    "(ex.: \"define a minha proteína\", \"ajusta a gordura ao meu novo peso\"), nunca por " +
-    "iniciativa própria. NUNCA uses para calorias ou hidratos — essas metas variam por dia " +
-    "consoante o treino e não se escrevem aqui; fala delas só na resposta em texto. Requer " +
-    "que o atleta tenha ativado a autorização no Perfil — se a ferramenta devolver erro de " +
-    "autorização, diz ao atleta onde a ativar, não repitas a chamada.",
+    "Escreve objetivos do atleta (macronutrientes, água, corpo) diretamente no perfil. " +
+    "NUNCA chames esta ferramenta sem o atleta ter confirmado explicitamente na conversa. " +
+    "O fluxo correto é: (1) propõe o valor em texto, (2) pergunta 'Queres que atualize?', " +
+    "(3) só chamas a ferramenta depois de o atleta dizer que sim. Requer que o atleta tenha " +
+    "ativado 'O Coach pode ajustar as metas' no Perfil — se devolver erro de autorização, " +
+    "diz onde ativar e não repitas a chamada.",
   parameters: {
     type: "OBJECT",
     properties: {
-      protein_goal: { type: "NUMBER", description: "Nova meta diária de proteína, em gramas. Omite se não for para mudar." },
-      fat_goal: { type: "NUMBER", description: "Nova meta diária de gordura, em gramas. Omite se não for para mudar." },
+      calorie_goal:      { type: "NUMBER", description: "Meta diária de calorias (kcal). Omite se não mudar." },
+      protein_goal:      { type: "NUMBER", description: "Meta diária de proteína (g). Omite se não mudar." },
+      carbs_goal:        { type: "NUMBER", description: "Meta diária de hidratos de carbono (g). Omite se não mudar." },
+      fat_goal:          { type: "NUMBER", description: "Meta diária de gordura (g). Omite se não mudar." },
+      water_goal_ml:     { type: "NUMBER", description: "Meta diária de água (ml). Omite se não mudar." },
+      goal_weight_kg:    { type: "NUMBER", description: "Peso-alvo (kg). Omite se não mudar." },
+      goal_body_fat_pct: { type: "NUMBER", description: "Percentagem de gordura corporal alvo (%). Omite se não mudar." },
+      goal_muscle_mass_kg: { type: "NUMBER", description: "Massa muscular alvo (kg). Omite se não mudar." },
       rationale: {
         type: "STRING",
-        description: "Uma frase curta a justificar o valor (ex.: \"1,8 g/kg para os 72 kg atuais\")",
+        description: "Frase curta a justificar os valores propostos (ex.: '1,8 g/kg · 72 kg · treino força 4×/sem').",
       },
     },
   },
@@ -209,6 +212,7 @@ const UPDATE_GOALS_TOOL = {
 // quando pede um plano de treinos.
 function buildTools() {
   return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL] }];
+  // UPDATE_GOALS_TOOL é o antigo update_nutrition_goals, expandido a todos os campos.
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -672,33 +676,61 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     `Está pendente de aceitação — o atleta vê-o no ecrã Início e decide se aceita.`;
 }
 
-// Limites de bom senso — não são a doutrina completa (essa vive em
-// src/coach-knowledge/, ainda por construir), só travam valores que não
-// podem estar certos para nenhum atleta humano (ex.: 5g ou 900g de proteína).
-const MIN_GRAMS_GOAL = 20;
-const MAX_GRAMS_GOAL = 400;
+// Limites de bom senso por campo — travam valores impossíveis para qualquer
+// atleta humano (ex.: 5 g de proteína, 10 000 kcal, 200 kg de massa muscular).
+const GOAL_LIMITS: Record<string, [number, number]> = {
+  calorie_goal:        [800,  6000],
+  protein_goal:        [20,   400],
+  carbs_goal:          [20,   800],
+  fat_goal:            [10,   300],
+  water_goal_ml:       [500,  6000],
+  goal_weight_kg:      [30,   250],
+  goal_body_fat_pct:   [3,    50],
+  goal_muscle_mass_kg: [10,   120],
+};
 
-// Executa a function call update_nutrition_goals: escreve protein_goal e/ou
-// fat_goal no perfil, SÓ se o atleta tiver ativado
-// profiles.coach_can_set_nutrition_goals. Ver a nota junto de UPDATE_GOALS_TOOL
-// sobre porque a verificação vive aqui e não na declaração da ferramenta.
+// Mapeamento campo → flag _set_by_coach + label legível para a mensagem de retorno.
+const GOAL_META: Record<string, { flag: string; label: string; unit: string }> = {
+  calorie_goal:        { flag: "calorie_goal_set_by_coach",   label: "calorias",           unit: "kcal/dia" },
+  protein_goal:        { flag: "protein_goal_set_by_coach",   label: "proteína",            unit: "g/dia" },
+  carbs_goal:          { flag: "carbs_goal_set_by_coach",     label: "hidratos",            unit: "g/dia" },
+  fat_goal:            { flag: "fat_goal_set_by_coach",       label: "gordura",             unit: "g/dia" },
+  water_goal_ml:       { flag: "water_goal_set_by_coach",     label: "água",                unit: "ml/dia" },
+  goal_weight_kg:      { flag: "goal_weight_set_by_coach",    label: "peso-alvo",           unit: "kg" },
+  goal_body_fat_pct:   { flag: "goal_body_fat_set_by_coach",  label: "gordura corporal alvo", unit: "%" },
+  goal_muscle_mass_kg: { flag: "goal_muscle_set_by_coach",    label: "massa muscular alvo", unit: "kg" },
+};
+
+// Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
+// SÓ se o atleta tiver ativado coach_can_set_nutrition_goals (toggle global).
 // deno-lint-ignore no-explicit-any
-export async function runUpdateNutritionGoals(sb: any, userId: string, args: any): Promise<string> {
-  const { protein_goal, fat_goal } = args || {};
-  const hasProtein = protein_goal !== undefined && protein_goal !== null;
-  const hasFat = fat_goal !== undefined && fat_goal !== null;
+export async function runUpdateGoals(sb: any, userId: string, args: any): Promise<string> {
+  const fieldNames = Object.keys(GOAL_META);
+  // deno-lint-ignore no-explicit-any
+  const updates: Record<string, any> = {};
 
-  if (!hasProtein && !hasFat) {
-    return "Erro: indica pelo menos protein_goal ou fat_goal.";
-  }
-  for (const [label, v] of [["protein_goal", protein_goal], ["fat_goal", fat_goal]] as const) {
-    if (v === undefined || v === null) continue;
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < MIN_GRAMS_GOAL || n > MAX_GRAMS_GOAL) {
-      return `Erro: ${label} tem de ser um número entre ${MIN_GRAMS_GOAL} e ${MAX_GRAMS_GOAL} (gramas).`;
+  // Verificar quais campos foram passados e validar limites.
+  for (const field of fieldNames) {
+    const raw = (args || {})[field];
+    if (raw === undefined || raw === null) continue;
+    const n = Number(raw);
+    const [min, max] = GOAL_LIMITS[field];
+    if (!Number.isFinite(n) || n < min || n > max) {
+      return `Erro: ${field} tem de ser um número entre ${min} e ${max} (${GOAL_META[field].unit}).`;
     }
+    // Valores em gramas/kcal arredondados; decimais só em kg/%.
+    const rounded = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg"].includes(field)
+      ? Math.round(n * 10) / 10
+      : Math.round(n);
+    updates[field] = rounded;
+    updates[GOAL_META[field].flag] = true;
   }
 
+  if (Object.keys(updates).length === 0) {
+    return "Erro: nenhum campo fornecido. Indica pelo menos um objetivo a atualizar.";
+  }
+
+  // Verificar autorização global do atleta.
   const { data: profile, error: profileErr } = await sb
     .from("profiles")
     .select("coach_can_set_nutrition_goals")
@@ -706,22 +738,18 @@ export async function runUpdateNutritionGoals(sb: any, userId: string, args: any
     .maybeSingle();
   if (profileErr) return `Erro a verificar autorização: ${profileErr.message}`;
   if (!profile?.coach_can_set_nutrition_goals) {
-    return "Erro: o atleta ainda não autorizou o Coach a escrever metas de nutrição. " +
-      "Explica que pode ativar isto no Perfil, separador Metas, e não tentes de novo nesta resposta.";
+    return "Erro: o atleta ainda não autorizou o Coach a escrever metas. " +
+      "Explica que pode ativar 'O Coach pode ajustar as metas' no Perfil > separador Metas, " +
+      "e não tentes de novo nesta resposta.";
   }
-
-  // deno-lint-ignore no-explicit-any
-  const updates: Record<string, any> = {};
-  if (hasProtein) { updates.protein_goal = Math.round(Number(protein_goal)); updates.protein_goal_set_by_coach = true; }
-  if (hasFat) { updates.fat_goal = Math.round(Number(fat_goal)); updates.fat_goal_set_by_coach = true; }
 
   const { error: updateErr } = await sb.from("profiles").update(updates).eq("id", userId);
   if (updateErr) return `Erro ao gravar metas: ${updateErr.message}`;
 
-  const parts = [];
-  if (hasProtein) parts.push(`proteína para ${updates.protein_goal} g/dia`);
-  if (hasFat) parts.push(`gordura para ${updates.fat_goal} g/dia`);
-  return `Meta atualizada: ${parts.join(" e ")}. Já está gravado no perfil do atleta.`;
+  const parts = fieldNames
+    .filter(f => updates[f] !== undefined && !f.endsWith("_set_by_coach"))
+    .map(f => `${GOAL_META[f].label}: ${updates[f]} ${GOAL_META[f].unit}`);
+  return `Metas atualizadas: ${parts.join(", ")}. Já estão gravadas no perfil do atleta.`;
 }
 
 // ── Agenda de provas ─────────────────────────────────────────────────────
@@ -1019,6 +1047,16 @@ export function buildSystemInstruction(
     `mais curto ou prefere estender. A decisão final é sempre do atleta.\n` +
     `3. Se o utilizador já tiver definido a duração (ex: "plano para a próxima semana", ` +
     `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
+    `SUGESTÕES ALIMENTARES NO PLANO: quando o atleta pedir sugestões de refeições para dias ` +
+    `concretos (ex.: "o que devo comer amanhã?", "sugestão de refeições para esta semana"), ` +
+    `usa propose_training_plan com itens de kind="descanso" e o campo meal_suggestion preenchido ` +
+    `— assim as sugestões aparecem no ecrã Início (Plano da semana) e não ficam só no chat. ` +
+    `Inclui um item "descanso" por cada dia para que a sugestão fique visível nesse dia. ` +
+    `Se houver já treinos nesse dia (no plano aceite), a sugestão alimentar complementa-os; ` +
+    `não repitas o treino, cria só o item descanso com meal_suggestion para esse dia. ` +
+    `Se o pedido for apenas "uma ideia para hoje" ou muito vago, responde em texto normal ` +
+    `sem criar plano — só usa a ferramenta quando o pedido implica dias específicos ` +
+    `ou uma semana de sugestões estruturada.\n\n` +
     MEAL_DOCTRINE;
 
   const bio: string[] = [];
@@ -1106,16 +1144,24 @@ export function buildSystemInstruction(
     sys += `\n\nPerfil e objetivos do utilizador (definido pelo próprio):\n${coachContext.trim()}`;
   }
 
-  // Só menciona a ferramenta update_nutrition_goals quando está disponível —
-  // sem isto o modelo tentava-a às cegas e recebia sempre o erro de
-  // autorização, gastando uma ronda de function-calling à toa.
+  // Instruções de metas — o modelo só menciona update_goals quando autorizado,
+  // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
-    ? `\n\nO atleta autorizou-te a escrever a meta de proteína e/ou gordura diretamente no ` +
-      `perfil dele com a ferramenta update_nutrition_goals — usa-a quando ele pedir para ` +
-      `ajustares esses valores.`
-    : `\n\nNÃO tentes a ferramenta update_nutrition_goals — o atleta ainda não autorizou o ` +
-      `Coach a escrever metas no perfil. Se ele pedir para ajustares proteína/gordura, diz-lhe ` +
-      `para ativar isso primeiro no Perfil, separador Metas.`;
+    ? `\n\nATUALIZAÇÃO DE METAS (autorizado): o atleta autorizou-te a escrever metas ` +
+      `diretamente no perfil com a ferramenta update_goals. Campos disponíveis: calorias ` +
+      `(calorie_goal), proteína (protein_goal), hidratos (carbs_goal), gordura (fat_goal), ` +
+      `água (water_goal_ml), peso-alvo (goal_weight_kg), gordura corporal alvo ` +
+      `(goal_body_fat_pct), massa muscular alvo (goal_muscle_mass_kg).\n` +
+      `FLUXO OBRIGATÓRIO — sempre em 2 passos:\n` +
+      `1. Propõe o(s) valor(es) em texto com justificação (ex.: "Sugiro aumentar proteína para ` +
+      `180 g/dia — 1,8 g/kg · 72 kg, adequado para 4 treinos de força por semana.").\n` +
+      `2. Pergunta explicitamente: "Queres que atualize agora no teu perfil?" ou equivalente.\n` +
+      `3. Só chamas update_goals DEPOIS de o atleta confirmar. Nunca por iniciativa própria.\n` +
+      `4. Depois de gravar, confirma o que ficou alterado numa frase curta.`
+    : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
+      `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
+      `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
+      `diretamente no teu perfil, ativa 'O Coach pode ajustar as metas' no Perfil, separador Metas."`;
 
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;
@@ -1439,9 +1485,10 @@ async function handler(req: Request): Promise<Response> {
         } else if (name === "propose_training_plan") {
           result = await runProposeTrainingPlan(sb, userId, args || {});
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
-        } else if (name === "update_nutrition_goals") {
-          result = await runUpdateNutritionGoals(sb, userId, args || {});
-          goalsWereUpdated = goalsWereUpdated || result.startsWith("Meta atualizada");
+        } else if (name === "update_goals" || name === "update_nutrition_goals") {
+          // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
+          result = await runUpdateGoals(sb, userId, args || {});
+          goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }

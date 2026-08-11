@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateNutritionGoals, buildSystemInstruction } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, buildSystemInstruction } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -554,15 +554,15 @@ function makeGoalsSb(opts: { authorized?: boolean; profileError?: any; updateErr
 
 Deno.test("recusa escrever sem autorização, mesmo com valores válidos", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: false });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "não autorizou");
   assertEquals(calls.updates.length, 0);
 });
 
 Deno.test("com autorização, grava a proteína e marca a origem", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150.4 });
-  assertStringIncludes(result, "Meta atualizada");
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150.4 });
+  assertStringIncludes(result, "Metas atualizadas");
   assertEquals(calls.updates[0].protein_goal, 150); // arredondado
   assertEquals(calls.updates[0].protein_goal_set_by_coach, true);
   assertEquals(calls.updates[0].fat_goal, undefined); // não mexe no que não foi pedido
@@ -570,51 +570,63 @@ Deno.test("com autorização, grava a proteína e marca a origem", async () => {
 
 Deno.test("grava proteína e gordura ao mesmo tempo", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
-  await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
+  await runUpdateGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
   assertEquals(calls.updates[0].protein_goal, 140);
   assertEquals(calls.updates[0].fat_goal, 70);
   assertEquals(calls.updates[0].fat_goal_set_by_coach, true);
 });
 
+Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora editáveis pelo Coach", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, carbs_goal: 300 });
+  assertEquals(calls.updates[0].calorie_goal, 2200);
+  assertEquals(calls.updates[0].calorie_goal_set_by_coach, true);
+  assertEquals(calls.updates[0].carbs_goal, 300);
+  assertEquals(calls.updates[0].carbs_goal_set_by_coach, true);
+});
+
+Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15 });
+  assertEquals(calls.updates[0].water_goal_ml, 2500);
+  assertEquals(calls.updates[0].water_goal_set_by_coach, true);
+  assertEquals(calls.updates[0].goal_weight_kg, 70.5);
+  assertEquals(calls.updates[0].goal_weight_set_by_coach, true);
+  assertEquals(calls.updates[0].goal_body_fat_pct, 15);
+  assertEquals(calls.updates[0].goal_body_fat_set_by_coach, true);
+});
+
 Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
-  const result = await runUpdateNutritionGoals(sb, "user-1", {});
+  const result = await runUpdateGoals(sb, "user-1", {});
   assertStringIncludes(result, "Erro");
   assertEquals(calls.updates.length, 0);
 });
 
-Deno.test("rejeita um valor fora do intervalo plausível", async () => {
+Deno.test("rejeita um valor fora do intervalo plausível (proteína 900g)", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 900 });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 900 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.updates.length, 0);
 });
 
-Deno.test("rejeita um valor negativo ou zero", async () => {
+Deno.test("rejeita um valor negativo ou zero (gordura 0g)", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { fat_goal: 0 });
+  const result = await runUpdateGoals(sb, "user-1", { fat_goal: 0 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.updates.length, 0);
-});
-
-Deno.test("nunca aceita calorie_goal nem carbs_goal — metas variáveis não passam por aqui", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
-  // deno-lint-ignore no-explicit-any
-  await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150, calorie_goal: 3000, carbs_goal: 400 } as any);
-  assertEquals(calls.updates[0].calorie_goal, undefined);
-  assertEquals(calls.updates[0].carbs_goal, undefined);
 });
 
 Deno.test("propaga o erro se a leitura do perfil falhar", async () => {
   const { sb, calls } = makeGoalsSb({ profileError: { message: "timeout" } });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "timeout");
   assertEquals(calls.updates.length, 0);
 });
 
 Deno.test("propaga o erro se a escrita falhar", async () => {
   const { sb } = makeGoalsSb({ authorized: true, updateError: { message: "conflito" } });
-  const result = await runUpdateNutritionGoals(sb, "user-1", { protein_goal: 150 });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito");
 });
 
@@ -622,17 +634,18 @@ Deno.test("propaga o erro se a escrita falhar", async () => {
 
 Deno.test("sem autorização, o prompt diz ao modelo para não tentar a ferramenta", () => {
   const sys = sysCom(null, null); // BIO_BASE tem coach_can_set_nutrition_goals: false
-  assertStringIncludes(sys, "NÃO tentes a ferramenta update_nutrition_goals");
+  assertStringIncludes(sys, "NÃO uses a ferramenta update_goals");
 });
 
-Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta", () => {
+Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com fluxo de 2 passos", () => {
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
     "NUTRIÇÃO", "ÁGUA", null, null, null, null,
   );
-  assertStringIncludes(sys, "autorizou-te a escrever");
-  assertEquals(sys.includes("NÃO tentes a ferramenta"), false);
+  assertStringIncludes(sys, "autorizou-te a escrever metas");
+  assertStringIncludes(sys, "Queres que atualize agora");
+  assertEquals(sys.includes("NÃO uses a ferramenta update_goals"), false);
 });
 
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────

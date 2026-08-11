@@ -32,6 +32,32 @@ const BODY_METRICS = [
   { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1 },
 ];
 
+// Campos de objetivo corporal que o Coach pode escrever — mapeamento
+// BODY_METRICS.key → flag _set_by_coach correspondente.
+const BODY_GOAL_COACH_FLAGS = {
+  weight_kg:     'goal_weight_set_by_coach',
+  body_fat_pct:  'goal_body_fat_set_by_coach',
+  muscle_mass_kg: 'goal_muscle_set_by_coach',
+};
+
+// Estilos partilhados para campos que podem ser escritos pelo Coach.
+const coachFieldStyle = {
+  border: '1px solid var(--mod-coach-to)',
+  boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
+};
+const plainFieldStyle = { border: '1px solid rgb(38 38 38)' };
+
+// Badge inline que assinala que um campo foi escrito pelo Coach.
+function CoachBadge() {
+  return (
+    <span title="Meta definida pelo Coach"
+      className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide shrink-0"
+      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
+      Coach
+    </span>
+  );
+}
+
 const WATER_REMINDER_INTERVALS = [30, 60, 90, 120, 180, 240];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const DEFAULT_REMINDER_START_HOUR = 8;
@@ -520,14 +546,25 @@ export default function Perfil() {
 
             {metasBodyExpanded && (
               <div className="grid grid-cols-2 gap-3 mt-3 fade-in">
-                {BODY_METRICS.map(m => (
-                  <div key={m.key}>
-                    <label className="text-[11px] text-slate-500 truncate block mb-1">{m.label}{m.unit ? ` (${m.unit})` : ''}</label>
-                    <input type="number" step={m.dec === 0 ? '1' : '0.1'} value={draft['goal_' + m.key] ?? ''}
-                      onChange={e => updateDraft('goal_' + m.key, e.target.value === '' ? null : parseFloat(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
-                  </div>
-                ))}
+                {BODY_METRICS.map(m => {
+                  const flagKey = BODY_GOAL_COACH_FLAGS[m.key];
+                  const isCoach = flagKey && draft[flagKey];
+                  return (
+                    <div key={m.key}>
+                      <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1 truncate">
+                        {m.label}{m.unit ? ` (${m.unit})` : ''}
+                        {isCoach && <CoachBadge />}
+                      </label>
+                      <input type="number" step={m.dec === 0 ? '1' : '0.1'} value={draft['goal_' + m.key] ?? ''}
+                        onChange={e => {
+                          const v = e.target.value === '' ? null : parseFloat(e.target.value);
+                          flagKey ? updateCoachableGoal('goal_' + m.key, flagKey, v) : updateDraft('goal_' + m.key, v);
+                        }}
+                        className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                        style={isCoach ? coachFieldStyle : plainFieldStyle} />
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -539,68 +576,69 @@ export default function Perfil() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Calorias (kcal/dia)</label>
-                <input type="number" value={draft.calorie_goal || ''} onChange={e => updateDraft('calorie_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
+                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                  Calorias (kcal/dia)
+                  {draft.calorie_goal_set_by_coach && <CoachBadge />}
+                </label>
+                <input type="number" value={draft.calorie_goal || ''}
+                  onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
+                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Proteína (g/dia)
-                  {draft.protein_goal_set_by_coach && (
-                    <span title="Meta definida pelo Coach" className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide"
-                      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
-                      Coach
-                    </span>
-                  )}
+                  {draft.protein_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
-                  style={draft.protein_goal_set_by_coach
-                    ? { border: '1px solid var(--mod-coach-to)', boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)' }
-                    : { border: '1px solid rgb(38 38 38)' }} />
+                  style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Hidratos (g/dia)</label>
-                <input type="number" value={draft.carbs_goal || ''} onChange={e => updateDraft('carbs_goal', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
+                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                  Hidratos (g/dia)
+                  {draft.carbs_goal_set_by_coach && <CoachBadge />}
+                </label>
+                <input type="number" value={draft.carbs_goal || ''}
+                  onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
+                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Gordura (g/dia)
-                  {draft.fat_goal_set_by_coach && (
-                    <span title="Meta definida pelo Coach" className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide"
-                      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
-                      Coach
-                    </span>
-                  )}
+                  {draft.fat_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
-                  style={draft.fat_goal_set_by_coach
-                    ? { border: '1px solid var(--mod-coach-to)', boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)' }
-                    : { border: '1px solid rgb(38 38 38)' }} />
+                  style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
-                <label className="text-[11px] text-slate-500 block mb-1">Meta água (ml/dia)</label>
-                <input type="number" step="50" value={draft.water_goal_ml || ''} onChange={e => updateDraft('water_goal_ml', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none" />
+                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                  Meta água (ml/dia)
+                  {draft.water_goal_set_by_coach && <CoachBadge />}
+                </label>
+                <input type="number" step="50" value={draft.water_goal_ml || ''}
+                  onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
+                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
             </div>
 
-            {/* Autorização para o Coach escrever proteína/gordura — DECISÃO N1,
-                camada 1 (specs/coach-investigacao.md). Só estas duas: calorias e
-                hidratos são metas variáveis, mudam com o treino do dia e nunca se
-                escrevem aqui. */}
+            {/* Toggle global de autorização — cobre todos os objetivos (nutrição,
+                água, corpo). O Coach propõe sempre em texto primeiro e pede
+                confirmação; só grava quando o atleta diz que sim. */}
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5">
                   <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
                 </p>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Deixa o Coach escrever a proteína e a gordura diretamente aqui, quando lhas pedires
-                  no chat. Os campos que ele definir ficam marcados com "Coach"; editá-los à mão devolve o controlo a ti.
+                  Permite que o Coach grave metas diretamente no teu perfil (nutrição, água e objetivos corporais)
+                  quando concordares com a sugestão dele no chat. Os campos alterados pelo Coach ficam marcados com
+                  "Coach"; editá-los à mão devolve o controlo a ti.
                 </p>
               </div>
               <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
