@@ -18,11 +18,11 @@
 
 .wpc-glow-coach {
   position: absolute;
-  top: -80px;
-  right: -80px;
-  width: 350px;
-  height: 350px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.18) 0%, rgba(255, 255, 255, 0) 70%);
+  top: -40px;
+  right: -40px;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
   z-index: 0;
   pointer-events: none;
 }
@@ -78,13 +78,30 @@
   margin-bottom: 0;
 }
 
-.wpc-day-card.is-today {
-  border-color: rgba(6, 182, 212, 0.4); /* Cyan highlight */
-  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.05);
+/* Day Card Module Colors */
+.wpc-day-card.run {
+  border-color: rgba(192, 38, 211, 0.25);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(192, 38, 211, 0.04) 100%);
 }
 
-.wpc-day-card.is-empty {
-  opacity: 0.65;
+.wpc-day-card.gym {
+  border-color: rgba(37, 99, 235, 0.25);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(37, 99, 235, 0.04) 100%);
+}
+
+.wpc-day-card.nutri {
+  border-color: rgba(5, 150, 105, 0.25);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(5, 150, 105, 0.04) 100%);
+}
+
+.wpc-day-card.empty {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.wpc-day-card.is-today {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  border-width: 2px;
 }
 
 /* Day Card Inner Glows Removed */
