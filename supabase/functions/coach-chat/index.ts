@@ -94,13 +94,18 @@ const RUN_TRAINING_TYPES = [
 const PROPOSE_PLAN_TOOL = {
   name: "propose_training_plan",
   description:
-    "Propõe ao atleta um plano de treinos para um período (tipicamente a próxima semana). " +
-    "Usa esta função SEMPRE que o utilizador pedir um plano, sugestões de treinos para os " +
-    "próximos dias, ou o que deve fazer numa semana — em vez de listares os treinos apenas " +
-    "no texto da resposta. A proposta fica pendente de aceitação pelo atleta, que a vê no " +
-    "ecrã Início. Depois de a criares, menciona na tua resposta que a proposta está lá para " +
-    "ele aceitar. NÃO uses esta função para responder a perguntas sobre treinos já feitos, " +
-    "nem quando o utilizador só quer uma opinião sem plano concreto.",
+    "Propõe ao atleta um plano de treinos para um período. Usa esta função SEMPRE que o " +
+    "utilizador pedir um plano, sugestões de treinos para os próximos dias, ou o que deve " +
+    "fazer numa semana — em vez de listares os treinos apenas no texto da resposta. A proposta " +
+    "fica pendente de aceitação pelo atleta, que a vê no ecrã Início. Depois de a criares, " +
+    "menciona na tua resposta que a proposta está lá para ele aceitar. NÃO uses esta função " +
+    "para responder a perguntas sobre treinos já feitos, nem quando o utilizador só quer uma " +
+    "opinião sem plano concreto. DURAÇÃO DO PLANO: a janela ideal é 7-14 dias (um microciclo). " +
+    "Se o utilizador não especificar duração, pergunta-lhe antes de propor se quer um plano de " +
+    "7 ou 14 dias e explica brevemente que adaptações musculares e cardiovasculares precisam de " +
+    "pelo menos 7 dias de estímulo consistente para ocorrer — mudar mais rápido introduz ruído " +
+    "que impede a supercompensação. Se pedir menos de 7 dias, aceita o pedido mas aconselha " +
+    "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -1002,6 +1007,18 @@ export function buildSystemInstruction(
     `proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `DURAÇÃO DO PLANO (doutrina Issurin 2008, Daniels 2021, Bompa 2015): a janela ideal de ` +
+    `um microciclo é 7-14 dias. Adaptações estruturais (biogénese mitocondrial, densidade ` +
+    `capilar, síntese de hemoglobina) exigem estímulo consistente por 14-21 dias; mudar a ` +
+    `cada 2-3 dias introduz ruído de adaptação e impede a supercompensação. Por isso:\n` +
+    `1. Se o utilizador pedir um plano sem especificar duração, ANTES de propores pergunta-lhe ` +
+    `se prefere 7 dias (microciclo curto, ideal para testar) ou 14 dias (microciclo completo, ` +
+    `máximas adaptações) — e explica este racional em 1-2 frases simples.\n` +
+    `2. Se pedir menos de 7 dias, aceita o pedido mas diz-lhe que para adaptações físicas ` +
+    `reais o mínimo recomendado são 7 dias, e pergunta se quer mesmo ficar pelo período ` +
+    `mais curto ou prefere estender. A decisão final é sempre do atleta.\n` +
+    `3. Se o utilizador já tiver definido a duração (ex: "plano para a próxima semana", ` +
+    `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
     MEAL_DOCTRINE;
 
   const bio: string[] = [];
