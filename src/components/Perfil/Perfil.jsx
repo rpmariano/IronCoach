@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { User, Target, Bot, LogOut, ChevronDown, ChevronUp, Bell, Sparkles, Loader2, X } from 'lucide-react';
+import { User, Target, Bot, LogOut, Bell, Sparkles, Loader2, X } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -16,28 +16,24 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
+// Apenas os 4 objetivos corporais com intervenção direta via treino + nutrição.
+// Os restantes (IMC, BMR, água corporal, etc.) são métricas derivadas — foram
+// removidos da BD porque não fazem sentido como "metas" prescritíveis.
 const BODY_METRICS = [
-  { key: 'weight_kg', label: 'Peso', unit: 'kg', dec: 1 },
-  { key: 'bmi', label: 'IMC', unit: '', dec: 1 },
-  { key: 'body_fat_pct', label: 'Gordura corporal', unit: '%', dec: 1 },
-  { key: 'skeletal_muscle_pct', label: 'Músculo esquelético', unit: '%', dec: 1 },
-  { key: 'muscle_mass_kg', label: 'Massa muscular', unit: 'kg', dec: 1 },
-  { key: 'body_water_pct', label: 'Água corporal', unit: '%', dec: 1 },
-  { key: 'protein_pct', label: 'Proteína', unit: '%', dec: 1 },
-  { key: 'bone_mass_kg', label: 'Massa óssea', unit: 'kg', dec: 1 },
-  { key: 'bmr_kcal', label: 'Metabolismo basal', unit: 'kcal', dec: 0 },
-  { key: 'visceral_fat', label: 'Gordura visceral', unit: '', dec: 0 },
-  { key: 'subcutaneous_fat_pct', label: 'Gordura subcutânea', unit: '%', dec: 1 },
-  { key: 'metabolic_age', label: 'Idade metabólica', unit: 'anos', dec: 0 },
-  { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1 },
+  { key: 'weight_kg',        label: 'Peso-alvo',          unit: 'kg',  dec: 1 },
+  { key: 'body_fat_pct',     label: 'Gordura corporal',   unit: '%',   dec: 1 },
+  { key: 'muscle_mass_kg',   label: 'Massa muscular',     unit: 'kg',  dec: 1 },
+  { key: 'lean_body_mass_kg',label: 'Massa magra',        unit: 'kg',  dec: 1 },
 ];
 
 // Campos de objetivo corporal que o Coach pode escrever — mapeamento
 // BODY_METRICS.key → flag _set_by_coach correspondente.
+// Todos os 4 campos corporais são coach-editáveis.
 const BODY_GOAL_COACH_FLAGS = {
-  weight_kg:     'goal_weight_set_by_coach',
-  body_fat_pct:  'goal_body_fat_set_by_coach',
-  muscle_mass_kg: 'goal_muscle_set_by_coach',
+  weight_kg:          'goal_weight_set_by_coach',
+  body_fat_pct:       'goal_body_fat_set_by_coach',
+  muscle_mass_kg:     'goal_muscle_set_by_coach',
+  lean_body_mass_kg:  'goal_lean_mass_set_by_coach',
 };
 
 // Estilos partilhados para campos que podem ser escritos pelo Coach.
@@ -86,8 +82,6 @@ export default function Perfil() {
      water_reminder_muted_date — com valores que o rascunho tinha em cache. */
   const dirtyKeys = useRef(new Set());
 
-  // Metas UI
-  const [metasBodyExpanded, setMetasBodyExpanded] = useState(false);
 
   // Coach UI
   const [suggestingGoals, setSuggestingGoals] = useState(false);
@@ -532,41 +526,31 @@ export default function Perfil() {
               </div>
             </div>
             
-            <button type="button" onClick={() => setMetasBodyExpanded(v => !v)}
-              className={`w-full flex items-center justify-between border border-neutral-800 rounded-xl px-3 py-2.5 ${metasBodyExpanded ? 'mb-2' : ''}`}>
-              <div className="flex items-center gap-2">
-                <Target size={16} className="text-[var(--accent)]" />
-                <span className="text-sm font-semibold">Objetivos corporais</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  {BODY_METRICS.filter(m => draft['goal_' + m.key] != null).length}/{BODY_METRICS.length} definidos
-                </span>
-              </div>
-              {metasBodyExpanded ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
-            </button>
-
-            {metasBodyExpanded && (
-              <div className="grid grid-cols-2 gap-3 mt-3 fade-in">
-                {BODY_METRICS.map(m => {
-                  const flagKey = BODY_GOAL_COACH_FLAGS[m.key];
-                  const isCoach = flagKey && draft[flagKey];
-                  return (
-                    <div key={m.key}>
-                      <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1 truncate">
-                        {m.label}{m.unit ? ` (${m.unit})` : ''}
-                        {isCoach && <CoachBadge />}
-                      </label>
-                      <input type="number" step={m.dec === 0 ? '1' : '0.1'} value={draft['goal_' + m.key] ?? ''}
-                        onChange={e => {
-                          const v = e.target.value === '' ? null : parseFloat(e.target.value);
-                          flagKey ? updateCoachableGoal('goal_' + m.key, flagKey, v) : updateDraft('goal_' + m.key, v);
-                        }}
-                        className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
-                        style={isCoach ? coachFieldStyle : plainFieldStyle} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex items-center gap-2 mb-3 mt-1">
+              <Target size={14} className="text-[var(--accent)]" />
+              <h3 className="text-xs font-semibold text-slate-300">Objetivos corporais</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {BODY_METRICS.map(m => {
+                const flagKey = BODY_GOAL_COACH_FLAGS[m.key];
+                const isCoach = flagKey && draft[flagKey];
+                return (
+                  <div key={m.key}>
+                    <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                      {m.label}{m.unit ? ` (${m.unit})` : ''}
+                      {isCoach && <CoachBadge />}
+                    </label>
+                    <input type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
+                      onChange={e => {
+                        const v = e.target.value === '' ? null : parseFloat(e.target.value);
+                        updateCoachableGoal('goal_' + m.key, flagKey, v);
+                      }}
+                      className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                      style={isCoach ? coachFieldStyle : plainFieldStyle} />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">

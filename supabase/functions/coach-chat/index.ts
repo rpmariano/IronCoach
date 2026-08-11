@@ -196,9 +196,10 @@ const UPDATE_GOALS_TOOL = {
       carbs_goal:        { type: "NUMBER", description: "Meta diária de hidratos de carbono (g). Omite se não mudar." },
       fat_goal:          { type: "NUMBER", description: "Meta diária de gordura (g). Omite se não mudar." },
       water_goal_ml:     { type: "NUMBER", description: "Meta diária de água (ml). Omite se não mudar." },
-      goal_weight_kg:    { type: "NUMBER", description: "Peso-alvo (kg). Omite se não mudar." },
-      goal_body_fat_pct: { type: "NUMBER", description: "Percentagem de gordura corporal alvo (%). Omite se não mudar." },
-      goal_muscle_mass_kg: { type: "NUMBER", description: "Massa muscular alvo (kg). Omite se não mudar." },
+      goal_weight_kg:         { type: "NUMBER", description: "Peso-alvo (kg). Omite se não mudar." },
+      goal_body_fat_pct:      { type: "NUMBER", description: "Percentagem de gordura corporal alvo (%). Omite se não mudar." },
+      goal_muscle_mass_kg:    { type: "NUMBER", description: "Massa muscular alvo (kg). Omite se não mudar." },
+      goal_lean_body_mass_kg: { type: "NUMBER", description: "Massa magra alvo (kg). Omite se não mudar." },
       rationale: {
         type: "STRING",
         description: "Frase curta a justificar os valores propostos (ex.: '1,8 g/kg · 72 kg · treino força 4×/sem').",
@@ -684,9 +685,10 @@ const GOAL_LIMITS: Record<string, [number, number]> = {
   carbs_goal:          [20,   800],
   fat_goal:            [10,   300],
   water_goal_ml:       [500,  6000],
-  goal_weight_kg:      [30,   250],
-  goal_body_fat_pct:   [3,    50],
-  goal_muscle_mass_kg: [10,   120],
+  goal_weight_kg:         [30,   250],
+  goal_body_fat_pct:      [3,    50],
+  goal_muscle_mass_kg:    [10,   120],
+  goal_lean_body_mass_kg: [20,   150],
 };
 
 // Mapeamento campo → flag _set_by_coach + label legível para a mensagem de retorno.
@@ -696,9 +698,10 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
   carbs_goal:          { flag: "carbs_goal_set_by_coach",     label: "hidratos",            unit: "g/dia" },
   fat_goal:            { flag: "fat_goal_set_by_coach",       label: "gordura",             unit: "g/dia" },
   water_goal_ml:       { flag: "water_goal_set_by_coach",     label: "água",                unit: "ml/dia" },
-  goal_weight_kg:      { flag: "goal_weight_set_by_coach",    label: "peso-alvo",           unit: "kg" },
-  goal_body_fat_pct:   { flag: "goal_body_fat_set_by_coach",  label: "gordura corporal alvo", unit: "%" },
-  goal_muscle_mass_kg: { flag: "goal_muscle_set_by_coach",    label: "massa muscular alvo", unit: "kg" },
+  goal_weight_kg:         { flag: "goal_weight_set_by_coach",    label: "peso-alvo",             unit: "kg" },
+  goal_body_fat_pct:      { flag: "goal_body_fat_set_by_coach",  label: "gordura corporal alvo", unit: "%" },
+  goal_muscle_mass_kg:    { flag: "goal_muscle_set_by_coach",    label: "massa muscular alvo",   unit: "kg" },
+  goal_lean_body_mass_kg: { flag: "goal_lean_mass_set_by_coach", label: "massa magra alvo",      unit: "kg" },
 };
 
 // Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
