@@ -1325,6 +1325,99 @@ const PROTEIN_MAINT: Record<string, [number, number]> = {
   avancado:  [1.6, 2.0],
 };
 
+// ── Bloco 5 — computeBodyMetrics ────────────────────────────────────────────
+// Recebe as últimas avaliações corporais (body_assessments ordenadas por
+// assessed_at desc) e produz uma linha de contexto para o coach com flags
+// acionáveis. Deteta:
+//   #1  Queda súbita de peso (Bloco 5 #11) — >1,5% em 48-72h
+//   #6  Gordura no piso RED-S  (Bloco 4.2 #1 + Bloco 5 #6)
+//   #8  Gordura visceral ≥10/≥15 (Bloco 5 #8)
+export type BodyAssessmentRow = {
+  assessed_at: string;       // ISO 8601 "YYYY-MM-DDTHH:mm:ss..."
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  visceral_fat: number | null;
+  body_water_pct: number | null;
+  lean_body_mass_kg: number | null;
+};
+
+export function computeBodyMetrics(
+  rows: BodyAssessmentRow[],
+  gender: string | null,
+  todayISO: string,
+): string | null {
+  if (rows.length === 0) return null;
+
+  const lines: string[] = [];
+  // Ordenar por data desc (o caller já devia enviar assim, mas garantimos)
+  const sorted = [...rows].sort((a, b) => b.assessed_at.localeCompare(a.assessed_at));
+  const latest = sorted[0];
+
+  // ── Tendência de peso (7-day moving average) ──────────────────────────────
+  const todayMs = new Date(todayISO + "T00:00:00Z").getTime();
+  const w7 = sorted.filter(
+    (r) => r.weight_kg && (todayMs - new Date(r.assessed_at).getTime()) <= 7 * 86400000,
+  );
+  if (w7.length >= 2) {
+    const avg7 = w7.reduce((s, r) => s + (r.weight_kg ?? 0), 0) / w7.length;
+    lines.push(`Média de peso (${w7.length} medições, 7 dias): ${avg7.toFixed(1)} kg`);
+  } else if (latest.weight_kg) {
+    lines.push(`Peso mais recente: ${latest.weight_kg} kg (${sorted[0].assessed_at.slice(0, 10)})`);
+  }
+
+  // ── Sinal #1 — queda súbita de peso >1,5% em 48-72h (Bloco 5 #11) ────────
+  if (sorted.length >= 2) {
+    const newest = sorted[0];
+    const cutoff72hMs = new Date(newest.assessed_at).getTime() - 72 * 3600000;
+    const ref = sorted.find(
+      (r, i) => i > 0 && r.weight_kg && new Date(r.assessed_at).getTime() >= cutoff72hMs,
+    );
+    if (ref && ref.weight_kg && newest.weight_kg) {
+      const dropPct = ((ref.weight_kg - newest.weight_kg) / ref.weight_kg) * 100;
+      if (dropPct > 1.5) {
+        lines.push(
+          `⚠ CORPO #11 — queda de peso: ${ref.weight_kg.toFixed(1)} → ${newest.weight_kg.toFixed(1)} kg ` +
+          `(−${dropPct.toFixed(1)}% em <72h, sem défice declarado) — verificar hidratação/depleção/sobretreino`,
+        );
+      }
+    }
+  }
+
+  // ── Gordura corporal: última leitura + flag RED-S (Bloco 5 #6) ───────────
+  if (latest.body_fat_pct !== null) {
+    const bf = latest.body_fat_pct;
+    const isFem = gender === "feminino" || gender === "F" || gender === "f";
+    const floor = isFem ? 14 : 6;  // piso mais conservador (Bloco 5 #6, regra do valor mais alto)
+    const upperFloor = isFem ? 16 : 8;
+    lines.push(`Gordura corporal (BIA, tendência apenas): ${bf.toFixed(1)}%`);
+    if (bf < floor) {
+      lines.push(
+        `⚠ CORPO #6 + RED-S — gordura corporal ${bf.toFixed(1)}% abaixo do piso fisiológico ` +
+        `(${isFem ? "M" : "H"}: ${floor}-${upperFloor}%) — avaliar em conjunto com EA, peso e sintomas`,
+      );
+    }
+  }
+
+  // ── Gordura visceral: flag se ≥10 ou ≥15 (Bloco 5 #8) ───────────────────
+  if (latest.visceral_fat !== null) {
+    const vf = latest.visceral_fat;
+    if (vf >= 15) {
+      lines.push(`⚠ CORPO #8 — gordura visceral: ${vf} (escala Renpho) — RISCO ELEVADO (≥15 = >130 cm²)`);
+    } else if (vf >= 10) {
+      lines.push(`⚠ CORPO #8 — gordura visceral: ${vf} (escala Renpho) — alerta (10-14 = 100-130 cm²)`);
+    }
+  }
+
+  // ── lean_body_mass — só citar como tendência, nunca como valor absoluto ──
+  // (muscle_mass_kg nunca é incluído — não fiável, Bloco 5 #1)
+  if (latest.lean_body_mass_kg !== null) {
+    lines.push(`Massa magra lean_body_mass (BIA, tendência): ${latest.lean_body_mass_kg.toFixed(1)} kg — usar só para direção, não valor absoluto`);
+  }
+
+  if (lines.length === 0) return null;
+  return `Avaliação corporal recente (Bloco 5 — BIA Renpho):\n${lines.map((l) => `- ${l}`).join("\n")}`;
+}
+
 export function buildNutritionTargets(opts: {
   weightKg:        number | null;
   heightCm:        number | null;
@@ -1411,6 +1504,7 @@ export function buildSystemInstruction(
     coach_can_set_nutrition_goals: boolean | null;
   },
   nutritionTargetsLine: string | null,
+  bodyMetricsLine: string | null,
   nutritionSummary: string,
   waterSummary: string,
   gymSummary: string | null,
@@ -1553,6 +1647,47 @@ export function buildSystemInstruction(
     `  24-48h antes da prova: reduzir para <10-15 g/dia (esvaziar resíduo fecal, evitar cólicas).\n` +
     `CAFEÍNA (ISSN Guest 2021): dose ergogénica 3-6 mg/kg (210-420 mg para 70 kg), 60 min antes.\n` +
     `  Acima de 9 mg/kg: sem ganho extra, mais efeitos colaterais. Testar sempre em treino antes da prova.\n\n` +
+    // ── Doutrina Bloco 5 — Corpo ─────────────────────────────────────────────
+    `COMPOSIÇÃO CORPORAL (Bloco 5 — ACSM 2021, Dehghan & Merchant 2008, Garthe 2011, Aragon & Schoenfeld 2013, IOC RED-S 2018/2023, WHO 2011):\n` +
+    `BIOIMPEDÂNCIA (BIA) — o que é fiável e o que não é:\n` +
+    `  FIÁVEL (em tendência): peso corporal (±0,1-0,2 kg); % gordura e lean_body_mass_kg — apenas como média de longo prazo (7-14 dias), nunca valor absoluto de um dia.\n` +
+    `  NÃO FIÁVEL: muscle_mass_kg (NÃO citar, NÃO comparar entre medições próximas), skeletal_muscle_pct, bmr_kcal (erro ±250-400 kcal — usar sempre Mifflin-St Jeor), visceral_fat escala bruta, água corporal em valor diário absoluto.\n` +
+    `  PADRONIZAÇÃO OBRIGATÓRIA para tendência: medição matinal, jejum, pós-micção, sem líquidos/exercício nas 12h anteriores.\n` +
+    `VARIAÇÃO DE PESO:\n` +
+    `  Oscilação ≤1,0-1,5 kg em 24-48h = água/glicogénio/conteúdo GI — NÃO tecido real.\n` +
+    `  Mudança mantida >0,5-1,0 kg ao longo de 14-21 dias (média semanal) = tecido real.\n` +
+    `  Tendência fiável: média móvel 7-14 dias (H) ou 14-28 dias (M, para anular fase lútea).\n` +
+    `  Queda súbita >1,5-2,0% em 48-72h sem défice voluntário = possível sobretreino/depleção (sinal #11).\n` +
+    `GORDURA CORPORAL — faixas e piso:\n` +
+    `  Geral:       H 10-20% · M 18-28%\n` +
+    `  Endurance:   H 6-12% · M 14-20%\n` +
+    `  Piso RED-S:  H <6-8% · M <14-16% (aciona alarme RED-S — mesmo limiar de Bloco 4.2)\n` +
+    `  Quando body_fat_pct estiver abaixo do piso do género, o contexto assinala-o.\n` +
+    `RITMO DE PERDA DE GORDURA (Garthe 2011 + convergência Blocos 1/4):\n` +
+    `  Teto seguro: ≤0,7%/semana (≤0,5 kg/sem para 70 kg). Défice: 250-400 kcal/dia.\n` +
+    `  Proteína mínima em défice: 1,8-2,4 g/kg/dia + treino de força — preserva massa magra.\n` +
+    `"PESO DE PROVA" — posição do coach:\n` +
+    `  Iniciante/Básico: NÃO promover — foco 100% em regularidade e hábitos. Prevalência de comportamento alimentar desordenado: 15-30% em corredores recreativos incentivados a atingir "peso ideal" (IOC 2018).\n` +
+    `  Médio/Avançado: só com suporte nutricional especializado, base de treino estável e EA ≥45 kcal/kg LBM/dia mantida. Benefício real: ~1,4-2,0 seg/km por kg de gordura perdida.\n` +
+    `GANHO DE MASSA MUSCULAR — ritmo realista (Aragon & Schoenfeld 2013):\n` +
+    `  Iniciante (0-6 meses): H 1,0-1,5 kg/mês · M 0,5-0,75 kg/mês\n` +
+    `  Básico (6-18 meses):   H 0,5-1,0 kg/mês · M 0,25-0,5 kg/mês\n` +
+    `  Médio (1,5-3 anos):    H 0,25-0,5 kg/mês · M 0,12-0,25 kg/mês\n` +
+    `  Avançado (>3 anos):    H 0,1-0,25 kg/mês · M <0,1 kg/mês\n` +
+    `  Condições: treino de força hipertrófico + superavit de 200-300 kcal/dia. NÃO ocorre em défice nem com volume de corrida >60 km/sem (interferência).\n` +
+    `GORDURA VISCERAL (escala Renpho):\n` +
+    `  1-9: saudável (<100 cm² área visceral) · 10-14: alerta (100-130 cm²) · ≥15: RISCO ELEVADO (>130 cm²)\n` +
+    `  Clínico (precedência médica): cintura ≥94 cm (H) / ≥80 cm (M) = risco; ≥102/≥88 cm = risco muito alto.\n` +
+    `  Quando visceral_fat ≥10 ou ≥15, o contexto assinala o grau de risco.\n` +
+    `ÁGUA CORPORAL:\n` +
+    `  Faixa normal: 50-65% (H) · 45-60% (M). Queda súbita >1,5-2,0% em 24-48h = desidratação aguda ou depleção de glicogénio.\n` +
+    `SINAIS DE SOBRETREINO EM CORPO (Meeusen 2013, Plews 2013 — estende Bloco 2.4):\n` +
+    `  #1 Queda de peso >1,5-2,0% em 48-72h sem défice voluntário (depleção + catabolismo)\n` +
+    `  #2 Queda de água >1,0-1,5% ao longo de 3-5 dias\n` +
+    `  #3 FC repouso +5-7 bpm acima da média de 7 dias, ≥3 dias consecutivos\n` +
+    `  #4 HRV (rMSSD): queda >1,5 DP da linha de base, ≥3 dias (não capturável sem wearable)\n` +
+    `  Medição ao acordar, repouso absoluto, antes de cafeína/líquidos.\n` +
+    `  O contexto assinala se body_assessments recentes mostram sinal #1 ou #2.\n\n` +
     // ── Doutrina Bloco 3 — Ginásio ao serviço da corrida ────────────────────
     `GINÁSIO AO SERVIÇO DA CORRIDA (Bloco 3 — Blagrove 2015, Rønnestad/Mujika 2014, Schoenfeld 2020, Gabbett 2016):\n` +
     `PAPEL DA FORÇA por nível (transição pressupõe padrões fundamentais consolidados):\n` +
@@ -1793,6 +1928,7 @@ export function buildSystemInstruction(
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;
   if (nutritionTargetsLine) sys += `\n\n${nutritionTargetsLine}`;
+  if (bodyMetricsLine) sys += `\n\n${bodyMetricsLine}`;
   if (gymSummary) sys += `\n\n${gymSummary}`;
   if (gymMetricsLine) sys += `\n${gymMetricsLine}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
@@ -1979,6 +2115,24 @@ async function handler(req: Request): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
     );
 
+    // ── Bloco 5 — Avaliações corporais (body_assessments) ───────────────
+    const BODY_WINDOW_DAYS = 30;
+    const bodyStartD = new Date();
+    bodyStartD.setUTCDate(bodyStartD.getUTCDate() - (BODY_WINDOW_DAYS - 1));
+    const bodyStartISO = bodyStartD.toISOString().slice(0, 10);
+    const { data: bodyAssessments } = await sb
+      .from("body_assessments")
+      .select("assessed_at, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg")
+      .eq("user_id", userId)
+      .gte("assessed_at", bodyStartISO)
+      .order("assessed_at", { ascending: false })
+      .limit(30);
+    const bodyMetricsLine = computeBodyMetrics(
+      (bodyAssessments || []) as BodyAssessmentRow[],
+      (profile?.gender as string | null) ?? null,
+      todayISO,
+    );
+
     // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
     const ageFromBirth = profile?.birth_date
       ? Math.floor((Date.now() - new Date(profile.birth_date as string).getTime()) / (365.25 * 24 * 3600 * 1000))
@@ -2079,6 +2233,7 @@ async function handler(req: Request): Promise<Response> {
         coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
       },
       nutritionTargetsLine,
+      bodyMetricsLine,
       nutritionSummary,
       waterSummary,
       gymSummary,

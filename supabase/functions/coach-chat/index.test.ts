@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets } from "./index.ts";
+import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -396,7 +396,7 @@ function sysCom(restrictions: string[] | null, notes: string | null): string {
   return buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: restrictions, dietary_notes: notes },
-    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
 }
 
@@ -641,7 +641,7 @@ Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com 
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
-    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "autorizou-te a escrever metas");
   assertStringIncludes(sys, "Queres que atualize agora");
@@ -1336,7 +1336,7 @@ Deno.test("nutritionTargetsLine aparece no system prompt quando passada", () => 
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: null, dietary_notes: null },
-    line, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    line, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "TMB estimada: 1624 kcal/dia");
 });
@@ -1345,9 +1345,180 @@ Deno.test("nutritionTargetsLine null não introduz linha em branco espúria", ()
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, dietary_restrictions: null, dietary_notes: null },
-    null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   // Não deve haver "undefined" ou "null" no prompt
   assertEquals(sys.includes("undefined"), false);
   assertEquals(sys.includes("null"), false);
+});
+
+// ─── Bloco 5 — computeBodyMetrics ────────────────────────────────────────────
+
+function makeBA(assessed_at: string, opts: Partial<BodyAssessmentRow> = {}): BodyAssessmentRow {
+  return {
+    assessed_at,
+    weight_kg: opts.weight_kg ?? null,
+    body_fat_pct: opts.body_fat_pct ?? null,
+    visceral_fat: opts.visceral_fat ?? null,
+    body_water_pct: opts.body_water_pct ?? null,
+    lean_body_mass_kg: opts.lean_body_mass_kg ?? null,
+  };
+}
+
+Deno.test("computeBodyMetrics: retorna null se sem avaliações", () => {
+  assertEquals(computeBodyMetrics([], null, "2026-08-11"), null);
+});
+
+Deno.test("computeBodyMetrics: peso mais recente aparece quando há só 1 medição", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { weight_kg: 72.5 })];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertStringIncludes(out!, "72.5 kg");
+});
+
+Deno.test("computeBodyMetrics: média de 7 dias quando há ≥2 medições recentes", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
+    makeBA("2026-08-09T07:00:00Z", { weight_kg: 73.0 }),
+  ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  // média = (71+73)/2 = 72.0
+  assertStringIncludes(out!, "72.0 kg");
+  assertStringIncludes(out!, "2 medições");
+});
+
+Deno.test("computeBodyMetrics: flag queda de peso >1,5% em <72h (Bloco 5 #11)", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 68.0 }),
+    makeBA("2026-08-09T07:00:00Z", { weight_kg: 71.0 }),
+  ];
+  // queda: (71-68)/71 = 4,2% em 48h → acima de 1,5%
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertStringIncludes(out!, "CORPO #11");
+  assertStringIncludes(out!, "queda de peso");
+});
+
+Deno.test("computeBodyMetrics: sem flag para queda ≤1,5% (variação normal)", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 70.5 }),
+    makeBA("2026-08-09T07:00:00Z", { weight_kg: 71.0 }),
+  ];
+  // queda: 0,7% — normal
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertEquals(out?.includes("CORPO #11") ?? false, false);
+});
+
+Deno.test("computeBodyMetrics: flag RED-S quando gordura corporal abaixo do piso masculino (6%)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 4.5 })];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertStringIncludes(out!, "CORPO #6 + RED-S");
+  assertStringIncludes(out!, "piso fisiológico");
+});
+
+Deno.test("computeBodyMetrics: flag RED-S quando gordura corporal abaixo do piso feminino (14%)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 12.0 })];
+  const out = computeBodyMetrics(rows, "feminino", "2026-08-11");
+  assertStringIncludes(out!, "CORPO #6 + RED-S");
+});
+
+Deno.test("computeBodyMetrics: sem flag RED-S quando gordura acima do piso", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 15.0 })];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertEquals(out?.includes("CORPO #6") ?? false, false);
+});
+
+Deno.test("computeBodyMetrics: flag risco elevado visceral_fat ≥15", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { visceral_fat: 16 })];
+  const out = computeBodyMetrics(rows, null, "2026-08-11");
+  assertStringIncludes(out!, "RISCO ELEVADO");
+  assertStringIncludes(out!, "CORPO #8");
+});
+
+Deno.test("computeBodyMetrics: flag alerta visceral_fat 10-14", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { visceral_fat: 12 })];
+  const out = computeBodyMetrics(rows, null, "2026-08-11");
+  assertStringIncludes(out!, "alerta");
+  assertStringIncludes(out!, "CORPO #8");
+});
+
+Deno.test("computeBodyMetrics: sem flag visceral_fat quando <10 (saudável)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { visceral_fat: 7 })];
+  const out = computeBodyMetrics(rows, null, "2026-08-11");
+  assertEquals(out?.includes("CORPO #8") ?? false, false);
+});
+
+Deno.test("computeBodyMetrics: lean_body_mass aparece com aviso de tendência", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { lean_body_mass_kg: 58.2 })];
+  const out = computeBodyMetrics(rows, null, "2026-08-11");
+  assertStringIncludes(out!, "58.2 kg");
+  assertStringIncludes(out!, "tendência");
+});
+
+Deno.test("computeBodyMetrics: muscle_mass_kg nunca aparece no output (não fiável)", () => {
+  // A função não recebe muscle_mass_kg — verificamos que o output não a menciona
+  const rows = [makeBA("2026-08-10T07:00:00Z", { lean_body_mass_kg: 58.0 })];
+  const out = computeBodyMetrics(rows, null, "2026-08-11");
+  assertEquals(out?.includes("muscle_mass") ?? false, false);
+});
+
+// ─── Bloco 5 — doutrina no system prompt ─────────────────────────────────────
+
+Deno.test("o prompt inclui doutrina BIA com campos fiáveis e não fiáveis (Bloco 5 #1)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "COMPOSIÇÃO CORPORAL");
+  assertStringIncludes(sys, "NÃO citar");
+  assertStringIncludes(sys, "muscle_mass_kg");
+  assertStringIncludes(sys, "lean_body_mass_kg");
+});
+
+Deno.test("o prompt inclui variação de peso e tendência 7-14 dias (Bloco 5 #2/#3)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "1,0-1,5 kg em 24-48h");
+  assertStringIncludes(sys, "7-14 dias");
+});
+
+Deno.test("o prompt inclui piso RED-S de gordura corporal com limiar conservador (Bloco 5 #6)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "6-8%");
+  assertStringIncludes(sys, "14-16%");
+  assertStringIncludes(sys, "Piso RED-S");
+});
+
+Deno.test("o prompt inclui posição sobre peso de prova — proibido em iniciante/básico (Bloco 5 #7)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NÃO promover");
+  assertStringIncludes(sys, "15-30%");
+  assertStringIncludes(sys, "PESO DE PROVA");
+});
+
+Deno.test("o prompt inclui tabela de ganho muscular por nível (Bloco 5 #5)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "GANHO DE MASSA MUSCULAR");
+  assertStringIncludes(sys, "1,0-1,5 kg/mês");
+  assertStringIncludes(sys, "Aragon");
+});
+
+Deno.test("o prompt inclui escala Renpho de gordura visceral (Bloco 5 #8)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "GORDURA VISCERAL");
+  assertStringIncludes(sys, "RISCO ELEVADO");
+  assertStringIncludes(sys, "≥15");
+});
+
+Deno.test("o prompt inclui sinais de sobretreino em corpo com queda de peso e água (Bloco 5 #11)", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "SINAIS DE SOBRETREINO EM CORPO");
+  assertStringIncludes(sys, "1,5-2,0% em 48-72h");
+  assertStringIncludes(sys, "+5-7 bpm");
+});
+
+// ─── bodyMetricsLine entra no system prompt ───────────────────────────────────
+
+Deno.test("bodyMetricsLine aparece no system prompt quando passada", () => {
+  const line = "Avaliação corporal recente (Bloco 5):\n- Peso mais recente: 72.0 kg";
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, dietary_restrictions: null, dietary_notes: null },
+    null, line, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "72.0 kg");
 });
