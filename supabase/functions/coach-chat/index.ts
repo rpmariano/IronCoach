@@ -1022,7 +1022,9 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
         status: "proposto",
         period_start: periodStart,
         period_end: periodEnd,
-        notes: "Sugestões alimentares do Coach",
+        // coach_plans tem "summary", não "notes" — essa coluna só existe em
+        // coach_plan_items (migração 20260810000000_coach_plans.sql).
+        summary: "Sugestões alimentares do Coach",
       })
       .select("id")
       .single();

@@ -837,6 +837,12 @@ Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano a
   assertEquals(inserted?.kind, "descanso");
   assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
   assertEquals(inserted?.user_id, "u1");
+  // O plano proposto criado para datas fora do plano ativo usa "summary",
+  // nunca "notes" (coach_plans não tem essa coluna — ver migração
+  // 20260810000000_coach_plans.sql; "notes" só existe em coach_plan_items).
+  const planInsert = calls.inserts.find((i: any) => i.status === "proposto");
+  assertEquals(planInsert?.summary, "Sugestões alimentares do Coach");
+  assertEquals(Object.prototype.hasOwnProperty.call(planInsert ?? {}, "notes"), false);
 });
 
 Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async () => {
