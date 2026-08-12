@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Utensils, Info, Flame } from 'lucide-react';
+import { mealNutrients } from '../../utils/nutrition';
 import './NutritionOptionA.css';
 
 function todayISO() {
@@ -17,10 +18,13 @@ export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
   const proteinGoal = Number(profile?.protein_goal) || 0;
   
   const totals = useMemo(() => {
-    return meals.filter(m => m.date === today).reduce((acc, m) => ({
-      calories: acc.calories + (m.calories || 0),
-      protein: acc.protein + (m.protein || 0),
-    }), { calories: 0, protein: 0 });
+    return meals.filter(m => m.date === today).reduce((acc, m) => {
+      const n = mealNutrients(m);
+      return {
+        calories: acc.calories + (n.calories || 0),
+        protein: acc.protein + (n.protein || 0),
+      };
+    }, { calories: 0, protein: 0 });
   }, [meals, today]);
 
   const remaining = calGoal - totals.calories;
