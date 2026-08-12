@@ -105,7 +105,7 @@ export default function GymSessionCard({ session, onEdit }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-100/70 border border-blue-200/60 flex items-center justify-center text-blue-600 shrink-0">
+          <div className="w-10 h-10 rounded-full bg-yellow-100/70 border border-yellow-200/60 flex items-center justify-center text-yellow-600 shrink-0">
             {isAula ? <Users size={18} /> : <Dumbbell size={18} />}
           </div>
           <div>
