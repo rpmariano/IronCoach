@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity } from 'lucide-react';
+import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
@@ -251,7 +251,7 @@ function DashboardVBarBtn({ activeTab, setTab }) {
           style={{ background: activeColor }}
         />
       )}
-      <Activity size={20} />
+      <LayoutDashboard size={20} />
       <span className="text-[10px] leading-none whitespace-nowrap">Dashboard</span>
     </button>
   );
