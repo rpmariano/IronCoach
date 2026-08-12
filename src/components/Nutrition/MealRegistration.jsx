@@ -23,6 +23,19 @@ const MEAL_TYPES = [
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
 
+function getDefaultMealType() {
+  const hour = new Date().getHours();
+  const minute = new Date().getMinutes();
+  const time = hour + minute / 60;
+  
+  if (time >= 5 && time < 10.5) return 'pequeno-almoco'; // 05:00 - 10:30
+  if (time >= 10.5 && time < 12) return 'lanche-manha';  // 10:30 - 12:00
+  if (time >= 12 && time < 15) return 'almoco';          // 12:00 - 15:00
+  if (time >= 15 && time < 19) return 'lanche';          // 15:00 - 19:00
+  if (time >= 19 && time < 22.5) return 'jantar';        // 19:00 - 22:30
+  return 'ceia';                                         // 22:30 - 05:00
+}
+
 export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const { showToast } = useToast();
   const { profile, meals, setMeals, loadInitialData } = useAppStore();
@@ -30,7 +43,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [mealType, setMealType] = useState('almoco');
+  const [mealType, setMealType] = useState(getDefaultMealType());
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
   // Corrida: só um dos dois blocos fica visível/clicável a cada vez.
