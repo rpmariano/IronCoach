@@ -130,20 +130,40 @@ export const useAppStore = create((set, get) => ({
   },
 
   completeMealPlanItem: async (itemId) => {
+    // Guarda o estado anterior para rollback
+    const previousState = get().coachPlanItems;
+    
+    // Optimistic update
     set((state) => ({
       coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, meal_status: 'seguida' } : i),
     }));
+    
     const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'seguida' }).eq('id', itemId);
-    if (error) { console.error('Error completing meal plan item:', error); return false; }
+    if (error) { 
+      console.error('Error completing meal plan item:', error); 
+      // Rollback
+      set({ coachPlanItems: previousState });
+      return false; 
+    }
     return true;
   },
 
   cancelMealPlanItem: async (itemId) => {
+    // Guarda o estado anterior para rollback
+    const previousState = get().coachPlanItems;
+
+    // Optimistic update
     set((state) => ({
       coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, meal_status: 'nao_seguida' } : i),
     }));
+    
     const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'nao_seguida' }).eq('id', itemId);
-    if (error) { console.error('Error cancelling meal plan item:', error); return false; }
+    if (error) { 
+      console.error('Error cancelling meal plan item:', error); 
+      // Rollback
+      set({ coachPlanItems: previousState });
+      return false; 
+    }
     return true;
   },
 

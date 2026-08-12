@@ -156,10 +156,10 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                   <p className="wpc-detail-title">{itemTitle(item)}</p>
                 )}
 
-                {item.kind !== 'descanso' && (
+                {(item.notes || item.kind !== 'descanso') && (
                   <div className="wpc-info-box">
                     {item.notes && (
-                      <div style={{ marginBottom: '12px' }}>
+                      <div style={{ marginBottom: item.kind !== 'descanso' && item.status === 'pendente' ? '12px' : (item.kind !== 'descanso' ? '12px' : 0) }}>
                         <div className="wpc-info-box-header">
                           <StickyNote size={13} /> Instruções do Coach
                         </div>
@@ -167,26 +167,30 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                       </div>
                     )}
                     
-                    {!readOnly && item.status === 'pendente' && (
-                      <div className="wpc-actions" style={{ marginTop: 0 }}>
-                        <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
-                          <Check size={14} /> Concluído
-                        </button>
-                        <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
-                          <XIcon size={14} /> Cancelado
-                        </button>
-                      </div>
-                    )}
-                    
-                    {item.status === 'concluido' && (
-                      <div className="wpc-pill-status success">
-                        <Check size={14} /> Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
-                      </div>
-                    )}
-                    {item.status === 'cancelado' && (
-                      <div className="wpc-pill-status danger">
-                        <XIcon size={14} /> Cancelado
-                      </div>
+                    {item.kind !== 'descanso' && (
+                      <>
+                        {!readOnly && item.status === 'pendente' && (
+                          <div className="wpc-actions" style={{ marginTop: 0 }}>
+                            <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
+                              <Check size={14} /> Concluído
+                            </button>
+                            <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
+                              <XIcon size={14} /> Cancelado
+                            </button>
+                          </div>
+                        )}
+                        
+                        {item.status === 'concluido' && (
+                          <div className="wpc-pill-status success">
+                            <Check size={14} /> Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
+                          </div>
+                        )}
+                        {item.status === 'cancelado' && (
+                          <div className="wpc-pill-status danger">
+                            <XIcon size={14} /> Cancelado
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
