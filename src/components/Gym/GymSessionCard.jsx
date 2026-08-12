@@ -3,6 +3,8 @@ import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
+import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
+import { mapCategoriesToMuscles } from '../../utils/gym';
 
 function formatDuration(totalSeconds) {
   if (!totalSeconds) return '';
@@ -191,6 +193,11 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
                 </span>
               ))}
             </div>
+          )}
+
+          {/* Anatomia Muscular */}
+          {!isAula && session.categories?.length > 0 && (
+             <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
           )}
 
           {/* Campo de Esforço (1-10) */}

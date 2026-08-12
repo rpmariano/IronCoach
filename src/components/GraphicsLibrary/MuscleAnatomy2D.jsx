@@ -11,8 +11,10 @@ import './MuscleAnatomy2D.css';
  * lats, lower-back, neck, obliques, quadriceps, shoulders, spine, triceps, upper-back
  * 
  * @param {Array} activeMuscles - Lista de músculos ativados.
+ * @param {Array} activeMuscles - Lista de músculos ativados.
+ * @param {boolean} naked - Ocultar fundo e sombras.
  */
-const MuscleAnatomy2D = ({ activeMuscles = [] }) => {
+const MuscleAnatomy2D = ({ activeMuscles = [], naked = false }) => {
   // A library exige que os dados sejam passados num formato de exercícios
   const exerciseData = [
     {
@@ -22,7 +24,7 @@ const MuscleAnatomy2D = ({ activeMuscles = [] }) => {
   ];
 
   return (
-    <div className="muscle-anatomy-2d-container">
+    <div className={`muscle-anatomy-2d-container ${naked ? 'naked' : ''}`}>
       {/* Vista Frontal */}
       <div className="anatomy-svg-wrapper">
          <Model 
