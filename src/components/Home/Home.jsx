@@ -155,14 +155,22 @@ export default function Home() {
     }
   };
 
-  const handleCompleteMeal = (item) => {
-    completeMealPlanItem(item.id);
-    showToast('Sugestão alimentar marcada como seguida');
+  const handleCompleteMeal = async (item) => {
+    const success = await completeMealPlanItem(item.id);
+    if (success) {
+      showToast('Sugestão alimentar marcada como seguida');
+    } else {
+      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
+    }
   };
 
-  const handleCancelMeal = (item) => {
-    cancelMealPlanItem(item.id);
-    showToast('Sugestão alimentar marcada como não seguida');
+  const handleCancelMeal = async (item) => {
+    const success = await cancelMealPlanItem(item.id);
+    if (success) {
+      showToast('Sugestão alimentar marcada como não seguida');
+    } else {
+      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
+    }
   };
 
   return (
