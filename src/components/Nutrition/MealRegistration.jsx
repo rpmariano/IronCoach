@@ -51,13 +51,21 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const [itemGrams, setItemGrams] = useState('');
   const [isFinalizing, setIsFinalizing] = useState(false);
 
-  // Edição — carrega a refeição existente (é sempre pelos campos, tal como
-  // na Corrida: sem foto nova, sem passar pelo Coach outra vez). Só se pode
-  // editar nome/gramas dos alimentos já gravados e removê-los — acrescentar
-  // um alimento NOVO exigiria estimar os valores dele com o Gemini, e editar
-  // não deve chamar o Coach.
-  const [originalItemIds, setOriginalItemIds] = useState([]);
+  // Edição — carrega a refeição existente. Alimentos e observações são dados
+  // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
+  // regenera-a (as observações entram no prompt de estimação — "hambúrguer"
+  // caseiro e do McDonald's não dão os mesmos valores). Data e tipo de
+  // refeição não mexem na análise, e nesses casos guardar é um update direto,
+  // sem custo de API. É por passar pelo Coach que acrescentar um alimento
+  // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
   const [isSaving, setIsSaving] = useState(false);
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
+
+  // Assinatura do que é analítico, para comparar o antes com o agora.
+  const analyticalSignature = (notesValue, items) => JSON.stringify({
+    notes: (notesValue || '').trim(),
+    items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
+  });
 
   useEffect(() => {
     if (!mealIdToEdit) return;
@@ -73,10 +81,16 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       grams: it.quantity_grams,
     }));
     setManualItems(items);
-    setOriginalItemIds(items.map(i => i.dbId).filter(Boolean));
+    setOriginalSnapshot(analyticalSignature(meal.notes, items));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
+
+  // Só regenera a análise se os alimentos ou as observações mudaram; mudar
+  // apenas a data ou o tipo de refeição não justifica uma chamada ao Gemini.
+  const needsReanalysis = isEditing
+    && originalSnapshot !== null
+    && analyticalSignature(notes, manualItems) !== originalSnapshot;
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
@@ -194,41 +208,49 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   };
 
   // ----------------------------------
-  // GUARDAR ALTERAÇÕES (edição) — é só update dos campos, não passa pelo
-  // Coach outra vez (mesmo padrão da Corrida: editar nunca reanalisa).
+  // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
+  //   • Alimentos ou observações mudaram → passa pelo Coach (analyze-meal em
+  //     mode manual com meal_id), que reestima os valores nutricionais de
+  //     todos os alimentos e regenera a análise. É o que permite acrescentar
+  //     um alimento novo ao editar.
+  //   • Só a data/tipo mudaram → update direto, sem chamada ao Gemini.
   // ----------------------------------
   const handleSaveEdit = async () => {
     if (isSaving) return;
+    if (needsReanalysis && !manualItems.length) {
+      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
+      return;
+    }
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const { error: mealError } = await supabase
-        .from('meals')
-        .update({ date, meal_type: mealType, notes: notes.trim() || null })
-        .eq('id', mealIdToEdit);
-      if (mealError) throw mealError;
-
-      const currentIds = manualItems.map(i => i.dbId).filter(Boolean);
-      const removedIds = originalItemIds.filter(id => !currentIds.includes(id));
-      for (const id of removedIds) {
-        const { error } = await supabase.from('meal_items').delete().eq('id', id);
-        if (error) throw error;
-      }
-      for (const item of manualItems) {
-        if (!item.dbId) continue; // alimentos novos não se adicionam ao editar (sem IA)
-        const { error } = await supabase
-          .from('meal_items')
-          .update({ name: item.name, quantity_grams: Number(item.grams) })
-          .eq('id', item.dbId);
-        if (error) throw error;
+      if (needsReanalysis) {
+        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+          body: {
+            mode: 'manual',
+            meal_id: mealIdToEdit,
+            date,
+            meal_type: mealType,
+            notes: notes.trim() || null,
+            items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
+          },
+        });
+        if (error) throw new Error(error);
+        if (data?.error) throw new Error(data.error);
+      } else {
+        const { error: mealError } = await supabase
+          .from('meals')
+          .update({ date, meal_type: mealType })
+          .eq('id', mealIdToEdit);
+        if (mealError) throw mealError;
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast('Refeição atualizada');
+      showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
       onClose();
     } catch (err) {
       console.error(err);
-      setErrorMsg('Falha a guardar alterações. Tenta novamente.');
+      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
     } finally {
       setIsSaving(false);
     }
@@ -373,9 +395,11 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
           </>
         ) : (
           <div className="mb-4">
-            {!isEditing && (
-              <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-3">
-                <p className="text-[12px] font-bold text-slate-500 mb-2.5">Adicionar alimento</p>
+            {/* Também disponível a editar: como guardar passa pelo Coach
+                quando os alimentos mudam, os valores nutricionais de um
+                alimento novo são estimados na mesma chamada. */}
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-3">
+              <p className="text-[12px] font-bold text-slate-500 mb-2.5">Adicionar alimento</p>
                 <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
                   <input
                     type="text"
@@ -404,8 +428,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                 >
                   <Plus size={16} /> Adicionar alimento
                 </button>
-              </div>
-            )}
+            </div>
 
             {manualItems.length > 0 && (
               <div className="space-y-1.5 mb-3">
@@ -442,7 +465,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                     </button>
                   </div>
                 ))}
-                {!isEditing && (
+                {(!isEditing || needsReanalysis) && (
                   <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
                 )}
               </div>
@@ -465,18 +488,28 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
         {/* Ações — mesmo botão do Coach nos dois caminhos: a foto e o registo
             manual acabam ambos analisados por ele, só a origem dos dados
             muda (ver PRD 3.2). O manual só chega aqui a servidor nenhum —
-            "Adicionar alimento" é sempre local. Editar é só o update dos
-            campos — não passa pelo Coach, por isso não leva o gradiente. */}
+            "Adicionar alimento" é sempre local. A editar, o botão só leva o
+            gradiente do Coach quando os alimentos ou as observações mudaram
+            (dados analíticos); mudar só a data ou o tipo é update direto. */}
         {isEditing ? (
-          <button
-            onClick={handleSaveEdit}
-            disabled={isSaving}
-            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-          >
-            {isSaving
-              ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
-              : <><PencilLine size={16} /> Guardar Alterações</>}
-          </button>
+          needsReanalysis ? (
+            <CoachAnalyzeButton
+              onClick={handleSaveEdit}
+              disabled={isSaving || !manualItems.length}
+              busy={isSaving}
+              label="Guardar e Reanalisar"
+            />
+          ) : (
+            <button
+              onClick={handleSaveEdit}
+              disabled={isSaving}
+              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            >
+              {isSaving
+                ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
+                : <><PencilLine size={16} /> Guardar Alterações</>}
+            </button>
+          )
         ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}

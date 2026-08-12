@@ -7,7 +7,8 @@ import MealRegistration from './MealRegistration';
 // analyze-meal é a única coisa que estes testes exercitam de facto —
 // "Adicionar alimento" no manual é puramente local (sem chamadas ao
 // servidor), só "Analisar Refeição" toca no Gemini, seja por foto ou manual.
-// Editar não passa pelo Gemini — é só update direto de meals/meal_items.
+// Editar passa pelo Gemini quando os dados analíticos mudam (alimentos ou
+// observações); mudar só a data/tipo é update direto de meals.
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateMeal: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -227,7 +228,11 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
   });
 });
 
-describe('MealRegistration — editar refeição existente: é só update dos campos, sem Coach', () => {
+/* Editar: alimentos e observações são dados ANALÍTICOS — mudá-los regenera a
+   análise do Coach (as observações entram no prompt de estimação: um
+   "hambúrguer" caseiro e um do McDonald's não dão os mesmos valores). Mudar
+   só a data ou o tipo de refeição é um update direto, sem custo de API. */
+describe('MealRegistration — editar refeição existente', () => {
   const onClose = vi.fn();
   const loadInitialData = vi.fn().mockResolvedValue();
   const EXISTING_MEAL = {
@@ -242,7 +247,7 @@ describe('MealRegistration — editar refeição existente: é só update dos ca
   };
 
   beforeEach(() => {
-    mocks.invoke.mockReset();
+    mocks.invoke.mockReset().mockResolvedValue({ data: { meal: EXISTING_MEAL }, error: null });
     mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
     mocks.updateItem.mockReset().mockResolvedValue({ error: null });
     mocks.deleteItem.mockReset().mockResolvedValue({ error: null });
@@ -251,47 +256,116 @@ describe('MealRegistration — editar refeição existente: é só update dos ca
     useAppStore.setState({ profile: PROFILE, meals: [EXISTING_MEAL], loadInitialData });
   });
 
-  it('pré-preenche os campos e esconde o seletor Foto/Manual e o formulário de adicionar', () => {
+  it('pré-preenche os campos, esconde o seletor Foto/Manual mas deixa acrescentar alimentos', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     expect(screen.getByText('Editar Refeição')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Jantar' })).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Adicionar alimento' })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Arroz')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Frango')).toBeInTheDocument();
+    // Acrescentar um alimento novo ao editar passou a ser possível: guardar
+    // chama o Coach, e é ele que estima os valores nutricionais do novo item.
+    expect(screen.getByRole('button', { name: 'Adicionar alimento' })).toBeInTheDocument();
+    // Sem nada alterado ainda, guardar não precisa do Coach.
     expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
   });
 
-  it('ao guardar, atualiza a refeição e os alimentos alterados, sem chamar o Gemini', async () => {
+  it('mudar só o tipo de refeição faz update direto, sem chamar o Gemini', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
-    fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Almoço' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
 
     await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
     const [mealPayload, mealId] = mocks.updateMeal.mock.calls[0];
     expect(mealId).toBe('meal-3');
-    expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'jantar', notes: 'nota antiga' });
-
-    await waitFor(() => expect(mocks.updateItem).toHaveBeenCalledTimes(2));
-    const arrozCall = mocks.updateItem.mock.calls.find(([, id]) => id === 'item-1');
-    expect(arrozCall[0]).toEqual({ name: 'Arroz', quantity_grams: 120 });
-
-    expect(mocks.deleteItem).not.toHaveBeenCalled();
+    expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'almoco' });
     expect(mocks.invoke).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('mudar as gramas de um alimento passa pelo Coach e reanalisa', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-meal');
+    expect(body.mode).toBe('manual');
+    expect(body.meal_id).toBe('meal-3');
+    expect(body.items).toEqual([
+      { name: 'Arroz', grams: '120' },
+      { name: 'Frango', grams: 150 },
+    ]);
+    // O update direto não é usado neste caminho — quem grava é a Edge Function.
+    expect(mocks.updateMeal).not.toHaveBeenCalled();
     await waitFor(() => expect(loadInitialData).toHaveBeenCalledWith('user-1'));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('remover um alimento apaga-o ao guardar', async () => {
+  it('mudar só as observações também passa pelo Coach — mudam a análise', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), {
+      target: { value: 'hambúrguer do McDonald\'s, não caseiro' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.meal_id).toBe('meal-3');
+    expect(body.notes).toBe('hambúrguer do McDonald\'s, não caseiro');
+  });
+
+  it('acrescentar um alimento novo ao editar envia-o para o Coach estimar', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Brócolos' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    // Sem gramas indicadas, o Coach estima a porção típica.
+    expect(body.items).toContainEqual({ name: 'Brócolos', grams: null });
+    expect(body.items).toHaveLength(3);
+  });
+
+  it('remover um alimento passa pelo Coach com a lista já sem ele', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Remover Frango' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
-    await waitFor(() => expect(mocks.deleteItem).toHaveBeenCalledWith('item-2'));
-    expect(mocks.updateItem).toHaveBeenCalledTimes(1);
-    expect(mocks.updateItem.mock.calls[0][1]).toBe('item-1');
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.items).toEqual([{ name: 'Arroz', grams: 100 }]);
+    // Já não há delete item-a-item: a Edge Function substitui a lista toda.
+    expect(mocks.deleteItem).not.toHaveBeenCalled();
+  });
+
+  it('não deixa gravar uma refeição sem alimento nenhum', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remover Arroz' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover Frango' }));
+
+    expect(screen.getByRole('button', { name: /Guardar e Reanalisar/ })).toBeDisabled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('um erro do Coach não fecha o formulário nem perde as alterações', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na estimativa.' });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await screen.findByText('Falha na estimativa.');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('120')).toBeInTheDocument();
   });
 });

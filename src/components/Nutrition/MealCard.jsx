@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, Plus, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets, Award, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplets, Award, PencilLine } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -13,14 +13,17 @@ const MEAL_ICONS = {
   'jantar': Moon,
 };
 
+/* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
+   passa pelo botão "Editar" → MealRegistration, porque mexer nos alimentos
+   ou nas observações muda a análise do Coach e tem de a regenerar (as
+   observações entram no prompt de estimação — "hambúrguer" caseiro e do
+   McDonald's não dão os mesmos valores). Editar aqui à mão deixava a
+   "Análise do Coach" a descrever uma refeição que já não existe. */
 export default function MealCard({ meal, onEdit }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeletingItem, setIsDeletingItem] = useState(null);
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [notesText, setNotesText] = useState(meal.notes || '');
 
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
@@ -68,39 +71,6 @@ export default function MealCard({ meal, onEdit }) {
       showToast('Erro ao eliminar refeição.', 'error');
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleDeleteItem = async (itemId) => {
-    if (!confirm('Eliminar este alimento?')) return;
-    setIsDeletingItem(itemId);
-    try {
-      const { error } = await supabase.from('meal_items').delete().eq('id', itemId);
-      if (error) throw error;
-      if (profile?.id) {
-        await loadInitialData(profile.id);
-      }
-      showToast('Alimento eliminado');
-    } catch (err) {
-      console.error('Error deleting item:', err);
-      showToast('Erro ao eliminar alimento.', 'error');
-    } finally {
-      setIsDeletingItem(null);
-    }
-  };
-
-  const handleSaveNotes = async () => {
-    try {
-      const { error } = await supabase.from('meals').update({ notes: notesText.trim() || null }).eq('id', meal.id);
-      if (error) throw error;
-      setEditingNotes(false);
-      if (profile?.id) {
-        await loadInitialData(profile.id);
-      }
-      showToast('Observações guardadas');
-    } catch (err) {
-      console.error('Error updating notes:', err);
-      showToast('Erro ao guardar observações.', 'error');
     }
   };
 
@@ -186,42 +156,14 @@ export default function MealCard({ meal, onEdit }) {
             </div>
           )}
 
-          {/* Observações Card */}
+          {/* Observações — só leitura; alterar é pelo botão "Editar" */}
           <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <MessageSquare size={14} className="text-slate-400" /> Observações
-              </div>
-              <button 
-                onClick={() => setEditingNotes(!editingNotes)}
-                className="text-[11px] font-bold text-emerald-600 hover:underline"
-              >
-                {editingNotes ? 'Cancelar' : meal.notes ? 'Editar' : 'Adicionar'}
-              </button>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <MessageSquare size={14} className="text-slate-400" /> Observações
             </div>
-
-            {editingNotes ? (
-              <div className="mt-2 space-y-2">
-                <textarea
-                  rows={2}
-                  value={notesText}
-                  onChange={e => setNotesText(e.target.value)}
-                  placeholder="Contexto da refeição..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-emerald-500"
-                />
-                <button
-                  onClick={handleSaveNotes}
-                  className="tap-h-44 px-3 rounded-lg text-xs font-bold transition active:scale-95"
-                  style={{ background: 'var(--mod-nutricao-to)', color: '#fff' }}
-                >
-                  Guardar
-                </button>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic mt-1">
-                {meal.notes || 'Sem observações.'}
-              </p>
-            )}
+            <p className="text-xs text-slate-500 italic mt-1">
+              {meal.notes || 'Sem observações.'}
+            </p>
           </div>
 
           {/* Food Items List */}
@@ -230,17 +172,8 @@ export default function MealCard({ meal, onEdit }) {
 
             return (
               <div key={item.id} className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 capitalize">{item.name || item.food_item?.name || 'Alimento'}</span>
-                  <button 
-                    onClick={() => handleDeleteItem(item.id)}
-                    disabled={isDeletingItem === item.id}
-                    className="text-slate-400 hover:text-red-500 transition p-1"
-                  >
-                    {isDeletingItem === item.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                  </button>
-                </div>
-                
+                <span className="text-xs font-bold text-slate-800 capitalize block">{item.name || item.food_item?.name || 'Alimento'}</span>
+
                 <div className="flex items-center gap-2">
                   <div className="bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800">
                     {item.amount_g || item.quantity_grams || item.quantity || 100}

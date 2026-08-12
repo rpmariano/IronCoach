@@ -651,6 +651,50 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
       }
 
+      // ── Edição de uma refeição existente (meal_id presente) ──────────
+      // Editar alimentos ou observações muda a análise, por isso passa pelo
+      // mesmo caminho do registo: estima tudo de novo e regenera a nota do
+      // Coach. As observações contam como dado analítico de propósito — o
+      // Gemini usa-as para inferir porções e contexto ("hambúrguer" caseiro
+      // e do McDonald's não dão os mesmos valores), ver buildManualItemsPrompt.
+      // Distingue-se da reanálise (meal_id sem mode) por essa repescar as
+      // fotos guardadas; aqui a fonte são os campos que o atleta editou.
+      if (typeof body.meal_id === "string" && body.meal_id) {
+        const mealId = body.meal_id;
+        const { data: existingMeal, error: fetchError } = await sb
+          .from("meals")
+          .select("id")
+          .eq("id", mealId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (fetchError) return jsonResponse({ error: `Falha a procurar refeição: ${fetchError.message}` }, 500);
+        if (!existingMeal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
+
+        const { data: updatedMeal, error: updateError } = await sb
+          .from("meals")
+          .update({ date: body.date, meal_type: body.meal_type, notes: rawNotes })
+          .eq("id", mealId)
+          .select()
+          .single();
+        if (updateError) return jsonResponse({ error: `Falha a atualizar refeição: ${updateError.message}` }, 500);
+
+        const { error: deleteError } = await sb.from("meal_items").delete().eq("meal_id", mealId);
+        if (deleteError) return jsonResponse({ error: `Falha a limpar alimentos antigos: ${deleteError.message}` }, 500);
+
+        const { data: savedItems, error: itemsError } = await sb
+          .from("meal_items")
+          // deno-lint-ignore no-explicit-any
+          .insert((estimated.items as any[]).map((it) => ({ ...it, meal_id: mealId, user_id: userId })))
+          .select();
+        if (itemsError) return jsonResponse({ error: `Falha a gravar alimentos: ${itemsError.message}` }, 500);
+
+        await attachMealCoachNotes(sb, userId, updatedMeal, {
+          date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+        }, geminiKey);
+
+        return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: estimated.usage });
+      }
+
       const { data: meal, error: mealError } = await sb
         .from("meals")
         .insert({ user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes })
