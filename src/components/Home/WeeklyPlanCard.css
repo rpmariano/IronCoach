@@ -287,10 +287,31 @@
   color: #94a3b8;
 }
 
-.wpc-detail-status {
+.wpc-pill-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   font-size: 0.75rem;
   font-weight: 800;
+  padding: 10px 14px;
+  border-radius: 14px;
+}
+
+.wpc-pill-status.success {
+  background: rgba(5, 150, 105, 0.1);
   color: #059669;
+}
+
+.wpc-pill-status.danger {
+  background: rgba(15, 23, 42, 0.03);
+  color: #64748b;
+}
+
+.wpc-pill-status.danger-red {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
 }
 
 .wpc-past-warning {
