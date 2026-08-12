@@ -111,16 +111,25 @@ function itemKindClass(item) {
 
 function formatMealSuggestion(text) {
   if (!text) return null;
-  const formatted = text
-    .replace(/(Pequeno-almoço:)/gi, '\n☕ $1')
-    .replace(/(Almoço:)/gi, '\n🥗 $1')
-    .replace(/(Lanche pré-treino:)/gi, '\n⚡ $1')
-    .replace(/(Lanche pós-treino:)/gi, '\n💪 $1')
-    .replace(/(Lanche da manhã:)/gi, '\n🍎 $1')
-    .replace(/(Lanche da tarde:)/gi, '\n🍎 $1')
-    .replace(/(Lanche:)/gi, '\n🍎 $1')
-    .replace(/(Jantar:)/gi, '\n🍗 $1')
-    .replace(/(Ceia:)/gi, '\n🌙 $1');
+  
+  const map = {
+    'pequeno-almoço:': '☕ Pequeno-almoço:',
+    'almoço:': '🥗 Almoço:',
+    'lanche pré-treino:': '⚡ Lanche pré-treino:',
+    'lanche pós-treino:': '💪 Lanche pós-treino:',
+    'lanche da manhã:': '🍎 Lanche da manhã:',
+    'lanche da tarde:': '🍎 Lanche da tarde:',
+    'lanche:': '🍎 Lanche:',
+    'jantar:': '🍽️ Jantar:',
+    'ceia:': '🌙 Ceia:'
+  };
+  
+  const regex = /(Pequeno-almoço:|Almoço:|Lanche pré-treino:|Lanche pós-treino:|Lanche da manhã:|Lanche da tarde:|Lanche:|Jantar:|Ceia:)/gi;
+  
+  const formatted = text.replace(regex, (match) => {
+    const key = match.toLowerCase();
+    return '\n' + (map[key] || match);
+  });
 
   return formatted.split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => (
     <span key={idx} style={{ display: 'block', marginBottom: '6px' }}>
