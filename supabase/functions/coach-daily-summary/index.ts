@@ -191,6 +191,19 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `uma é INDEPENDENTE — devolve null nas que não tiveres nada de útil para dizer, em vez de ` +
     `inventar conteúdo. Português (PT), tom direto e próximo, nunca genérico.\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
+    `REGRA GLOBAL DE DATAS — aplica-se a TODOS os campos abaixo, sem exceção:\n` +
+    `O contexto tem vários campos de plano com data explícita no NOME da chave ` +
+    `(plano_treino_hoje_AAAA-MM-DD, plano_treino_amanha_AAAA-MM-DD, ` +
+    `plano_treino_depois_de_amanha_AAAA-MM-DD). São TRÊS DIAS DIFERENTES. Nunca descreve ` +
+    `itens de baldes diferentes como acontecendo no mesmo dia, nunca os juntes numa frase que ` +
+    `sugira simultaneidade (ex.: "amanhã tens X e Y" quando X e Y vêm de baldes de dias ` +
+    `diferentes; "dia duplo" só se os DOIS itens vierem do MESMO balde). Se mencionares mais de ` +
+    `um dia na mesma frase, nomeia cada dia explicitamente (ex.: "amanhã tens ginásio, e no dia ` +
+    `seguinte corrida de intervalos").\n` +
+    `O campo plano_treino_depois_de_amanha_* é o ÚNICO com esta restrição adicional: NÃO o uses ` +
+    `em NENHUM campo de resposta (nem recap, nem warnings, nem tomorrow_prep). Existe só como ` +
+    `contexto interno, não é para aparecer nas mensagens — nunca o mencione, direta ou ` +
+    `indiretamente.\n\n` +
     `CAMPOS:\n` +
     `- recap: recapitulação dos últimos dias (treinos feitos, consistência, uma tendência ` +
     `notável). Só se houver histórico recente suficiente para dizer algo real.\n` +
@@ -202,16 +215,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `levanta a preocupação em vez disso (mesmo campo).\n` +
     `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
     `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n` +
-    `  REGRA ABSOLUTA: este campo descreve EXCLUSIVAMENTE o dia de amanhã, usando APENAS o ` +
-    `campo plano_treino_amanha_*. NÃO uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias ` +
-    `para inferir treinos futuros — esses campos são histórico, não plano. Se plano_treino_amanha_* ` +
-    `estiver vazio ou só tiver descanso, devolve null neste campo.\n` +
-    `  NUNCA MENCIONES o campo plano_treino_depois_de_amanha_* neste texto, nem para o comparar, ` +
-    `contrastar ou juntar com o dia de amanhã — ele existe só para OUTROS campos (recap/warnings) ` +
-    `poderem dar contexto se for mesmo relevante, nunca para tomorrow_prep. Um treino em ` +
-    `plano_treino_amanha_* e outro em plano_treino_depois_de_amanha_* são SEMPRE em dias ` +
-    `diferentes — nunca os descrevas juntos como se fossem o mesmo dia (nunca "dia duplo", ` +
-    `"amanhã tens X e Y" ou semelhante, quando X e Y vêm de baldes de dias diferentes).\n\n` +
+    `  Usa EXCLUSIVAMENTE o campo plano_treino_amanha_* para descrever amanhã. NÃO uses ` +
+    `corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir treinos futuros — esses ` +
+    `campos são histórico, não plano. Se plano_treino_amanha_* estiver vazio ou só tiver ` +
+    `descanso, devolve null neste campo.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(

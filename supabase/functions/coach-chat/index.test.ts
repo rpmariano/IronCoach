@@ -253,8 +253,8 @@ Deno.test("runGetGymHistory propaga erro de query", async () => {
 // inserido e apagado, para os testes verificarem que nada fica gravado quando
 // a validação falha, e que o rollback acontece quando os itens falham.
 // deno-lint-ignore no-explicit-any
-function makePlanSb(opts: { planError?: any; itemsError?: any } = {}) {
-  const calls = { planInserts: [] as any[], itemInserts: [] as any[], deletes: [] as string[] };
+function makePlanSb(opts: { planError?: any; itemsError?: any; activePlans?: any[] } = {}) {
+  const calls = { planInserts: [] as any[], itemInserts: [] as any[], deletes: [] as string[], supersededIds: [] as string[] };
   const sb = {
     from: (table: string) => {
       if (table === "coach_plans") {
@@ -275,6 +275,21 @@ function makePlanSb(opts: { planError?: any; itemsError?: any } = {}) {
           delete: () => ({
             eq: (_col: string, id: string) => {
               calls.deletes.push(id);
+              return Promise.resolve({ error: null });
+            },
+          }),
+          // Suporta a query de replace_active_plan: .select().eq().eq().gte()
+          select: (_cols: string) => ({
+            eq: (_c1: string, _v1: unknown) => ({
+              eq: (_c2: string, _v2: unknown) => ({
+                gte: (_c3: string, _v3: unknown) => Promise.resolve({ data: opts.activePlans ?? [], error: null }),
+              }),
+            }),
+          }),
+          // Suporta o update de replace_active_plan: .update({status}).in("id", ids)
+          update: (_data: unknown) => ({
+            in: (_col: string, ids: string[]) => {
+              calls.supersededIds.push(...ids);
               return Promise.resolve({ error: null });
             },
           }),
@@ -378,6 +393,51 @@ Deno.test("runProposeTrainingPlan apaga o plano se os itens falharem", async () 
   assertStringIncludes(result, "Erro ao gravar os treinos");
   // Sem isto ficaria uma proposta vazia visível ao atleta.
   assertEquals(calls.deletes, ["plan-1"]);
+});
+
+// ── replace_active_plan — corrige o loop de confirmação sem saída ─────────
+// Bug reportado: o atleta confirmava explicitamente que queria substituir o
+// plano ativo, e o Coach continuava a perguntar sem nunca agir, porque
+// propose_training_plan nunca tinha forma de desativar o plano antigo — o
+// contexto continuava a mostrar "PLANO ACEITE EM CURSO" para sempre.
+
+Deno.test("replace_active_plan=true marca como recusado um plano ativo com treino real", async () => {
+  const { sb, calls } = makePlanSb({
+    activePlans: [{ id: "old-plan", coach_plan_items: [{ kind: "corrida" }] }],
+  });
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
+  assertStringIncludes(result, "Plano criado");
+  assertEquals(calls.supersededIds, ["old-plan"]);
+  // O novo plano continua a ser criado normalmente, como proposta.
+  assertEquals(calls.planInserts.length, 1);
+  assertEquals(calls.planInserts[0].status, "proposto");
+});
+
+Deno.test("sem replace_active_plan, planos ativos não são tocados", async () => {
+  const { sb, calls } = makePlanSb({
+    activePlans: [{ id: "old-plan", coach_plan_items: [{ kind: "corrida" }] }],
+  });
+  await runProposeTrainingPlan(sb, "user-1", VALID_PLAN); // replace_active_plan omitido
+  assertEquals(calls.supersededIds, []);
+});
+
+Deno.test("replace_active_plan=true não toca num plano só de refeições (sem corrida/ginásio)", async () => {
+  const { sb, calls } = makePlanSb({
+    activePlans: [{ id: "meal-plan", coach_plan_items: [{ kind: "descanso" }] }],
+  });
+  await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
+  assertEquals(calls.supersededIds, []);
+});
+
+Deno.test("replace_active_plan=true supera só o plano de treino, não um plano de refeições em paralelo", async () => {
+  const { sb, calls } = makePlanSb({
+    activePlans: [
+      { id: "training-plan", coach_plan_items: [{ kind: "ginasio" }] },
+      { id: "meal-plan", coach_plan_items: [{ kind: "descanso" }] },
+    ],
+  });
+  await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
+  assertEquals(calls.supersededIds, ["training-plan"]);
 });
 
 // ── Restrições alimentares no prompt ────────────────────────────────────────

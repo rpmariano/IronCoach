@@ -105,12 +105,25 @@ const PROPOSE_PLAN_TOOL = {
     "7 ou 14 dias e explica brevemente que adaptações musculares e cardiovasculares precisam de " +
     "pelo menos 7 dias de estímulo consistente para ocorrer — mudar mais rápido introduz ruído " +
     "que impede a supercompensação. Se pedir menos de 7 dias, aceita o pedido mas aconselha " +
-    "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta.",
+    "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta. " +
+    "SUBSTITUIR PLANO ATIVO: se o contexto mostrar um plano aceite em curso e tiveres avisado " +
+    "o atleta disso, e ele DEPOIS confirmar explicitamente que quer mesmo substituí-lo (ex.: " +
+    "'sim', 'quero mesmo assim', 'substitui', 'cria na mesma'), chama esta função com " +
+    "replace_active_plan=true. NÃO voltes a perguntar nem a repetir o aviso — ele já respondeu, " +
+    "agir agora é a única forma de não ficar preso num ciclo de confirmação sem saída.",
   parameters: {
     type: "OBJECT",
     properties: {
       period_start: { type: "STRING", description: "Primeiro dia do plano, formato YYYY-MM-DD" },
       period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD" },
+      replace_active_plan: {
+        type: "BOOLEAN",
+        description:
+          "true APENAS depois de o atleta confirmar explicitamente que quer substituir o " +
+          "plano de treino ativo em curso por este novo. Quando true, o plano ativo atual " +
+          "(com treinos reais, não um plano só de refeições) é automaticamente marcado como " +
+          "recusado antes de esta proposta ser criada. Default false/omitido.",
+      },
       summary: {
         type: "STRING",
         description: "Resumo curto do plano numa frase, ex.: \"4 treinos, foco em base aeróbica\"",
@@ -766,7 +779,7 @@ const MAX_PLAN_ITEMS = 14;
 // Ver specs/plano-de-treino.md §3 e §5.1.
 // deno-lint-ignore no-explicit-any
 export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
-  const { period_start, period_end, summary, items } = args || {};
+  const { period_start, period_end, summary, items, replace_active_plan } = args || {};
 
   if (!period_start || !period_end || !ISO_DATE_RE.test(period_start) || !ISO_DATE_RE.test(period_end)) {
     return "Erro: period_start e period_end têm de ser datas no formato YYYY-MM-DD.";
@@ -826,6 +839,32 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       notes: itemNotes,
       meal_suggestion: mealSuggestion,
     });
+  }
+
+  // Se o atleta confirmou explicitamente que quer substituir o plano de
+  // treino ativo, marca-o "recusado" (deixa de contar como ativo) ANTES de
+  // criar o novo. Sem isto, o plano antigo continuaria "aceite", o contexto
+  // voltaria a mostrar "PLANO ACEITE EM CURSO" na mensagem seguinte, e o
+  // Coach recusaria propor outro — um ciclo de confirmação sem saída, que já
+  // aconteceu em produção. Só planos com treino real (corrida/ginásio) são
+  // substituídos; um plano de refeições aceite em paralelo não é tocado.
+  if (replace_active_plan === true) {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const { data: activePlans } = await sb
+      .from("coach_plans")
+      .select("id, coach_plan_items(kind)")
+      .eq("user_id", userId)
+      .eq("status", "aceite")
+      .gte("period_end", todayISO);
+    // deno-lint-ignore no-explicit-any
+    const toSupersede = (activePlans || [])
+      // deno-lint-ignore no-explicit-any
+      .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
+      // deno-lint-ignore no-explicit-any
+      .map((p: any) => p.id);
+    if (toSupersede.length > 0) {
+      await sb.from("coach_plans").update({ status: "recusado" }).in("id", toSupersede);
+    }
   }
 
   const { data: plan, error: planErr } = await sb
@@ -1811,8 +1850,16 @@ export function buildSystemInstruction(
     `explicas brevemente porquê (ex.: "uma FC de repouso elevada durante dias é um dos primeiros ` +
     `sinais de sobretreino — continuar sem adaptar aumenta o risco"), e perguntas se quer um ` +
     `plano ajustado. Se não houver sinal claro mas o atleta pedir mesmo assim um novo plano, ` +
-    `lembras-lhe que o microciclo atual tem ainda X dias e que interrompê-lo sem motivo ` +
-    `fisiológico reduz as adaptações — e deixas a decisão ao atleta.\n\n` +
+    `lembras-lhe UMA VEZ que o microciclo atual tem ainda X dias e que interrompê-lo sem motivo ` +
+    `fisiológico reduz as adaptações, e perguntas se quer mesmo assim substituir.\n` +
+    `AÇÃO APÓS CONFIRMAÇÃO — CRÍTICO: se o atleta já respondeu a essa pergunta e confirma que ` +
+    `quer substituir mesmo assim (ex.: "sim", "quero na mesma", "substitui", "cria o novo", ou ` +
+    `qualquer confirmação clara depois de já teres avisado), CHAMA propose_training_plan com ` +
+    `replace_active_plan=true NA MESMA RESPOSTA. NÃO voltes a repetir o aviso nem a perguntar de ` +
+    `novo — o atleta já decidiu, repetir a pergunta é um erro que o deixa preso sem conseguir ` +
+    `avançar. Uma confirmação só conta como resposta à TUA pergunta anterior sobre substituir o ` +
+    `plano; se ele só respondeu a outra pergunta (ex.: duração do plano novo), ainda não confirmou ` +
+    `a substituição — nesse caso confirma explicitamente antes de agir.\n\n` +
     `DURAÇÃO DO PLANO (doutrina Issurin 2008, Daniels 2021, Bompa 2015): a janela ideal de ` +
     `um microciclo é 7-14 dias. Adaptações estruturais (biogénese mitocondrial, densidade ` +
     `capilar, síntese de hemoglobina) exigem estímulo consistente por 14-21 dias; mudar a ` +
