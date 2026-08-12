@@ -1,0 +1,45 @@
+# Publica as Edge Functions no Supabase a cada push que as toque.
+#
+# Existia um buraco aqui: só havia workflow para o frontend (deploy-pages.yml,
+# só a partir de master). As Edge Functions eram sempre publicadas à mão via
+# `supabase functions deploy`, e mais que uma vez um fix ficou só no git sem
+# nunca chegar ao servidor — o utilizador continuava a ver o comportamento
+# antigo em produção enquanto o código já estava corrigido no repositório.
+#
+# Corre em dev E master (ao contrário do deploy-pages, que só corre em
+# master) porque não existe BD de desenvolvimento separada — dev já é
+# produção para o backend, ver CLAUDE.md/memória do projeto.
+#
+# Requer o secret SUPABASE_ACCESS_TOKEN (Settings → Secrets and variables →
+# Actions), gerado em https://supabase.com/dashboard/account/tokens.
+
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches: [dev, master]
+    paths:
+      - "supabase/functions/**"
+  workflow_dispatch:
+
+# Um deploy de cada vez por ramo — evita duas publicações a pisarem-se se
+# houver dois pushes seguidos.
+concurrency:
+  group: deploy-edge-functions-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # project_id vem de supabase/config.toml — não precisa de repetir aqui.
+      - name: Deploy
+        run: supabase functions deploy --project-ref roxfzsiciizkevopgpnl
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
