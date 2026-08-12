@@ -1,8 +1,8 @@
 import React from 'react';
 import { getBodyIcon } from '../../utils/bodyIcons';
 import { 
-  Flame, Wheat, Droplet, Droplets, CalendarDays,
-  Timer, Route, Gauge, Navigation, Zap, Activity, HeartPulse, TrendingUp, Layers, Repeat, Weight, Footprints, Beef, Target
+  Flame, Wheat, Droplet, Droplets,
+  Timer, Route, Gauge, Navigation, Zap, Activity, HeartPulse, TrendingUp, Layers, Repeat, Weight, Beef, Target
 } from 'lucide-react';
 
 const MEAL_EMOJIS = {
@@ -68,8 +68,6 @@ export default function CoachText({ children }) {
     // Nutrition
     'caloria': { type: 'icon', icon: Flame, color: 'text-orange-500' },
     'calorias': { type: 'icon', icon: Flame, color: 'text-orange-500' },
-    'kcal': { type: 'icon', icon: Flame, color: 'text-orange-500' },
-    'energia': { type: 'icon', icon: Flame, color: 'text-orange-500' },
     'hidrato de carbono': { type: 'icon', icon: Wheat, color: 'text-orange-600' },
     'hidratos de carbono': { type: 'icon', icon: Wheat, color: 'text-orange-600' },
     'hidrato': { type: 'icon', icon: Wheat, color: 'text-orange-600' },
@@ -90,40 +88,29 @@ export default function CoachText({ children }) {
     'séries': { type: 'icon', icon: Layers, color: 'text-slate-600' },
     'repetição': { type: 'icon', icon: Repeat, color: 'text-slate-600' },
     'repetições': { type: 'icon', icon: Repeat, color: 'text-slate-600' },
-    'reps': { type: 'icon', icon: Repeat, color: 'text-slate-600' },
     'carga': { type: 'icon', icon: Weight, color: 'text-slate-700' },
     'cargas': { type: 'icon', icon: Weight, color: 'text-slate-700' },
     'esforço': { type: 'icon', icon: Gauge, color: 'text-amber-600' },
     'rpe': { type: 'icon', icon: Gauge, color: 'text-amber-600' },
 
     // Run
-    'corrida': { type: 'icon', icon: Footprints, color: 'text-pink-600' },
-    'corridas': { type: 'icon', icon: Footprints, color: 'text-pink-600' },
     'ritmo': { type: 'icon', icon: Gauge, color: 'text-indigo-600' },
     'pace': { type: 'icon', icon: Gauge, color: 'text-indigo-600' },
     'distância': { type: 'icon', icon: Route, color: 'text-pink-600' },
-    'km': { type: 'icon', icon: Route, color: 'text-pink-600' },
     'duração': { type: 'icon', icon: Timer, color: 'text-purple-600' },
     'tempo': { type: 'icon', icon: Timer, color: 'text-purple-600' },
     'desnível': { type: 'icon', icon: Navigation, color: 'text-teal-600' },
     'altimetria': { type: 'icon', icon: Navigation, color: 'text-teal-600' },
     'subida': { type: 'icon', icon: Navigation, color: 'text-teal-600' },
     'cadência': { type: 'icon', icon: Zap, color: 'text-amber-600' },
-    'spm': { type: 'icon', icon: Zap, color: 'text-amber-600' },
     'vo2': { type: 'icon', icon: Activity, color: 'text-blue-600' },
     'vo2máx': { type: 'icon', icon: Activity, color: 'text-blue-600' },
     'vo2 máx': { type: 'icon', icon: Activity, color: 'text-blue-600' },
     'frequência cardíaca': { type: 'icon', icon: HeartPulse, color: 'text-rose-600' },
     'fc': { type: 'icon', icon: HeartPulse, color: 'text-rose-600' },
     'pulsação': { type: 'icon', icon: HeartPulse, color: 'text-rose-600' },
-    'bpm': { type: 'icon', icon: HeartPulse, color: 'text-rose-600' },
     'zona': { type: 'icon', icon: Target, color: 'text-rose-500' },
-    'zonas': { type: 'icon', icon: Target, color: 'text-rose-500' },
-
-    // Plan
-    'plano de treino': { type: 'icon', icon: CalendarDays, color: 'text-indigo-500' },
-    'planos de treino': { type: 'icon', icon: CalendarDays, color: 'text-indigo-500' },
-    'plano': { type: 'icon', icon: CalendarDays, color: 'text-indigo-500' }
+    'zonas': { type: 'icon', icon: Target, color: 'text-rose-500' }
   };
   
   // Ordenamos por tamanho decrescente para que "hidratos de carbono" faça match antes de "hidratos"
