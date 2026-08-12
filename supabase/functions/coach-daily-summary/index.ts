@@ -194,8 +194,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `levanta a preocupação em vez disso (mesmo campo).\n` +
     `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
     `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n` +
-    `  IMPORTANTE: usa APENAS o campo plano_treino_amanha_* para descrever amanhã. ` +
-    `NÃO incluas itens de plano_treino_hoje_* na descrição de amanhã — são dias diferentes.\n\n` +
+    `  REGRA ABSOLUTA: usa EXCLUSIVAMENTE o campo plano_treino_amanha_* para descrever o que ` +
+    `acontece amanhã. NÃO uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir ` +
+    `treinos futuros — esses campos são histórico, não plano. Se plano_treino_amanha_* estiver ` +
+    `vazio ou só tiver descanso, devolve null neste campo.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
