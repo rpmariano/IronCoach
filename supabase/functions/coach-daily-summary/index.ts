@@ -114,6 +114,7 @@ export function buildDailySummaryContext(params: {
 }) {
   const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace } = params;
   const tomorrow = addDaysISO(today, 1);
+  const dayAfterTomorrow = addDaysISO(today, 2);
 
   // deno-lint-ignore no-explicit-any
   const mealTotals = (todayMeals || []).reduce((acc: MealTotals, m: any) => {
@@ -154,12 +155,19 @@ export function buildDailySummaryContext(params: {
     nivel_experiencia: profile?.experience_level ?? null,
     corridas_ultimos_7_dias: recentRuns || [],
     ginasio_ultimos_7_dias: recentGym || [],
+    // Cada item do plano é devolvido com o seu próprio planned_date, e a lista
+    // fica organizada em três baldes rotulados (hoje / amanhã / depois de
+    // amanhã) para dar ao modelo um dia extra de visibilidade sem risco de
+    // conflação — cada balde só contém itens cujo planned_date bate certo com
+    // esse dia específico. O prompt reforça que "amanhã" (tomorrow_prep) usa
+    // EXCLUSIVAMENTE o balde plano_treino_amanha_*, nunca o de depois de
+    // amanhã, mesmo que ambos venham preenchidos.
     // deno-lint-ignore no-explicit-any
-    // Chaves com a data explícita para que o modelo não misture os dois dias
-    // (bug observado: modelo combinava hoje+amanhã e chamava-lhe "dia duplo").
     [`plano_treino_hoje_${today}`]: (planItems || []).filter((i: any) => i.planned_date === today),
     // deno-lint-ignore no-explicit-any
     [`plano_treino_amanha_${tomorrow}`]: (planItems || []).filter((i: any) => i.planned_date === tomorrow),
+    // deno-lint-ignore no-explicit-any
+    [`plano_treino_depois_de_amanha_${dayAfterTomorrow}`]: (planItems || []).filter((i: any) => i.planned_date === dayAfterTomorrow),
     proxima_prova: nextRace || null,
   };
 }
@@ -197,7 +205,14 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `  REGRA ABSOLUTA: usa EXCLUSIVAMENTE o campo plano_treino_amanha_* para descrever o que ` +
     `acontece amanhã. NÃO uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir ` +
     `treinos futuros — esses campos são histórico, não plano. Se plano_treino_amanha_* estiver ` +
-    `vazio ou só tiver descanso, devolve null neste campo.\n\n` +
+    `vazio ou só tiver descanso, devolve null neste campo.\n` +
+    `  O campo plano_treino_depois_de_amanha_* é FORNECIDO SÓ PARA CONTEXTO — mostra o que vem ` +
+    `a seguir a amanhã, para poderes mencionar en passant algo tipo "e depois de amanhã tens ` +
+    `intervalos, por isso hoje é bom dia para descansar bem". NUNCA descreve os itens desse campo ` +
+    `como fazendo parte de amanhã, e NUNCA combines os dois campos numa frase que sugira que ` +
+    `acontecem no mesmo dia (ex.: nunca digas "amanhã tens X e Y" se X vem de plano_treino_amanha_* ` +
+    `e Y vem de plano_treino_depois_de_amanha_* — são dias diferentes, sê explícito sobre qual dia ` +
+    `é qual se os mencionares os dois).\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
@@ -286,9 +301,11 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
+      // D+2 incluído só para dar ao modelo visibilidade do que vem a seguir —
+      // NUNCA deve ser tratado como parte de "amanhã" (ver regra no prompt).
       sb.from("coach_plan_items")
         .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
-        .eq("user_id", userId).in("planned_date", [today, addDaysISO(today, 1)]).neq("status", "cancelado"),
+        .eq("user_id", userId).in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)]).neq("status", "cancelado"),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);

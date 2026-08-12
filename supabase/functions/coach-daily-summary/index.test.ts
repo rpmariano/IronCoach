@@ -81,9 +81,13 @@ Deno.test("separa os itens do plano entre hoje e amanhã — chaves com data exp
   assertEquals(ctx["plano_treino_amanha_2026-08-12"][0], { planned_date: "2026-08-12", kind: "ginasio" });
 });
 
-Deno.test("regressão: ginásio amanhã e corrida depois de amanhã não são 'dia duplo'", () => {
-  // Bug reportado: modelo dizia 'amanhã tens um dia duplo' quando havia ginásio
-  // em D+1 e corrida em D+2. O contexto não deve incluir D+2 na chave de amanhã.
+Deno.test("regressão: ginásio amanhã e corrida depois de amanhã ficam em baldes separados", () => {
+  // Bug reportado: o card dizia 'amanhã tens um dia duplo' quando havia
+  // ginásio em D+1 e corrida em D+2 — o modelo tinha visibilidade de D+2
+  // (via race/plan context) mas atribuiu os dois itens ao mesmo dia.
+  // Fix: D+2 entra no contexto num balde PRÓPRIO (plano_treino_depois_de_amanha_*),
+  // nunca junto do balde de amanhã — cada item só aparece no balde da sua
+  // própria planned_date.
   const today = "2026-08-12";
   const tomorrow = "2026-08-13";
   const dayAfter = "2026-08-14";
@@ -97,10 +101,16 @@ Deno.test("regressão: ginásio amanhã e corrida depois de amanhã não são 'd
   }) as Record<string, unknown[]>;
   // Amanhã só tem ginásio
   assertEquals(ctx[`plano_treino_amanha_${tomorrow}`].length, 1);
-  // A corrida de D+2 não aparece em nenhuma das duas chaves
-  assertEquals(ctx[`plano_treino_hoje_${today}`].length, 0);
   const amanha = ctx[`plano_treino_amanha_${tomorrow}`] as Array<{kind: string}>;
   assertEquals(amanha[0].kind, "ginasio");
+  // Hoje continua vazio
+  assertEquals(ctx[`plano_treino_hoje_${today}`].length, 0);
+  // A corrida de D+2 aparece no SEU PRÓPRIO balde, não no de amanhã
+  assertEquals(ctx[`plano_treino_depois_de_amanha_${dayAfter}`].length, 1);
+  const depoisDeAmanha = ctx[`plano_treino_depois_de_amanha_${dayAfter}`] as Array<{kind: string}>;
+  assertEquals(depoisDeAmanha[0].kind, "corrida");
+  // Confirma que os dois baldes nunca se misturam
+  assertEquals(amanha.some((i) => i.kind === "corrida"), false);
 });
 
 Deno.test("sem refeições nem água, os totais de hoje ficam a zero, não undefined", () => {
