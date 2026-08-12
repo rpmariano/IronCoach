@@ -104,6 +104,12 @@
   border-width: 2px;
 }
 
+.wpc-day-card.is-overdue {
+  border-color: rgba(239, 68, 68, 0.45);
+  border-width: 2px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(239, 68, 68, 0.05) 100%);
+}
+
 /* Day Card Inner Glows Removed */
 
 .wpc-day-content {
@@ -185,6 +191,39 @@
   background: rgba(6, 182, 212, 0.15);
   color: #06b6d4;
   vertical-align: middle;
+}
+
+.wpc-overdue-tag {
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wpc-pending-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  margin-bottom: 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #0e7490;
+  cursor: pointer;
+  text-align: left;
 }
 
 .wpc-day-summary {

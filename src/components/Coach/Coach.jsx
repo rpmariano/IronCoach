@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { Send, Bot, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { PlanProposalCard } from '../Home/WeeklyPlanCard';
+import '../Home/WeeklyPlanCard.css';
+import { useToast } from '../shared/ToastProvider';
 
 function renderSimpleMarkdown(content) {
   if (!content) return null;
@@ -50,8 +53,23 @@ export default function Coach() {
     profile,
     setProfile,
     session,
-    reloadCoachPlans
+    reloadCoachPlans,
+    coachPlans,
+    coachPlanItems,
+    respondToPlan
   } = useAppStore();
+  const { showToast } = useToast();
+
+  // Propostas por rever — aceitar/recusar vive aqui no chat, não na Home
+  // (redesenho: a Home passou a ser só consulta do plano aceite + registo
+  // de execução). Podem coexistir várias propostas em simultâneo (ex.: um
+  // plano de treino e um plano de refeições, propostos em alturas diferentes).
+  const pendingPlans = (coachPlans || []).filter(p => p.status === 'proposto');
+
+  const handleRespond = async (planId, accept) => {
+    const ok = await respondToPlan(planId, accept);
+    if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
+  };
 
   const [inputStr, setInputStr] = useState('');
   const [showClearModal, setShowClearModal] = useState(false);
@@ -190,6 +208,21 @@ export default function Coach() {
           </button>
         )}
       </div>
+
+      {/* Sugestões pendentes — aceitar/recusar planos propostos pelo Coach.
+          Podem ser vários em simultâneo (treino + refeições), cada um com o
+          seu próprio período. Fora da área de scroll das mensagens para
+          ficar sempre visível sem ter de subir na conversa. */}
+      {pendingPlans.length > 0 && (
+        <div className="shrink-0 mb-3 space-y-2 max-h-72 overflow-y-auto no-scrollbar pr-0.5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 px-1">
+            Sugestões pendentes ({pendingPlans.length})
+          </p>
+          {pendingPlans.map(plan => (
+            <PlanProposalCard key={plan.id} plan={plan} items={coachPlanItems || []} onRespond={handleRespond} />
+          ))}
+        </div>
+      )}
 
       {/* Messages Scroll Area */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar">

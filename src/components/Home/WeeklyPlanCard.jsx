@@ -1,15 +1,21 @@
 import React, { useState, useMemo } from 'react';
 import {
   ChevronDown, ChevronUp, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Footprints, Utensils, Moon, Award, StickyNote,
+  Footprints, Utensils, Moon, Award, StickyNote, Clock,
 } from 'lucide-react';
 import './WeeklyPlanCard.css';
 
-/* Plano da semana no ecrã Início. Ver specs/plano-de-treino.md e
-   specs/coach-investigacao.md (Bloco 7, forma de entrega 2). */
+/* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
+   specs/coach-investigacao.md (Bloco 7, forma de entrega 2).
+
+   Redesenho: aceitar/recusar propostas passou a viver no chat do Coach
+   (ver Coach.jsx) — este cartão é só CONSULTA do plano já aceite +
+   registo de execução (Concluir/Cancelar). A duração do plano é a que o
+   atleta e o Coach acordaram (7, 14 dias, ou outra qualquer — nunca
+   assumida), por isso o título e a numeração dos dias seguem o período
+   real do(s) plano(s) aceite(s), não um horizonte fixo de 7 dias. */
 
 export const PLAN_HORIZON_DAYS = 7;
-const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 function todayISO() {
   const d = new Date();
@@ -22,6 +28,29 @@ function addDaysISO(iso, n) {
   d.setDate(d.getDate() + n);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
+}
+
+function diffDaysISO(aISO, bISO) {
+  return Math.round((new Date(bISO + 'T00:00:00') - new Date(aISO + 'T00:00:00')) / 86400000);
+}
+
+/* Janela de dias a mostrar: união dos períodos de todos os planos aceites
+   ainda relevantes — em curso/futuros (period_end >= hoje) ou já terminados
+   mas com itens por resolver (fica visível, com destaque de atraso, até o
+   atleta confirmar ou recusar). Sem planos aceites relevantes, null. */
+export function computeAcceptedWindow(plans = [], items = [], today = todayISO()) {
+  const accepted = (plans || []).filter(p => p.status === 'aceite');
+  if (accepted.length === 0) return null;
+
+  const relevant = accepted.filter(p => {
+    if (p.period_end >= today) return true;
+    return (items || []).some(i => i.plan_id === p.id && i.status === 'pendente');
+  });
+  if (relevant.length === 0) return null;
+
+  const start = relevant.reduce((min, p) => (p.period_start < min ? p.period_start : min), relevant[0].period_start);
+  const end = relevant.reduce((max, p) => (p.period_end > max ? p.period_end : max), relevant[0].period_end);
+  return { start, days: diffDaysISO(start, end) + 1 };
 }
 
 /* Título curto de um item, usado na linha fechada. */
@@ -40,7 +69,7 @@ function itemTitle(item) {
       item.target_duration_min ? `${item.target_duration_min} min` : null,
     ].filter(Boolean).join(' · ');
   }
-  return 'Descanso';
+  return item.meal_suggestion ? 'Sugestão alimentar' : 'Descanso';
 }
 
 function itemIcon(item) {
@@ -55,15 +84,19 @@ function itemKindClass(item) {
   return 'nutri';
 }
 
+/* Um item de kind='descanso' só é acionável (Concluir/Cancelar) se tiver
+   sugestão alimentar — um dia de descanso puro não tem nada para confirmar. */
+function isActionable(item) {
+  return item.kind !== 'descanso' || Boolean(item.meal_suggestion);
+}
+
 /* Um dia do plano. */
-function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }) {
+function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, readOnly }) {
   const [expanded, setExpanded] = useState(false);
 
   const d = new Date(dateISO + 'T00:00:00');
-  const weekday = WEEKDAY_LABELS[d.getDay()];
   const dayLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-  const isPast = dateISO < todayISO();
   const hasMeal = items.some(i => i.meal_suggestion);
   const empty = items.length === 0;
 
@@ -80,7 +113,7 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
   const toggle = () => { if (canExpand) setExpanded(e => !e); };
 
   return (
-    <div className={`wpc-day-card ${kindClass} ${isToday ? 'is-today' : ''}`}>
+    <div className={`wpc-day-card ${kindClass} ${isToday ? 'is-today' : ''} ${isOverdue ? 'is-overdue' : ''}`}>
       <div className="wpc-day-content">
         <div className="wpc-day-header" onClick={toggle}>
           <div className="wpc-day-left">
@@ -89,8 +122,9 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
             </div>
             <div className="wpc-day-info">
               <h4 className="wpc-day-title">
-                {weekday} <span className="wpc-day-date">{dayLabel}</span>
+                Dia {dayNumber} <span className="wpc-day-date">{dayLabel}</span>
                 {isToday && <span className="wpc-today-tag">Hoje</span>}
+                {isOverdue && <span className="wpc-overdue-tag"><Clock size={9} style={{ marginRight: 3, verticalAlign: '-1px' }} />Em atraso</span>}
               </h4>
               <p className="wpc-day-summary">{summary}</p>
             </div>
@@ -105,7 +139,7 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
             {canExpand && (
               <button
                 type="button"
-                aria-label={expanded ? `Fechar detalhes de ${weekday}` : `Ver detalhes de ${weekday}`}
+                aria-label={expanded ? `Fechar detalhes do dia ${dayNumber}` : `Ver detalhes do dia ${dayNumber}`}
                 aria-expanded={expanded}
                 className="tap-44 wpc-chevron"
                 onClick={(e) => { e.stopPropagation(); toggle(); }}
@@ -152,21 +186,15 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
                   </div>
                 )}
 
-                {!readOnly && item.kind !== 'descanso' && item.status === 'pendente' && (
+                {!readOnly && isActionable(item) && item.status === 'pendente' && (
                   <div className="wpc-actions">
                     <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
-                      <Check size={14} /> Concluir
+                      <Check size={14} /> {item.kind === 'descanso' ? 'Segui' : 'Concluir'}
                     </button>
                     <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
-                      <XIcon size={14} /> Cancelar
+                      <XIcon size={14} /> {item.kind === 'descanso' ? 'Não segui' : 'Cancelar'}
                     </button>
                   </div>
-                )}
-
-                {!readOnly && isPast && item.status === 'pendente' && item.kind !== 'descanso' && (
-                  <p className="wpc-past-warning">
-                    Este treino já passou e continua por resolver.
-                  </p>
                 )}
               </div>
             ))}
@@ -177,29 +205,36 @@ function PlanDayCard({ dateISO, items, isToday, onComplete, onCancel, readOnly }
   );
 }
 
-/* Constrói os 7 dias a partir de hoje e distribui os itens por eles. */
+/* Constrói os dias do plano a partir de `from`, ao longo de `horizon` dias.
+   Cada dia inclui dayNumber (1-indexed) para a numeração "Dia N". */
 export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_DAYS) {
   const days = [];
+  const today = todayISO();
   for (let i = 0; i < horizon; i++) {
     const dateISO = addDaysISO(from, i);
+    const dayItems = (items || [])
+      .filter(it => it.status !== 'cancelado')
+      .filter(it => (it.status === 'concluido' ? (it.actual_date || it.planned_date) : it.planned_date) === dateISO)
+      .sort((a, b) => a.kind.localeCompare(b.kind));
     days.push({
       dateISO,
-      isToday: i === 0,
-      items: (items || [])
-        .filter(it => it.status !== 'cancelado')
-        .filter(it => (it.status === 'concluido' ? (it.actual_date || it.planned_date) : it.planned_date) === dateISO)
-        .sort((a, b) => a.kind.localeCompare(b.kind)),
+      dayNumber: i + 1,
+      isToday: dateISO === today,
+      isOverdue: dateISO < today && dayItems.some(it => it.status === 'pendente'),
+      items: dayItems,
     });
   }
   return days;
 }
 
-/* Proposta ainda por aceitar */
-function PlanProposalCard({ plan, items, onRespond }) {
+/* Proposta ainda por aceitar — usada pelo chat do Coach (ver Coach.jsx),
+   não pela Home. Exportada para reutilização; sem sítio de aceitar/recusar
+   aqui na Home desde o redesenho — isso agora vive só no chat. */
+export function PlanProposalCard({ plan, items, onRespond }) {
   const its = useMemo(() => items.filter(i => i.plan_id === plan.id), [items, plan.id]);
   const days = useMemo(
-    () => buildPlanDays(its, plan.period_start, PLAN_HORIZON_DAYS).filter(d => d.items.length > 0),
-    [its, plan.period_start],
+    () => buildPlanDays(its, plan.period_start, diffDaysISO(plan.period_start, plan.period_end) + 1).filter(d => d.items.length > 0),
+    [its, plan.period_start, plan.period_end],
   );
 
   return (
@@ -211,7 +246,7 @@ function PlanProposalCard({ plan, items, onRespond }) {
 
         <div>
           {days.map(day => (
-            <PlanDayCard key={day.dateISO} dateISO={day.dateISO} items={day.items} isToday={false} readOnly />
+            <PlanDayCard key={day.dateISO} dateISO={day.dateISO} dayNumber={day.dayNumber} items={day.items} isToday={false} isOverdue={false} readOnly />
           ))}
         </div>
 
@@ -228,34 +263,44 @@ function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onRespond, onNav }) {
-  const proposal = plans.find(p => p.status === 'proposto');
-  const acceptedPlanIds = useMemo(
-    () => new Set(plans.filter(p => p.status === 'aceite').map(p => p.id)),
+export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onNav }) {
+  const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
+
+  const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
+  const acceptedIds = useMemo(
+    () => new Set((plans || []).filter(p => p.status === 'aceite').map(p => p.id)),
     [plans],
   );
   const accepted = useMemo(
-    () => planItems.filter(i => acceptedPlanIds.has(i.plan_id)),
-    [planItems, acceptedPlanIds],
+    () => planItems.filter(i => acceptedIds.has(i.plan_id)),
+    [planItems, acceptedIds],
   );
-  const days = useMemo(() => buildPlanDays(accepted), [accepted]);
-  const hasAnything = days.some(d => d.items.length > 0);
+  const days = useMemo(
+    () => (window ? buildPlanDays(accepted, window.start, window.days) : []),
+    [accepted, window],
+  );
 
-  if (proposal) {
-    return <PlanProposalCard plan={proposal} items={planItems} onRespond={onRespond} />;
-  }
+  const PendingBanner = () => pendingCount > 0 && (
+    <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
+      <span>🕓 Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
+      <span>Ver no chat →</span>
+    </button>
+  );
 
-  if (!hasAnything) {
+  if (!window) {
     return (
-      <button onClick={() => onNav('coach')} className="wpc-card text-left tap-scale" style={{ border: 'none', background: 'rgba(255, 255, 255, 0.4)' }}>
-        <div className="wpc-glow-coach"></div>
-        <div className="wpc-content">
-          <h2 className="wpc-proposal-title">Plano da semana</h2>
-          <p className="text-xs font-semibold text-slate-600 mt-1">
-            Sem treinos acordados. Pede ao Coach um plano para a próxima semana.
-          </p>
-        </div>
-      </button>
+      <div className="w-full">
+        <PendingBanner />
+        <button onClick={() => onNav('coach')} className="wpc-card text-left tap-scale" style={{ border: 'none', background: 'rgba(255, 255, 255, 0.4)' }}>
+          <div className="wpc-glow-coach"></div>
+          <div className="wpc-content">
+            <h2 className="wpc-proposal-title">Plano</h2>
+            <p className="text-xs font-semibold text-slate-600 mt-1">
+              Sem treinos acordados. Pede ao Coach um plano — as sugestões aparecem no chat para aceitares ou recusares.
+            </p>
+          </div>
+        </button>
+      </div>
     );
   }
 
@@ -263,8 +308,9 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
     <div className="wpc-card">
       <div className="wpc-glow-coach"></div>
       <div className="wpc-content">
+        <PendingBanner />
         <div className="wpc-header-row">
-          <span className="wpc-lbl">Plano da semana</span>
+          <span className="wpc-lbl">Plano de {window.days} dias</span>
           <button onClick={() => onNav('coach')} className="wpc-coach-link">Ver no Coach</button>
         </div>
         <div>
@@ -272,8 +318,10 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
             <PlanDayCard
               key={day.dateISO}
               dateISO={day.dateISO}
+              dayNumber={day.dayNumber}
               items={day.items}
               isToday={day.isToday}
+              isOverdue={day.isOverdue}
               onComplete={onComplete}
               onCancel={onCancel}
             />

@@ -120,7 +120,7 @@ export default function Home() {
   const { showToast } = useToast();
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
-    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, respondToPlan,
+    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     addWaterLog
   } = useAppStore();
 
@@ -136,7 +136,15 @@ export default function Home() {
   // completePlanItem só depois de a corrida/sessão real estar gravada (ver
   // RunRegistration/GymRegistration). Aqui só passamos o item a pré-preencher
   // e navegamos para o ecrã certo — specs/plano-de-treino.md §5.2.
+  //
+  // Exceção: itens kind='descanso' com sugestão alimentar não têm corrida
+  // nem sessão para gravar — "Concluir" ("Segui") marca-os diretamente.
   const handleCompleteItem = (item) => {
+    if (item.kind === 'descanso') {
+      completePlanItem(item.id, { actualDate: item.planned_date });
+      showToast('Sugestão marcada como seguida');
+      return;
+    }
     setPlanItemPrefill(item);
     if (item.kind === 'corrida') {
       setActiveTab('corrida');
@@ -148,9 +156,12 @@ export default function Home() {
   };
 
   const handleCancelItem = (item) => {
-    if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
+    const msg = item.kind === 'descanso'
+      ? 'Marcar que não seguiste esta sugestão alimentar?'
+      : 'Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.';
+    if (window.confirm(msg)) {
       cancelPlanItem(item.id);
-      showToast('Treino cancelado');
+      showToast(item.kind === 'descanso' ? 'Sugestão marcada como não seguida' : 'Treino cancelado');
     }
   };
 
@@ -170,13 +181,13 @@ export default function Home() {
       {/* Água — sempre visível */}
       <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
 
-      {/* Plano da semana — ver specs/plano-de-treino.md */}
+      {/* Plano — aceitar/recusar vive no chat do Coach; aqui é só consulta
+          do plano aceite + registo de execução (specs/plano-de-treino.md) */}
       <WeeklyPlanCard
         plans={coachPlans}
         planItems={coachPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
-        onRespond={respondToPlan}
         onNav={handleNav}
       />
     </div>
