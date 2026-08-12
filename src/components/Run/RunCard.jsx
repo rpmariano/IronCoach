@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, MessageSquare, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, MessageSquare, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge, PencilLine } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
+import CoachText from '../shared/CoachText';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -340,9 +341,9 @@ export default function RunCard({ run, onEdit, onDelete }) {
                 <Award size={16} className="text-emerald-600 shrink-0" />
                 Análise do Coach
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                {coachCommentary}
-              </p>
+              <div className="text-xs text-slate-700 font-normal">
+                <CoachText>{coachCommentary}</CoachText>
+              </div>
             </div>
           )}
 
@@ -358,13 +359,21 @@ export default function RunCard({ run, onEdit, onDelete }) {
                 Reanalisar
               </button>
             )}
+            {onEdit && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}
+                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+              >
+                <PencilLine size={14} /> Editar
+              </button>
+            )}
             <button
               onClick={handleDelete}
               disabled={isDeleting}
-              className="border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl p-2.5 flex items-center justify-center transition disabled:opacity-50"
-              aria-label="Eliminar corrida"
+              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
               {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Eliminar
             </button>
           </div>
         </div>

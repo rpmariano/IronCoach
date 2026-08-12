@@ -1,15 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import {
   ChevronDown, ChevronUp, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Moon, Award, StickyNote, Clock,
+  Utensils, Coffee, Award, StickyNote, Clock,
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
+import CoachText from '../shared/CoachText';
 import { mapCategoriesToMuscles } from '../../utils/gym';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
-   specs/coach-investigacao.md (Bloco 7, forma de entrega 2).
 
    Redesenho: aceitar/recusar propostas passou a viver no chat do Coach
    (ver Coach.jsx) — este cartão é só CONSULTA do plano já aceite +
@@ -99,43 +99,13 @@ function itemTitle(item) {
 function itemIcon(item) {
   if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
-  return Moon;
+  return Coffee;
 }
 
 function itemKindClass(item) {
   if (item.kind === 'corrida') return 'run';
   if (item.kind === 'ginasio') return 'gym';
   return 'nutri';
-}
-
-
-function formatMealSuggestion(text) {
-  if (!text) return null;
-  
-  const map = {
-    'pequeno-almoço:': '☕ Pequeno-almoço:',
-    'almoço:': '🥗 Almoço:',
-    'lanche pré-treino:': '⚡ Lanche pré-treino:',
-    'lanche pós-treino:': '💪 Lanche pós-treino:',
-    'lanche da manhã:': '🍎 Lanche da manhã:',
-    'lanche da tarde:': '🍎 Lanche da tarde:',
-    'lanche:': '🍎 Lanche:',
-    'jantar:': '🍽️ Jantar:',
-    'ceia:': '🌙 Ceia:'
-  };
-  
-  const regex = /(Pequeno-almoço:|Almoço:|Lanche pré-treino:|Lanche pós-treino:|Lanche da manhã:|Lanche da tarde:|Lanche:|Jantar:|Ceia:)/gi;
-  
-  const formatted = text.replace(regex, (match) => {
-    const key = match.toLowerCase();
-    return '\n' + (map[key] || match);
-  });
-
-  return formatted.split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => (
-    <span key={idx} style={{ display: 'block', marginBottom: '6px' }}>
-      {line}
-    </span>
-  ));
 }
 
 /* Um dia do plano. */
@@ -250,8 +220,8 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                     <div className="wpc-info-box-header nutri">
                       <Award size={14} /> Sugestão alimentar
                     </div>
-                    <div className="wpc-info-box-text">
-                      {formatMealSuggestion(item.meal_suggestion)}
+                    <div className="wpc-info-box-text text-sm font-normal text-slate-700">
+                      <CoachText>{item.meal_suggestion}</CoachText>
                     </div>
                     <p className="wpc-info-box-disclaimer">
                       Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de

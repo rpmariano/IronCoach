@@ -5,41 +5,7 @@ import { Send, Bot, Trash2, Loader2, Sparkles } from 'lucide-react';
 import { PlanProposalCard } from '../Home/WeeklyPlanCard';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
-
-function renderSimpleMarkdown(content) {
-  if (!content) return null;
-
-  // Split content into lines and render paragraphs/lists
-  const lines = content.split('\n');
-  return lines.map((line, lineIdx) => {
-    // Basic bold parsing
-    const parts = line.split(/(\*\*.*?\*\*)/g);
-    const formattedLine = parts.map((part, pIdx) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={pIdx} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
-      }
-      return part;
-    });
-
-    if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
-      return (
-        <li key={lineIdx} className="ml-4 list-disc text-slate-800 my-0.5">
-          {line.trim().substring(2)}
-        </li>
-      );
-    }
-
-    if (line.trim() === '') {
-      return <div key={lineIdx} className="h-2" />;
-    }
-
-    return (
-      <p key={lineIdx} className="my-0.5">
-        {formattedLine}
-      </p>
-    );
-  });
-}
+import CoachText from '../shared/CoachText';
 
 export default function Coach() {
   const {
@@ -193,17 +159,17 @@ export default function Coach() {
             <Bot className="w-5 h-5" style={{ color: '#fff' }} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-800 leading-none">Coach IronHealth</h2>
-            <p className="text-[10px] text-slate-500 mt-0.5">Nutrição · Ginásio · Corrida</p>
+            <h2 className="text-sm font-bold text-white leading-none">Coach IronHealth</h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">Nutrição · Ginásio · Corrida</p>
           </div>
         </div>
 
         {coachMessages.length > 0 && (
           <button
             onClick={() => setShowClearModal(true)}
-            className="text-[11px] text-slate-600 border border-slate-200 rounded-xl px-2.5 py-1 hover:bg-slate-50 active:scale-95 transition flex items-center gap-1"
+            className="text-[11px] text-slate-400 border border-neutral-800 rounded-xl px-2.5 py-1 hover:bg-neutral-800 active:scale-95 transition flex items-center gap-1"
           >
-            <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+            <Trash2 className="w-3.5 h-3.5 text-slate-500" />
             Limpar
           </button>
         )}
@@ -235,8 +201,8 @@ export default function Coach() {
             >
               <Bot className="w-8 h-8" style={{ color: '#fff' }} />
             </div>
-            <h3 className="text-sm font-bold text-slate-800 mb-1">O teu coach está pronto</h3>
-            <p className="text-xs text-slate-500 leading-relaxed mb-5 max-w-xs">
+            <h3 className="text-sm font-bold text-white mb-1">O teu coach está pronto</h3>
+            <p className="text-xs text-slate-400 leading-relaxed mb-5 max-w-xs">
               Pergunta sobre nutrição, treino ou corrida. Tenho acesso aos teus dados de hoje e ao teu perfil.
             </p>
             <div className="space-y-2 w-full max-w-xs text-left">
@@ -267,10 +233,10 @@ export default function Coach() {
                 className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed ${
                   isUser
                     ? 'bg-[var(--accent)] text-slate-950 font-semibold rounded-[18px_18px_4px_18px]'
-                    : 'bg-white border border-[var(--brd-700)] text-slate-800 rounded-[18px_18px_18px_4px] shadow-sm'
+                    : 'bg-neutral-900/80 border border-neutral-800 text-slate-300 rounded-[18px_18px_18px_4px] shadow-sm'
                 }`}
               >
-                {isUser ? msg.content : renderSimpleMarkdown(msg.content)}
+                {isUser ? msg.content : <CoachText>{msg.content}</CoachText>}
               </div>
             </div>
           );
@@ -279,7 +245,7 @@ export default function Coach() {
         {/* Loading Indicator */}
         {coachLoading && (
           <div className="flex justify-start">
-            <div className="bg-white border border-[var(--brd-700)] rounded-[18px_18px_18px_4px] px-4 py-3 shadow-sm flex items-center gap-1.5">
+            <div className="bg-neutral-900/80 border border-neutral-800 rounded-[18px_18px_18px_4px] px-4 py-3 shadow-sm flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse delay-150" />
               <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse delay-300" />
@@ -311,7 +277,7 @@ export default function Coach() {
       </div>
 
       {/* Input Box Footer */}
-      <div className="shrink-0 border-t border-slate-200 pt-3 mt-1">
+      <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1">
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
@@ -320,7 +286,7 @@ export default function Coach() {
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Escreve a tua pergunta..."
-            className="flex-1 bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-800 outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
+            className="flex-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-3 text-sm text-slate-300 placeholder-slate-600 outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
             style={{ minHeight: '44px' }}
           />
           <button
@@ -329,7 +295,7 @@ export default function Coach() {
             aria-label="Enviar pergunta ao Coach"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
                 : 'text-slate-950 font-bold'
             }`}
             style={{
@@ -353,22 +319,21 @@ export default function Coach() {
             if (e.target === e.currentTarget) setShowClearModal(false);
           }}
         >
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 max-w-xs w-full shadow-xl">
-            <h3 className="text-sm font-bold text-slate-800 mb-2">Limpar toda a conversa com o Coach?</h3>
-            <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-xs w-full shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-2">Limpar toda a conversa com o Coach?</h3>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
               Esta ação apaga permanentemente todas as mensagens trocadas e não pode ser desfeita. O Coach deixará de ter memória desta conversa.
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setShowClearModal(false)}
-                className="flex-1 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl py-2.5 hover:bg-slate-50 transition"
+                className="flex-1 border border-neutral-800 text-slate-400 text-xs font-semibold rounded-xl py-2.5 hover:bg-neutral-800 transition"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleClearConversation}
-                className="flex-1 bg-red-500 text-xs font-semibold rounded-xl py-2.5 hover:bg-red-600 transition"
-                style={{ color: '#fff' }}
+                className="flex-1 bg-red-500/20 text-red-400 text-xs font-semibold rounded-xl py-2.5 border border-red-500/40 hover:bg-red-500/30 transition"
               >
                 Limpar
               </button>

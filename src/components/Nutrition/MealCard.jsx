@@ -4,6 +4,7 @@ import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutriti
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
+import CoachText from '../shared/CoachText';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -131,7 +132,7 @@ export default function MealCard({ meal, onEdit }) {
               {n.carbs.toFixed(1)}g Hidratos
             </span>
             <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-sky-100/90 text-sky-800 border border-sky-200/80 shadow-xs flex items-center gap-1.5">
-              <Droplets size={14} className="text-sky-700" />
+              <Droplet size={14} className="text-sky-700" />
               {n.fat.toFixed(1)}g Gordura
             </span>
           </div>
@@ -195,9 +196,9 @@ export default function MealCard({ meal, onEdit }) {
                 <Award size={16} className="text-emerald-600 shrink-0" />
                 Análise do Coach
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed font-normal">
-                {coachCommentary}
-              </p>
+              <div className="text-xs text-slate-700 font-normal">
+                <CoachText>{coachCommentary}</CoachText>
+              </div>
             </div>
           )}
 
