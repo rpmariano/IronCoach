@@ -6,8 +6,9 @@ import GymRegistration from './GymRegistration';
 
 // analyze-gym é a única coisa que estes testes exercitam de facto — tanto
 // a foto como o manual gravam a sessão e geram o comentário do Coach numa só
-// chamada à Edge Function. Editar não passa pelo Gemini — é só update direto
-// de workout_sessions + substituição de workout_session_sets.
+// chamada à Edge Function. Editar passa pelo Gemini quando os dados
+// analíticos mudam (séries, métricas, categorias, tipo ou observações);
+// mudar só a data/nome é update direto de workout_sessions.
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateSession: vi.fn(), deleteSets: vi.fn(), insertSets: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -174,7 +175,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
   });
 });
 
-describe('GymRegistration — editar sessão existente: é só update dos campos + séries, sem Coach', () => {
+describe('GymRegistration — editar sessão existente', () => {
   const onClose = vi.fn();
   const loadInitialData = vi.fn().mockResolvedValue();
   const EXISTING_SESSION = {
@@ -196,7 +197,7 @@ describe('GymRegistration — editar sessão existente: é só update dos campos
   };
 
   beforeEach(() => {
-    mocks.invoke.mockReset();
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: EXISTING_SESSION, sets: [] }, error: null });
     mocks.updateSession.mockReset().mockResolvedValue({ error: null });
     mocks.deleteSets.mockReset().mockResolvedValue({ error: null });
     mocks.insertSets.mockReset().mockResolvedValue({ error: null });
@@ -221,41 +222,22 @@ describe('GymRegistration — editar sessão existente: é só update dos campos
     expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
   });
 
-  it('ao guardar, atualiza a sessão e substitui as séries, sem chamar o Gemini', async () => {
+  it('mudar só o nome faz update direto, sem chamar o Gemini', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
+    fireEvent.change(screen.getByDisplayValue('Peito e Tríceps'), { target: { value: 'Push A' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
 
     await waitFor(() => expect(mocks.updateSession).toHaveBeenCalledTimes(1));
     const [payload, sessionId] = mocks.updateSession.mock.calls[0];
     expect(sessionId).toBe('sess-3');
-    expect(payload).toEqual({
-      date: '2026-01-05',
-      kind: 'forca',
-      name: 'Peito e Tríceps',
-      categories: ['Peito'],
-      duration_seconds: 3000,
-      calories_kcal: 400,
-      avg_hr: 120,
-      max_hr: 150,
-      exertion: 7,
-      notes: 'nota antiga',
-    });
-
-    await waitFor(() => expect(mocks.deleteSets).toHaveBeenCalledWith('sess-3'));
-    await waitFor(() => expect(mocks.insertSets).toHaveBeenCalledTimes(1));
-    const rows = mocks.insertSets.mock.calls[0][0];
-    expect(rows).toEqual([
-      { exercise_name: 'Supino', set_index: 0, reps: 10, weight: 60, session_id: 'sess-3', user_id: 'user-1' },
-      { exercise_name: 'Supino', set_index: 1, reps: 8, weight: 65, session_id: 'sess-3', user_id: 'user-1' },
-    ]);
-
+    expect(payload).toEqual({ date: '2026-01-05', name: 'Push A' });
     expect(mocks.invoke).not.toHaveBeenCalled();
-    await waitFor(() => expect(loadInitialData).toHaveBeenCalledWith('user-1'));
+    expect(mocks.deleteSets).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('editar uma série e adicionar um exercício novo reflete-se nas linhas gravadas', async () => {
+  it('editar uma série e adicionar um exercício novo passa pelo Coach', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     const reps = screen.getAllByPlaceholderText('Reps');
@@ -265,11 +247,53 @@ describe('GymRegistration — editar sessão existente: é só update dos campos
     fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: 'Fondos' } });
     fireEvent.change(screen.getAllByPlaceholderText('Reps')[2], { target: { value: '15' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
-    await waitFor(() => expect(mocks.insertSets).toHaveBeenCalledTimes(1));
-    const rows = mocks.insertSets.mock.calls[0][0];
-    expect(rows[0]).toEqual({ exercise_name: 'Supino', set_index: 0, reps: 12, weight: 60, session_id: 'sess-3', user_id: 'user-1' });
-    expect(rows).toContainEqual({ exercise_name: 'Fondos', set_index: 0, reps: 15, weight: null, session_id: 'sess-3', user_id: 'user-1' });
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-gym');
+    expect(body.mode).toBe('manual');
+    expect(body.session_id).toBe('sess-3');
+    expect(body.sets[0]).toEqual({ exercise_name: 'Supino', set_index: 0, reps: 12, weight: 60 });
+    expect(body.sets).toContainEqual({ exercise_name: 'Fondos', set_index: 0, reps: 15, weight: null });
+    // Quem grava é a Edge Function — o cliente já não mexe nas séries.
+    expect(mocks.updateSession).not.toHaveBeenCalled();
+    expect(mocks.deleteSets).not.toHaveBeenCalled();
+    await waitFor(() => expect(loadInitialData).toHaveBeenCalledWith('user-1'));
+  });
+
+  it('mudar o esforço passa pelo Coach — é métrica analítica', async () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Esforço/), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.exertion).toBe(9);
+    expect(body.session_id).toBe('sess-3');
+  });
+
+  it('mudar só as observações também passa pelo Coach', async () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+
+    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: 'dor no ombro a meio' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.notes).toBe('dor no ombro a meio');
+  });
+
+  it('um erro do Coach não fecha o formulário nem perde as alterações', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+
+    fireEvent.change(screen.getAllByPlaceholderText('Reps')[0], { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await screen.findByText('Falha na análise.');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getAllByPlaceholderText('Reps')[0]).toHaveValue(12);
   });
 });

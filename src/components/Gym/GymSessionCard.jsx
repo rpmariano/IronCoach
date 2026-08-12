@@ -17,16 +17,16 @@ function formatDuration(totalSeconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
+   passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
+   esforço ou nas observações muda a análise do Coach e tem de a regenerar.
+   Editar aqui à mão deixava a "Análise do Coach" a descrever um treino que
+   já não existe. Mesmo padrão da Nutrição (ver MealCard.jsx e PRD 3.2). */
 export default function GymSessionCard({ session, isExpanded, onToggleExpand, onEdit }) {
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isDeletingSet, setIsDeletingSet] = useState(null);
 
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [notesText, setNotesText] = useState(session.notes || '');
-
-  const [exertionVal, setExertionVal] = useState(session.exertion ?? '');
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
 
@@ -69,33 +69,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
     }
   };
 
-  const handleExertionChange = async (val) => {
-    const num = val === '' ? null : parseInt(val);
-    setExertionVal(val);
-    try {
-      await supabase.from('workout_sessions').update({ exertion: num }).eq('id', session.id);
-      if (profile?.id) await loadInitialData(profile.id);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteSet = async (setId) => {
-    if (!confirm('Eliminar esta série?')) return;
-    setIsDeletingSet(setId);
-    try {
-      const { error } = await supabase.from('workout_session_sets').delete().eq('id', setId);
-      if (error) throw error;
-      if (profile?.id) await loadInitialData(profile.id);
-      showToast('Série eliminada');
-    } catch (e) {
-      console.error(e);
-      showToast('Erro ao eliminar série.', 'error');
-    } finally {
-      setIsDeletingSet(null);
-    }
-  };
-
   const handleDeleteSession = async () => {
     if (!confirm('Tem a certeza que deseja eliminar este treino?')) return;
     setIsDeleting(true);
@@ -109,19 +82,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
       showToast('Erro ao eliminar treino.', 'error');
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleSaveNotes = async () => {
-    try {
-      const { error } = await supabase.from('workout_sessions').update({ notes: notesText.trim() || null }).eq('id', session.id);
-      if (error) throw error;
-      setEditingNotes(false);
-      if (profile?.id) await loadInitialData(profile.id);
-      showToast('Observações guardadas');
-    } catch (err) {
-      console.error('Error updating notes:', err);
-      showToast('Erro ao guardar observações.', 'error');
     }
   };
 
@@ -200,20 +160,6 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
              <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
           )}
 
-          {/* Campo de Esforço (1-10) */}
-          <div className="flex items-center gap-3 bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <span className="text-xs font-semibold text-slate-600">Esforço (1-10)</span>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              placeholder="—"
-              value={exertionVal}
-              onChange={e => handleExertionChange(e.target.value)}
-              className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-center text-slate-800 outline-none focus:border-blue-500"
-            />
-          </div>
-
           {/* Prints / Photos se existirem */}
           {session.photo_paths?.length > 0 && (
             <div className="space-y-1.5">
@@ -234,42 +180,14 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
             </div>
           )}
 
-          {/* Observações Card */}
+          {/* Observações — só leitura; alterar é pelo botão "Editar" */}
           <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <MessageSquare size={14} className="text-slate-400" /> Observações
-              </div>
-              <button 
-                onClick={() => setEditingNotes(!editingNotes)}
-                className="text-[11px] font-bold text-blue-600 hover:underline"
-              >
-                {editingNotes ? 'Cancelar' : session.notes ? 'Editar' : 'Adicionar'}
-              </button>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <MessageSquare size={14} className="text-slate-400" /> Observações
             </div>
-
-            {editingNotes ? (
-              <div className="mt-2 space-y-2">
-                <textarea
-                  rows={2}
-                  value={notesText}
-                  onChange={e => setNotesText(e.target.value)}
-                  placeholder="Contexto do treino..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-blue-500"
-                />
-                <button
-                  onClick={handleSaveNotes}
-                  className="px-3 py-1 bg-blue-600 rounded-lg text-xs font-bold hover:bg-blue-700 transition"
-                  style={{ color: '#fff' }}
-                >
-                  Guardar
-                </button>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic mt-1">
-                {session.notes || 'Sem observações.'}
-              </p>
-            )}
+            <p className="text-xs text-slate-500 italic mt-1">
+              {session.notes || 'Sem observações.'}
+            </p>
           </div>
 
           {/* Grouped Exercises Breakdown List */}
@@ -281,16 +199,7 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
                   {exSets.map((s, idx) => (
                     <div key={s.id || idx} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs">
                       <span className="font-semibold text-slate-500">Série {idx + 1}</span>
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-slate-800">{s.reps} reps × {s.weight} kg</span>
-                        <button 
-                          onClick={() => handleDeleteSet(s.id)}
-                          disabled={isDeletingSet === s.id}
-                          className="text-slate-400 hover:text-red-500 transition p-0.5"
-                        >
-                          {isDeletingSet === s.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                        </button>
-                      </div>
+                      <span className="font-bold text-slate-800">{s.reps} reps × {s.weight} kg</span>
                     </div>
                   ))}
                 </div>

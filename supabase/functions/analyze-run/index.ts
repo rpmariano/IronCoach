@@ -829,6 +829,54 @@ Deno.serve(async (req) => {
       };
       const details = detailsFromExtraction(kind, extraction, trainingType, raceType);
 
+      // ── Edição de uma corrida existente (run_id presente) ────────────
+      // Editar distância, duração, RPE, tipo ou métricas muda a análise, por
+      // isso passa pelo mesmo caminho do registo e regenera a nota do Coach.
+      // Distingue-se da reanálise (run_id sem mode) por essa repescar os
+      // prints guardados; aqui a fonte são os campos que o atleta editou.
+      if (typeof body.run_id === "string" && body.run_id) {
+        const runId = body.run_id;
+        const { data: existing, error: fetchError } = await sb
+          .from("runs")
+          .select("id")
+          .eq("id", runId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (fetchError) return jsonResponse({ error: `Falha a procurar corrida: ${fetchError.message}` }, 500);
+        if (!existing) return jsonResponse({ error: "Corrida não encontrada" }, 404);
+
+        const { data: updatedRun, error: updateError } = await sb
+          .from("runs")
+          .update({
+            date: body.date,
+            kind,
+            training_type: trainingType,
+            details,
+            notes: rawNotes,
+            name: clientName,
+            effort_rpe: effortRpe,
+            distance_km: extraction.distance_km,
+            duration_seconds: extraction.duration_seconds,
+          })
+          .eq("id", runId)
+          .select()
+          .single();
+        if (updateError) return jsonResponse({ error: `Falha a atualizar corrida: ${updateError.message}` }, 500);
+
+        await attachCoachNotes(sb, userId, updatedRun, {
+          date: body.date,
+          kind,
+          training_type: trainingType,
+          race_type: raceType,
+          distance_km: extraction.distance_km,
+          duration_seconds: extraction.duration_seconds,
+          effort_rpe: effortRpe,
+          details,
+        }, geminiKey);
+
+        return jsonResponse({ run: updatedRun });
+      }
+
       const { data: run, error: insertError } = await sb
         .from("runs")
         .insert({

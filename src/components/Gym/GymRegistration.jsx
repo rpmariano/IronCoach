@@ -113,10 +113,36 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const [exertion, setExertion] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Edição — exercícios/séries só se gerem aqui (a sessão já existe): editar
-  // é sempre pelos campos, sem foto nova e sem passar pelo Coach outra vez
-  // (mesmo padrão da Corrida/Refeição).
+  // Edição — exercícios/séries só se gerem aqui (a sessão já existe). Séries,
+  // métricas, categorias, tipo e observações são dados ANALÍTICOS: mudá-los
+  // muda a análise, por isso guardar passa pelo Coach e regenera-a. Mudar só
+  // a data ou o nome é um update direto, sem custo de API (mesmo padrão da
+  // Nutrição — ver MealRegistration.jsx e PRD 3.2/3.3).
   const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
+
+  // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
+  // os valores em vez de os ler do estado, para poder ser calculada também a
+  // partir da sessão em bruto no momento do carregamento (quando o estado
+  // ainda não foi atualizado).
+  const analyticalSignature = (v) => JSON.stringify({
+    kind: v.kind,
+    categories: [...(v.categories || [])].sort(),
+    notes: (v.notes || '').trim(),
+    duration: v.duration ?? null,
+    calories: v.calories === '' || v.calories == null ? null : Number(v.calories),
+    avgHr: v.avgHr === '' || v.avgHr == null ? null : Number(v.avgHr),
+    maxHr: v.maxHr === '' || v.maxHr == null ? null : Number(v.maxHr),
+    exertion: v.exertion === '' || v.exertion == null ? null : Number(v.exertion),
+    sets: v.sets,
+  });
+
+  const currentSignature = () => analyticalSignature({
+    kind, categories, notes,
+    duration: parseDurationInput(durationStr),
+    calories, avgHr, maxHr, exertion,
+    sets: flattenExercises(exercises),
+  });
 
   useEffect(() => {
     if (!sessionIdToEdit) return;
@@ -147,9 +173,26 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         .map((s, j) => ({ key: s.id || `${Date.now()}-${i}-${j}`, reps: s.reps ?? '', weight: s.weight ?? '' })),
     }));
     setExercises(loadedExercises);
+    setOriginalSnapshot(analyticalSignature({
+      kind: session.kind === 'aula' ? 'aula' : 'forca',
+      categories: session.categories || [],
+      notes: session.notes || '',
+      duration: session.duration_seconds ?? null,
+      calories: session.calories_kcal,
+      avgHr: session.avg_hr,
+      maxHr: session.max_hr,
+      exertion: session.exertion,
+      sets: flattenExercises(loadedExercises),
+    }));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionIdToEdit]);
+
+  // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
+  // ou o nome não justifica uma chamada ao Gemini.
+  const needsReanalysis = isEditing
+    && originalSnapshot !== null
+    && currentSignature() !== originalSnapshot;
 
   const handleToggleCategory = (cat) => {
     if (categories.includes(cat)) {
@@ -285,8 +328,11 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   };
 
   // ----------------------------------
-  // GUARDAR ALTERAÇÕES (edição) — é só update dos campos + substituição das
-  // séries, não passa pelo Coach outra vez (mesmo padrão da Corrida/Refeição).
+  // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
+  //   • Séries, métricas, categorias, tipo ou observações mudaram → passa
+  //     pelo Coach (analyze-gym em mode manual com session_id), que substitui
+  //     as séries todas e regenera a análise.
+  //   • Só a data/nome mudaram → update direto, sem chamada ao Gemini.
   // ----------------------------------
   const handleSaveEdit = async () => {
     if (isSaving) return;
@@ -294,38 +340,41 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     setErrorMsg('');
     try {
       const finalName = name.trim() || (categories.length ? categories.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
-      const { error: sessionError } = await supabase
-        .from('workout_sessions')
-        .update({
-          date,
-          kind,
-          name: finalName,
-          categories,
-          duration_seconds: parseDurationInput(durationStr),
-          calories_kcal: calories ? parseInt(calories) : null,
-          avg_hr: avgHr ? parseInt(avgHr) : null,
-          max_hr: maxHr ? parseInt(maxHr) : null,
-          exertion: exertion ? parseInt(exertion) : null,
-          notes: notes.trim() || null,
-        })
-        .eq('id', sessionIdToEdit);
-      if (sessionError) throw sessionError;
 
-      const { error: deleteError } = await supabase.from('workout_session_sets').delete().eq('session_id', sessionIdToEdit);
-      if (deleteError) throw deleteError;
-
-      const rows = flattenExercises(exercises).map(r => ({ ...r, session_id: sessionIdToEdit, user_id: profile.id }));
-      if (rows.length) {
-        const { error: setsError } = await supabase.from('workout_session_sets').insert(rows);
-        if (setsError) throw setsError;
+      if (needsReanalysis) {
+        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+          body: {
+            mode: 'manual',
+            session_id: sessionIdToEdit,
+            date,
+            kind,
+            name: finalName,
+            categories,
+            notes: notes.trim() || null,
+            duration_seconds: parseDurationInput(durationStr),
+            calories_kcal: calories ? parseInt(calories) : null,
+            avg_hr: avgHr ? parseInt(avgHr) : null,
+            max_hr: maxHr ? parseInt(maxHr) : null,
+            exertion: exertion ? parseInt(exertion) : null,
+            sets: flattenExercises(exercises),
+          },
+        });
+        if (error) throw new Error(error);
+        if (data?.error) throw new Error(data.error);
+      } else {
+        const { error: sessionError } = await supabase
+          .from('workout_sessions')
+          .update({ date, name: finalName })
+          .eq('id', sessionIdToEdit);
+        if (sessionError) throw sessionError;
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast('Treino atualizado');
+      showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
       onClose();
     } catch (err) {
       console.error(err);
-      setErrorMsg('Falha a guardar alterações. Tenta novamente.');
+      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
     } finally {
       setIsSaving(false);
     }
@@ -680,19 +729,29 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         </div>
 
         {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
-            o registo manual acabam ambos analisados por ele. Editar é só o
-            update dos campos — não passa pelo Coach, por isso não leva o
-            gradiente. */}
+            o registo manual acabam ambos analisados por ele. A editar, o
+            botão só leva o gradiente do Coach quando os dados analíticos
+            mudaram (séries, métricas, categorias, tipo ou observações);
+            mudar só a data ou o nome é update direto. */}
         {isEditing ? (
-          <button
-            onClick={handleSaveEdit}
-            disabled={isSaving}
-            className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-          >
-            {isSaving
-              ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
-              : <><PencilLine size={16} /> Guardar Alterações</>}
-          </button>
+          needsReanalysis ? (
+            <CoachAnalyzeButton
+              onClick={handleSaveEdit}
+              disabled={isSaving}
+              busy={isSaving}
+              label="Guardar e Reanalisar"
+            />
+          ) : (
+            <button
+              onClick={handleSaveEdit}
+              disabled={isSaving}
+              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            >
+              {isSaving
+                ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
+                : <><PencilLine size={16} /> Guardar Alterações</>}
+            </button>
+          )
         ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}

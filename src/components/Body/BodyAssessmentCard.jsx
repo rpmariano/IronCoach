@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Droplet, Activity, Award } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Droplet, Activity, Award, PencilLine } from 'lucide-react';
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { getBodyIcon } from '../../utils/bodyIcons';
 
-export default function BodyAssessmentCard({ assessment }) {
+/* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
+   passa pelo botão "Editar" → BodyRegistration, porque mexer nas métricas ou
+   nas observações muda a análise do Coach e tem de a regenerar. Editar aqui à
+   mão deixava a "Análise do Coach" a descrever uma avaliação que já não
+   existe. Mesmo padrão da Nutrição/Ginásio (ver PRD 3.2/3.3/3.5). */
+export default function BodyAssessmentCard({ assessment, onEdit }) {
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [notesText, setNotesText] = useState(assessment.notes || '');
 
   const dateParts = assessment.date ? assessment.date.split('-') : [];
   const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : assessment.date;
@@ -32,21 +35,6 @@ export default function BodyAssessmentCard({ assessment }) {
       showToast('Erro ao eliminar avaliação.', 'error');
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  const handleSaveNotes = async () => {
-    try {
-      const { error } = await supabase.from('body_assessments').update({ notes: notesText.trim() || null }).eq('id', assessment.id);
-      if (error) throw error;
-      setEditingNotes(false);
-      if (profile?.id) {
-        await loadInitialData(profile.id);
-      }
-      showToast('Observações guardadas');
-    } catch (err) {
-      console.error('Error updating notes:', err);
-      showToast('Erro ao guardar observações.', 'error');
     }
   };
 
@@ -119,42 +107,14 @@ export default function BodyAssessmentCard({ assessment }) {
             </div>
           )}
 
-          {/* Observações Card */}
+          {/* Observações — só leitura; alterar é pelo botão "Editar" */}
           <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <MessageSquare size={14} className="text-slate-400" /> Observações
-              </div>
-              <button 
-                onClick={() => setEditingNotes(!editingNotes)}
-                className="text-[11px] font-bold text-purple-600 hover:underline"
-              >
-                {editingNotes ? 'Cancelar' : assessment.notes ? 'Editar' : 'Adicionar'}
-              </button>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <MessageSquare size={14} className="text-slate-400" /> Observações
             </div>
-
-            {editingNotes ? (
-              <div className="mt-2 space-y-2">
-                <textarea
-                  rows={2}
-                  value={notesText}
-                  onChange={e => setNotesText(e.target.value)}
-                  placeholder="Contexto da pesagem..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs text-slate-800 outline-none focus:border-purple-500"
-                />
-                <button
-                  onClick={handleSaveNotes}
-                  className="px-3 py-1 bg-purple-600 rounded-lg text-xs font-bold hover:bg-purple-700 transition"
-                  style={{ color: '#fff' }}
-                >
-                  Guardar
-                </button>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 italic mt-1">
-                {assessment.notes || 'Sem observações.'}
-              </p>
-            )}
+            <p className="text-xs text-slate-500 italic mt-1">
+              {assessment.notes || 'Sem observações.'}
+            </p>
           </div>
 
           {/* Full Metrics Breakdown */}
@@ -194,15 +154,25 @@ export default function BodyAssessmentCard({ assessment }) {
             </div>
           )}
 
-          {/* Delete Action Button */}
-          <button
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="w-full border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50 mt-2"
-          >
-            {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            Eliminar avaliação
-          </button>
+          {/* Ações */}
+          <div className="flex items-center gap-2 pt-1">
+            {onEdit && (
+              <button
+                onClick={() => onEdit(assessment.id)}
+                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+              >
+                <PencilLine size={14} /> Editar
+              </button>
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+            >
+              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Eliminar avaliação
+            </button>
+          </div>
         </div>
       )}
     </div>

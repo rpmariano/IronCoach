@@ -416,15 +416,56 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Preenche pelo menos um valor." }, 400);
       }
 
-      const { data: history } = await sb
+      // ── Edição de uma avaliação existente (assessment_id presente) ───
+      // Editar métricas ou observações muda o resumo, por isso passa pelo
+      // mesmo caminho do registo e regenera-o. Distingue-se da reanálise
+      // (assessment_id sem mode) por essa repescar os prints guardados;
+      // aqui a fonte são os campos que o atleta editou.
+      const editingId = typeof body.assessment_id === "string" && body.assessment_id
+        ? body.assessment_id
+        : null;
+
+      if (editingId) {
+        const { data: existing, error: fetchError } = await sb
+          .from("body_assessments")
+          .select("id")
+          .eq("id", editingId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (fetchError) return jsonResponse({ error: `Falha a procurar avaliação: ${fetchError.message}` }, 500);
+        if (!existing) return jsonResponse({ error: "Avaliação não encontrada" }, 404);
+      }
+
+      // A própria avaliação em edição não entra no histórico de comparação —
+      // senão o resumo comparava-a consigo mesma.
+      let historyQuery = sb
         .from("body_assessments")
         .select(metricSelect)
         .eq("user_id", userId)
         .lte("date", body.date)
         .order("date", { ascending: false })
         .limit(HISTORY_FOR_CONTEXT);
+      if (editingId) historyQuery = historyQuery.neq("id", editingId);
+      const { data: history } = await historyQuery;
 
       const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey);
+
+      if (editingId) {
+        const { data: updated, error: updateError } = await sb
+          .from("body_assessments")
+          .update({
+            date: body.date,
+            notes: rawNotes,
+            ai_summary: summaryResult.text,
+            status: "ready",
+            ...metrics,
+          })
+          .eq("id", editingId)
+          .select()
+          .single();
+        if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
+        return jsonResponse({ assessment: updated });
+      }
 
       const { data: assessment, error: insertError } = await sb
         .from("body_assessments")

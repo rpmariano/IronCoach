@@ -5,25 +5,25 @@ export function mapCategoriesToMuscles(categories = []) {
   const muscles = new Set();
   const mapping = {
     'peito': ['chest'],
-    'costas': ['lats', 'upper-back', 'lower-back'],
-    'pernas': ['quadriceps', 'hamstring', 'gluteal', 'calves', 'adductors'],
-    'ombros': ['shoulders'],
+    'costas': ['trapezius', 'upper-back', 'lower-back'],
+    'pernas': ['quadriceps', 'hamstring', 'gluteal', 'calves', 'adductor', 'abductors'],
+    'ombros': ['front-deltoids', 'back-deltoids'],
     'biceps': ['biceps'],
     'triceps': ['triceps'],
     'glúteos': ['gluteal'],
-    'full body': ['chest', 'lats', 'upper-back', 'lower-back', 'quadriceps', 'hamstring', 'gluteal', 'calves', 'shoulders', 'biceps', 'triceps', 'abs'],
-    'levantamento olímpico': ['quadriceps', 'hamstring', 'gluteal', 'shoulders', 'lower-back'],
+    'full body': ['chest', 'trapezius', 'upper-back', 'lower-back', 'quadriceps', 'hamstring', 'gluteal', 'calves', 'front-deltoids', 'back-deltoids', 'biceps', 'triceps', 'abs'],
+    'levantamento olímpico': ['quadriceps', 'hamstring', 'gluteal', 'front-deltoids', 'back-deltoids', 'lower-back'],
     'powerlifting': ['chest', 'quadriceps', 'gluteal', 'hamstring', 'lower-back'],
-    'calistenia': ['chest', 'lats', 'shoulders', 'triceps', 'biceps', 'abs'],
-    'hiit': ['quadriceps', 'hamstring', 'calves', 'gluteal', 'chest', 'shoulders'],
+    'calistenia': ['chest', 'upper-back', 'front-deltoids', 'back-deltoids', 'triceps', 'biceps', 'abs'],
+    'hiit': ['quadriceps', 'hamstring', 'calves', 'gluteal', 'chest', 'front-deltoids'],
     'rpm/cycling': ['quadriceps', 'hamstring', 'calves', 'gluteal'],
     'pilates': ['abs', 'lower-back', 'gluteal'],
-    'yoga': ['abs', 'lower-back', 'shoulders'],
-    'body pump': ['chest', 'lats', 'quadriceps', 'hamstring', 'shoulders', 'biceps', 'triceps', 'gluteal'],
+    'yoga': ['abs', 'lower-back', 'front-deltoids', 'back-deltoids'],
+    'body pump': ['chest', 'upper-back', 'quadriceps', 'hamstring', 'front-deltoids', 'back-deltoids', 'biceps', 'triceps', 'gluteal'],
     'zumba': ['calves', 'quadriceps', 'hamstring', 'gluteal'],
-    'crossfit': ['chest', 'lats', 'quadriceps', 'hamstring', 'shoulders', 'gluteal', 'lower-back', 'calves', 'biceps', 'triceps', 'abs'],
-    'treino funcional': ['abs', 'lower-back', 'quadriceps', 'shoulders', 'gluteal'],
-    'natação': ['lats', 'upper-back', 'shoulders', 'chest', 'triceps', 'quadriceps']
+    'crossfit': ['chest', 'upper-back', 'quadriceps', 'hamstring', 'front-deltoids', 'back-deltoids', 'gluteal', 'lower-back', 'calves', 'biceps', 'triceps', 'abs'],
+    'treino funcional': ['abs', 'lower-back', 'quadriceps', 'front-deltoids', 'back-deltoids', 'gluteal'],
+    'natação': ['upper-back', 'trapezius', 'front-deltoids', 'back-deltoids', 'chest', 'triceps', 'quadriceps']
   };
 
   categories.forEach(cat => {

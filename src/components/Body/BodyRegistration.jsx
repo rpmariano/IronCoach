@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store';
-import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { ScanLine, X, ImagePlus, Camera, PencilLine } from 'lucide-react';
+import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 
 const BODY_METRICS = [
@@ -30,9 +30,10 @@ function todayISO() {
   return d.toISOString().slice(0, 10);
 }
 
-export default function BodyRegistration({ onClose }) {
-  const { bodyAssessments, setBodyAssessments } = useAppStore();
+export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
+  const { bodyAssessments, setBodyAssessments, profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
+  const isEditing = !!assessmentIdToEdit;
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(todayISO());
@@ -51,8 +52,90 @@ export default function BodyRegistration({ onClose }) {
   const [metrics, setMetrics] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
+  // Edição — métricas e observações são dados ANALÍTICOS: mudá-los muda o
+  // resumo do Coach e obriga a regenerá-lo. Mudar só a data é um update
+  // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
+
+  const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
+    notes: (notesValue || '').trim(),
+    metrics: BODY_METRICS.reduce((acc, m) => {
+      const raw = metricsValue?.[m.key];
+      acc[m.key] = raw === undefined || raw === '' || raw === null ? null : Number(raw);
+      return acc;
+    }, {}),
+  });
+
+  useEffect(() => {
+    if (!assessmentIdToEdit) return;
+    const a = bodyAssessments.find(x => x.id === assessmentIdToEdit);
+    if (!a) return;
+    setDate(a.date || todayISO());
+    setNotes(a.notes || '');
+    const loaded = {};
+    for (const m of BODY_METRICS) {
+      if (a[m.key] !== null && a[m.key] !== undefined) loaded[m.key] = String(a[m.key]);
+    }
+    setMetrics(loaded);
+    setOriginalSnapshot(analyticalSignature(a.notes, loaded));
+    setEntryMethod('manual');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assessmentIdToEdit]);
+
+  const needsReanalysis = isEditing
+    && originalSnapshot !== null
+    && analyticalSignature(notes, metrics) !== originalSnapshot;
+
   const handleMetricChange = (key, value) => {
     setMetrics(prev => ({ ...prev, [key]: value }));
+  };
+
+  // ----------------------------------
+  // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
+  //   • Métricas ou observações mudaram → passa pelo Coach (analyze-body em
+  //     mode manual com assessment_id), que regenera o resumo.
+  //   • Só a data mudou → update direto, sem chamada ao Gemini.
+  // ----------------------------------
+  const handleSaveEdit = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setErrorMsg('');
+    try {
+      if (needsReanalysis) {
+        const payloadMetrics = {};
+        for (const m of BODY_METRICS) {
+          if (metrics[m.key] !== undefined && metrics[m.key] !== '') {
+            payloadMetrics[m.key] = parseFloat(metrics[m.key]);
+          }
+        }
+        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+          body: {
+            mode: 'manual',
+            assessment_id: assessmentIdToEdit,
+            date,
+            notes: notes.trim() || null,
+            metrics: payloadMetrics,
+          },
+        });
+        if (error) throw new Error(error);
+        if (data?.error) throw new Error(data.error);
+      } else {
+        const { error } = await supabase
+          .from('body_assessments')
+          .update({ date })
+          .eq('id', assessmentIdToEdit);
+        if (error) throw error;
+      }
+
+      if (profile?.id) await loadInitialData(profile.id);
+      showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
@@ -157,7 +240,7 @@ export default function BodyRegistration({ onClose }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-[15px] font-bold text-slate-800">Nova Avaliação</h2>
+            <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={onClose}
@@ -179,27 +262,31 @@ export default function BodyRegistration({ onClose }) {
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
         </div>
 
-        <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
-          <div className="flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => setEntryMethod('foto')}
-              style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <Camera size={14} /> Foto (IA)
-            </button>
-            <button
-              type="button"
-              onClick={() => setEntryMethod('manual')}
-              style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-              className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
-            >
-              <PencilLine size={14} /> Manual
-            </button>
+        {/* Como queres registar? — escondido a editar: editar é sempre pelos
+            campos, sem foto nova (mesmo padrão da Nutrição/Ginásio). */}
+        {!isEditing && (
+          <div className="mb-4">
+            <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setEntryMethod('foto')}
+                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <Camera size={14} /> Foto (IA)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMethod('manual')}
+                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
+                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+              >
+                <PencilLine size={14} /> Manual
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {entryMethod === 'foto' ? (
           <>
@@ -270,10 +357,30 @@ export default function BodyRegistration({ onClose }) {
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos: a foto e o registo
-            manual acabam ambos analisados por ele, só a origem dos dados
-            muda. */}
-        {entryMethod === 'foto' ? (
+        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
+            o registo manual acabam ambos analisados por ele. A editar, o
+            botão só leva o gradiente do Coach quando as métricas ou as
+            observações mudaram; mudar só a data é update direto. */}
+        {isEditing ? (
+          needsReanalysis ? (
+            <CoachAnalyzeButton
+              onClick={handleSaveEdit}
+              disabled={isSaving}
+              busy={isSaving}
+              label="Guardar e Reanalisar"
+            />
+          ) : (
+            <button
+              onClick={handleSaveEdit}
+              disabled={isSaving}
+              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+            >
+              {isSaving
+                ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
+                : <><PencilLine size={16} /> Guardar Alterações</>}
+            </button>
+          )
+        ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}
             disabled={!photos.length || isAnalyzing}

@@ -5,12 +5,14 @@ import { ChevronLeft, ChevronRight, ScanLine } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import BodyAssessmentCard from './BodyAssessmentCard';
+import BodyRegistration from './BodyRegistration';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 
 export default function BodyCalendar() {
   const { bodyAssessments, setOpenCreationMode } = useAppStore();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [editingAssessmentId, setEditingAssessmentId] = useState(null);
 
   const daysInMonth = useMemo(() => {
     const start = startOfMonth(currentDate);
@@ -29,10 +31,21 @@ export default function BodyCalendar() {
     return bodyAssessments.filter(a => a.date === dayStr);
   }, [bodyAssessments, selectedDate]);
 
+  // Editar ocupa o ecrã todo, como na Nutrição — o calendário volta assim
+  // que o formulário fecha.
+  if (editingAssessmentId) {
+    return (
+      <BodyRegistration
+        onClose={() => setEditingAssessmentId(null)}
+        assessmentIdToEdit={editingAssessmentId}
+      />
+    );
+  }
+
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Botão Nova Avaliação */}
-      <button 
+      <button
         onClick={() => setOpenCreationMode('assessment')}
         className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
       >
@@ -108,7 +121,7 @@ export default function BodyCalendar() {
             <p className="text-xs text-slate-500 text-center py-6">Sem avaliações registadas neste dia.</p>
           ) : (
             dayAssessments.map(assessment => (
-              <BodyAssessmentCard key={assessment.id} assessment={assessment} />
+              <BodyAssessmentCard key={assessment.id} assessment={assessment} onEdit={setEditingAssessmentId} />
             ))
           )}
         </div>

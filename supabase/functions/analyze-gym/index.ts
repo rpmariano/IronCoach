@@ -580,6 +580,78 @@ Deno.serve(async (req) => {
         (userCategories.length ? userCategories.join(" e ") : null) ??
         (kind === "aula" ? "Aula" : "Treino");
 
+      // ── Edição de uma sessão existente (session_id presente) ─────────
+      // Editar séries, métricas, categorias ou observações muda a análise,
+      // por isso passa pelo mesmo caminho do registo e regenera a nota do
+      // Coach. Distingue-se da reanálise (session_id sem mode) por essa
+      // repescar os prints guardados; aqui a fonte são os campos editados.
+      // As séries chegam já achatadas do cliente (flattenExercises), com a
+      // mesma forma que flattenSets produz no caminho de fotos.
+      if (typeof body.session_id === "string" && body.session_id) {
+        const sessionId = body.session_id;
+        const { data: existing, error: fetchError } = await sb
+          .from("workout_sessions")
+          .select("id")
+          .eq("id", sessionId)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (fetchError) return jsonResponse({ error: `Falha a procurar sessão: ${fetchError.message}` }, 500);
+        if (!existing) return jsonResponse({ error: "Sessão não encontrada" }, 404);
+
+        // deno-lint-ignore no-explicit-any
+        const rawSets = Array.isArray(body.sets) ? body.sets : [];
+        if (rawSets.length > 200) {
+          return jsonResponse({ error: "Máximo de 200 séries por sessão." }, 400);
+        }
+        // deno-lint-ignore no-explicit-any
+        const setRows = rawSets
+          // deno-lint-ignore no-explicit-any
+          .map((s: any, i: number) => {
+            const reps = Number(s?.reps);
+            const weight = Number(s?.weight);
+            return {
+              exercise_name: typeof s?.exercise_name === "string" ? s.exercise_name.trim().slice(0, 120) : "",
+              set_index: Number.isFinite(Number(s?.set_index)) ? Number(s.set_index) : i,
+              reps: Number.isFinite(reps) ? reps : null,
+              weight: Number.isFinite(weight) ? weight : null,
+              session_id: sessionId,
+              user_id: userId,
+            };
+          })
+          .filter((r: { exercise_name: string }) => r.exercise_name);
+
+        const { data: updatedSession, error: updateError } = await sb
+          .from("workout_sessions")
+          .update({
+            date: body.date,
+            name: finalName,
+            kind,
+            categories: userCategories,
+            ...userMetrics,
+            notes: rawNotes,
+          })
+          .eq("id", sessionId)
+          .select()
+          .single();
+        if (updateError) return jsonResponse({ error: `Falha a atualizar sessão: ${updateError.message}` }, 500);
+
+        const { error: deleteError } = await sb.from("workout_session_sets").delete().eq("session_id", sessionId);
+        if (deleteError) return jsonResponse({ error: `Falha a limpar séries antigas: ${deleteError.message}` }, 500);
+
+        let savedSets: unknown[] = [];
+        if (setRows.length) {
+          const { data, error: setsError } = await sb.from("workout_session_sets").insert(setRows).select();
+          if (setsError) return jsonResponse({ error: `Falha a gravar séries: ${setsError.message}` }, 500);
+          savedSets = data ?? [];
+        }
+
+        await attachGymCoachNotes(sb, userId, updatedSession, {
+          date: body.date, kind, categories: userCategories, metrics: userMetrics, notes: rawNotes,
+        }, geminiKey);
+
+        return jsonResponse({ session: updatedSession, sets: savedSets });
+      }
+
       const { data: session, error: sessionError } = await sb
         .from("workout_sessions")
         .insert({

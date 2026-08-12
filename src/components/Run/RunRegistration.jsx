@@ -122,12 +122,62 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // dois blocos está visível a cada vez (ver entryMethod), por isso já não
   // há risco de a mesma mensagem aparecer em dois sítios ao mesmo tempo.
   const [errorMsg, setErrorMsg] = useState('');
+  // Estado analítico no momento em que se abriu a edição — ver o useEffect
+  // de carregamento e needsReanalysis abaixo.
+  const [originalSnapshot, setOriginalSnapshot] = useState(null);
 
   // Limpa o item do plano do store assim que foi consumido para os estados
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Nova Corrida".
   useEffect(() => {
     if (completingPlanItemRef.current) useAppStore.getState().clearPlanItemPrefill();
   }, []);
+
+  // Assinatura do que é analítico. Normaliza (descarta vazios, ordena
+  // chaves) para que o objeto vindo da BD e o construído a partir do
+  // formulário sejam comparáveis campo a campo.
+  const analyticalSignature = (v) => JSON.stringify({
+    kind: v.kind,
+    trainingType: v.trainingType || null,
+    distance: v.distance === '' || v.distance == null ? null : Number(v.distance),
+    duration: v.duration ?? null,
+    rpe: v.rpe || 0,
+    details: Object.fromEntries(
+      Object.entries(v.details || {})
+        .filter(([, val]) => val !== null && val !== undefined && val !== '')
+        .sort(([a], [b]) => a.localeCompare(b)),
+    ),
+  });
+
+  // Métricas do formulário na mesma forma com que são gravadas em runs.details.
+  const buildDetailsFromForm = () => {
+    const parsedSplits = splits
+      .map(s => ({ distance_km: parseFloat(s.distance_km) || null, time_seconds: parseDurationToSeconds(s.minutes) }))
+      .filter(s => s.distance_km || s.time_seconds);
+    const parsedHrZones = hrZones
+      .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+      .filter(z => z.zone && z.minutes);
+
+    const details = {
+      elevation_gain_m: parseInt(elevationGain) || null,
+      cadence_spm: parseInt(cadence) || null,
+      max_cadence_spm: parseInt(maxCadence) || null,
+      calories_kcal: parseInt(calories) || null,
+      vo2_max: parseFloat(vo2Max) || null,
+      avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
+      max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+    };
+    if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
+    if (runKind === 'treino') {
+      if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
+      if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
+      if (parsedSplits.length) details.splits = parsedSplits;
+    } else {
+      details.race_type = completedRaceType;
+      if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
+      if (position) details.position = parseInt(position);
+    }
+    return { details, parsedSplits, parsedHrZones };
+  };
 
   // Load existing data if editing
   useEffect(() => {
@@ -163,7 +213,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setOfficialTime(d.official_time_seconds ? formatDuration(d.official_time_seconds) : '');
         setPosition(d.position || '');
         setCompletedRaceType(d.race_type || '10k');
-        
+
+        // Distância, duração, RPE, tipo e métricas são dados ANALÍTICOS:
+        // mudá-los muda a análise, e guardar passa pelo Coach para a
+        // regenerar. Mudar só a data ou o nome é update direto, sem custo de
+        // API (mesmo padrão da Nutrição/Ginásio/Corpo — ver PRD 3.2).
+        setOriginalSnapshot(analyticalSignature({
+          kind: r.kind || 'treino',
+          trainingType: r.training_type || 'continuo',
+          distance: r.distance_km,
+          duration: r.duration_seconds,
+          rpe: r.effort_rpe,
+          details: r.details,
+        }));
+
         // Load photos (for display only, we won't allow replacing them here in simple edit)
         if (r.photo_paths && r.photo_paths.length > 0) {
            // We just show a placeholder or load them if needed. For now, empty or mock if editing.
@@ -171,6 +234,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
     }
   }, [runIdToEdit, runs]);
+
+  // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
+  // ou o nome não justifica uma chamada ao Gemini.
+  const needsReanalysis = !!runIdToEdit
+    && originalSnapshot !== null
+    && analyticalSignature({
+      kind: runKind,
+      trainingType: runKind === 'treino' ? runTrainingType : null,
+      distance: runDistance,
+      duration: parseDurationToSeconds(runDuration),
+      rpe: runEffortRpe,
+      details: buildDetailsFromForm().details,
+    }) !== originalSnapshot;
 
   // Handle Photo Selection — comprime e normaliza para JPEG antes de guardar
   // (ver src/lib/image.js); o .base64 resultante é o que vai no pedido de
@@ -290,41 +366,50 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
 
+      // Editar: dois caminhos. Se os dados analíticos mudaram (distância,
+      // duração, RPE, tipo ou métricas), passa pelo Coach e regenera a
+      // análise; se só mudou a data ou o nome, é update direto sem custo
+      // de API. Mesmo padrão da Nutrição/Ginásio/Corpo (PRD 3.2).
       if (runIdToEdit) {
-        const details = {
-          elevation_gain_m: parseInt(elevationGain) || null,
-          cadence_spm: parseInt(cadence) || null,
-          max_cadence_spm: parseInt(maxCadence) || null,
-          calories_kcal: parseInt(calories) || null,
-          vo2_max: parseFloat(vo2Max) || null,
-          avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
-          max_heart_rate_bpm: parseInt(maxHeartRate) || null,
-        };
-        if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
-        if (runKind === 'treino') {
-          if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
-          if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
-          if (parsedSplits.length) details.splits = parsedSplits;
+        if (needsReanalysis) {
+          const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+            body: {
+              mode: 'manual',
+              run_id: runIdToEdit,
+              date: runDate,
+              kind: runKind,
+              name: runName.trim(),
+              effort_rpe: runEffortRpe || null,
+              training_type: runKind === 'treino' ? runTrainingType : null,
+              race_type: runKind === 'competicao' ? completedRaceType : null,
+              distance_km: !isNaN(distVal) ? distVal : null,
+              duration_seconds: durSecs,
+              elevation_gain_m: parseInt(elevationGain) || null,
+              cadence_spm: parseInt(cadence) || null,
+              max_cadence_spm: parseInt(maxCadence) || null,
+              calories_kcal: parseInt(calories) || null,
+              vo2_max: parseFloat(vo2Max) || null,
+              avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
+              max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+              hr_zones: parsedHrZones.length ? parsedHrZones : null,
+              warmup_minutes: warmupMinutes ? parseInt(warmupMinutes) : null,
+              recovery_seconds: recoverySeconds ? parseInt(recoverySeconds) : null,
+              splits: parsedSplits.length ? parsedSplits : null,
+              official_time_seconds: officialTime ? parseDurationToSeconds(officialTime) : null,
+              position: position ? parseInt(position) : null,
+            },
+          });
+          if (error) throw new Error(error);
+          if (data?.error) throw new Error(data.error);
+          setRuns(runs.map(r => (r.id === runIdToEdit ? data.run : r)));
+          showToast('Corrida reanalisada pelo Coach');
         } else {
-          details.race_type = completedRaceType;
-          if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
-          if (position) details.position = parseInt(position);
+          const payload = { date: runDate, name: runName.trim() };
+          const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
+          if (error) throw error;
+          setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
+          showToast('Corrida atualizada');
         }
-
-        const payload = {
-          date: runDate,
-          name: runName.trim(),
-          kind: runKind,
-          training_type: runKind === 'treino' ? runTrainingType : null,
-          distance_km: !isNaN(distVal) ? distVal : null,
-          duration_seconds: durSecs,
-          effort_rpe: runEffortRpe || null,
-          details: Object.keys(details).length > 0 ? details : null,
-        };
-        const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
-        if (error) throw error;
-        setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
-        showToast('Corrida atualizada');
         onClose();
         return;
       }
@@ -735,18 +820,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           />
 
           {runIdToEdit ? (
-            // Editar é só o update dos campos — não passa pelo Coach, por
-            // isso não leva o gradiente (esse é exclusivo de quem vai ser
-            // analisado: criar, foto ou manual).
-            <button
-              onClick={handleSaveCorrida}
-              disabled={isSubmitting}
-              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-            >
-              {isSubmitting
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
-                : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>}
-            </button>
+            // A editar, o botão só leva o gradiente do Coach quando os dados
+            // analíticos mudaram (distância, duração, RPE, tipo, métricas);
+            // mudar só a data ou o nome é update direto, sem custo de API.
+            needsReanalysis ? (
+              <CoachAnalyzeButton
+                onClick={handleSaveCorrida}
+                disabled={isSubmitting}
+                busy={isSubmitting}
+                label="Guardar e Reanalisar"
+              />
+            ) : (
+              <button
+                onClick={handleSaveCorrida}
+                disabled={isSubmitting}
+                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+              >
+                {isSubmitting
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
+                  : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>}
+              </button>
+            )
           ) : (
             // Mesmo botão do caminho de fotos — as duas formas de criar
             // passam pelo Coach, por isso têm o mesmo botão.

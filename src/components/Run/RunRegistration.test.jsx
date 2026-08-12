@@ -7,9 +7,14 @@ import RunRegistration from './RunRegistration';
 // analyze-run é a única coisa que estes testes exercitam de facto — supabase
 // (usado só pelo registo manual/Provas, não pelo caminho de IA) fica com um
 // stub inerte.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateRun: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
-  supabase: { from: () => ({ insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }) }) },
+  supabase: {
+    from: () => ({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+      update: (payload) => ({ eq: (col, val) => mocks.updateRun(payload, val) }),
+    }),
+  },
   invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
 }));
 
@@ -235,6 +240,86 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
     await screen.findByText('Falha a gravar corrida.');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+/* Editar: distância, duração, RPE, tipo e métricas são dados ANALÍTICOS —
+   mudá-los regenera a análise do Coach. Mudar só a data ou o nome é um
+   update direto, sem custo de API. Antes desta iteração editar nunca passava
+   pelo Coach, o que deixava a "Análise do Coach" a descrever uma corrida que
+   já não existia. */
+describe('RunRegistration — editar corrida existente', () => {
+  const onClose = vi.fn();
+  const EXISTING_RUN = {
+    id: 'run-9',
+    kind: 'treino',
+    training_type: 'continuo',
+    date: '2026-08-01',
+    name: 'Rodagem',
+    distance_km: 10,
+    duration_seconds: 3000,
+    effort_rpe: 5,
+    details: { cadence_spm: 165 },
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { run: EXISTING_RUN }, error: null });
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, runs: [EXISTING_RUN], raceEvents: [] });
+  });
+
+  it('mudar só o nome faz update direto, sem chamar o Gemini', async () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.change(screen.getByDisplayValue('Rodagem'), { target: { value: 'Rodagem longa' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+
+    await waitFor(() => expect(mocks.updateRun).toHaveBeenCalledTimes(1));
+    const [payload, id] = mocks.updateRun.mock.calls[0];
+    expect(id).toBe('run-9');
+    expect(payload).toEqual({ date: '2026-08-01', name: 'Rodagem longa' });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('mudar a distância passa pelo Coach e reanalisa', async () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-run');
+    expect(body.mode).toBe('manual');
+    expect(body.run_id).toBe('run-9');
+    expect(body.distance_km).toBe(12);
+    expect(mocks.updateRun).not.toHaveBeenCalled();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('mudar uma métrica do relógio também passa pelo Coach', async () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.change(screen.getByDisplayValue('165'), { target: { value: '178' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.cadence_spm).toBe(178);
+    expect(body.run_id).toBe('run-9');
+  });
+
+  it('um erro do Coach não fecha o formulário', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+
+    await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
   });
 });
