@@ -94,6 +94,11 @@
   background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(5, 150, 105, 0.04) 100%);
 }
 
+.wpc-day-card.rest {
+  border-color: rgba(249, 115, 22, 0.25);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(249, 115, 22, 0.04) 100%);
+}
+
 .wpc-day-card.empty {
   border-color: rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.5);
@@ -155,6 +160,11 @@
 .wpc-icon-wrap.nutri {
   background: rgba(5, 150, 105, 0.15);
   color: #059669;
+}
+
+.wpc-icon-wrap.rest {
+  background: rgba(249, 115, 22, 0.15);
+  color: #ea580c;
 }
 
 .wpc-icon-wrap.empty {
@@ -287,6 +297,12 @@
   color: #94a3b8;
 }
 
+.wpc-detail-title.run { color: #c026d3; }
+.wpc-detail-title.gym { color: #facc15; }
+.wpc-detail-title.corpo { color: #64748b; }
+.wpc-detail-title.nutri { color: #059669; }
+.wpc-detail-title.rest { color: #ea580c; }
+
 .wpc-pill-status {
   display: flex;
   justify-content: center;
@@ -341,6 +357,22 @@
 
 .wpc-info-box-header.nutri {
   color: #059669;
+}
+
+.wpc-info-box-header.rest {
+  color: #ea580c;
+}
+
+.wpc-info-box-header.run {
+  color: #c026d3;
+}
+
+.wpc-info-box-header.gym {
+  color: #facc15;
+}
+
+.wpc-info-box-header.corpo {
+  color: #64748b;
 }
 
 .wpc-info-box-text {

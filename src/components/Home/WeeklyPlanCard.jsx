@@ -93,7 +93,7 @@ function itemTitle(item) {
       item.target_duration_min ? `${item.target_duration_min} min` : null,
     ].filter(Boolean).join(' · ');
   }
-  return item.meal_suggestion ? 'Sugestão alimentar' : 'Descanso';
+  return 'Descanso';
 }
 
 function itemIcon(item) {
@@ -105,7 +105,9 @@ function itemIcon(item) {
 function itemKindClass(item) {
   if (item.kind === 'corrida') return 'run';
   if (item.kind === 'ginasio') return 'gym';
-  return 'nutri';
+  if (item.kind === 'corpo') return 'corpo';
+  if (item.kind === 'nutricao') return 'nutri';
+  return 'rest';
 }
 
 /* Um dia do plano. */
@@ -173,14 +175,14 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
             {items.map(item => (
               <div key={item.id} className="wpc-detail-item">
                 {items.length > 1 && (
-                  <p className="wpc-detail-title">{itemTitle(item)}</p>
+                  <p className={`wpc-detail-title ${itemKindClass(item)}`}>{itemTitle(item)}</p>
                 )}
 
                 {(item.notes || item.kind !== 'descanso') && (
                   <div className="wpc-info-box">
                     {item.notes && (
                       <div style={{ marginBottom: item.kind !== 'descanso' ? '12px' : 0 }}>
-                        <div className="wpc-info-box-header">
+                        <div className={`wpc-info-box-header ${itemKindClass(item)}`}>
                           <StickyNote size={13} /> Instruções do Coach
                         </div>
                         <p className="wpc-info-box-text">{item.notes}</p>
