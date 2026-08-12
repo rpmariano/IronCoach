@@ -109,6 +109,26 @@ function itemKindClass(item) {
 }
 
 
+function formatMealSuggestion(text) {
+  if (!text) return null;
+  const formatted = text
+    .replace(/(Pequeno-almoço:)/gi, '\n☕ $1')
+    .replace(/(Almoço:)/gi, '\n🥗 $1')
+    .replace(/(Lanche pré-treino:)/gi, '\n⚡ $1')
+    .replace(/(Lanche pós-treino:)/gi, '\n💪 $1')
+    .replace(/(Lanche da manhã:)/gi, '\n🍎 $1')
+    .replace(/(Lanche da tarde:)/gi, '\n🍎 $1')
+    .replace(/(Lanche:)/gi, '\n🍎 $1')
+    .replace(/(Jantar:)/gi, '\n🍗 $1')
+    .replace(/(Ceia:)/gi, '\n🌙 $1');
+
+  return formatted.split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => (
+    <span key={idx} style={{ display: 'block', marginBottom: '6px' }}>
+      {line}
+    </span>
+  ));
+}
+
 /* Um dia do plano. */
 function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, onCompleteMeal, onCancelMeal, readOnly }) {
   const [expanded, setExpanded] = useState(false);
@@ -221,7 +241,9 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                     <div className="wpc-info-box-header nutri">
                       <Award size={14} /> Sugestão alimentar
                     </div>
-                    <p className="wpc-info-box-text">{item.meal_suggestion}</p>
+                    <div className="wpc-info-box-text">
+                      {formatMealSuggestion(item.meal_suggestion)}
+                    </div>
                     <p className="wpc-info-box-disclaimer">
                       Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
                       dúvida clínica, fala com um nutricionista.
