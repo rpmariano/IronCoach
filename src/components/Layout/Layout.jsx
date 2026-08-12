@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User } from 'lucide-react';
+import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
   home: 'var(--accent)',
+  calendario: 'var(--accent)',
+  dashboard: 'var(--accent)',
   nutricao: 'var(--mod-nutricao-to, #059669)',
-  ginasio: 'var(--mod-ginasio-to, #2563eb)',
-  corpo: 'var(--mod-corpo-to, #7c3aed)',
+  ginasio: 'var(--mod-ginasio-to, #facc15)',
+  corpo: 'var(--mod-corpo-to, #64748b)',
   corrida: 'var(--mod-corrida-to, #c026d3)',
   coach: 'var(--accent)',
   perfil: 'var(--accent)',
@@ -162,19 +164,17 @@ export default function Layout({ children }) {
         </>
       )}
 
-      {/* Barra inferior — 7 colunas + "+" central elevado */}
+      {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-7 items-center pt-1.5 pb-2 bg-white border-t border-slate-200/80 shadow-lg"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-white border-t border-slate-200/80 shadow-lg"
       >
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
-        <VBarBtn tab="nutricao" icon={<Utensils size={20} />} label="Nutrição" activeTab={activeTab} setTab={setActiveTab} />
-        <VBarBtn tab="ginasio" icon={<Dumbbell size={20} />} label="Ginásio" activeTab={activeTab} setTab={setActiveTab} />
+        <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
-        <VBarBtn tab="corpo" icon={<User size={20} />} label="Corpo" activeTab={activeTab} setTab={setActiveTab} />
-        <VBarBtn tab="corrida" icon={<RunIcon />} label="Corrida" activeTab={activeTab} setTab={setActiveTab} />
+        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} />
         <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
@@ -227,6 +227,32 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
       )}
       {icon}
       <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
+    </button>
+  );
+}
+
+function DashboardVBarBtn({ activeTab, setTab }) {
+  const active = ['corrida', 'ginasio', 'nutricao', 'corpo'].includes(activeTab);
+  const activeColor = 'var(--accent)';
+
+  return (
+    <button
+      onClick={() => { if (!active) setTab('corrida'); }}
+      data-vert="dashboard"
+      aria-label="Dashboard"
+      aria-current={active ? 'page' : undefined}
+      className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
+      style={{ color: active ? activeColor : '#64748b', fontWeight: active ? 700 : 500 }}
+    >
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
+          style={{ background: activeColor }}
+        />
+      )}
+      <Activity size={20} />
+      <span className="text-[10px] leading-none whitespace-nowrap">Dashboard</span>
     </button>
   );
 }
