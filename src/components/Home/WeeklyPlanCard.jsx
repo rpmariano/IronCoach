@@ -185,7 +185,7 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                       dúvida clínica, fala com um nutricionista.
                     </p>
                     
-                    {!readOnly && item.meal_status === 'pendente' && (
+                    {!readOnly && (!item.meal_status || item.meal_status === 'pendente') && (
                       <div className="wpc-actions" style={{ marginTop: '12px' }}>
                         <button onClick={() => onCompleteMeal(item)} className="wpc-btn wpc-btn-primary">
                           <Check size={14} /> Segui
@@ -242,7 +242,7 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
       dateISO,
       dayNumber: i + 1,
       isToday: dateISO === today,
-      isOverdue: dateISO < today && dayItems.some(it => (it.kind !== 'descanso' && it.status === 'pendente') || (it.meal_suggestion && it.meal_status === 'pendente')),
+      isOverdue: dateISO < today && dayItems.some(it => (it.kind !== 'descanso' && it.status === 'pendente') || (it.meal_suggestion && (!it.meal_status || it.meal_status === 'pendente'))),
       items: dayItems,
     });
   }
