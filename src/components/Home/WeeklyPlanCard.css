@@ -85,8 +85,13 @@
 }
 
 .wpc-day-card.gym {
-  border-color: rgba(37, 99, 235, 0.25);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(37, 99, 235, 0.04) 100%);
+  border-color: rgba(250, 204, 21, 0.35);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(250, 204, 21, 0.06) 100%);
+}
+
+.wpc-day-card.corpo {
+  border-color: rgba(100, 116, 139, 0.25);
+  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(100, 116, 139, 0.04) 100%);
 }
 
 .wpc-day-card.nutri {
@@ -153,8 +158,13 @@
 }
 
 .wpc-icon-wrap.gym {
-  background: rgba(37, 99, 235, 0.15);
-  color: #2563eb;
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
+.wpc-icon-wrap.corpo {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
 }
 
 .wpc-icon-wrap.nutri {
