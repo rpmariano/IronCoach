@@ -974,13 +974,17 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
     if (isInsidePlan) {
       // Tentar atualizar item existente para esse dia.
-      const { data: existing } = await sb
+      // A coluna é planned_date (nunca existiu "day" em coach_plan_items —
+      // ver migração 20260810000000_coach_plans.sql). Erro corrigido:
+      // antes usava "day", que não existe, e a escrita falhava sempre.
+      const { data: existing, error: findErr } = await sb
         .from("coach_plan_items")
         .select("id")
         .eq("plan_id", activePlan.id)
-        .eq("day", date)
+        .eq("planned_date", date)
         .limit(1)
         .maybeSingle();
+      if (findErr) return `Erro ao procurar item existente para ${date}: ${findErr.message}`;
 
       if (existing) {
         const { error: upErr } = await sb
@@ -992,7 +996,8 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
         // Não existe item para este dia — criar um de descanso com a sugestão.
         const { error: insErr } = await sb.from("coach_plan_items").insert({
           plan_id: activePlan.id,
-          day: date,
+          user_id: userId,
+          planned_date: date,
           kind: "descanso",
           meal_suggestion: meal,
         });
@@ -1025,7 +1030,8 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
     const items = outside.map((o) => ({
       plan_id: newPlan.id,
-      day: o.date,
+      user_id: userId,
+      planned_date: o.date,
       kind: "descanso",
       meal_suggestion: o.meal,
     }));

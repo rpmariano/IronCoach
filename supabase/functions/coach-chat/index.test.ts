@@ -819,8 +819,9 @@ Deno.test("save_meal_suggestions: cria item descanso quando não existe item no 
     suggestions: [{ date: "2026-08-13", meal: "Salmão com batata doce" }],
   });
   assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-13");
+  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
   assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.user_id, "u1");
   assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
 });
 
@@ -832,9 +833,10 @@ Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano a
     suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }],
   });
   assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-20");
+  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-20");
   assertEquals(inserted?.kind, "descanso");
   assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
+  assertEquals(inserted?.user_id, "u1");
 });
 
 Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async () => {
@@ -843,8 +845,24 @@ Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async ()
     suggestions: [{ date: "2026-08-15", meal: "Ovos mexidos com tosta" }],
   });
   assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.day === "2026-08-15");
+  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-15");
   assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.user_id, "u1");
+});
+
+Deno.test("save_meal_suggestions: regressão — nunca escreve na coluna 'day' (não existe em coach_plan_items)", async () => {
+  // Bug real reportado pelo utilizador: a função usava .eq("day", date) e
+  // insert({ day: date, ... }) — "day" nunca existiu em coach_plan_items
+  // (a coluna sempre foi planned_date, ver migração 20260810000000_coach_plans.sql).
+  // Isto fazia a escrita falhar sempre que o Coach tentava gravar uma sugestão
+  // alimentar no plano, e o atleta via "Edge Function returned a non-2xx status code".
+  const { sb, calls } = makeMealsSb({ activePlan: null });
+  await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{ date: "2026-08-16", meal: "Massa integral com atum" }],
+  });
+  for (const insertedRow of calls.inserts) {
+    assertEquals(Object.prototype.hasOwnProperty.call(insertedRow, "day"), false);
+  }
 });
 
 Deno.test("save_meal_suggestions: propaga erro da criação do plano", async () => {
