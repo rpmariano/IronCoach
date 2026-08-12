@@ -64,21 +64,38 @@ Deno.test("soma a água de hoje", () => {
   assertEquals(ctx.hoje_ate_agora.agua_ml, 550);
 });
 
-Deno.test("separa os itens do plano entre hoje e amanhã — chaves com data explícita", () => {
-  // today = "2026-08-11", tomorrow = "2026-08-12"
+Deno.test("separa os itens do plano em hoje/amanhã/depois de amanhã — chaves com data explícita", () => {
+  // today = "2026-08-11", tomorrow = "2026-08-12", depois de amanhã = "2026-08-13"
   const ctx = buildDailySummaryContext({
     ...baseParams,
     planItems: [
       { planned_date: "2026-08-11", kind: "corrida" },
       { planned_date: "2026-08-12", kind: "ginasio" },
-      { planned_date: "2026-08-13", kind: "descanso" },  // dia após amanhã — deve ser ignorado
+      { planned_date: "2026-08-13", kind: "descanso" },  // depois de amanhã — vai para o seu próprio balde
     ],
   }) as Record<string, unknown[]>;
-  // As chaves incluem a data para que o modelo não confunda os dois dias
+  // As chaves incluem a data para que o modelo não confunda os dias
   assertEquals(ctx["plano_treino_hoje_2026-08-11"].length, 1);
   assertEquals(ctx["plano_treino_amanha_2026-08-12"].length, 1);
+  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"].length, 1);
   assertEquals(ctx["plano_treino_hoje_2026-08-11"][0], { planned_date: "2026-08-11", kind: "corrida" });
   assertEquals(ctx["plano_treino_amanha_2026-08-12"][0], { planned_date: "2026-08-12", kind: "ginasio" });
+  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"][0], { planned_date: "2026-08-13", kind: "descanso" });
+});
+
+Deno.test("itens a partir de D+3 não entram em nenhum balde (fronteira da janela de 3 dias)", () => {
+  const today = "2026-08-11";
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    today,
+    planItems: [
+      { planned_date: "2026-08-14", kind: "corrida" },  // D+3 — fora da janela
+      { planned_date: "2026-08-20", kind: "ginasio" },   // bem fora da janela
+    ],
+  }) as Record<string, unknown[]>;
+  assertEquals(ctx["plano_treino_hoje_2026-08-11"].length, 0);
+  assertEquals(ctx["plano_treino_amanha_2026-08-12"].length, 0);
+  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"].length, 0);
 });
 
 Deno.test("regressão: ginásio amanhã e corrida depois de amanhã ficam em baldes separados", () => {

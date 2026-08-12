@@ -345,10 +345,14 @@ o card só mostra as preenchidas.
 
 `coach-daily-summary`: sem `force`, devolve a linha de hoje se existir sem
 chamar o Gemini. Contexto enviado: metas diárias, refeições/água de hoje,
-corridas/ginásio dos últimos 7 dias, itens do plano de hoje e amanhã, próxima
-prova, restrições alimentares (mesma regra dura das outras funções — nunca
-sugerir o que a restrição proíbe). É a **quarta cópia** de
-`DIETARY_RESTRICTION_INFO` — ver a nota em `analyze-meal/index.ts`.
+corridas/ginásio dos últimos 7 dias, itens do plano de hoje, amanhã e depois
+de amanhã (cada dia no seu próprio balde — `plano_treino_hoje_<data>`,
+`plano_treino_amanha_<data>`, `plano_treino_depois_de_amanha_<data>`; o
+balde de "depois de amanhã" é só contexto extra, o prompt proíbe descrevê-lo
+como fazendo parte de amanhã), próxima prova, restrições alimentares (mesma
+regra dura das outras funções — nunca sugerir o que a restrição proíbe). É a
+**quarta cópia** de `DIETARY_RESTRICTION_INFO` — ver a nota em
+`analyze-meal/index.ts`.
 
 ### Interface
 
