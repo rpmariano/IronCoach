@@ -1,4 +1,7 @@
 export function mapCategoriesToMuscles(categories = []) {
+  if (typeof categories === 'string') categories = [categories];
+  if (!Array.isArray(categories)) categories = [];
+  
   const muscles = new Set();
   const mapping = {
     'peito': ['chest'],

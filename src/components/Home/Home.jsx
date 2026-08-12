@@ -161,10 +161,8 @@ export default function Home() {
   };
 
   const handleCancelMeal = (item) => {
-    if (window.confirm('Marcar que não seguiste esta sugestão alimentar?')) {
-      cancelMealPlanItem(item.id);
-      showToast('Sugestão alimentar marcada como não seguida');
-    }
+    cancelMealPlanItem(item.id);
+    showToast('Sugestão alimentar marcada como não seguida');
   };
 
   return (

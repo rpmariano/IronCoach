@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Component } from 'react';
 import Model from 'react-body-highlighter';
 import './MuscleAnatomy2D.css';
 
@@ -31,7 +31,6 @@ const MuscleAnatomy2D = ({ activeMuscles = [], naked = false }) => {
            data={exerciseData} 
            style={{ width: '100%', padding: '1rem' }}
            type="anterior" 
-           // Usa a paleta da IronHealth (Coral/Vermelho para destaque)
            highlightedColors={['#e11d48']} 
          />
       </div>
@@ -49,4 +48,20 @@ const MuscleAnatomy2D = ({ activeMuscles = [], naked = false }) => {
   );
 };
 
-export default MuscleAnatomy2D;
+class MuscleAnatomyErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, errorMessage: error.toString() };
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div style={{ color: 'red', fontSize: '12px' }}>Erro no SVG: {this.state.errorMessage}</div>;
+    }
+    return <MuscleAnatomy2D {...this.props} />;
+  }
+}
+
+export default MuscleAnatomyErrorBoundary;

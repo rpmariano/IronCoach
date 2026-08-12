@@ -156,21 +156,43 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                   <p className="wpc-detail-title">{itemTitle(item)}</p>
                 )}
 
-                {/* Status pills moved to the bottom where buttons were, or here? 
-                    Actually, if we put them at the bottom it replaces the buttons nicely.
-                    Let's remove them from the top. */}
-
-                {item.notes && (
+                {item.kind !== 'descanso' && (
                   <div className="wpc-info-box">
-                    <div className="wpc-info-box-header">
-                      <StickyNote size={13} /> Instruções do Coach
-                    </div>
-                    <p className="wpc-info-box-text">{item.notes}</p>
+                    {item.notes && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <div className="wpc-info-box-header">
+                          <StickyNote size={13} /> Instruções do Coach
+                        </div>
+                        <p className="wpc-info-box-text">{item.notes}</p>
+                      </div>
+                    )}
+                    
+                    {!readOnly && item.status === 'pendente' && (
+                      <div className="wpc-actions" style={{ marginTop: 0 }}>
+                        <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
+                          <Check size={14} /> Concluído
+                        </button>
+                        <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
+                          <XIcon size={14} /> Cancelado
+                        </button>
+                      </div>
+                    )}
+                    
+                    {item.status === 'concluido' && (
+                      <div className="wpc-pill-status success">
+                        <Check size={14} /> Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
+                      </div>
+                    )}
+                    {item.status === 'cancelado' && (
+                      <div className="wpc-pill-status danger">
+                        <XIcon size={14} /> Cancelado
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {item.meal_suggestion && (
-                  <div className="wpc-info-box">
+                  <div className="wpc-info-box" style={{ marginTop: '12px' }}>
                     <div className="wpc-info-box-header nutri">
                       <Award size={14} /> Sugestão alimentar
                     </div>
@@ -207,32 +229,6 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                 {item.kind === 'ginasio' && item.categories && item.categories.length > 0 && (
                   <div className="wpc-info-box" style={{ padding: '0', background: 'transparent', border: 'none' }}>
                     <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(item.categories)} naked />
-                  </div>
-                )}
-
-                {item.kind !== 'descanso' && (
-                  <div className="wpc-info-box" style={{ marginTop: '12px' }}>
-                    {!readOnly && item.status === 'pendente' && (
-                      <div className="wpc-actions" style={{ marginTop: 0 }}>
-                        <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
-                          <Check size={14} /> Concluído
-                        </button>
-                        <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
-                          <XIcon size={14} /> Cancelado
-                        </button>
-                      </div>
-                    )}
-                    
-                    {item.status === 'concluido' && (
-                      <div className="wpc-pill-status success">
-                        <Check size={14} /> Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
-                      </div>
-                    )}
-                    {item.status === 'cancelado' && (
-                      <div className="wpc-pill-status danger">
-                        <XIcon size={14} /> Cancelado
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
