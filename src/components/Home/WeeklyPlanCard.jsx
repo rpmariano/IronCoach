@@ -37,10 +37,17 @@ function diffDaysISO(aISO, bISO) {
   return Math.round((new Date(bISO + 'T00:00:00') - new Date(aISO + 'T00:00:00')) / 86400000);
 }
 
-/* Janela de dias a mostrar: união dos períodos de todos os planos aceites
-   ainda relevantes — em curso/futuros (period_end >= hoje) ou já terminados
-   mas com itens por resolver (fica visível, com destaque de atraso, até o
-   atleta confirmar ou recusar). Sem planos aceites relevantes, null. */
+/* Janela de dias a mostrar. Os planos aceites ainda relevantes — em
+   curso/futuros (period_end >= hoje) ou já terminados mas com itens por
+   resolver (ficam visíveis, com destaque de atraso, até o atleta confirmar
+   ou recusar) — são agrupados em BLOCOS CONTÍGUOS, e mostra-se só o bloco
+   em que hoje cai (ou o mais próximo, se hoje ainda não lá chegou).
+
+   Unir todos os períodos às cegas dava planos absurdos: um microciclo de 7
+   dias mais uma sugestão alimentar solta daí a um mês virava "Plano de 37
+   dias" com 29 dias vazios pelo meio. Dois planos que se tocam continuam a
+   contar como um só; um que está a um mês de distância é outro plano.
+   Sem planos aceites relevantes, null. */
 export function computeAcceptedWindow(plans = [], items = [], today = todayISO()) {
   const accepted = (plans || []).filter(p => p.status === 'aceite');
   if (accepted.length === 0) return null;
@@ -51,9 +58,23 @@ export function computeAcceptedWindow(plans = [], items = [], today = todayISO()
   });
   if (relevant.length === 0) return null;
 
-  const start = relevant.reduce((min, p) => (p.period_start < min ? p.period_start : min), relevant[0].period_start);
-  const end = relevant.reduce((max, p) => (p.period_end > max ? p.period_end : max), relevant[0].period_end);
-  return { start, days: diffDaysISO(start, end) + 1 };
+  // Agrupa em blocos: um plano junta-se ao bloco anterior se começar antes
+  // (ou logo a seguir) ao fim dele — sobreposto ou contíguo.
+  const sorted = [...relevant].sort((a, b) => a.period_start.localeCompare(b.period_start));
+  const blocks = [];
+  for (const p of sorted) {
+    const last = blocks[blocks.length - 1];
+    if (last && diffDaysISO(last.end, p.period_start) <= 1) {
+      if (p.period_end > last.end) last.end = p.period_end;
+    } else {
+      blocks.push({ start: p.period_start, end: p.period_end });
+    }
+  }
+
+  const current = blocks.find(b => today >= b.start && today <= b.end)
+    ?? blocks.find(b => b.end >= today)
+    ?? blocks[0];
+  return { start: current.start, days: diffDaysISO(current.start, current.end) + 1 };
 }
 
 /* Título curto de um item, usado na linha fechada. */

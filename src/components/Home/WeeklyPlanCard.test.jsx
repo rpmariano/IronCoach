@@ -206,3 +206,39 @@ describe('computeAcceptedWindow', () => {
     expect(w).toEqual({ start: '2026-08-10', days: 11 }); // 08-10 .. 08-20
   });
 });
+
+/* Simulação: vários planos aceites ao mesmo tempo. Desde que aceitar passou
+   a viver no chat, o atleta pode ter um plano de treino e um de refeições
+   aceites em simultâneo, com períodos muito diferentes. */
+describe('computeAcceptedWindow — vários planos aceites (simulação)', () => {
+  const plan = (over = {}) => ({
+    id: 'p1', status: 'aceite', period_start: '2026-08-10', period_end: '2026-08-16', ...over,
+  });
+
+  it('plano de treino de 7 dias + sugestão alimentar solta lá à frente não faz um plano gigante', () => {
+    // Treino: 10..16 (7 dias). Sugestão alimentar isolada a 09-15, um mês
+    // depois. Unir os dois daria "Plano de 37 dias" com 29 dias vazios pelo
+    // meio — o cartão fica ilegível e a contagem mente sobre o microciclo.
+    const w = computeAcceptedWindow(
+      [
+        plan({ id: 'treino', period_start: '2026-08-10', period_end: '2026-08-16' }),
+        plan({ id: 'refeicao', period_start: '2026-09-15', period_end: '2026-09-15' }),
+      ],
+      [],
+      '2026-08-11',
+    );
+    expect(w.days).toBeLessThanOrEqual(16);
+  });
+
+  it('planos contíguos/sobrepostos continuam a unir-se numa janela só', () => {
+    const w = computeAcceptedWindow(
+      [
+        plan({ id: 'a', period_start: '2026-08-10', period_end: '2026-08-16' }),
+        plan({ id: 'b', period_start: '2026-08-14', period_end: '2026-08-20' }),
+      ],
+      [],
+      '2026-08-11',
+    );
+    expect(w).toEqual({ start: '2026-08-10', days: 11 }); // 08-10 .. 08-20
+  });
+});

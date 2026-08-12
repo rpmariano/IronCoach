@@ -395,49 +395,21 @@ Deno.test("runProposeTrainingPlan apaga o plano se os itens falharem", async () 
   assertEquals(calls.deletes, ["plan-1"]);
 });
 
-// ── replace_active_plan — corrige o loop de confirmação sem saída ─────────
-// Bug reportado: o atleta confirmava explicitamente que queria substituir o
-// plano ativo, e o Coach continuava a perguntar sem nunca agir, porque
-// propose_training_plan nunca tinha forma de desativar o plano antigo — o
-// contexto continuava a mostrar "PLANO ACEITE EM CURSO" para sempre.
-
-Deno.test("replace_active_plan=true marca como recusado um plano ativo com treino real", async () => {
-  const { sb, calls } = makePlanSb({
-    activePlans: [{ id: "old-plan", coach_plan_items: [{ kind: "corrida" }] }],
-  });
-  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
-  assertStringIncludes(result, "Plano criado");
-  assertEquals(calls.supersededIds, ["old-plan"]);
-  // O novo plano continua a ser criado normalmente, como proposta.
-  assertEquals(calls.planInserts.length, 1);
-  assertEquals(calls.planInserts[0].status, "proposto");
-});
+// ── replace_active_plan ──────────────────────────────────────────────────
+// Só resta aqui o caso trivial (não pedir substituição não mexe em nada).
+// Os casos com estado — qual plano é escolhido para substituir, quando a
+// substituição se concretiza, o que acontece se o atleta recusar — vivem em
+// plan-simulation.test.ts, que usa um Supabase falso COM ESTADO. Testá-los
+// com os mocks rasos deste ficheiro dava falsa confiança: eles ignoram o
+// nome das colunas e a forma da query, que foi precisamente como o bug real
+// de `day` vs `planned_date` sobreviveu a uma suite verde.
 
 Deno.test("sem replace_active_plan, planos ativos não são tocados", async () => {
   const { sb, calls } = makePlanSb({
     activePlans: [{ id: "old-plan", coach_plan_items: [{ kind: "corrida" }] }],
   });
   await runProposeTrainingPlan(sb, "user-1", VALID_PLAN); // replace_active_plan omitido
-  assertEquals(calls.supersededIds, []);
-});
-
-Deno.test("replace_active_plan=true não toca num plano só de refeições (sem corrida/ginásio)", async () => {
-  const { sb, calls } = makePlanSb({
-    activePlans: [{ id: "meal-plan", coach_plan_items: [{ kind: "descanso" }] }],
-  });
-  await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
-  assertEquals(calls.supersededIds, []);
-});
-
-Deno.test("replace_active_plan=true supera só o plano de treino, não um plano de refeições em paralelo", async () => {
-  const { sb, calls } = makePlanSb({
-    activePlans: [
-      { id: "training-plan", coach_plan_items: [{ kind: "ginasio" }] },
-      { id: "meal-plan", coach_plan_items: [{ kind: "descanso" }] },
-    ],
-  });
-  await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, replace_active_plan: true });
-  assertEquals(calls.supersededIds, ["training-plan"]);
+  assertEquals(calls.planInserts[0].supersedes_plan_id, null);
 });
 
 // ── Restrições alimentares no prompt ────────────────────────────────────────
@@ -857,18 +829,9 @@ Deno.test("save_meal_suggestions: rejeita lista vazia", async () => {
   assertStringIncludes(result, "Erro");
 });
 
-Deno.test("save_meal_suggestions: grava no item existente do plano ativo", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: { id: "item-1" },
-  });
-  const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-12", meal: "Frango com arroz" }],
-  });
-  assertStringIncludes(result, "2026-08-12");
-  assertStringIncludes(result, "gravadas");
-  assertEquals(calls.updates[0].meal_suggestion, "Frango com arroz");
-});
+// Colar a sugestão a um item já existente depende de casar o dia com o plano
+// certo entre vários ativos — estado a mais para um mock raso. Coberto por
+// PERCURSO A e PERCURSO H em plan-simulation.test.ts.
 
 Deno.test("save_meal_suggestions: cria item descanso quando não existe item no plano ativo para esse dia", async () => {
   const { sb, calls } = makeMealsSb({

@@ -86,14 +86,37 @@ export const useAppStore = create((set, get) => ({
   // Aceitar/recusar uma proposta do coach. Enquanto 'proposto', os itens não
   // contam para nada — nem aparecem como treinos a fazer, nem ajustam
   // objetivos de nutrição. Ver specs/plano-de-treino.md §5.1.
+  //
+  // Se a proposta vinha para substituir um plano ativo (supersedes_plan_id),
+  // é AQUI que a substituição se concretiza — nunca no momento da proposta.
+  // Recusar tem de deixar o plano antigo intacto: o atleta pediu para ver uma
+  // alternativa, não para deitar fora o microciclo que estava a cumprir.
   respondToPlan: async (planId, accept) => {
     const updates = accept
       ? { status: 'aceite', accepted_at: new Date().toISOString() }
       : { status: 'recusado' };
     const { error } = await supabase.from('coach_plans').update(updates).eq('id', planId);
     if (error) { console.error('Error responding to plan:', error); return false; }
+
+    const superseded = accept
+      ? get().coachPlans.find(p => p.id === planId)?.supersedes_plan_id
+      : null;
+    if (superseded) {
+      const { error: supErr } = await supabase
+        .from('coach_plans')
+        .update({ status: 'recusado' })
+        .eq('id', superseded);
+      // Falhar aqui deixaria dois planos ativos ao mesmo tempo — mau, mas
+      // menos mau que perder a aceitação que já foi gravada.
+      if (supErr) console.error('Error superseding old plan:', supErr);
+    }
+
     set((state) => ({
-      coachPlans: state.coachPlans.map(p => p.id === planId ? { ...p, ...updates } : p),
+      coachPlans: state.coachPlans.map(p => {
+        if (p.id === planId) return { ...p, ...updates };
+        if (superseded && p.id === superseded) return { ...p, status: 'recusado' };
+        return p;
+      }),
     }));
     return true;
   },

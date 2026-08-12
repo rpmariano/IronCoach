@@ -841,30 +841,29 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     });
   }
 
-  // Se o atleta confirmou explicitamente que quer substituir o plano de
-  // treino ativo, marca-o "recusado" (deixa de contar como ativo) ANTES de
-  // criar o novo. Sem isto, o plano antigo continuaria "aceite", o contexto
-  // voltaria a mostrar "PLANO ACEITE EM CURSO" na mensagem seguinte, e o
-  // Coach recusaria propor outro — um ciclo de confirmação sem saída, que já
-  // aconteceu em produção. Só planos com treino real (corrida/ginásio) são
-  // substituídos; um plano de refeições aceite em paralelo não é tocado.
+  // Se o atleta confirmou que quer substituir o plano de treino ativo, a
+  // proposta REGISTA qual é (supersedes_plan_id) mas não o mexe já: a
+  // substituição só se concretiza quando o atleta aceitar (ver respondToPlan
+  // em src/store/index.js). Marcar o antigo como recusado logo na proposta
+  // deixava o atleta sem plano nenhum se ele depois recusasse a alternativa
+  // que pediu para ver. Só planos com treino real (corrida/ginásio) contam;
+  // um plano de refeições aceite em paralelo nunca é substituído.
+  let supersedesPlanId: string | null = null;
   if (replace_active_plan === true) {
     const todayISO = new Date().toISOString().slice(0, 10);
     const { data: activePlans } = await sb
       .from("coach_plans")
-      .select("id, coach_plan_items(kind)")
+      .select("id, period_start, coach_plan_items(kind)")
       .eq("user_id", userId)
       .eq("status", "aceite")
-      .gte("period_end", todayISO);
+      .gte("period_end", todayISO)
+      .order("period_start", { ascending: false });
     // deno-lint-ignore no-explicit-any
-    const toSupersede = (activePlans || [])
+    const candidate = (activePlans || []).find((p: any) =>
       // deno-lint-ignore no-explicit-any
-      .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
-      // deno-lint-ignore no-explicit-any
-      .map((p: any) => p.id);
-    if (toSupersede.length > 0) {
-      await sb.from("coach_plans").update({ status: "recusado" }).in("id", toSupersede);
-    }
+      (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio")
+    );
+    supersedesPlanId = candidate?.id ?? null;
   }
 
   const { data: plan, error: planErr } = await sb
@@ -875,6 +874,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       period_start,
       period_end,
       summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
+      supersedes_plan_id: supersedesPlanId,
     })
     .select()
     .single();
@@ -988,17 +988,42 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // Buscar plano ativo (aceite, em curso ou futuro cujo período ainda não terminou).
-  const { data: activePlan, error: planErr } = await sb
+  // TODOS os planos ativos (aceites, ainda por terminar) — não apenas um.
+  // Desde que aceitar passou a viver no chat, vários planos podem coexistir
+  // (um de treino e um de refeições, propostos em alturas diferentes), e
+  // escolher só o mais recente por period_start punha sugestões no plano
+  // errado: um dia coberto pelo plano de treino era tratado como "fora"
+  // porque o plano de refeições era mais recente, e acabava num item
+  // paralelo — dois itens para o mesmo dia, um deles órfão de treino.
+  const { data: activePlans, error: planErr } = await sb
     .from("coach_plans")
     .select("id, period_start, period_end")
     .eq("user_id", userId)
     .eq("status", "aceite")
     .gte("period_end", todayISO)
-    .order("period_start", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (planErr) return `Erro ao buscar plano ativo: ${planErr.message}`;
+    .order("period_start", { ascending: false });
+  if (planErr) return `Erro ao buscar planos ativos: ${planErr.message}`;
+
+  const plans: { id: string; period_start: string; period_end: string }[] = activePlans || [];
+
+  // O plano que cobre este dia. Havendo mais que um, ganha o que JÁ tem um
+  // item para o dia (é onde o treino está, e é a esse que a sugestão se deve
+  // colar); caso nenhum tenha, fica o primeiro que cobre a data.
+  const planForDate = async (date: string) => {
+    const covering = plans.filter((p) => date >= p.period_start && date <= p.period_end);
+    if (covering.length === 0) return null;
+    for (const p of covering) {
+      const { data: hit } = await sb
+        .from("coach_plan_items")
+        .select("id")
+        .eq("plan_id", p.id)
+        .eq("planned_date", date)
+        .limit(1)
+        .maybeSingle();
+      if (hit) return { plan: p, existingItemId: hit.id as string };
+    }
+    return { plan: covering[0], existingItemId: null };
+  };
 
   const saved: string[] = [];
   const outside: { date: string; meal: string }[] = [];
@@ -1006,35 +1031,24 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
   for (const s of suggestions) {
     const { date, meal } = s || {};
     if (!date || !meal) continue;
-    const isInsidePlan =
-      activePlan &&
-      date >= activePlan.period_start &&
-      date <= activePlan.period_end;
+    const match = await planForDate(date);
 
-    if (isInsidePlan) {
-      // Tentar atualizar item existente para esse dia.
+    if (match) {
       // A coluna é planned_date (nunca existiu "day" em coach_plan_items —
-      // ver migração 20260810000000_coach_plans.sql). Erro corrigido:
-      // antes usava "day", que não existe, e a escrita falhava sempre.
-      const { data: existing, error: findErr } = await sb
-        .from("coach_plan_items")
-        .select("id")
-        .eq("plan_id", activePlan.id)
-        .eq("planned_date", date)
-        .limit(1)
-        .maybeSingle();
-      if (findErr) return `Erro ao procurar item existente para ${date}: ${findErr.message}`;
-
-      if (existing) {
+      // ver migração 20260810000000_coach_plans.sql).
+      if (match.existingItemId) {
+        // Já há um item nesse dia (tipicamente o treino) — a sugestão cola-se
+        // a ele, nunca cria um segundo item para o mesmo dia.
         const { error: upErr } = await sb
           .from("coach_plan_items")
           .update({ meal_suggestion: meal })
-          .eq("id", existing.id);
+          .eq("id", match.existingItemId);
         if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
       } else {
-        // Não existe item para este dia — criar um de descanso com a sugestão.
+        // Dia coberto pelo plano mas sem nada marcado — item de descanso só
+        // para pendurar a sugestão.
         const { error: insErr } = await sb.from("coach_plan_items").insert({
-          plan_id: activePlan.id,
+          plan_id: match.plan.id,
           user_id: userId,
           planned_date: date,
           kind: "descanso",
