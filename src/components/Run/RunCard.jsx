@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, Mes
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
 
 function RunIcon({ className = "w-5 h-5" }) {
@@ -73,6 +74,7 @@ function formatDatePT(isoStr) {
 export default function RunCard({ run, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData, runs, setRuns } = useAppStore();
+  const { showToast } = useToast();
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -109,10 +111,11 @@ export default function RunCard({ run, onEdit, onDelete }) {
         if (profile?.id) {
           await loadInitialData(profile.id);
         }
+        showToast('Corrida eliminada');
       }
     } catch (err) {
       console.error('Error deleting run:', err);
-      alert('Erro ao eliminar corrida.');
+      showToast('Erro ao eliminar corrida.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -132,9 +135,10 @@ export default function RunCard({ run, onEdit, onDelete }) {
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));
+      showToast('Reanálise concluída');
     } catch (err) {
       console.error('Error reanalyzing run:', err);
-      alert(err.message || 'Falha na reanálise. Tenta novamente.');
+      showToast(err.message || 'Falha na reanálise. Tenta novamente.', 'error');
     } finally {
       setIsReanalyzing(false);
     }

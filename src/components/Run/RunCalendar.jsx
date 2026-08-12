@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import RunCard from './RunCard';
 import RunRegistration from './RunRegistration';
+import { useToast } from '../shared/ToastProvider';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 
 const SneakerIcon = ({ className }) => (
@@ -28,6 +29,7 @@ function todayISO() {
 
 export default function RunCalendar({ onNewRun }) {
   const { runs, setRuns } = useAppStore();
+  const { showToast } = useToast();
   const [currentDate, setCurrentDate] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -78,8 +80,10 @@ export default function RunCalendar({ onNewRun }) {
     try {
       const { error } = await supabase.from('runs').delete().eq('id', id);
       if (error) throw error;
+      showToast('Corrida eliminada');
     } catch (err) {
       console.error(err);
+      showToast('Erro ao eliminar corrida.', 'error');
       setRuns(previous);
     }
   };

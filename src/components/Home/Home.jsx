@@ -6,6 +6,7 @@ import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
 import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
+import { useToast } from '../shared/ToastProvider';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -116,6 +117,7 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
 // Só os 3 cartões fixos (Próxima Prova, Nutrição, Água) + o Plano da semana.
 // A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
 export default function Home() {
+  const { showToast } = useToast();
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, respondToPlan,
@@ -148,6 +150,7 @@ export default function Home() {
   const handleCancelItem = (item) => {
     if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
       cancelPlanItem(item.id);
+      showToast('Treino cancelado');
     }
   };
 

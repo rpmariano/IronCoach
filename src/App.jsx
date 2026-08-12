@@ -4,6 +4,7 @@ import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
+import { ToastProvider } from './components/shared/ToastProvider';
 
 // Components
 import Home from './components/Home/Home';
@@ -90,19 +91,21 @@ export default function App() {
   }
 
   if (!session) {
-    return <Auth />;
+    return <ToastProvider><Auth /></ToastProvider>;
   }
 
   return (
-    <Layout>
-      {activeTab === 'home' && <Home />}
-      {activeTab === 'nutricao' && <Nutrition />}
-      {activeTab === 'corpo' && <Body />}
-      {activeTab === 'ginasio' && <Gym />}
-      {activeTab === 'corrida' && <Run />}
-      {activeTab === 'coach' && <Coach />}
-      {activeTab === 'perfil' && <Perfil />}
-      {activeTab === 'admin' && <Admin />}
-    </Layout>
+    <ToastProvider>
+      <Layout>
+        {activeTab === 'home' && <Home />}
+        {activeTab === 'nutricao' && <Nutrition />}
+        {activeTab === 'corpo' && <Body />}
+        {activeTab === 'ginasio' && <Gym />}
+        {activeTab === 'corrida' && <Run />}
+        {activeTab === 'coach' && <Coach />}
+        {activeTab === 'perfil' && <Perfil />}
+        {activeTab === 'admin' && <Admin />}
+      </Layout>
+    </ToastProvider>
   );
 }

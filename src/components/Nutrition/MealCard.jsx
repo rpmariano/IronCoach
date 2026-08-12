@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, T
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
+import { useToast } from '../shared/ToastProvider';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -13,6 +14,7 @@ const MEAL_ICONS = {
 };
 
 export default function MealCard({ meal, onEdit }) {
+  const { showToast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -60,9 +62,10 @@ export default function MealCard({ meal, onEdit }) {
       if (profile?.id) {
         await loadInitialData(profile.id);
       }
+      showToast('Refeição eliminada');
     } catch (err) {
       console.error('Error deleting meal:', err);
-      alert('Erro ao eliminar refeição.');
+      showToast('Erro ao eliminar refeição.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -77,9 +80,10 @@ export default function MealCard({ meal, onEdit }) {
       if (profile?.id) {
         await loadInitialData(profile.id);
       }
+      showToast('Alimento eliminado');
     } catch (err) {
       console.error('Error deleting item:', err);
-      alert('Erro ao eliminar alimento.');
+      showToast('Erro ao eliminar alimento.', 'error');
     } finally {
       setIsDeletingItem(null);
     }
@@ -93,9 +97,10 @@ export default function MealCard({ meal, onEdit }) {
       if (profile?.id) {
         await loadInitialData(profile.id);
       }
+      showToast('Observações guardadas');
     } catch (err) {
       console.error('Error updating notes:', err);
-      alert('Erro ao guardar observações.');
+      showToast('Erro ao guardar observações.', 'error');
     }
   };
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare, Timer, Flame, HeartPulse, TrendingUp, Gauge, Award, PencilLine } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
+import { useToast } from '../shared/ToastProvider';
 
 function formatDuration(totalSeconds) {
   if (!totalSeconds) return '';
@@ -16,6 +17,7 @@ function formatDuration(totalSeconds) {
 
 export default function GymSessionCard({ session, isExpanded, onToggleExpand, onEdit }) {
   const { profile, loadInitialData } = useAppStore();
+  const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeletingSet, setIsDeletingSet] = useState(null);
 
@@ -83,9 +85,10 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
       const { error } = await supabase.from('workout_session_sets').delete().eq('id', setId);
       if (error) throw error;
       if (profile?.id) await loadInitialData(profile.id);
+      showToast('Série eliminada');
     } catch (e) {
       console.error(e);
-      alert('Erro ao eliminar série.');
+      showToast('Erro ao eliminar série.', 'error');
     } finally {
       setIsDeletingSet(null);
     }
@@ -98,9 +101,10 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
       const { error } = await supabase.from('workout_sessions').delete().eq('id', session.id);
       if (error) throw error;
       if (profile?.id) await loadInitialData(profile.id);
+      showToast('Treino eliminado');
     } catch (e) {
       console.error(e);
-      alert('Erro ao eliminar treino.');
+      showToast('Erro ao eliminar treino.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -112,9 +116,10 @@ export default function GymSessionCard({ session, isExpanded, onToggleExpand, on
       if (error) throw error;
       setEditingNotes(false);
       if (profile?.id) await loadInitialData(profile.id);
+      showToast('Observações guardadas');
     } catch (err) {
       console.error('Error updating notes:', err);
-      alert('Erro ao guardar observações.');
+      showToast('Erro ao guardar observações.', 'error');
     }
   };
 

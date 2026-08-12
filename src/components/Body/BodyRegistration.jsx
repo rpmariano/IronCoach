@@ -4,6 +4,7 @@ import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { ScanLine, X, ImagePlus, Camera, PencilLine } from 'lucide-react';
+import { useToast } from '../shared/ToastProvider';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -31,6 +32,7 @@ function todayISO() {
 
 export default function BodyRegistration({ onClose }) {
   const { bodyAssessments, setBodyAssessments } = useAppStore();
+  const { showToast } = useToast();
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(todayISO());
@@ -97,6 +99,7 @@ export default function BodyRegistration({ onClose }) {
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
+      showToast('Avaliação registada');
       onClose();
     } catch (err) {
       console.error(err);
@@ -130,6 +133,7 @@ export default function BodyRegistration({ onClose }) {
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
+      showToast('Avaliação registada');
       onClose();
     } catch (err) {
       console.error(err);

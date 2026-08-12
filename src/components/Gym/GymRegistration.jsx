@@ -4,6 +4,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { useToast } from '../shared/ToastProvider';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -65,6 +66,7 @@ function flattenExercises(exercises) {
 
 export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData } = useAppStore();
+  const { showToast } = useToast();
   const isEditing = !!sessionIdToEdit;
 
   // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
@@ -221,6 +223,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       if (data?.error) throw new Error(data.error);
 
       setGymSessions([data.session, ...gymSessions]);
+      showToast('Treino registado');
       onClose();
     } catch (err) {
       console.error(err);
@@ -271,6 +274,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         });
       }
 
+      showToast('Treino registado');
       onClose();
     } catch (err) {
       console.error(err);
@@ -317,6 +321,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       }
 
       if (profile?.id) await loadInitialData(profile.id);
+      showToast('Treino atualizado');
       onClose();
     } catch (err) {
       console.error(err);

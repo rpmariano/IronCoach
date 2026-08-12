@@ -7,6 +7,7 @@ import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
+import { useToast } from '../shared/ToastProvider';
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -69,8 +70,8 @@ export default function Perfil() {
   const [draft, setDraft] = useState({});
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [subscribingPush, setSubscribingPush] = useState(false);
+  const { showToast } = useToast();
 
   // Destino pendente quando se tenta sair com alterações por gravar.
   // { kind: 'tab' | 'nav' | 'signout', target: string | null }
@@ -154,7 +155,7 @@ export default function Perfil() {
     const { ok, error } = await ensurePushSubscription();
     setSubscribingPush(false);
     if (!ok) {
-      alert(error);
+      showToast(error, 'error');
       return;
     }
     updateDraft('water_reminder_enabled', true);
@@ -201,12 +202,11 @@ export default function Perfil() {
       setProfile({ ...profile, ...updates });
       dirtyKeys.current.clear();
       setIsDirty(false);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2500);
+      showToast('Guardado com sucesso');
       return true;
     } catch (err) {
       console.error('Error saving profile:', err);
-      alert('Erro ao guardar o perfil.');
+      showToast('Erro ao guardar o perfil.', 'error');
       return false;
     } finally {
       setIsSaving(false);
@@ -239,7 +239,7 @@ export default function Perfil() {
       } catch (err) {
         // Falhar aqui deixava o utilizador num formulário sujo já sem guard.
         console.error('Error signing out:', err);
-        alert('Não foi possível terminar a sessão. Tenta novamente.');
+        showToast('Não foi possível terminar a sessão.', 'error');
         setIsDirty(true);
       }
       return;
@@ -280,7 +280,7 @@ export default function Perfil() {
     setTimeout(() => {
       setSuggestingGoals(false);
       setGoalsRationale('O Coach analisou o teu histórico e ajustou a proteína para garantir que ganhas massa muscular...');
-      alert("A funcionalidade do Coach requer a Edge Function configurada.");
+      showToast('A funcionalidade do Coach requer a Edge Function configurada.', 'error');
     }, 2000);
   };
 
@@ -351,14 +351,6 @@ export default function Perfil() {
           </button>
         ))}
       </div>
-
-      {saveSuccess && (
-        <div className="fixed top-4 inset-x-4 z-50 flex justify-center fade-in">
-          <div className="bg-emerald-500 px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2" style={{ color: '#fff' }}>
-            ✓ Guardado com sucesso
-          </div>
-        </div>
-      )}
 
       {leaveModal}
 

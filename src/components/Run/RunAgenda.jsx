@@ -18,6 +18,7 @@ import {
 } from '../../utils/run';
 import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
+import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 
 function todayISO() {
@@ -54,6 +55,7 @@ const EMPTY_DRAFT = {
 
 export default function RunAgenda() {
   const { raceEvents, profile, runs, setRaceEvents, setNavGuard } = useAppStore();
+  const { showToast } = useToast();
 
   // Volume médio semanal das últimas 4 semanas — base da flag volume_insuficiente.
   const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayISO()), [runs]);
@@ -114,6 +116,7 @@ export default function RunAgenda() {
         .eq('id', ev.id);
 
       if (error) throw error;
+      showToast('Estado da prova atualizado');
     } catch (err) {
       console.error('Error toggling status:', err);
       // Revert if error
@@ -135,6 +138,7 @@ export default function RunAgenda() {
         .eq('id', id);
 
       if (error) throw error;
+      showToast('Prova eliminada');
     } catch (err) {
       console.error('Error deleting race event:', err);
       setRaceEvents(previous);
@@ -312,11 +316,12 @@ export default function RunAgenda() {
           setRaceEvents([...raceEvents, data]);
         }
       }
+      showToast('Prova guardada');
       handleCloseForm();
       return true;
     } catch (err) {
       console.error('Error saving race event:', err);
-      alert('Erro ao guardar prova.');
+      showToast('Erro ao guardar prova.', 'error');
       return false;
     } finally {
       setIsSubmitting(false);

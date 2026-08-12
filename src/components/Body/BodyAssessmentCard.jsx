@@ -3,10 +3,12 @@ import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
+import { useToast } from '../shared/ToastProvider';
 
 export default function BodyAssessmentCard({ assessment }) {
   const [expanded, setExpanded] = useState(false);
   const { profile, loadInitialData } = useAppStore();
+  const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState(assessment.notes || '');
@@ -23,9 +25,10 @@ export default function BodyAssessmentCard({ assessment }) {
       if (profile?.id) {
         await loadInitialData(profile.id);
       }
+      showToast('Avaliação eliminada');
     } catch (err) {
       console.error('Error deleting assessment:', err);
-      alert('Erro ao eliminar avaliação.');
+      showToast('Erro ao eliminar avaliação.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -39,9 +42,10 @@ export default function BodyAssessmentCard({ assessment }) {
       if (profile?.id) {
         await loadInitialData(profile.id);
       }
+      showToast('Observações guardadas');
     } catch (err) {
       console.error('Error updating notes:', err);
-      alert('Erro ao guardar observações.');
+      showToast('Erro ao guardar observações.', 'error');
     }
   };
 

@@ -4,6 +4,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration } from '../../utils/run';
 
 // -------------------------------------
@@ -64,6 +65,7 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns } = useAppStore();
+  const { showToast } = useToast();
 
   // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
   // no Início (ver Home.jsx e specs/plano-de-treino.md §5.2). Consumido uma
@@ -240,6 +242,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (data?.error) throw new Error(data.error);
 
       setRuns([...runs, data.run]);
+      showToast('Corrida registada');
       onClose();
     } catch (err) {
       console.error(err);
@@ -321,6 +324,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
         if (error) throw error;
         setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
+        showToast('Corrida atualizada');
         onClose();
         return;
       }
@@ -367,6 +371,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         });
       }
 
+      showToast('Corrida registada');
       onClose();
     } catch (err) {
       console.error(err);

@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { useToast } from '../shared/ToastProvider';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -23,6 +24,7 @@ const MEAL_TYPES = [
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
 
 export default function MealRegistration({ onClose, mealIdToEdit = null }) {
+  const { showToast } = useToast();
   const { profile, meals, setMeals, loadInitialData } = useAppStore();
   const isEditing = !!mealIdToEdit;
 
@@ -128,6 +130,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       // A resposta traz meal e items em separado — o store espera-os juntos,
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
       setMeals([...meals, { ...data.meal, meal_items: data.items }]);
+      showToast('Refeição registada');
       onClose();
     } catch (err) {
       console.error(err);
@@ -180,6 +183,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       if (data?.error) throw new Error(data.error);
 
       setMeals([...meals, data.meal]);
+      showToast('Refeição registada');
       onClose();
     } catch (err) {
       console.error(err);
@@ -220,6 +224,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       }
 
       if (profile?.id) await loadInitialData(profile.id);
+      showToast('Refeição atualizada');
       onClose();
     } catch (err) {
       console.error(err);
