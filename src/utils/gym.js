@@ -11,6 +11,8 @@ export function mapCategoriesToMuscles(categories = []) {
     'biceps': ['biceps'],
     'triceps': ['triceps'],
     'glúteos': ['gluteal'],
+    'core': ['abs', 'obliques'],
+    'abdominais': ['abs', 'obliques'],
     'full body': ['chest', 'trapezius', 'upper-back', 'lower-back', 'quadriceps', 'hamstring', 'gluteal', 'calves', 'front-deltoids', 'back-deltoids', 'biceps', 'triceps', 'abs'],
     'levantamento olímpico': ['quadriceps', 'hamstring', 'gluteal', 'front-deltoids', 'back-deltoids', 'lower-back'],
     'powerlifting': ['chest', 'quadriceps', 'gluteal', 'hamstring', 'lower-back'],
