@@ -78,9 +78,9 @@ describe('buildPlanDays', () => {
     expect(days.every(d => d.items.length === 0)).toBe(true);
   });
 
-  it('nunca mostra itens cancelados', () => {
-    const days = buildPlanDays([item({ status: 'cancelado' })], '2026-08-11');
-    expect(days[0].items).toHaveLength(0);
+  it('mantém visíveis itens cancelados', () => {
+    const days = buildPlanDays([item({ status: 'cancelado' })], '2026-08-11', 1);
+    expect(days[0].items).toHaveLength(1);
   });
 
   it('põe um item concluído no dia em que aconteceu, não no dia planeado', () => {

@@ -121,6 +121,7 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
+    completeMealPlanItem, cancelMealPlanItem,
     addWaterLog
   } = useAppStore();
 
@@ -136,15 +137,7 @@ export default function Home() {
   // completePlanItem só depois de a corrida/sessão real estar gravada (ver
   // RunRegistration/GymRegistration). Aqui só passamos o item a pré-preencher
   // e navegamos para o ecrã certo — specs/plano-de-treino.md §5.2.
-  //
-  // Exceção: itens kind='descanso' com sugestão alimentar não têm corrida
-  // nem sessão para gravar — "Concluir" ("Segui") marca-os diretamente.
   const handleCompleteItem = (item) => {
-    if (item.kind === 'descanso') {
-      completePlanItem(item.id, { actualDate: item.planned_date });
-      showToast('Sugestão marcada como seguida');
-      return;
-    }
     setPlanItemPrefill(item);
     if (item.kind === 'corrida') {
       setActiveTab('corrida');
@@ -156,12 +149,21 @@ export default function Home() {
   };
 
   const handleCancelItem = (item) => {
-    const msg = item.kind === 'descanso'
-      ? 'Marcar que não seguiste esta sugestão alimentar?'
-      : 'Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.';
-    if (window.confirm(msg)) {
+    if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
       cancelPlanItem(item.id);
-      showToast(item.kind === 'descanso' ? 'Sugestão marcada como não seguida' : 'Treino cancelado');
+      showToast('Treino cancelado');
+    }
+  };
+
+  const handleCompleteMeal = (item) => {
+    completeMealPlanItem(item.id);
+    showToast('Sugestão alimentar marcada como seguida');
+  };
+
+  const handleCancelMeal = (item) => {
+    if (window.confirm('Marcar que não seguiste esta sugestão alimentar?')) {
+      cancelMealPlanItem(item.id);
+      showToast('Sugestão alimentar marcada como não seguida');
     }
   };
 
@@ -188,6 +190,8 @@ export default function Home() {
         planItems={coachPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
+        onCompleteMeal={handleCompleteMeal}
+        onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
     </div>

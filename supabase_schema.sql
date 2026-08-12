@@ -646,6 +646,7 @@ create table if not exists coach_plan_items (
   -- Sugestão alimentar do dia, em texto livre. Educativa, nunca prescritiva
   -- — ver specs/coach-investigacao.md, Bloco 7. Não altera as metas do dia.
   meal_suggestion text,
+  meal_status text not null default 'pendente' check (meal_status in ('pendente', 'seguida', 'nao_seguida')),
   status text not null default 'pendente' check (status in ('pendente', 'concluido', 'cancelado')),
   actual_date date,
   completed_run_id uuid references runs(id) on delete set null,

@@ -129,6 +129,24 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
 
+  completeMealPlanItem: async (itemId) => {
+    const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'seguida' }).eq('id', itemId);
+    if (error) { console.error('Error completing meal plan item:', error); return false; }
+    set((state) => ({
+      coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, meal_status: 'seguida' } : i),
+    }));
+    return true;
+  },
+
+  cancelMealPlanItem: async (itemId) => {
+    const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'nao_seguida' }).eq('id', itemId);
+    if (error) { console.error('Error cancelling meal plan item:', error); return false; }
+    set((state) => ({
+      coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, meal_status: 'nao_seguida' } : i),
+    }));
+    return true;
+  },
+
   // Resumo diário do Coach — 1x por dia, cacheado no servidor
   // (coach_daily_summary). Não refaz o pedido se já houver um resumo de HOJE
   // em memória, a não ser que force=true (botão "Atualizar" do card) ou

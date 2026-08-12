@@ -85,14 +85,9 @@ function itemKindClass(item) {
   return 'nutri';
 }
 
-/* Um item de kind='descanso' só é acionável (Concluir/Cancelar) se tiver
-   sugestão alimentar — um dia de descanso puro não tem nada para confirmar. */
-function isActionable(item) {
-  return item.kind !== 'descanso' || Boolean(item.meal_suggestion);
-}
 
 /* Um dia do plano. */
-function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, readOnly }) {
+function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, onCompleteMeal, onCancelMeal, readOnly }) {
   const [expanded, setExpanded] = useState(false);
 
   const d = new Date(dateISO + 'T00:00:00');
@@ -164,6 +159,11 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                     Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
                   </p>
                 )}
+                {item.status === 'cancelado' && (
+                  <p className="wpc-detail-status" style={{ color: 'var(--color-warn)' }}>
+                    Cancelado
+                  </p>
+                )}
 
                 {item.notes && (
                   <div className="wpc-info-box">
@@ -184,16 +184,38 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                       Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
                       dúvida clínica, fala com um nutricionista.
                     </p>
+                    
+                    {!readOnly && item.meal_status === 'pendente' && (
+                      <div className="wpc-actions" style={{ marginTop: '12px' }}>
+                        <button onClick={() => onCompleteMeal(item)} className="wpc-btn wpc-btn-primary">
+                          <Check size={14} /> Segui
+                        </button>
+                        <button onClick={() => onCancelMeal(item)} className="wpc-btn wpc-btn-secondary">
+                          <XIcon size={14} /> Não segui
+                        </button>
+                      </div>
+                    )}
+                    
+                    {item.meal_status === 'seguida' && (
+                      <p className="wpc-detail-status nutri" style={{ marginTop: '8px' }}>
+                        Seguida
+                      </p>
+                    )}
+                    {item.meal_status === 'nao_seguida' && (
+                      <p className="wpc-detail-status nutri" style={{ marginTop: '8px', color: 'var(--color-warn)' }}>
+                        Não seguida
+                      </p>
+                    )}
                   </div>
                 )}
 
-                {!readOnly && isActionable(item) && item.status === 'pendente' && (
+                {!readOnly && item.kind !== 'descanso' && item.status === 'pendente' && (
                   <div className="wpc-actions">
                     <button onClick={() => onComplete(item)} className="wpc-btn wpc-btn-primary">
-                      <Check size={14} /> {item.kind === 'descanso' ? 'Segui' : 'Concluir'}
+                      <Check size={14} /> Concluído
                     </button>
                     <button onClick={() => onCancel(item)} className="wpc-btn wpc-btn-secondary">
-                      <XIcon size={14} /> {item.kind === 'descanso' ? 'Não segui' : 'Cancelar'}
+                      <XIcon size={14} /> Cancelado
                     </button>
                   </div>
                 )}
@@ -214,14 +236,13 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
   for (let i = 0; i < horizon; i++) {
     const dateISO = addDaysISO(from, i);
     const dayItems = (items || [])
-      .filter(it => it.status !== 'cancelado')
       .filter(it => (it.status === 'concluido' ? (it.actual_date || it.planned_date) : it.planned_date) === dateISO)
       .sort((a, b) => a.kind.localeCompare(b.kind));
     days.push({
       dateISO,
       dayNumber: i + 1,
       isToday: dateISO === today,
-      isOverdue: dateISO < today && dayItems.some(it => it.status === 'pendente'),
+      isOverdue: dateISO < today && dayItems.some(it => (it.kind !== 'descanso' && it.status === 'pendente') || (it.meal_suggestion && it.meal_status === 'pendente')),
       items: dayItems,
     });
   }
@@ -264,7 +285,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onNav }) {
+export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onCompleteMeal, onCancelMeal, onNav }) {
   const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
 
   const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
@@ -325,6 +346,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
               isOverdue={day.isOverdue}
               onComplete={onComplete}
               onCancel={onCancel}
+              onCompleteMeal={onCompleteMeal}
+              onCancelMeal={onCancelMeal}
             />
           ))}
         </div>
