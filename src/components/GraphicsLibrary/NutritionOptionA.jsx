@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Utensils, Info } from 'lucide-react';
+import { Utensils, Info, Flame } from 'lucide-react';
 import './NutritionOptionA.css';
 
 function todayISO() {
@@ -69,7 +69,7 @@ export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
           <div className="nutri-nrc-progress-bar">
             <div className={`nutri-nrc-progress-fill ${barColor}`} style={{ width: `${percentage}%` }}></div>
             <div className={`nutri-nrc-runner ${barColor}`} style={{ left: `${percentage}%` }}>
-              <Utensils size={12} color={isOverLimit ? '#e11d48' : '#10b981'} />
+              <Flame size={12} color={isOverLimit ? '#e11d48' : '#10b981'} />
             </div>
           </div>
           <div className="nutri-nrc-progress-labels">
