@@ -1,5 +1,5 @@
 import React from 'react';
-import { Footprints } from 'lucide-react';
+import RunIcon from '../shared/RunIcon';
 import './NextRaceCard.css';
 
 export default function NextRaceCard({
@@ -41,7 +41,7 @@ export default function NextRaceCard({
           <div className="nrc-progress-bar">
             <div className="nrc-progress-fill" style={{ width: `${progressPercentage}%` }}></div>
             <div className="nrc-runner" style={{ left: `${progressPercentage}%` }}>
-              <Footprints size={12} strokeWidth={2.5} color="#d97706" />
+              <RunIcon size={14} strokeWidth={2.5} color="#d97706" />
             </div>
           </div>
           <div className="nrc-progress-labels">

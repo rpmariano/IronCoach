@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import {
   ChevronDown, ChevronUp, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Footprints, Utensils, Moon, Award, StickyNote, Clock,
+  Utensils, Moon, Award, StickyNote, Clock,
 } from 'lucide-react';
+import RunIcon from '../shared/RunIcon';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -73,7 +74,7 @@ function itemTitle(item) {
 }
 
 function itemIcon(item) {
-  if (item.kind === 'corrida') return Footprints;
+  if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
   return Moon;
 }
