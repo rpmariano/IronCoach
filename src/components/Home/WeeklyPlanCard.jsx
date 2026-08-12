@@ -159,7 +159,7 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
                 {(item.notes || item.kind !== 'descanso') && (
                   <div className="wpc-info-box">
                     {item.notes && (
-                      <div style={{ marginBottom: item.kind !== 'descanso' && item.status === 'pendente' ? '12px' : (item.kind !== 'descanso' ? '12px' : 0) }}>
+                      <div style={{ marginBottom: item.kind !== 'descanso' ? '12px' : 0 }}>
                         <div className="wpc-info-box-header">
                           <StickyNote size={13} /> Instruções do Coach
                         </div>

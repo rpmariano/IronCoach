@@ -130,8 +130,8 @@ export const useAppStore = create((set, get) => ({
   },
 
   completeMealPlanItem: async (itemId) => {
-    // Guarda o estado anterior para rollback
-    const previousState = get().coachPlanItems;
+    // Guarda o item original para rollback
+    const originalItem = get().coachPlanItems.find(i => i.id === itemId);
     
     // Optimistic update
     set((state) => ({
@@ -141,16 +141,20 @@ export const useAppStore = create((set, get) => ({
     const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'seguida' }).eq('id', itemId);
     if (error) { 
       console.error('Error completing meal plan item:', error); 
-      // Rollback
-      set({ coachPlanItems: previousState });
+      // Rollback apenas do item
+      if (originalItem) {
+        set((state) => ({
+          coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? originalItem : i)
+        }));
+      }
       return false; 
     }
     return true;
   },
 
   cancelMealPlanItem: async (itemId) => {
-    // Guarda o estado anterior para rollback
-    const previousState = get().coachPlanItems;
+    // Guarda o item original para rollback
+    const originalItem = get().coachPlanItems.find(i => i.id === itemId);
 
     // Optimistic update
     set((state) => ({
@@ -160,8 +164,12 @@ export const useAppStore = create((set, get) => ({
     const { error } = await supabase.from('coach_plan_items').update({ meal_status: 'nao_seguida' }).eq('id', itemId);
     if (error) { 
       console.error('Error cancelling meal plan item:', error); 
-      // Rollback
-      set({ coachPlanItems: previousState });
+      // Rollback apenas do item
+      if (originalItem) {
+        set((state) => ({
+          coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? originalItem : i)
+        }));
+      }
       return false; 
     }
     return true;
