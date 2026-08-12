@@ -202,17 +202,16 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `levanta a preocupação em vez disso (mesmo campo).\n` +
     `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
     `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n` +
-    `  REGRA ABSOLUTA: usa EXCLUSIVAMENTE o campo plano_treino_amanha_* para descrever o que ` +
-    `acontece amanhã. NÃO uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir ` +
-    `treinos futuros — esses campos são histórico, não plano. Se plano_treino_amanha_* estiver ` +
-    `vazio ou só tiver descanso, devolve null neste campo.\n` +
-    `  O campo plano_treino_depois_de_amanha_* é FORNECIDO SÓ PARA CONTEXTO — mostra o que vem ` +
-    `a seguir a amanhã, para poderes mencionar en passant algo tipo "e depois de amanhã tens ` +
-    `intervalos, por isso hoje é bom dia para descansar bem". NUNCA descreve os itens desse campo ` +
-    `como fazendo parte de amanhã, e NUNCA combines os dois campos numa frase que sugira que ` +
-    `acontecem no mesmo dia (ex.: nunca digas "amanhã tens X e Y" se X vem de plano_treino_amanha_* ` +
-    `e Y vem de plano_treino_depois_de_amanha_* — são dias diferentes, sê explícito sobre qual dia ` +
-    `é qual se os mencionares os dois).\n\n` +
+    `  REGRA ABSOLUTA: este campo descreve EXCLUSIVAMENTE o dia de amanhã, usando APENAS o ` +
+    `campo plano_treino_amanha_*. NÃO uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias ` +
+    `para inferir treinos futuros — esses campos são histórico, não plano. Se plano_treino_amanha_* ` +
+    `estiver vazio ou só tiver descanso, devolve null neste campo.\n` +
+    `  NUNCA MENCIONES o campo plano_treino_depois_de_amanha_* neste texto, nem para o comparar, ` +
+    `contrastar ou juntar com o dia de amanhã — ele existe só para OUTROS campos (recap/warnings) ` +
+    `poderem dar contexto se for mesmo relevante, nunca para tomorrow_prep. Um treino em ` +
+    `plano_treino_amanha_* e outro em plano_treino_depois_de_amanha_* são SEMPRE em dias ` +
+    `diferentes — nunca os descrevas juntos como se fossem o mesmo dia (nunca "dia duplo", ` +
+    `"amanhã tens X e Y" ou semelhante, quando X e Y vêm de baldes de dias diferentes).\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
