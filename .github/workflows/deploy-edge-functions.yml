@@ -28,6 +28,9 @@ concurrency:
   group: deploy-edge-functions-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -36,9 +39,11 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.113.0
 
-      # project_id vem de supabase/config.toml — não precisa de repetir aqui.
+      # --project-ref é obrigatório aqui: o project_id em supabase/config.toml
+      # ("Claude") é só o nome local do projeto, não a referência real do
+      # Supabase — o CLI não a consegue inferir a partir do config.toml.
       - name: Deploy
         run: supabase functions deploy --project-ref roxfzsiciizkevopgpnl
         env:
