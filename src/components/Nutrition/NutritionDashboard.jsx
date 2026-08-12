@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients, mealTypeLabel } from '../../utils/nutrition';
-import { ChevronDown, ChevronUp, Image as ImageIcon, Flame, Drumstick, Wheat, Droplets, FlaskConical, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -109,9 +109,9 @@ export default function NutritionDashboard() {
   const getMacroIcon = (key) => {
     switch (key) {
       case 'calories': return Flame;
-      case 'protein': return Drumstick;
+      case 'protein': return Beef;
       case 'carbs': return Wheat;
-      case 'fat': return Droplets;
+      case 'fat': return Droplet;
       default: return Flame;
     }
   };

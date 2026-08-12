@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Percent, Dumbbell, Activity, Award } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Droplet, Activity, Award } from 'lucide-react';
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
+import { getBodyIcon } from '../../utils/bodyIcons';
 
 export default function BodyAssessmentCard({ assessment }) {
   const [expanded, setExpanded] = useState(false);
@@ -59,8 +60,8 @@ export default function BodyAssessmentCard({ assessment }) {
   // Pílulas Coloridas com Ícones
   const metricChips = [
     weight ? { key: 'w', colorClass: 'bg-purple-100/90 text-purple-800 border-purple-200/80', icon: <Scale size={14} className="text-purple-600" />, label: weight } : null,
-    bodyFat ? { key: 'fat', colorClass: 'bg-pink-100/90 text-pink-800 border-pink-200/80', icon: <Percent size={14} className="text-pink-600" />, label: bodyFat } : null,
-    muscle ? { key: 'musc', colorClass: 'bg-emerald-100/90 text-emerald-800 border-emerald-200/80', icon: <Dumbbell size={14} className="text-emerald-600" />, label: muscle } : null,
+    bodyFat ? { key: 'fat', colorClass: 'bg-pink-100/90 text-pink-800 border-pink-200/80', icon: <Droplet size={14} className="text-pink-600" />, label: bodyFat } : null,
+    muscle ? { key: 'musc', colorClass: 'bg-emerald-100/90 text-emerald-800 border-emerald-200/80', icon: assessment.skeletal_muscle_pct ? getBodyIcon('skeletal_muscle_pct', 14, "text-emerald-600") : getBodyIcon('muscle_mass_kg', 14, "text-emerald-600"), label: muscle } : null,
     bmi ? { key: 'bmi', colorClass: 'bg-blue-100/90 text-blue-800 border-blue-200/80', icon: <Activity size={14} className="text-blue-600" />, label: bmi } : null,
   ].filter(Boolean);
 
@@ -166,7 +167,9 @@ export default function BodyAssessmentCard({ assessment }) {
                 return (
                   <div key={m.key} className="bg-white border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between shadow-xs">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
+                      <span className="shrink-0 flex items-center justify-center mr-0.5" style={{ color: m.color }}>
+                        {getBodyIcon(m.key, 14)}
+                      </span>
                       <span className="text-[11px] font-medium text-slate-700 truncate">{m.label}</span>
                     </div>
                     <span className="text-xs font-bold text-slate-800 shrink-0 ml-1">

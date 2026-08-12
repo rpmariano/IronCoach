@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
+import { getBodyIcon } from '../../utils/bodyIcons';
 import { List, User, CalendarDays } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
@@ -132,7 +133,10 @@ export default function BodyDashboard({ onGoToCalendar }) {
           const latest = withVal[0];
           return (
             <div key={m.key} className="card rounded-xl p-3">
-              <p className="text-[10px] text-slate-500 truncate">{m.label}</p>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span style={{ color: m.color }}>{getBodyIcon(m.key, 14)}</span>
+                <p className="text-[10px] text-slate-500 truncate">{m.label}</p>
+              </div>
               <p className="text-sm font-bold text-slate-800 mt-0.5">{latest ? fmtMetric(m, latest[m.key]) : '—'}</p>
             </div>
           );
