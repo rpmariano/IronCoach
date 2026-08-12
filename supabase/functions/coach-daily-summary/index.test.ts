@@ -64,18 +64,43 @@ Deno.test("soma a água de hoje", () => {
   assertEquals(ctx.hoje_ate_agora.agua_ml, 550);
 });
 
-Deno.test("separa os itens do plano entre hoje e amanhã", () => {
+Deno.test("separa os itens do plano entre hoje e amanhã — chaves com data explícita", () => {
+  // today = "2026-08-11", tomorrow = "2026-08-12"
   const ctx = buildDailySummaryContext({
     ...baseParams,
     planItems: [
       { planned_date: "2026-08-11", kind: "corrida" },
       { planned_date: "2026-08-12", kind: "ginasio" },
-      { planned_date: "2026-08-13", kind: "descanso" },
+      { planned_date: "2026-08-13", kind: "descanso" },  // dia após amanhã — deve ser ignorado
     ],
-  });
-  assertEquals(ctx.plano_treino_hoje.length, 1);
-  assertEquals(ctx.plano_treino_amanha.length, 1);
-  assertEquals(ctx.plano_treino_hoje[0].kind, "corrida");
+  }) as Record<string, unknown[]>;
+  // As chaves incluem a data para que o modelo não confunda os dois dias
+  assertEquals(ctx["plano_treino_hoje_2026-08-11"].length, 1);
+  assertEquals(ctx["plano_treino_amanha_2026-08-12"].length, 1);
+  assertEquals(ctx["plano_treino_hoje_2026-08-11"][0], { planned_date: "2026-08-11", kind: "corrida" });
+  assertEquals(ctx["plano_treino_amanha_2026-08-12"][0], { planned_date: "2026-08-12", kind: "ginasio" });
+});
+
+Deno.test("regressão: ginásio amanhã e corrida depois de amanhã não são 'dia duplo'", () => {
+  // Bug reportado: modelo dizia 'amanhã tens um dia duplo' quando havia ginásio
+  // em D+1 e corrida em D+2. O contexto não deve incluir D+2 na chave de amanhã.
+  const today = "2026-08-12";
+  const tomorrow = "2026-08-13";
+  const dayAfter = "2026-08-14";
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    today,
+    planItems: [
+      { planned_date: tomorrow, kind: "ginasio", categories: ["peito"] },
+      { planned_date: dayAfter, kind: "corrida", training_type: "intervalos" },
+    ],
+  }) as Record<string, unknown[]>;
+  // Amanhã só tem ginásio
+  assertEquals(ctx[`plano_treino_amanha_${tomorrow}`].length, 1);
+  // A corrida de D+2 não aparece em nenhuma das duas chaves
+  assertEquals(ctx[`plano_treino_hoje_${today}`].length, 0);
+  const amanha = ctx[`plano_treino_amanha_${tomorrow}`] as Array<{kind: string}>;
+  assertEquals(amanha[0].kind, "ginasio");
 });
 
 Deno.test("sem refeições nem água, os totais de hoje ficam a zero, não undefined", () => {

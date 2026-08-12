@@ -155,9 +155,11 @@ export function buildDailySummaryContext(params: {
     corridas_ultimos_7_dias: recentRuns || [],
     ginasio_ultimos_7_dias: recentGym || [],
     // deno-lint-ignore no-explicit-any
-    plano_treino_hoje: (planItems || []).filter((i: any) => i.planned_date === today),
+    // Chaves com a data explícita para que o modelo não misture os dois dias
+    // (bug observado: modelo combinava hoje+amanhã e chamava-lhe "dia duplo").
+    [`plano_treino_hoje_${today}`]: (planItems || []).filter((i: any) => i.planned_date === today),
     // deno-lint-ignore no-explicit-any
-    plano_treino_amanha: (planItems || []).filter((i: any) => i.planned_date === tomorrow),
+    [`plano_treino_amanha_${tomorrow}`]: (planItems || []).filter((i: any) => i.planned_date === tomorrow),
     proxima_prova: nextRace || null,
   };
 }
@@ -191,7 +193,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `sugiras o que elas proíbem. Se houver sinais de alarme no contexto, não sugiras ementas: ` +
     `levanta a preocupação em vez disso (mesmo campo).\n` +
     `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
-    `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n\n` +
+    `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n` +
+    `  IMPORTANTE: usa APENAS o campo plano_treino_amanha_* para descrever amanhã. ` +
+    `NÃO incluas itens de plano_treino_hoje_* na descrição de amanhã — são dias diferentes.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
