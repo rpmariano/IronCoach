@@ -112,11 +112,14 @@ export const useAppStore = create((set, get) => ({
 
     set((state) => ({
       coachPlans: state.coachPlans.map(p => {
-        if (p.id === planId) return { ...p, ...updates };
-        if (accept) return { ...p, status: 'recusado' };
-        if (superseded && p.id === superseded) return { ...p, status: 'recusado' };
+        if (p.id === planId) {
+          return { ...p, ...updates };
+        }
+        if (accept && p.status === 'aceite') {
+          return { ...p, status: 'recusado' };
+        }
         return p;
-      }).map(p => (p.id === planId ? { ...p, status: 'aceite' } : p)),
+      }),
     }));
 
     if (accept) {
