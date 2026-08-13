@@ -218,9 +218,13 @@ const RESPONSE_SCHEMA = {
 // deno-lint-ignore no-explicit-any
 async function generateSummary(ctx: Record<string, unknown>, geminiKey: string): Promise<any> {
   // deno-lint-ignore no-explicit-any
+  const planToday = (ctx.plano_treino_hoje as any)?.resumo || "Descanso";
+  // deno-lint-ignore no-explicit-any
   const planTomorrow = (ctx.plano_treino_amanha as any)?.resumo || "Descanso";
   // deno-lint-ignore no-explicit-any
   const tomorrowDate = (ctx.plano_treino_amanha as any)?.data || "";
+  // deno-lint-ignore no-explicit-any
+  const todayDate = (ctx.plano_treino_hoje as any)?.data || "";
 
   const prompt =
     `És o Coach de um atleta amador numa app de corrida/fitness/nutrição. Vais gerar até ` +
@@ -228,20 +232,23 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `uma é INDEPENDENTE — devolve null nas que não tiveres nada de útil para dizer, em vez de ` +
     `inventar conteúdo. Português (PT), tom direto e próximo, nunca genérico.\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
-    `REGRAS ESTRITAS DE PREPARAR AMANHÃ (tomorrow_prep):\n` +
-    `- O treino de AMANHÃ (${tomorrowDate}) é EXCLUSIVAMENTE: "${planTomorrow}".\n` +
-    `- Se "${planTomorrow}" for uma Corrida (ex.: Corrida de recuperação 6km), a tua mensagem em tomorrow_prep DEVE ser ÚNICA E EXCLUSIVAMENTE sobre essa corrida. NUNCA menciones ginásio, halteres, costas ou core se amanhã não houver treino de ginásio no plano_treino_amanha.\n` +
-    `- Se "${planTomorrow}" for Descanso ou sem treinos, devolve null em tomorrow_prep.\n` +
-    `- NÃO uses o histórico dos últimos 7 dias (corridas_ultimos_7_dias / ginasio_ultimos_7_dias) para inventar o treino de amanhã. Esses campos são PASSADO, não futuro.\n\n` +
+    `REGRAS INVIOLÁVEIS DO PLANO DE TREINO:\n` +
+    `1. TREINO DE HOJE (${todayDate}): "${planToday}".\n` +
+    `   - Se "${planToday}" contiver APENAS "Ginásio...", a mensagem em warnings DEVE focar-se EXCLUSIVAMENTE no treino de ginásio de hoje ou hidratação/refeição. É ESTRITAMENTE PROIBIDO inventar que hoje há corrida ou treinos de intervalos.\n` +
+    `   - Se "${planToday}" contiver APENAS "Corrida...", a mensagem DEVE focar-se EXCLUSIVAMENTE na corrida de hoje. É ESTRITAMENTE PROIBIDO inventar ginásio para hoje.\n` +
+    `2. TREINO DE AMANHÃ (${tomorrowDate}): "${planTomorrow}".\n` +
+    `   - Se "${planTomorrow}" for "Descanso...", DEVOLVE NULL no campo tomorrow_prep.\n` +
+    `   - Se "${planTomorrow}" contiver APENAS "Corrida...", a tua mensagem em tomorrow_prep DEVE ser EXCLUSIVAMENTE sobre essa corrida. É ESTRITAMENTE PROIBIDO mencionar ginásio, costas ou core para amanhã.\n` +
+    `   - Se "${planTomorrow}" contiver APENAS "Ginásio...", a tua mensagem em tomorrow_prep DEVE ser EXCLUSIVAMENTE sobre esse treino de ginásio. É ESTRITAMENTE PROIBIDO mencionar corrida para amanhã.\n` +
+    `3. HISTÓRICO DE PASSADO:\n` +
+    `   - NUNCA uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir treinos de hoje ou amanhã. Esses campos são apenas o histórico recente de treinos já efetuados.\n\n` +
     `CAMPOS:\n` +
     `- recap: recapitulação dos últimos dias (treinos feitos, consistência, uma tendência ` +
     `notável). Só se houver histórico recente suficiente para dizer algo real.\n` +
     `- warnings: avisos para HOJE — algo que precisa de atenção hoje (hidratação, treino já ` +
     `atrasado, proximidade de uma prova). null se não houver nada de urgente.\n` +
     `- meal_suggestion: sugestão alimentar para hoje, educativa e nunca prescritiva ("considera", ` +
-    `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto — nunca ` +
-    `sugiras o que elas proíbem. Se houver sinais de alarme no contexto, não sugiras ementas: ` +
-    `levanta a preocupação em vez disso (mesmo campo).\n` +
+    `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto.\n` +
     `- tomorrow_prep: preparação para amanhã. Usa EXCLUSIVAMENTE o treino indicado em plano_treino_amanha.\n\n` +
     MEAL_DOCTRINE;
 
@@ -268,39 +275,6 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini devolveu resposta vazia.");
   return JSON.parse(text);
-}
-
-function diffDaysISO(aISO: string, bISO: string): number {
-  return Math.round((new Date(bISO + "T00:00:00Z").getTime() - new Date(aISO + "T00:00:00Z").getTime()) / 86400000);
-}
-
-export function computeAcceptedWindow(plans: any[], items: any[], today: string): Set<string> {
-  const accepted = (plans || []).filter((p) => p.status === "aceite");
-  if (accepted.length === 0) return new Set();
-
-  const relevant = accepted.filter((p) => {
-    if (p.period_end >= today) return true;
-    return (items || []).some((i) => i.plan_id === p.id && i.status === "pendente");
-  });
-  if (relevant.length === 0) return new Set();
-
-  const sorted = [...relevant].sort((a, b) => a.period_start.localeCompare(b.period_start));
-  const blocks: { start: string; end: string; planIds: string[] }[] = [];
-  for (const p of sorted) {
-    const last = blocks[blocks.length - 1];
-    if (last && diffDaysISO(last.end, p.period_start) <= 1) {
-      if (p.period_end > last.end) last.end = p.period_end;
-      last.planIds.push(p.id);
-    } else {
-      blocks.push({ start: p.period_start, end: p.period_end, planIds: [p.id] });
-    }
-  }
-
-  const current = blocks.find((b) => today >= b.start && today <= b.end)
-    ?? blocks.find((b) => b.end >= today)
-    ?? blocks[0];
-
-  return current ? new Set(current.planIds) : new Set();
 }
 
 Deno.serve(async (req) => {
@@ -345,14 +319,14 @@ Deno.serve(async (req) => {
     }
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
+    // Isola ESTRITAMENTE o plano aceite mais recente ativo (period_end >= today)
     const [
       { data: profile },
       { data: todayMeals },
       { data: todayWater },
       { data: recentRuns },
       { data: recentGym },
-      { data: acceptedPlans },
-      { data: fetchedItems },
+      { data: latestActivePlans },
       { data: nextRace },
     ] = await Promise.all([
       sb.from("profiles")
@@ -366,20 +340,28 @@ Deno.serve(async (req) => {
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
-        .select("id, period_start, period_end, status")
+        .select("id")
         .eq("user_id", userId)
-        .eq("status", "aceite"),
-      sb.from("coach_plan_items")
-        .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
-        .eq("user_id", userId)
-        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
-        .neq("status", "cancelado"),
+        .eq("status", "aceite")
+        .gte("period_end", today)
+        .order("created_at", { ascending: false })
+        .limit(1),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);
 
-    const activePlanIds = computeAcceptedWindow(acceptedPlans || [], fetchedItems || [], today);
-    const planItems = (fetchedItems || []).filter((item: any) => activePlanIds.has(item.plan_id));
+    const activePlanId = latestActivePlans?.[0]?.id ?? null;
+    let planItems: any[] = [];
+    if (activePlanId) {
+      const { data: fetchedItems } = await sb
+        .from("coach_plan_items")
+        .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
+        .eq("user_id", userId)
+        .eq("plan_id", activePlanId)
+        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
+        .neq("status", "cancelado");
+      planItems = fetchedItems || [];
+    }
 
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],

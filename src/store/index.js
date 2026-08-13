@@ -98,25 +98,25 @@ export const useAppStore = create((set, get) => ({
     const { error } = await supabase.from('coach_plans').update(updates).eq('id', planId);
     if (error) { console.error('Error responding to plan:', error); return false; }
 
-    const superseded = accept
-      ? get().coachPlans.find(p => p.id === planId)?.supersedes_plan_id
-      : null;
-    if (superseded) {
-      const { error: supErr } = await supabase
-        .from('coach_plans')
-        .update({ status: 'recusado' })
-        .eq('id', superseded);
-      // Falhar aqui deixaria dois planos ativos ao mesmo tempo — mau, mas
-      // menos mau que perder a aceitação que já foi gravada.
-      if (supErr) console.error('Error superseding old plan:', supErr);
+    if (accept) {
+      const userId = get().session?.user?.id || get().profile?.id;
+      if (userId) {
+        await supabase
+          .from('coach_plans')
+          .update({ status: 'recusado' })
+          .eq('user_id', userId)
+          .eq('status', 'aceite')
+          .neq('id', planId);
+      }
     }
 
     set((state) => ({
       coachPlans: state.coachPlans.map(p => {
         if (p.id === planId) return { ...p, ...updates };
+        if (accept) return { ...p, status: 'recusado' };
         if (superseded && p.id === superseded) return { ...p, status: 'recusado' };
         return p;
-      }),
+      }).map(p => (p.id === planId ? { ...p, status: 'aceite' } : p)),
     }));
 
     if (accept) {
