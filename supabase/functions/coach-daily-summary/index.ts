@@ -204,52 +204,80 @@ export function buildDailySummaryContext(params: {
   };
 }
 
+function formatWorkoutItemName(i: any): string {
+  if (i.kind === "corrida") {
+    const typeStr = i.training_type ? i.training_type : "corrida";
+    const distStr = i.target_distance_km ? `${i.target_distance_km} km` : "";
+    const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
+    const details = [typeStr, distStr, durStr].filter(Boolean).join(", ");
+    return `Corrida (${details})`;
+  }
+  if (i.kind === "ginasio") {
+    const catStr = i.categories?.length ? i.categories.join("/") : "Geral";
+    const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
+    const details = [catStr, durStr].filter(Boolean).join(", ");
+    return `Ginásio (${details})`;
+  }
+  return "Descanso";
+}
+
+function buildWarningsMessage(todayPlanItems: any[], waterTotal: number, waterGoal: number | null): string | null {
+  const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso");
+  let msg = "";
+  if (nonRest.length > 0) {
+    const itemsDesc = nonRest.map(formatWorkoutItemName).join(" e ");
+    msg = `Para hoje tens agendado: ${itemsDesc}.`;
+  }
+
+  if (waterGoal && waterTotal < waterGoal / 2) {
+    const waterRem = ` Não te esqueças de começar a beber água desde já para manteres a hidratação.`;
+    msg = msg ? `${msg}${waterRem}` : `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+  }
+
+  return msg || null;
+}
+
+function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | null {
+  const nonRest = (tomorrowPlanItems || []).filter((i: any) => i.kind !== "descanso");
+  if (nonRest.length === 0) return null;
+
+  const itemsDesc = nonRest.map(formatWorkoutItemName).join(" e ");
+  const hasRun = nonRest.some((i: any) => i.kind === "corrida");
+  const hasGym = nonRest.some((i: any) => i.kind === "ginasio");
+
+  let tip = "Deixa o equipamento já organizado hoje à noite.";
+  if (hasRun && !hasGym) {
+    tip = "Deixa o teu equipamento de corrida pronto.";
+  } else if (hasGym && !hasRun) {
+    tip = "Deixa a tua sacola de treino pronta para o ginásio.";
+  }
+
+  return `Amanhã o plano aponta para: ${itemsDesc}. ${tip}`;
+}
+
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     recap: { type: "STRING", nullable: true },
-    warnings: { type: "STRING", nullable: true },
     meal_suggestion: { type: "STRING", nullable: true },
-    tomorrow_prep: { type: "STRING", nullable: true },
   },
-  required: ["recap", "warnings", "meal_suggestion", "tomorrow_prep"],
+  required: ["recap", "meal_suggestion"],
 };
 
 // deno-lint-ignore no-explicit-any
 async function generateSummary(ctx: Record<string, unknown>, geminiKey: string): Promise<any> {
-  // deno-lint-ignore no-explicit-any
-  const planToday = (ctx.plano_treino_hoje as any)?.resumo || "Descanso";
-  // deno-lint-ignore no-explicit-any
-  const planTomorrow = (ctx.plano_treino_amanha as any)?.resumo || "Descanso";
-  // deno-lint-ignore no-explicit-any
-  const tomorrowDate = (ctx.plano_treino_amanha as any)?.data || "";
-  // deno-lint-ignore no-explicit-any
-  const todayDate = (ctx.plano_treino_hoje as any)?.data || "";
-
   const prompt =
     `És o Coach de um atleta amador numa app de corrida/fitness/nutrição. Vais gerar até ` +
-    `QUATRO mensagens curtas (1-2 frases cada) para um cartão rotativo no ecrã Início. Cada ` +
+    `DUAS mensagens curtas (1-2 frases cada) para o cartão do ecrã Início. Cada ` +
     `uma é INDEPENDENTE — devolve null nas que não tiveres nada de útil para dizer, em vez de ` +
     `inventar conteúdo. Português (PT), tom direto e próximo, nunca genérico.\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
-    `REGRAS INVIOLÁVEIS DO PLANO DE TREINO:\n` +
-    `1. TREINO DE HOJE (${todayDate}): "${planToday}".\n` +
-    `   - Se "${planToday}" contiver APENAS "Ginásio...", a mensagem em warnings DEVE focar-se EXCLUSIVAMENTE no treino de ginásio de hoje ou hidratação/refeição. É ESTRITAMENTE PROIBIDO inventar que hoje há corrida ou treinos de intervalos.\n` +
-    `   - Se "${planToday}" contiver APENAS "Corrida...", a mensagem DEVE focar-se EXCLUSIVAMENTE na corrida de hoje. É ESTRITAMENTE PROIBIDO inventar ginásio para hoje.\n` +
-    `2. TREINO DE AMANHÃ (${tomorrowDate}): "${planTomorrow}".\n` +
-    `   - Se "${planTomorrow}" for "Descanso...", DEVOLVE NULL no campo tomorrow_prep.\n` +
-    `   - Se "${planTomorrow}" contiver APENAS "Corrida...", a tua mensagem em tomorrow_prep DEVE ser EXCLUSIVAMENTE sobre essa corrida. É ESTRITAMENTE PROIBIDO mencionar ginásio, costas ou core para amanhã.\n` +
-    `   - Se "${planTomorrow}" contiver APENAS "Ginásio...", a tua mensagem em tomorrow_prep DEVE ser EXCLUSIVAMENTE sobre esse treino de ginásio. É ESTRITAMENTE PROIBIDO mencionar corrida para amanhã.\n` +
-    `3. HISTÓRICO DE PASSADO:\n` +
-    `   - NUNCA uses corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir treinos de hoje ou amanhã. Esses campos são apenas o histórico recente de treinos já efetuados.\n\n` +
     `CAMPOS:\n` +
-    `- recap: recapitulação dos últimos dias (treinos feitos, consistência, uma tendência ` +
-    `notável). Só se houver histórico recente suficiente para dizer algo real.\n` +
-    `- warnings: avisos para HOJE — algo que precisa de atenção hoje (hidratação, treino já ` +
-    `atrasado, proximidade de uma prova). null se não houver nada de urgente.\n` +
+    `- recap: recapitulação dos últimos dias (treinos feitos nos últimos 7 dias, consistência, ` +
+    `uma tendência notável). Só se houver histórico suficiente em corridas_ultimos_7_dias ou ` +
+    `ginasio_ultimos_7_dias para dizer algo real. Caso contrário devolve null.\n` +
     `- meal_suggestion: sugestão alimentar para hoje, educativa e nunca prescritiva ("considera", ` +
-    `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto.\n` +
-    `- tomorrow_prep: preparação para amanhã. Usa EXCLUSIVAMENTE o treino indicado em plano_treino_amanha.\n\n` +
+    `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
@@ -319,14 +347,13 @@ Deno.serve(async (req) => {
     }
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
-    // Isola ESTRITAMENTE o plano aceite mais recente ativo (period_end >= today)
     const [
       { data: profile },
       { data: todayMeals },
       { data: todayWater },
       { data: recentRuns },
       { data: recentGym },
-      { data: latestActivePlans },
+      { data: acceptedPlans },
       { data: nextRace },
     ] = await Promise.all([
       sb.from("profiles")
@@ -340,17 +367,16 @@ Deno.serve(async (req) => {
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
-        .select("id")
+        .select("id, period_start, period_end, created_at")
         .eq("user_id", userId)
         .eq("status", "aceite")
-        .gte("period_end", today)
-        .order("created_at", { ascending: false })
-        .limit(1),
+        .order("created_at", { ascending: false }),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);
 
-    const activePlanId = latestActivePlans?.[0]?.id ?? null;
+    // Encontra o plano ativo mais recente
+    const activePlanId = acceptedPlans?.[0]?.id ?? null;
     let planItems: any[] = [];
     if (activePlanId) {
       const { data: fetchedItems } = await sb
@@ -368,21 +394,29 @@ Deno.serve(async (req) => {
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
     });
 
-    let generated: { recap: string | null; warnings: string | null; meal_suggestion: string | null; tomorrow_prep: string | null };
+    const tomorrow = addDaysISO(today, 1);
+    const todayPlanItems = planItems.filter((i: any) => i.planned_date === today);
+    const tomorrowPlanItems = planItems.filter((i: any) => i.planned_date === tomorrow);
+    const waterTotal = (todayWater || []).reduce((s: number, w: any) => s + (w.amount_ml || 0), 0);
+
+    const warningsMsg = buildWarningsMessage(todayPlanItems, waterTotal, profile?.water_goal_ml ?? null);
+    const tomorrowPrepMsg = buildTomorrowPrepMessage(tomorrowPlanItems);
+
+    let generated = { recap: null as string | null, meal_suggestion: null as string | null };
     try {
       generated = await generateSummary(ctx, geminiKey);
     } catch (e) {
       console.error("coach-daily-summary generation failed:", e);
-      return jsonResponse({ error: "Não foi possível gerar o resumo. Tenta novamente." }, 502);
+      // Se Gemini falhar, continuamos com as mensagens determinísticas sem crashar
     }
 
     const row = {
       user_id: userId,
       date: today,
       recap: generated.recap || null,
-      warnings: generated.warnings || null,
+      warnings: warningsMsg,
       meal_suggestion: generated.meal_suggestion || null,
-      tomorrow_prep: generated.tomorrow_prep || null,
+      tomorrow_prep: tomorrowPrepMsg,
       generated_at: new Date().toISOString(),
     };
 
