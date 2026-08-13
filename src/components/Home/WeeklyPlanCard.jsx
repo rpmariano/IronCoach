@@ -109,8 +109,22 @@ function itemKindClass(item) {
 }
 
 /* Um dia do plano. */
-export function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, onCompleteMeal, onCancelMeal, readOnly }) {
-  const [expanded, setExpanded] = useState(false);
+export function PlanDayCard({
+  dateISO,
+  dayNumber,
+  items,
+  isToday,
+  isOverdue,
+  onComplete,
+  onCancel,
+  onCompleteMeal,
+  onCancelMeal,
+  readOnly,
+  expanded: controlledExpanded,
+  onToggleExpand,
+}) {
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const isExpanded = controlledExpanded !== undefined ? controlledExpanded : localExpanded;
 
   const d = new Date(dateISO + 'T00:00:00');
   const dayLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -128,7 +142,15 @@ export function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onC
   const HeadIcon = empty ? Utensils : itemIcon(items[0]);
   const kindClass = empty ? 'empty' : itemKindClass(items[0]);
 
-  const toggle = () => { if (canExpand) setExpanded(e => !e); };
+  const toggle = () => {
+    if (canExpand) {
+      if (onToggleExpand) {
+        onToggleExpand(!isExpanded);
+      } else {
+        setLocalExpanded(e => !e);
+      }
+    }
+  };
 
   return (
     <div className={`wpc-day-card ${kindClass} ${isToday ? 'is-today' : ''} ${isOverdue ? 'is-overdue' : ''}`}>
@@ -157,18 +179,18 @@ export function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onC
             {canExpand && (
               <button
                 type="button"
-                aria-label={expanded ? `Fechar detalhes do dia ${dayNumber}` : `Ver detalhes do dia ${dayNumber}`}
-                aria-expanded={expanded}
+                aria-label={isExpanded ? `Fechar detalhes do dia ${dayNumber}` : `Ver detalhes do dia ${dayNumber}`}
+                aria-expanded={isExpanded}
                 className="tap-44 wpc-chevron"
                 onClick={(e) => { e.stopPropagation(); toggle(); }}
               >
-                {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
             )}
           </div>
         </div>
 
-        {expanded && (
+        {isExpanded && (
           <div className="wpc-day-details fade-in">
             {items.map(item => (
               <div key={item.id} className="wpc-detail-item">
@@ -413,6 +435,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
   }
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [allExpanded, setAllExpanded] = useState(false);
   const scrollRef = useRef(null);
 
   const handleScroll = () => {
@@ -485,6 +508,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
                 onCancel={onCancel}
                 onCompleteMeal={onCompleteMeal}
                 onCancelMeal={onCancelMeal}
+                expanded={allExpanded}
+                onToggleExpand={setAllExpanded}
               />
             ))}
           </div>
