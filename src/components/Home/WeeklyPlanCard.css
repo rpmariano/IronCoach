@@ -155,31 +155,37 @@
 .wpc-icon-wrap.run {
   background: rgba(192, 38, 211, 0.15);
   color: #c026d3;
+  border: 1px solid rgba(192, 38, 211, 0.35);
 }
 
 .wpc-icon-wrap.gym {
   background: rgba(250, 204, 21, 0.15);
   color: #facc15;
+  border: 1px solid rgba(250, 204, 21, 0.45);
 }
 
 .wpc-icon-wrap.corpo {
   background: rgba(100, 116, 139, 0.15);
   color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.35);
 }
 
 .wpc-icon-wrap.nutri {
   background: rgba(5, 150, 105, 0.15);
   color: #059669;
+  border: 1px solid rgba(5, 150, 105, 0.35);
 }
 
 .wpc-icon-wrap.rest {
   background: rgba(249, 115, 22, 0.15);
   color: #ea580c;
+  border: 1px solid rgba(249, 115, 22, 0.35);
 }
 
 .wpc-icon-wrap.empty {
   background: rgba(15, 23, 42, 0.05);
   color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
 }
 
 .wpc-day-info {
@@ -272,6 +278,7 @@
   justify-content: center;
   background: rgba(16, 185, 129, 0.15);
   color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
 .wpc-chevron {

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
-import { List, User, CalendarDays } from 'lucide-react';
+import { List, User, CalendarDays, TrendingUp } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 
@@ -69,6 +69,20 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
   return (
     <div className="space-y-4 fade-in pb-8">
+      {/* Header Evolução */}
+      <div className="flex items-center gap-3">
+        <div 
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}
+        >
+          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
+          <p className="text-[11px] text-slate-500 mt-1">{bodyAssessments.length} avaliação(ões) no período</p>
+        </div>
+      </div>
+
       {/* Horizontal metric chips */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
         {BODY_METRICS.map(m => {
