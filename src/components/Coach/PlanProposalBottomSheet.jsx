@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useRef } from 'react';
-import { Sparkles, Check, X, Calendar, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Sparkles, Check, X, Calendar, Target } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
 
 const GOAL_LABELS = {
@@ -24,31 +24,6 @@ export function PlanProposalBottomSheet({
 }) {
   if (!plan && !goalProposal) return null;
 
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const touchStartY = useRef(null);
-
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e) => {
-    if (touchStartY.current !== null) {
-      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-      if (deltaY > 50) {
-        // Deslizar para baixo: encolhe ou fecha se já estiver encolhido
-        if (!isCollapsed) {
-          setIsCollapsed(true);
-        } else {
-          onClose();
-        }
-      } else if (deltaY < -50) {
-        // Deslizar para cima: expande
-        setIsCollapsed(false);
-      }
-      touchStartY.current = null;
-    }
-  };
-
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
   const days = useMemo(
     () => {
@@ -57,6 +32,24 @@ export function PlanProposalBottomSheet({
     },
     [planItems, plan?.period_start, plan?.period_end],
   );
+
+  const handleRespondPlanAction = (accept) => {
+    if (plan && onRespondPlan) {
+      onRespondPlan(plan.id, accept);
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
+
+  const handleRespondGoalAction = (accept) => {
+    if (goalProposal && onRespondGoal) {
+      onRespondGoal(goalProposal.id, accept);
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -69,24 +62,20 @@ export function PlanProposalBottomSheet({
 
       {/* Modal Bottom Sheet (Persiana) */}
       <div 
-        className={`relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl transition-all duration-300 ease-out overflow-hidden ${
-          isCollapsed ? 'max-h-[220px]' : 'max-h-[85vh]'
-        }`}
+        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl animate-bottom-sheet-slide overflow-hidden"
         style={{
           background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        {/* Pega / Grab Handle Interativo */}
+        {/* Pega / Grab Handle — Tocar no traço fecha o modal */}
         <div 
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
+          onClick={onClose}
           className="w-full py-3 cursor-pointer flex items-center justify-center shrink-0 group"
-          title={isCollapsed ? "Expandir persiana" : "Encolher persiana"}
+          title="Fechar modal"
         >
-          <div className={`w-12 h-1.5 rounded-full transition-colors ${isCollapsed ? 'bg-amber-400 group-hover:bg-amber-300' : 'bg-slate-600/60 group-hover:bg-slate-400'}`} />
+          <div className="w-12 h-1.5 rounded-full bg-slate-600/60 group-hover:bg-slate-400 transition-colors" />
         </div>
 
         {/* Cabeçalho */}
@@ -109,28 +98,6 @@ export function PlanProposalBottomSheet({
                 </p>
               )}
             </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {/* Botão de Alternar Expansão (Expandir / Encolher) */}
-            <button
-              type="button"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
-              aria-label={isCollapsed ? "Expandir persiana" : "Encolher persiana"}
-            >
-              {isCollapsed ? <ChevronUp size={20} className="text-amber-400 animate-bounce" /> : <ChevronDown size={20} />}
-            </button>
-
-            {/* Botão Fechar */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
-              aria-label="Fechar"
-            >
-              <X size={18} />
-            </button>
           </div>
         </div>
 
@@ -171,14 +138,14 @@ export function PlanProposalBottomSheet({
               <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
                 <button
                   type="button"
-                  onClick={() => onRespondGoal(goalProposal.id, true)}
+                  onClick={() => handleRespondGoalAction(true)}
                   className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-slate-950 bg-amber-400 hover:bg-amber-300 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md"
                 >
                   <Check size={15} /> Aceitar Objetivos
                 </button>
                 <button
                   type="button"
-                  onClick={() => onRespondGoal(goalProposal.id, false)}
+                  onClick={() => handleRespondGoalAction(false)}
                   className="py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-rose-400 bg-slate-900 border border-slate-700 flex items-center justify-center gap-1 transition active:scale-95"
                 >
                   <X size={14} /> Recusar
@@ -221,9 +188,7 @@ export function PlanProposalBottomSheet({
           <div className="p-5 border-t border-slate-800/80 bg-slate-950/90 shrink-0 flex items-center gap-3">
             <button
               type="button"
-              onClick={() => {
-                onRespondPlan(plan.id, true);
-              }}
+              onClick={() => handleRespondPlanAction(true)}
               className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition active:scale-95"
               style={{
                 background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
@@ -236,9 +201,7 @@ export function PlanProposalBottomSheet({
 
             <button
               type="button"
-              onClick={() => {
-                onRespondPlan(plan.id, false);
-              }}
+              onClick={() => handleRespondPlanAction(false)}
               className="py-3.5 px-4 rounded-2xl font-semibold text-sm text-slate-400 hover:text-rose-400 bg-slate-800/80 hover:bg-rose-500/10 border border-slate-700/60 hover:border-rose-500/30 flex items-center justify-center gap-1.5 transition active:scale-95"
             >
               <X size={16} />
