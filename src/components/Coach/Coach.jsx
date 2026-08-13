@@ -151,11 +151,19 @@ export default function Coach() {
         // O coach criou um plano nesta resposta — recarrega os itens para a
         // proposta aparecer no Início sem ser preciso refrescar a página.
         if (data?.plan_proposed) {
-          await reloadCoachPlans();
+          const freshPlans = await reloadCoachPlans();
+          if (freshPlans && freshPlans.length > 0) {
+            const pending = freshPlans.filter(p => p.status === 'proposto');
+            if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          }
         }
-        // O coach escreveu proteína/gordura no perfil nesta resposta (DECISÃO
-        // N1) — recarrega para o Perfil mostrar já o novo valor, com o
-        // selo "Coach", sem ser preciso refrescar a página.
+        if (data?.goal_proposed) {
+          const freshGoals = await reloadCoachGoalProposals();
+          if (freshGoals && freshGoals.length > 0) {
+            const pending = freshGoals.filter(g => g.status === 'proposto');
+            if (pending.length > 0) setActiveGoalProposal(pending[0]);
+          }
+        }
         if (data?.goals_updated && profile?.id) {
           const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
           if (freshProfile) setProfile(freshProfile);
@@ -435,11 +443,11 @@ export default function Coach() {
       )}
 
       {/* Modal Bottom Sheet (Persiana de baixo para cima) para Propostas */}
-      {(activeProposalSheetPlan || activeGoalProposal || pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
+      {(activeProposalSheetPlan || activeGoalProposal) && (
         <PlanProposalBottomSheet
-          plan={activeProposalSheetPlan || (pendingPlans.length > 0 ? pendingPlans[0] : null)}
+          plan={activeProposalSheetPlan}
           items={coachPlanItems}
-          goalProposal={activeGoalProposal || (pendingGoalProposals.length > 0 ? pendingGoalProposals[0] : null)}
+          goalProposal={activeGoalProposal}
           profile={profile}
           onRespondPlan={handleRespond}
           onRespondGoal={handleRespondGoal}
