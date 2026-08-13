@@ -33,7 +33,7 @@ function addDaysISO(iso, n) {
   return d.toISOString().slice(0, 10);
 }
 
-function diffDaysISO(aISO, bISO) {
+export function diffDaysISO(aISO, bISO) {
   return Math.round((new Date(bISO + 'T00:00:00') - new Date(aISO + 'T00:00:00')) / 86400000);
 }
 
@@ -111,7 +111,7 @@ function itemKindClass(item) {
 }
 
 /* Um dia do plano. */
-function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, onCompleteMeal, onCancelMeal, readOnly }) {
+export function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete, onCancel, onCompleteMeal, onCancelMeal, readOnly }) {
   const [expanded, setExpanded] = useState(false);
 
   const d = new Date(dateISO + 'T00:00:00');

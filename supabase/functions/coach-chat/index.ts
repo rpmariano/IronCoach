@@ -1829,6 +1829,8 @@ export function buildSystemInstruction(
     `Distribuição por nível (medir por TEMPO nas zonas, não n.º de sessões):\n` +
     `  Iniciante: 90-100 % Z1/Z2 · 0-10 % Z3 (modelo 80/20 NÃO se aplica — exige ≥6-12 sem contínuas e ≥20-25 km/sem já construídos)\n` +
     `  Básico:    85-90 % Z1/Z2 · 10-15 % Z3/Z4\n` +
+    `  Se o atleta pedir explicitamente um novo plano, substituir o plano atual, eliminar/cancelar o plano atual, ou responder a uma confirmação (ex.: "substitui", "cancela o plano", "elimina o plano", "cria um novo plano", "faz outro plano", "sim", "quero na mesma", "14 dias", ou qualquer pedido claro de plano), CHAMA IMEDIATAMENTE a ferramenta propose_training_plan com replace_active_plan=true NA MESMA RESPOSTA. É ESTRITAMENTE PROIBIDO hesitar, voltar a fazer avisos repetidos ou ficar preso em loop sem chamar a ferramenta.\n` +
+    `  Se o utilizador não tiver especificado a duração (7 ou 14 dias), usa 14 dias por omissão e CHAMA propose_training_plan diretamente.\n\n` +
     `  Médio:     80 % Z1/Z2 · 20 % Z3/Z5 (modelo 80/20 clássico, Fitzgerald/Seiler)\n` +
     `  Avançado:  75-80 % Z1/Z2 · 20-25 % Z3/Z5 (polarizado ou piramidal conforme fase)\n` +
     `Quando introduzir trabalho de qualidade (≥Z3):\n` +
