@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { Send, Bot, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { pt } from 'date-fns/locale';
 import { PlanProposalCard } from '../Home/WeeklyPlanCard';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
@@ -39,8 +41,23 @@ export default function Coach() {
 
   const [inputStr, setInputStr] = useState('');
   const [showClearModal, setShowClearModal] = useState(false);
+  const [hoursToShow, setHoursToShow] = useState(48);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
+
+  const cutoffTime = Date.now() - (hoursToShow * 60 * 60 * 1000);
+  const visibleMessages = (coachMessages || []).filter(msg => {
+    let msgTime;
+    if (msg.created_at) {
+      msgTime = new Date(msg.created_at).getTime();
+    } else if (msg.id && !isNaN(msg.id)) {
+      msgTime = parseInt(msg.id, 10);
+    }
+    if (!msgTime || isNaN(msgTime)) return true;
+    return msgTime >= cutoffTime;
+  });
+  const hasMoreMessages = (coachMessages || []).length > visibleMessages.length;
+
 
   // Auto-scroll to bottom when messages or loading state changes
   useEffect(() => {
@@ -224,11 +241,36 @@ export default function Coach() {
           </div>
         )}
 
+        {/* Load More Button */}
+        {hasMoreMessages && (
+          <div className="flex justify-center mb-4 mt-2">
+            <button
+              onClick={() => setHoursToShow(prev => prev + 24)}
+              className="text-xs rounded-xl px-4 py-2.5 transition font-medium"
+              style={{
+                color: 'var(--mod-coach-to)',
+                border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
+                background: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)'
+              }}
+            >
+              Carregar mensagens anteriores
+            </button>
+          </div>
+        )}
+
         {/* Message Bubbles */}
-        {coachMessages.map((msg, idx) => {
+        {visibleMessages.map((msg, idx) => {
           const isUser = msg.role === 'user';
+          let msgDate = null;
+          if (msg.created_at) {
+            msgDate = new Date(msg.created_at);
+          } else if (msg.id && !isNaN(msg.id)) {
+            msgDate = new Date(parseInt(msg.id, 10));
+          }
+          const timeStr = msgDate && !isNaN(msgDate) ? format(msgDate, "dd MMM 'às' HH:mm", { locale: pt }) : '';
+
           return (
-            <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div key={idx} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
               <div
                 className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed ${
                   isUser
@@ -238,9 +280,15 @@ export default function Coach() {
               >
                 {isUser ? msg.content : <CoachText>{msg.content}</CoachText>}
               </div>
+              {timeStr && (
+                <span className="text-[10px] text-slate-500 mt-1 mx-1 px-1">
+                  {timeStr}
+                </span>
+              )}
             </div>
           );
         })}
+
 
         {/* Loading Indicator */}
         {coachLoading && (

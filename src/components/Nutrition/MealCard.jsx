@@ -84,7 +84,7 @@ export default function MealCard({ meal, onEdit }) {
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-emerald-100/70 border border-emerald-200/60 flex items-center justify-center text-emerald-600 shrink-0">
-            <IconComponent size={18} />
+            <IconComponent size={20} />
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-800 leading-tight">

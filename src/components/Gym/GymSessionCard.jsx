@@ -106,7 +106,7 @@ export default function GymSessionCard({ session, onEdit }) {
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-yellow-100/70 border border-yellow-200/60 flex items-center justify-center text-yellow-600 shrink-0">
-            {isAula ? <Users size={18} /> : <Dumbbell size={18} />}
+            {isAula ? <Users size={20} /> : <Dumbbell size={20} />}
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-800 leading-tight flex items-center gap-1.5 flex-wrap">

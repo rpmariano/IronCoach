@@ -15,6 +15,8 @@ import Body from './components/Body/Body';
 import Run from './components/Run/Run';
 import Perfil from './components/Perfil/Perfil';
 import Admin from './components/Admin/Admin';
+import Dashboard from './components/Dashboard/Dashboard';
+import Calendar from './components/Calendar/Calendar';
 
 const DEMO_PROFILE = {
   id: 'demo-user',
@@ -98,10 +100,8 @@ export default function App() {
     <ToastProvider>
       <Layout>
         {activeTab === 'home' && <Home />}
-        {activeTab === 'nutricao' && <Nutrition />}
-        {activeTab === 'corpo' && <Body />}
-        {activeTab === 'ginasio' && <Gym />}
-        {activeTab === 'corrida' && <Run />}
+        {activeTab === 'calendario' && <Calendar />}
+        {['nutricao', 'corpo', 'ginasio', 'corrida'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
         {activeTab === 'coach' && <Coach />}
         {activeTab === 'perfil' && <Perfil />}
         {activeTab === 'admin' && <Admin />}

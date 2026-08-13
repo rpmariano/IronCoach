@@ -138,7 +138,7 @@ function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onComplete
         <div className="wpc-day-header" onClick={toggle}>
           <div className="wpc-day-left">
             <div className={`wpc-icon-wrap ${kindClass}`}>
-              <HeadIcon size={16} />
+              <HeadIcon size={20} />
             </div>
             <div className="wpc-day-info">
               <h4 className="wpc-day-title">

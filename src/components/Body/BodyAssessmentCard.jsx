@@ -62,7 +62,7 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-rose-100/70 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
-            <ScanLine size={18} />
+            <ScanLine size={20} />
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-800 leading-tight">
