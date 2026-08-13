@@ -92,6 +92,26 @@ export function addDaysISO(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatPlanItemsSummary(items: any[]): string {
+  if (!items || items.length === 0) return "Descanso (sem treinos planeados)";
+  return items.map((i: any) => {
+    if (i.kind === "corrida") {
+      const typeStr = i.training_type ? i.training_type : "corrida";
+      const distStr = i.target_distance_km ? `${i.target_distance_km} km` : "";
+      const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
+      const details = [typeStr, distStr, durStr].filter(Boolean).join(", ");
+      return `Corrida (${details})`;
+    }
+    if (i.kind === "ginasio") {
+      const catStr = i.categories?.length ? i.categories.join("/") : "Geral";
+      const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
+      const details = [catStr, durStr].filter(Boolean).join(", ");
+      return `Ginásio (${details})`;
+    }
+    return "Descanso";
+  }).join(" + ");
+}
+
 // Monta o contexto que vai para o Gemini a partir dos dados já buscados —
 // separado da leitura à BD para poder ser testado sem mockar o Supabase.
 // deno-lint-ignore no-explicit-any
@@ -133,8 +153,19 @@ export function buildDailySummaryContext(params: {
     }
     : null;
 
+  // deno-lint-ignore no-explicit-any
+  const todayPlan = (planItems || []).filter((i: any) => i.planned_date === today);
+  // deno-lint-ignore no-explicit-any
+  const tomorrowPlan = (planItems || []).filter((i: any) => i.planned_date === tomorrow);
+  // deno-lint-ignore no-explicit-any
+  const dayAfterPlan = (planItems || []).filter((i: any) => i.planned_date === dayAfterTomorrow);
+
+  const planTodayDesc = formatPlanItemsSummary(todayPlan);
+  const planTomorrowDesc = formatPlanItemsSummary(tomorrowPlan);
+
   return {
     today,
+    tomorrow,
     objetivos_diarios: {
       calorias: profile?.calorie_goal ?? null,
       proteina_g: profile?.protein_goal ?? null,
@@ -155,19 +186,20 @@ export function buildDailySummaryContext(params: {
     nivel_experiencia: profile?.experience_level ?? null,
     corridas_ultimos_7_dias: recentRuns || [],
     ginasio_ultimos_7_dias: recentGym || [],
-    // Cada item do plano é devolvido com o seu próprio planned_date, e a lista
-    // fica organizada em três baldes rotulados (hoje / amanhã / depois de
-    // amanhã) para dar ao modelo um dia extra de visibilidade sem risco de
-    // conflação — cada balde só contém itens cujo planned_date bate certo com
-    // esse dia específico. O prompt reforça que "amanhã" (tomorrow_prep) usa
-    // EXCLUSIVAMENTE o balde plano_treino_amanha_*, nunca o de depois de
-    // amanhã, mesmo que ambos venham preenchidos.
-    // deno-lint-ignore no-explicit-any
-    [`plano_treino_hoje_${today}`]: (planItems || []).filter((i: any) => i.planned_date === today),
-    // deno-lint-ignore no-explicit-any
-    [`plano_treino_amanha_${tomorrow}`]: (planItems || []).filter((i: any) => i.planned_date === tomorrow),
-    // deno-lint-ignore no-explicit-any
-    [`plano_treino_depois_de_amanha_${dayAfterTomorrow}`]: (planItems || []).filter((i: any) => i.planned_date === dayAfterTomorrow),
+    plano_treino_hoje: {
+      data: today,
+      resumo: planTodayDesc,
+      itens: todayPlan,
+    },
+    plano_treino_amanha: {
+      data: tomorrow,
+      resumo: planTomorrowDesc,
+      itens: tomorrowPlan,
+    },
+    plano_treino_depois_de_amanha: {
+      data: dayAfterTomorrow,
+      resumo: formatPlanItemsSummary(dayAfterPlan),
+    },
     proxima_prova: nextRace || null,
   };
 }
@@ -185,25 +217,22 @@ const RESPONSE_SCHEMA = {
 
 // deno-lint-ignore no-explicit-any
 async function generateSummary(ctx: Record<string, unknown>, geminiKey: string): Promise<any> {
+  // deno-lint-ignore no-explicit-any
+  const planTomorrow = (ctx.plano_treino_amanha as any)?.resumo || "Descanso";
+  // deno-lint-ignore no-explicit-any
+  const tomorrowDate = (ctx.plano_treino_amanha as any)?.data || "";
+
   const prompt =
     `És o Coach de um atleta amador numa app de corrida/fitness/nutrição. Vais gerar até ` +
     `QUATRO mensagens curtas (1-2 frases cada) para um cartão rotativo no ecrã Início. Cada ` +
     `uma é INDEPENDENTE — devolve null nas que não tiveres nada de útil para dizer, em vez de ` +
     `inventar conteúdo. Português (PT), tom direto e próximo, nunca genérico.\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
-    `REGRA GLOBAL DE DATAS — aplica-se a TODOS os campos abaixo, sem exceção:\n` +
-    `O contexto tem vários campos de plano com data explícita no NOME da chave ` +
-    `(plano_treino_hoje_AAAA-MM-DD, plano_treino_amanha_AAAA-MM-DD, ` +
-    `plano_treino_depois_de_amanha_AAAA-MM-DD). São TRÊS DIAS DIFERENTES. Nunca descreve ` +
-    `itens de baldes diferentes como acontecendo no mesmo dia, nunca os juntes numa frase que ` +
-    `sugira simultaneidade (ex.: "amanhã tens X e Y" quando X e Y vêm de baldes de dias ` +
-    `diferentes; "dia duplo" só se os DOIS itens vierem do MESMO balde). Se mencionares mais de ` +
-    `um dia na mesma frase, nomeia cada dia explicitamente (ex.: "amanhã tens ginásio, e no dia ` +
-    `seguinte corrida de intervalos").\n` +
-    `O campo plano_treino_depois_de_amanha_* é o ÚNICO com esta restrição adicional: NÃO o uses ` +
-    `em NENHUM campo de resposta (nem recap, nem warnings, nem tomorrow_prep). Existe só como ` +
-    `contexto interno, não é para aparecer nas mensagens — nunca o mencione, direta ou ` +
-    `indiretamente.\n\n` +
+    `REGRAS ESTRITAS DE PREPARAR AMANHÃ (tomorrow_prep):\n` +
+    `- O treino de AMANHÃ (${tomorrowDate}) é EXCLUSIVAMENTE: "${planTomorrow}".\n` +
+    `- Se "${planTomorrow}" for uma Corrida (ex.: Corrida de recuperação 6km), a tua mensagem em tomorrow_prep DEVE ser ÚNICA E EXCLUSIVAMENTE sobre essa corrida. NUNCA menciones ginásio, halteres, costas ou core se amanhã não houver treino de ginásio no plano_treino_amanha.\n` +
+    `- Se "${planTomorrow}" for Descanso ou sem treinos, devolve null em tomorrow_prep.\n` +
+    `- NÃO uses o histórico dos últimos 7 dias (corridas_ultimos_7_dias / ginasio_ultimos_7_dias) para inventar o treino de amanhã. Esses campos são PASSADO, não futuro.\n\n` +
     `CAMPOS:\n` +
     `- recap: recapitulação dos últimos dias (treinos feitos, consistência, uma tendência ` +
     `notável). Só se houver histórico recente suficiente para dizer algo real.\n` +
@@ -213,12 +242,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto — nunca ` +
     `sugiras o que elas proíbem. Se houver sinais de alarme no contexto, não sugiras ementas: ` +
     `levanta a preocupação em vez disso (mesmo campo).\n` +
-    `- tomorrow_prep: preparação para amanhã, só se houver algo concreto a preparar (treino ` +
-    `planeado, prova próxima, carga de hidratos). null em dias sem nada de especial amanhã.\n` +
-    `  Usa EXCLUSIVAMENTE o campo plano_treino_amanha_* para descrever amanhã. NÃO uses ` +
-    `corridas_ultimos_7_dias nem ginasio_ultimos_7_dias para inferir treinos futuros — esses ` +
-    `campos são histórico, não plano. Se plano_treino_amanha_* estiver vazio ou só tiver ` +
-    `descanso, devolve null neste campo.\n\n` +
+    `- tomorrow_prep: preparação para amanhã. Usa EXCLUSIVAMENTE o treino indicado em plano_treino_amanha.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
