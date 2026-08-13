@@ -318,7 +318,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   return (
     <div className="flex flex-col gap-3">
       {days.length > 1 && (
-        <div className="flex items-center justify-between px-2">
+        <div className="flex items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
             {days.map((_, idx) => (
               <div 
@@ -437,7 +437,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
   return (
     <div className="flex flex-col gap-3">
       {days.length > 1 && (
-        <div className="flex items-center justify-between px-2">
+        <div className="flex items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
             {days.map((_, idx) => (
               <div 
@@ -471,7 +471,6 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
           <PendingBanner />
           <div className="wpc-header-row mb-2">
             <span className="wpc-lbl">Plano de {window.days} dias</span>
-            <button onClick={() => onNav('coach')} className="wpc-coach-link">Ver no Coach</button>
           </div>
           
           <div 
