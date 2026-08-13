@@ -1888,16 +1888,11 @@ export function buildSystemInstruction(
     `mais curto ou prefere estender. A decisão final é sempre do atleta.\n` +
     `3. Se o utilizador já tiver definido a duração (ex: "plano para a próxima semana", ` +
     `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
-    `SUGESTÕES ALIMENTARES NO PLANO: quando o atleta pedir sugestões de refeições para dias ` +
-    `concretos (ex.: "o que devo comer amanhã?", "sugestão de refeições para esta semana"), ` +
-    `usa SEMPRE a ferramenta save_meal_suggestions com a lista de {date, meal} para cada dia ` +
-    `— assim as sugestões aparecem no ecrã Início (Plano da semana) e não ficam só no chat. ` +
-    `A ferramenta trata automaticamente de planos ativos (adiciona ao dia existente) e de ` +
-    `datas fora do plano (cria entradas propostas). NÃO uses propose_training_plan para ` +
-    `sugestões alimentares — essa ferramenta é apenas para microciclos de treino. ` +
-    `Se o pedido for apenas "uma ideia para hoje" ou muito vago, responde em texto normal ` +
-    `sem usar a ferramenta — só a usas quando o pedido implica dias específicos ` +
-    `ou uma semana de sugestões estruturada.\n\n` +
+    `SUGESTÕES ALIMENTARES E PLANO ALIMENTAR:\n` +
+    `1. NUNCA criar um plano alimentar de apenas 1 dia quando o atleta pede um "novo plano alimentar", "plano de refeições" ou "sugestões de nutrição para o plano" (a menos que tenha pedido expressamente "para hoje" ou "para amanhã").\n` +
+    `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions.\n` +
+    `3. Se NÃO existir um plano ativo nem datas especificadas pelo atleta, o Coach NÃO PODE ADIVINHAR nem propor um plano de 1 dia. DEVE PERGUNTAR ao atleta qual a duração pretendida (ex.: 7 ou 14 dias) ANTES de chamar a ferramenta save_meal_suggestions.\n` +
+    `4. Se o pedido for apenas "uma ideia para hoje" ou uma dúvida alimentar pontual, responde em texto normal sem usar ferramentas — usa save_meal_suggestions apenas para planos alimentares ou sugestões estruturadas por dia.\n\n` +
     MEAL_DOCTRINE +
 
     // ── Doutrina Bloco 6 — Head Coach: arbitragem e comunicação ──────────────
