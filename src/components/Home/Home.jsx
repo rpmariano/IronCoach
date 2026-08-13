@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { Flag } from 'lucide-react';
+import { Flag, ChevronLeft, ChevronRight } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
@@ -52,11 +52,28 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const next = upcoming[0];
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 5);
+  
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollRef = useRef(null);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+      setCurrentIndex(index);
+    }
+  };
+
+  const scrollTo = (index) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
   const color = 'var(--color-warn)';
 
-  if (!next) return (
+  if (upcoming.length === 0) return (
     <button onClick={() => onNav('corrida')} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg(color)}>
       <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--green)' }}>Próxima Prova</h2>
       <div className="flex items-center gap-2.5">
@@ -68,24 +85,70 @@ function NextRaceCard({ raceEvents = [], onNav }) {
     </button>
   );
 
-  const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
-  
-  const maxDays = 84; 
-  const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
-  
-  const dateObj = new Date(next.date + 'T00:00:00');
-  const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
-
   return (
-    <div onClick={() => onNav('corrida')} className="cursor-pointer active:scale-[0.99] transition-transform w-full">
-      <PremiumNextRaceCard 
-        title={next.name}
-        date={formattedDate}
-        location={next.location || 'Não definida'}
-        tag={next.race_type || 'Prova'}
-        daysRemaining={daysUntil}
-        progressPercentage={progressPercentage}
-      />
+    <div className="flex flex-col gap-3">
+      {upcoming.length > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-1.5">
+            {upcoming.map((_, idx) => (
+              <div 
+                key={idx} 
+                className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
+              disabled={currentIndex === 0}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button 
+              onClick={() => scrollTo(Math.min(upcoming.length - 1, currentIndex + 1))}
+              disabled={currentIndex === upcoming.length - 1}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
+        style={{ scrollBehavior: 'smooth' }}
+      >
+        {upcoming.map(next => {
+          const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
+          const maxDays = 84; 
+          const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
+          const dateObj = new Date(next.date + 'T00:00:00');
+          const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
+
+          return (
+            <div 
+              key={next.id} 
+              className="w-full shrink-0 snap-center" 
+              onClick={() => onNav('corrida')}
+            >
+              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1">
+                <PremiumNextRaceCard 
+                  title={next.name}
+                  date={formattedDate}
+                  location={next.location || 'Não definida'}
+                  tag={next.race_type || 'Prova'}
+                  daysRemaining={daysUntil}
+                  progressPercentage={progressPercentage}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

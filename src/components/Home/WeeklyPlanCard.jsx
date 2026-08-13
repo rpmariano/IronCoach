@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
-  ChevronDown, ChevronUp, Check, X as XIcon, Dumbbell as DumbbellIcon,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock,
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
@@ -299,26 +299,78 @@ export function PlanProposalCard({ plan, items, onRespond }) {
     [its, plan.period_start, plan.period_end],
   );
 
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollRef = useRef(null);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+      setCurrentIndex(index);
+    }
+  };
+
+  const scrollTo = (index) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
   return (
-    <div className="wpc-card">
-      <div className="wpc-glow-coach"></div>
-      <div className="wpc-content">
-        <h2 className="wpc-proposal-title">O Coach propôs um plano</h2>
-        {plan.summary && <p className="wpc-proposal-summary">{plan.summary}</p>}
-
-        <div>
-          {days.map(day => (
-            <PlanDayCard key={day.dateISO} dateISO={day.dateISO} dayNumber={day.dayNumber} items={day.items} isToday={false} isOverdue={false} readOnly />
-          ))}
+    <div className="flex flex-col gap-3">
+      {days.length > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
+            {days.map((_, idx) => (
+              <div 
+                key={idx} 
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
+              disabled={currentIndex === 0}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button 
+              onClick={() => scrollTo(Math.min(days.length - 1, currentIndex + 1))}
+              disabled={currentIndex === days.length - 1}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
+      )}
+      
+      <div className="wpc-card">
+        <div className="wpc-glow-coach"></div>
+        <div className="wpc-content">
+          <h2 className="wpc-proposal-title">O Coach propôs um plano</h2>
+          {plan.summary && <p className="wpc-proposal-summary">{plan.summary}</p>}
 
-        <div className="wpc-actions" style={{ marginTop: '16px' }}>
-          <button onClick={() => onRespond(plan.id, true)} className="wpc-btn wpc-btn-primary">
-            <Check size={15} /> Aceitar
-          </button>
-          <button onClick={() => onRespond(plan.id, false)} className="wpc-btn wpc-btn-secondary">
-            <XIcon size={15} /> Recusar
-          </button>
+          <div 
+            className="wpc-carousel"
+            ref={scrollRef}
+            onScroll={handleScroll}
+            style={{ scrollBehavior: 'smooth' }}
+          >
+            {days.map(day => (
+              <PlanDayCard key={day.dateISO} dateISO={day.dateISO} dayNumber={day.dayNumber} items={day.items} isToday={false} isOverdue={false} readOnly />
+            ))}
+          </div>
+
+          <div className="wpc-actions" style={{ marginTop: '16px' }}>
+            <button onClick={() => onRespond(plan.id, true)} className="wpc-btn wpc-btn-primary">
+              <Check size={15} /> Aceitar
+            </button>
+            <button onClick={() => onRespond(plan.id, false)} className="wpc-btn wpc-btn-secondary">
+              <XIcon size={15} /> Recusar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -366,30 +418,83 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
     );
   }
 
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollRef = useRef(null);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+      setCurrentIndex(index);
+    }
+  };
+
+  const scrollTo = (index) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
   return (
-    <div className="wpc-card">
-      <div className="wpc-glow-coach"></div>
-      <div className="wpc-content">
-        <PendingBanner />
-        <div className="wpc-header-row">
-          <span className="wpc-lbl">Plano de {window.days} dias</span>
-          <button onClick={() => onNav('coach')} className="wpc-coach-link">Ver no Coach</button>
+    <div className="flex flex-col gap-3">
+      {days.length > 1 && (
+        <div className="flex items-center justify-between px-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
+            {days.map((_, idx) => (
+              <div 
+                key={idx} 
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
+              disabled={currentIndex === 0}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <button 
+              onClick={() => scrollTo(Math.min(days.length - 1, currentIndex + 1))}
+              disabled={currentIndex === days.length - 1}
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
-        <div>
-          {days.map(day => (
-            <PlanDayCard
-              key={day.dateISO}
-              dateISO={day.dateISO}
-              dayNumber={day.dayNumber}
-              items={day.items}
-              isToday={day.isToday}
-              isOverdue={day.isOverdue}
-              onComplete={onComplete}
-              onCancel={onCancel}
-              onCompleteMeal={onCompleteMeal}
-              onCancelMeal={onCancelMeal}
-            />
-          ))}
+      )}
+
+      <div className="wpc-card">
+        <div className="wpc-glow-coach"></div>
+        <div className="wpc-content">
+          <PendingBanner />
+          <div className="wpc-header-row mb-2">
+            <span className="wpc-lbl">Plano de {window.days} dias</span>
+            <button onClick={() => onNav('coach')} className="wpc-coach-link">Ver no Coach</button>
+          </div>
+          
+          <div 
+            className="wpc-carousel"
+            ref={scrollRef}
+            onScroll={handleScroll}
+            style={{ scrollBehavior: 'smooth' }}
+          >
+            {days.map(day => (
+              <PlanDayCard
+                key={day.dateISO}
+                dateISO={day.dateISO}
+                dayNumber={day.dayNumber}
+                items={day.items}
+                isToday={day.isToday}
+                isOverdue={day.isOverdue}
+                onComplete={onComplete}
+                onCancel={onCancel}
+                onCompleteMeal={onCompleteMeal}
+                onCancelMeal={onCancelMeal}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>

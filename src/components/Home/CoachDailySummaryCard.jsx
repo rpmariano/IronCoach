@@ -170,81 +170,83 @@ export default function CoachDailySummaryCard() {
   }
 
   return (
-    <div className="cds-card">
-      <div className="cds-glow" />
-
-      {/* Cabeçalho Único */}
-      <div className="cds-header">
-        <span className="cds-lbl"><Sparkles size={12} /> Resumo do Coach</span>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={dailySummaryLoading}
-          aria-label="Atualizar resumo"
-          className="cds-refresh shrink-0"
-          data-spinning={dailySummaryLoading}
-        >
-          <RefreshCw size={13} />
-        </button>
-      </div>
-
-      {/* Corpo com Carrossel Horizontal */}
-      <div className="cds-body mt-2">
-        <div 
-          ref={scrollRef}
-          onScroll={handleScroll}
-          className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
-          style={{ scrollBehavior: 'smooth' }}
-        >
-          {messages.map((m, i) => (
-            <div key={m.key} className="w-full shrink-0 snap-center">
-              <div className="cds-msg" data-active={i === index}>
-                <span className="cds-msg-icon" style={{ background: `${m.color}1a`, color: m.color }}>
-                  <m.Icon size={15} />
-                </span>
-                <div className="min-w-0">
-                  <p className="cds-msg-title" style={{ color: m.color }}>{m.label}</p>
-                  <p className="cds-msg-text">{m.text}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Rodapé com Navegação */}
+    <div className="w-full flex flex-col gap-3">
+      {/* Navegação no topo (tal como nas Provas) */}
       {messages.length > 1 && (
-        <div className="cds-footer mt-3 pt-2 border-t border-slate-800/40 flex items-center justify-between">
+        <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-1.5">
             {messages.map((_, idx) => (
               <span 
                 key={idx} 
-                className={`h-1.5 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-emerald-400' : 'w-1.5 bg-slate-600/40'}`}
+                className={`h-1.5 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-cyan-500' : 'w-1.5 bg-cyan-500/30'}`}
               />
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button 
               type="button"
               onClick={() => scrollTo(Math.max(0, index - 1))}
               disabled={index === 0}
               aria-label="Mensagem anterior"
-              className="p-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition"
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 hover:text-cyan-500 disabled:opacity-30 transition"
             >
-              <ChevronLeft size={15} />
+              <ChevronLeft size={14} />
             </button>
             <button 
               type="button"
               onClick={() => scrollTo(Math.min(messages.length - 1, index + 1))}
               disabled={index === messages.length - 1}
               aria-label="Próxima mensagem"
-              className="p-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 transition"
+              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-cyan-500 disabled:opacity-30 transition"
             >
-              <ChevronRight size={15} />
+              <ChevronRight size={14} />
             </button>
           </div>
         </div>
       )}
+
+      <div className="cds-card w-full">
+        <div className="cds-glow" />
+
+        {/* Cabeçalho Único */}
+        <div className="cds-header">
+          <span className="cds-lbl"><Sparkles size={12} /> Resumo do Coach</span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={dailySummaryLoading}
+            aria-label="Atualizar resumo"
+            className="cds-refresh shrink-0"
+            data-spinning={dailySummaryLoading}
+          >
+            <RefreshCw size={13} />
+          </button>
+        </div>
+
+        {/* Corpo com Carrossel Horizontal */}
+        <div className="cds-body mt-2">
+          <div 
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
+            style={{ scrollBehavior: 'smooth' }}
+          >
+            {messages.map((m, i) => (
+              <div key={m.key} className="w-full shrink-0 snap-center">
+                <div className="cds-msg" data-active={i === index}>
+                  <span className="cds-msg-icon" style={{ background: `${m.color}1a`, color: m.color }}>
+                    <m.Icon size={15} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="cds-msg-title" style={{ color: m.color }}>{m.label}</p>
+                    <p className="cds-msg-text">{m.text}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
