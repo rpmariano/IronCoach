@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { todayISO, addDaysISO } from '../../lib/utils';
+import { computeAcceptedWindow } from './WeeklyPlanCard';
 import './CoachDailySummaryCard.css';
 
 /* Card-resumo do Coach no Início. Ver specs/plano-de-treino.md §11 e
@@ -9,37 +11,96 @@ import './CoachDailySummaryCard.css';
    Mesma família visual do NextRaceCard (glass, glow radial, 28px de raio),
    mas o conteúdo é ROTATIVO em vez de fixo: até quatro mensagens
    independentes (recapitulação, avisos, sugestão de refeição, preparação
-   para amanhã), cada uma podendo estar ausente. O atleta navega entre elas
-   por toque — sem rotação automática por temporizador, que noutros sítios
-   da app já se decidiu evitar em ecrãs que pedem leitura.
+   para amanhã), cada uma podendo estar ausente. */
 
-   Gerado 1x/dia no servidor (ver a Edge Function coach-daily-summary) — este
-   componente só pede o carregamento ao montar; a decisão de servir cache ou
-   regenerar é do servidor, não daqui. */
-
-const MESSAGE_TYPES = [
-  { key: 'recap', label: 'Recapitulação', Icon: History, color: '#0e7490' },
-  { key: 'warnings', label: 'Aviso de hoje', Icon: AlertTriangle, color: '#b45309' },
-  { key: 'meal_suggestion', label: 'Sugestão alimentar', Icon: Utensils, color: '#047857' },
-  { key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#6d28d9' },
-];
+function formatItemSummary(item) {
+  if (item.kind === 'corrida') {
+    const typeStr = item.training_type || 'corrida';
+    const distStr = item.target_distance_km ? `${item.target_distance_km} km` : '';
+    const durStr = item.target_duration_min ? `${item.target_duration_min} min` : '';
+    const details = [typeStr, distStr, durStr].filter(Boolean).join(', ');
+    return `Corrida (${details})`;
+  }
+  if (item.kind === 'ginasio') {
+    const catStr = item.categories?.length ? item.categories.join('/') : 'Geral';
+    const durStr = item.target_duration_min ? `${item.target_duration_min} min` : '';
+    const details = [catStr, durStr].filter(Boolean).join(', ');
+    return `Ginásio (${details})`;
+  }
+  return 'Descanso';
+}
 
 export default function CoachDailySummaryCard() {
-  const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
+  const { coachPlans, coachPlanItems, dailySummary, dailySummaryLoading, loadDailySummary, todayWater, profile } = useAppStore();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    // reload:true — apanha um resumo já gerado hoje por outra sessão/
-    // dispositivo, sem forçar uma nova chamada ao Gemini.
     loadDailySummary({ reload: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const today = todayISO();
+  const tomorrow = addDaysISO(today, 1);
+
+  // Isola estritamente o plano ativo atual para hoje e amanhã
+  const activePlanItems = useMemo(() => {
+    const window = computeAcceptedWindow(coachPlans, coachPlanItems, today);
+    if (!window) return { today: [], tomorrow: [] };
+    const accepted = (coachPlans || []).filter(p => p.status === 'aceite');
+    const relevant = accepted.filter(p => p.period_end >= today || (coachPlanItems || []).some(i => i.plan_id === p.id && i.status === 'pendente'));
+    const sorted = [...relevant].sort((a, b) => a.period_start.localeCompare(b.period_start));
+    const activePlan = sorted[sorted.length - 1];
+    if (!activePlan) return { today: [], tomorrow: [] };
+    const items = (coachPlanItems || []).filter(i => i.plan_id === activePlan.id && i.status !== 'cancelado');
+    return {
+      today: items.filter(i => i.planned_date === today),
+      tomorrow: items.filter(i => i.planned_date === tomorrow),
+    };
+  }, [coachPlans, coachPlanItems, today, tomorrow]);
+
+  const warningsText = useMemo(() => {
+    const nonRest = activePlanItems.today.filter(i => i.kind !== 'descanso');
+    let msg = '';
+    if (nonRest.length > 0) {
+      const itemsDesc = nonRest.map(formatItemSummary).join(' e ');
+      msg = `Para hoje tens agendado: ${itemsDesc}.`;
+    }
+    const waterTotal = (todayWater || []).reduce((s, w) => s + (w.amount_ml || 0), 0);
+    const waterGoal = profile?.water_goal_ml || 2000;
+    if (waterGoal && waterTotal < waterGoal / 2) {
+      const waterRem = ` Não te esqueças de começar a beber água desde já para manteres a hidratação.`;
+      msg = msg ? `${msg}${waterRem}` : `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+    }
+    return msg || null;
+  }, [activePlanItems.today, todayWater, profile]);
+
+  const tomorrowPrepText = useMemo(() => {
+    const nonRest = activePlanItems.tomorrow.filter(i => i.kind !== 'descanso');
+    if (nonRest.length === 0) return null;
+    const itemsDesc = nonRest.map(formatItemSummary).join(' e ');
+    const hasRun = nonRest.some(i => i.kind === 'corrida');
+    const hasGym = nonRest.some(i => i.kind === 'ginasio');
+    let tip = 'Deixa o equipamento já organizado hoje à noite.';
+    if (hasRun && !hasGym) tip = 'Deixa o teu equipamento de corrida pronto.';
+    else if (hasGym && !hasRun) tip = 'Deixa a tua sacola de treino pronta para o ginásio.';
+    return `Amanhã o plano aponta para: ${itemsDesc}. ${tip}`;
+  }, [activePlanItems.tomorrow]);
+
   const messages = useMemo(() => {
-    if (!dailySummary) return [];
-    return MESSAGE_TYPES
-      .map(t => ({ ...t, text: typeof dailySummary[t.key] === 'string' ? dailySummary[t.key].trim() : '' }))
-      .filter(m => m.text);
-  }, [dailySummary]);
+    const list = [];
+    if (dailySummary?.recap) {
+      list.push({ key: 'recap', label: 'Recapitulação', Icon: History, color: '#0e7490', text: dailySummary.recap.trim() });
+    }
+    if (warningsText) {
+      list.push({ key: 'warnings', label: 'Aviso de hoje', Icon: AlertTriangle, color: '#b45309', text: warningsText });
+    }
+    if (dailySummary?.meal_suggestion) {
+      list.push({ key: 'meal_suggestion', label: 'Sugestão alimentar', Icon: Utensils, color: '#047857', text: dailySummary.meal_suggestion.trim() });
+    }
+    if (tomorrowPrepText) {
+      list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#6d28d9', text: tomorrowPrepText });
+    }
+    return list;
+  }, [dailySummary, warningsText, tomorrowPrepText]);
 
   // O índice pode ficar fora de alcance depois de um refresh que muda quantas
   // mensagens existem — repõe-se em vez de mostrar um cartão vazio.
