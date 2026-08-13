@@ -93,6 +93,12 @@ body {
 .fade-in { animation: fadeIn .25s ease-out; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
 
+.animate-bottom-sheet-overlay { animation: bottomSheetOverlayFade .28s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes bottomSheetOverlayFade { from { opacity: 0; } to { opacity: 1; } }
+
+.animate-bottom-sheet-slide { animation: bottomSheetSlideUp .32s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes bottomSheetSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
 /* ===== Seg-nav (sub-navegação deslizante) ===== */
 .seg-nav { box-shadow: var(--groove-shadow); }
 .seg-thumb {

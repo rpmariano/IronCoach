@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Bot, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { Send, Bot, Trash2, Loader2, Sparkles, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { PlanProposalCard } from '../Home/WeeklyPlanCard';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
+import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 
 export default function Coach() {
   const {
@@ -28,11 +29,20 @@ export default function Coach() {
   } = useAppStore();
   const { showToast } = useToast();
 
-  // Propostas por rever — aceitar/recusar vive aqui no chat, não na Home
-  // (redesenho: a Home passou a ser só consulta do plano aceite + registo
-  // de execução). Podem coexistir várias propostas em simultâneo (ex.: um
-  // plano de treino e um plano de refeições, propostos em alturas diferentes).
   const pendingPlans = (coachPlans || []).filter(p => p.status === 'proposto');
+  const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
+  const [autoOpenedPlans, setAutoOpenedPlans] = useState(() => new Set());
+
+  // Auto-abre a persiana Modal Bottom Sheet quando o Coach sugere um plano novo
+  useEffect(() => {
+    if (pendingPlans.length > 0) {
+      const unopened = pendingPlans.find(p => !autoOpenedPlans.has(p.id));
+      if (unopened) {
+        setActiveProposalSheetPlan(unopened);
+        setAutoOpenedPlans(prev => new Set(prev).add(unopened.id));
+      }
+    }
+  }, [pendingPlans, autoOpenedPlans]);
 
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
@@ -192,19 +202,21 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Sugestões pendentes — aceitar/recusar planos propostos pelo Coach.
-          Podem ser vários em simultâneo (treino + refeições), cada um com o
-          seu próprio período. Fora da área de scroll das mensagens para
-          ficar sempre visível sem ter de subir na conversa. */}
+      {/* Sugestões pendentes — Banner que abre o Modal Bottom Sheet (Persiana) */}
       {pendingPlans.length > 0 && (
-        <div className="shrink-0 mb-3 space-y-2 max-h-72 overflow-y-auto no-scrollbar pr-0.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500 px-1">
-            Sugestões pendentes ({pendingPlans.length})
-          </p>
-          {pendingPlans.map(plan => (
-            <PlanProposalCard key={plan.id} plan={plan} items={coachPlanItems || []} onRespond={handleRespond} />
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveProposalSheetPlan(pendingPlans[0])}
+          className="shrink-0 mb-3 w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-lg active:scale-98 transition"
+        >
+          <span className="flex items-center gap-2">
+            <Sparkles size={15} className="text-emerald-400 animate-pulse" />
+            <span>Proposta de plano por rever ({pendingPlans.length})</span>
+          </span>
+          <span className="flex items-center gap-1 text-[11px] bg-emerald-500/20 px-2.5 py-1 rounded-xl text-emerald-200 font-semibold">
+            Ver plano <ChevronRight size={13} />
+          </span>
+        </button>
       )}
 
       {/* Messages Scroll Area */}
@@ -388,6 +400,16 @@ export default function Coach() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Plano */}
+      {activeProposalSheetPlan && (
+        <PlanProposalBottomSheet
+          plan={activeProposalSheetPlan}
+          items={coachPlanItems}
+          onRespond={handleRespond}
+          onClose={() => setActiveProposalSheetPlan(null)}
+        />
       )}
     </div>
   );
