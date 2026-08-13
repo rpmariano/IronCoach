@@ -65,17 +65,20 @@ export default function CoachDailySummaryCard() {
       msg = `Para hoje tens agendado: ${itemsDesc}.`;
     }
     const waterTotal = (todayWater || []).reduce((s, w) => s + (w.amount_ml || 0), 0);
-    const waterGoal = profile?.water_goal_ml || 2000;
+    const waterGoal = profile?.water_goal_ml;
     if (waterGoal && waterTotal < waterGoal / 2) {
       const waterRem = ` Não te esqueças de começar a beber água desde já para manteres a hidratação.`;
       msg = msg ? `${msg}${waterRem}` : `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
     }
-    return msg || null;
-  }, [activePlanItems.today, todayWater, profile]);
+    if (msg) return msg;
+    return typeof dailySummary?.warnings === 'string' && dailySummary.warnings.trim() ? dailySummary.warnings.trim() : null;
+  }, [activePlanItems.today, todayWater, profile, dailySummary]);
 
   const tomorrowPrepText = useMemo(() => {
     const nonRest = activePlanItems.tomorrow.filter(i => i.kind !== 'descanso');
-    if (nonRest.length === 0) return null;
+    if (nonRest.length === 0) {
+      return typeof dailySummary?.tomorrow_prep === 'string' && dailySummary.tomorrow_prep.trim() ? dailySummary.tomorrow_prep.trim() : null;
+    }
     const itemsDesc = nonRest.map(formatItemSummary).join(' e ');
     const hasRun = nonRest.some(i => i.kind === 'corrida');
     const hasGym = nonRest.some(i => i.kind === 'ginasio');
@@ -83,7 +86,7 @@ export default function CoachDailySummaryCard() {
     if (hasRun && !hasGym) tip = 'Deixa o teu equipamento de corrida pronto.';
     else if (hasGym && !hasRun) tip = 'Deixa a tua sacola de treino pronta para o ginásio.';
     return `Amanhã o plano aponta para: ${itemsDesc}. ${tip}`;
-  }, [activePlanItems.tomorrow]);
+  }, [activePlanItems.tomorrow, dailySummary]);
 
   const messages = useMemo(() => {
     const list = [];

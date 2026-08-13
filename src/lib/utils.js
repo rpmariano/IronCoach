@@ -4,6 +4,12 @@ export function todayISO() {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
+export function addDaysISO(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 /* Data do calendário em Portugal, não em UTC. A Edge Function dos lembretes
    decide a janela horária pela hora de Lisboa, por isso o dia a que um
    "silenciar hoje" se refere tem de ser o mesmo dia de Lisboa — em horário de
