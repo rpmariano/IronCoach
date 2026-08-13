@@ -11,7 +11,7 @@ const TAB_MODULE_COLORS = {
   dashboard: 'var(--accent)',
   nutricao: 'var(--mod-nutricao-to, #059669)',
   ginasio: 'var(--mod-ginasio-to, #facc15)',
-  corpo: 'var(--mod-corpo-to, #64748b)',
+  corpo: 'var(--mod-corpo-to, #e11d48)',
   corrida: 'var(--mod-corrida-to, #c026d3)',
   coach: 'var(--accent)',
   perfil: 'var(--accent)',

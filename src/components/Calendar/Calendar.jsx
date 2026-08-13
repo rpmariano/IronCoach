@@ -175,7 +175,7 @@ export default function Calendar() {
                     {dayRuns.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corrida-to, #c026d3)' }} />}
                     {dayGym.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-ginasio-to, #facc15)' }} />}
                     {dayMeals.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-nutricao-to, #059669)' }} />}
-                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corpo-to, #64748b)' }} />}
+                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corpo-to, #e11d48)' }} />}
                     
                     {!dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
                        <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
@@ -202,7 +202,7 @@ export default function Calendar() {
             <span>Nutrição</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corpo-to, #64748b)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corpo-to, #e11d48)' }}></span>
             <span>Corpo</span>
           </div>
         </div>

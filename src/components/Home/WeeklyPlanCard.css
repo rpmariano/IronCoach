@@ -80,28 +80,28 @@
 
 /* Day Card Module Colors */
 .wpc-day-card.run {
-  border-color: rgba(192, 38, 211, 0.25);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(192, 38, 211, 0.04) 100%);
+  border-color: rgba(192, 38, 211, 0.35);
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(192, 38, 211, 0.06) 100%);
 }
 
 .wpc-day-card.gym {
-  border-color: rgba(250, 204, 21, 0.35);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(250, 204, 21, 0.06) 100%);
+  border-color: rgba(250, 204, 21, 0.5);
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(250, 204, 21, 0.08) 100%);
 }
 
 .wpc-day-card.corpo {
-  border-color: rgba(100, 116, 139, 0.25);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(100, 116, 139, 0.04) 100%);
+  border-color: rgba(225, 29, 72, 0.35);
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(225, 29, 72, 0.06) 100%);
 }
 
 .wpc-day-card.nutri {
-  border-color: rgba(5, 150, 105, 0.25);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(5, 150, 105, 0.04) 100%);
+  border-color: rgba(5, 150, 105, 0.35);
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(5, 150, 105, 0.06) 100%);
 }
 
 .wpc-day-card.rest {
-  border-color: rgba(249, 115, 22, 0.25);
-  background: linear-gradient(135deg, rgba(255,255,255,0.75) 0%, rgba(249, 115, 22, 0.04) 100%);
+  border-color: rgba(249, 115, 22, 0.35);
+  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(249, 115, 22, 0.06) 100%);
 }
 
 .wpc-day-card.empty {
@@ -155,37 +155,37 @@
 .wpc-icon-wrap.run {
   background: rgba(192, 38, 211, 0.15);
   color: #c026d3;
-  border: 1px solid rgba(192, 38, 211, 0.35);
+  border: 1.5px solid rgba(192, 38, 211, 0.45);
 }
 
 .wpc-icon-wrap.gym {
-  background: rgba(250, 204, 21, 0.15);
-  color: #facc15;
-  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(250, 204, 21, 0.2);
+  color: #ca8a04;
+  border: 1.5px solid rgba(250, 204, 21, 0.6);
 }
 
 .wpc-icon-wrap.corpo {
-  background: rgba(100, 116, 139, 0.15);
-  color: #64748b;
-  border: 1px solid rgba(100, 116, 139, 0.35);
+  background: rgba(225, 29, 72, 0.15);
+  color: #e11d48;
+  border: 1.5px solid rgba(225, 29, 72, 0.45);
 }
 
 .wpc-icon-wrap.nutri {
   background: rgba(5, 150, 105, 0.15);
   color: #059669;
-  border: 1px solid rgba(5, 150, 105, 0.35);
+  border: 1.5px solid rgba(5, 150, 105, 0.45);
 }
 
 .wpc-icon-wrap.rest {
   background: rgba(249, 115, 22, 0.15);
   color: #ea580c;
-  border: 1px solid rgba(249, 115, 22, 0.35);
+  border: 1.5px solid rgba(249, 115, 22, 0.45);
 }
 
 .wpc-icon-wrap.empty {
   background: rgba(15, 23, 42, 0.05);
   color: #64748b;
-  border: 1px solid rgba(100, 116, 139, 0.25);
+  border: 1.5px solid rgba(100, 116, 139, 0.25);
 }
 
 .wpc-day-info {
@@ -315,8 +315,8 @@
 }
 
 .wpc-detail-title.run { color: #c026d3; }
-.wpc-detail-title.gym { color: #facc15; }
-.wpc-detail-title.corpo { color: #64748b; }
+.wpc-detail-title.gym { color: #ca8a04; }
+.wpc-detail-title.corpo { color: #e11d48; }
 .wpc-detail-title.nutri { color: #059669; }
 .wpc-detail-title.rest { color: #ea580c; }
 
@@ -385,11 +385,11 @@
 }
 
 .wpc-info-box-header.gym {
-  color: #facc15;
+  color: #ca8a04;
 }
 
 .wpc-info-box-header.corpo {
-  color: #64748b;
+  color: #e11d48;
 }
 
 .wpc-info-box-text {
