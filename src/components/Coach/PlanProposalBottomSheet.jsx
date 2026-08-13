@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Sparkles, Check, X, Calendar, Target } from 'lucide-react';
+import React, { useMemo, useState, useRef } from 'react';
+import { Sparkles, Check, X, Calendar, Target, ChevronDown, ChevronUp } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
 
 const GOAL_LABELS = {
@@ -24,6 +24,31 @@ export function PlanProposalBottomSheet({
 }) {
   if (!plan && !goalProposal) return null;
 
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const touchStartY = useRef(null);
+
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartY.current !== null) {
+      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+      if (deltaY > 50) {
+        // Deslizar para baixo: encolhe ou fecha se já estiver encolhido
+        if (!isCollapsed) {
+          setIsCollapsed(true);
+        } else {
+          onClose();
+        }
+      } else if (deltaY < -50) {
+        // Deslizar para cima: expande
+        setIsCollapsed(false);
+      }
+      touchStartY.current = null;
+    }
+  };
+
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
   const days = useMemo(
     () => {
@@ -44,15 +69,25 @@ export function PlanProposalBottomSheet({
 
       {/* Modal Bottom Sheet (Persiana) */}
       <div 
-        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl animate-bottom-sheet-slide overflow-hidden"
+        className={`relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl transition-all duration-300 ease-out overflow-hidden ${
+          isCollapsed ? 'max-h-[220px]' : 'max-h-[85vh]'
+        }`}
         style={{
           background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        {/* Pega / Grab Handle */}
-        <div className="w-12 h-1.5 bg-slate-600/50 rounded-full mx-auto my-3 shrink-0" />
+        {/* Pega / Grab Handle Interativo */}
+        <div 
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="w-full py-3 cursor-pointer flex items-center justify-center shrink-0 group"
+          title={isCollapsed ? "Expandir persiana" : "Encolher persiana"}
+        >
+          <div className={`w-12 h-1.5 rounded-full transition-colors ${isCollapsed ? 'bg-amber-400 group-hover:bg-amber-300' : 'bg-slate-600/60 group-hover:bg-slate-400'}`} />
+        </div>
 
         {/* Cabeçalho */}
         <div className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80 shrink-0">
@@ -76,14 +111,27 @@ export function PlanProposalBottomSheet({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
-            aria-label="Fechar"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Botão de Alternar Expansão (Expandir / Encolher) */}
+            <button
+              type="button"
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
+              aria-label={isCollapsed ? "Expandir persiana" : "Encolher persiana"}
+            >
+              {isCollapsed ? <ChevronUp size={20} className="text-amber-400 animate-bounce" /> : <ChevronDown size={20} />}
+            </button>
+
+            {/* Botão Fechar */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition active:scale-95"
+              aria-label="Fechar"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Conteúdo Scrollável */}
