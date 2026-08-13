@@ -4,9 +4,7 @@ import {
   Utensils, Coffee, Award, StickyNote, Clock,
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
-import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
 import CoachText from '../shared/CoachText';
-import { mapCategoriesToMuscles } from '../../utils/gym';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -254,11 +252,7 @@ export function PlanDayCard({ dateISO, dayNumber, items, isToday, isOverdue, onC
                   </div>
                 )}
 
-                {item.kind === 'ginasio' && item.categories && item.categories.length > 0 && (
-                  <div className="wpc-info-box" style={{ padding: '0', background: 'transparent', border: 'none' }}>
-                    <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(item.categories)} naked />
-                  </div>
-                )}
+
               </div>
             ))}
           </div>
