@@ -78,35 +78,15 @@
   margin-bottom: 0;
 }
 
-/* Day Card Module Colors */
-.wpc-day-card.run {
-  border-color: rgba(192, 38, 211, 0.35);
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(192, 38, 211, 0.06) 100%);
-}
-
-.wpc-day-card.gym {
-  border-color: rgba(250, 204, 21, 0.5);
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(250, 204, 21, 0.08) 100%);
-}
-
-.wpc-day-card.corpo {
-  border-color: rgba(225, 29, 72, 0.35);
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(225, 29, 72, 0.06) 100%);
-}
-
-.wpc-day-card.nutri {
-  border-color: rgba(5, 150, 105, 0.35);
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(5, 150, 105, 0.06) 100%);
-}
-
-.wpc-day-card.rest {
-  border-color: rgba(249, 115, 22, 0.35);
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(249, 115, 22, 0.06) 100%);
-}
-
+/* Day Card Module Colors - Neutros com borda limpa exatamente como os cartões de registos */
+.wpc-day-card.run,
+.wpc-day-card.gym,
+.wpc-day-card.corpo,
+.wpc-day-card.nutri,
+.wpc-day-card.rest,
 .wpc-day-card.empty {
-  border-color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(226, 232, 240, 0.9);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .wpc-day-card.is-today {
@@ -153,39 +133,39 @@
 }
 
 .wpc-icon-wrap.run {
-  background: rgba(192, 38, 211, 0.15);
+  background: #fce7f3;
   color: #c026d3;
-  border: 1.5px solid rgba(192, 38, 211, 0.45);
+  border: 1px solid #f472b6;
 }
 
 .wpc-icon-wrap.gym {
-  background: rgba(250, 204, 21, 0.2);
+  background: #fef9c3;
   color: #ca8a04;
-  border: 1.5px solid rgba(250, 204, 21, 0.6);
+  border: 1px solid #facc15;
 }
 
 .wpc-icon-wrap.corpo {
-  background: rgba(225, 29, 72, 0.15);
+  background: #ffe4e6;
   color: #e11d48;
-  border: 1.5px solid rgba(225, 29, 72, 0.45);
+  border: 1px solid #fb7185;
 }
 
 .wpc-icon-wrap.nutri {
-  background: rgba(5, 150, 105, 0.15);
+  background: #d1fae5;
   color: #059669;
-  border: 1.5px solid rgba(5, 150, 105, 0.45);
+  border: 1px solid #34d399;
 }
 
 .wpc-icon-wrap.rest {
-  background: rgba(249, 115, 22, 0.15);
+  background: #ffedd5;
   color: #ea580c;
-  border: 1.5px solid rgba(249, 115, 22, 0.45);
+  border: 1px solid #fb923c;
 }
 
 .wpc-icon-wrap.empty {
-  background: rgba(15, 23, 42, 0.05);
+  background: #f1f5f9;
   color: #64748b;
-  border: 1.5px solid rgba(100, 116, 139, 0.25);
+  border: 1px solid #cbd5e1;
 }
 
 .wpc-day-info {
@@ -276,9 +256,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(16, 185, 129, 0.15);
+  background: #d1fae5;
   color: #059669;
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  border: 1px solid #34d399;
 }
 
 .wpc-chevron {
