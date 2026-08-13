@@ -270,6 +270,39 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
   return JSON.parse(text);
 }
 
+function diffDaysISO(aISO: string, bISO: string): number {
+  return Math.round((new Date(bISO + "T00:00:00Z").getTime() - new Date(aISO + "T00:00:00Z").getTime()) / 86400000);
+}
+
+export function computeAcceptedWindow(plans: any[], items: any[], today: string): Set<string> {
+  const accepted = (plans || []).filter((p) => p.status === "aceite");
+  if (accepted.length === 0) return new Set();
+
+  const relevant = accepted.filter((p) => {
+    if (p.period_end >= today) return true;
+    return (items || []).some((i) => i.plan_id === p.id && i.status === "pendente");
+  });
+  if (relevant.length === 0) return new Set();
+
+  const sorted = [...relevant].sort((a, b) => a.period_start.localeCompare(b.period_start));
+  const blocks: { start: string; end: string; planIds: string[] }[] = [];
+  for (const p of sorted) {
+    const last = blocks[blocks.length - 1];
+    if (last && diffDaysISO(last.end, p.period_start) <= 1) {
+      if (p.period_end > last.end) last.end = p.period_end;
+      last.planIds.push(p.id);
+    } else {
+      blocks.push({ start: p.period_start, end: p.period_end, planIds: [p.id] });
+    }
+  }
+
+  const current = blocks.find((b) => today >= b.start && today <= b.end)
+    ?? blocks.find((b) => b.end >= today)
+    ?? blocks[0];
+
+  return current ? new Set(current.planIds) : new Set();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
@@ -319,6 +352,7 @@ Deno.serve(async (req) => {
       { data: recentRuns },
       { data: recentGym },
       { data: acceptedPlans },
+      { data: fetchedItems },
       { data: nextRace },
     ] = await Promise.all([
       sb.from("profiles")
@@ -332,32 +366,24 @@ Deno.serve(async (req) => {
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
-        .select("id")
+        .select("id, period_start, period_end, status")
         .eq("user_id", userId)
-        .eq("status", "aceite")
-        .gte("period_end", today)
-        .order("period_start", { ascending: false })
-        .limit(1),
+        .eq("status", "aceite"),
+      sb.from("coach_plan_items")
+        .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
+        .eq("user_id", userId)
+        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
+        .neq("status", "cancelado"),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);
 
-    const activePlanId = acceptedPlans?.[0]?.id ?? null;
-    let planItems: any[] = [];
-    if (activePlanId) {
-      const { data: fetchedItems } = await sb
-        .from("coach_plan_items")
-        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
-        .eq("user_id", userId)
-        .eq("plan_id", activePlanId)
-        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
-        .neq("status", "cancelado");
-      planItems = fetchedItems || [];
-    }
+    const activePlanIds = computeAcceptedWindow(acceptedPlans || [], fetchedItems || [], today);
+    const planItems = (fetchedItems || []).filter((item: any) => activePlanIds.has(item.plan_id));
 
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
-      recentRuns: recentRuns || [], recentGym: recentGym || [], planItems: planItems || [], nextRace,
+      recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
     });
 
     let generated: { recap: string | null; warnings: string | null; meal_suggestion: string | null; tomorrow_prep: string | null };
