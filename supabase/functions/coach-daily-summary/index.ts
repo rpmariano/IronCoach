@@ -84,7 +84,7 @@ function totalsFromMeal(meal: any): MealTotals {
 }
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date());
 }
 export function addDaysISO(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z");
@@ -294,7 +294,7 @@ Deno.serve(async (req) => {
       { data: todayWater },
       { data: recentRuns },
       { data: recentGym },
-      { data: planItems },
+      { data: acceptedPlans },
       { data: nextRace },
     ] = await Promise.all([
       sb.from("profiles")
@@ -307,14 +307,23 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
-      // D+2 incluído só para dar ao modelo visibilidade do que vem a seguir —
-      // NUNCA deve ser tratado como parte de "amanhã" (ver regra no prompt).
-      sb.from("coach_plan_items")
-        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
-        .eq("user_id", userId).in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)]).neq("status", "cancelado"),
+      sb.from("coach_plans").select("id").eq("user_id", userId).eq("status", "aceite"),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);
+
+    const acceptedPlanIds = (acceptedPlans || []).map((p: { id: string }) => p.id);
+    let planItems: any[] = [];
+    if (acceptedPlanIds.length > 0) {
+      const { data: fetchedItems } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
+        .eq("user_id", userId)
+        .in("plan_id", acceptedPlanIds)
+        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
+        .neq("status", "cancelado");
+      planItems = fetchedItems || [];
+    }
 
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
