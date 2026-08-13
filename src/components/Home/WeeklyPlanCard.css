@@ -12,8 +12,16 @@
   padding: 24px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
+  min-height: 204px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+@media (max-width: 480px) {
+  .wpc-card {
+    padding: 16px;
+  }
 }
 
 .wpc-glow-coach {
@@ -30,6 +38,10 @@
 .wpc-content {
   position: relative;
   z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .wpc-header-row {
@@ -64,6 +76,7 @@
 .wpc-carousel {
   display: flex;
   gap: 12px;
+  width: 100%;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding-bottom: 8px; /* space for shadows */
@@ -80,30 +93,29 @@
 .wpc-day-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(241, 245, 249, 0.85);
+  border: 1px solid rgba(203, 213, 225, 0.7);
   border-radius: 20px;
   padding: 16px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
-  transition: opacity 0.2s, box-shadow 0.2s, border-color 0.2s;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+  transition: opacity 0.2s, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
   
   /* Carousel specifics */
-  min-width: 100%;
-  max-width: 100%;
   width: 100%;
-  flex-shrink: 0;
+  flex: 0 0 100%;
+  min-width: 0;
   scroll-snap-align: center;
 }
 
-/* Day Card Module Colors - Neutros com borda limpa exatamente como os cartões de registos */
+/* Day Card Module Colors - Fundo escurecido para destacar os cartões internos em branco */
 .wpc-day-card.run,
 .wpc-day-card.gym,
 .wpc-day-card.corpo,
 .wpc-day-card.nutri,
 .wpc-day-card.rest,
 .wpc-day-card.empty {
-  border-color: rgba(226, 232, 240, 0.9);
-  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(203, 213, 225, 0.8);
+  background: rgba(241, 245, 249, 0.85);
 }
 
 .wpc-day-card.is-today {
@@ -350,13 +362,13 @@
   color: #ef4444;
 }
 
-/* Info Boxes */
+/* Info Boxes (Cartões internos em branco puro) */
 .wpc-info-box {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 16px;
-  padding: 12px 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+  padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .wpc-info-box-header {
