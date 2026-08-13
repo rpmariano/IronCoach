@@ -238,8 +238,6 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-6 fade-in pb-8">
-      <h2 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--green)' }}>Início</h2>
-
       {/* Resumo do Coach — ver specs/plano-de-treino.md §11 */}
       <CoachDailySummaryCard />
 
