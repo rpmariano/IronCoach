@@ -17,6 +17,7 @@ export const useAppStore = create((set, get) => ({
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
+  coachGoalProposals: [],
   // Resumo diário do Coach (card rotativo do Início) — null até carregar,
   // depois {recap, warnings, meal_suggestion, tomorrow_prep, date, ...}.
   // Ver specs/plano-de-treino.md §11.
@@ -81,6 +82,47 @@ export const useAppStore = create((set, get) => ({
       supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
     ]);
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
+  },
+
+  reloadCoachGoalProposals: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return;
+    const { data, error } = await supabase
+      .from('coach_goal_proposals')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'proposto')
+      .order('created_at', { ascending: false });
+    if (!error && data) {
+      set({ coachGoalProposals: data });
+    }
+  },
+
+  respondToGoalProposal: async (proposalId, accept) => {
+    const proposal = (get().coachGoalProposals || []).find(p => p.id === proposalId);
+    const updates = accept
+      ? { status: 'aceite', accepted_at: new Date().toISOString() }
+      : { status: 'recusado' };
+
+    const { error } = await supabase.from('coach_goal_proposals').update(updates).eq('id', proposalId);
+    if (error) { console.error('Error responding to goal proposal:', error); return false; }
+
+    if (accept && proposal?.goals) {
+      const userId = get().session?.user?.id || get().profile?.id;
+      if (userId) {
+        await supabase.from('profiles').update(proposal.goals).eq('id', userId);
+        const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+        if (updatedProfile) {
+          set({ profile: updatedProfile });
+        }
+      }
+    }
+
+    set((state) => ({
+      coachGoalProposals: (state.coachGoalProposals || []).filter(p => p.id !== proposalId),
+    }));
+
+    return true;
   },
 
   // Aceitar/recusar uma proposta do coach. Enquanto 'proposto', os itens não

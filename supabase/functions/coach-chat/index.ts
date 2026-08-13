@@ -925,13 +925,11 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
 
 // Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
 // SÓ se o atleta tiver ativado coach_can_set_nutrition_goals (toggle global).
-// deno-lint-ignore no-explicit-any
 export async function runUpdateGoals(sb: any, userId: string, args: any): Promise<string> {
   const fieldNames = Object.keys(GOAL_META);
   // deno-lint-ignore no-explicit-any
   const updates: Record<string, any> = {};
 
-  // Verificar quais campos foram passados e validar limites.
   for (const field of fieldNames) {
     const raw = (args || {})[field];
     if (raw === undefined || raw === null) continue;
@@ -940,24 +938,22 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
     if (!Number.isFinite(n) || n < min || n > max) {
       return `Erro: ${field} tem de ser um número entre ${min} e ${max} (${GOAL_META[field].unit}).`;
     }
-    // Valores em gramas/kcal arredondados; decimais só em kg/%.
     const rounded = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg"].includes(field)
       ? Math.round(n * 10) / 10
       : Math.round(n);
     updates[field] = rounded;
-    updates[GOAL_META[field].flag] = true;
   }
 
   if (Object.keys(updates).length === 0) {
     return "Erro: nenhum campo fornecido. Indica pelo menos um objetivo a atualizar.";
   }
 
-  // Verificar autorização global do atleta.
   const { data: profile, error: profileErr } = await sb
     .from("profiles")
-    .select("coach_can_set_nutrition_goals")
+    .select("coach_can_set_nutrition_goals, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
     .eq("id", userId)
     .maybeSingle();
+
   if (profileErr) return `Erro a verificar autorização: ${profileErr.message}`;
   if (!profile?.coach_can_set_nutrition_goals) {
     return "Erro: o atleta ainda não autorizou o Coach a escrever metas. " +
@@ -965,13 +961,40 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
       "e não tentes de novo nesta resposta.";
   }
 
-  const { error: updateErr } = await sb.from("profiles").update(updates).eq("id", userId);
-  if (updateErr) return `Erro ao gravar metas: ${updateErr.message}`;
+  // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil
+  const realChanges: Record<string, any> = {};
+  for (const [k, v] of Object.entries(updates)) {
+    const currentVal = profile ? profile[k] : null;
+    if (currentVal !== v) {
+      realChanges[k] = v;
+      realChanges[GOAL_META[k].flag] = true;
+    }
+  }
 
-  const parts = fieldNames
-    .filter(f => updates[f] !== undefined && !f.endsWith("_set_by_coach"))
-    .map(f => `${GOAL_META[f].label}: ${updates[f]} ${GOAL_META[f].unit}`);
-  return `Metas atualizadas: ${parts.join(", ")}. Já estão gravadas no perfil do atleta.`;
+  if (Object.keys(realChanges).length === 0) {
+    return "Nenhuma proposta de alteração de metas foi criada porque todos os valores propostos são IDÊNTICOS aos objetivos atuais do atleta no perfil. NÃO digas que propuseste ou alteraste os objetivos.";
+  }
+
+  const rationale = typeof args?.rationale === "string" && args.rationale.trim() ? args.rationale.trim() : null;
+  const { error: propErr } = await sb
+    .from("coach_goal_proposals")
+    .insert({
+      user_id: userId,
+      status: "proposto",
+      goals: realChanges,
+      rationale: rationale || "Ajuste de objetivos pelo Coach",
+    });
+
+  if (propErr) return `Erro ao criar proposta de objetivos: ${propErr.message}`;
+
+  const parts = Object.keys(realChanges)
+    .filter(f => !f.endsWith("_set_by_coach"))
+    .map(f => `${GOAL_META[f].label}: ${profile[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
+
+  return `Proposta de alteração de metas criada com SUCESSO e enviada para a persiana (Modal Bottom Sheet) do atleta (status: proposto). ` +
+    `Campos a alterar: ${parts.join(", ")}. ` +
+    `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do utilizador na persiana. ` +
+    `Diz ao atleta que enviaste uma proposta de alteração de objetivos para a persiana para ele Aceitar ou Recusar.`;
 }
 
 // ── Sugestões alimentares ────────────────────────────────────────────────
@@ -2023,17 +2046,10 @@ export function buildSystemInstruction(
   // Instruções de metas — o modelo só menciona update_goals quando autorizado,
   // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
-    ? `\n\nATUALIZAÇÃO DE METAS (autorizado): o atleta autorizou-te a escrever metas ` +
-      `diretamente no perfil com a ferramenta update_goals. Campos disponíveis: calorias ` +
-      `(calorie_goal), proteína (protein_goal), hidratos (carbs_goal), gordura (fat_goal), ` +
-      `água (water_goal_ml), peso-alvo (goal_weight_kg), gordura corporal alvo ` +
-      `(goal_body_fat_pct), massa muscular alvo (goal_muscle_mass_kg).\n` +
-      `FLUXO OBRIGATÓRIO — sempre em 2 passos:\n` +
-      `1. Propõe o(s) valor(es) em texto com justificação (ex.: "Sugiro aumentar proteína para ` +
-      `180 g/dia — 1,8 g/kg · 72 kg, adequado para 4 treinos de força por semana.").\n` +
-      `2. Pergunta explicitamente: "Queres que atualize agora no teu perfil?" ou equivalente.\n` +
-      `3. Só chamas update_goals DEPOIS de o atleta confirmar. Nunca por iniciativa própria.\n` +
-      `4. Depois de gravar, confirma o que ficou alterado numa frase curta.`
+    ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
+      `1. SÓ DEVES PROPOR alterar objetivos (calorias, proteína, hidratos, gordura, água, peso-alvo) se os valores calculados forem EFETIVAMENTE DIFERENTES dos objetivos atuais do atleta no perfil. Se forem idênticos aos atuais, NÃO chames a ferramenta update_goals e NÃO sugiras alterar metas.\n` +
+      `2. Quando existirem alterações reais a fazer, chama a ferramenta update_goals. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
+      `3. NUNCA digas ao atleta que "já atualizaste o perfil" — diz sempre que "enviaste a proposta de alteração de objetivos para a persiana para ele rever e aceitar/recusar".`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +

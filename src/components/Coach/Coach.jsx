@@ -25,15 +25,26 @@ export default function Coach() {
     reloadCoachPlans,
     coachPlans,
     coachPlanItems,
-    respondToPlan
+    respondToPlan,
+    coachGoalProposals,
+    reloadCoachGoalProposals,
+    respondToGoalProposal
   } = useAppStore();
   const { showToast } = useToast();
 
   const pendingPlans = (coachPlans || []).filter(p => p.status === 'proposto');
-  const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
-  const [autoOpenedPlans, setAutoOpenedPlans] = useState(() => new Set());
+  const pendingGoalProposals = coachGoalProposals || [];
 
-  // Auto-abre a persiana Modal Bottom Sheet quando o Coach sugere um plano novo
+  const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
+  const [activeGoalProposal, setActiveGoalProposal] = useState(null);
+  const [autoOpenedPlans, setAutoOpenedPlans] = useState(() => new Set());
+  const [autoOpenedGoals, setAutoOpenedGoals] = useState(() => new Set());
+
+  useEffect(() => {
+    reloadCoachGoalProposals();
+  }, []);
+
+  // Auto-abre a persiana Modal Bottom Sheet quando o Coach sugere um plano novo ou novos objetivos
   useEffect(() => {
     if (pendingPlans.length > 0) {
       const unopened = pendingPlans.find(p => !autoOpenedPlans.has(p.id));
@@ -42,11 +53,23 @@ export default function Coach() {
         setAutoOpenedPlans(prev => new Set(prev).add(unopened.id));
       }
     }
-  }, [pendingPlans, autoOpenedPlans]);
+    if (pendingGoalProposals.length > 0) {
+      const unopenedGoal = pendingGoalProposals.find(g => !autoOpenedGoals.has(g.id));
+      if (unopenedGoal) {
+        setActiveGoalProposal(unopenedGoal);
+        setAutoOpenedGoals(prev => new Set(prev).add(unopenedGoal.id));
+      }
+    }
+  }, [pendingPlans, pendingGoalProposals, autoOpenedPlans, autoOpenedGoals]);
 
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
     if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
+  };
+
+  const handleRespondGoal = async (proposalId, accept) => {
+    const ok = await respondToGoalProposal(proposalId, accept);
+    if (ok) showToast(accept ? 'Objetivos aceites e atualizados' : 'Proposta de objetivos recusada');
   };
 
   const [inputStr, setInputStr] = useState('');
@@ -202,19 +225,28 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Sugestões pendentes — Banner que abre o Modal Bottom Sheet (Persiana) */}
-      {pendingPlans.length > 0 && (
+      {/* Sugestões pendentes (Planos / Objetivos) — Banner que abre o Modal Bottom Sheet */}
+      {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
         <button
           type="button"
-          onClick={() => setActiveProposalSheetPlan(pendingPlans[0])}
-          className="shrink-0 mb-3 w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-lg active:scale-98 transition"
+          onClick={() => {
+            if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
+            if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
+          }}
+          className="shrink-0 mb-3 w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-amber-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-lg active:scale-98 transition"
         >
           <span className="flex items-center gap-2">
             <Sparkles size={15} className="text-emerald-400 animate-pulse" />
-            <span>Proposta de plano por rever ({pendingPlans.length})</span>
+            <span>
+              {pendingPlans.length > 0 && pendingGoalProposals.length > 0
+                ? `Propostas de plano e objetivos por rever (${pendingPlans.length + pendingGoalProposals.length})`
+                : pendingPlans.length > 0
+                ? `Proposta de plano por rever (${pendingPlans.length})`
+                : `Proposta de alteração de objetivos (${pendingGoalProposals.length})`}
+            </span>
           </span>
           <span className="flex items-center gap-1 text-[11px] bg-emerald-500/20 px-2.5 py-1 rounded-xl text-emerald-200 font-semibold">
-            Ver plano <ChevronRight size={13} />
+            Ver proposta <ChevronRight size={13} />
           </span>
         </button>
       )}
@@ -402,13 +434,19 @@ export default function Coach() {
         </div>
       )}
 
-      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Plano */}
-      {activeProposalSheetPlan && (
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Propostas */}
+      {(activeProposalSheetPlan || activeGoalProposal || pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
         <PlanProposalBottomSheet
-          plan={activeProposalSheetPlan}
+          plan={activeProposalSheetPlan || (pendingPlans.length > 0 ? pendingPlans[0] : null)}
           items={coachPlanItems}
-          onRespond={handleRespond}
-          onClose={() => setActiveProposalSheetPlan(null)}
+          goalProposal={activeGoalProposal || (pendingGoalProposals.length > 0 ? pendingGoalProposals[0] : null)}
+          profile={profile}
+          onRespondPlan={handleRespond}
+          onRespondGoal={handleRespondGoal}
+          onClose={() => {
+            setActiveProposalSheetPlan(null);
+            setActiveGoalProposal(null);
+          }}
         />
       )}
     </div>
