@@ -307,19 +307,25 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, categories, duration_seconds")
         .eq("user_id", userId).gte("date", addDaysISO(today, -6)).lte("date", today).order("date", { ascending: false }),
-      sb.from("coach_plans").select("id").eq("user_id", userId).eq("status", "aceite"),
+      sb.from("coach_plans")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("status", "aceite")
+        .gte("period_end", today)
+        .order("period_start", { ascending: false })
+        .limit(1),
       sb.from("race_events").select("name, date, race_type").eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(1).maybeSingle(),
     ]);
 
-    const acceptedPlanIds = (acceptedPlans || []).map((p: { id: string }) => p.id);
+    const activePlanId = acceptedPlans?.[0]?.id ?? null;
     let planItems: any[] = [];
-    if (acceptedPlanIds.length > 0) {
+    if (activePlanId) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
         .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
         .eq("user_id", userId)
-        .in("plan_id", acceptedPlanIds)
+        .eq("plan_id", activePlanId)
         .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
         .neq("status", "cancelado");
       planItems = fetchedItems || [];

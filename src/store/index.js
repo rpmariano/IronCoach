@@ -118,6 +118,11 @@ export const useAppStore = create((set, get) => ({
         return p;
       }),
     }));
+
+    if (accept) {
+      get().loadDailySummary({ force: true }).catch(() => {});
+    }
+
     return true;
   },
 
