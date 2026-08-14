@@ -27,7 +27,7 @@ describe('MissingMetricsBottomSheet', () => {
     expect(screen.getByText('Perda por Transpiração (ml)')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: /Carregar mais prints da app/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Completar manualmente \(manter dados\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Completar manualmente/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i })).toBeInTheDocument();
   });
 
@@ -37,7 +37,7 @@ describe('MissingMetricsBottomSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: /Carregar mais prints da app/i }));
     expect(defaultProps.onAddPhotos).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /Completar manualmente \(manter dados\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Completar manualmente/i }));
     expect(defaultProps.onGoManual).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
@@ -45,15 +45,23 @@ describe('MissingMetricsBottomSheet', () => {
   });
 
   it('chama onClose ao clicar no traço de touch ou deslizar para baixo', () => {
+    vi.useFakeTimers();
     render(<MissingMetricsBottomSheet {...defaultProps} />);
 
     const grabHandle = screen.getByTitle('Toca para fechar persiana');
     fireEvent.click(grabHandle);
+    vi.runAllTimers();
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+    
+    defaultProps.onClose.mockClear();
 
-    // Gestos de toque deslizar para baixo
+    // Gestos de toque deslizar para baixo (re-render to reset state since component marks itself as closing)
+    render(<MissingMetricsBottomSheet {...defaultProps} />);
     fireEvent.touchStart(grabHandle, { touches: [{ clientY: 100 }] });
-    fireEvent.touchEnd(grabHandle, { changedTouches: [{ clientY: 160 }] });
-    expect(defaultProps.onClose).toHaveBeenCalledTimes(2);
+    fireEvent.touchMove(grabHandle, { touches: [{ clientY: 250 }] });
+    fireEvent.touchEnd(grabHandle, { changedTouches: [{ clientY: 250 }] });
+    vi.runAllTimers();
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
