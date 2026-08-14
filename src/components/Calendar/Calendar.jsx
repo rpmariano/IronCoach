@@ -54,7 +54,6 @@ export default function Calendar() {
 
   // Delete handlers
   const handleDeleteRun = async (id) => {
-    if (!window.confirm('Eliminar corrida? Não pode ser desfeito.')) return;
     const previous = [...runs];
     setRuns(runs.filter(r => r.id !== id));
     try {
@@ -68,7 +67,6 @@ export default function Calendar() {
   };
 
   const handleDeleteGym = async (id) => {
-    if (!window.confirm('Eliminar treino? Não pode ser desfeito.')) return;
     const previous = [...gymSessions];
     setGymSessions(gymSessions.filter(s => s.id !== id));
     try {
@@ -82,7 +80,6 @@ export default function Calendar() {
   };
 
   const handleDeleteMeal = async (id) => {
-    if (!window.confirm('Eliminar refeição?')) return;
     const previous = [...meals];
     setMeals(meals.filter(m => m.id !== id));
     try {
@@ -96,7 +93,6 @@ export default function Calendar() {
   };
 
   const handleDeleteBody = async (id) => {
-    if (!window.confirm('Eliminar avaliação corporal?')) return;
     const previous = [...bodyAssessments];
     setBodyAssessments(bodyAssessments.filter(a => a.id !== id));
     try {

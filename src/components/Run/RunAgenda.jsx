@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -64,6 +65,8 @@ export default function RunAgenda() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteCandidate, setDeleteCandidate] = useState(null);
   // Destino pendente quando se tenta sair (nav para outro módulo) com
   // alterações por gravar — null quando o pedido veio do próprio botão
   // "Cancelar" do formulário, sem navegação nenhuma envolvida.
@@ -124,9 +127,17 @@ export default function RunAgenda() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Eliminar esta prova? Não pode ser desfeito.')) return;
+  const handleDeleteClick = (id) => {
+    setDeleteCandidate(id);
+    setShowDeleteConfirm(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!deleteCandidate) return;
+    const id = deleteCandidate;
+    setDeleteCandidate(null);
+    setShowDeleteConfirm(false);
+    
     // Optimistic delete
     const previous = [...raceEvents];
     setRaceEvents(raceEvents.filter(e => e.id !== id));
@@ -472,7 +483,7 @@ export default function RunAgenda() {
             <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="tap-44 text-slate-400 hover:text-[var(--accent)] transition">
               <Pencil size={16} />
             </button>
-            <button onClick={() => handleDelete(ev.id)} aria-label="Eliminar prova" className="tap-44 text-slate-400 hover:text-red-500 transition">
+            <button onClick={() => handleDeleteClick(ev.id)} aria-label="Eliminar prova" className="tap-44 text-slate-400 hover:text-red-500 transition">
               <Trash2 size={16} />
             </button>
           </div>
@@ -482,7 +493,17 @@ export default function RunAgenda() {
   };
 
   return (
-    <div className="space-y-4 fade-in pb-20">
+    <>
+      <ConfirmDeleteModal 
+        isOpen={showDeleteConfirm} 
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setDeleteCandidate(null);
+        }}
+        onConfirm={handleConfirmDelete} 
+        title="Eliminar prova?"
+      />
+      <div className="space-y-4 fade-in pb-20">
       {leaveModal}
       {!isFormOpen ? (
         <button
@@ -700,5 +721,6 @@ export default function RunAgenda() {
         </div>
       )}
     </div>
+    </>
   );
 }

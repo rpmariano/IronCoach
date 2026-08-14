@@ -522,7 +522,6 @@ async function generateCoachNotes(
           // segurança adicional.
           generationConfig: {
             maxOutputTokens: 8192,
-            thinkingConfig: { thinkingLevel: "minimal" },
           },
         }),
       },

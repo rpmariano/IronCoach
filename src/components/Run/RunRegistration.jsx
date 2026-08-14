@@ -293,7 +293,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         // Load photos
         if (r.photo_paths && r.photo_paths.length > 0) {
           setRunPhotos(r.photo_paths.map(p => {
-            const url = supabase.storage.from('run-images').getPublicUrl(p).data.publicUrl;
+            const url = supabase.storage.from('run-photos').getPublicUrl(p).data.publicUrl;
             return { url, dataUrl: url };
           }));
         }
@@ -1162,7 +1162,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <button
           type="button"
           onClick={() => setShowMissingMetricsSheet(true)}
-          className="fixed bottom-5 right-5 z-40 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-full px-3.5 py-2.5 shadow-lg flex items-center gap-1.5 transition active:scale-95 animate-bounce"
+          className="fixed bottom-20 right-5 z-[90] bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-full px-3.5 py-2.5 shadow-lg flex items-center gap-1.5 transition active:scale-95 animate-bounce"
         >
           <Sparkles className="w-4 h-4 text-amber-100" />
           <span>Métricas em falta ({missingKeysList.length})</span>

@@ -40,7 +40,7 @@ export default function MissingMetricsBottomSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
+    <div className="fixed inset-0 z-[100] flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
       {/* Overlay Escuro */}
       <div 
         className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-fade-in"

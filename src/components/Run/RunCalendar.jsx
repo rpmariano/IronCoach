@@ -74,7 +74,6 @@ export default function RunCalendar({ onNewRun }) {
   }, [runs]);
 
   const handleDeleteRun = async (id) => {
-    if (!window.confirm('Eliminar corrida? Não pode ser desfeito.')) return;
     const previous = [...runs];
     setRuns(runs.filter(r => r.id !== id));
     try {
