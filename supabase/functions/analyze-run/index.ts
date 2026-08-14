@@ -859,7 +859,7 @@ Deno.serve(async (req) => {
 
       const images: string[] = [];
       for (const path of photoPaths) {
-        const { data: fileBlob, error: downloadError } = await sb.storage.from("run-photos").download(path);
+        const { data: fileBlob, error: downloadError } = await sb.storage.from("run-images").download(path);
         if (downloadError || !fileBlob) {
           return jsonResponse({ error: `Falha a obter imagem guardada: ${downloadError?.message ?? "desconhecida"}` }, 500);
         }
@@ -1093,10 +1093,10 @@ Deno.serve(async (req) => {
     for (const b64 of images) {
       const path = `${userId}/${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await sb.storage
-        .from("run-photos")
+        .from("run-images")
         .upload(path, base64ToBytes(b64), { contentType: mime });
       if (uploadError) {
-        if (photoPaths.length) await sb.storage.from("run-photos").remove(photoPaths);
+        if (photoPaths.length) await sb.storage.from("run-images").remove(photoPaths);
         return jsonResponse({ error: `Falha no upload da imagem: ${uploadError.message}` }, 500);
       }
       photoPaths.push(path);
@@ -1107,7 +1107,7 @@ Deno.serve(async (req) => {
     try {
       result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey);
     } catch (e) {
-      await sb.storage.from("run-photos").remove(photoPaths);
+      await sb.storage.from("run-images").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
     }
 
@@ -1135,7 +1135,7 @@ Deno.serve(async (req) => {
       .select()
       .single();
     if (insertError) {
-      await sb.storage.from("run-photos").remove(photoPaths);
+      await sb.storage.from("run-images").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
     }
 
