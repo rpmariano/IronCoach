@@ -176,8 +176,13 @@ export function PlanProposalBottomSheet({
 
           {/* Cabeçalho inspirado em RunRegistration (sem bloco verde) */}
           <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4" style={{ color: 'var(--mod-coach-to)' }} />
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+              >
+                <Sparkles className="w-5 h-5 text-slate-900" />
+              </div>
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">
                   {plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos'}
