@@ -24,6 +24,7 @@ export function PlanProposalBottomSheet({
 }) {
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const touchStartY = useRef(0);
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -34,6 +35,14 @@ export function PlanProposalBottomSheet({
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  const handleDismiss = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      onCloseRef.current?.();
+    }, 220);
+  };
 
   useEffect(() => {
     const el = dragAreaRef.current;
@@ -64,11 +73,12 @@ export function PlanProposalBottomSheet({
     };
 
     const handleTouchEnd = () => {
-      if (dragYRef.current > 70) {
-        onCloseRef.current?.();
+      if (dragYRef.current > 60) {
+        handleDismiss();
+      } else {
+        setDragY(0);
       }
       dragYRef.current = 0;
-      setDragY(0);
       isDraggingRef.current = false;
       setIsDragging(false);
     };
@@ -99,35 +109,43 @@ export function PlanProposalBottomSheet({
     if (plan && onRespondPlan) {
       onRespondPlan(plan.id, accept);
     }
-    if (onClose) {
-      onClose();
-    }
+    handleDismiss();
   };
 
   const handleRespondGoalAction = (accept) => {
     if (goalProposal && onRespondGoal) {
       onRespondGoal(goalProposal.id, accept);
     }
-    if (onClose) {
-      onClose();
-    }
+    handleDismiss();
   };
+
+  const sheetTransform = isClosing
+    ? 'translateY(100%)'
+    : dragY > 0
+    ? `translateY(${dragY}px)`
+    : 'translateY(0%)';
+
+  const sheetTransition = isDragging
+    ? 'none'
+    : 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className="fixed inset-0 bg-black/75 backdrop-blur-md animate-bottom-sheet-overlay"
-        onClick={onClose}
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-200 ${
+          isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
+        }`}
+        onClick={handleDismiss}
         aria-hidden="true"
       />
 
       {/* Modal Bottom Sheet (Persiana) */}
       <div 
-        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl animate-bottom-sheet-slide overflow-hidden"
+        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl overflow-hidden"
         style={{
-          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
-          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+          transform: sheetTransform,
+          transition: sheetTransition,
           background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
@@ -138,7 +156,7 @@ export function PlanProposalBottomSheet({
         <div ref={dragAreaRef} className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
           {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
           <div 
-            onClick={onClose}
+            onClick={handleDismiss}
             className="w-full py-3.5 cursor-pointer flex items-center justify-center group"
             title="Fechar modal"
           >
@@ -170,7 +188,7 @@ export function PlanProposalBottomSheet({
             {/* Botão de Fechar (Cruz) */}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleDismiss}
               className="p-2 -mr-1.5 -mt-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/80 active:scale-95 transition-all shrink-0"
               title="Fechar modal"
               aria-label="Fechar modal"

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 
@@ -56,17 +56,22 @@ describe('PlanProposalBottomSheet', () => {
     expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
   });
 
-  it('fecha o modal ao clicar no botão de cruz (X) ou na pega de arrasto', () => {
+  it('fecha o modal com animação ao clicar no botão de cruz (X)', async () => {
     const onClose = vi.fn();
     render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
 
     const closeBtn = screen.getByRole('button', { name: 'Fechar modal' });
     expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('fecha o modal com animação ao clicar na pega de arrasto', async () => {
+    const onClose = vi.fn();
+    render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
 
     const handles = screen.getAllByTitle('Fechar modal');
     fireEvent.click(handles[0]);
-    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });
