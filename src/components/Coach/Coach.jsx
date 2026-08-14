@@ -233,29 +233,7 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante */}
-      {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-        <div className="fixed bottom-24 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none">
-          <button
-            type="button"
-            onClick={() => {
-              if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
-              if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
-            }}
-            className="text-white font-bold text-xs rounded-full px-5 py-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 pointer-events-auto"
-            style={{ backgroundColor: 'var(--mod-coach-to)' }}
-          >
-            <Sparkles className="w-4 h-4 text-white" />
-            <span>
-              {pendingPlans.length > 0 && pendingGoalProposals.length > 0
-                ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
-                : pendingPlans.length > 0
-                ? `Proposta de plano por rever (${pendingPlans.length})`
-                : `Objetivos por rever (${pendingGoalProposals.length})`}
-            </span>
-          </button>
-        </div>
-      )}
+
 
       {/* Messages Scroll Area */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar">
@@ -375,7 +353,30 @@ export default function Coach() {
       </div>
 
       {/* Input Box Footer */}
-      <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1">
+      <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
+        {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante sobre a caixa de texto */}
+        {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
+          <div className="absolute bottom-full mb-3 right-0 z-40">
+            <button
+              type="button"
+              onClick={() => {
+                if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
+                if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
+              }}
+              className="text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+              style={{ backgroundColor: 'var(--mod-coach-to)' }}
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+              <span>
+                {pendingPlans.length > 0 && pendingGoalProposals.length > 0
+                  ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
+                  : pendingPlans.length > 0
+                  ? `Proposta de plano por rever (${pendingPlans.length})`
+                  : `Objetivos por rever (${pendingGoalProposals.length})`}
+              </span>
+            </button>
+          </div>
+        )}
         <div className="flex gap-2 items-end">
           <textarea
             ref={textareaRef}
