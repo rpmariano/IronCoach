@@ -436,9 +436,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         return;
       }
 
+      const finishAndNavigateToCalendar = () => {
+        useAppStore.getState().setActiveTab('calendario');
+        useAppStore.getState().setOpenCreationMode(null);
+        onClose();
+      };
+
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
-      onClose();
+      finishAndNavigateToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -454,6 +460,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
       showToast('Corrida registada');
+      useAppStore.getState().setActiveTab('calendario');
+      useAppStore.getState().setOpenCreationMode(null);
       onClose();
     } else {
       handleSaveCorrida(true);
@@ -623,6 +631,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       showToast('Corrida registada');
+      useAppStore.getState().setActiveTab('calendario');
+      useAppStore.getState().setOpenCreationMode(null);
       onClose();
     } catch (err) {
       console.error(err);
