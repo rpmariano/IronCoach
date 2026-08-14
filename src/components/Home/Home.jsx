@@ -7,7 +7,7 @@ import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
 import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
-import { triggerHaptic } from '../../utils/haptics';
+import { useCarouselHaptics } from '../../utils/haptics';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -58,29 +58,12 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
-  const activeIndexRef = useRef(0);
-
-  const handleScroll = () => {
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      if (index !== activeIndexRef.current) {
-        activeIndexRef.current = index;
-        setCurrentIndex(index);
-        triggerHaptic(10);
-      }
-    }
-  };
-
-  const scrollTo = (index) => {
-    if (index !== activeIndexRef.current) {
-      activeIndexRef.current = index;
-      setCurrentIndex(index);
-      triggerHaptic(10);
-    }
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
-    }
-  };
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    upcoming.length,
+    currentIndex,
+    setCurrentIndex
+  );
 
   const color = 'var(--color-warn)';
 
@@ -102,8 +85,11 @@ function NextRaceCard({ raceEvents = [], onNav }) {
         <div className="flex items-center justify-between px-2">
           <div className="flex items-center gap-1.5">
             {upcoming.map((_, idx) => (
-              <div 
+              <button 
                 key={idx} 
+                type="button"
+                onClick={() => scrollTo(idx)}
+                aria-label={`Ver prova ${idx + 1}`}
                 className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
               />
             ))}
@@ -130,6 +116,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
+        onTouchMove={handleTouchMove}
         className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
         style={{ scrollBehavior: 'smooth' }}
       >
@@ -191,37 +178,23 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
 function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
-  const activeIndexRef = useRef(0);
-
-  const handleScroll = () => {
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      if (index !== activeIndexRef.current) {
-        activeIndexRef.current = index;
-        setCurrentIndex(index);
-        triggerHaptic(10);
-      }
-    }
-  };
-
-  const scrollTo = (index) => {
-    if (index !== activeIndexRef.current) {
-      activeIndexRef.current = index;
-      setCurrentIndex(index);
-      triggerHaptic(10);
-    }
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
-    }
-  };
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    2,
+    currentIndex,
+    setCurrentIndex
+  );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
           {[0, 1].map((idx) => (
-            <div 
+            <button 
               key={idx} 
+              type="button"
+              onClick={() => scrollTo(idx)}
+              aria-label={`Ver cartão ${idx + 1}`}
               className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
             />
           ))}
@@ -247,6 +220,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
+        onTouchMove={handleTouchMove}
         className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
         style={{ scrollBehavior: 'smooth' }}
       >

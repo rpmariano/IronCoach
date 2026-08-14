@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
 
 export const METRIC_CONFIGS = {
@@ -22,72 +22,168 @@ export default function MissingMetricsBottomSheet({
   onProceedAnyway,
   onClose,
 }) {
-  const touchStartY = useRef(null);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  
+  const touchStartY = useRef(0);
+  const dragYRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  
+  const scrollRef = useRef(null);
+  const dragAreaRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsClosing(false);
+      setDragY(0);
+      dragYRef.current = 0;
+    }
+  }, [isOpen]);
+
+  const handleDismiss = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      onCloseRef.current?.();
+    }, 220);
+  };
+
+  useEffect(() => {
+    const el = dragAreaRef.current;
+    if (!el || !isOpen) return;
+
+    const handleTouchStart = (e) => {
+      touchStartY.current = e.touches[0].clientY;
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY.current;
+      const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
+
+      if (deltaY > 0 && isAtTop) {
+        if (e.cancelable) e.preventDefault(); // CANCELA PULL-TO-REFRESH DO BROWSER
+        dragYRef.current = deltaY;
+        setDragY(deltaY);
+      } else if (deltaY < 0 && dragYRef.current > 0) {
+        if (e.cancelable) e.preventDefault();
+        const nextVal = Math.max(0, deltaY);
+        dragYRef.current = nextVal;
+        setDragY(nextVal);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (dragYRef.current > 60) {
+        handleDismiss();
+      } else {
+        setDragY(0);
+      }
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-  };
+  const sheetTransform = isClosing
+    ? 'translateY(100%)'
+    : dragY > 0
+    ? `translateY(${dragY}px)`
+    : 'translateY(0%)';
 
-  const handleTouchEnd = (e) => {
-    if (touchStartY.current !== null) {
-      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-      if (deltaY > 30) {
-        // Deslizar para baixo ou toque no traço: fecha a persiana
-        onClose();
-      }
-      touchStartY.current = null;
-    }
-  };
+  const sheetTransition = isDragging
+    ? 'none'
+    : 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
-      {/* Overlay Escuro */}
+      {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-fade-in touch-none"
-        onClick={onClose}
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-200 ${
+          isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
+        }`}
+        onClick={handleDismiss}
         aria-hidden="true"
       />
 
       {/* Persiana Bottom Sheet */}
       <div 
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        className="relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl transition-all duration-300 ease-out max-h-[85vh] overflow-hidden"
+        className="relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden max-h-[85vh]"
+        style={{
+          transform: sheetTransform,
+          transition: sheetTransition,
+          overscrollBehavior: 'contain',
+        }}
       >
-        {/* Traço de Touch (Grab Handle) — Tocar fecha o modal; swipe-down em toda a persiana funciona */}
-        <div 
-          onClick={onClose}
-          className="w-full py-3 cursor-pointer flex flex-col items-center justify-center shrink-0 group tap-44"
-          title="Toca para fechar persiana"
-          role="button"
-          aria-label="Fechar persiana"
-        >
-          <div className="w-12 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors mb-1" />
-          <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Toca para fechar</span>
-        </div>
-
-        {/* Conteúdo */}
-        <div className="px-5 pb-6 overflow-y-auto space-y-4 overscroll-contain">
-          {/* Cabeçalho do Alerta */}
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-800 leading-snug">
-                Métricas em falta no registo
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                O Coach detetou que faltam alguns dados importantes para uma análise completa. Como gostarias de proceder?
-              </p>
-            </div>
+        {/* Zona de Arrasto Superior (Pega) */}
+        <div ref={dragAreaRef} className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
+          {/* Traço de Touch (Grab Handle) */}
+          <div 
+            onClick={handleDismiss}
+            className="w-full py-3 cursor-pointer flex flex-col items-center justify-center group tap-44"
+            title="Toca para fechar persiana"
+            role="button"
+            aria-label="Fechar persiana"
+          >
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors mb-1" />
+            <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Toca para fechar</span>
           </div>
 
+          {/* Cabeçalho do Alerta, agora na zona fixa tal como no chat */}
+          <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">
+                  Métricas em falta
+                </h2>
+                <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                  Como gostarias de proceder?
+                </p>
+              </div>
+            </div>
+
+            {/* Botão Cancelar */}
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 active:scale-95 transition-all shrink-0"
+              title="Cancelar"
+              aria-label="Cancelar"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+
+        {/* Conteúdo Scrollável */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-slate-50/30">
           {/* Lista de Métricas em Falta */}
           {missingKeys.length > 0 && (
-            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2">
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2 shadow-sm">
               <span className="text-[11px] font-bold text-amber-900 block uppercase tracking-wider">
                 Métricas sugeridas ({missingKeys.length}):
               </span>
@@ -106,32 +202,38 @@ export default function MissingMetricsBottomSheet({
           )}
 
           {/* Botões de Ação */}
-          <div className="space-y-2 pt-1">
-            {/* Opção 1: Upload de mais prints */}
+          <div className="space-y-2 pb-2">
             <button
               type="button"
-              onClick={onAddPhotos}
-              className="w-full bg-[var(--mod-corrida-to)] text-white font-bold text-xs rounded-xl py-3 px-4 flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:scale-[0.98] transition"
+              onClick={() => {
+                onAddPhotos();
+                handleDismiss();
+              }}
+              className="w-full bg-[var(--mod-corrida-to)] text-white font-bold text-sm rounded-2xl py-3.5 px-4 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:opacity-95 active:scale-[0.98] transition"
             >
               <ImagePlus className="w-4 h-4" />
               <span>Carregar mais prints da app</span>
             </button>
 
-            {/* Opção 2: Completar no modo manual (dados preenchidos) */}
             <button
               type="button"
-              onClick={onGoManual}
-              className="w-full bg-slate-100 text-slate-800 font-bold text-xs rounded-xl py-3 px-4 border border-slate-200 flex items-center justify-center gap-2 hover:bg-slate-200/70 active:scale-[0.98] transition"
+              onClick={() => {
+                onGoManual();
+                handleDismiss();
+              }}
+              className="w-full bg-white text-slate-800 font-bold text-sm rounded-2xl py-3.5 px-4 border border-slate-200 flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-[0.98] transition shadow-sm"
             >
               <PencilLine className="w-4 h-4 text-slate-600" />
-              <span>Completar manualmente (manter dados)</span>
+              <span>Completar manualmente</span>
             </button>
 
-            {/* Opção 3: Prosseguir assim mesmo */}
             <button
               type="button"
-              onClick={onProceedAnyway}
-              className="w-full text-slate-500 font-semibold text-[11px] py-2 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
+              onClick={() => {
+                onProceedAnyway();
+                handleDismiss();
+              }}
+              className="w-full text-slate-500 font-semibold text-xs py-3 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
             >
               <span>Prosseguir sem estas métricas</span>
               <ArrowRight className="w-3 h-3" />

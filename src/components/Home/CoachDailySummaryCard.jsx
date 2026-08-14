@@ -3,7 +3,7 @@ import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, C
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
-import { triggerHaptic } from '../../utils/haptics';
+import { useCarouselHaptics } from '../../utils/haptics';
 import './CoachDailySummaryCard.css';
 
 /* Card-resumo do Coach no Início. Ver specs/plano-de-treino.md §11 e
@@ -117,37 +117,12 @@ export default function CoachDailySummaryCard() {
   };
 
   const scrollRef = useRef(null);
-  const activeIndexRef = useRef(safeIndex);
-
-  useEffect(() => {
-    activeIndexRef.current = safeIndex;
-  }, [safeIndex]);
-
-  const handleScroll = () => {
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      if (idx !== activeIndexRef.current) {
-        activeIndexRef.current = idx;
-        setIndex(idx);
-        triggerHaptic(10);
-      }
-    }
-  };
-
-  const scrollTo = (idx) => {
-    if (idx !== activeIndexRef.current) {
-      activeIndexRef.current = idx;
-      setIndex(idx);
-      triggerHaptic(10);
-    }
-    if (scrollRef.current) {
-      if (typeof scrollRef.current.scrollTo === 'function') {
-        scrollRef.current.scrollTo({ left: idx * (scrollRef.current.offsetWidth || 0), behavior: 'smooth' });
-      } else {
-        scrollRef.current.scrollLeft = idx * (scrollRef.current.offsetWidth || 0);
-      }
-    }
-  };
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    messages.length,
+    safeIndex,
+    setIndex
+  );
 
   if (dailySummaryLoading && !dailySummary) {
     return (
@@ -242,6 +217,7 @@ export default function CoachDailySummaryCard() {
           <div 
             ref={scrollRef}
             onScroll={handleScroll}
+            onTouchMove={handleTouchMove}
             className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
             style={{ scrollBehavior: 'smooth' }}
           >
@@ -264,3 +240,4 @@ export default function CoachDailySummaryCard() {
     </div>
   );
 }
+

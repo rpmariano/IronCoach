@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
-import { triggerHaptic } from '../../utils/haptics';
+import { useCarouselHaptics } from '../../utils/haptics';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -318,29 +318,12 @@ export function PlanProposalCard({ plan, items, onRespond }) {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
-  const activeIndexRef = useRef(0);
-
-  const handleScroll = () => {
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      if (index !== activeIndexRef.current) {
-        activeIndexRef.current = index;
-        setCurrentIndex(index);
-        triggerHaptic(10);
-      }
-    }
-  };
-
-  const scrollTo = (index) => {
-    if (index !== activeIndexRef.current) {
-      activeIndexRef.current = index;
-      setCurrentIndex(index);
-      triggerHaptic(10);
-    }
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
-    }
-  };
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    days.length,
+    currentIndex,
+    setCurrentIndex
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -348,8 +331,11 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         <div className="flex items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
             {days.map((_, idx) => (
-              <div 
+              <button 
                 key={idx} 
+                type="button"
+                onClick={() => scrollTo(idx)}
+                aria-label={`Ver dia ${idx + 1}`}
                 className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
               />
             ))}
@@ -383,6 +369,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
             className="wpc-carousel"
             ref={scrollRef}
             onScroll={handleScroll}
+            onTouchMove={handleTouchMove}
             style={{ scrollBehavior: 'smooth' }}
           >
             {days.map(day => (
@@ -448,29 +435,12 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
   const [currentIndex, setCurrentIndex] = useState(0);
   const [allExpanded, setAllExpanded] = useState(false);
   const scrollRef = useRef(null);
-  const activeIndexRef = useRef(0);
-
-  const handleScroll = () => {
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      if (index !== activeIndexRef.current) {
-        activeIndexRef.current = index;
-        setCurrentIndex(index);
-        triggerHaptic(10);
-      }
-    }
-  };
-
-  const scrollTo = (index) => {
-    if (index !== activeIndexRef.current) {
-      activeIndexRef.current = index;
-      setCurrentIndex(index);
-      triggerHaptic(10);
-    }
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
-    }
-  };
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    days.length,
+    currentIndex,
+    setCurrentIndex
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -478,8 +448,11 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
         <div className="flex items-center justify-between px-4 md:px-6">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
             {days.map((_, idx) => (
-              <div 
+              <button 
                 key={idx} 
+                type="button"
+                onClick={() => scrollTo(idx)}
+                aria-label={`Ver dia ${idx + 1}`}
                 className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
               />
             ))}
@@ -515,6 +488,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
             className="wpc-carousel"
             ref={scrollRef}
             onScroll={handleScroll}
+            onTouchMove={handleTouchMove}
             style={{ scrollBehavior: 'smooth' }}
           >
             {days.map(day => (
