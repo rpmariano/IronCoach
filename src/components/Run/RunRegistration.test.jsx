@@ -157,7 +157,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
   it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
     render(<RunRegistration onClose={onClose} />);
     expect(screen.getByText(/Escolhe os prints da app de corrida/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Distância')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
   });
 
   it('ao escolher Manual, esconde o upload e mostra os campos manuais', () => {
@@ -165,7 +165,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Distância')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Analisar Corrida' })).toBeInTheDocument();
   });
 
@@ -180,7 +180,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     render(<RunRegistration onClose={onClose} runIdToEdit="run-1" />);
 
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Distância')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
   });
 });
