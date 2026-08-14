@@ -208,14 +208,14 @@ export default function CoachDailySummaryCard() {
         
         {messages.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               {messages.map((_, idx) => (
                 <button 
                   key={idx} 
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver mensagem ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
                 />
               ))}
             </div>
