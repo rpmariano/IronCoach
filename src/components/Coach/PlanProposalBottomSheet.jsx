@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Sparkles, Check, X, Calendar, Target } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
 
@@ -22,10 +22,67 @@ export function PlanProposalBottomSheet({
   onRespondGoal,
   onClose,
 }) {
-  const [dragY, setDragY] = React.useState(0);
-  const [isDragging, setIsDragging] = React.useState(false);
-  const touchStartY = React.useRef(0);
-  const scrollRef = React.useRef(null);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartY = useRef(0);
+  const dragYRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const scrollRef = useRef(null);
+  const dragAreaRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const el = dragAreaRef.current;
+    if (!el) return;
+
+    const handleTouchStart = (e) => {
+      touchStartY.current = e.touches[0].clientY;
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY.current;
+      const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
+
+      if (deltaY > 0 && isAtTop) {
+        if (e.cancelable) e.preventDefault(); // CANCELA PULL-TO-REFRESH DO BROWSER
+        dragYRef.current = deltaY;
+        setDragY(deltaY);
+      } else if (deltaY < 0 && dragYRef.current > 0) {
+        if (e.cancelable) e.preventDefault();
+        const nextVal = Math.max(0, deltaY);
+        dragYRef.current = nextVal;
+        setDragY(nextVal);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (dragYRef.current > 70) {
+        onCloseRef.current?.();
+      }
+      dragYRef.current = 0;
+      setDragY(0);
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
 
   if (!plan && !goalProposal) return null;
 
@@ -56,32 +113,6 @@ export function PlanProposalBottomSheet({
     }
   };
 
-  const handleTouchStart = (e) => {
-    touchStartY.current = e.touches[0].clientY;
-    setIsDragging(true);
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isDragging) return;
-    const currentY = e.touches[0].clientY;
-    const deltaY = currentY - touchStartY.current;
-    const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
-
-    if (deltaY > 0 && isAtTop) {
-      setDragY(deltaY);
-    } else if (deltaY < 0 && dragY > 0) {
-      setDragY(Math.max(0, deltaY));
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (dragY > 70) {
-      onClose?.();
-    }
-    setDragY(0);
-    setIsDragging(false);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
@@ -100,57 +131,53 @@ export function PlanProposalBottomSheet({
           background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
+          overscrollBehavior: 'contain',
         }}
       >
-        {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
-        <div 
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onClick={onClose}
-          className="w-full py-3.5 cursor-pointer flex items-center justify-center shrink-0 group select-none touch-none"
-          title="Fechar modal"
-        >
-          <div className="w-12 h-1.5 rounded-full bg-slate-600/70 group-hover:bg-slate-400 group-active:scale-95 transition-colors" />
-        </div>
-
-        {/* Cabeçalho */}
-        <div 
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80 shrink-0"
-        >
-          <div className="flex items-center gap-3">
-            <div 
-              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-            >
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white leading-tight">
-                {plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos'}
-              </h3>
-              {plan && (
-                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 font-medium">
-                  <Calendar size={12} className="text-emerald-400" />
-                  <span>Período: {plan.period_start} a {plan.period_end}</span>
-                </p>
-              )}
-            </div>
+        {/* Zona de Arrasto Superior (Pega + Cabeçalho) */}
+        <div ref={dragAreaRef} className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
+          {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
+          <div 
+            onClick={onClose}
+            className="w-full py-3.5 cursor-pointer flex items-center justify-center group"
+            title="Fechar modal"
+          >
+            <div className="w-12 h-1.5 rounded-full bg-slate-600/70 group-hover:bg-slate-400 group-active:scale-95 transition-colors" />
           </div>
 
-          {/* Botão de Fechar (Cruz) */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 -mr-1.5 -mt-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/80 active:scale-95 transition-all shrink-0"
-            title="Fechar modal"
-            aria-label="Fechar modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Cabeçalho */}
+          <div className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+              >
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white leading-tight">
+                  {plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos'}
+                </h3>
+                {plan && (
+                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 font-medium">
+                    <Calendar size={12} className="text-emerald-400" />
+                    <span>Período: {plan.period_start} a {plan.period_end}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Botão de Fechar (Cruz) */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 -mr-1.5 -mt-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/80 active:scale-95 transition-all shrink-0"
+              title="Fechar modal"
+              aria-label="Fechar modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Conteúdo Scrollável */}
