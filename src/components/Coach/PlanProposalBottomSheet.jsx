@@ -41,7 +41,7 @@ export function PlanProposalBottomSheet({
     setIsClosing(true);
     setTimeout(() => {
       onCloseRef.current?.();
-    }, 220);
+    }, 350);
   };
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export function PlanProposalBottomSheet({
 
   const sheetTransition = isDragging
     ? 'none'
-    : 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
+    : 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -142,6 +142,7 @@ export function PlanProposalBottomSheet({
 
       {/* Modal Bottom Sheet (Persiana) */}
       <div 
+        ref={dragAreaRef}
         className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden"
         style={{
           transform: sheetTransform,
@@ -150,7 +151,7 @@ export function PlanProposalBottomSheet({
         }}
       >
         {/* Zona de Arrasto Superior (Pega + Cabeçalho) */}
-        <div ref={dragAreaRef} className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
+        <div className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
           {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
           <div 
             onClick={handleDismiss}
