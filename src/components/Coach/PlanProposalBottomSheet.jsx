@@ -173,7 +173,7 @@ export function PlanProposalBottomSheet({
                 </h2>
                 {plan && (
                   <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1 font-medium">
-                    <Calendar size={10} className="text-emerald-500" />
+                    <Calendar size={10} style={{ color: 'var(--mod-coach-to)' }} />
                     <span>Período: {plan.period_start} a {plan.period_end}</span>
                   </p>
                 )}
@@ -219,7 +219,7 @@ export function PlanProposalBottomSheet({
                         <span className="text-slate-600 font-medium">{meta.label}</span>
                         <div className="flex items-center gap-2 font-bold">
                           <span className="text-slate-400 line-through">{currentVal} {meta.unit}</span>
-                          <span className="text-emerald-600">→ {newVal} {meta.unit}</span>
+                          <span style={{ color: 'var(--mod-coach-to)' }}>→ {newVal} {meta.unit}</span>
                         </div>
                       </div>
                     );
@@ -230,7 +230,8 @@ export function PlanProposalBottomSheet({
                 <button
                   type="button"
                   onClick={() => handleRespondGoalAction(true)}
-                  className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-white bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
+                  className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm hover:opacity-90"
+                  style={{ backgroundColor: 'var(--mod-coach-to)' }}
                 >
                   <Check size={15} /> Aceitar Objetivos
                 </button>
@@ -249,7 +250,14 @@ export function PlanProposalBottomSheet({
           {plan && (
             <div className="space-y-4 pb-4">
               {plan.summary && (
-                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-800 leading-relaxed font-medium">
+                <div
+                  className="p-3.5 rounded-2xl border text-xs leading-relaxed font-medium"
+                  style={{
+                    backgroundColor: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)',
+                    borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)',
+                    color: 'var(--mod-coach-to)'
+                  }}
+                >
                   ✨ {plan.summary}
                 </div>
               )}

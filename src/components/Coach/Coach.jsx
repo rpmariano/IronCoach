@@ -242,9 +242,10 @@ export default function Coach() {
               if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
               if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
             }}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-md flex items-center gap-2 transition active:scale-95 animate-bounce"
+            className="text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-md flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+            style={{ backgroundColor: 'var(--mod-coach-to)' }}
           >
-            <Sparkles className="w-4 h-4 text-emerald-100" />
+            <Sparkles className="w-4 h-4 text-white" />
             <span>
               {pendingPlans.length > 0 && pendingGoalProposals.length > 0
                 ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
