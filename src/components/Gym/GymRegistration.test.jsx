@@ -212,8 +212,8 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(screen.getByText('Editar Treino')).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Peito e Tríceps')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Duração (43m ou 37:57)')).toHaveValue('50:00');
-    expect(screen.getByPlaceholderText('Calorias (kcal)')).toHaveValue(400);
+    expect(screen.getByDisplayValue('50:00')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('400')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Supino')).toBeInTheDocument();
     const reps = screen.getAllByPlaceholderText('Reps');
     expect(reps).toHaveLength(2);
@@ -265,7 +265,7 @@ describe('GymRegistration — editar sessão existente', () => {
   it('mudar o esforço passa pelo Coach — é métrica analítica', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
-    fireEvent.change(screen.getByPlaceholderText(/Esforço/), { target: { value: '9' } });
+    fireEvent.change(screen.getByPlaceholderText(/Ex: 8/), { target: { value: '9' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));

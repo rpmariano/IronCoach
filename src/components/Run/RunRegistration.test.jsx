@@ -200,8 +200,8 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-2', coach_notes: 'Boa consistência de pace.' } }, error: null });
     render(<RunRegistration onClose={onClose} />);
     goManual();
-    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '10' } });
-    fireEvent.change(screen.getByPlaceholderText('Duração (ex.: 43m ou 37:57)'), { target: { value: '50:00' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+    fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
 
@@ -221,8 +221,8 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-2' } }, error: null });
     render(<RunRegistration onClose={onClose} />);
     goManual();
-    fireEvent.change(screen.getByPlaceholderText('Cadência média (passadas/min)'), { target: { value: '165' } });
-    fireEvent.change(screen.getByPlaceholderText('Cadência máxima (passadas/min)'), { target: { value: '182' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex: 158'), { target: { value: '165' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex: 175'), { target: { value: '182' } });
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar zona' }));
     const zoneSelects = screen.getAllByDisplayValue('Zona');
     fireEvent.change(zoneSelects[zoneSelects.length - 1], { target: { value: '2' } });
@@ -315,7 +315,7 @@ describe('RunRegistration — editar corrida existente', () => {
   it('mudar a distância passa pelo Coach e reanalisa', async () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
-    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '12' } });
+    fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -344,7 +344,7 @@ describe('RunRegistration — editar corrida existente', () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
-    fireEvent.change(screen.getByPlaceholderText('Distância'), { target: { value: '12' } });
+    fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await screen.findByText('Falha na análise.');
