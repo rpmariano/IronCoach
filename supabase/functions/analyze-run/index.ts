@@ -101,6 +101,21 @@ const RESPONSE_SCHEMA = {
         required: ["zone", "minutes"],
       },
     },
+    // Métricas adicionais & avançadas (Samsung Health / Garmin / Apple / Coros)
+    max_pace_seconds_per_km: { type: "NUMBER", nullable: true },
+    elevation_loss_m: { type: "NUMBER", nullable: true },
+    total_steps: { type: "NUMBER", nullable: true },
+    sweat_loss_ml: { type: "NUMBER", nullable: true },
+    recommended_hydration_ml: { type: "NUMBER", nullable: true },
+    aerobic_threshold_bpm: { type: "NUMBER", nullable: true },
+    anaerobic_threshold_bpm: { type: "NUMBER", nullable: true },
+    hr_recovery_bpm: { type: "NUMBER", nullable: true },
+    ground_contact_time_ms: { type: "NUMBER", nullable: true },
+    flight_time_ms: { type: "NUMBER", nullable: true },
+    vertical_oscillation_cm: { type: "NUMBER", nullable: true },
+    asymmetry_pct: { type: "NUMBER", nullable: true },
+    leg_stiffness_kn_m: { type: "NUMBER", nullable: true },
+    regularity_score: { type: "NUMBER", nullable: true },
   },
   required: [
     "distance_km", "duration_seconds", "warmup_minutes",
@@ -224,6 +239,66 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function checkAndLogAppImage(
+  sb: any,
+  userId: string,
+  category: "run" | "gym" | "body",
+  imagesB64: string[],
+  mime: string,
+  extractionResult: Record<string, unknown>
+) {
+  try {
+    const { data: mappings } = await sb
+      .from("app_screen_mappings")
+      .select("app_name, detection_keywords")
+      .eq("category", category)
+      .eq("is_trained", true);
+
+    let isKnownApp = false;
+    let matchedAppName: string | null = null;
+    const extractionStr = JSON.stringify(extractionResult).toLowerCase();
+
+    if (mappings && mappings.length > 0) {
+      for (const map of mappings) {
+        const keywords: string[] = map.detection_keywords || [];
+        if (keywords.length > 0) {
+          const matchCount = keywords.filter((kw: string) =>
+            extractionStr.includes(kw.toLowerCase())
+          ).length;
+          if (matchCount >= 2 || (keywords.length === 1 && matchCount === 1)) {
+            isKnownApp = true;
+            matchedAppName = map.app_name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!isKnownApp && imagesB64.length > 0) {
+      const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+      const unknownPath = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await sb.storage
+        .from("unknown-app-photos")
+        .upload(unknownPath, base64ToBytes(imagesB64[0]), { contentType: mime });
+
+      if (!uploadError) {
+        await sb.from("unknown_app_image_logs").insert({
+          user_id: userId,
+          category,
+          image_path: unknownPath,
+          detected_app_guess: matchedAppName,
+          best_effort_result: extractionResult,
+          status: "pending",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("checkAndLogAppImage failed silently:", err);
+  }
+}
+
+
 type GeminiUsage = { input_tokens: number; output_tokens: number };
 type RunSplit = { distance_km: number | null; time_seconds: number | null };
 type HrZone = { zone: number | null; minutes: number | null };
@@ -243,6 +318,21 @@ type RunExtraction = {
   max_heart_rate_bpm: number | null;
   vo2_max: number | null;
   hr_zones: HrZone[] | null;
+  // Métricas avançadas
+  max_pace_seconds_per_km?: number | null;
+  elevation_loss_m?: number | null;
+  total_steps?: number | null;
+  sweat_loss_ml?: number | null;
+  recommended_hydration_ml?: number | null;
+  aerobic_threshold_bpm?: number | null;
+  anaerobic_threshold_bpm?: number | null;
+  hr_recovery_bpm?: number | null;
+  ground_contact_time_ms?: number | null;
+  flight_time_ms?: number | null;
+  vertical_oscillation_cm?: number | null;
+  asymmetry_pct?: number | null;
+  leg_stiffness_kn_m?: number | null;
+  regularity_score?: number | null;
 };
 
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
@@ -404,8 +494,14 @@ async function generateCoachNotes(
     (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
     (details.vo2_max ? `- VO2 max: ${details.vo2_max}\n` : "") +
+    (details.sweat_loss_ml ? `- Perda por transpiração estimada: ${details.sweat_loss_ml} ml\n` : "") +
+    (details.aerobic_threshold_bpm ? `- Limiar Aeróbio (FC LA): ${details.aerobic_threshold_bpm} bpm\n` : "") +
+    (details.anaerobic_threshold_bpm ? `- Limiar Anaeróbio (FC LAn): ${details.anaerobic_threshold_bpm} bpm\n` : "") +
+    (details.ground_contact_time_ms ? `- Tempo de contacto no solo: ${details.ground_contact_time_ms} ms\n` : "") +
+    (details.vertical_oscillation_cm ? `- Oscilação vertical: ${details.vertical_oscillation_cm} cm\n` : "") +
+    (details.asymmetry_pct ? `- Assimetria da passada: ${details.asymmetry_pct}%\n` : "") +
     contextSection +
-    `\nResponde em português (PT), tom direto e técnico mas próximo — como um treinador real falaria, não um gerador de motivação genérica.`;
+    `\nResponde em português (PT), tom direto e técnico mas próximo — como um treinador real falaria, não um gerador de motivação genérica. Se houver perda por transpiração estimada, lembra brevemente o atleta da importância da hidratação pós-treino para compensar.`;
 
   try {
     const res = await fetchGeminiWithTimeout(
@@ -625,15 +721,27 @@ async function analyzeWithGemini(
     max_heart_rate_bpm: num(parsed.max_heart_rate_bpm),
     vo2_max: num(parsed.vo2_max),
     hr_zones: hrZones.length ? hrZones : null,
+    // Métricas avançadas
+    max_pace_seconds_per_km: num(parsed.max_pace_seconds_per_km),
+    elevation_loss_m: num(parsed.elevation_loss_m),
+    total_steps: num(parsed.total_steps),
+    sweat_loss_ml: num(parsed.sweat_loss_ml),
+    recommended_hydration_ml: num(parsed.recommended_hydration_ml),
+    aerobic_threshold_bpm: num(parsed.aerobic_threshold_bpm),
+    anaerobic_threshold_bpm: num(parsed.anaerobic_threshold_bpm),
+    hr_recovery_bpm: num(parsed.hr_recovery_bpm),
+    ground_contact_time_ms: num(parsed.ground_contact_time_ms),
+    flight_time_ms: num(parsed.flight_time_ms),
+    vertical_oscillation_cm: num(parsed.vertical_oscillation_cm),
+    asymmetry_pct: num(parsed.asymmetry_pct),
+    leg_stiffness_kn_m: num(parsed.leg_stiffness_kn_m),
+    regularity_score: num(parsed.regularity_score),
   };
 
   if (extraction.distance_km === null && extraction.duration_seconds === null) {
     throw new Error("Não foi possível ler a distância ou a duração nas imagens. Tenta outro ângulo ou mais luz.");
   }
 
-  // Diagnóstico leve (sem dados de imagem) — permite perceber via get_logs
-  // quais métricas do relógio o Gemini conseguiu (ou não) ler numa extração
-  // que correu bem mas ficou incompleta (ex.: hr_zones ausente).
   console.log("Extração de corrida:", JSON.stringify({
     has_distance: extraction.distance_km !== null,
     has_duration: extraction.duration_seconds !== null,
@@ -644,16 +752,15 @@ async function analyzeWithGemini(
     has_avg_hr: extraction.avg_heart_rate_bpm !== null,
     has_max_hr: extraction.max_heart_rate_bpm !== null,
     has_vo2max: extraction.vo2_max !== null,
+    has_sweat_loss: extraction.sweat_loss_ml !== null,
+    has_thresholds: extraction.aerobic_threshold_bpm !== null || extraction.anaerobic_threshold_bpm !== null,
+    has_biomechanics: extraction.ground_contact_time_ms !== null || extraction.vertical_oscillation_cm !== null,
     hr_zones_count: extraction.hr_zones?.length || 0,
   }));
 
   return { extraction, usage };
 }
 
-// Monta o `details` jsonb a partir da extração + tipo/disciplina já
-// confirmados pelo utilizador (trainingType/raceType — não vêm da IA) +
-// métricas do relógio, que se aplicam a qualquer corrida — mesma estrutura
-// que o cliente usa na entrada manual (buildRunDetailsPayload/buildRunWatchMetrics).
 function detailsFromExtraction(
   kind: string,
   e: RunExtraction,
@@ -670,10 +777,22 @@ function detailsFromExtraction(
   if (e.vo2_max) d.vo2_max = e.vo2_max;
   if (e.hr_zones && e.hr_zones.length) d.hr_zones = e.hr_zones;
 
-  // warmup_minutes/recovery_seconds só fazem sentido para treinos estruturados
-  // por repetição (Intervalos/Subidas) — mas splits (voltas/laps) aparecem em
-  // QUALQUER corrida com relógio que gera auto-lap por km, independentemente
-  // do tipo de treino, por isso fica fora dessa condição.
+  // Métricas avançadas
+  if (e.max_pace_seconds_per_km) d.max_pace_seconds_per_km = e.max_pace_seconds_per_km;
+  if (e.elevation_loss_m) d.elevation_loss_m = e.elevation_loss_m;
+  if (e.total_steps) d.total_steps = e.total_steps;
+  if (e.sweat_loss_ml) d.sweat_loss_ml = e.sweat_loss_ml;
+  if (e.recommended_hydration_ml) d.recommended_hydration_ml = e.recommended_hydration_ml;
+  if (e.aerobic_threshold_bpm) d.aerobic_threshold_bpm = e.aerobic_threshold_bpm;
+  if (e.anaerobic_threshold_bpm) d.anaerobic_threshold_bpm = e.anaerobic_threshold_bpm;
+  if (e.hr_recovery_bpm) d.hr_recovery_bpm = e.hr_recovery_bpm;
+  if (e.ground_contact_time_ms) d.ground_contact_time_ms = e.ground_contact_time_ms;
+  if (e.flight_time_ms) d.flight_time_ms = e.flight_time_ms;
+  if (e.vertical_oscillation_cm) d.vertical_oscillation_cm = e.vertical_oscillation_cm;
+  if (e.asymmetry_pct) d.asymmetry_pct = e.asymmetry_pct;
+  if (e.leg_stiffness_kn_m) d.leg_stiffness_kn_m = e.leg_stiffness_kn_m;
+  if (e.regularity_score) d.regularity_score = e.regularity_score;
+
   if (kind === "treino" && trainingType && REPEAT_TRAINING_TYPES.has(trainingType)) {
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;
     if (e.recovery_seconds) d.recovery_seconds = e.recovery_seconds;
@@ -826,6 +945,20 @@ Deno.serve(async (req) => {
         max_heart_rate_bpm: int(body.max_heart_rate_bpm),
         vo2_max: num(body.vo2_max),
         hr_zones: Array.isArray(body.hr_zones) ? body.hr_zones : null,
+        max_pace_seconds_per_km: num(body.max_pace_seconds_per_km),
+        elevation_loss_m: int(body.elevation_loss_m),
+        total_steps: int(body.total_steps),
+        sweat_loss_ml: int(body.sweat_loss_ml),
+        recommended_hydration_ml: num(body.recommended_hydration_ml),
+        aerobic_threshold_bpm: int(body.aerobic_threshold_bpm),
+        anaerobic_threshold_bpm: int(body.anaerobic_threshold_bpm),
+        hr_recovery_bpm: int(body.hr_recovery_bpm),
+        ground_contact_time_ms: int(body.ground_contact_time_ms),
+        flight_time_ms: int(body.flight_time_ms),
+        vertical_oscillation_cm: num(body.vertical_oscillation_cm),
+        asymmetry_pct: num(body.asymmetry_pct),
+        leg_stiffness_kn_m: num(body.leg_stiffness_kn_m),
+        regularity_score: num(body.regularity_score),
       };
       const details = detailsFromExtraction(kind, extraction, trainingType, raceType);
 
@@ -1018,6 +1151,8 @@ Deno.serve(async (req) => {
       effort_rpe: effortRpe,
       details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
     }, geminiKey);
+
+    await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 
     return jsonResponse({ run, usage: result.usage });
   } catch (e) {

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Bot, Activity } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Bot, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
   { key: 'users', label: 'Utilizadores', icon: Users },
+  { key: 'unknown_apps', label: 'Imagens Desconhecidas', icon: FileQuestion },
   { key: 'metrics', label: 'Métricas', icon: BarChart3 },
   { key: 'costs', label: 'Custos API', icon: CircleDollarSign },
   { key: 'logs', label: 'Logs', icon: ScrollText },
@@ -48,6 +49,16 @@ export default function Admin() {
   const [costLogs, setCostLogs] = useState([]);
   const [costLoading, setCostLoading] = useState(false);
 
+  // States for Unknown Apps Image Logs
+  const [unknownLogs, setUnknownLogs] = useState([]);
+  const [unknownLoading, setUnknownLoading] = useState(false);
+  const [unknownCategory, setUnknownCategory] = useState('todos');
+  const [unknownStatus, setUnknownStatus] = useState('todos');
+  const [selectedUnknownLog, setSelectedUnknownLog] = useState(null);
+  const [savingLog, setSavingLog] = useState(false);
+  const [modalNotes, setModalNotes] = useState('');
+  const [modalStatus, setModalStatus] = useState('pending');
+
   useEffect(() => {
     if (!profile?.is_admin) return;
     loadAdminData();
@@ -57,6 +68,58 @@ export default function Admin() {
     if (!profile?.is_admin || activeTab !== 'costs') return;
     loadAdminCostData();
   }, [activeTab, costRange, profile]);
+
+  useEffect(() => {
+    if (!profile?.is_admin || activeTab !== 'unknown_apps') return;
+    loadUnknownLogs();
+  }, [activeTab, profile]);
+
+  const loadUnknownLogs = async () => {
+    setUnknownLoading(true);
+    try {
+      const { data: logs, error } = await supabase
+        .from('unknown_app_image_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(300);
+      if (error) throw error;
+      setUnknownLogs(logs || []);
+    } catch (err) {
+      console.error('Error loading unknown app logs:', err);
+      setUnknownLogs([]);
+    } finally {
+      setUnknownLoading(false);
+    }
+  };
+
+  const handleOpenUnknownModal = (logItem) => {
+    setSelectedUnknownLog(logItem);
+    setModalStatus(logItem.status || 'pending');
+    setModalNotes(logItem.admin_notes || '');
+  };
+
+  const handleSaveUnknownLog = async () => {
+    if (!selectedUnknownLog) return;
+    setSavingLog(true);
+    try {
+      const { error } = await supabase
+        .from('unknown_app_image_logs')
+        .update({
+          status: modalStatus,
+          admin_notes: modalNotes,
+        })
+        .eq('id', selectedUnknownLog.id);
+      if (error) throw error;
+
+      setUnknownLogs(prev => prev.map(item => item.id === selectedUnknownLog.id ? { ...item, status: modalStatus, admin_notes: modalNotes } : item));
+      setSelectedUnknownLog(null);
+    } catch (err) {
+      console.error('Error saving unknown log:', err);
+      alert('Falha ao guardar alterações no log.');
+    } finally {
+      setSavingLog(false);
+    }
+  };
 
   const loadAdminCostData = async () => {
     setCostLoading(true);
@@ -249,6 +312,225 @@ export default function Admin() {
           {users.length === 0 && <p className="text-xs text-slate-500 text-center py-4">Nenhum utilizador encontrado.</p>}
         </div>
       )}
+
+      {activeTab === 'unknown_apps' && (() => {
+        const filtered = unknownLogs.filter(item => {
+          if (unknownCategory !== 'todos' && item.category !== unknownCategory) return false;
+          if (unknownStatus !== 'todos' && item.status !== unknownStatus) return false;
+          return true;
+        });
+
+        const categoryLabels = { run: 'Corrida', gym: 'Ginásio', body: 'Corpo' };
+        const statusLabels = { pending: 'Pendente', reviewed: 'Revisado', mapped: 'Mapeado', ignored: 'Ignorado' };
+        const statusBadgeColors = {
+          pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+          reviewed: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+          mapped: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+          ignored: 'bg-slate-800 text-slate-400 border-slate-700'
+        };
+
+        return (
+          <div className="space-y-4 fade-in">
+            {/* Category Filter */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { key: 'todos', label: 'Todas as Categorias' },
+                { key: 'run', label: 'Corrida' },
+                { key: 'gym', label: 'Ginásio' },
+                { key: 'body', label: 'Corpo' }
+              ].map(c => (
+                <button
+                  key={c.key}
+                  onClick={() => setUnknownCategory(c.key)}
+                  className={`shrink-0 text-xs px-3 py-1.5 rounded-xl border transition ${
+                    unknownCategory === c.key ? 'bg-neutral-800 text-white border-neutral-600 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Status Filter */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { key: 'todos', label: 'Todos os Estados' },
+                { key: 'pending', label: 'Pendentes' },
+                { key: 'reviewed', label: 'Revisados' },
+                { key: 'mapped', label: 'Mapeados' },
+                { key: 'ignored', label: 'Ignorados' }
+              ].map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setUnknownStatus(s.key)}
+                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                    unknownStatus === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {unknownLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-500 text-xs gap-2">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" /> Carregando imagens de apps desconhecidas...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="card rounded-2xl p-8 text-center bg-neutral-900/40 border border-neutral-800 text-slate-500 text-xs">
+                Nenhum screenshot de app desconhecida registado com os filtros selecionados.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filtered.map(item => {
+                  const imageUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(item.image_path).data?.publicUrl;
+
+                  return (
+                    <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3 flex flex-col justify-between">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neutral-800 text-slate-300">
+                            {categoryLabels[item.category] || item.category}
+                          </span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${statusBadgeColors[item.status] || statusBadgeColors.pending}`}>
+                            {statusLabels[item.status] || item.status}
+                          </span>
+                        </div>
+
+                        <div className="flex gap-3 items-center">
+                          {imageUrl && (
+                            <img
+                              src={imageUrl}
+                              alt="Screenshot da app"
+                              className="w-16 h-16 object-cover rounded-xl border border-neutral-700 shrink-0 bg-neutral-950"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-slate-200 truncate">
+                              {item.detected_app_guess ? `Palpite: ${item.detected_app_guess}` : 'App não identificada'}
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {new Date(item.created_at).toLocaleString('pt-PT')}
+                            </p>
+                            {item.admin_notes && (
+                              <p className="text-[10px] text-amber-300/80 italic mt-1 line-clamp-1">
+                                Nota: {item.admin_notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleOpenUnknownModal(item)}
+                        className="w-full flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                      >
+                        <Eye size={14} /> Consultar Imagem & Detalhes
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Inspection Modal */}
+            {selectedUnknownLog && (() => {
+              const modalImgUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(selectedUnknownLog.image_path).data?.publicUrl;
+
+              return (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto fade-in">
+                  <div className="card w-full max-w-lg bg-neutral-900 border border-neutral-700 rounded-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-100">Inspeção de Imagem Desconhecida</h3>
+                        <p className="text-[11px] text-slate-400">
+                          {categoryLabels[selectedUnknownLog.category] || selectedUnknownLog.category} · {new Date(selectedUnknownLog.created_at).toLocaleString('pt-PT')}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedUnknownLog(null)}
+                        className="p-1.5 rounded-full bg-neutral-800 text-slate-400 hover:text-slate-200"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    {/* Screenshot Preview */}
+                    <div className="flex justify-center bg-neutral-950 rounded-2xl p-2 border border-neutral-800 max-h-72 overflow-hidden">
+                      {modalImgUrl ? (
+                        <img
+                          src={modalImgUrl}
+                          alt="Screenshot submetido pelo atleta"
+                          className="max-h-68 object-contain rounded-xl"
+                        />
+                      ) : (
+                        <p className="text-xs text-slate-500 py-8">Imagem não disponível no storage.</p>
+                      )}
+                    </div>
+
+                    {/* Extracted Best Effort Result */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                        Resultado Extraído (Best Effort)
+                      </label>
+                      <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 max-h-40 overflow-y-auto text-[10px] font-mono text-emerald-400">
+                        <pre className="whitespace-pre-wrap break-words">
+                          {JSON.stringify(selectedUnknownLog.best_effort_result, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+
+                    {/* Admin Status & Notes Form */}
+                    <div className="space-y-3 pt-2 border-t border-neutral-800">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">Estado de Mapeamento</label>
+                        <select
+                          value={modalStatus}
+                          onChange={(e) => setModalStatus(e.target.value)}
+                          className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none"
+                        >
+                          <option value="pending">Pendente (a aguardar revisão)</option>
+                          <option value="reviewed">Revisado (analisado por admin)</option>
+                          <option value="mapped">Mapeado (novo padrão adicionado à BD)</option>
+                          <option value="ignored">Ignorado (descartado)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-slate-300">Notas de Administração</label>
+                        <textarea
+                          rows={2}
+                          value={modalNotes}
+                          onChange={(e) => setModalNotes(e.target.value)}
+                          placeholder="Ex: Identificado como Suunto App ecrã de resumo..."
+                          className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                        />
+                      </div>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => setSelectedUnknownLog(null)}
+                          className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-xs font-semibold text-slate-300 hover:bg-neutral-800"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={handleSaveUnknownLog}
+                          disabled={savingLog}
+                          className="flex-1 py-2.5 rounded-xl bg-[var(--accent)] text-xs font-bold text-white hover:opacity-90 flex items-center justify-center gap-1.5"
+                        >
+                          <Check size={16} /> {savingLog ? 'A guardar...' : 'Guardar Alterações'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {activeTab === 'metrics' && (() => {
         const { start, end } = rangeBounds(metricsRange);

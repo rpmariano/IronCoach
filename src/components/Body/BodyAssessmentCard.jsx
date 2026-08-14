@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { getBodyIcon } from '../../utils/bodyIcons';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → BodyRegistration, porque mexer nas métricas ou
@@ -16,12 +17,13 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const dateParts = assessment.date ? assessment.date.split('-') : [];
   const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : assessment.date;
 
   const handleDelete = async () => {
-    if (!confirm('Tem a certeza que deseja eliminar esta avaliação corporal?')) return;
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       const { error } = await supabase.from('body_assessments').delete().eq('id', assessment.id);
@@ -54,7 +56,7 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
   ].filter(Boolean);
 
   return (
-    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
+    <div className="module-card-contrast space-y-3">
       {/* Header Bar */}
       <div 
         onClick={() => setExpanded(prev => !prev)}
@@ -165,7 +167,7 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
               </button>
             )}
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
               className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
@@ -175,6 +177,13 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        isDeleting={isDeleting}
+        message="Tem a certeza que deseja eliminar esta avaliação corporal? Esta ação não pode ser desfeita."
+      />
     </div>
   );
 }

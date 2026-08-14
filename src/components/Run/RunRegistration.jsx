@@ -5,7 +5,8 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
-import { parseDurationToSeconds, formatDuration } from '../../utils/run';
+import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
+import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -86,6 +87,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [runDistance, setRunDistance] = useState(planItem?.target_distance_km ? String(planItem.target_distance_km) : '');
   const [runDuration, setRunDuration] = useState('');
   const [runEffortRpe, setRunEffortRpe] = useState(0); // 0-10
+  const [runNotes, setRunNotes] = useState('');
   
   // Detailed metrics
   const [elevationGain, setElevationGain] = useState('');
@@ -95,6 +97,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [vo2Max, setVo2Max] = useState('');
   const [avgHeartRate, setAvgHeartRate] = useState('');
   const [maxHeartRate, setMaxHeartRate] = useState('');
+
+  // Advanced metrics (Samsung Health / Garmin / Apple)
+  const [sweatLossMl, setSweatLossMl] = useState('');
+  const [totalSteps, setTotalSteps] = useState('');
+  const [maxPace, setMaxPace] = useState('');
+  const [elevationLoss, setElevationLoss] = useState('');
+  const [aerobicThreshold, setAerobicThreshold] = useState('');
+  const [anaerobicThreshold, setAnaerobicThreshold] = useState('');
+  const [hrRecovery, setHrRecovery] = useState('');
+  const [groundContactTime, setGroundContactTime] = useState('');
+  const [flightTime, setFlightTime] = useState('');
+  const [verticalOscillation, setVerticalOscillation] = useState('');
+  const [asymmetryPct, setAsymmetryPct] = useState('');
+  const [legStiffness, setLegStiffness] = useState('');
   
   // Training structure
   const [warmupMinutes, setWarmupMinutes] = useState('');
@@ -118,13 +134,34 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Partilhado pelos dois caminhos de Corrida (foto e manual) — só um dos
-  // dois blocos está visível a cada vez (ver entryMethod), por isso já não
-  // há risco de a mesma mensagem aparecer em dois sítios ao mesmo tempo.
   const [errorMsg, setErrorMsg] = useState('');
-  // Estado analítico no momento em que se abriu a edição — ver o useEffect
-  // de carregamento e needsReanalysis abaixo.
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+
+  // Estado do Bottom Sheet de métricas em falta
+  const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
+  const [missingKeysList, setMissingKeysList] = useState([]);
+  const [userBypassedMissingSheet, setUserBypassedMissingSheet] = useState(false);
+  const [sheetClosedViaTouch, setSheetClosedViaTouch] = useState(false);
+  const [pendingCreatedRun, setPendingCreatedRun] = useState(null);
+
+  // Helper para identificar métricas recomendadas em falta
+  const detectMissingRunMetrics = (detailsObj = {}) => {
+    const missing = [];
+    if (!detailsObj.avg_heart_rate_bpm) missing.push('avg_heart_rate_bpm');
+    if (!detailsObj.cadence_spm) missing.push('cadence_spm');
+    if (!detailsObj.elevation_gain_m) missing.push('elevation_gain_m');
+    if (!detailsObj.sweat_loss_ml) missing.push('sweat_loss_ml');
+    if (!detailsObj.ground_contact_time_ms && !detailsObj.vertical_oscillation_cm && !detailsObj.asymmetry_pct) {
+      missing.push('biomechanics');
+    }
+    if (!detailsObj.aerobic_threshold_bpm && !detailsObj.anaerobic_threshold_bpm) {
+      missing.push('thresholds');
+    }
+    if (!detailsObj.splits || !Array.isArray(detailsObj.splits) || detailsObj.splits.length === 0) {
+      missing.push('splits');
+    }
+    return missing;
+  };
 
   // Limpa o item do plano do store assim que foi consumido para os estados
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Nova Corrida".
@@ -141,6 +178,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     distance: v.distance === '' || v.distance == null ? null : Number(v.distance),
     duration: v.duration ?? null,
     rpe: v.rpe || 0,
+    notes: v.notes?.trim() || null,
     details: Object.fromEntries(
       Object.entries(v.details || {})
         .filter(([, val]) => val !== null && val !== undefined && val !== '')
@@ -165,6 +203,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       vo2_max: parseFloat(vo2Max) || null,
       avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
       max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+      // Advanced metrics
+      sweat_loss_ml: parseInt(sweatLossMl) || null,
+      total_steps: parseInt(totalSteps) || null,
+      max_pace_seconds_per_km: parsePaceToSeconds(maxPace) || null,
+      elevation_loss_m: parseInt(elevationLoss) || null,
+      aerobic_threshold_bpm: parseInt(aerobicThreshold) || null,
+      anaerobic_threshold_bpm: parseInt(anaerobicThreshold) || null,
+      hr_recovery_bpm: parseInt(hrRecovery) || null,
+      ground_contact_time_ms: parseInt(groundContactTime) || null,
+      flight_time_ms: parseInt(flightTime) || null,
+      vertical_oscillation_cm: parseFloat(verticalOscillation) || null,
+      asymmetry_pct: parseFloat(asymmetryPct) || null,
+      leg_stiffness_kn_m: parseFloat(legStiffness) || null,
     };
     if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
     if (runKind === 'treino') {
@@ -184,9 +235,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (runIdToEdit) {
       const r = runs.find(r => r.id === runIdToEdit);
       if (r) {
-        // Editar é sempre pelos campos — a IA por foto é só para criar (e,
-        // numa corrida já criada por foto, "Reanalisar" no cartão é a ação
-        // dedicada a isso).
         setEntryMethod('manual');
         setRunKind(r.kind || 'treino');
         setRunTrainingType(r.training_type || 'continuo');
@@ -195,6 +243,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunDistance(r.distance_km || '');
         setRunDuration(r.duration_seconds ? formatDuration(r.duration_seconds) : '');
         setRunEffortRpe(r.effort_rpe || 0);
+        setRunNotes(r.notes || '');
         
         const d = r.details || {};
         setElevationGain(d.elevation_gain_m || '');
@@ -204,6 +253,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setVo2Max(d.vo2_max || '');
         setAvgHeartRate(d.avg_heart_rate_bpm || '');
         setMaxHeartRate(d.max_heart_rate_bpm || '');
+
+        setSweatLossMl(d.sweat_loss_ml || '');
+        setTotalSteps(d.total_steps || '');
+        setMaxPace(d.max_pace_seconds_per_km ? formatPace(d.max_pace_seconds_per_km) : '');
+        setElevationLoss(d.elevation_loss_m || '');
+        setAerobicThreshold(d.aerobic_threshold_bpm || '');
+        setAnaerobicThreshold(d.anaerobic_threshold_bpm || '');
+        setHrRecovery(d.hr_recovery_bpm || '');
+        setGroundContactTime(d.ground_contact_time_ms || '');
+        setFlightTime(d.flight_time_ms || '');
+        setVerticalOscillation(d.vertical_oscillation_cm || '');
+        setAsymmetryPct(d.asymmetry_pct || '');
+        setLegStiffness(d.leg_stiffness_kn_m || '');
         
         setWarmupMinutes(d.warmup_minutes || '');
         setRecoverySeconds(d.recovery_seconds || '');
@@ -224,12 +286,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           distance: r.distance_km,
           duration: r.duration_seconds,
           rpe: r.effort_rpe,
+          notes: r.notes || null,
           details: r.details,
         }));
 
-        // Load photos (for display only, we won't allow replacing them here in simple edit)
+        // Load photos
         if (r.photo_paths && r.photo_paths.length > 0) {
-           // We just show a placeholder or load them if needed. For now, empty or mock if editing.
+          setRunPhotos(r.photo_paths.map(p => {
+            const url = supabase.storage.from('run-images').getPublicUrl(p).data.publicUrl;
+            return { url, dataUrl: url };
+          }));
         }
       }
     }
@@ -245,6 +311,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       distance: runDistance,
       duration: parseDurationToSeconds(runDuration),
       rpe: runEffortRpe,
+      notes: runNotes.trim() ? runNotes.trim() : null,
       details: buildDetailsFromForm().details,
     }) !== originalSnapshot;
 
@@ -310,6 +377,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           name: runName.trim(),
           name_is_auto: false,
           effort_rpe: runEffortRpe || null,
+          notes: runNotes.trim() ? runNotes.trim() : null,
           training_type: runKind === 'treino' ? runTrainingType : null,
           race_type: runKind === 'competicao' ? completedRaceType : null,
         },
@@ -317,7 +385,58 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setRuns([...runs, data.run]);
+      const createdRun = data.run;
+      const extractedDetails = createdRun.details || {};
+
+      // Pré-preencher campos manuais para o caso de o atleta querer rever ou editar depois
+      if (createdRun.distance_km) setRunDistance(createdRun.distance_km);
+      if (createdRun.duration_seconds) setRunDuration(formatDuration(createdRun.duration_seconds));
+      if (createdRun.effort_rpe) setRunEffortRpe(createdRun.effort_rpe);
+      if (createdRun.notes) setRunNotes(createdRun.notes);
+      if (createdRun.name) setRunName(createdRun.name);
+
+      if (extractedDetails.elevation_gain_m) setElevationGain(extractedDetails.elevation_gain_m);
+      if (extractedDetails.cadence_spm) setCadence(extractedDetails.cadence_spm);
+      if (extractedDetails.max_cadence_spm) setMaxCadence(extractedDetails.max_cadence_spm);
+      if (extractedDetails.calories_kcal) setCalories(extractedDetails.calories_kcal);
+      if (extractedDetails.vo2_max) setVo2Max(extractedDetails.vo2_max);
+      if (extractedDetails.avg_heart_rate_bpm) setAvgHeartRate(extractedDetails.avg_heart_rate_bpm);
+      if (extractedDetails.max_heart_rate_bpm) setMaxHeartRate(extractedDetails.max_heart_rate_bpm);
+      if (extractedDetails.sweat_loss_ml) setSweatLossMl(extractedDetails.sweat_loss_ml);
+      if (extractedDetails.total_steps) setTotalSteps(extractedDetails.total_steps);
+      if (extractedDetails.max_pace_seconds_per_km) setMaxPace(formatPace(extractedDetails.max_pace_seconds_per_km));
+      if (extractedDetails.elevation_loss_m) setElevationLoss(extractedDetails.elevation_loss_m);
+      if (extractedDetails.aerobic_threshold_bpm) setAerobicThreshold(extractedDetails.aerobic_threshold_bpm);
+      if (extractedDetails.anaerobic_threshold_bpm) setAnaerobicThreshold(extractedDetails.anaerobic_threshold_bpm);
+      if (extractedDetails.hr_recovery_bpm) setHrRecovery(extractedDetails.hr_recovery_bpm);
+      if (extractedDetails.ground_contact_time_ms) setGroundContactTime(extractedDetails.ground_contact_time_ms);
+      if (extractedDetails.flight_time_ms) setFlightTime(extractedDetails.flight_time_ms);
+      if (extractedDetails.vertical_oscillation_cm) setVerticalOscillation(extractedDetails.vertical_oscillation_cm);
+      if (extractedDetails.asymmetry_pct) setAsymmetryPct(extractedDetails.asymmetry_pct);
+      if (extractedDetails.leg_stiffness_kn_m) setLegStiffness(extractedDetails.leg_stiffness_kn_m);
+
+      if (extractedDetails.splits) {
+        setSplits(extractedDetails.splits.map(s => ({
+          distance_km: s.distance_km || '',
+          minutes: s.time_seconds ? formatDuration(s.time_seconds) : ''
+        })));
+      }
+      if (extractedDetails.hr_zones) {
+        setHrZones(extractedDetails.hr_zones.map(z => ({
+          zone: z.zone || '',
+          minutes: z.minutes || ''
+        })));
+      }
+
+      const missing = detectMissingRunMetrics(extractedDetails);
+      if (missing.length > 0 && !userBypassedMissingSheet) {
+        setPendingCreatedRun(createdRun);
+        setMissingKeysList(missing);
+        setShowMissingMetricsSheet(true);
+        return;
+      }
+
+      setRuns([...runs, createdRun]);
       showToast('Corrida registada');
       onClose();
     } catch (err) {
@@ -325,6 +444,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
     } finally {
       setAnalyzingRun(false);
+    }
+  };
+
+  // Callback ao decidir prosseguir no Bottom Sheet sem adicionar mais métricas
+  const handleProceedAnyway = async () => {
+    setShowMissingMetricsSheet(false);
+    setUserBypassedMissingSheet(true);
+    if (pendingCreatedRun) {
+      setRuns([...runs, pendingCreatedRun]);
+      showToast('Corrida registada');
+      onClose();
+    } else {
+      handleSaveCorrida(true);
     }
   };
 
@@ -336,7 +468,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // partir dos números que o próprio formulário já tem. A editar uma
   // corrida existente mantém-se o update direto (sem reanálise — essa é a
   // ação dedicada "Reanalisar" no cartão da corrida).
-  const handleSaveCorrida = async () => {
+  const handleSaveCorrida = async (forceBypassMissing = false) => {
     if (!runName.trim()) {
       setErrorMsg('Preenche o nome da corrida.');
       return;
@@ -347,6 +479,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
     if (runKind === 'competicao' && !completedRaceType) {
       setErrorMsg('Escolhe a disciplina.');
+      return;
+    }
+
+    const { details } = buildDetailsFromForm();
+    const missing = detectMissingRunMetrics(details);
+    if (missing.length > 0 && !userBypassedMissingSheet && !forceBypassMissing && !runIdToEdit) {
+      setMissingKeysList(missing);
+      setShowMissingMetricsSheet(true);
       return;
     }
 
@@ -380,6 +520,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               kind: runKind,
               name: runName.trim(),
               effort_rpe: runEffortRpe || null,
+              notes: runNotes.trim() ? runNotes.trim() : null,
               training_type: runKind === 'treino' ? runTrainingType : null,
               race_type: runKind === 'competicao' ? completedRaceType : null,
               distance_km: !isNaN(distVal) ? distVal : null,
@@ -397,6 +538,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               splits: parsedSplits.length ? parsedSplits : null,
               official_time_seconds: officialTime ? parseDurationToSeconds(officialTime) : null,
               position: position ? parseInt(position) : null,
+              sweat_loss_ml: parseInt(sweatLossMl) || null,
+              total_steps: parseInt(totalSteps) || null,
+              max_pace_seconds_per_km: parsePaceToSeconds(maxPace) || null,
+              elevation_loss_m: parseInt(elevationLoss) || null,
+              aerobic_threshold_bpm: parseInt(aerobicThreshold) || null,
+              anaerobic_threshold_bpm: parseInt(anaerobicThreshold) || null,
+              hr_recovery_bpm: parseInt(hrRecovery) || null,
+              ground_contact_time_ms: parseInt(groundContactTime) || null,
+              flight_time_ms: parseInt(flightTime) || null,
+              vertical_oscillation_cm: parseFloat(verticalOscillation) || null,
+              asymmetry_pct: parseFloat(asymmetryPct) || null,
+              leg_stiffness_kn_m: parseFloat(legStiffness) || null,
             },
           });
           if (error) throw new Error(error);
@@ -421,6 +574,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           kind: runKind,
           name: runName.trim(),
           effort_rpe: runEffortRpe || null,
+          notes: runNotes.trim() ? runNotes.trim() : null,
           training_type: runKind === 'treino' ? runTrainingType : null,
           race_type: runKind === 'competicao' ? completedRaceType : null,
           distance_km: !isNaN(distVal) ? distVal : null,
@@ -438,6 +592,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           splits: parsedSplits.length ? parsedSplits : null,
           official_time_seconds: officialTime ? parseDurationToSeconds(officialTime) : null,
           position: position ? parseInt(position) : null,
+          sweat_loss_ml: parseInt(sweatLossMl) || null,
+          total_steps: parseInt(totalSteps) || null,
+          max_pace_seconds_per_km: parsePaceToSeconds(maxPace) || null,
+          elevation_loss_m: parseInt(elevationLoss) || null,
+          aerobic_threshold_bpm: parseInt(aerobicThreshold) || null,
+          anaerobic_threshold_bpm: parseInt(anaerobicThreshold) || null,
+          hr_recovery_bpm: parseInt(hrRecovery) || null,
+          ground_contact_time_ms: parseInt(groundContactTime) || null,
+          flight_time_ms: parseInt(flightTime) || null,
+          vertical_oscillation_cm: parseFloat(verticalOscillation) || null,
+          asymmetry_pct: parseFloat(asymmetryPct) || null,
+          leg_stiffness_kn_m: parseFloat(legStiffness) || null,
         },
       });
       if (error) throw new Error(error);
@@ -583,6 +749,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           <div className="mb-4">
+            <label className="text-[12px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+              <PencilLine size={14} /> Observações (opcional)
+            </label>
+            <textarea
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
+              placeholder="Como te sentiste, dores, condições atmosféricas..."
+              value={runNotes}
+              onChange={e => setRunNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="mb-4">
             <label className="text-[12px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
             <input
               type="text"
@@ -663,92 +841,188 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </>
           ) : (
             <>
-          {/* Metrics Grid inside "Métricas do relógio" sub-container */}
-          <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-4">
-            <p className="text-[12px] font-bold text-slate-500 mb-2.5">Métricas do relógio (opcional)</p>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <input 
-                type="number" placeholder="Desnível (m)" 
-                value={elevationGain} onChange={e=>setElevationGain(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
-              <input
-                type="number" placeholder="Cadência média (passadas/min)"
-                value={cadence} onChange={e=>setCadence(e.target.value)}
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition"
-              />
-              <input
-                type="number" placeholder="Cadência máxima (passadas/min)"
-                value={maxCadence} onChange={e=>setMaxCadence(e.target.value)}
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition"
-              />
-              <input
-                type="number" placeholder="Calorias (kcal)"
-                value={calories} onChange={e=>setCalories(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
-              <input 
-                type="number" step="0.1" placeholder="VO2 máx" 
-                value={vo2Max} onChange={e=>setVo2Max(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
-              <input 
-                type="number" placeholder="FC média (bpm)" 
-                value={avgHeartRate} onChange={e=>setAvgHeartRate(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
-              <input 
-                type="number" placeholder="FC máxima (bpm)" 
-                value={maxHeartRate} onChange={e=>setMaxHeartRate(e.target.value)} 
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
+          {runIdToEdit && runPhotos.length > 0 && (
+            <div className="mb-4">
+              <label className="text-[12px] text-slate-500 mb-1.5 block">Prints carregados</label>
+              <div className="grid grid-cols-3 gap-2">
+                {runPhotos.map((p, i) => (
+                  <div key={i} className="relative aspect-square">
+                    <img src={p.url || p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metrics Grid inside Organized Sub-containers */}
+          <div className="space-y-3 mb-4">
+            {/* Relógio & Fisiologia */}
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
+              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+                <span>Fisiologia & Relógio</span>
+                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="number" placeholder="Desnível subida (m)" 
+                  value={elevationGain} onChange={e=>setElevationGain(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="Desnível descida (m)" 
+                  value={elevationLoss} onChange={e=>setElevationLoss(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input
+                  type="number" placeholder="Cadência média (passadas/min)"
+                  value={cadence} onChange={e=>setCadence(e.target.value)}
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition"
+                />
+                <input
+                  type="number" placeholder="Cadência máxima (passadas/min)"
+                  value={maxCadence} onChange={e=>setMaxCadence(e.target.value)}
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition"
+                />
+                <input
+                  type="number" placeholder="Calorias (kcal)"
+                  value={calories} onChange={e=>setCalories(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" step="0.1" placeholder="VO2 máx" 
+                  value={vo2Max} onChange={e=>setVo2Max(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="FC média (bpm)" 
+                  value={avgHeartRate} onChange={e=>setAvgHeartRate(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="FC máxima (bpm)" 
+                  value={maxHeartRate} onChange={e=>setMaxHeartRate(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="FC Limiar Aeróbio LA (bpm)" 
+                  value={aerobicThreshold} onChange={e=>setAerobicThreshold(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="FC Limiar Anaeróbio LAn (bpm)" 
+                  value={anaerobicThreshold} onChange={e=>setAnaerobicThreshold(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+              </div>
             </div>
 
-            {/* FC Zones */}
-            <div className="flex items-center justify-between mt-3 mb-2">
-              <label className="text-[12px] text-slate-500">Zonas de FC (tempo em cada zona)</label>
-              <button 
-                onClick={() => setHrZones([...hrZones, { zone: '', minutes: '' }])} 
-                type="button" 
-                className="text-[12px] text-[#f07167] font-semibold flex items-center gap-1 hover:underline"
-              >
-                <Plus className="w-3.5 h-3.5" /> Adicionar zona
-              </button>
+            {/* Biomecânica de Corrida */}
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
+              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+                <span>Biomecânica de Corrida</span>
+                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="number" placeholder="Contacto solo (ms)" 
+                  value={groundContactTime} onChange={e=>setGroundContactTime(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="Tempo de voo (ms)" 
+                  value={flightTime} onChange={e=>setFlightTime(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" step="0.1" placeholder="Oscilação vertical (cm)" 
+                  value={verticalOscillation} onChange={e=>setVerticalOscillation(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" step="0.1" placeholder="Assimetria (%)" 
+                  value={asymmetryPct} onChange={e=>setAsymmetryPct(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" step="0.1" placeholder="Rigidez perna (kN/m)" 
+                  value={legStiffness} onChange={e=>setLegStiffness(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="text" placeholder="Pace máx (ex: 5.23)" 
+                  value={maxPace} onChange={e=>setMaxPace(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+              </div>
             </div>
-            {hrZones.length === 0 ? (
-              <p className="text-[11px] text-slate-400">Sem zonas ainda — usa "Adicionar zona" para cada uma que o relógio mostrar.</p>
-            ) : (
-              hrZones.map((z, idx) => (
-                <div key={idx} className="flex items-center gap-1.5 mb-1.5">
-                  <select 
-                    value={z.zone} 
-                    onChange={e => {
-                      const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy);
-                    }} 
-                    className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none"
-                  >
-                    <option value="">Zona</option>
-                    {[1,2,3,4,5].map(n => <option key={n} value={n}>Z{n}</option>)}
-                  </select>
-                  <input 
-                    type="number" placeholder="Minutos" 
-                    value={z.minutes} 
-                    onChange={e => {
-                      const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy);
-                    }} 
-                    className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none" 
-                  />
-                  <button 
-                    onClick={() => setHrZones(hrZones.filter((_, i) => i !== idx))} 
-                    type="button" 
-                    className="p-1 text-slate-400 hover:text-red-500"
-                  >
-                    <X className="w-3.5 h-3.5"/>
-                  </button>
-                </div>
-              ))
-            )}
+
+            {/* Hidratação & Passos */}
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
+              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+                <span>Hidratação & Atividade</span>
+                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <input 
+                  type="number" placeholder="Perda transpiração (ml)" 
+                  value={sweatLossMl} onChange={e=>setSweatLossMl(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+                <input 
+                  type="number" placeholder="Passos totais" 
+                  value={totalSteps} onChange={e=>setTotalSteps(e.target.value)} 
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
+                />
+              </div>
+            </div>
           </div>
+
+            {/* FC Zones */}
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[12px] font-bold text-slate-700">Zonas de FC (tempo em cada zona)</label>
+                <button 
+                  onClick={() => setHrZones([...hrZones, { zone: '', minutes: '' }])} 
+                  type="button" 
+                  className="text-[12px] text-[#f07167] font-semibold flex items-center gap-1 hover:underline"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar zona
+                </button>
+              </div>
+              {hrZones.length === 0 ? (
+                <p className="text-[11px] text-slate-400">Sem zonas ainda — usa "Adicionar zona" para cada uma que o relógio mostrar.</p>
+              ) : (
+                hrZones.map((z, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5 mb-1.5">
+                    <select 
+                      value={z.zone} 
+                      onChange={e => {
+                        const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy);
+                      }} 
+                      className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none"
+                    >
+                      <option value="">Zona</option>
+                      {[1,2,3,4,5].map(n => <option key={n} value={n}>Z{n}</option>)}
+                    </select>
+                    <input 
+                      type="number" placeholder="Minutos" 
+                      value={z.minutes} 
+                      onChange={e => {
+                        const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy);
+                      }} 
+                      className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none" 
+                    />
+                    <button 
+                      onClick={() => setHrZones(hrZones.filter((_, i) => i !== idx))} 
+                      type="button" 
+                      className="p-1 text-slate-400 hover:text-red-500"
+                    >
+                      <X className="w-3.5 h-3.5"/>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
 
           {/* Repeat Specifics */}
           {runKind === 'treino' && isRepeatType && (
@@ -863,6 +1137,37 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   return (
     <div className="w-full max-w-lg mx-auto pb-10">
       {renderCorridaForm()}
+
+      {/* Modal Bottom Sheet para métricas em falta */}
+      <MissingMetricsBottomSheet
+        isOpen={showMissingMetricsSheet}
+        missingKeys={missingKeysList}
+        onAddPhotos={() => {
+          setShowMissingMetricsSheet(false);
+          setEntryMethod('foto');
+        }}
+        onGoManual={() => {
+          setShowMissingMetricsSheet(false);
+          setEntryMethod('manual');
+        }}
+        onProceedAnyway={handleProceedAnyway}
+        onClose={() => {
+          setShowMissingMetricsSheet(false);
+          setSheetClosedViaTouch(true);
+        }}
+      />
+
+      {/* Botão flutuante para reabrir o Bottom Sheet quando fechado pelo traço */}
+      {sheetClosedViaTouch && !showMissingMetricsSheet && missingKeysList.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowMissingMetricsSheet(true)}
+          className="fixed bottom-5 right-5 z-40 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-full px-3.5 py-2.5 shadow-lg flex items-center gap-1.5 transition active:scale-95 animate-bounce"
+        >
+          <Sparkles className="w-4 h-4 text-amber-100" />
+          <span>Métricas em falta ({missingKeysList.length})</span>
+        </button>
+      )}
     </div>
   );
 }

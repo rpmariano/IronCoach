@@ -679,3 +679,40 @@ alter table coach_daily_summary enable row level security;
 create policy "own rows" on coach_daily_summary for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "admin read all" on coach_daily_summary for select using (public.is_admin());
+
+-- ============ app_screen_mappings: mapeamento de ecrãs de apps de exercício, corrida e corpo ============
+create table if not exists app_screen_mappings (
+  id uuid primary key default gen_random_uuid(),
+  category text not null check (category in ('gym', 'run', 'body')),
+  app_name text not null,
+  screen_type text not null,
+  detection_keywords text[] not null default '{}',
+  field_mappings jsonb not null default '{}'::jsonb,
+  is_trained boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table app_screen_mappings enable row level security;
+create policy "anyone can read mappings" on app_screen_mappings for select using (true);
+create policy "admin write mappings" on app_screen_mappings for all using (public.is_admin());
+
+-- ============ unknown_app_image_logs: registo de imagens de apps não treinadas ============
+create table if not exists unknown_app_image_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
+  category text not null check (category in ('gym', 'run', 'body')),
+  image_path text not null,
+  detected_app_guess text,
+  best_effort_result jsonb,
+  status text not null default 'pending' check (status in ('pending', 'reviewed', 'mapped', 'ignored')),
+  admin_notes text,
+  created_at timestamptz not null default now()
+);
+create index if not exists unknown_app_logs_created_idx on unknown_app_image_logs(created_at desc);
+create index if not exists unknown_app_logs_status_idx on unknown_app_image_logs(status);
+alter table unknown_app_image_logs enable row level security;
+create policy "insert own unknown logs" on unknown_app_image_logs for insert with check (auth.uid() = user_id);
+create policy "admin read unknown logs" on unknown_app_image_logs for select using (public.is_admin());
+create policy "admin update unknown logs" on unknown_app_image_logs for update using (public.is_admin());
+create policy "admin delete unknown logs" on unknown_app_image_logs for delete using (public.is_admin());
+

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, MessageSquare, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, MessageSquare, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge, PencilLine, Droplet, Footprints } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -44,9 +45,6 @@ function formatPace(secPerKm) {
 function runKindLabel(run) {
   if (run.kind === 'competicao') return 'Competição';
   if (run.kind === 'treino' && run.training_type) {
-    // Espelha TRAINING_TYPE_LABELS em supabase/functions/analyze-run. Cai no
-    // valor em bruto para corridas antigas gravadas com o enum anterior
-    // (intervalado/progressivo/series), que a Edge Function nunca reconheceu.
     const map = {
       continuo: 'Contínuo',
       longo: 'Longo',
@@ -79,6 +77,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
 
   const toggleExpand = async () => {
@@ -101,7 +100,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Tem a certeza que deseja eliminar esta corrida?')) return;
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       if (onDelete) {
@@ -122,10 +121,6 @@ export default function RunCard({ run, onEdit, onDelete }) {
     }
   };
 
-  // Repesca os prints já guardados (run_id, sem imagens novas) e volta a
-  // analisá-los do zero. Só funciona para corridas criadas a partir de um
-  // print — a Edge Function devolve um erro claro (não crasha) se
-  // run.photo_paths estiver vazio, como acontece num registo manual.
   const handleReanalyze = async () => {
     if (isReanalyzing) return;
     setIsReanalyzing(true);
@@ -153,11 +148,6 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const kindLabel = runKindLabel(run);
   const coachCommentary = run.coach_notes || run.ai_analysis || run.coach_analysis;
 
-  // As métricas do relógio vivem em run.details (jsonb) — ver
-  // detailsFromExtraction em supabase/functions/analyze-run/index.ts. Os
-  // outros fallbacks (run.elevation_gain_m, run.metrics?.*, ...) nunca
-  // bateram certo com o que é gravado; ficam só por segurança caso outro
-  // formato apareça no futuro.
   const details = run.details || {};
   const elevation = details.elevation_gain_m ?? run.elevation_gain_m ?? run.elevation_gain ?? run.elevation ?? run.metrics?.elevation_gain_m;
   const cadence = details.cadence_spm ?? run.cadence_spm ?? run.cadence ?? run.metrics?.cadence_spm;
@@ -169,11 +159,15 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const hrZones = details.hr_zones ?? run.hr_zones ?? run.metrics?.hr_zones;
   const splits = details.splits ?? run.splits ?? run.metrics?.splits;
 
-  // Pílulas Coloridas com Ícones (sem duplicação no cabeçalho)
+  const sweatLoss = details.sweat_loss_ml;
+  const totalSteps = details.total_steps;
+
   const activeChips = [
     distStr ? { key: 'dist', colorClass: 'bg-pink-100/90 text-pink-800 border-pink-200/80', icon: <Route size={14} className="text-pink-600" />, label: distStr } : null,
     durStr ? { key: 'dur', colorClass: 'bg-purple-100/90 text-purple-800 border-purple-200/80', icon: <Timer size={14} className="text-purple-600" />, label: durStr } : null,
     paceStr ? { key: 'pace', colorClass: 'bg-indigo-100/90 text-indigo-800 border-indigo-200/80', icon: <Gauge size={14} className="text-indigo-600" />, label: paceStr } : null,
+    sweatLoss ? { key: 'sweat', colorClass: 'bg-sky-100/90 text-sky-800 border-sky-200/80', icon: <Droplet size={14} className="text-sky-600" />, label: `${sweatLoss} ml transpiração` } : null,
+    totalSteps ? { key: 'steps', colorClass: 'bg-emerald-100/90 text-emerald-800 border-emerald-200/80', icon: <Footprints size={14} className="text-emerald-600" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
     elevation ? { key: 'elev', colorClass: 'bg-teal-100/90 text-teal-800 border-teal-200/80', icon: <Navigation size={14} className="text-teal-600" />, label: `${elevation}m Desnível` } : null,
     cadence ? { key: 'cad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${cadence} spm méd` } : null,
     maxCadence ? { key: 'maxcad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${maxCadence} spm máx` } : null,
@@ -184,8 +178,8 @@ export default function RunCard({ run, onEdit, onDelete }) {
   ].filter(Boolean);
 
   return (
-    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
-      {/* Header Bar — Limpo, sem repetição de texto abaixo da data */}
+    <div className="module-card-contrast space-y-3">
+      {/* === CABEÇALHO (Sempre visível) === */}
       <div 
         onClick={toggleExpand}
         className="flex items-center justify-between cursor-pointer select-none"
@@ -311,6 +305,84 @@ export default function RunCard({ run, onEdit, onDelete }) {
             </div>
           )}
 
+          {/* Biomecânica de Corrida */}
+          {(details.ground_contact_time_ms || details.vertical_oscillation_cm || details.asymmetry_pct || details.leg_stiffness_kn_m) && (
+            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
+              <span className="text-[11px] font-bold text-slate-700 block">Biomecânica de Corrida</span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {details.ground_contact_time_ms && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block">Contacto Solo</span>
+                    <span className="font-bold text-slate-700">{details.ground_contact_time_ms} ms</span>
+                  </div>
+                )}
+                {details.flight_time_ms && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block">Tempo Voo</span>
+                    <span className="font-bold text-slate-700">{details.flight_time_ms} ms</span>
+                  </div>
+                )}
+                {details.vertical_oscillation_cm && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block">Oscilação Vertical</span>
+                    <span className="font-bold text-slate-700">{details.vertical_oscillation_cm} cm</span>
+                  </div>
+                )}
+                {details.asymmetry_pct !== undefined && details.asymmetry_pct !== null && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block">Assimetria</span>
+                    <span className="font-bold text-slate-700">{details.asymmetry_pct}%</span>
+                  </div>
+                )}
+                {details.leg_stiffness_kn_m && (
+                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block">Rigidez (Stiffness)</span>
+                    <span className="font-bold text-slate-700">{details.leg_stiffness_kn_m} kN/m</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Limiares Fisiológicos FC */}
+          {(details.aerobic_threshold_bpm || details.anaerobic_threshold_bpm) && (
+            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
+              <span className="text-[11px] font-bold text-slate-700 block">Limiares Fisiológicos (FC)</span>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {details.aerobic_threshold_bpm && (
+                  <div className="bg-emerald-50/60 border border-emerald-100 p-2 rounded-lg">
+                    <span className="text-[10px] text-emerald-700 font-medium block">Limiar Aeróbio (FC LA)</span>
+                    <span className="font-bold text-emerald-900">{details.aerobic_threshold_bpm} bpm</span>
+                  </div>
+                )}
+                {details.anaerobic_threshold_bpm && (
+                  <div className="bg-rose-50/60 border border-rose-100 p-2 rounded-lg">
+                    <span className="text-[10px] text-rose-700 font-medium block">Limiar Anaeróbio (FC LAn)</span>
+                    <span className="font-bold text-rose-900">{details.anaerobic_threshold_bpm} bpm</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Transpiração & Hidratação */}
+          {details.sweat_loss_ml && (
+            <div className="bg-sky-50/60 border border-sky-200/80 rounded-xl p-3 shadow-xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-sky-100 rounded-lg text-sky-600">
+                  <Droplet size={18} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-sky-900 block">Perda por Transpiração</span>
+                  <span className="text-[11px] text-sky-700">Estimado: <strong>{details.sweat_loss_ml} ml</strong></span>
+                </div>
+              </div>
+              <span className="text-[10px] font-semibold bg-sky-200/70 text-sky-800 px-2 py-1 rounded-full">
+                Repor ~{Math.round(details.sweat_loss_ml * 1.5)} ml
+              </span>
+            </div>
+          )}
+
           {/* Esforço Bar */}
           {run.effort_rpe && (
             <div className="space-y-1">
@@ -368,7 +440,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
               </button>
             )}
             <button
-              onClick={handleDelete}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
               className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
@@ -378,6 +450,13 @@ export default function RunCard({ run, onEdit, onDelete }) {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        isDeleting={isDeleting}
+        message="Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita."
+      />
     </div>
   );
 }

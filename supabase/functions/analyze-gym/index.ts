@@ -219,6 +219,66 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function checkAndLogAppImage(
+  sb: any,
+  userId: string,
+  category: "run" | "gym" | "body",
+  imagesB64: string[],
+  mime: string,
+  extractionResult: Record<string, unknown>
+) {
+  try {
+    const { data: mappings } = await sb
+      .from("app_screen_mappings")
+      .select("app_name, detection_keywords")
+      .eq("category", category)
+      .eq("is_trained", true);
+
+    let isKnownApp = false;
+    let matchedAppName: string | null = null;
+    const extractionStr = JSON.stringify(extractionResult).toLowerCase();
+
+    if (mappings && mappings.length > 0) {
+      for (const map of mappings) {
+        const keywords: string[] = map.detection_keywords || [];
+        if (keywords.length > 0) {
+          const matchCount = keywords.filter((kw: string) =>
+            extractionStr.includes(kw.toLowerCase())
+          ).length;
+          if (matchCount >= 2 || (keywords.length === 1 && matchCount === 1)) {
+            isKnownApp = true;
+            matchedAppName = map.app_name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!isKnownApp && imagesB64.length > 0) {
+      const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+      const unknownPath = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await sb.storage
+        .from("unknown-app-photos")
+        .upload(unknownPath, base64ToBytes(imagesB64[0]), { contentType: mime });
+
+      if (!uploadError) {
+        await sb.from("unknown_app_image_logs").insert({
+          user_id: userId,
+          category,
+          image_path: unknownPath,
+          detected_app_guess: matchedAppName,
+          best_effort_result: extractionResult,
+          status: "pending",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("checkAndLogAppImage failed silently:", err);
+  }
+}
+
+
 // Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
 type GeminiUsage = { input_tokens: number; output_tokens: number };
@@ -858,6 +918,8 @@ Deno.serve(async (req) => {
     await attachGymCoachNotes(sb, userId, session, {
       date, kind, categories: mergedCategories, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
     }, geminiKey);
+
+    await checkAndLogAppImage(sb, userId, "gym", images, mime, analysis as unknown as Record<string, unknown>);
 
     return jsonResponse({
       session,

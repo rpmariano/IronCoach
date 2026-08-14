@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -28,6 +29,7 @@ export default function MealCard({ meal, onEdit }) {
 
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const n = mealNutrients(meal);
   const items = meal.meal_items || [];
@@ -58,7 +60,7 @@ export default function MealCard({ meal, onEdit }) {
   };
 
   const handleDeleteMeal = async () => {
-    if (!confirm('Tem a certeza que deseja eliminar esta refeição?')) return;
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       const { error } = await supabase.from('meals').delete().eq('id', meal.id);
@@ -76,7 +78,7 @@ export default function MealCard({ meal, onEdit }) {
   };
 
   return (
-    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
+    <div className="module-card-contrast space-y-3">
       {/* Header Bar */}
       <div 
         onClick={toggleExpand}
@@ -213,7 +215,7 @@ export default function MealCard({ meal, onEdit }) {
               </button>
             )}
             <button
-              onClick={handleDeleteMeal}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
               className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
@@ -223,6 +225,13 @@ export default function MealCard({ meal, onEdit }) {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteMeal}
+        isDeleting={isDeleting}
+        message="Tem a certeza que deseja eliminar esta refeição? Esta ação não pode ser desfeita."
+      />
     </div>
   );
 }

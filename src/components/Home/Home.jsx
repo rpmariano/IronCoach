@@ -176,6 +176,70 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
   );
 }
 
+// ─── Nutrição & Água Carousel ────────────────────────────────────────────────
+function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const scrollRef = useRef(null);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+      setCurrentIndex(index);
+    }
+  };
+
+  const scrollTo = (index) => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between px-4 sm:px-6">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
+          {[0, 1].map((idx) => (
+            <div 
+              key={idx} 
+              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button 
+            onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
+            disabled={currentIndex === 0}
+            className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button 
+            onClick={() => scrollTo(Math.min(1, currentIndex + 1))}
+            disabled={currentIndex === 1}
+            className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
+        style={{ scrollBehavior: 'smooth' }}
+      >
+        <div className="w-full shrink-0 snap-center">
+          <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={onNav} onLogWater={onLogWater} />
+        </div>
+        <div className="w-full shrink-0 snap-center">
+          <NutritionOptionA meals={meals} profile={profile} onNav={onNav} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Home component ──────────────────────────────────────────────────────
 // Só os 3 cartões fixos (Próxima Prova, Nutrição, Água) + o Plano da semana.
 // A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
@@ -244,11 +308,14 @@ export default function Home() {
       {/* Próxima Prova */}
       <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
 
-      {/* Nutrição Hero — sempre visível */}
-      <NutritionOptionA meals={meals} profile={profile} onNav={handleNav} />
-
-      {/* Água — sempre visível */}
-      <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={handleNav} onLogWater={handleLogWater} />
+      {/* Nutrição & Água Carousel */}
+      <NutritionWaterCarousel 
+        meals={meals} 
+        waterLogs={waterLogs} 
+        profile={profile} 
+        onNav={handleNav} 
+        onLogWater={handleLogWater} 
+      />
 
       {/* Plano — aceitar/recusar vive no chat do Coach; aqui é só consulta
           do plano aceite + registo de execução (specs/plano-de-treino.md) */}

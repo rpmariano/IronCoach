@@ -156,6 +156,66 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+async function checkAndLogAppImage(
+  sb: any,
+  userId: string,
+  category: "run" | "gym" | "body",
+  imagesB64: string[],
+  mime: string,
+  extractionResult: Record<string, unknown>
+) {
+  try {
+    const { data: mappings } = await sb
+      .from("app_screen_mappings")
+      .select("app_name, detection_keywords")
+      .eq("category", category)
+      .eq("is_trained", true);
+
+    let isKnownApp = false;
+    let matchedAppName: string | null = null;
+    const extractionStr = JSON.stringify(extractionResult).toLowerCase();
+
+    if (mappings && mappings.length > 0) {
+      for (const map of mappings) {
+        const keywords: string[] = map.detection_keywords || [];
+        if (keywords.length > 0) {
+          const matchCount = keywords.filter((kw: string) =>
+            extractionStr.includes(kw.toLowerCase())
+          ).length;
+          if (matchCount >= 2 || (keywords.length === 1 && matchCount === 1)) {
+            isKnownApp = true;
+            matchedAppName = map.app_name;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!isKnownApp && imagesB64.length > 0) {
+      const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+      const unknownPath = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+      const { error: uploadError } = await sb.storage
+        .from("unknown-app-photos")
+        .upload(unknownPath, base64ToBytes(imagesB64[0]), { contentType: mime });
+
+      if (!uploadError) {
+        await sb.from("unknown_app_image_logs").insert({
+          user_id: userId,
+          category,
+          image_path: unknownPath,
+          detected_app_guess: matchedAppName,
+          best_effort_result: extractionResult,
+          status: "pending",
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("checkAndLogAppImage failed silently:", err);
+  }
+}
+
+
 // deno-lint-ignore no-explicit-any
 function historyContext(history: any[]): string {
   if (!history || history.length === 0) {
@@ -619,6 +679,8 @@ Deno.serve(async (req) => {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
     }
+
+    await checkAndLogAppImage(sb, userId, "body", images, mime, result as unknown as Record<string, unknown>);
 
     return jsonResponse({ assessment, usage: result.usage });
   } catch (e) {

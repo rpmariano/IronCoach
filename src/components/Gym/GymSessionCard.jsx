@@ -6,6 +6,7 @@ import { useToast } from '../shared/ToastProvider';
 import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
 import CoachText from '../shared/CoachText';
 import { mapCategoriesToMuscles } from '../../utils/gym';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 
 function formatDuration(totalSeconds) {
   if (!totalSeconds) return '';
@@ -29,6 +30,7 @@ export default function GymSessionCard({ session, onEdit }) {
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
@@ -73,7 +75,7 @@ export default function GymSessionCard({ session, onEdit }) {
   };
 
   const handleDeleteSession = async () => {
-    if (!confirm('Tem a certeza que deseja eliminar este treino?')) return;
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
       const { error } = await supabase.from('workout_sessions').delete().eq('id', session.id);
@@ -98,8 +100,8 @@ export default function GymSessionCard({ session, onEdit }) {
   ].filter(Boolean);
 
   return (
-    <div className="bg-[var(--surf-detail)] border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3 transition">
-      {/* Header Bar */}
+    <div className="module-card-contrast space-y-3">
+      {/* HEADER VISÍVEL SEMPRE */}
       <div 
         onClick={handleExpandToggle}
         className="flex items-center justify-between cursor-pointer select-none"
@@ -183,6 +185,21 @@ export default function GymSessionCard({ session, onEdit }) {
             </div>
           )}
 
+          {/* Esforço Bar */}
+          {session.exertion && (
+            <div className="space-y-1">
+              <span className="text-[11px] font-bold text-slate-500">Esforço</span>
+              <div className="flex gap-1">
+                {Array(10).fill(0).map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? 'bg-purple-500' : 'bg-slate-200'}`} 
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Observações — só leitura; alterar é pelo botão "Editar" */}
           <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
@@ -237,7 +254,7 @@ export default function GymSessionCard({ session, onEdit }) {
               </button>
             )}
             <button
-              onClick={handleDeleteSession}
+              onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
               className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
             >
@@ -247,6 +264,13 @@ export default function GymSessionCard({ session, onEdit }) {
           </div>
         </div>
       )}
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteSession}
+        isDeleting={isDeleting}
+        message="Tem a certeza que deseja eliminar este treino? Esta ação não pode ser desfeita."
+      />
     </div>
   );
 }

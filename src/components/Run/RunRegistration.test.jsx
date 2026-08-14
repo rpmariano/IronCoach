@@ -93,7 +93,20 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
   });
 
   it('acrescenta a corrida devolvida ao store e fecha o formulário', async () => {
-    const newRun = { id: 'run-1', name: 'Corrida de Hoje', coach_notes: 'Bom ritmo, mantém a recuperação.' };
+    const newRun = {
+      id: 'run-1',
+      name: 'Corrida de Hoje',
+      coach_notes: 'Bom ritmo, mantém a recuperação.',
+      details: {
+        avg_heart_rate_bpm: 145,
+        cadence_spm: 160,
+        elevation_gain_m: 40,
+        sweat_loss_ml: 450,
+        ground_contact_time_ms: 220,
+        aerobic_threshold_bpm: 135,
+        splits: [{ distance_km: 1, time_seconds: 300 }],
+      },
+    };
     mocks.invoke.mockResolvedValue({ data: { run: newRun }, error: null });
     render(<RunRegistration onClose={onClose} />);
     await selectPhoto();
@@ -114,6 +127,19 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
     expect(useAppStore.getState().runs).toEqual([]);
+  });
+
+  it('abre o Bottom Sheet de métricas em falta se a extração por foto não trouxer métricas essenciais', async () => {
+    const incompleteRun = { id: 'run-incomplete', name: 'Corrida Incompleta', details: {} };
+    mocks.invoke.mockResolvedValue({ data: { run: incompleteRun }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+
+    await screen.findByTestId('missing-metrics-bottom-sheet');
+    expect(screen.getByText('Métricas em falta no registo')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });
 

@@ -13,7 +13,7 @@
   align-items: stretch;
   justify-content: space-between;
   width: 100%;
-  min-height: 192px;
+  min-height: 204px;
   height: auto;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
