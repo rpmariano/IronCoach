@@ -65,8 +65,8 @@ describe('PlanProposalBottomSheet', () => {
     fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalledTimes(1);
 
-    const grabHandle = screen.getByTitle('Fechar modal');
-    fireEvent.click(grabHandle);
+    const handles = screen.getAllByTitle('Fechar modal');
+    fireEvent.click(handles[0]);
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
