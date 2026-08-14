@@ -60,7 +60,7 @@ describe('PlanProposalBottomSheet', () => {
     const onClose = vi.fn();
     render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
 
-    const closeBtn = screen.getByRole('button', { name: 'Fechar modal' });
+    const closeBtn = screen.getByRole('button', { name: 'Voltar ao chat' });
     expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -70,7 +70,7 @@ describe('PlanProposalBottomSheet', () => {
     const onClose = vi.fn();
     render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
 
-    const handles = screen.getAllByTitle('Fechar modal');
+    const handles = screen.getAllByTitle('Toca para fechar persiana');
     fireEvent.click(handles[0]);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
