@@ -302,7 +302,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         // Load photos
         if (r.photo_paths && r.photo_paths.length > 0) {
           setRunPhotos(r.photo_paths.map(p => {
-            const url = supabase.storage.from('run-images').getPublicUrl(p).data.publicUrl;
+            const url = supabase.storage.from('run-photos').getPublicUrl(p).data.publicUrl;
             return { url, dataUrl: url };
           }));
         }
