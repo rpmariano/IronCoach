@@ -142,7 +142,7 @@ export function PlanProposalBottomSheet({
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className={`fixed inset-0 bg-black/[0.01] backdrop-blur-sm transition-all duration-500 ease-in-out ${
+        className={`fixed inset-0 bg-white/[0.01] backdrop-blur-sm transition-all duration-500 ease-in-out ${
           isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 animate-bottom-sheet-overlay'
         }`}
         onClick={handleDismiss}

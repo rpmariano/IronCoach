@@ -368,7 +368,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--fab-bg)]' : 'w-1.5 bg-[var(--fab-bg)] opacity-40'}`}
                 />
               ))}
             </div>
@@ -479,7 +479,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--fab-bg)]' : 'w-1.5 bg-[var(--fab-bg)] opacity-40'}`}
                 />
               ))}
             </div>

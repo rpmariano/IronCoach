@@ -120,7 +120,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); scrollTo(idx); }}
                         aria-label={`Ver prova ${idx + 1}`}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--fab-bg)]' : 'w-1.5 bg-[var(--fab-bg)] opacity-40'}`}
                       />
                     ))}
                   </div>
@@ -193,7 +193,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
               type="button"
               onClick={() => scrollTo(idx)}
               aria-label={`Ver cartão ${idx + 1}`}
-              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--fab-bg)]' : 'w-1.5 bg-[var(--fab-bg)] opacity-40'}`}
             />
           ))}
         </div>
