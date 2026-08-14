@@ -233,30 +233,27 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Sugestões pendentes (Planos / Objetivos) — Banner que abre o Modal Bottom Sheet */}
+      {/* Sugestões pendentes (Planos / Objetivos) — Pill Button para abrir Modal */}
       {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-        <button
-          type="button"
-          onClick={() => {
-            if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
-            if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
-          }}
-          className="shrink-0 mb-3 w-full p-3 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-amber-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-center justify-between shadow-lg active:scale-98 transition"
-        >
-          <span className="flex items-center gap-2">
-            <Sparkles size={15} className="text-emerald-400 animate-pulse" />
+        <div className="flex justify-center mb-3 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
+              if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
+            }}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-md flex items-center gap-2 transition active:scale-95 animate-bounce"
+          >
+            <Sparkles className="w-4 h-4 text-emerald-100" />
             <span>
               {pendingPlans.length > 0 && pendingGoalProposals.length > 0
-                ? `Propostas de plano e objetivos por rever (${pendingPlans.length + pendingGoalProposals.length})`
+                ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
                 : pendingPlans.length > 0
                 ? `Proposta de plano por rever (${pendingPlans.length})`
-                : `Proposta de alteração de objetivos (${pendingGoalProposals.length})`}
+                : `Objetivos por rever (${pendingGoalProposals.length})`}
             </span>
-          </span>
-          <span className="flex items-center gap-1 text-[11px] bg-emerald-500/20 px-2.5 py-1 rounded-xl text-emerald-200 font-semibold">
-            Ver proposta <ChevronRight size={13} />
-          </span>
-        </button>
+          </button>
+        </div>
       )}
 
       {/* Messages Scroll Area */}
