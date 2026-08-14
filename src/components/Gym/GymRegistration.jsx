@@ -5,6 +5,7 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -120,6 +121,8 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // Nutrição — ver MealRegistration.jsx e PRD 3.2/3.3).
   const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
   // os valores em vez de os ler do estado, para poder ser calculada também a
@@ -413,7 +416,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
             type="button"
             className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
           >
@@ -591,53 +594,68 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
           </>
         ) : (
           <>
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Métricas do relógio (opcional)</label>
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <input
-                type="text"
-                inputMode="text"
-                value={durationStr}
-                onChange={e => setDurationStr(e.target.value)}
-                placeholder="Duração (43m ou 37:57)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-              />
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={calories}
-                onChange={e => setCalories(e.target.value)}
-                placeholder="Calorias (kcal)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-              />
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={avgHr}
-                onChange={e => setAvgHr(e.target.value)}
-                placeholder="FC média (bpm)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-              />
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={maxHr}
-                onChange={e => setMaxHr(e.target.value)}
-                placeholder="FC máx (bpm)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-              />
-              <input
-                type="number"
-                min="1"
-                max="10"
-                step="1"
-                value={exertion}
-                onChange={e => setExertion(e.target.value)}
-                placeholder="Esforço (1-10)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-              />
+            <label className="text-[11px] text-slate-500 mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
+            <div className="grid grid-cols-2 gap-2.5 mb-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Duração (ex.: 43m)</label>
+                <input
+                  type="text"
+                  inputMode="text"
+                  value={durationStr}
+                  onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
+                  placeholder="Ex: 45m"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={calories}
+                  onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
+                  placeholder="Ex: 350"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={avgHr}
+                  onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
+                  placeholder="Ex: 135"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={maxHr}
+                  onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
+                  placeholder="Ex: 168"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Esforço RPE (1-10)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={exertion}
+                  onChange={e => { setExertion(e.target.value); setIsFormDirty(true); }}
+                  placeholder="Ex: 8"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                />
+              </div>
             </div>
             {isEditing ? (
               <div className="mb-4">
@@ -770,6 +788,15 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
+
+      {/* Modal de confirmação de saída com alterações por gravar */}
+      <UnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={isSaving}
+        onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
+        onDiscardAndLeave={onClose}
+        onCancel={() => setShowUnsavedModal(false)}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -56,6 +57,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // resumo do Coach e obriga a regenerá-lo. Mudar só a data é um update
   // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
     notes: (notesValue || '').trim(),
@@ -87,6 +90,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     && analyticalSignature(notes, metrics) !== originalSnapshot;
 
   const handleMetricChange = (key, value) => {
+    setIsFormDirty(true);
     setMetrics(prev => ({ ...prev, [key]: value }));
   };
 
@@ -243,7 +247,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
             type="button"
             className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
           >
@@ -398,6 +402,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
+
+      {/* Modal de confirmação de saída com alterações por gravar */}
+      <UnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={isSaving || isAnalyzing}
+        onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
+        onDiscardAndLeave={onClose}
+        onCancel={() => setShowUnsavedModal(false)}
+      />
     </div>
   );
 }

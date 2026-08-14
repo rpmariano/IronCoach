@@ -21,8 +21,15 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     clearTimeout(timer);
     
     if (error) {
-      console.error(`[EdgeFunction:${fnName}] Erro na execução:`, error);
-      return { data: null, error: error.message || 'Erro ao processar o pedido no servidor.' };
+      let detailedMsg = error.message;
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const bodyJson = await error.context.json();
+          if (bodyJson?.error) detailedMsg = bodyJson.error;
+        } catch (_) {}
+      }
+      console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
+      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.' };
     }
     return { data, error: null };
   } catch (err) {

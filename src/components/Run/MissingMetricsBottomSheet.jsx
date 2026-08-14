@@ -2,6 +2,8 @@ import React, { useRef } from 'react';
 import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
 
 export const METRIC_CONFIGS = {
+  distance_km: { label: 'Distância da Corrida (km)', icon: <Navigation className="w-4 h-4 text-emerald-500" /> },
+  duration_seconds: { label: 'Duração Total da Corrida', icon: <Zap className="w-4 h-4 text-amber-500" /> },
   avg_heart_rate_bpm: { label: 'Frequência Cardíaca (Média / Máxima)', icon: <HeartPulse className="w-4 h-4 text-rose-500" /> },
   cadence_spm: { label: 'Cadência de Corrida (spm)', icon: <Zap className="w-4 h-4 text-amber-500" /> },
   elevation_gain_m: { label: 'Desnível Acumulado (m)', icon: <Navigation className="w-4 h-4 text-teal-500" /> },

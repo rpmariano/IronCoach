@@ -96,6 +96,8 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     const newRun = {
       id: 'run-1',
       name: 'Corrida de Hoje',
+      distance_km: 10,
+      duration_seconds: 3600,
       coach_notes: 'Bom ritmo, mantém a recuperação.',
       details: {
         avg_heart_rate_bpm: 145,

@@ -7,6 +7,7 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -136,6 +137,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   // Estado do Bottom Sheet de métricas em falta
   const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
@@ -145,8 +148,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [pendingCreatedRun, setPendingCreatedRun] = useState(null);
 
   // Helper para identificar métricas recomendadas em falta
-  const detectMissingRunMetrics = (detailsObj = {}) => {
+  const detectMissingRunMetrics = (detailsObj = {}, distance = null, duration = null) => {
     const missing = [];
+    if (distance === null || distance === undefined || distance === '' || Number(distance) === 0) {
+      missing.push('distance_km');
+    }
+    if (!duration) {
+      missing.push('duration_seconds');
+    }
     if (!detailsObj.avg_heart_rate_bpm) missing.push('avg_heart_rate_bpm');
     if (!detailsObj.cadence_spm) missing.push('cadence_spm');
     if (!detailsObj.elevation_gain_m) missing.push('elevation_gain_m');
@@ -428,7 +437,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         })));
       }
 
-      const missing = detectMissingRunMetrics(extractedDetails);
+      const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
       if (missing.length > 0 && !userBypassedMissingSheet) {
         setPendingCreatedRun(createdRun);
         setMissingKeysList(missing);
@@ -491,7 +500,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
 
     const { details } = buildDetailsFromForm();
-    const missing = detectMissingRunMetrics(details);
+    const missing = detectMissingRunMetrics(details, runDistance, runDuration);
     if (missing.length > 0 && !userBypassedMissingSheet && !forceBypassMissing && !runIdToEdit) {
       setMissingKeysList(missing);
       setShowMissingMetricsSheet(true);
@@ -668,7 +677,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <SneakerIcon className="w-4 h-4" style={{ color: 'var(--mod-corrida-to)' }} />
               <h2 className="text-sm font-semibold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
             </div>
-            <button onClick={onClose} className="text-[11px] text-slate-500 hover:text-red-400 transition">Cancelar</button>
+            <button onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }} className="text-[11px] text-slate-500 hover:text-red-400 transition">Cancelar</button>
           </div>
 
           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -872,57 +881,87 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <span>Fisiologia & Relógio</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <input 
-                  type="number" placeholder="Desnível subida (m)" 
-                  value={elevationGain} onChange={e=>setElevationGain(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="Desnível descida (m)" 
-                  value={elevationLoss} onChange={e=>setElevationLoss(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input
-                  type="number" placeholder="Cadência média (passadas/min)"
-                  value={cadence} onChange={e=>setCadence(e.target.value)}
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition"
-                />
-                <input
-                  type="number" placeholder="Cadência máxima (passadas/min)"
-                  value={maxCadence} onChange={e=>setMaxCadence(e.target.value)}
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition"
-                />
-                <input
-                  type="number" placeholder="Calorias (kcal)"
-                  value={calories} onChange={e=>setCalories(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" step="0.1" placeholder="VO2 máx" 
-                  value={vo2Max} onChange={e=>setVo2Max(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="FC média (bpm)" 
-                  value={avgHeartRate} onChange={e=>setAvgHeartRate(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="FC máxima (bpm)" 
-                  value={maxHeartRate} onChange={e=>setMaxHeartRate(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="FC Limiar Aeróbio LA (bpm)" 
-                  value={aerobicThreshold} onChange={e=>setAerobicThreshold(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="FC Limiar Anaeróbio LAn (bpm)" 
-                  value={anaerobicThreshold} onChange={e=>setAnaerobicThreshold(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível subida (m)</label>
+                  <input 
+                    type="number" placeholder="Ex: 120" 
+                    value={elevationGain} onChange={e=>{setElevationGain(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível descida (m)</label>
+                  <input 
+                    type="number" placeholder="Ex: 80" 
+                    value={elevationLoss} onChange={e=>{setElevationLoss(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência média (spm)</label>
+                  <input
+                    type="number" placeholder="Ex: 158"
+                    value={cadence} onChange={e=>{setCadence(e.target.value); setIsFormDirty(true);}}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência máx (spm)</label>
+                  <input
+                    type="number" placeholder="Ex: 175"
+                    value={maxCadence} onChange={e=>{setMaxCadence(e.target.value); setIsFormDirty(true);}}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
+                  <input
+                    type="number" placeholder="Ex: 450"
+                    value={calories} onChange={e=>{setCalories(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">VO2 máx</label>
+                  <input 
+                    type="number" step="0.1" placeholder="Ex: 48.5" 
+                    value={vo2Max} onChange={e=>{setVo2Max(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
+                  <input 
+                    type="number" placeholder="Ex: 142" 
+                    value={avgHeartRate} onChange={e=>{setAvgHeartRate(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
+                  <input 
+                    type="number" placeholder="Ex: 172" 
+                    value={maxHeartRate} onChange={e=>{setMaxHeartRate(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Aeróbio (bpm)</label>
+                  <input 
+                    type="number" placeholder="Ex: 145" 
+                    value={aerobicThreshold} onChange={e=>{setAerobicThreshold(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Anaeróbio (bpm)</label>
+                  <input 
+                    type="number" placeholder="Ex: 165" 
+                    value={anaerobicThreshold} onChange={e=>{setAnaerobicThreshold(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
               </div>
             </div>
 
@@ -932,37 +971,55 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <span>Biomecânica de Corrida</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <input 
-                  type="number" placeholder="Contacto solo (ms)" 
-                  value={groundContactTime} onChange={e=>setGroundContactTime(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="Tempo de voo (ms)" 
-                  value={flightTime} onChange={e=>setFlightTime(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" step="0.1" placeholder="Oscilação vertical (cm)" 
-                  value={verticalOscillation} onChange={e=>setVerticalOscillation(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" step="0.1" placeholder="Assimetria (%)" 
-                  value={asymmetryPct} onChange={e=>setAsymmetryPct(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" step="0.1" placeholder="Rigidez perna (kN/m)" 
-                  value={legStiffness} onChange={e=>setLegStiffness(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="text" placeholder="Pace máx (ex: 5.23)" 
-                  value={maxPace} onChange={e=>setMaxPace(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Contacto Solo (ms)</label>
+                  <input 
+                    type="number" placeholder="Ex: 215" 
+                    value={groundContactTime} onChange={e=>{setGroundContactTime(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Tempo de Voo (ms)</label>
+                  <input 
+                    type="number" placeholder="Ex: 190" 
+                    value={flightTime} onChange={e=>{setFlightTime(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Oscilação Vertical (cm)</label>
+                  <input 
+                    type="number" step="0.1" placeholder="Ex: 8.5" 
+                    value={verticalOscillation} onChange={e=>{setVerticalOscillation(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Assimetria (%)</label>
+                  <input 
+                    type="number" step="0.1" placeholder="Ex: 48.2" 
+                    value={asymmetryPct} onChange={e=>{setAsymmetryPct(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Rigidez Perna (kN/m)</label>
+                  <input 
+                    type="number" step="0.1" placeholder="Ex: 11.5" 
+                    value={legStiffness} onChange={e=>{setLegStiffness(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Pace máx (min/km)</label>
+                  <input 
+                    type="text" placeholder="Ex: 4:15" 
+                    value={maxPace} onChange={e=>{setMaxPace(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
               </div>
             </div>
 
@@ -972,17 +1029,23 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <span>Hidratação & Atividade</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <input 
-                  type="number" placeholder="Perda transpiração (ml)" 
-                  value={sweatLossMl} onChange={e=>setSweatLossMl(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
-                <input 
-                  type="number" placeholder="Passos totais" 
-                  value={totalSteps} onChange={e=>setTotalSteps(e.target.value)} 
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] text-slate-800 outline-none focus:border-slate-400 transition" 
-                />
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Perda transpiração (ml)</label>
+                  <input 
+                    type="number" placeholder="Ex: 850" 
+                    value={sweatLossMl} onChange={e=>{setSweatLossMl(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Passos totais</label>
+                  <input 
+                    type="number" placeholder="Ex: 12500" 
+                    value={totalSteps} onChange={e=>{setTotalSteps(e.target.value); setIsFormDirty(true);}} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1086,22 +1149,32 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           {/* Main Manual Fields */}
-          <div className="relative mb-3">
-            <input 
-              type="number" min="0" step="0.01" 
-              placeholder={isRepeatType ? 'Distância total (opcional)' : 'Distância'} 
-              value={runDistance} onChange={e => setRunDistance(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl pl-3 pr-10 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition" 
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
+          <div className="mb-3">
+            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+              {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
+            </label>
+            <div className="relative">
+              <input 
+                type="number" min="0" step="0.01" 
+                placeholder="0.00" 
+                value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
+                className="w-full bg-white border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 transition" 
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
+            </div>
           </div>
           
-          <input
-            type="text"
-            placeholder={isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
-            value={runDuration} onChange={e => setRunDuration(e.target.value)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4"
-          />
+          <div className="mb-4">
+            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+              {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
+            </label>
+            <input
+              type="text"
+              placeholder="00:00"
+              value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
+              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4"
+            />
+          </div>
 
           {runIdToEdit ? (
             // A editar, o botão só leva o gradiente do Coach quando os dados
@@ -1178,6 +1251,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           <span>Métricas em falta ({missingKeysList.length})</span>
         </button>
       )}
+
+      {/* Modal de confirmação de saída com alterações por gravar */}
+      <UnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={isSubmitting}
+        onSaveAndLeave={handleSaveCorrida}
+        onDiscardAndLeave={onClose}
+        onCancel={() => setShowUnsavedModal(false)}
+      />
     </div>
   );
 }

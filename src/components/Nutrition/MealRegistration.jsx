@@ -6,6 +6,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -73,6 +74,8 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
   const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
   const analyticalSignature = (notesValue, items) => JSON.stringify({
@@ -281,7 +284,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             <h2 className="text-[15px] font-semibold text-slate-700">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
             type="button"
             className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
           >
@@ -541,6 +544,15 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
+
+      {/* Modal de confirmação de saída com alterações por gravar */}
+      <UnsavedChangesModal
+        isOpen={showUnsavedModal}
+        isSaving={isSaving || isFinalizing}
+        onSaveAndLeave={isEditing ? handleSaveEdit : handleFinalizeManual}
+        onDiscardAndLeave={onClose}
+        onCancel={() => setShowUnsavedModal(false)}
+      />
     </div>
   );
 }

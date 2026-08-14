@@ -737,10 +737,6 @@ async function analyzeWithGemini(
     regularity_score: num(parsed.regularity_score),
   };
 
-  if (extraction.distance_km === null && extraction.duration_seconds === null) {
-    throw new Error("Não foi possível ler a distância ou a duração nas imagens. Tenta outro ângulo ou mais luz.");
-  }
-
   console.log("Extração de corrida:", JSON.stringify({
     has_distance: extraction.distance_km !== null,
     has_duration: extraction.duration_seconds !== null,
