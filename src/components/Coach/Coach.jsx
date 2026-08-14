@@ -73,8 +73,7 @@ export default function Coach() {
   };
 
   const [inputStr, setInputStr] = useState('');
-  const [showClearModal, setShowClearModal] = useState(false);
-  const [hoursToShow, setHoursToShow] = useState(48);
+  const [hoursToShow, setHoursToShow] = useState(24);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -92,9 +91,16 @@ export default function Coach() {
   const hasMoreMessages = (coachMessages || []).length > visibleMessages.length;
 
 
+  const isFirstRender = useRef(true);
+
   // Auto-scroll to bottom when messages or loading state changes
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isFirstRender.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+      isFirstRender.current = false;
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [coachMessages, coachLoading, coachSuggestions]);
 
   // Adjust textarea height on input change
@@ -187,18 +193,6 @@ export default function Coach() {
     }
   };
 
-  const handleClearConversation = async () => {
-    setShowClearModal(false);
-    if (session?.user?.id) {
-      try {
-        await supabase.from('coach_messages').delete().eq('user_id', session.user.id);
-      } catch (e) {
-        console.error('Error clearing coach messages in Supabase:', e);
-      }
-    }
-    clearCoachChat();
-  };
-
   const defaultSuggestions = [
     'Como está a minha nutrição hoje?',
     'Cria-me um plano de treino para uma meia maratona',
@@ -222,15 +216,6 @@ export default function Coach() {
           </div>
         </div>
 
-        {coachMessages.length > 0 && (
-          <button
-            onClick={() => setShowClearModal(true)}
-            className="text-[11px] text-slate-400 border border-neutral-800 rounded-xl px-2.5 py-1 hover:bg-neutral-800 active:scale-95 transition flex items-center gap-1"
-          >
-            <Trash2 className="w-3.5 h-3.5 text-slate-500" />
-            Limpar
-          </button>
-        )}
       </div>
 
 
@@ -410,36 +395,6 @@ export default function Coach() {
         </div>
       </div>
 
-      {/* Clear Confirmation Modal */}
-      {showClearModal && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-xs flex items-center justify-center px-6 fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowClearModal(false);
-          }}
-        >
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 max-w-xs w-full shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-2">Limpar toda a conversa com o Coach?</h3>
-            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-              Esta ação apaga permanentemente todas as mensagens trocadas e não pode ser desfeita. O Coach deixará de ter memória desta conversa.
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowClearModal(false)}
-                className="flex-1 border border-neutral-800 text-slate-400 text-xs font-semibold rounded-xl py-2.5 hover:bg-neutral-800 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleClearConversation}
-                className="flex-1 bg-red-500/20 text-red-400 text-xs font-semibold rounded-xl py-2.5 border border-red-500/40 hover:bg-red-500/30 transition"
-              >
-                Limpar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal Bottom Sheet (Persiana de baixo para cima) para Propostas */}
       {(activeProposalSheetPlan || activeGoalProposal) && (

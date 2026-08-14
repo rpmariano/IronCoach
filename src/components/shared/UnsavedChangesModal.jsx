@@ -1,5 +1,6 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
+import Button from './Button';
 
 export function UnsavedChangesModal({
   isOpen,
@@ -23,33 +24,35 @@ export function UnsavedChangesModal({
         </div>
 
         <div className="space-y-2 pt-1">
-          <button
+          <Button
             type="button"
             onClick={onSaveAndLeave}
             disabled={isSaving}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] shadow-lg active:scale-95 transition disabled:opacity-60 text-white"
+            isLoading={isSaving}
+            className="w-full text-xs"
           >
-            {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
             {isSaving ? 'A guardar...' : 'Gravar e sair'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="danger-outline"
             onClick={onDiscardAndLeave}
             disabled={isSaving}
-            className="w-full py-3 rounded-xl font-semibold text-xs border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 transition disabled:opacity-60"
+            className="w-full text-xs"
           >
             Sair sem gravar
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={onCancel}
             disabled={isSaving}
-            className="w-full py-2.5 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60"
+            className="w-full text-xs"
           >
             Cancelar
-          </button>
+          </Button>
         </div>
       </div>
     </div>

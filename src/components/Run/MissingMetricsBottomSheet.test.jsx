@@ -44,7 +44,7 @@ describe('MissingMetricsBottomSheet', () => {
     expect(defaultProps.onProceedAnyway).toHaveBeenCalledTimes(1);
   });
 
-  it('chama onClose ao clicar no traço de touch ou deslizar para baixo', () => {
+  it('chama onClose ao clicar no traço de touch', () => {
     vi.useFakeTimers();
     render(<MissingMetricsBottomSheet {...defaultProps} />);
 
@@ -52,11 +52,15 @@ describe('MissingMetricsBottomSheet', () => {
     fireEvent.click(grabHandle);
     vi.runAllTimers();
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
-    
-    defaultProps.onClose.mockClear();
+    vi.useRealTimers();
+  });
 
-    // Gestos de toque deslizar para baixo (re-render to reset state since component marks itself as closing)
+  it('chama onClose ao deslizar para baixo', () => {
+    vi.useFakeTimers();
+    defaultProps.onClose.mockClear();
     render(<MissingMetricsBottomSheet {...defaultProps} />);
+    
+    const grabHandle = screen.getByTitle('Toca para fechar persiana');
     fireEvent.touchStart(grabHandle, { touches: [{ clientY: 100 }] });
     fireEvent.touchMove(grabHandle, { touches: [{ clientY: 250 }] });
     fireEvent.touchEnd(grabHandle, { changedTouches: [{ clientY: 250 }] });
