@@ -129,6 +129,7 @@ export default function MissingMetricsBottomSheet({
 
       {/* Persiana Bottom Sheet */}
       <div 
+        ref={dragAreaRef}
         className="relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden max-h-[85vh]"
         style={{
           transform: sheetTransform,
@@ -137,7 +138,7 @@ export default function MissingMetricsBottomSheet({
         }}
       >
         {/* Zona de Arrasto Superior (Pega) */}
-        <div ref={dragAreaRef} className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
+        <div className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
           {/* Traço de Touch (Grab Handle) */}
           <div 
             onClick={handleDismiss}

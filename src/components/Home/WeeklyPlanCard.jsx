@@ -327,37 +327,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {days.length > 1 && (
-        <div className="flex items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
-            {days.map((_, idx) => (
-              <button 
-                key={idx} 
-                type="button"
-                onClick={() => scrollTo(idx)}
-                aria-label={`Ver dia ${idx + 1}`}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button 
-              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
-              disabled={currentIndex === 0}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button 
-              onClick={() => scrollTo(Math.min(days.length - 1, currentIndex + 1))}
-              disabled={currentIndex === days.length - 1}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+
       
       <div className="wpc-card">
         <div className="wpc-glow-coach"></div>
@@ -385,7 +355,25 @@ export function PlanProposalCard({ plan, items, onRespond }) {
               <XIcon size={15} /> Recusar
             </button>
           </div>
+          
+          <div style={{ height: '32px' }} className="shrink-0" />
         </div>
+        
+        {days.length > 1 && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+              {days.map((_, idx) => (
+                <button 
+                  key={idx} 
+                  type="button"
+                  onClick={() => scrollTo(idx)}
+                  aria-label={`Ver dia ${idx + 1}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -444,37 +432,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
 
   return (
     <div className="flex flex-col gap-3">
-      {days.length > 1 && (
-        <div className="flex items-center justify-between px-4 md:px-6">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
-            {days.map((_, idx) => (
-              <button 
-                key={idx} 
-                type="button"
-                onClick={() => scrollTo(idx)}
-                aria-label={`Ver dia ${idx + 1}`}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button 
-              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
-              disabled={currentIndex === 0}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button 
-              onClick={() => scrollTo(Math.min(days.length - 1, currentIndex + 1))}
-              disabled={currentIndex === days.length - 1}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+
 
       <div className="wpc-card">
         <div className="wpc-glow-coach"></div>
@@ -508,7 +466,25 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
               />
             ))}
           </div>
+          
+          <div style={{ height: '32px' }} className="shrink-0" />
         </div>
+        
+        {days.length > 1 && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+              {days.map((_, idx) => (
+                <button 
+                  key={idx} 
+                  type="button"
+                  onClick={() => scrollTo(idx)}
+                  aria-label={`Ver dia ${idx + 1}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

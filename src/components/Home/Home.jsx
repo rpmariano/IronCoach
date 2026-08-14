@@ -80,39 +80,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      {upcoming.length > 1 && (
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-1.5">
-            {upcoming.map((_, idx) => (
-              <button 
-                key={idx} 
-                type="button"
-                onClick={() => scrollTo(idx)}
-                aria-label={`Ver prova ${idx + 1}`}
-                className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
-              disabled={currentIndex === 0}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button 
-              onClick={() => scrollTo(Math.min(upcoming.length - 1, currentIndex + 1))}
-              disabled={currentIndex === upcoming.length - 1}
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
+    <div className="relative flex flex-col gap-3">
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
@@ -133,7 +101,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
               className="w-full shrink-0 snap-center" 
               onClick={() => onNav('corrida')}
             >
-              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1">
+              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1 pb-6">
                 <PremiumNextRaceCard 
                   title={next.name}
                   date={formattedDate}
@@ -147,6 +115,22 @@ function NextRaceCard({ raceEvents = [], onNav }) {
           );
         })}
       </div>
+
+      {upcoming.length > 1 && (
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none pb-2">
+          <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+            {upcoming.map((_, idx) => (
+              <button 
+                key={idx} 
+                type="button"
+                onClick={() => scrollTo(idx)}
+                aria-label={`Ver prova ${idx + 1}`}
+                className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -186,37 +170,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
   );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between px-4 sm:px-6">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%]">
-          {[0, 1].map((idx) => (
-            <button 
-              key={idx} 
-              type="button"
-              onClick={() => scrollTo(idx)}
-              aria-label={`Ver cartão ${idx + 1}`}
-              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-30'}`}
-            />
-          ))}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button 
-            onClick={() => scrollTo(Math.max(0, currentIndex - 1))}
-            disabled={currentIndex === 0}
-            className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 disabled:opacity-30"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button 
-            onClick={() => scrollTo(Math.min(1, currentIndex + 1))}
-            disabled={currentIndex === 1}
-            className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-[var(--accent)] disabled:opacity-30"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
+    <div className="relative flex flex-col gap-3">
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
@@ -224,11 +178,25 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
         className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="w-full shrink-0 snap-center">
+        <div className="w-full shrink-0 snap-center pb-6">
           <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={onNav} onLogWater={onLogWater} />
         </div>
-        <div className="w-full shrink-0 snap-center">
+        <div className="w-full shrink-0 snap-center pb-6">
           <NutritionOptionA meals={meals} profile={profile} onNav={onNav} />
+        </div>
+      </div>
+      
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none pb-2">
+        <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+          {[0, 1].map((idx) => (
+            <button 
+              key={idx} 
+              type="button"
+              onClick={() => scrollTo(idx)}
+              aria-label={`Ver cartão ${idx + 1}`}
+              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+            />
+          ))}
         </div>
       </div>
     </div>

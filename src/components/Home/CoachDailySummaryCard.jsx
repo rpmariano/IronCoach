@@ -160,39 +160,7 @@ export default function CoachDailySummaryCard() {
 
   return (
     <div className="w-full flex flex-col gap-3">
-      {/* Navegação no topo (tal como nas Provas) */}
-      {messages.length > 1 && (
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-1.5">
-            {messages.map((_, idx) => (
-              <span 
-                key={idx} 
-                className={`h-1.5 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-cyan-500' : 'w-1.5 bg-cyan-500/30'}`}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button 
-              type="button"
-              onClick={() => scrollTo(Math.max(0, index - 1))}
-              disabled={index === 0}
-              aria-label="Mensagem anterior"
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-slate-400 hover:text-cyan-500 disabled:opacity-30 transition"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button 
-              type="button"
-              onClick={() => scrollTo(Math.min(messages.length - 1, index + 1))}
-              disabled={index === messages.length - 1}
-              aria-label="Próxima mensagem"
-              className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-sm text-cyan-500 disabled:opacity-30 transition"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+
 
       <div className="cds-card w-full">
         <div className="cds-glow" />
@@ -235,7 +203,24 @@ export default function CoachDailySummaryCard() {
               </div>
             ))}
           </div>
+          <div style={{ height: '32px' }} className="shrink-0" />
         </div>
+        
+        {messages.length > 1 && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+              {messages.map((_, idx) => (
+                <button 
+                  key={idx} 
+                  type="button"
+                  onClick={() => scrollTo(idx)}
+                  aria-label={`Ver mensagem ${idx + 1}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-cyan-600' : 'w-1.5 bg-cyan-600/40'}`}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
