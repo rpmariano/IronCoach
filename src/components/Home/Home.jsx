@@ -80,12 +80,12 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   );
 
   return (
-    <div className="relative flex flex-col gap-3">
+    <div>
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
         onTouchMove={handleTouchMove}
-        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
+        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
         style={{ scrollBehavior: 'smooth' }}
       >
         {upcoming.map(next => {
@@ -98,10 +98,10 @@ function NextRaceCard({ raceEvents = [], onNav }) {
           return (
             <div 
               key={next.id} 
-              className="w-full shrink-0 snap-center" 
+              className="relative w-full shrink-0 snap-center" 
               onClick={() => onNav('corrida')}
             >
-              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1">
+              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full">
                 <PremiumNextRaceCard 
                   title={next.name}
                   date={formattedDate}
@@ -111,26 +111,25 @@ function NextRaceCard({ raceEvents = [], onNav }) {
                   progressPercentage={progressPercentage}
                 />
               </div>
+              {upcoming.length > 1 && (
+                <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
+                  <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
+                    {upcoming.map((_, idx) => (
+                      <button 
+                        key={idx} 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); scrollTo(idx); }}
+                        aria-label={`Ver prova ${idx + 1}`}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-
-      {upcoming.length > 1 && (
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none pb-2">
-          <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
-            {upcoming.map((_, idx) => (
-              <button 
-                key={idx} 
-                type="button"
-                onClick={() => scrollTo(idx)}
-                aria-label={`Ver prova ${idx + 1}`}
-                className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
