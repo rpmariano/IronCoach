@@ -356,7 +356,7 @@ export default function Coach() {
       <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
         {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante sobre a caixa de texto */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="absolute bottom-full mb-3 right-0 z-40">
+          <div className="fixed bottom-[140px] right-4 z-50">
             <button
               type="button"
               onClick={() => {
