@@ -508,24 +508,12 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             gradiente do Coach quando os alimentos ou as observações mudaram
             (dados analíticos); mudar só a data ou o tipo é update direto. */}
         {isEditing ? (
-          needsReanalysis ? (
             <CoachAnalyzeButton
               onClick={handleSaveEdit}
-              disabled={isSaving || !manualItems.length}
+              disabled={isSaving || (needsReanalysis && !manualItems.length)}
               busy={isSaving}
-              label="Guardar e Reanalisar"
+              label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
             />
-          ) : (
-            <button
-              onClick={handleSaveEdit}
-              disabled={isSaving}
-              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-            >
-              {isSaving
-                ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
-                : <><PencilLine size={16} /> Guardar Alterações</>}
-            </button>
-          )
         ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}

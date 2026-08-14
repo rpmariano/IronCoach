@@ -752,24 +752,12 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             mudaram (séries, métricas, categorias, tipo ou observações);
             mudar só a data ou o nome é update direto. */}
         {isEditing ? (
-          needsReanalysis ? (
-            <CoachAnalyzeButton
-              onClick={handleSaveEdit}
-              disabled={isSaving}
-              busy={isSaving}
-              label="Guardar e Reanalisar"
-            />
-          ) : (
-            <button
-              onClick={handleSaveEdit}
-              disabled={isSaving}
-              className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-            >
-              {isSaving
-                ? <><Loader2 size={16} className="animate-spin" /> A gravar...</>
-                : <><PencilLine size={16} /> Guardar Alterações</>}
-            </button>
-          )
+          <CoachAnalyzeButton
+            onClick={handleSaveEdit}
+            disabled={isSaving}
+            busy={isSaving}
+            label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+          />
         ) : entryMethod === 'foto' ? (
           <CoachAnalyzeButton
             onClick={handleAnalyzePhotos}

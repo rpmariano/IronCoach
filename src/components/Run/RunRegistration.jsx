@@ -1177,29 +1177,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           {runIdToEdit ? (
-            // A editar, o botão só leva o gradiente do Coach quando os dados
-            // analíticos mudaram (distância, duração, RPE, tipo, métricas);
-            // mudar só a data ou o nome é update direto, sem custo de API.
-            needsReanalysis ? (
-              <CoachAnalyzeButton
-                onClick={handleSaveCorrida}
-                disabled={isSubmitting}
-                busy={isSubmitting}
-                label="Guardar e Reanalisar"
-              />
-            ) : (
-              <button
-                onClick={handleSaveCorrida}
-                disabled={isSubmitting}
-                className="w-full bg-[var(--accent)] text-slate-900 font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
-              >
-                {isSubmitting
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> A gravar...</>
-                  : <><PencilLine className="w-4 h-4" /> Guardar Alterações</>}
-              </button>
-            )
+            <CoachAnalyzeButton
+              onClick={handleSaveCorrida}
+              disabled={isSubmitting}
+              busy={isSubmitting}
+              label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+            />
           ) : (
-            // Mesmo botão do caminho de fotos — as duas formas de criar
             // passam pelo Coach, por isso têm o mesmo botão.
             <CoachAnalyzeButton
               onClick={handleSaveCorrida}
