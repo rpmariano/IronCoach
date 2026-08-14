@@ -55,7 +55,7 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
   it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
     render(<GymRegistration onClose={onClose} />);
     expect(screen.getByText(/Escolhe os prints da app de treino/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Duração (43m ou 37:57)')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Ex: 45m')).not.toBeInTheDocument();
   });
 
   it('ao escolher Manual, esconde o upload e mostra as métricas do relógio', () => {
@@ -63,7 +63,7 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
     fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
 
     expect(screen.queryByText(/Escolhe os prints da app de treino/)).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Duração (43m ou 37:57)')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ex: 45m')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Analisar Treino' })).toBeInTheDocument();
   });
 });
@@ -136,8 +136,8 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-2' } }, error: null });
     render(<GymRegistration onClose={onClose} />);
     goManual();
-    fireEvent.change(screen.getByPlaceholderText('Duração (43m ou 37:57)'), { target: { value: '50:00' } });
-    fireEvent.change(screen.getByPlaceholderText('Esforço (1-10)'), { target: { value: '7' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex: 8'), { target: { value: '7' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Treino' }));
 
