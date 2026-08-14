@@ -7,6 +7,7 @@ import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import Button from '../shared/Button';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -419,34 +420,39 @@ export default function RunCard({ run, onEdit, onDelete }) {
             </div>
           )}
 
-          {/* Bottom Action Bar */}
           <div className="flex items-center gap-2 pt-1">
             {run.photo_paths?.length > 0 && (
-              <button
+              <Button
+                variant="light"
                 onClick={handleReanalyze}
                 disabled={isReanalyzing}
-                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                isLoading={isReanalyzing}
+                className="flex-1 text-xs"
+                icon={!isReanalyzing && <RefreshCw size={14} />}
               >
-                {isReanalyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                 Reanalisar
-              </button>
+              </Button>
             )}
             {onEdit && (
-              <button
+              <Button
+                variant="light"
                 onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}
-                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+                className="flex-1 text-xs"
+                icon={<PencilLine size={14} />}
               >
-                <PencilLine size={14} /> Editar
-              </button>
+                Editar
+              </Button>
             )}
-            <button
+            <Button
+              variant="light-danger"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
-              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+              isLoading={isDeleting}
+              className="flex-1 text-xs"
+              icon={!isDeleting && <Trash2 size={14} />}
             >
-              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Eliminar
-            </button>
+            </Button>
           </div>
         </div>
       )}

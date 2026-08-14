@@ -4,6 +4,7 @@ import { TrendingUp, BarChart3, Mountain } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
+import Chip from '../shared/Chip';
 
 function formatPace(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
@@ -203,13 +204,16 @@ export default function RunDashboard() {
           { k: 'mes', l: 'Este Mês' },
           { k: 'trimestre', l: '3 Meses' }
         ].map(r => (
-          <button
+          <Chip
             key={r.k}
+            active={activeRange === r.k}
+            variant="run"
+            rounded="xl"
             onClick={() => setActiveRange(r.k)}
-            className={`range-chip flex-1 ${activeRange === r.k ? 'active' : ''}`}
+            className="flex-1"
           >
             {r.l}
-          </button>
+          </Chip>
         ))}
       </div>
 

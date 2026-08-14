@@ -6,6 +6,7 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import Chip from '../shared/Chip';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -272,22 +273,26 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           <div className="mb-4">
             <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
             <div className="flex gap-1.5">
-              <button
-                type="button"
+              <Chip
+                active={entryMethod === 'foto'}
+                variant="body"
+                rounded="xl"
                 onClick={() => setEntryMethod('foto')}
-                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <Camera size={14} /> Foto (IA)
-              </button>
-              <button
-                type="button"
+              </Chip>
+              <Chip
+                active={entryMethod === 'manual'}
+                variant="body"
+                rounded="xl"
                 onClick={() => setEntryMethod('manual')}
-                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <PencilLine size={14} /> Manual
-              </button>
+              </Chip>
             </div>
           </div>
         )}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
+import Button from './Button';
 
 // Gradiente do módulo Coach — qualquer botão de "Analisar" (Corrida, Nutrição,
 // ...) usa-o no fundo todo, para deixar claro que quem vai comentar o registo
@@ -34,14 +35,15 @@ export function CoachIcon({ busy }) {
 // esteja a analisar uma foto ou um registo manual (o Coach é o mesmo).
 export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar', busyLabel = 'A analisar...' }) {
   return (
-    <button
+    <Button
+      variant="module"
+      moduleColor={COACH_GRADIENT}
       onClick={onClick}
       disabled={disabled}
-      style={{ background: COACH_GRADIENT, color: '#fff' }}
-      className="w-full font-bold text-[14px] rounded-xl py-3 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-sm disabled:opacity-30"
+      className="w-full text-[14px] disabled:opacity-30"
+      icon={<CoachIcon busy={busy} />}
     >
-      <CoachIcon busy={busy} />
       <span style={{ textShadow: COACH_TEXT_SHADOW }}>{busy ? busyLabel : label}</span>
-    </button>
+    </Button>
   );
 }

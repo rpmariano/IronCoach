@@ -1,5 +1,6 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
+import Button from './Button';
 
 export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, message, isDeleting }) {
   if (!isOpen) return null;
@@ -12,23 +13,25 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
           {message || 'Tem a certeza que deseja eliminar este registo? Esta ação não pode ser desfeita.'}
         </p>
         <div className="mt-5 space-y-2">
-          <button 
+          <Button 
             onClick={onConfirm} 
             disabled={isDeleting} 
+            isLoading={isDeleting}
             type="button"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 transition disabled:opacity-60"
+            variant="danger-outline"
+            className="w-full text-xs"
           >
-            {isDeleting ? <Loader2 size={16} className="animate-spin" /> : null}
             {isDeleting ? 'A eliminar...' : 'Eliminar'}
-          </button>
-          <button 
+          </Button>
+          <Button 
             onClick={onClose} 
             disabled={isDeleting} 
             type="button"
-            className="w-full py-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60"
+            variant="ghost"
+            className="w-full text-xs"
           >
             Cancelar
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -6,6 +6,8 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import Chip from '../shared/Chip';
+import AddButton from '../shared/AddButton';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -430,15 +432,17 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             const Icon = k.icon;
             const isActive = kind === k.key;
             return (
-              <button
+              <Chip
                 key={k.key}
+                active={isActive}
+                variant="gym"
+                rounded="xl"
                 onClick={() => handleKindChange(k.key)}
+                className="flex-1 py-2.5 gap-1.5"
                 type="button"
-                style={isActive ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border ${isActive ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)] shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
               >
                 <Icon size={14} /> {k.label}
-              </button>
+              </Chip>
             );
           })}
         </div>
@@ -474,14 +478,15 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
           </label>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {visibleCategories.map(c => (
-              <button
+              <Chip
                 key={c}
+                active={categories.includes(c)}
+                variant="gym"
                 onClick={() => handleToggleCategory(c)}
                 type="button"
-                className={`rounded-full px-3.5 py-1.5 text-[11px] font-medium border transition-colors ${categories.includes(c) ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-slate-200 text-slate-600'}`}
               >
                 {c}
-              </button>
+              </Chip>
             ))}
 
             {hiddenCount > 0 && !categoriesExpanded && (
@@ -505,14 +510,15 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
             {/* Custom categories not in the main list */}
             {categories.filter(c => !availableCategories.includes(c)).map(c => (
-              <button
+              <Chip
                 key={c}
+                active={true}
+                variant="gym"
                 onClick={() => handleToggleCategory(c)}
                 type="button"
-                className="bg-sky-50 border border-sky-300 text-sky-700 rounded-full px-3.5 py-1.5 text-[11px] font-medium"
               >
                 {c}
-              </button>
+              </Chip>
             ))}
           </div>
           <input
@@ -532,22 +538,26 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
           <div className="mb-4">
             <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
             <div className="flex gap-1.5">
-              <button
-                type="button"
+              <Chip
+                active={entryMethod === 'foto'}
+                variant="gym"
+                rounded="xl"
                 onClick={() => setEntryMethod('foto')}
-                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <Camera size={14} /> Foto (IA)
-              </button>
-              <button
-                type="button"
+              </Chip>
+              <Chip
+                active={entryMethod === 'manual'}
+                variant="gym"
+                rounded="xl"
                 onClick={() => setEntryMethod('manual')}
-                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <PencilLine size={14} /> Manual
-              </button>
+              </Chip>
             </div>
           </div>
         )}
@@ -661,14 +671,13 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[11px] text-slate-500">Exercícios e séries</label>
-                  <button
+                  <AddButton
                     onClick={handleAddExercise}
                     type="button"
-                    className="text-[11px] font-bold flex items-center gap-1"
-                    style={{ color: 'var(--mod-ginasio-to)' }}
+                    variant="gym"
                   >
-                    <Plus size={12} /> Adicionar exercício
-                  </button>
+                    Adicionar exercício
+                  </AddButton>
                 </div>
                 {exercises.length === 0 ? (
                   <p className="text-[11px] text-slate-400">Sem exercícios ainda.</p>
@@ -712,14 +721,13 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                               </button>
                             </div>
                           ))}
-                          <button
+                          <AddButton
                             onClick={() => addSet(ex.key)}
                             type="button"
-                            className="text-[11px] font-semibold"
-                            style={{ color: 'var(--mod-ginasio-to)' }}
+                            variant="gym"
                           >
-                            <Plus size={11} className="inline mr-0.5" /> Série
-                          </button>
+                            Série
+                          </AddButton>
                         </div>
                       </div>
                     ))}

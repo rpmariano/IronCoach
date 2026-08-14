@@ -5,6 +5,8 @@ import { getBodyIcon } from '../../utils/bodyIcons';
 import { List, User, CalendarDays, TrendingUp } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
+import Button from '../shared/Button';
+import Chip from '../shared/Chip';
 
 export default function BodyDashboard({ onGoToCalendar }) {
   const { bodyAssessments, profile } = useAppStore();
@@ -60,9 +62,15 @@ export default function BodyDashboard({ onGoToCalendar }) {
         </span>
         <h2 className="text-sm font-bold text-slate-800 mb-1">Composição corporal</h2>
         <p className="text-xs text-slate-500 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>
-        <button onClick={onGoToCalendar} className="tap-h-44 mt-4 bg-[var(--accent)] text-neutral-950 font-bold text-xs rounded-xl px-4 flex items-center gap-1.5 active:scale-[0.98] transition">
-          <CalendarDays className="w-4 h-4" /> Ir para o Calendário
-        </button>
+        <Button 
+          variant="module"
+          moduleColor="var(--accent)"
+          onClick={onGoToCalendar} 
+          className="mt-4 text-xs px-4"
+          icon={<CalendarDays className="w-4 h-4" />}
+        >
+          Ir para o Calendário
+        </Button>
       </div>
     );
   }
@@ -88,16 +96,17 @@ export default function BodyDashboard({ onGoToCalendar }) {
         {BODY_METRICS.map(m => {
           const isSelected = selectedMetricKey === m.key;
           return (
-            <button
+            <Chip
               key={m.key}
+              active={isSelected}
+              variant="body"
+              rounded="full"
               onClick={() => setSelectedMetricKey(m.key)}
-              className={`shrink-0 border rounded-full px-3 py-1.5 text-[11px] font-semibold transition ${
-                isSelected ? 'text-neutral-900 border-transparent shadow-sm' : 'text-slate-600 border-slate-200 hover:bg-slate-50'
-              }`}
+              className="shrink-0 px-3 py-1.5 whitespace-nowrap"
               style={isSelected ? { backgroundColor: m.color } : {}}
             >
               {m.label}
-            </button>
+            </Chip>
           );
         })}
       </div>

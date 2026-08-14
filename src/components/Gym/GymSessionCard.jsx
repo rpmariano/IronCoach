@@ -7,6 +7,7 @@ import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
 import CoachText from '../shared/CoachText';
 import { mapCategoriesToMuscles } from '../../utils/gym';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import Button from '../shared/Button';
 
 function formatDuration(totalSeconds) {
   if (!totalSeconds) return '';
@@ -246,21 +247,25 @@ export default function GymSessionCard({ session, onEdit }) {
               por isso só resta editar ou eliminar a sessão toda. */}
           <div className="flex items-center gap-2 pt-1">
             {onEdit && (
-              <button
+              <Button
+                variant="light"
                 onClick={() => onEdit(session.id)}
-                className="flex-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition"
+                className="flex-1 text-xs"
+                icon={<PencilLine size={14} />}
               >
-                <PencilLine size={14} /> Editar
-              </button>
+                Editar
+              </Button>
             )}
-            <button
+            <Button
+              variant="light-danger"
               onClick={() => setShowDeleteConfirm(true)}
               disabled={isDeleting}
-              className="flex-1 border border-red-200 bg-red-50/50 hover:bg-red-50 text-red-600 font-bold text-xs rounded-xl py-2.5 flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+              isLoading={isDeleting}
+              className="flex-1 text-xs"
+              icon={!isDeleting && <Trash2 size={14} />}
             >
-              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
               Eliminar treino
-            </button>
+            </Button>
           </div>
         </div>
       )}

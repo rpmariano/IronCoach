@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import { TrendingUp, BarChart3 } from 'lucide-react';
 import { Bar, Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
+import Chip from '../shared/Chip';
 
 const RANGES = [
   { k: 'semana', l: 'Esta Semana' },
@@ -132,13 +133,16 @@ export default function GymDashboard() {
       {/* Range Chips */}
       <div className="flex gap-2">
         {RANGES.map(r => (
-          <button
+          <Chip
             key={r.k}
+            active={gymRange === r.k}
+            variant="gym"
+            rounded="xl"
             onClick={() => setGymRange(r.k)}
-            className={`range-chip flex-1 ${gymRange === r.k ? 'active' : ''}`}
+            className="flex-1"
           >
             {r.l}
-          </button>
+          </Chip>
         ))}
       </div>
 

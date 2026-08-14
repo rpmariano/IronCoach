@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import { ChevronLeft, ChevronRight, Dumbbell } from 'lucide-react';
 import GymSessionCard from './GymSessionCard';
 import GymRegistration from './GymRegistration';
+import Button from '../shared/Button';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -38,13 +39,16 @@ export default function GymCalendar() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Botão Novo Treino */}
-      <button 
+      <Button 
+        variant="module"
+        moduleColor="var(--mod-ginasio-to)"
         onClick={() => setOpenCreationMode('workout')}
-        className="w-full bg-[var(--mod-ginasio-to)] font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-        style={{ color: '#fff' }}
+        className="w-full text-sm rounded-2xl shadow-lg"
+        size="lg"
+        icon={<Dumbbell size={20} />}
       >
-        <Dumbbell size={20} /> Novo Treino
-      </button>
+        Novo Treino
+      </Button>
 
       {/* Cartão do Calendário */}
       <div className="card rounded-2xl p-4">

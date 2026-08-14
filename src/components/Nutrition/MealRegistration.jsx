@@ -7,6 +7,8 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import Chip from '../shared/Chip';
+import AddButton from '../shared/AddButton';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -307,18 +309,16 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
           {MEAL_TYPES.map(t => {
             const isActive = mealType === t.key;
             return (
-              <button
+              <Chip
                 key={t.key}
+                active={isActive}
+                variant="nutrition"
                 onClick={() => setMealType(t.key)}
+                className="px-4 py-1.5"
                 type="button"
-                className={`border rounded-full px-4 py-1.5 text-xs transition shadow-sm ${
-                  isActive
-                    ? 'bg-[var(--accent)] border-[var(--accent)] text-neutral-900 font-bold'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
               >
                 {t.label}
-              </button>
+              </Chip>
             );
           })}
         </div>
@@ -329,22 +329,26 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
           <div className="mb-5">
             <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
             <div className="flex gap-1.5">
-              <button
-                type="button"
+              <Chip
+                active={entryMethod === 'foto'}
+                variant="nutrition"
+                rounded="xl"
                 onClick={() => setEntryMethod('foto')}
-                style={entryMethod === 'foto' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'foto' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <Camera size={14} /> Foto (IA)
-              </button>
-              <button
-                type="button"
+              </Chip>
+              <Chip
+                active={entryMethod === 'manual'}
+                variant="nutrition"
+                rounded="xl"
                 onClick={() => setEntryMethod('manual')}
-                style={entryMethod === 'manual' ? { color: '#fff' } : undefined}
-                className={`flex-1 rounded-xl px-3 py-2.5 text-[12px] font-semibold flex items-center justify-center gap-1.5 border transition ${entryMethod === 'manual' ? 'bg-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]' : 'bg-white border-slate-200 text-slate-500'}`}
+                className="flex-1 py-2.5 gap-1.5"
+                type="button"
               >
                 <PencilLine size={14} /> Manual
-              </button>
+              </Chip>
             </div>
           </div>
         )}
@@ -435,15 +439,14 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-500 mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
-                <button
+                <AddButton
                   onClick={handleAddItem}
                   disabled={!itemName.trim()}
+                  variant="nutrition"
                   type="button"
-                  className="w-full text-[13px] font-bold rounded-xl py-2.5 flex items-center justify-center gap-1.5 border transition disabled:opacity-40"
-                  style={{ borderColor: 'var(--mod-nutricao-to)', color: 'var(--mod-nutricao-to)' }}
                 >
-                  <Plus size={16} /> Adicionar alimento
-                </button>
+                  Adicionar Alimento
+                </AddButton>
             </div>
 
             {manualItems.length > 0 && (

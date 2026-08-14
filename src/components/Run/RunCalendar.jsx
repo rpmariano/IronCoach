@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import RunCard from './RunCard';
 import RunRegistration from './RunRegistration';
 import { useToast } from '../shared/ToastProvider';
+import Button from '../shared/Button';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
 
 const SneakerIcon = ({ className }) => (
@@ -93,14 +94,16 @@ export default function RunCalendar({ onNewRun }) {
 
   return (
     <div className="space-y-4 fade-in pb-20">
-      <button 
+      <Button 
+        variant="module"
+        moduleColor="var(--accent)"
         onClick={() => onNewRun(selectedDate)}
-        className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-        style={{ background: 'var(--accent)' }}
+        className="w-full text-sm rounded-2xl shadow-lg"
+        size="lg"
+        icon={<SneakerIcon className="w-5 h-5 mb-0.5" />}
       >
-        <SneakerIcon className="w-5 h-5 mb-0.5" />
         Nova Corrida
-      </button>
+      </Button>
 
       <div className="card rounded-2xl p-4">
         <div className="flex items-center justify-between mb-4">

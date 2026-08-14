@@ -15,6 +15,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
+import Chip from '../shared/Chip';
 
 ChartJS.register(
   CategoryScale,
@@ -135,13 +136,16 @@ export default function NutritionDashboard() {
       {/* Range Tabs */}
       <div className="flex gap-2">
         {['hoje', 'semana', 'mes'].map(r => (
-          <button
+          <Chip
             key={r}
+            active={activeRange === r}
+            variant="nutrition"
+            rounded="xl"
             onClick={() => setActiveRange(r)}
-            className={`range-chip flex-1 ${activeRange === r ? 'active' : ''}`}
+            className="flex-1"
           >
             {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
-          </button>
+          </Chip>
         ))}
       </div>
 

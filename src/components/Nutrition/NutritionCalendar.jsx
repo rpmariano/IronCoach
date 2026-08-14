@@ -7,6 +7,7 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterv
 import { pt } from 'date-fns/locale';
 import MealCard from './MealCard';
 import MealRegistration from './MealRegistration';
+import Button from '../shared/Button';
 
 export default function NutritionCalendar({ onRegisterClick }) {
   const { meals, waterLogs, profile, coachPlans, coachPlanItems } = useAppStore();
@@ -69,12 +70,16 @@ export default function NutritionCalendar({ onRegisterClick }) {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Botão de Registo */}
-      <button 
+      <Button 
+        variant="module"
+        moduleColor="var(--accent)"
         onClick={onRegisterClick}
-        className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        className="w-full text-sm rounded-2xl shadow-lg"
+        size="lg"
+        icon={<Camera size={20} />}
       >
-        <Camera size={20} /> Registar Refeição
-      </button>
+        Registar Refeição
+      </Button>
 
       {/* Calendar Grid */}
       <div className="card rounded-2xl p-4">
