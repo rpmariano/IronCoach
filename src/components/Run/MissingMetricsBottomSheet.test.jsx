@@ -20,7 +20,7 @@ describe('MissingMetricsBottomSheet', () => {
 
   it('renderiza o título, lista de métricas e os 3 botões de ação quando aberto', () => {
     render(<MissingMetricsBottomSheet {...defaultProps} />);
-    expect(screen.getByText('Métricas em falta no registo')).toBeInTheDocument();
+    expect(screen.getByText('Métricas em falta')).toBeInTheDocument();
     expect(screen.getByText(/Métricas sugeridas \(3\):/i)).toBeInTheDocument();
     expect(screen.getByText('Frequência Cardíaca (Média / Máxima)')).toBeInTheDocument();
     expect(screen.getByText('Cadência de Corrida (spm)')).toBeInTheDocument();

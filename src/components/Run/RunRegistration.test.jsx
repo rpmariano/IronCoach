@@ -140,7 +140,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
 
     await screen.findByTestId('missing-metrics-bottom-sheet');
-    expect(screen.getByText('Métricas em falta no registo')).toBeInTheDocument();
+    expect(screen.getByText('Métricas em falta')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
 });
