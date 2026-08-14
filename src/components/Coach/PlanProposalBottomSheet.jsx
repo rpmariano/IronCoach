@@ -259,16 +259,36 @@ export function PlanProposalBottomSheet({
           {/* Seção 2: Proposta de Plano (Treino / Refeições) */}
           {plan && (
             <div className="space-y-4 pb-4">
-              {plan.summary && (
+              {(plan.summary || planItems?.length > 0) && (
                 <div
-                  className="p-3.5 rounded-2xl border text-xs leading-relaxed font-medium"
+                  className="p-3.5 rounded-2xl border text-xs leading-relaxed font-medium space-y-2"
                   style={{
                     backgroundColor: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)',
                     borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)',
                     color: 'var(--mod-coach-to)'
                   }}
                 >
-                  ✨ {plan.summary}
+                  {planItems?.length > 0 && (
+                    <p className="flex items-start gap-1.5 font-bold">
+                      <span>✨</span>
+                      <span>
+                        Plano de {diffDaysISO(plan.period_start, plan.period_end) + 1} dias com{' '}
+                        {(() => {
+                          const runs = planItems.filter(i => i.kind === 'corrida').length;
+                          const gym = planItems.filter(i => i.kind === 'ginasio').length;
+                          const parts = [];
+                          if (runs > 0) parts.push(`${runs} ${runs === 1 ? 'corrida' : 'corridas'}`);
+                          if (gym > 0) parts.push(`${gym} ${gym === 1 ? 'sessão' : 'sessões'} de ginásio`);
+                          return parts.length > 0 ? parts.join(' e ') : 'refeições e descanso';
+                        })()}.
+                      </span>
+                    </p>
+                  )}
+                  {plan.summary && (
+                    <p className={`opacity-90 ${planItems?.length > 0 ? 'pl-5' : ''}`}>
+                      <span className="font-semibold">Objetivo:</span> {plan.summary}
+                    </p>
+                  )}
                 </div>
               )}
 

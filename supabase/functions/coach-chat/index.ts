@@ -126,7 +126,7 @@ const PROPOSE_PLAN_TOOL = {
       },
       summary: {
         type: "STRING",
-        description: "Resumo curto do plano numa frase, ex.: \"4 treinos, foco em base aeróbica\"",
+        description: "Qual o objetivo que se pretende atingir com este plano proposto? Deve ser apenas o objetivo final, curto e direto. Ex.: \"Foco na preparação para os 10k e meia maratona.\" NÃO menciones o número de dias, sessões ou treinos, pois a UI calcula isso automaticamente.",
       },
       items: {
         type: "ARRAY",
