@@ -206,7 +206,7 @@ export default function Coach() {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] fade-in">
+    <div className="flex flex-col h-full fade-in">
       {/* Header section */}
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2.5">
@@ -233,16 +233,16 @@ export default function Coach() {
         )}
       </div>
 
-      {/* Sugestões pendentes (Planos / Objetivos) — Pill Button para abrir Modal */}
+      {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante */}
       {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-        <div className="flex justify-center mb-3 shrink-0">
+        <div className="fixed bottom-24 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none">
           <button
             type="button"
             onClick={() => {
               if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
               if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
             }}
-            className="text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-md flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+            className="text-white font-bold text-xs rounded-full px-5 py-3 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 pointer-events-auto"
             style={{ backgroundColor: 'var(--mod-coach-to)' }}
           >
             <Sparkles className="w-4 h-4 text-white" />
