@@ -7,7 +7,8 @@ import { useRef, useCallback } from 'react';
 export const triggerCarouselTick = () => {
   if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'vibrate' in navigator && typeof navigator.vibrate === 'function') {
     try {
-      navigator.vibrate(15);
+      // 30ms para garantir que motores de vibração Android mais lentos registam o feedback
+      navigator.vibrate(30);
     } catch {
       // Evita quebras em navegadores que bloqueiem a API
     }
