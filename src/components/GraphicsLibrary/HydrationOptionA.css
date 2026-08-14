@@ -19,7 +19,7 @@
 
 @media (max-width: 480px) {
   .hydro-nrc-card {
-    padding: 16px;
+    padding: 16px 16px 36px 16px;
     gap: 12px;
   }
   

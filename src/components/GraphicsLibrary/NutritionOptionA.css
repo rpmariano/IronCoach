@@ -174,7 +174,7 @@
 
 @media (max-width: 480px) {
   .nutri-nrc-card {
-    padding: 16px;
+    padding: 16px 16px 36px 16px;
     gap: 12px;
   }
   .nutri-nrc-right {
