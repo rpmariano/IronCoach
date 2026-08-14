@@ -41,7 +41,7 @@ export function PlanProposalBottomSheet({
     setIsClosing(true);
     setTimeout(() => {
       onCloseRef.current?.();
-    }, 420);
+    }, 500);
   };
 
   useEffect(() => {
@@ -127,13 +127,13 @@ export function PlanProposalBottomSheet({
 
   const sheetTransition = isDragging
     ? 'none'
-    : 'transform 0.42s cubic-bezier(0.32, 0.72, 0, 1)';
+    : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-200 ${
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-500 ${
           isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
         }`}
         onClick={handleDismiss}
