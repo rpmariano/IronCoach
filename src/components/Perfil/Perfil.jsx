@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BODY_METRICS } from '../../utils/body';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
