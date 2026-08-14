@@ -146,6 +146,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [userBypassedMissingSheet, setUserBypassedMissingSheet] = useState(false);
   const [sheetClosedViaTouch, setSheetClosedViaTouch] = useState(false);
   const [pendingCreatedRun, setPendingCreatedRun] = useState(null);
+  const [pendingForceReanalyze, setPendingForceReanalyze] = useState(false);
 
   // Helper para identificar métricas recomendadas em falta
   const detectMissingRunMetrics = (detailsObj = {}, distance = null, duration = null) => {
@@ -299,12 +300,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           details: r.details,
         }));
 
-        // Load photos
+        // Load photos (são privadas, precisamos de signed URLs)
         if (r.photo_paths && r.photo_paths.length > 0) {
-          setRunPhotos(r.photo_paths.map(p => {
-            const url = supabase.storage.from('run-photos').getPublicUrl(p).data.publicUrl;
-            return { url, dataUrl: url };
-          }));
+          supabase.storage.from('run-photos').createSignedUrls(r.photo_paths, 3600).then(({ data, error }) => {
+            if (!error && data) {
+              setRunPhotos(data.map(d => ({ url: d.signedUrl, dataUrl: d.signedUrl })).filter(p => p.url));
+            }
+          });
         }
       }
     }
@@ -473,7 +475,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       useAppStore.getState().setOpenCreationMode(null);
       onClose();
     } else {
-      handleSaveCorrida(true);
+      handleSaveCorrida(true, pendingForceReanalyze);
     }
   };
 
@@ -485,7 +487,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // partir dos números que o próprio formulário já tem. A editar uma
   // corrida existente mantém-se o update direto (sem reanálise — essa é a
   // ação dedicada "Reanalisar" no cartão da corrida).
-  const handleSaveCorrida = async (forceBypassMissing = false) => {
+  const handleSaveCorrida = async (forceBypassMissing = false, forceReanalyze = false) => {
+    const isBypass = forceBypassMissing === true;
+    const isForceReanalyze = forceReanalyze === true;
+
     if (!runName.trim()) {
       setErrorMsg('Preenche o nome da corrida.');
       return;
@@ -500,8 +505,28 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
 
     const { details } = buildDetailsFromForm();
+
+    // Update vs. Reanalisar?
+    // Se a "assinatura analítica" mudou, é preciso reanalisar no Coach.
+    let signatureChanged = false;
+    if (runIdToEdit && originalSnapshot !== null) {
+      const newSig = analyticalSignature({
+        kind: runKind,
+        trainingType: runKind === 'treino' ? runTrainingType : null,
+        distance: runDistance,
+        duration: parseDurationToSeconds(runDuration),
+        rpe: runEffortRpe,
+        notes: runNotes.trim() ? runNotes.trim() : null,
+        details,
+      });
+      signatureChanged = originalSnapshot !== newSig || isForceReanalyze;
+    }
+
     const missing = detectMissingRunMetrics(details, runDistance, runDuration);
-    if (missing.length > 0 && !userBypassedMissingSheet && !forceBypassMissing && !runIdToEdit) {
+    const shouldNag = missing.length > 0 && !userBypassedMissingSheet && !isBypass && (!runIdToEdit || signatureChanged);
+
+    if (shouldNag) {
+      setPendingForceReanalyze(isForceReanalyze);
       setMissingKeysList(missing);
       setShowMissingMetricsSheet(true);
       return;
@@ -528,7 +553,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // análise; se só mudou a data ou o nome, é update direto sem custo
       // de API. Mesmo padrão da Nutrição/Ginásio/Corpo (PRD 3.2).
       if (runIdToEdit) {
-        if (needsReanalysis) {
+        if (signatureChanged) {
           const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
             body: {
               mode: 'manual',
@@ -1178,7 +1203,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {runIdToEdit ? (
             <CoachAnalyzeButton
-              onClick={handleSaveCorrida}
+              onClick={() => handleSaveCorrida(false, needsReanalysis)}
               disabled={isSubmitting}
               busy={isSubmitting}
               label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}

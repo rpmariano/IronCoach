@@ -22,6 +22,11 @@ export function PlanProposalBottomSheet({
   onRespondGoal,
   onClose,
 }) {
+  const [dragY, setDragY] = React.useState(0);
+  const [isDragging, setIsDragging] = React.useState(false);
+  const touchStartY = React.useRef(0);
+  const scrollRef = React.useRef(null);
+
   if (!plan && !goalProposal) return null;
 
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
@@ -51,6 +56,32 @@ export function PlanProposalBottomSheet({
     }
   };
 
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - touchStartY.current;
+    const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
+
+    if (deltaY > 0 && isAtTop) {
+      setDragY(deltaY);
+    } else if (deltaY < 0 && dragY > 0) {
+      setDragY(Math.max(0, deltaY));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (dragY > 70) {
+      onClose?.();
+    }
+    setDragY(0);
+    setIsDragging(false);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
@@ -64,22 +95,32 @@ export function PlanProposalBottomSheet({
       <div 
         className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl animate-bottom-sheet-slide overflow-hidden"
         style={{
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
           background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
         }}
       >
-        {/* Pega / Grab Handle — Tocar no traço fecha o modal */}
+        {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
         <div 
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           onClick={onClose}
-          className="w-full py-3 cursor-pointer flex items-center justify-center shrink-0 group"
+          className="w-full py-3.5 cursor-pointer flex items-center justify-center shrink-0 group select-none touch-none"
           title="Fechar modal"
         >
-          <div className="w-12 h-1.5 rounded-full bg-slate-600/60 group-hover:bg-slate-400 transition-colors" />
+          <div className="w-12 h-1.5 rounded-full bg-slate-600/70 group-hover:bg-slate-400 group-active:scale-95 transition-colors" />
         </div>
 
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80 shrink-0">
+        <div 
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80 shrink-0"
+        >
           <div className="flex items-center gap-3">
             <div 
               className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
@@ -99,10 +140,21 @@ export function PlanProposalBottomSheet({
               )}
             </div>
           </div>
+
+          {/* Botão de Fechar (Cruz) */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 -mr-1.5 -mt-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/80 active:scale-95 transition-all shrink-0"
+            title="Fechar modal"
+            aria-label="Fechar modal"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Conteúdo Scrollável */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar">
           {/* Seção 1: Proposta de Objetivos Independente */}
           {goalProposal && (
             <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/80 space-y-3 shadow-sm">

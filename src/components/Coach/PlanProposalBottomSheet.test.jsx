@@ -52,9 +52,21 @@ describe('PlanProposalBottomSheet', () => {
     );
     expect(screen.getByText('Proposta de Alteração de Objetivos')).toBeInTheDocument();
     expect(screen.getByText(/2200 kcal\/dia/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aceitar Objetivos/i })).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('button', { name: /Aceitar Objetivos/i }));
     expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
+  });
+
+  it('fecha o modal ao clicar no botão de cruz (X) ou na pega de arrasto', () => {
+    const onClose = vi.fn();
+    render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
+
+    const closeBtn = screen.getByRole('button', { name: 'Fechar modal' });
+    expect(closeBtn).toBeInTheDocument();
+    fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    const grabHandle = screen.getByTitle('Fechar modal');
+    fireEvent.click(grabHandle);
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });

@@ -204,6 +204,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -229,6 +230,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.change(screen.getByPlaceholderText('Minutos'), { target: { value: '20' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -244,6 +246,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     goManual();
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
@@ -266,6 +269,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     goManual();
 
     fireEvent.click(screen.getByRole('button', { name: 'Analisar Corrida' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await screen.findByText('Falha a gravar corrida.');
     expect(onClose).not.toHaveBeenCalled();
@@ -317,6 +321,7 @@ describe('RunRegistration — editar corrida existente', () => {
 
     fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -333,6 +338,7 @@ describe('RunRegistration — editar corrida existente', () => {
 
     fireEvent.change(screen.getByDisplayValue('165'), { target: { value: '178' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -346,6 +352,7 @@ describe('RunRegistration — editar corrida existente', () => {
 
     fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
