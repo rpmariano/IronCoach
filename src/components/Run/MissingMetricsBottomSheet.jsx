@@ -29,6 +29,7 @@ export default function MissingMetricsBottomSheet({
   const touchStartY = useRef(0);
   const dragYRef = useRef(0);
   const isDraggingRef = useRef(false);
+  const isClosingRef = useRef(false);
   
   const scrollRef = useRef(null);
   const dragAreaRef = useRef(null);
@@ -41,17 +42,19 @@ export default function MissingMetricsBottomSheet({
   useEffect(() => {
     if (isOpen) {
       setIsClosing(false);
+      isClosingRef.current = false;
       setDragY(0);
       dragYRef.current = 0;
     }
   }, [isOpen]);
 
   const handleDismiss = () => {
-    if (isClosing) return;
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     setIsClosing(true);
     setTimeout(() => {
       onCloseRef.current?.();
-    }, 220);
+    }, 500);
   };
 
   useEffect(() => {
@@ -93,14 +96,23 @@ export default function MissingMetricsBottomSheet({
       setIsDragging(false);
     };
 
+    const handleTouchCancel = () => {
+      setDragY(0);
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
     el.addEventListener('touchstart', handleTouchStart, { passive: true });
     el.addEventListener('touchmove', handleTouchMove, { passive: false });
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
     return () => {
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchCancel);
     };
   }, [isOpen]);
 
@@ -114,13 +126,13 @@ export default function MissingMetricsBottomSheet({
 
   const sheetTransition = isDragging
     ? 'none'
-    : 'transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)';
+    : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1)';
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-200 ${
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-500 ${
           isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
         }`}
         onClick={handleDismiss}

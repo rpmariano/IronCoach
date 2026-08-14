@@ -101,7 +101,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
               className="w-full shrink-0 snap-center" 
               onClick={() => onNav('corrida')}
             >
-              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1 pb-6">
+              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full px-1">
                 <PremiumNextRaceCard 
                   title={next.name}
                   date={formattedDate}
@@ -178,10 +178,10 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
         className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
         style={{ scrollBehavior: 'smooth' }}
       >
-        <div className="w-full shrink-0 snap-center pb-6">
+        <div className="w-full shrink-0 snap-center">
           <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={onNav} onLogWater={onLogWater} />
         </div>
-        <div className="w-full shrink-0 snap-center pb-6">
+        <div className="w-full shrink-0 snap-center">
           <NutritionOptionA meals={meals} profile={profile} onNav={onNav} />
         </div>
       </div>

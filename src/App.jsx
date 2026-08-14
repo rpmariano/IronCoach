@@ -35,16 +35,15 @@ const DEMO_PROFILE = {
   coach_context: 'Objetivo: Sub 1h35 na Meia Maratona do Porto'
 };
 
+import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
+
 export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab } = useAppStore();
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Sem sessão nem nada visível: só sem o service worker registado é que a
-    // subscrição de push (lembretes de água) nunca chega a resolver.
     registerServiceWorker();
 
-    // Read ?tab= & ?demo= from URL query params
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     const isDemo = params.get('demo') === 'true';
@@ -58,7 +57,6 @@ export default function App() {
         setSession(existingSession);
         loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
       } else if (isDemo) {
-        // Fallback demo mode only if ?demo=true explicitly requested
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironhealth.app' } };
         setSession(demoSession);
         setProfile(DEMO_PROFILE);
@@ -80,6 +78,10 @@ export default function App() {
 
     return () => subscription.unsubscribe();
   }, [setSession, setProfile, loadInitialData, setActiveTab]);
+
+  if (activeTab === 'design-system') {
+    return <ButtonShowcase />;
+  }
 
   if (isInitializing) {
     return (
