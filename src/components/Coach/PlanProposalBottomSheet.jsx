@@ -142,13 +142,10 @@ export function PlanProposalBottomSheet({
 
       {/* Modal Bottom Sheet (Persiana) */}
       <div 
-        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-700/60 shadow-2xl overflow-hidden"
+        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden"
         style={{
           transform: sheetTransform,
           transition: sheetTransition,
-          background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 0.99) 100%)',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
           overscrollBehavior: 'contain',
         }}
       >
@@ -157,59 +154,56 @@ export function PlanProposalBottomSheet({
           {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
           <div 
             onClick={handleDismiss}
-            className="w-full py-3.5 cursor-pointer flex items-center justify-center group"
-            title="Fechar modal"
+            className="w-full py-3 cursor-pointer flex flex-col items-center justify-center group tap-44"
+            title="Toca para fechar persiana"
+            role="button"
+            aria-label="Fechar persiana"
           >
-            <div className="w-12 h-1.5 rounded-full bg-slate-600/70 group-hover:bg-slate-400 group-active:scale-95 transition-colors" />
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors mb-1" />
+            <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Toca para fechar</span>
           </div>
 
-          {/* Cabeçalho */}
-          <div className="flex items-start justify-between px-6 pb-4 border-b border-slate-800/80">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm"
-                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-              >
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
+          {/* Cabeçalho inspirado em RunRegistration (sem bloco verde) */}
+          <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" style={{ color: 'var(--mod-coach-to)' }} />
               <div>
-                <h3 className="text-base font-bold text-white leading-tight">
+                <h2 className="text-sm font-semibold text-slate-800">
                   {plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos'}
-                </h3>
+                </h2>
                 {plan && (
-                  <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 font-medium">
-                    <Calendar size={12} className="text-emerald-400" />
+                  <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1 font-medium">
+                    <Calendar size={10} className="text-emerald-500" />
                     <span>Período: {plan.period_start} a {plan.period_end}</span>
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Botão de Fechar (Cruz) */}
+            {/* Botão Cancelar (voltar ao chat) */}
             <button
               type="button"
               onClick={handleDismiss}
-              className="p-2 -mr-1.5 -mt-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-800/80 active:scale-95 transition-all shrink-0"
-              title="Fechar modal"
-              aria-label="Fechar modal"
+              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 active:scale-95 transition-all shrink-0"
+              title="Voltar ao chat"
+              aria-label="Voltar ao chat"
             >
-              <X className="w-5 h-5" />
+              Cancelar
             </button>
           </div>
         </div>
-
         {/* Conteúdo Scrollável */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-slate-50/30">
           {/* Seção 1: Proposta de Objetivos Independente */}
           {goalProposal && (
-            <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/80 space-y-3 shadow-sm">
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-amber-400 shrink-0" />
-                <h4 className="text-sm font-bold text-white">Proposta de Alteração de Objetivos</h4>
+                <Target className="w-5 h-5 text-amber-500 shrink-0" />
+                <h4 className="text-sm font-bold text-slate-800">Proposta de Alteração de Objetivos</h4>
               </div>
 
               {goalProposal.rationale && (
-                <p className="text-xs text-slate-300 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800/80">
+                <p className="text-xs text-slate-600 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
                   💡 {goalProposal.rationale}
                 </p>
               )}
@@ -221,29 +215,29 @@ export function PlanProposalBottomSheet({
                     const meta = GOAL_LABELS[k] || { label: k, unit: '' };
                     const currentVal = profile?.[k] ?? '—';
                     return (
-                      <div key={k} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/50 text-xs border border-slate-800/50">
-                        <span className="text-slate-300 font-medium">{meta.label}</span>
+                      <div key={k} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 text-xs border border-slate-100">
+                        <span className="text-slate-600 font-medium">{meta.label}</span>
                         <div className="flex items-center gap-2 font-bold">
-                          <span className="text-slate-500 line-through">{currentVal} {meta.unit}</span>
-                          <span className="text-amber-400">→ {newVal} {meta.unit}</span>
+                          <span className="text-slate-400 line-through">{currentVal} {meta.unit}</span>
+                          <span className="text-emerald-600">→ {newVal} {meta.unit}</span>
                         </div>
                       </div>
                     );
                   })}
               </div>
 
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => handleRespondGoalAction(true)}
-                  className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-slate-950 bg-amber-400 hover:bg-amber-300 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md"
+                  className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-white bg-emerald-500 hover:bg-emerald-600 flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm"
                 >
                   <Check size={15} /> Aceitar Objetivos
                 </button>
                 <button
                   type="button"
                   onClick={() => handleRespondGoalAction(false)}
-                  className="py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-rose-400 bg-slate-900 border border-slate-700 flex items-center justify-center gap-1 transition active:scale-95"
+                  className="py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-500 hover:text-rose-500 bg-white border border-slate-200 flex items-center justify-center gap-1 transition active:scale-95"
                 >
                   <X size={14} /> Recusar
                 </button>
@@ -253,15 +247,15 @@ export function PlanProposalBottomSheet({
 
           {/* Seção 2: Proposta de Plano (Treino / Refeições) */}
           {plan && (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-4">
               {plan.summary && (
-                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 leading-relaxed font-medium">
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-100 text-xs text-emerald-800 leading-relaxed font-medium">
                   ✨ {plan.summary}
                 </div>
               )}
 
               <div className="space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-1">
                   Sessões / Refeições Planeadas ({days.length} dias)
                 </p>
                 {days.map(day => (
@@ -282,14 +276,13 @@ export function PlanProposalBottomSheet({
 
         {/* Rodapé Fixo para Plano (se houver plano) */}
         {plan && (
-          <div className="p-5 border-t border-slate-800/80 bg-slate-950/90 shrink-0 flex items-center gap-3">
+          <div className="p-4 border-t border-slate-200 bg-white shrink-0 flex items-center gap-3">
             <button
               type="button"
               onClick={() => handleRespondPlanAction(true)}
-              className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition active:scale-95"
+              className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition active:scale-95"
               style={{
                 background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                boxShadow: '0 4px 20px rgba(16, 185, 129, 0.35)',
               }}
             >
               <Check size={18} />
@@ -299,10 +292,10 @@ export function PlanProposalBottomSheet({
             <button
               type="button"
               onClick={() => handleRespondPlanAction(false)}
-              className="py-3.5 px-4 rounded-2xl font-semibold text-sm text-slate-400 hover:text-rose-400 bg-slate-800/80 hover:bg-rose-500/10 border border-slate-700/60 hover:border-rose-500/30 flex items-center justify-center gap-1.5 transition active:scale-95"
+              className="py-3.5 px-4 rounded-2xl font-semibold text-sm text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 flex items-center justify-center gap-1.5 transition active:scale-95"
             >
               <X size={16} />
-              Recusar Plano
+              Recusar
             </button>
           </div>
         )}
