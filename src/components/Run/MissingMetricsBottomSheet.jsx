@@ -126,14 +126,14 @@ export default function MissingMetricsBottomSheet({
 
   const sheetTransition = isDragging
     ? 'none'
-    : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1)';
+    : 'transform 0.5s ease-in-out';
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-500 ${
-          isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-all duration-500 ease-in-out ${
+          isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 animate-bottom-sheet-overlay'
         }`}
         onClick={handleDismiss}
         aria-hidden="true"
