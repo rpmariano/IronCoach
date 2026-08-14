@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { BODY_METRICS } from '../../utils/body';
 import { useAppStore } from '../../store';
+import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
 import { User, Target, Bot, LogOut, Bell, Sparkles, Loader2, X } from 'lucide-react';
@@ -295,16 +297,12 @@ export default function Perfil() {
           Se saíres agora, as alterações que fizeste neste separador não ficam guardadas.
         </p>
         <div className="mt-5 space-y-2">
-          <button onClick={saveAndLeave} disabled={isSaving} type="button"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] shadow-lg active:scale-95 transition disabled:opacity-60"
-            style={{ color: '#fff' }}>
-            {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
-            {isSaving ? 'A guardar...' : 'Gravar e sair'}
-          </button>
-          <button onClick={discardAndLeave} disabled={isSaving} type="button"
-            className="w-full py-3 rounded-xl font-semibold text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 transition disabled:opacity-60">
+          <Button variant="module" onClick={saveAndLeave} isLoading={isSaving} className="w-full">
+            Gravar e sair
+          </Button>
+          <Button variant="danger-ghost" onClick={discardAndLeave} disabled={isSaving} className="w-full">
             Sair sem gravar
-          </button>
+          </Button>
           <button onClick={() => setLeavePrompt(null)} disabled={isSaving} type="button"
             className="w-full py-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60">
             Cancelar
@@ -315,19 +313,15 @@ export default function Perfil() {
   );
 
   const saveButton = (
-    <button
+    <Button
+      variant="module"
       onClick={handleSave}
       disabled={!isDirty || isSaving}
-      className={`w-full mt-4 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition ${
-        isDirty && !isSaving
-          ? 'bg-[var(--accent)] shadow-lg active:scale-95'
-          : 'bg-neutral-800 text-slate-500 cursor-not-allowed'
-      }`}
-      style={isDirty && !isSaving ? { color: '#fff' } : undefined}
+      isLoading={isSaving}
+      className="w-full mt-4 text-xs py-3"
     >
-      {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
-      {isSaving ? 'A guardar...' : 'Guardar alterações'}
-    </button>
+      Guardar alterações
+    </Button>
   );
 
   return (
@@ -343,9 +337,8 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200'
+              tab === t.key ? 'bg-[var(--accent)] text-neutral-950 shadow-md' : 'text-slate-400 hover:text-slate-200'
             }`}
-            style={tab === t.key ? { color: '#fff' } : undefined}
           >
             <t.icon size={14} /> {t.label}
           </button>
@@ -621,7 +614,7 @@ export default function Perfil() {
                 aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
                 aria-pressed={!!draft.coach_can_set_nutrition_goals}
                 className="w-11 h-6 rounded-full relative transition shrink-0"
-                style={{ background: draft.coach_can_set_nutrition_goals ? 'var(--mod-coach-to)' : 'rgb(64 64 64)' }}>
+                style={{ background: draft.coach_can_set_nutrition_goals ? 'var(--mod-coach-to)' : '#404040' }}>
                 <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.coach_can_set_nutrition_goals ? 'left-5' : 'left-0.5'}`}></span>
               </button>
             </div>

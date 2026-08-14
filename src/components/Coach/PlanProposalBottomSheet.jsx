@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Sparkles, Check, X, Calendar, Target } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
+import Button from '../shared/Button';
 
 const GOAL_LABELS = {
   calorie_goal: { label: 'Calorias', unit: 'kcal/dia' },
@@ -237,21 +238,23 @@ export function PlanProposalBottomSheet({
               </div>
 
               <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
+                <Button
+                  variant="module"
+                  moduleColor="var(--mod-coach-to)"
                   onClick={() => handleRespondGoalAction(true)}
-                  className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm hover:opacity-90"
-                  style={{ backgroundColor: 'var(--mod-coach-to)' }}
+                  className="flex-1 text-xs py-2.5"
+                  icon={<Check size={15} />}
                 >
-                  <Check size={15} /> Aceitar Objetivos
-                </button>
-                <button
-                  type="button"
+                  Aceitar Objetivos
+                </Button>
+                <Button
+                  variant="light"
                   onClick={() => handleRespondGoalAction(false)}
-                  className="py-2.5 px-3 rounded-xl font-semibold text-xs text-slate-500 hover:text-rose-500 bg-white border border-slate-200 flex items-center justify-center gap-1 transition active:scale-95"
+                  className="text-xs py-2.5"
+                  icon={<X size={14} />}
                 >
-                  <X size={14} /> Recusar
-                </button>
+                  Recusar
+                </Button>
               </div>
             </div>
           )}
@@ -315,26 +318,24 @@ export function PlanProposalBottomSheet({
         {/* Rodapé Fixo para Plano (se houver plano) */}
         {plan && (
           <div className="p-4 border-t border-slate-200 bg-white shrink-0 flex items-center gap-3">
-            <button
-              type="button"
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, #10b981 0%, #059669 100%)"
               onClick={() => handleRespondPlanAction(true)}
-              className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              }}
+              className="flex-1 text-sm py-3.5"
+              icon={<Check size={18} />}
             >
-              <Check size={18} />
               Aceitar Plano
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="light"
               onClick={() => handleRespondPlanAction(false)}
-              className="py-3.5 px-4 rounded-2xl font-semibold text-sm text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 flex items-center justify-center gap-1.5 transition active:scale-95"
+              className="text-sm py-3.5 shrink-0 px-6"
+              icon={<X size={16} />}
             >
-              <X size={16} />
               Recusar
-            </button>
+            </Button>
           </div>
         )}
       </div>

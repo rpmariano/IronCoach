@@ -113,7 +113,7 @@ function NextRaceCard({ raceEvents = [], onNav }) {
               </div>
               {upcoming.length > 1 && (
                 <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-                  <div className="flex items-center gap-1.5 pointer-events-auto">
+                  <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
                     {upcoming.map((_, idx) => (
                       <button 
                         key={idx} 
@@ -186,7 +186,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
       </div>
       
       <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none pb-2">
-        <div className="flex items-center gap-1.5 pointer-events-auto">
+        <div className="flex items-center gap-1.5 pointer-events-auto bg-black/10 px-2 py-1.5 rounded-full backdrop-blur-md">
           {[0, 1].map((idx) => (
             <button 
               key={idx} 

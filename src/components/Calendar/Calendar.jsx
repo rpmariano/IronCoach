@@ -126,11 +126,11 @@ export default function Calendar() {
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
       <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/80 shadow-[0_10px_40px_rgba(0,0,0,0.05),inset_0_2px_10px_rgba(255,255,255,0.6)]">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="w-9 h-9 flex items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 hover:text-slate-800 hover:bg-white transition shadow-sm">
+          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
             <ChevronLeft size={16} />
           </button>
           <span className="text-sm font-semibold capitalize text-slate-800">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="w-9 h-9 flex items-center justify-center rounded-full border border-white/60 bg-white/50 text-slate-500 hover:text-slate-800 hover:bg-white transition shadow-sm">
+          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
             <ChevronRight size={16} />
           </button>
         </div>
