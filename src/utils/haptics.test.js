@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { triggerHaptic, useCarouselHaptics } from './haptics';
+import { triggerCarouselTick, triggerHaptic, useCarouselHaptics } from './haptics';
 
 describe('haptics utility', () => {
   const originalVibrate = window.navigator.vibrate;
@@ -17,25 +17,25 @@ describe('haptics utility', () => {
     }
   });
 
-  it('calls navigator.vibrate with default 20ms pattern', () => {
+  it('triggerCarouselTick calls navigator.vibrate with 15ms tick pattern', () => {
     const vibrateMock = vi.fn().mockReturnValue(true);
     window.navigator.vibrate = vibrateMock;
 
-    triggerHaptic();
-    expect(vibrateMock).toHaveBeenCalledWith(20);
+    triggerCarouselTick();
+    expect(vibrateMock).toHaveBeenCalledWith(15);
   });
 
-  it('calls navigator.vibrate with custom pattern', () => {
+  it('triggerHaptic calls navigator.vibrate with pattern', () => {
     const vibrateMock = vi.fn().mockReturnValue(true);
     window.navigator.vibrate = vibrateMock;
 
-    triggerHaptic(30);
-    expect(vibrateMock).toHaveBeenCalledWith(30);
+    triggerHaptic(15);
+    expect(vibrateMock).toHaveBeenCalledWith(15);
   });
 
-  it('handles missing navigator.vibrate gracefully using Web Audio fallback', () => {
+  it('handles missing navigator.vibrate gracefully without throwing', () => {
     delete window.navigator.vibrate;
-    expect(() => triggerHaptic(20)).not.toThrow();
+    expect(() => triggerCarouselTick()).not.toThrow();
   });
 });
 
@@ -59,7 +59,7 @@ describe('useCarouselHaptics hook', () => {
       result.current.scrollTo(1);
     });
 
-    expect(vibrateMock).toHaveBeenCalled();
+    expect(vibrateMock).toHaveBeenCalledWith(15);
     expect(setCurrentIndex).toHaveBeenCalledWith(1);
     expect(scrollRef.current.scrollTo).toHaveBeenCalledWith({ left: 300, behavior: 'smooth' });
   });
@@ -82,7 +82,7 @@ describe('useCarouselHaptics hook', () => {
       result.current.handleTouchMove();
     });
 
-    expect(vibrateMock).toHaveBeenCalledWith(20);
+    expect(vibrateMock).toHaveBeenCalledWith(15);
     expect(setCurrentIndex).toHaveBeenCalledWith(1);
   });
 });
