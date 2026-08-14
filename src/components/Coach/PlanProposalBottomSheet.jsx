@@ -41,7 +41,7 @@ export function PlanProposalBottomSheet({
     setIsClosing(true);
     setTimeout(() => {
       onCloseRef.current?.();
-    }, 500);
+    }, 600);
   };
 
   useEffect(() => {
@@ -83,14 +83,23 @@ export function PlanProposalBottomSheet({
       setIsDragging(false);
     };
 
+    const handleTouchCancel = () => {
+      setDragY(0);
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
     el.addEventListener('touchstart', handleTouchStart, { passive: true });
     el.addEventListener('touchmove', handleTouchMove, { passive: false });
     el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
 
     return () => {
       el.removeEventListener('touchstart', handleTouchStart);
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchCancel);
     };
   }, []);
 
@@ -127,14 +136,14 @@ export function PlanProposalBottomSheet({
 
   const sheetTransition = isDragging
     ? 'none'
-    : 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1)';
+    : 'transform 0.6s ease-in-out';
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
       {/* Overlay escuro com Backdrop Blur */}
       <div 
-        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity duration-500 ${
-          isClosing ? 'opacity-0' : 'opacity-100 animate-bottom-sheet-overlay'
+        className={`fixed inset-0 bg-black/75 backdrop-blur-md transition-all duration-700 ease-in-out ${
+          isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 animate-bottom-sheet-overlay'
         }`}
         onClick={handleDismiss}
         aria-hidden="true"
