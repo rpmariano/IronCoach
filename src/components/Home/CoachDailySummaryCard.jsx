@@ -3,6 +3,7 @@ import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, C
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
+import { triggerHaptic } from '../../utils/haptics';
 import './CoachDailySummaryCard.css';
 
 /* Card-resumo do Coach no Início. Ver specs/plano-de-treino.md §11 e
@@ -116,16 +117,29 @@ export default function CoachDailySummaryCard() {
   };
 
   const scrollRef = useRef(null);
+  const activeIndexRef = useRef(safeIndex);
+
+  useEffect(() => {
+    activeIndexRef.current = safeIndex;
+  }, [safeIndex]);
 
   const handleScroll = () => {
     if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
       const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      setIndex(idx);
+      if (idx !== activeIndexRef.current) {
+        activeIndexRef.current = idx;
+        setIndex(idx);
+        triggerHaptic(10);
+      }
     }
   };
 
   const scrollTo = (idx) => {
-    setIndex(idx);
+    if (idx !== activeIndexRef.current) {
+      activeIndexRef.current = idx;
+      setIndex(idx);
+      triggerHaptic(10);
+    }
     if (scrollRef.current) {
       if (typeof scrollRef.current.scrollTo === 'function') {
         scrollRef.current.scrollTo({ left: idx * (scrollRef.current.offsetWidth || 0), behavior: 'smooth' });

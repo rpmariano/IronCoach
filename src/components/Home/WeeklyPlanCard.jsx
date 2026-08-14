@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
+import { triggerHaptic } from '../../utils/haptics';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -317,15 +318,25 @@ export function PlanProposalCard({ plan, items, onRespond }) {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
+  const activeIndexRef = useRef(0);
 
   const handleScroll = () => {
-    if (scrollRef.current) {
+    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
       const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      setCurrentIndex(index);
+      if (index !== activeIndexRef.current) {
+        activeIndexRef.current = index;
+        setCurrentIndex(index);
+        triggerHaptic(10);
+      }
     }
   };
 
   const scrollTo = (index) => {
+    if (index !== activeIndexRef.current) {
+      activeIndexRef.current = index;
+      setCurrentIndex(index);
+      triggerHaptic(10);
+    }
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
     }
@@ -437,15 +448,25 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
   const [currentIndex, setCurrentIndex] = useState(0);
   const [allExpanded, setAllExpanded] = useState(false);
   const scrollRef = useRef(null);
+  const activeIndexRef = useRef(0);
 
   const handleScroll = () => {
-    if (scrollRef.current) {
+    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
       const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      setCurrentIndex(index);
+      if (index !== activeIndexRef.current) {
+        activeIndexRef.current = index;
+        setCurrentIndex(index);
+        triggerHaptic(10);
+      }
     }
   };
 
   const scrollTo = (index) => {
+    if (index !== activeIndexRef.current) {
+      activeIndexRef.current = index;
+      setCurrentIndex(index);
+      triggerHaptic(10);
+    }
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
     }

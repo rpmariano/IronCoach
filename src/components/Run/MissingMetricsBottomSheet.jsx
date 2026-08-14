@@ -45,20 +45,20 @@ export default function MissingMetricsBottomSheet({
     <div className="fixed inset-0 z-[100] flex flex-col justify-end" data-testid="missing-metrics-bottom-sheet">
       {/* Overlay Escuro */}
       <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-fade-in"
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs animate-fade-in touch-none"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Persiana Bottom Sheet */}
       <div 
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         className="relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl transition-all duration-300 ease-out max-h-[85vh] overflow-hidden"
       >
-        {/* Traço de Touch (Grab Handle) — Tocar ou deslizar fecha o modal */}
+        {/* Traço de Touch (Grab Handle) — Tocar fecha o modal; swipe-down em toda a persiana funciona */}
         <div 
           onClick={onClose}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
           className="w-full py-3 cursor-pointer flex flex-col items-center justify-center shrink-0 group tap-44"
           title="Toca para fechar persiana"
           role="button"
@@ -69,7 +69,7 @@ export default function MissingMetricsBottomSheet({
         </div>
 
         {/* Conteúdo */}
-        <div className="px-5 pb-6 overflow-y-auto space-y-4">
+        <div className="px-5 pb-6 overflow-y-auto space-y-4 overscroll-contain">
           {/* Cabeçalho do Alerta */}
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">

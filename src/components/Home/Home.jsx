@@ -7,6 +7,7 @@ import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
 import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
+import { triggerHaptic } from '../../utils/haptics';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -57,15 +58,25 @@ function NextRaceCard({ raceEvents = [], onNav }) {
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
+  const activeIndexRef = useRef(0);
 
   const handleScroll = () => {
-    if (scrollRef.current) {
+    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
       const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      setCurrentIndex(index);
+      if (index !== activeIndexRef.current) {
+        activeIndexRef.current = index;
+        setCurrentIndex(index);
+        triggerHaptic(10);
+      }
     }
   };
 
   const scrollTo = (index) => {
+    if (index !== activeIndexRef.current) {
+      activeIndexRef.current = index;
+      setCurrentIndex(index);
+      triggerHaptic(10);
+    }
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
     }
@@ -180,15 +191,25 @@ function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
 function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
+  const activeIndexRef = useRef(0);
 
   const handleScroll = () => {
-    if (scrollRef.current) {
+    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
       const index = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
-      setCurrentIndex(index);
+      if (index !== activeIndexRef.current) {
+        activeIndexRef.current = index;
+        setCurrentIndex(index);
+        triggerHaptic(10);
+      }
     }
   };
 
   const scrollTo = (index) => {
+    if (index !== activeIndexRef.current) {
+      activeIndexRef.current = index;
+      setCurrentIndex(index);
+      triggerHaptic(10);
+    }
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ left: index * scrollRef.current.offsetWidth, behavior: 'smooth' });
     }
