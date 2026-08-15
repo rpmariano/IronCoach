@@ -326,9 +326,9 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'text-white shadow-[0_2px_10px_rgba(251,191,36,0.3)]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              tab === t.key ? 'shadow-[0_2px_10px_rgba(251,191,36,0.3)]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
-            style={tab === t.key ? { background: 'linear-gradient(135deg, #d97706, #fbbf24)' } : {}}
+            style={tab === t.key ? { background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: '#fff' } : {}}
           >
             <t.icon size={14} /> {t.label}
           </button>
