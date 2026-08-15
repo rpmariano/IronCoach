@@ -350,26 +350,35 @@ export default function RunAgenda({ onClose }) {
   if (!isFormOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--page-bg)] flex flex-col fade-in">
+    <div className="w-full max-w-lg mx-auto pb-10 fade-in">
       {leaveModal}
       {validationModal}
-      <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          <CalendarPlus size={18} style={{ color: 'var(--mod-coach-to)' }} />
-          <h2 className="text-[15px] font-semibold text-slate-700">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
-        </div>
-        <button
-          onClick={attemptCloseForm}
-          type="button"
-          className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
-          title="Fechar"
-          aria-label="Fechar"
+      
+      <div className="space-y-4">
+        {/* Cartão de cabeçalho */}
+        <div
+          className="rounded-2xl p-4 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.01), rgba(6, 182, 212, 0.03))', borderLeft: '2px solid var(--mod-coach-to)' }}
         >
-          <X size={16} />
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto px-4 py-5">
-        <div className="space-y-4 fade-in pb-20">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CalendarPlus size={16} style={{ color: 'var(--mod-coach-to)' }} />
+              <h2 className="text-sm font-semibold text-slate-800">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
+            </div>
+            <button
+              onClick={attemptCloseForm}
+              type="button"
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+              title="Fechar"
+              aria-label="Fechar"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Corpo principal do formulário */}
+        <div className="space-y-4 fade-in bg-white p-4 rounded-2xl shadow-sm">
 
           {/* 1.1 Data · 1.2 Local */}
           <div className="grid grid-cols-2 gap-2">
@@ -548,7 +557,7 @@ export default function RunAgenda({ onClose }) {
               onClick={handleSaveForm}
               disabled={isSubmitting || !draft.name.trim()}
               type="button"
-              className="bg-[var(--mod-coach-to)] text-neutral-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+              className="bg-[var(--mod-coach-to)] text-white text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
             >
               {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
             </button>
