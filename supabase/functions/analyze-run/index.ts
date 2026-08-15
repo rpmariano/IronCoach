@@ -166,10 +166,12 @@ function buildPrompt(
     "- hr_zones: PRESTA ATENÇÃO ESPECIAL a este campo — é frequentemente ignorado. Procura em TODAS as imagens " +
     "recebidas (pode estar num ecrã dedicado, separado do ecrã principal de FC) uma repartição por zonas de " +
     "frequência cardíaca — pode aparecer como 'Zonas de FC', 'HR Zones', 'Time in Zones', ou apenas uma lista/" +
-    "gráfico de barras com Z1, Z2, Z3, Z4, Z5 (ou Zona 1...5) e o tempo passado em cada uma. Mesmo que os valores " +
-    "estejam só em minutos:segundos por barra, converte para minutos (decimal) e devolve cada linha como " +
-    "{ zone, minutes } (zone = número da zona, 1 a 5). Só devolve null se tiveres a certeza de que NENHUMA das " +
-    "imagens mostra este ecrã.\n" +
+    "gráfico de barras com Z1, Z2, Z3, Z4, Z5 (ou Zona 1...5) e o tempo passado em cada uma. ATENÇÃO: Dependendo " +
+    "da app e do método escolhido pelo atleta (ex.: FC máx, FC de reserva, ou FC LA/LAn), o ecrã pode mostrar " +
+    "5 zonas ou APENAS 3 zonas (Zona 1 a 3). Extrai exatamente as zonas que aparecerem numeradas no ecrã. " +
+    "Mesmo que os valores estejam só em minutos:segundos por barra, converte para minutos (decimal) e devolve " +
+    "cada linha como { zone, minutes } (zone = número da zona apresentado, ex: 1 a 5). Só devolve null se tiveres " +
+    "a certeza de que NENHUMA das imagens mostra este ecrã.\n" +
     "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";

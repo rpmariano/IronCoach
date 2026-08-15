@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
+import Button from '../shared/Button';
 
 export const METRIC_CONFIGS = {
   distance_km: { label: 'Distância da Corrida (km)', icon: <Navigation className="w-4 h-4 text-emerald-500" /> },
@@ -11,6 +12,7 @@ export const METRIC_CONFIGS = {
   biomechanics: { label: 'Métricas Biomecânicas (Contacto solo, Oscilação, Assimetria)', icon: <Activity className="w-4 h-4 text-indigo-500" /> },
   thresholds: { label: 'Limiares Fisiológicos (FC LA / LAn)', icon: <HeartPulse className="w-4 h-4 text-emerald-500" /> },
   splits: { label: 'Splits / Voltas por km', icon: <Split className="w-4 h-4 text-purple-500" /> },
+  hr_zones: { label: 'Zonas de Frequência Cardíaca', icon: <HeartPulse className="w-4 h-4 text-rose-500" /> },
   total_steps: { label: 'Passos Totais', icon: <Footprints className="w-4 h-4 text-emerald-600" /> },
 };
 
@@ -166,8 +168,11 @@ export default function MissingMetricsBottomSheet({
           {/* Cabeçalho do Alerta, agora na zona fixa tal como no chat */}
           <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
-                <Sparkles className="w-4 h-4" />
+              <div 
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+              >
+                <Sparkles className="w-5 h-5 text-slate-900" />
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-slate-800">
@@ -196,15 +201,15 @@ export default function MissingMetricsBottomSheet({
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-slate-50/30">
           {/* Lista de Métricas em Falta */}
           {missingKeys.length > 0 && (
-            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 space-y-2 shadow-sm">
-              <span className="text-[11px] font-bold text-amber-900 block uppercase tracking-wider">
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+              <span className="text-[11px] font-bold text-slate-500 block uppercase tracking-wider">
                 Métricas sugeridas ({missingKeys.length}):
               </span>
               <div className="space-y-1.5">
                 {missingKeys.map((key) => {
-                  const cfg = METRIC_CONFIGS[key] || { label: key, icon: <Sparkles className="w-4 h-4 text-amber-500" /> };
+                  const cfg = METRIC_CONFIGS[key] || { label: key, icon: <Sparkles className="w-4 h-4 text-slate-500" /> };
                   return (
-                    <div key={key} className="flex items-center gap-2.5 bg-white/80 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 border border-amber-100/60 shadow-2xs">
+                    <div key={key} className="flex items-center gap-2.5 bg-slate-50/80 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-700 border border-slate-100">
                       {cfg.icon}
                       <span>{cfg.label}</span>
                     </div>
@@ -213,45 +218,48 @@ export default function MissingMetricsBottomSheet({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Botões de Ação */}
-          <div className="space-y-2 pb-2">
-            <button
-              type="button"
+        {/* Rodapé Fixo */}
+        <div className="p-4 border-t border-slate-200 bg-white shrink-0 flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="module"
+              moduleColor="var(--mod-corrida-to)"
               onClick={() => {
                 onAddPhotos();
                 handleDismiss();
               }}
-              className="w-full bg-[var(--mod-corrida-to)] text-white font-bold text-sm rounded-2xl py-3.5 px-4 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:opacity-95 active:scale-[0.98] transition"
+              className="flex-1 text-sm py-3.5"
+              icon={<ImagePlus size={18} />}
             >
-              <ImagePlus className="w-4 h-4" />
-              <span>Carregar mais prints da app</span>
-            </button>
+              Mais prints
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              variant="light"
               onClick={() => {
                 onGoManual();
                 handleDismiss();
               }}
-              className="w-full bg-white text-slate-800 font-bold text-sm rounded-2xl py-3.5 px-4 border border-slate-200 flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-[0.98] transition shadow-sm"
+              className="text-sm py-3.5 shrink-0 px-5"
+              icon={<PencilLine size={16} />}
             >
-              <PencilLine className="w-4 h-4 text-slate-600" />
-              <span>Completar manualmente</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                onProceedAnyway();
-                handleDismiss();
-              }}
-              className="w-full text-slate-500 font-semibold text-xs py-3 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
-            >
-              <span>Prosseguir sem estas métricas</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+              Manual
+            </Button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              onProceedAnyway();
+              handleDismiss();
+            }}
+            className="w-full text-slate-500 font-semibold text-[11px] uppercase tracking-wider py-2 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
+          >
+            <span>Prosseguir sem estas métricas</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
     </div>

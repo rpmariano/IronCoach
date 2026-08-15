@@ -172,6 +172,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (!detailsObj.splits || !Array.isArray(detailsObj.splits) || detailsObj.splits.length === 0) {
       missing.push('splits');
     }
+    if (!detailsObj.hr_zones || !Array.isArray(detailsObj.hr_zones) || detailsObj.hr_zones.length === 0) {
+      missing.push('hr_zones');
+    }
     return missing;
   };
 
