@@ -2,6 +2,18 @@ import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { todayISO } from '../lib/utils';
 
+const getInitialDashboardTab = () => {
+  try {
+    const saved = localStorage.getItem('ironhealth_last_module');
+    if (['corrida', 'ginasio', 'nutricao', 'corpo'].includes(saved)) {
+      return saved;
+    }
+  } catch (err) {
+    // ignore
+  }
+  return 'corrida';
+};
+
 export const useAppStore = create((set, get) => ({
   // Auth & Profile State
   session: null,
@@ -35,7 +47,7 @@ export const useAppStore = create((set, get) => ({
   
   // UI State
   activeTab: 'home',
-  lastDashboardTab: localStorage.getItem('ironhealth_last_module') || 'corrida',
+  lastDashboardTab: getInitialDashboardTab(),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
@@ -53,7 +65,11 @@ export const useAppStore = create((set, get) => ({
     const guard = get().navGuard;
     if (guard && !guard(tab)) return false;
     if (['corrida', 'ginasio', 'nutricao', 'corpo'].includes(tab)) {
-      localStorage.setItem('ironhealth_last_module', tab);
+      try {
+        localStorage.setItem('ironhealth_last_module', tab);
+      } catch (e) {
+        // ignore
+      }
       set({ activeTab: tab, lastDashboardTab: tab });
     } else {
       set({ activeTab: tab });
