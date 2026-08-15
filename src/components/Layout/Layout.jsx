@@ -106,8 +106,8 @@ export default function Layout({ children }) {
           </div>
           <button
             onClick={() => setActiveTab('perfil')}
-            className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition"
-            style={{ background: 'var(--surf-800)', color: 'var(--text-main)', border: '1px solid var(--brd-800)' }}
+            className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition shadow-[0_2px_10px_rgba(251,191,36,0.25)]"
+            style={{ background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: 'white', border: 'none' }}
           >
             <User size={14} /> Perfil
           </button>
@@ -212,8 +212,8 @@ export default function Layout({ children }) {
           className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all border-[4px] border-white shadow-xl text-white z-50 cursor-pointer"
           style={{
             top: -22,
-            background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))',
-            boxShadow: '0 4px 20px rgba(6, 182, 212, 0.35), 0 0 0 2.5px var(--green-dark)',
+            background: 'linear-gradient(135deg, #d97706, #fbbf24)',
+            boxShadow: '0 4px 20px rgba(251, 191, 36, 0.4), 0 0 0 2.5px var(--green-dark)',
           }}
           aria-label={fabOpen ? 'Fechar menu de registo' : 'Registar novo item'}
           aria-expanded={fabOpen}

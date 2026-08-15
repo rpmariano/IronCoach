@@ -316,7 +316,7 @@ export default function Perfil() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav */}
-      <div className="flex gap-2 p-1 bg-neutral-900 border border-neutral-800 rounded-2xl mb-4">
+      <div className="flex gap-2 p-1 bg-white border border-slate-200/80 rounded-2xl mb-4 shadow-sm">
         {[
           { key: 'perfil', label: 'Pessoal', icon: User },
           { key: 'metas', label: 'Metas', icon: Target },
@@ -326,8 +326,9 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'bg-[var(--accent)] text-neutral-50 shadow-md' : 'text-slate-400 hover:text-slate-200'
+              tab === t.key ? 'text-white shadow-[0_2px_10px_rgba(251,191,36,0.3)]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
+            style={tab === t.key ? { background: 'linear-gradient(135deg, #d97706, #fbbf24)' } : {}}
           >
             <t.icon size={14} /> {t.label}
           </button>
