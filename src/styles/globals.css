@@ -41,6 +41,12 @@
   --mod-nutricao: #059669;
   --mod-corpo: #6366f1;
   --mod-descanso: #64748b;
+
+  /* Gradient de botões FAB e Dashboards (Mapeadas para neutros/verde para estética monocromática) */
+  --mod-nutricao-from:var(--green-dark); --mod-nutricao-to:var(--green);
+  --mod-corpo-from:var(--green-dark);    --mod-corpo-to:var(--green);  
+  --mod-ginasio-from:var(--green-dark);  --mod-ginasio-to:var(--green);
+  --mod-corrida-from:var(--green-dark);  --mod-corrida-to:var(--green);
   
   /* Coach permanece com a sua cor única de destaque */
   --mod-coach-from:#155e75;              --mod-coach-to:#06b6d4;
