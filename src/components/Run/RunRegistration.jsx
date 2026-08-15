@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus } from 'lucide-react';
+import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { useToast } from '../shared/ToastProvider';
+import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';

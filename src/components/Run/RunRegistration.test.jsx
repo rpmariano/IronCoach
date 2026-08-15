@@ -224,7 +224,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     goManual();
     fireEvent.change(screen.getByPlaceholderText('Ex: 158'), { target: { value: '165' } });
     fireEvent.change(screen.getByPlaceholderText('Ex: 175'), { target: { value: '182' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar zona' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar Zona/i }));
     const zoneSelects = screen.getAllByDisplayValue('Zona');
     fireEvent.change(zoneSelects[zoneSelects.length - 1], { target: { value: '2' } });
     fireEvent.change(screen.getByPlaceholderText('Minutos'), { target: { value: '20' } });
