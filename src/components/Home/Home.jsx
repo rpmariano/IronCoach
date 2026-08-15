@@ -100,8 +100,7 @@ function NextRaceCard({ raceEvents = [], onNav, onEditRace }) {
               key={next.id} 
               className="relative w-full h-full shrink-0 snap-center" 
               onClick={() => {
-                onNav('corrida');
-                onEditRace && onEditRace(next.id);
+                if (onEditRace) onEditRace(next.id);
               }}
             >
               <div className="cursor-pointer active:scale-[0.99] transition-transform w-full h-full">

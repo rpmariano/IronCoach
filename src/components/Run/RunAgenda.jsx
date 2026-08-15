@@ -63,6 +63,7 @@ export default function RunAgenda({ onClose }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
+  const [validationError, setValidationError] = useState(null);
 
   // Destino pendente quando se tenta sair (nav para outro módulo) com
   // alterações por gravar — null quando o pedido veio do próprio botão
@@ -189,26 +190,26 @@ export default function RunAgenda({ onClose }) {
   // Devolve true/false para quem chama (o aviso de saída) saber se pode
   // prosseguir para o destino pendente.
   const handleSaveForm = async () => {
-    if (!draft.name.trim()) { alert('Indica o nome da prova.'); return false; }
-    if (!draft.location.trim()) { alert('Indica o local da prova.'); return false; }
+    if (!draft.name.trim()) { setValidationError('Indica o nome da prova.'); return false; }
+    if (!draft.location.trim()) { setValidationError('Indica o local da prova.'); return false; }
 
     const distanceKm = parseFloat((draft.distance_km ?? '').toString().replace(',', '.'));
     if (!distanceKm || distanceKm <= 0) {
-      alert('Escolhe a distância da prova — é o que permite ao coach calcular ritmo-alvo e taper.');
+      setValidationError('Escolhe a distância da prova — é o que permite ao coach calcular ritmo-alvo e taper.');
       return false;
     }
 
     // Autodeclarado, não herdado do Perfil: é a peça que permite a um atleta
     // avançado em estrada marcar-se como iniciante na primeira prova de trail.
     if (!draft.experience_level) {
-      alert('Indica o teu nível para esta prova — o coach usa-o para calibrar o plano.');
+      setValidationError('Indica o teu nível para esta prova — o coach usa-o para calibrar o plano.');
       return false;
     }
 
     const targetTimeSecs = parseDurationToSeconds(draft.target_time);
     const targetPaceSecs = parsePaceToSeconds(draft.target_pace);
     if (!targetTimeSecs || !targetPaceSecs) {
-      alert('Indica o objetivo de tempo total ou o ritmo-alvo — o outro campo é calculado automaticamente a partir dele.');
+      setValidationError('Indica o objetivo de tempo total ou o ritmo-alvo — o outro campo é calculado automaticamente a partir dele.');
       return false;
     }
 
@@ -216,7 +217,7 @@ export default function RunAgenda({ onClose }) {
     if (draft.race_type === 'trail') {
       elevationGainM = parseFloat((draft.elevation_gain_m ?? '').toString().replace(',', '.'));
       if (!Number.isFinite(elevationGainM) || elevationGainM < 0) {
-        alert('Indica o D+ (desnível acumulado) desta prova de trail.');
+        setValidationError('Indica o D+ (desnível acumulado) desta prova de trail.');
         return false;
       }
     }
@@ -328,11 +329,30 @@ export default function RunAgenda({ onClose }) {
     </div>
   );
 
+  const validationModal = validationError && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="prova-val-title">
+      <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
+        <h2 id="prova-val-title" className="text-sm font-semibold text-white">Dados Incompletos</h2>
+        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+          {validationError}
+        </p>
+        <div className="mt-5">
+          <button onClick={() => setValidationError(null)} type="button"
+            className="w-full py-3 rounded-xl font-bold text-xs bg-[var(--mod-coach-to)] shadow-lg active:scale-95 transition"
+            style={{ color: '#fff' }}>
+            Entendido
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
+  if (!isFormOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-[var(--page-bg)] flex flex-col fade-in">
       {leaveModal}
+      {validationModal}
       <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-slate-100">
         <div className="flex items-center gap-2">
           <CalendarPlus size={18} style={{ color: 'var(--mod-coach-to)' }} />

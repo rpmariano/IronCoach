@@ -39,7 +39,7 @@ const DEMO_PROFILE = {
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
 
 export default function App() {
-  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode } = useAppStore();
+  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
@@ -110,8 +110,11 @@ export default function App() {
         {activeTab === 'admin' && <Admin />}
       </Layout>
       
-      {openCreationMode === 'race' && (
-        <RunAgenda onClose={() => setOpenCreationMode(null)} />
+      {(openCreationMode === 'race' || editingRaceId) && (
+        <RunAgenda onClose={() => {
+          setOpenCreationMode(null);
+          setEditingRaceId(null);
+        }} />
       )}
     </ToastProvider>
   );
