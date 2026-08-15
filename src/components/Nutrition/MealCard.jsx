@@ -122,20 +122,20 @@ export default function MealCard({ meal, onEdit }) {
         <div className="space-y-3 pt-2 border-t border-slate-200/60 fade-in">
           {/* Pílulas Coloridas com Ícones + Valores Reais */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-white border border-slate-200/80 text-slate-700 shadow-xs flex items-center gap-1.5">
-              <Flame size={14} className="text-orange-500" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-red-50/90 border border-red-200/80 text-red-800 shadow-xs flex items-center gap-1.5">
+              <Flame size={14} className="text-red-600" />
               {n.calories.toFixed(0)} kcal
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-200/80 shadow-xs flex items-center gap-1.5">
-              <Beef size={14} className="text-emerald-700" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50/90 text-blue-800 border border-blue-200/80 shadow-xs flex items-center gap-1.5">
+              <Beef size={14} className="text-blue-600" />
               {n.protein.toFixed(1)}g Proteína
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-orange-100/90 text-orange-800 border border-orange-200/80 shadow-xs flex items-center gap-1.5">
-              <Wheat size={14} className="text-orange-700" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50/90 text-amber-800 border border-amber-200/80 shadow-xs flex items-center gap-1.5">
+              <Wheat size={14} className="text-amber-600" />
               {n.carbs.toFixed(1)}g Hidratos
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-sky-100/90 text-sky-800 border border-sky-200/80 shadow-xs flex items-center gap-1.5">
-              <Droplet size={14} className="text-sky-700" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-pink-50/90 text-pink-800 border border-pink-200/80 shadow-xs flex items-center gap-1.5">
+              <Droplet size={14} className="text-pink-600" />
               {n.fat.toFixed(1)}g Gordura
             </span>
           </div>

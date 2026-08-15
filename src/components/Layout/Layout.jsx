@@ -13,7 +13,7 @@ const TAB_MODULE_COLORS = {
   ginasio: 'var(--mod-ginasio-to, #facc15)',
   corpo: 'var(--mod-corpo-to, #e11d48)',
   corrida: 'var(--mod-corrida-to, #c026d3)',
-  coach: 'var(--accent)',
+  coach: 'var(--mod-coach-to, #06b6d4)',
   perfil: 'var(--accent)',
 };
 

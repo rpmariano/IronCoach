@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
-import { RotateCcw, CheckCircle, Pencil, Trash2, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { RotateCcw, CheckCircle, PencilLine, Trash2, Link as LinkIcon, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import Button from '../shared/Button';
 import { pt } from 'date-fns/locale';
 import {
   raceDistanceLabel,
@@ -24,8 +25,11 @@ function formatDatePT(isoStr) {
 
 export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
   const { profile, runs } = useAppStore();
+  const [expanded, setExpanded] = useState(false);
   const todayIso = todayISO();
   const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayIso), [runs, todayIso]);
+  
+  const toggleExpand = () => setExpanded(!expanded);
   
   const distanceLabel = raceDistanceLabel(ev.distance_km);
   const isPast = ev.date < todayIso;
@@ -49,7 +53,11 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
   };
 
   return (
-    <div className={`card rounded-2xl p-4 shadow-sm border border-slate-100 ${done ? 'opacity-60' : ''}`} style={{ backgroundColor: 'rgba(217, 70, 239, 0.02)' }}>
+    <div 
+      onClick={toggleExpand}
+      className={`card rounded-2xl p-4 shadow-sm border border-slate-100 cursor-pointer hover:shadow-md transition ${done ? 'opacity-60' : ''}`} 
+      style={{ backgroundColor: 'rgba(217, 70, 239, 0.02)' }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
@@ -87,42 +95,90 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
             {isPast && !done ? ' · já passou' : ''}
             {ev.location ? ` · ${ev.location}` : ''}
           </p>
-          {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
-          {viability.flags.length > 0 && (
-            <div className="mt-1.5 flex flex-col gap-0.5">
-              {viability.flags.map(flag => (
-                <p key={flag} className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'var(--color-warn)' }}>
-                  <AlertTriangle size={10} />
-                  {FLAG_LABELS[flag] || flag}
-                </p>
-              ))}
-            </div>
-          )}
-          {ev.elevation_gain_m != null && <p className="text-[11px] text-slate-500 mt-0.5">D+: {ev.elevation_gain_m} m</p>}
-          {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
-          {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}
-          {ev.website && (
-            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-              <LinkIcon size={11} />
-              <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-coach-to)] transition truncate">
-                {ev.website}
-              </a>
-            </p>
-          )}
-          {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
         </div>
-        <div className="flex flex-col items-center justify-start gap-2 shrink-0">
-          <button onClick={() => onToggleStatus && onToggleStatus(ev)} aria-label={done ? 'Marcar prova como agendada' : 'Marcar prova como concluída'} className="tap-44 text-slate-400 hover:text-emerald-500 transition">
-            {done ? <RotateCcw size={16} /> : <CheckCircle size={16} />}
-          </button>
-          <button onClick={() => onEdit && onEdit(ev.id)} aria-label="Editar prova" className="tap-44 text-slate-400 hover:text-[var(--mod-coach-to)] transition">
-            <Pencil size={16} />
-          </button>
-          <button onClick={() => onDelete && onDelete(ev.id)} aria-label="Eliminar prova" className="tap-44 text-slate-400 hover:text-red-500 transition">
-            <Trash2 size={16} />
+        <div className="flex items-start justify-end shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleExpand(); }}
+            type="button"
+            aria-label={expanded ? 'Fechar detalhes da prova' : 'Ver detalhes da prova'}
+            aria-expanded={expanded}
+            className="tap-44 text-slate-400 hover:text-slate-600"
+          >
+            {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
         </div>
       </div>
+
+      {/* Expanded Content */}
+      {expanded && (
+        <div className="space-y-3 pt-2 mt-2 border-t border-slate-200/60 fade-in">
+          <div className="space-y-1">
+            {ev.elevation_gain_m != null && <p className="text-[11px] text-slate-500 mt-0.5">D+: {ev.elevation_gain_m} m</p>}
+            {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
+            {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}
+            {ev.website && (
+              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                <LinkIcon size={11} />
+                <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-coach-to)] transition truncate">
+                  {ev.website}
+                </a>
+              </p>
+            )}
+            {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
+          </div>
+
+          {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
+          {!done && (
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                Avaliação do Coach
+              </span>
+              {viability.flags.length > 0 ? (
+                viability.flags.map(flag => (
+                  <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
+                    <AlertTriangle size={12} />
+                    {FLAG_LABELS[flag] || flag}
+                  </p>
+                ))
+              ) : (
+                <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
+                  <CheckCircle size={12} />
+                  Preparação adequada para a prova
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              variant="light"
+              onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
+              className={`flex-1 text-xs ${done ? 'text-amber-600' : 'text-emerald-600'}`}
+              icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
+            >
+              {done ? 'Repor' : 'Concluída'}
+            </Button>
+            {onEdit && (
+              <Button
+                variant="light"
+                onClick={(e) => { e.stopPropagation(); onEdit(ev.id); }}
+                className="flex-1 text-xs"
+                icon={<PencilLine size={14} />}
+              >
+                Editar
+              </Button>
+            )}
+            <Button
+              variant="light-danger"
+              onClick={(e) => { e.stopPropagation(); onDelete && onDelete(ev.id); }}
+              className="flex-1 text-xs"
+              icon={<Trash2 size={14} />}
+            >
+              Eliminar
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

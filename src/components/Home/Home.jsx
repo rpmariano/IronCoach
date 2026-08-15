@@ -8,6 +8,7 @@ import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -49,12 +50,14 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
 }
 
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
-function NextRaceCard({ raceEvents = [], onNav, onEditRace }) {
+function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 5);
+  
+  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, today), [runs, today]);
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
@@ -95,6 +98,21 @@ function NextRaceCard({ raceEvents = [], onNav, onEditRace }) {
           const dateObj = new Date(next.date + 'T00:00:00');
           const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
 
+          const weeksToRace = Math.floor(daysUntil / 7);
+          const viability = assessRaceViability({
+            distanceKm: parseFloat((next.distance_km || '').toString().replace(',', '.')),
+            experienceLevel: next.experience_level || profile?.experience_level,
+            weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
+            weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+          });
+
+          let readiness = 'green';
+          if (viability.flags.length > 0) {
+            readiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) 
+              ? 'red' 
+              : 'yellow';
+          }
+
           return (
             <div 
               key={next.id} 
@@ -111,6 +129,7 @@ function NextRaceCard({ raceEvents = [], onNav, onEditRace }) {
                   tag={next.race_type || 'Prova'}
                   daysRemaining={daysUntil}
                   progressPercentage={progressPercentage}
+                  readiness={readiness}
                 />
               </div>
               {upcoming.length > 1 && (
@@ -210,7 +229,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
 export default function Home() {
   const { showToast } = useToast();
   const {
-    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
+    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId
@@ -321,7 +340,7 @@ export default function Home() {
       <CoachDailySummaryCard />
 
       {/* Próxima Prova */}
-      <NextRaceCard raceEvents={raceEvents} onNav={handleNav} onEditRace={setEditingRaceId} />
+      <NextRaceCard raceEvents={raceEvents} runs={runs} profile={profile} onNav={handleNav} onEditRace={setEditingRaceId} />
 
       {/* Nutrição & Água Carousel */}
       <NutritionWaterCarousel 

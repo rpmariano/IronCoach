@@ -8,7 +8,8 @@ export default function NextRaceCard({
   location = "Lisboa",
   tag = "estrada",
   daysRemaining = 40,
-  progressPercentage = 60
+  progressPercentage = 60,
+  readiness = 'green'
 }) {
   return (
     <div className="next-race-card">
@@ -18,6 +19,13 @@ export default function NextRaceCard({
         <div className="nrc-header-row">
           <span className="nrc-lbl">Próxima Prova</span>
           <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
+          {readiness && (
+            <div className="nrc-traffic-light" title={`Preparação do atleta: ${readiness === 'green' ? 'Adequada' : readiness === 'yellow' ? 'Com Alertas' : 'Inadequada'}`}>
+              <div className={`nrc-light nrc-light-red ${readiness === 'red' ? 'on' : ''}`}></div>
+              <div className={`nrc-light nrc-light-yellow ${readiness === 'yellow' ? 'on' : ''}`}></div>
+              <div className={`nrc-light nrc-light-green ${readiness === 'green' ? 'on' : ''}`}></div>
+            </div>
+          )}
         </div>
         
         <h2 className="nrc-title">{title}</h2>

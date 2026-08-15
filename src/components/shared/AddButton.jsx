@@ -21,7 +21,7 @@ export function AddButton({
     gym: 'text-[var(--mod-ginasio-to)]',
     run: 'text-[var(--mod-corrida-to)]',
     nutrition: 'text-[var(--mod-nutricao-to)]',
-    body: 'text-[var(--mod-body-to)]',
+    body: 'text-[var(--mod-corpo-to)]',
   };
 
   return (

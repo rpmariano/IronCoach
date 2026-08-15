@@ -215,7 +215,7 @@ export default function Calendar() {
                     isSelected 
                       ? 'bg-white border-orange-500 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : dayRaces.length > 0
-                        ? 'bg-[var(--mod-coach-to)] border-transparent text-white shadow-[0_2px_8px_rgba(217,70,239,0.3)] hover:opacity-90'
+                        ? 'bg-[var(--mod-coach-to)] border-transparent text-white shadow-[0_2px_8px_rgba(6,182,212,0.3)] hover:opacity-90'
                         : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
                   }`}
                 >

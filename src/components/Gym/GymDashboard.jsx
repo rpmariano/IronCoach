@@ -82,7 +82,7 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Volume (kg)',
         data: days.map(d => volumeByDay[d]),
-        backgroundColor: 'rgba(96, 165, 250, 0.6)',
+        backgroundColor: 'rgba(202, 138, 4, 0.5)',
         borderRadius: 6
       }]
     };
@@ -96,8 +96,8 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Carga (kg)',
         data: dataPoints.map(dp => dp.weight),
-        borderColor: '#60a5fa',
-        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+        borderColor: '#ca8a04',
+        backgroundColor: 'rgba(202, 138, 4, 0.1)',
         tension: 0.3,
         fill: true
       }]
