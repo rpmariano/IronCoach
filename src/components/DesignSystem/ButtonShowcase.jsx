@@ -33,7 +33,7 @@ export default function ButtonShowcase() {
                     <div className="text-xs text-slate-500 mt-1">Guardar, submeter, iniciar treino.</div>
                   </td>
                   <td className="p-4 align-top space-y-3">
-                    <button className="tap-h-44 bg-[var(--accent)] text-neutral-950 font-bold text-xs rounded-xl px-4 flex items-center justify-center">Guardar Alterações</button>
+                    <button className="tap-h-44 bg-[var(--accent)] text-neutral-50 font-bold text-xs rounded-xl px-4 flex items-center justify-center">Guardar Alterações</button>
                     <button className="bg-[#c6f432] text-black font-bold py-3 rounded-2xl w-full text-center">Começar Treino</button>
                   </td>
                   <td className="p-4 align-top space-y-3 border-l border-neutral-800/50">

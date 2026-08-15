@@ -47,7 +47,7 @@ export default function BodyCalendar() {
       {/* Botão Nova Avaliação */}
       <button
         onClick={() => setOpenCreationMode('assessment')}
-        className="w-full bg-[var(--accent)] text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        className="w-full bg-[var(--accent)] text-neutral-50 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
       >
         <ScanLine size={20} /> Nova Avaliação
       </button>

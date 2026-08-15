@@ -40,7 +40,7 @@ export function Button({
 
   // Variants (Colors & Styles)
   const variants = {
-    primary: 'bg-[var(--accent)] text-neutral-950 hover:bg-[var(--accent-dark)] shadow-sm',
+    primary: 'bg-[var(--accent)] text-neutral-50 hover:bg-[var(--accent-dark)] shadow-sm',
     secondary: 'bg-neutral-800 text-slate-200 hover:bg-neutral-700',
     outline: 'border-2 border-neutral-700 text-slate-300 hover:bg-neutral-800 hover:text-white',
     ghost: 'bg-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5',

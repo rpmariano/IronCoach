@@ -213,19 +213,19 @@ export default function Calendar() {
                   onClick={() => setSelectedDate(date)}
                   className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
-                      ? 'bg-white border-orange-500 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
+                      ? 'bg-white border-[var(--green)] text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : dayRaces.length > 0
-                        ? 'bg-[var(--mod-coach-to)] border-transparent text-white shadow-[0_2px_8px_rgba(6,182,212,0.3)] hover:opacity-90'
+                        ? 'bg-[linear-gradient(135deg,var(--race-from),var(--race-to))] border-transparent text-white shadow-[0_2px_8px_var(--race-glow)] hover:opacity-90'
                         : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
                   <div className="flex gap-[3px] justify-center w-full px-1.5 h-1">
-                    {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--mod-coach-to)' : 'rgba(255,255,255,0.7)' }} />}
-                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corrida-to, #c026d3)' }} />}
-                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-ginasio-to, #facc15)' }} />}
-                    {dayMeals.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-nutricao-to, #059669)' }} />}
-                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corpo-to, #e11d48)' }} />}
+                    {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--race-to)' : 'rgba(255,255,255,0.7)' }} />}
+                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green-dark)]" />}
+                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green)]" />}
+                    {dayMeals.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green-glow)]" />}
+                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-slate-400" />}
                     
                     {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
                        <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
@@ -240,23 +240,23 @@ export default function Calendar() {
         {/* Legend */}
         <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-coach-to)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--race-to)]"></span>
             <span>Prova</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corrida-to, #c026d3)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green-dark)]"></span>
             <span>Corrida</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-ginasio-to, #facc15)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green)]"></span>
             <span>Ginásio</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-nutricao-to, #059669)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green-glow)]"></span>
             <span>Nutrição</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corpo-to, #e11d48)' }}></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-slate-400"></span>
             <span>Corpo</span>
           </div>
         </div>

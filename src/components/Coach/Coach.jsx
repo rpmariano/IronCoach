@@ -267,7 +267,7 @@ export default function Coach() {
               <div
                 className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed ${
                   isUser
-                    ? 'bg-[var(--accent)] text-slate-950 font-semibold rounded-[18px_18px_4px_18px]'
+                    ? 'bg-[var(--accent)] text-neutral-50 font-semibold rounded-[18px_18px_4px_18px]'
                     : 'bg-neutral-900/80 border border-neutral-800 text-slate-300 rounded-[18px_18px_18px_4px] shadow-sm'
                 }`}
               >

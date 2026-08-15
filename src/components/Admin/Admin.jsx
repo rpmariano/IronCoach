@@ -543,7 +543,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setMetricsRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-neutral-950' : 'text-slate-300'}`}
+                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -607,7 +607,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-neutral-950' : 'text-slate-300'}`}
+                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>

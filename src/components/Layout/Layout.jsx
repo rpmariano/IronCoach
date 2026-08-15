@@ -6,15 +6,15 @@ import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, A
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
-  home: 'var(--accent)',
-  calendario: 'var(--accent)',
-  dashboard: 'var(--accent)',
-  nutricao: 'var(--mod-nutricao-to, #059669)',
-  ginasio: 'var(--mod-ginasio-to, #facc15)',
-  corpo: 'var(--mod-corpo-to, #e11d48)',
-  corrida: 'var(--mod-corrida-to, #c026d3)',
+  home: 'var(--green)',
+  calendario: 'var(--green)',
+  dashboard: 'var(--green)',
+  nutricao: 'var(--green)',
+  ginasio: 'var(--green)',
+  corpo: 'var(--green)',
+  corrida: 'var(--green)',
   coach: 'var(--mod-coach-to, #06b6d4)',
-  perfil: 'var(--accent)',
+  perfil: 'var(--green)',
 };
 
 // Círculo de ícone com glifo branco: usa o mesmo gradiente -from → -to dos
@@ -137,7 +137,7 @@ export default function Layout({ children }) {
           >
             <FabItem 
               label="Nova prova"
-              color={moduleGradient('coach')}
+              color="linear-gradient(135deg, var(--race-from), var(--race-to))"
               icon={<Trophy size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 

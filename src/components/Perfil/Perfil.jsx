@@ -336,7 +336,7 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'bg-[var(--accent)] text-neutral-950 shadow-md' : 'text-slate-400 hover:text-slate-200'
+              tab === t.key ? 'bg-[var(--accent)] text-neutral-50 shadow-md' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <t.icon size={14} /> {t.label}

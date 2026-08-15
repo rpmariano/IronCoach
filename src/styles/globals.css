@@ -3,8 +3,8 @@
 :root {
   color-scheme: only light;
 
-  /* Brand Colors — idênticos ao legado */
-  --accent:#ec8871; --accent-dark:#d46957; --accent-glow:#f5a89a; --accent-ink:#a8442c;
+  /* Brand Colors — Monocromático (Accent mapeado para Green-dark) */
+  --accent:var(--green-dark); --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:var(--green-dark);
   --chrome:#eccea4; --chrome-dark:#c9a860; --chrome-glow:#f5ddb8;
   --blue:#3e6b82; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
   --green:#416e7f; --green-dark:#2d4a57; --green-glow:#5a8fa3;
@@ -34,12 +34,18 @@
   --groove-shadow: inset 0 1px 3px rgba(15,23,42,.1);
   --thumb-shadow: 0 2px 5px rgba(15,23,42,.18), 0 1px 0 rgba(255,255,255,.5) inset;
 
-  /* Cores de módulo — EXACTAS do legado */
-  --mod-nutricao-from:#065f46; --mod-nutricao-to:#10b981;
-  --mod-corpo-from:#be123c;    --mod-corpo-to:#e11d48;  
-  --mod-ginasio-from:#ca8a04;  --mod-ginasio-to:#facc15;
-  --mod-corrida-from:#86198f;  --mod-corrida-to:#d946ef;
-  --mod-coach-from:#155e75;    --mod-coach-to:#06b6d4;
+  /* Cores de módulo — Depreciadas (Mapeadas para Green para consistência monocromática) */
+  --mod-nutricao-from:var(--green-dark); --mod-nutricao-to:var(--green);
+  --mod-corpo-from:var(--green-dark);    --mod-corpo-to:var(--green);  
+  --mod-ginasio-from:var(--green-dark);  --mod-ginasio-to:var(--green);
+  --mod-corrida-from:var(--green-dark);  --mod-corrida-to:var(--green);
+  /* Coach permanece com a sua cor única de destaque */
+  --mod-coach-from:#155e75;              --mod-coach-to:#06b6d4;
+
+  /* Premium Provas */
+  --race-from: #ca8a04;
+  --race-to: #fbbf24;
+  --race-glow: rgba(245, 158, 11, 0.3);
 
   /* Cores de dados (macros + métricas) */
   --data-calorias:#dd3c4f;
