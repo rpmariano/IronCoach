@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
@@ -7,31 +7,22 @@ import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
 import Nutrition from '../Nutrition/Nutrition';
 import Body from '../Body/Body';
-import CrossAnalyticsDashboard from './CrossAnalyticsDashboard';
-import { Activity } from 'lucide-react';
 
-import { detectCoachInsights } from '../../utils/biEngine';
-import CoachInsightButton from '../BI/CoachInsightButton';
-import CoachInsightModal from '../BI/CoachInsightModal';
+// NOTA: um separador "Holística" (CrossAnalyticsDashboard + CoachInsight*
+// via utils/biEngine) chegou a ser ligado aqui num commit anterior, mas os
+// ficheiros de que depende nunca foram adicionados ao git — partiam o build
+// de produção (UNRESOLVED_IMPORT). Removido até essa funcionalidade estar
+// completa e commitada a sério. Ver git log de src/components/Dashboard/
+// Dashboard.jsx à volta de "sliding pill animation" para o histórico.
 
 export default function Dashboard({ activeModule }) {
-  const store = useAppStore();
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, profile } = store;
-  const [showModal, setShowModal] = useState(false);
-
-  const insights = useMemo(() => {
-    return detectCoachInsights(
-      { runs, gymSessions, meals, bodyAssessments, raceEvents },
-      profile
-    );
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, profile]);
+  const { setActiveTab } = useAppStore();
 
   const TABS = [
     { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #c026d3)' },
     { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #facc15)' },
     { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #059669)' },
     { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #e11d48)' },
-    { key: 'holistica', label: 'Holística', icon: <Activity size={14} />, color: 'var(--accent)' },
   ];
 
   return (
@@ -42,7 +33,9 @@ export default function Dashboard({ activeModule }) {
         <div 
           className="absolute top-[6px] bottom-[6px] rounded-xl transition-all duration-300 ease-in-out shadow-md"
           style={{
-            width: 'calc((100% - 32px) / 5)', // 5 tabs, 4 gaps of 8px
+            // Calculado a partir de TABS.length em vez de fixo — um separador
+            // a mais/a menos não desalinha o indicador outra vez.
+            width: `calc((100% - ${(TABS.length - 1) * 8}px) / ${TABS.length})`,
             transform: `translateX(calc(${TABS.findIndex(t => t.key === activeModule)} * 100% + ${TABS.findIndex(t => t.key === activeModule) * 8}px))`,
             background: TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'
           }}
@@ -66,19 +59,6 @@ export default function Dashboard({ activeModule }) {
       {activeModule === 'ginasio' && <Gym />}
       {activeModule === 'nutricao' && <Nutrition />}
       {activeModule === 'corpo' && <Body />}
-      {activeModule === 'holistica' && <CrossAnalyticsDashboard />}
-
-      <CoachInsightButton 
-        insights={insights} 
-        onClick={() => setShowModal(true)} 
-      />
-
-      {showModal && (
-        <CoachInsightModal 
-          insights={insights} 
-          onClose={() => setShowModal(false)} 
-        />
-      )}
     </div>
   );
 }
