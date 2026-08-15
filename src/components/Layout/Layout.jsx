@@ -209,9 +209,11 @@ export default function Layout({ children }) {
             e.stopPropagation();
             setFabOpen(v => !v);
           }}
-          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all bg-[var(--green-dark)] border-[4px] border-white ring-[2.5px] ring-slate-900 shadow-xl text-white z-50 cursor-pointer"
+          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all border-[4px] border-white shadow-xl text-white z-50 cursor-pointer"
           style={{
             top: -22,
+            background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))',
+            boxShadow: '0 4px 20px rgba(6, 182, 212, 0.35), 0 0 0 2.5px var(--green-dark)',
           }}
           aria-label={fabOpen ? 'Fechar menu de registo' : 'Registar novo item'}
           aria-expanded={fabOpen}
