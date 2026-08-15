@@ -50,10 +50,10 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
 
   // Pílulas Coloridas com Ícones
   const metricChips = [
-    weight ? { key: 'w', colorClass: 'bg-slate-100/90 text-slate-800 border-slate-200/80', icon: <Scale size={14} className="text-slate-600" />, label: weight } : null,
-    bodyFat ? { key: 'fat', colorClass: 'bg-pink-100/90 text-pink-800 border-pink-200/80', icon: <Droplet size={14} className="text-pink-600" />, label: bodyFat } : null,
-    muscle ? { key: 'musc', colorClass: 'bg-emerald-100/90 text-emerald-800 border-emerald-200/80', icon: assessment.skeletal_muscle_pct ? getBodyIcon('skeletal_muscle_pct', 14, "text-emerald-600") : getBodyIcon('muscle_mass_kg', 14, "text-emerald-600"), label: muscle } : null,
-    bmi ? { key: 'bmi', colorClass: 'bg-blue-100/90 text-blue-800 border-blue-200/80', icon: <Activity size={14} className="text-blue-600" />, label: bmi } : null,
+    weight ? { key: 'w', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Scale size={14} className="text-slate-500" />, label: weight } : null,
+    bodyFat ? { key: 'fat', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Droplet size={14} className="text-slate-500" />, label: bodyFat } : null,
+    muscle ? { key: 'musc', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: assessment.skeletal_muscle_pct ? getBodyIcon('skeletal_muscle_pct', 14, "text-slate-500") : getBodyIcon('muscle_mass_kg', 14, "text-slate-500"), label: muscle } : null,
+    bmi ? { key: 'bmi', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Activity size={14} className="text-slate-500" />, label: bmi } : null,
   ].filter(Boolean);
 
   return (
