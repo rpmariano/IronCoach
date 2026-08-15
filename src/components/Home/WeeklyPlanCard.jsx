@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Award, StickyNote, Clock, Flag,
+  Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
@@ -407,8 +407,13 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
 
   const PendingBanner = () => pendingCount > 0 && (
     <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
-      <span>🕓 Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
-      <span>Ver no chat →</span>
+      <span className="flex items-center gap-1.5">
+        <MessageCircle size={14} /> 
+        <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
+      </span>
+      <span className="wpc-pending-link">
+        Ver no chat <ChevronRight size={12} strokeWidth={3} />
+      </span>
     </button>
   );
 
