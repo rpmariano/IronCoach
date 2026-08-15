@@ -102,20 +102,24 @@ export default function App() {
   return (
     <ToastProvider>
       <Layout>
-        {activeTab === 'home' && <Home />}
-        {activeTab === 'calendario' && <Calendar />}
-        {['nutricao', 'corpo', 'ginasio', 'corrida'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
-        {activeTab === 'coach' && <Coach />}
-        {activeTab === 'perfil' && <Perfil />}
-        {activeTab === 'admin' && <Admin />}
+        {!(openCreationMode === 'race' || editingRaceId) && (
+          <>
+            {activeTab === 'home' && <Home />}
+            {activeTab === 'calendario' && <Calendar />}
+            {['nutricao', 'corpo', 'ginasio', 'corrida'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
+            {activeTab === 'coach' && <Coach />}
+            {activeTab === 'perfil' && <Perfil />}
+            {activeTab === 'admin' && <Admin />}
+          </>
+        )}
+        
+        {(openCreationMode === 'race' || editingRaceId) && (
+          <RunAgenda onClose={() => {
+            setOpenCreationMode(null);
+            setEditingRaceId(null);
+          }} />
+        )}
       </Layout>
-      
-      {(openCreationMode === 'race' || editingRaceId) && (
-        <RunAgenda onClose={() => {
-          setOpenCreationMode(null);
-          setEditingRaceId(null);
-        }} />
-      )}
     </ToastProvider>
   );
 }
