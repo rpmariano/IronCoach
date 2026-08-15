@@ -107,7 +107,7 @@ export default function Layout({ children }) {
           <button
             onClick={() => setActiveTab('perfil')}
             className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition"
-            style={{ background: 'var(--chrome)', color: 'var(--text-main)' }}
+            style={{ background: 'var(--surf-800)', color: 'var(--text-main)', border: '1px solid var(--brd-800)' }}
           >
             <User size={14} /> Perfil
           </button>
@@ -137,7 +137,7 @@ export default function Layout({ children }) {
           >
             <FabItem 
               label="Nova prova"
-              color="linear-gradient(135deg, var(--race-from), var(--race-to))"
+              color="var(--mod-prova)"
               icon={<Trophy size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -147,7 +147,7 @@ export default function Layout({ children }) {
             />
             <FabItem
               label="Registar refeição"
-              color={moduleGradient('nutricao')}
+              color="var(--mod-nutricao)"
               icon={<Camera size={14} />}
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -157,7 +157,7 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Nova avaliação"
-              color={moduleGradient('corpo')}
+              color="var(--mod-corpo)"
               icon={<User size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -167,7 +167,7 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Nova corrida"
-              color={moduleGradient('corrida')}
+              color="var(--mod-corrida)"
               icon={<RunIcon className="w-3.5 h-3.5" />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -177,7 +177,7 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Novo treino"
-              color={moduleGradient('ginasio')}
+              color="var(--mod-ginasio)"
               icon={<Dumbbell size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
