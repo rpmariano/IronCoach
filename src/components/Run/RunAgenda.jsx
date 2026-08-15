@@ -65,6 +65,9 @@ export default function RunAgenda({ onClose }) {
   const [isDirty, setIsDirty] = useState(false);
   const [validationError, setValidationError] = useState(null);
 
+  const activeTab = useAppStore(state => state.activeTab);
+  const [initialTab] = useState(activeTab);
+
   // Destino pendente quando se tenta sair (nav para outro módulo) com
   // alterações por gravar — null quando o pedido veio do próprio botão
   // "Cancelar" do formulário, sem navegação nenhuma envolvida.
@@ -75,10 +78,26 @@ export default function RunAgenda({ onClose }) {
   const lastEditedTargetRef = useRef(null); // 'time' | 'pace' | null
 
   const todayIso = todayISO();
+  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayIso), [runs, todayIso]);
 
+  const viability = useMemo(() => {
+    if (!draft.distance_km || !draft.date) return { flags: [], isViable: true };
+    const weeksToRace = Math.floor(
+      (new Date(draft.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
+    );
+    return assessRaceViability({
+      distanceKm: parseFloat((draft.distance_km || '').toString().replace(',', '.')),
+      experienceLevel: draft.experience_level || profile?.experience_level,
+      weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
+      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    });
+  }, [draft.distance_km, draft.date, draft.experience_level, profile?.experience_level, todayIso, weeklyVol]);
 
-
-  // Trava a navegação para fora da app enquanto houver alterações por
+  const FLAG_LABELS = {
+    ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
+    tempo_insuficiente:   `Tempo insuficiente para a preparação`,
+    volume_insuficiente:  `Volume de treino insuficiente`,
+  };  // Trava a navegação para fora da app enquanto houver alterações por
   // gravar no formulário — mesmo mecanismo usado em Perfil.jsx.
   useEffect(() => {
     if (!isFormOpen || !isDirty) { setNavGuard(null); return; }
@@ -128,6 +147,12 @@ export default function RunAgenda({ onClose }) {
     useAppStore.getState().setEditingRaceId(null);
     if (onClose) onClose();
   };
+
+  useEffect(() => {
+    if (activeTab !== initialTab && isFormOpen) {
+      handleCloseForm();
+    }
+  }, [activeTab, initialTab, isFormOpen]);
 
   const updateDraft = (key, val) => {
     setIsDirty(true);
@@ -548,6 +573,27 @@ export default function RunAgenda({ onClose }) {
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)] resize-none"
             />
           </div>
+
+          {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                Avaliação do Coach
+              </span>
+              {viability.flags.length > 0 ? (
+                viability.flags.map(flag => (
+                  <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
+                    <AlertTriangle size={12} />
+                    {FLAG_LABELS[flag] || flag}
+                  </p>
+                ))
+              ) : (
+                <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
+                  <CheckCircle size={12} />
+                  Preparação adequada para a prova
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2 pt-1">
             <button onClick={attemptCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
