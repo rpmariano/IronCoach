@@ -21,7 +21,7 @@ export default function NextRaceCard({
           <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
           {readiness && readiness !== 'green' && (
             <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200" title={`Preparação: ${readiness === 'yellow' ? 'Com Alertas' : 'Inadequada'}`}>
-              <span style={{ fontSize: '10px', color: readiness === 'red' ? '#e11d48' : '#d97706', fontWeight: 'bold' }}>
+              <span style={{ fontSize: '10px', color: readiness === 'red' ? '#be123c' : '#b45309', fontWeight: 'bold' }}>
                 {readiness === 'red' ? '!' : '?'}
               </span>
             </div>
