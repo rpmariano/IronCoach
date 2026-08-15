@@ -49,8 +49,8 @@ const plainFieldStyle = { border: '1px solid rgb(38 38 38)' };
 function CoachBadge() {
   return (
     <span title="Meta definida pelo Coach"
-      className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide shrink-0"
-      style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 18%, transparent)', color: 'var(--mod-coach-to)' }}>
+      className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-white"
+      style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}>
       Coach
     </span>
   );
@@ -288,27 +288,16 @@ export default function Perfil() {
   const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;
   const reminderEndHour = draft.water_reminder_end_hour ?? DEFAULT_REMINDER_END_HOUR;
 
-  const leaveModal = leavePrompt && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="perfil-leave-title">
-      <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
-        <h2 id="perfil-leave-title" className="text-sm font-semibold">Tens alterações por gravar</h2>
-        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-          Se saíres agora, as alterações que fizeste neste separador não ficam guardadas.
-        </p>
-        <div className="mt-5 space-y-2">
-          <Button variant="module" onClick={saveAndLeave} isLoading={isSaving} className="w-full">
-            Gravar e sair
-          </Button>
-          <Button variant="danger-ghost" onClick={discardAndLeave} disabled={isSaving} className="w-full">
-            Sair sem gravar
-          </Button>
-          <button onClick={() => setLeavePrompt(null)} disabled={isSaving} type="button"
-            className="w-full py-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60">
-            Cancelar
-          </button>
-        </div>
-      </div>
-    </div>
+  const leaveModal = (
+    <UnsavedChangesModal
+      isOpen={!!leavePrompt}
+      isSaving={isSaving}
+      onSaveAndLeave={saveAndLeave}
+      onDiscardAndLeave={discardAndLeave}
+      onCancel={() => setLeavePrompt(null)}
+      title="Tens alterações por gravar"
+      message="Se saíres agora, as alterações que fizeste neste separador não ficam guardadas."
+    />
   );
 
   const saveButton = (

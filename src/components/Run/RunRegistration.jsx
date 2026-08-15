@@ -833,6 +833,48 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
           </div>
 
+          {/* Competition Specifics */}
+          {runKind === 'competicao' && (
+            <div className="grid grid-cols-2 gap-2 mb-4 bg-white/50 border border-slate-200 rounded-xl p-3">
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
+                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
+                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+              </div>
+            </div>
+          )}
+
+          {/* Main Manual Fields */}
+          <div className="mb-3">
+            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+              {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
+            </label>
+            <div className="relative">
+              <input 
+                type="number" min="0" step="0.01" 
+                placeholder="0.00" 
+                value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+              {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
+            </label>
+            <input
+              type="text"
+              placeholder="00:00"
+              value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+            />
+          </div>
+
           {showToggle && (
             <div className="mb-4">
               <label className="text-[12px] text-slate-500 mb-1.5 block">Como queres registar?</label>
@@ -1098,7 +1140,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
             {/* FC Zones */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
+            <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-4">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-[12px] font-bold text-slate-700">Zonas de FC (tempo em cada zona)</label>
                 <AddButton
@@ -1184,48 +1226,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               ))}
             </div>
           )}
-
-          {/* Competition Specifics */}
-          {runKind === 'competicao' && (
-            <div className="grid grid-cols-2 gap-2 mb-4 bg-white/50 border border-slate-200 rounded-xl p-3">
-              <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
-                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
-                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
-              </div>
-            </div>
-          )}
-
-          {/* Main Manual Fields */}
-          <div className="mb-3">
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-              {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
-            </label>
-            <div className="relative">
-              <input 
-                type="number" min="0" step="0.01" 
-                placeholder="0.00" 
-                value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
-                className="w-full bg-white border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 transition" 
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
-              {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
-            </label>
-            <input
-              type="text"
-              placeholder="00:00"
-              value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
-              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-400 transition mb-4"
-            />
-          </div>
 
           {runIdToEdit ? (
             <CoachAnalyzeButton

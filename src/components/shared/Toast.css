@@ -31,7 +31,7 @@
 }
 
 .toast-success {
-  background: rgba(16, 185, 129, 0.95);
+  background: var(--color-success);
   color: #fff;
 }
 

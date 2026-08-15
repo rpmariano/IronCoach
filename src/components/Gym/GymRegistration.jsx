@@ -523,15 +523,6 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
               </Chip>
             ))}
           </div>
-          <input
-            type="text"
-            maxLength={60}
-            value={customCategory}
-            onChange={e => setCustomCategory(e.target.value)}
-            onKeyDown={handleAddCustomCategory}
-            placeholder="Ou escreve outra e prime Enter..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
-          />
         </div>
 
         {/* Como queres registar? — escondido a editar: editar é sempre pelos
@@ -655,19 +646,24 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Esforço RPE (1-10)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value={exertion}
-                  onChange={e => { setExertion(e.target.value); setIsFormDirty(true); }}
-                  placeholder="Ex: 8"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
-                />
+            </div>
+            
+            <div className="mb-4">
+              <label className="text-[12px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+              <div className="flex gap-1.5">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
+                    style={exertion == i + 1 ? { color: '#fff' } : undefined}
+                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
               </div>
+              <p className="text-[10px] text-slate-400 mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
             </div>
             {isEditing ? (
               <div className="mb-4">

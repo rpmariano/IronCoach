@@ -209,7 +209,7 @@ export default function Layout({ children }) {
             e.stopPropagation();
             setFabOpen(v => !v);
           }}
-          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all bg-[var(--fab-bg)] border-[4px] border-white ring-[2.5px] ring-slate-900 shadow-xl text-slate-900 z-50 cursor-pointer"
+          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all bg-[var(--green-dark)] border-[4px] border-white ring-[2.5px] ring-slate-900 shadow-xl text-white z-50 cursor-pointer"
           style={{
             top: -22,
           }}

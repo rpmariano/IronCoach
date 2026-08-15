@@ -222,10 +222,10 @@ export default function Calendar() {
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
                   <div className="flex gap-[3px] justify-center w-full px-1.5 h-1">
                     {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--race-to)' : 'rgba(255,255,255,0.7)' }} />}
-                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green-dark)]" />}
-                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green)]" />}
+                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--blue-glow)]" />}
+                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--chrome-dark)]" />}
                     {dayMeals.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green-glow)]" />}
-                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-slate-400" />}
+                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--accent-glow)]" />}
                     
                     {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
                        <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
@@ -244,11 +244,11 @@ export default function Calendar() {
             <span>Prova</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green-dark)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--blue-glow)]"></span>
             <span>Corrida</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--chrome-dark)]"></span>
             <span>Ginásio</span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -256,7 +256,7 @@ export default function Calendar() {
             <span>Nutrição</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-slate-400"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--accent-glow)]"></span>
             <span>Corpo</span>
           </div>
         </div>

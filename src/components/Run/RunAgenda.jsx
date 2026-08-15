@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -327,31 +328,16 @@ export default function RunAgenda({ onClose }) {
     if (pending?.target) useAppStore.getState().setActiveTab(pending.target);
   };
 
-  const leaveModal = leavePrompt && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="prova-leave-title">
-      <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
-        <h2 id="prova-leave-title" className="text-sm font-semibold">Tens alterações por gravar</h2>
-        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-          Se saíres agora, as alterações que fizeste nesta prova não ficam guardadas.
-        </p>
-        <div className="mt-5 space-y-2">
-          <button onClick={saveAndLeave} disabled={isSubmitting} type="button"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--mod-coach-to)] shadow-lg active:scale-95 transition disabled:opacity-60"
-            style={{ color: '#fff' }}>
-            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
-            {isSubmitting ? 'A guardar...' : 'Gravar e sair'}
-          </button>
-          <button onClick={discardAndLeave} disabled={isSubmitting} type="button"
-            className="w-full py-3 rounded-xl font-semibold text-xs border border-red-500/40 text-red-400 hover:bg-red-500/10 transition disabled:opacity-60">
-            Sair sem gravar
-          </button>
-          <button onClick={() => setLeavePrompt(null)} disabled={isSubmitting} type="button"
-            className="w-full py-3 rounded-xl font-semibold text-xs text-slate-400 hover:text-slate-200 transition disabled:opacity-60">
-            Continuar a editar
-          </button>
-        </div>
-      </div>
-    </div>
+  const leaveModal = (
+    <UnsavedChangesModal
+      isOpen={!!leavePrompt}
+      isSaving={isSubmitting}
+      onSaveAndLeave={saveAndLeave}
+      onDiscardAndLeave={discardAndLeave}
+      onCancel={() => setLeavePrompt(null)}
+      title="Tens alterações por gravar"
+      message="Se saíres agora, as alterações que fizeste nesta prova não ficam guardadas."
+    />
   );
 
   const validationModal = validationError && (

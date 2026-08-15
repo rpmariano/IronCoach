@@ -186,7 +186,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-pink-100/70 border border-pink-200/60 flex items-center justify-center text-pink-600 shrink-0 mt-0.5">
+          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-[var(--green-dark)] shrink-0 mt-0.5">
             <RunIcon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -194,7 +194,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
               <h4 className="text-sm font-bold text-slate-800 leading-tight">
                 {run.title || run.name || 'Corrida'}
               </h4>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200/60">
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
                 {kindLabel}
               </span>
               {run.photo_paths?.length > 0 && (
@@ -211,7 +211,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
         <div className="flex items-center gap-3">
           {distStr && (
-            <span className="text-sm font-bold text-pink-600">
+            <span className="text-sm font-bold text-slate-800">
               {distStr}
             </span>
           )}

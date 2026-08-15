@@ -108,14 +108,14 @@ export default function GymSessionCard({ session, onEdit }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-yellow-100/70 border border-yellow-200/60 flex items-center justify-center text-yellow-600 shrink-0">
+          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-[var(--green-dark)] shrink-0">
             {isAula ? <Users size={20} /> : <Dumbbell size={20} />}
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-800 leading-tight flex items-center gap-1.5 flex-wrap">
               {session.name || (isAula ? 'Aula' : 'Treino de Força')}
               {isAula && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200/60">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
                   Aula
                 </span>
               )}
@@ -128,7 +128,7 @@ export default function GymSessionCard({ session, onEdit }) {
 
         <div className="flex items-center gap-3">
           {headlineValue && (
-            <span className="text-sm font-bold text-orange-600">
+            <span className="text-sm font-bold text-slate-800">
               {headlineValue}
             </span>
           )}

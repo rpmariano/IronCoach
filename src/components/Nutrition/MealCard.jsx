@@ -86,7 +86,7 @@ export default function MealCard({ meal, onEdit }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-emerald-100/70 border border-emerald-200/60 flex items-center justify-center text-emerald-600 shrink-0">
+          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-[var(--green-dark)] shrink-0">
             <IconComponent size={20} />
           </div>
           <div>
@@ -100,7 +100,7 @@ export default function MealCard({ meal, onEdit }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-emerald-600">
+          <span className="text-sm font-bold text-slate-800">
             {n.calories.toFixed(0)} kcal
           </span>
           {/* A linha inteira é clicável, mas o chevron é o controlo real —
