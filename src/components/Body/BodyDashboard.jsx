@@ -202,28 +202,13 @@ export default function BodyDashboard({ onGoToCalendar }) {
         </div>
       )}
 
-      {/* Body Composition Stacked Area */}
+      {/* Body Composition Stacked Area.
+          O componente traz o seu próprio cartão, título e alturas, e monta
+          as séries a partir de `data` ({ dates, leanMassKg, fatMassKg }) —
+          os antigos labels/datasets eram simplesmente ignorados, e o
+          cartão exterior com h-48 fixo cortava o gráfico. */}
       {compositionData && compositionData.dates.length > 0 && (
-        <div className="card glass rounded-2xl p-4">
-          <h2 className="text-sm font-semibold text-slate-800 mb-3">Composição Corporal</h2>
-          <div className="h-48 relative">
-            <StackedAreaChart
-              labels={compositionData.dates.map(d => d.slice(8, 10) + '/' + d.slice(5, 7))}
-              datasets={[
-                {
-                  label: 'Massa Magra (kg)',
-                  data: compositionData.leanMassKg,
-                  color: '#10b981'
-                },
-                {
-                  label: 'Massa Gorda (kg)',
-                  data: compositionData.fatMassKg,
-                  color: '#ef4444'
-                }
-              ]}
-            />
-          </div>
-        </div>
+        <StackedAreaChart data={compositionData} />
       )}
 
       {/* Evolução Individual */}

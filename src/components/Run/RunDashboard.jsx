@@ -109,7 +109,12 @@ export default function RunDashboard() {
 
   // BI - Scatter
   const scatterData = useMemo(() => calculatePaceVsHR(periodRuns), [periodRuns]);
-  
+
+  // Evolução do VDOT — sobre TODAS as corridas, não só as do período: a
+  // tendência de forma só faz sentido com histórico longo, e é ela que dá
+  // contexto à previsão de prova.
+  const vdotTrend = useMemo(() => getVDOTTrend(runs), [runs]);
+
   // Future Races
   const futureRaces = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -281,48 +286,27 @@ export default function RunDashboard() {
         />
       </div>
 
-      {/* 3. ACWR Chart */}
-      <div className="card rounded-2xl p-4">
-        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Rácio de Carga Aguda/Crónica</h3>
-        <div className="h-44">
-          <ACWRChart weeklyData={acwrWeeklyData} />
-        </div>
-      </div>
+      {/* 3-6. Gráficos BI.
+          Cada componente já traz o seu próprio cartão, título e alturas, por
+          isso é montado direto, sem wrapper. Estavam embrulhados num .card
+          com <h3> e altura fixa: dava título a dobrar, e o h-44 de fora
+          (176px) era menor que o h-64 de dentro (256px + padding + título),
+          o que fazia o conteúdo transbordar e sobrepor-se ao cartão
+          seguinte. Também não levam className="card" — a classe repete o
+          fundo/borda/sombra que o componente já aplica. */}
+      <ACWRChart weeklyData={acwrWeeklyData} />
 
-      {/* 4. Training Distribution */}
-      <div className="card rounded-2xl p-4">
-        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Distribuição de Treino (80/20)</h3>
-        <div className="h-44 flex justify-center">
-          <IntensityDonut data={distribution} />
-        </div>
-      </div>
+      <IntensityDonut distribution={distribution} />
 
-      {/* 5. Aerobic Efficiency */}
-      <div className="card rounded-2xl p-4">
-        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Eficiência Aeróbica</h3>
-        <div className="h-44">
-          <ScatterTrendChart data={scatterData} xLabel="Frequência Cardíaca (bpm)" yLabel="Pace (min/km)" />
-        </div>
-      </div>
+      <ScatterTrendChart data={scatterData} />
 
-      {/* 6. Race Prediction */}
-      {futureRaces.length > 0 && (
-        <div className="card rounded-2xl p-4">
-          <h3 className="text-[11px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
-            <Target className="w-3.5 h-3.5 text-blue-500" />
-            Previsão para Provas
-          </h3>
-          <div className="space-y-4">
-            {futureRaces.map((race, i) => (
-              <RacePredictionChart 
-                key={i} 
-                race={race} 
-                prediction={predictRaceTime(runs, race.distance_km, experienceLevel)} 
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {futureRaces.map((race, i) => (
+        <RacePredictionChart
+          key={race.id ?? i}
+          vdotTrend={vdotTrend}
+          prediction={predictRaceTime(runs, race.distance_km, experienceLevel)}
+        />
+      ))}
 
       {/* 7. Daily Distance Bar Chart */}
       {periodRuns.length === 0 ? (

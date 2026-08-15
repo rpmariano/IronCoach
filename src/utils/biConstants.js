@@ -59,27 +59,49 @@ export const RIEGEL_FACTOR = {
   avancado: 1.06
 };
 
-// Nutrition Targets (g/kg/day)
+// Nutrition Targets (g/kg/dia) — Bloco 4.1 #1 da doutrina do Coach, ver
+// src/coach-knowledge/04-nutricao-base-diaria.md e a tabela PROTEIN_MAINT em
+// supabase/functions/coach-chat/index.ts.
+//
+// A forma anterior ({ base, intensidade }) não correspondia à doutrina: os
+// valores de "base" eram na verdade os de PERDA DE GORDURA, o que fazia a
+// dashboard prescrever mais proteína do que o Coach dizia no chat para o
+// mesmo atleta. Passa a espelhar os três objetivos da doutrina, cada um com
+// o seu intervalo [min, max].
 export const PROTEIN_TARGETS = {
-  iniciante: { base: 1.6, intensidade: 1.8 },
-  basico: { base: 1.8, intensidade: 2.0 },
-  medio: { base: 2.0, intensidade: 2.2 },
-  avancado: { base: 2.2, intensidade: 2.5 }
+  iniciante: { manutencao: [1.2, 1.4], perda: [1.6, 1.8], ganho: [1.6, 2.0] },
+  basico:    { manutencao: [1.4, 1.6], perda: [1.8, 2.0], ganho: [1.6, 2.0] },
+  medio:     { manutencao: [1.6, 1.8], perda: [2.0, 2.2], ganho: [1.8, 2.2] },
+  avancado:  { manutencao: [1.6, 2.0], perda: [2.0, 2.4], ganho: [1.8, 2.2] }
 };
+// Escalamento por volume: +0,1-0,2 g/kg/dia por cada +20 km/sem acima de
+// 30 km/sem (mesma regra que buildNutritionTargets aplica no coach-chat).
+export const PROTEIN_VOLUME_BONUS_PER_20KM = 0.15;
+export const PROTEIN_VOLUME_BONUS_FROM_KM = 30;
 
+// Hidratos por nível (g/kg/dia) — "fuel for the work required" (Burke 2011).
+// Dia de descanso vs dia de treino, não "base vs intensidade".
 export const CARB_TARGETS = {
-  iniciante: { base: 3.0, intensidade: 5.0 },
-  basico: { base: 4.0, intensidade: 6.0 },
-  medio: { base: 5.0, intensidade: 8.0 },
-  avancado: { base: 6.0, intensidade: 10.0 }
+  iniciante: { descanso: [3.0, 5.0], treino: [4.0, 5.0] },
+  basico:    { descanso: [3.0, 4.0], treino: [5.0, 7.0] },
+  medio:     { descanso: [4.0, 5.0], treino: [6.0, 8.0] },
+  avancado:  { descanso: [5.0, 6.0], treino: [8.0, 10.0] }
 };
 
-// Weight Loss Limits
+// Weight Loss Limits (% da massa corporal por semana)
+// Bloco 5 #4 da doutrina: o teto seguro é 0,7%/semana. Três rondas da
+// investigação (Bloco 1 #6, Nutrição 4.1 #5, Nutrição 4.2 #3) convergiram
+// em 0,5-0,7%; uma quarta (Bloco 5 #4, Garthe 2011) deu 0,5-1,0%. Vale a
+// regra do valor mais conservador — 0,7% como teto, nunca 1,0%.
+//
+// Médio e Avançado apertam mais, por o défice máximo da doutrina ser dado
+// em kg/semana (Bloco 4.1 #5): médio ≤0,25-0,40 kg/sem e avançado
+// ≤0,20-0,30 kg/sem, que para um atleta de 70 kg dão ~0,5% e ~0,4%.
 export const MAX_WEIGHT_LOSS_PCT_WEEK = {
-  iniciante: 1.0,
-  basico: 0.8,
+  iniciante: 0.7,
+  basico: 0.7,
   medio: 0.5,
-  avancado: 0.5
+  avancado: 0.4
 };
 
 // Recovery & Fatigue

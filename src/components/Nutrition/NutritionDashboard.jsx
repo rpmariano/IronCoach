@@ -230,11 +230,11 @@ export default function NutritionDashboard() {
 
       {/* BI Charts */}
       {adherence?.dailyBreakdown && adherence.dailyBreakdown.length > 0 && (
-        <MacroComplianceChart dailyData={adherence.dailyBreakdown} className="card" />
+        <MacroComplianceChart dailyData={adherence.dailyBreakdown} />
       )}
 
       {eaData && eaData.length > 0 && (
-        <EnergyAvailabilityChart dailyData={eaData} className="card" />
+        <EnergyAvailabilityChart dailyData={eaData} />
       )}
 
       {/* Macro Trend Line Chart */}

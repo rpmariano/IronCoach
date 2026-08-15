@@ -178,10 +178,9 @@ export default function GymDashboard() {
         <div className="space-y-4">
           {/* Weekly Volume Load Chart */}
           {volumeData.weeklyBreakdown.length > 0 && (
-            <VolumeLoadChart 
-              weeklyData={volumeData.weeklyBreakdown} 
-              acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus }} 
-              className="card"
+            <VolumeLoadChart
+              weeklyData={volumeData.weeklyBreakdown}
+              acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus }}
             />
           )}
 
