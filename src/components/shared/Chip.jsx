@@ -31,7 +31,7 @@ export function Chip({
     gym: 'bg-[var(--mod-ginasio-to)] text-white border-transparent shadow-sm',
     run: 'bg-[var(--mod-corrida-to)] text-white border-transparent shadow-sm',
     nutrition: 'bg-[var(--mod-nutricao-to)] text-white border-transparent shadow-sm',
-    body: 'bg-[var(--mod-body-to)] text-white border-transparent shadow-sm',
+    body: 'bg-[var(--mod-corpo-to)] text-white border-transparent shadow-sm',
     coach: 'bg-[var(--mod-coach-to)] text-white border-transparent shadow-sm',
     light: 'bg-slate-800 text-white border-transparent shadow-sm'
   };

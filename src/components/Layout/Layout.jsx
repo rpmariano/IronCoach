@@ -28,7 +28,14 @@ export default function Layout({ children }) {
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
+  const mainRef = useRef(null);
   const lastLogoClickAt = useRef(0);
+
+  useEffect(() => {
+    if (activeTab !== 'coach') {
+      mainRef.current?.scrollTo(0, 0);
+    }
+  }, [activeTab]);
 
   const todayLabel = new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -100,7 +107,7 @@ export default function Layout({ children }) {
       </div>
 
       {/* Conteúdo */}
-      <main className="flex-1 px-4 pt-4 pb-28 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 px-4 pt-4 pb-28 overflow-y-auto">
         {children}
       </main>
 

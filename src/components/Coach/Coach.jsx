@@ -37,30 +37,10 @@ export default function Coach() {
 
   const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
-  const [autoOpenedPlans, setAutoOpenedPlans] = useState(() => new Set());
-  const [autoOpenedGoals, setAutoOpenedGoals] = useState(() => new Set());
 
   useEffect(() => {
     reloadCoachGoalProposals();
   }, []);
-
-  // Auto-abre a persiana Modal Bottom Sheet quando o Coach sugere um plano novo ou novos objetivos
-  useEffect(() => {
-    if (pendingPlans.length > 0) {
-      const unopened = pendingPlans.find(p => !autoOpenedPlans.has(p.id));
-      if (unopened) {
-        setActiveProposalSheetPlan(unopened);
-        setAutoOpenedPlans(prev => new Set(prev).add(unopened.id));
-      }
-    }
-    if (pendingGoalProposals.length > 0) {
-      const unopenedGoal = pendingGoalProposals.find(g => !autoOpenedGoals.has(g.id));
-      if (unopenedGoal) {
-        setActiveGoalProposal(unopenedGoal);
-        setAutoOpenedGoals(prev => new Set(prev).add(unopenedGoal.id));
-      }
-    }
-  }, [pendingPlans, pendingGoalProposals, autoOpenedPlans, autoOpenedGoals]);
 
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
