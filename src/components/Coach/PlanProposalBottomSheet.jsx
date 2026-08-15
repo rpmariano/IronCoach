@@ -196,15 +196,15 @@ export function PlanProposalBottomSheet({
               </div>
             </div>
 
-            {/* Botão Cancelar (voltar ao chat) */}
+            {/* Botão Fechar (voltar ao chat) */}
             <button
               type="button"
               onClick={handleDismiss}
-              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 active:scale-95 transition-all shrink-0"
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
               title="Voltar ao chat"
               aria-label="Voltar ao chat"
             >
-              Cancelar
+              <X size={16} />
             </button>
           </div>
         </div>

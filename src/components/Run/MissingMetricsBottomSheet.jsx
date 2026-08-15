@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
+import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split, X } from 'lucide-react';
 import Button from '../shared/Button';
 
 export const METRIC_CONFIGS = {
@@ -184,15 +184,15 @@ export default function MissingMetricsBottomSheet({
               </div>
             </div>
 
-            {/* Botão Cancelar */}
+            {/* Botão Fechar */}
             <button
               type="button"
               onClick={handleDismiss}
-              className="text-[11px] font-medium text-slate-500 hover:text-slate-800 active:scale-95 transition-all shrink-0"
-              title="Cancelar"
-              aria-label="Cancelar"
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+              title="Fechar"
+              aria-label="Fechar"
             >
-              Cancelar
+              <X size={16} />
             </button>
           </div>
         </div>

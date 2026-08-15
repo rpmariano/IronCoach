@@ -288,9 +288,11 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
             type="button"
-            className="text-[12px] text-slate-500 hover:text-red-500 transition font-medium"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            title="Fechar"
+            aria-label="Fechar"
           >
-            Cancelar
+            <X size={16} />
           </button>
         </div>
 
