@@ -33,15 +33,15 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     if (activeTab !== 'coach') {
-      // Pequeno atraso para dar tempo aos componentes de renderizarem a sua altura
-      setTimeout(() => {
-        window.scrollTo(0, 0);
-        
-        // Caso o container interno tenha scroll (fallback)
-        if (mainRef.current) {
-          mainRef.current.scrollTo(0, 0);
-        }
-      }, 10);
+      // Usar requestAnimationFrame duplo garante que o React já fez render e o DOM foi atualizado
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          if (mainRef.current) {
+            mainRef.current.scrollTo({ top: 0, behavior: 'instant' });
+          }
+        });
+      });
     }
   }, [activeTab]);
 
