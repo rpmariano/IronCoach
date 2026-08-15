@@ -259,7 +259,7 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
 }
 
 function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
-  const active = ['corrida', 'ginasio', 'nutricao', 'corpo'].includes(activeTab);
+  const active = ['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(activeTab);
   const activeColor = 'var(--accent)';
 
   return (

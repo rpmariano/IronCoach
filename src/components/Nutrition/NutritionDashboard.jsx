@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients, mealTypeLabel } from '../../utils/nutrition';
-import { ChevronDown, ChevronUp, Image as ImageIcon, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
+import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients } from '../../utils/nutrition';
+import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -15,7 +15,12 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
-import Chip from '../shared/Chip';
+
+import TimeFilterBar from '../BI/TimeFilterBar';
+import KPICard from '../BI/KPICard';
+import MacroComplianceChart from '../BI/MacroComplianceChart';
+import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
+import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
 
 ChartJS.register(
   CategoryScale,
@@ -29,23 +34,48 @@ ChartJS.register(
 );
 
 export default function NutritionDashboard() {
-  const { profile, meals } = useAppStore();
-  const [activeRange, setActiveRange] = useState('hoje');
+  const { profile, meals, bodyAssessments, runs, gymSessions } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState('semana');
   const [selectedMacro, setSelectedMacro] = useState('calories');
-  const [expandedMealId, setExpandedMealId] = useState(null);
-  const [microsExpanded, setMicrosExpanded] = useState(true);
+  const [microsExpanded, setMicrosExpanded] = useState(false);
 
-  const { start, end, daysElapsed } = rangeBounds(activeRange);
-  const totals = rangeTotals(meals, activeRange);
+  // Map TimeFilterBar 'activeFilter' to biEngine range
+  const biRangeMap = {
+    'dia': 'dia',
+    'semana': 'semana',
+    'mes': 'mes',
+    'trimestre': 'trimestre',
+    '6meses': '6meses',
+    'ano': 'ano'
+  };
 
-  // Filter meals for the current range
-  const periodMeals = useMemo(() => {
-    return meals
-      .filter(m => m.date >= start && m.date <= end)
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  }, [meals, start, end]);
+  // Map for nutrition functions (rangeBounds)
+  const legacyRangeMap = {
+    'dia': 'hoje',
+    'semana': 'semana',
+    'mes': 'mes',
+    'trimestre': 'mes',
+    '6meses': 'mes',
+    'ano': 'mes'
+  };
 
-  // Chart Data preparation
+  const biRange = biRangeMap[activeFilter] || 'semana';
+  const legacyRange = legacyRangeMap[activeFilter] || 'semana';
+
+  const { start, end, daysElapsed } = rangeBounds(legacyRange);
+  const totals = rangeTotals(meals, legacyRange);
+
+  // BI Engine Calculations
+  const adherence = useMemo(() => {
+    return calculateMacroAdherence(meals, profile, bodyAssessments || [], biRange);
+  }, [meals, profile, bodyAssessments, biRange]);
+
+  const eaData = useMemo(() => {
+    const res = calculateEnergyAvailability(meals, bodyAssessments || [], runs || [], gymSessions || [], biRange);
+    return res?.daily || [];
+  }, [meals, bodyAssessments, runs, gymSessions, biRange]);
+
+  // Chart Data preparation for selected macro trend
   const chartData = useMemo(() => {
     const macroObj = MACROS.find(m => m.key === selectedMacro);
     const dates = eachDayOfInterval({ start: parseISO(start), end: parseISO(end) });
@@ -69,7 +99,7 @@ export default function NutritionDashboard() {
           label: macroObj.label,
           data: dailyData,
           borderColor: macroObj.color,
-          backgroundColor: `${macroObj.color}20`, // 20 hex is ~12% opacity
+          backgroundColor: `${macroObj.color}20`,
           fill: true,
           tension: 0.4,
           pointRadius: 4,
@@ -117,99 +147,98 @@ export default function NutritionDashboard() {
     }
   };
 
+  const modColor = 'var(--mod-nutricao)';
+
+  // Determine status for KPICards
+  const getComplianceStatus = (pct) => {
+    if (!pct) return 'neutral';
+    if (pct < 85) return 'danger';
+    if (pct > 115) return 'warning';
+    return 'safe';
+  };
+
   return (
     <div className="space-y-4 fade-in pb-20">
-      {/* Header Evolução */}
-      <div className="flex items-center gap-3">
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, var(--mod-nutricao-from), var(--mod-nutricao-to))' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{periodMeals.length} refeição(ões) no período</p>
-        </div>
-      </div>
+      <TimeFilterBar 
+        activeRange={activeFilter} 
+        onChange={setActiveFilter} 
+      />
 
-      {/* Range Tabs */}
-      <div className="flex gap-2">
-        {['hoje', 'semana', 'mes'].map(r => (
-          <Chip
-            key={r}
-            active={activeRange === r}
-            variant="nutrition"
-            rounded="xl"
-            onClick={() => setActiveRange(r)}
-            className="flex-1"
-          >
-            {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
-          </Chip>
-        ))}
-      </div>
-
-      <p className="text-[11px] text-slate-500 px-1">
-        {activeRange === 'hoje' ? 'Hoje' : activeRange === 'semana' ? 'Esta Semana' : 'Este Mês'} · meta proporcional a {daysElapsed} dia(s)
-      </p>
-
-      {/* Macros Grid */}
+      {/* 2x2 KPI Grid */}
       <div className="grid grid-cols-2 gap-3">
-        {MACROS.map(m => {
-          const goal = (Number(profile?.[m.goalKey]) || 0) * daysElapsed;
-          const consumed = totals[m.key];
-          const remaining = goal - consumed;
-          const over = remaining < 0;
-          const isSelected = selectedMacro === m.key;
-          const Icon = getMacroIcon(m.key);
-
-          return (
-            <button
-              key={m.key}
-              onClick={() => setSelectedMacro(m.key)}
-              className={`card rounded-2xl p-4 text-left transition ${isSelected ? 'shadow-md' : ''}`}
-              style={{
-                border: isSelected ? '2px solid var(--accent)' : '1px solid var(--brd-700)',
-                boxShadow: isSelected ? '0 0 0 1px var(--accent)' : undefined
-              }}
-            >
-              <span className={`text-xs block truncate mb-1.5 flex items-center gap-1.5 ${isSelected ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>
-                <Icon size={14} style={{ color: m.color }} />
-                {m.label}
-              </span>
-              
-              {goal > 0 ? (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full inline-block mb-2 whitespace-nowrap ${
-                  over ? 'bg-red-500/15 text-red-500 border border-red-500/40' : 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/30'
-                }`}>
-                  {over ? `${Math.abs(remaining).toFixed(0)} ${m.unit} acima` : `restam ${remaining.toFixed(0)} ${m.unit}`}
-                </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 block mb-2">Sem meta</span>
-              )}
-              
-              <div className="flex items-baseline gap-1 mb-2">
-                <span className="text-lg font-bold text-slate-800 leading-none">{consumed.toFixed(0)}</span>
-                <span className="text-[11px] text-slate-500 font-normal"> / {goal > 0 ? goal.toFixed(0) : '-'} {m.unit}</span>
-              </div>
-
-              {/* Barra de progresso do macro */}
-              <div className="w-full h-2 rounded-full bg-slate-100 border border-slate-200 overflow-hidden">
-                <div 
-                  className="h-full rounded-full transition-all duration-500" 
-                  style={{ 
-                    width: `${goal > 0 ? Math.min(100, (consumed / goal) * 100) : 0}%`, 
-                    backgroundColor: over ? '#ef4444' : m.color 
-                  }} 
-                />
-              </div>
-            </button>
-          );
-        })}
+        <div 
+          onClick={() => setSelectedMacro('calories')}
+          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+        >
+          <KPICard 
+            label="Calorias"
+            value={adherence?.calories?.actual ?? 0}
+            unit="kcal/dia"
+            icon={Flame}
+            moduleColor={modColor}
+            status={getComplianceStatus(adherence?.calories?.compliance_pct)}
+            delta={adherence?.calories?.target ? Math.round(((adherence.calories.actual / adherence.calories.target) - 1) * 100) : 0}
+            className="h-full"
+          />
+        </div>
+        <div 
+          onClick={() => setSelectedMacro('protein')}
+          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+        >
+          <KPICard 
+            label="Proteína"
+            value={adherence?.protein?.actual_g_per_kg ?? 0}
+            unit="g/kg"
+            icon={Beef}
+            moduleColor={modColor}
+            status={getComplianceStatus(adherence?.protein?.compliance_pct)}
+            delta={adherence?.protein?.target ? Math.round(((adherence.protein.actual_g / adherence.protein.target) - 1) * 100) : 0}
+            className="h-full"
+          />
+        </div>
+        <div 
+          onClick={() => setSelectedMacro('carbs')}
+          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+        >
+          <KPICard 
+            label="Hidratos"
+            value={adherence?.carbs?.actual_g_per_kg ?? 0}
+            unit="g/kg"
+            icon={Wheat}
+            moduleColor={modColor}
+            status={getComplianceStatus(adherence?.carbs?.compliance_pct)}
+            delta={adherence?.carbs?.target ? Math.round(((adherence.carbs.actual_g / adherence.carbs.target) - 1) * 100) : 0}
+            className="h-full"
+          />
+        </div>
+        <div 
+          onClick={() => setSelectedMacro('fat')}
+          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+        >
+          <KPICard 
+            label="Gordura"
+            value={adherence?.fat?.actual_g_per_kg ?? 0}
+            unit="g/kg"
+            icon={Droplet}
+            moduleColor={modColor}
+            status={getComplianceStatus(adherence?.fat?.compliance_pct)}
+            delta={adherence?.fat?.target ? Math.round(((adherence.fat.actual_g / adherence.fat.target) - 1) * 100) : 0}
+            className="h-full"
+          />
+        </div>
       </div>
 
-      {/* Chart */}
-      <div className="card rounded-2xl p-4 pb-6">
+      {/* BI Charts */}
+      {adherence?.dailyBreakdown && adherence.dailyBreakdown.length > 0 && (
+        <MacroComplianceChart dailyData={adherence.dailyBreakdown} className="card" />
+      )}
+
+      {eaData && eaData.length > 0 && (
+        <EnergyAvailabilityChart dailyData={eaData} className="card" />
+      )}
+
+      {/* Macro Trend Line Chart */}
+      <div className="card rounded-2xl p-4 pb-6 bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
         <h2 className="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-1.5">
           {(() => {
             const SelectedIcon = getMacroIcon(selectedMacro);
@@ -218,8 +247,10 @@ export default function NutritionDashboard() {
           {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
         </h2>
         <div className="flex justify-center items-center gap-3 mb-4 text-[10px] text-slate-500 font-semibold">
-          <span className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})</span>
-          <span className="flex items-center gap-1"><div className="w-2.5 h-2.5 border rounded-sm" style={{ borderColor: '#ef4444' }}></div> Meta</span>
+          <span className="flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 
+            {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})
+          </span>
         </div>
         <div className="h-48">
           <Line data={chartData} options={chartOptions} />
@@ -227,14 +258,14 @@ export default function NutritionDashboard() {
       </div>
 
       {/* Micronutrients */}
-      <div className="card rounded-2xl overflow-hidden">
+      <div className="card rounded-2xl overflow-hidden bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
         <button
           onClick={() => setMicrosExpanded(!microsExpanded)}
-          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50 transition"
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50/50 transition"
         >
           <div className="flex items-center gap-2">
-            <FlaskConical size={16} className="text-[var(--accent)]" />
-            <h2 className="text-sm font-semibold text-slate-800">Micronutrientes · {activeRange === 'hoje' ? 'Hoje' : activeRange === 'semana' ? 'Semana' : 'Mês'}</h2>
+            <FlaskConical size={16} className="text-[var(--mod-nutricao)]" />
+            <h2 className="text-sm font-semibold text-slate-800">Micronutrientes · {activeFilter}</h2>
           </div>
           {microsExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
         </button>

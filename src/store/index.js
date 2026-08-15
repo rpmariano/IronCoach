@@ -5,7 +5,7 @@ import { todayISO } from '../lib/utils';
 const getInitialDashboardTab = () => {
   try {
     const saved = localStorage.getItem('ironhealth_last_module');
-    if (['corrida', 'ginasio', 'nutricao', 'corpo'].includes(saved)) {
+    if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(saved)) {
       return saved;
     }
   } catch (err) {
@@ -64,7 +64,7 @@ export const useAppStore = create((set, get) => ({
   setActiveTab: (tab) => {
     const guard = get().navGuard;
     if (guard && !guard(tab)) return false;
-    if (['corrida', 'ginasio', 'nutricao', 'corpo'].includes(tab)) {
+    if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(tab)) {
       try {
         localStorage.setItem('ironhealth_last_module', tab);
       } catch (e) {

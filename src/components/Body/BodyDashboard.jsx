@@ -2,27 +2,34 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
-import { List, User, CalendarDays, TrendingUp } from 'lucide-react';
+import { List, User, CalendarDays, TrendingUp, Activity } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 import Button from '../shared/Button';
 import Chip from '../shared/Chip';
+import TimeFilterBar from '../BI/TimeFilterBar';
+import KPICard from '../BI/KPICard';
+import StackedAreaChart from '../BI/StackedAreaChart';
+import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
 
 export default function BodyDashboard({ onGoToCalendar }) {
   const { bodyAssessments, profile } = useAppStore();
+  const [timeRange, setTimeRange] = useState('trimestre');
   const [selectedMetricKey, setSelectedMetricKey] = useState('weight_kg');
 
   const selectedMetric = useMemo(() => {
     return BODY_METRICS.find(m => m.key === selectedMetricKey) || BODY_METRICS[0];
   }, [selectedMetricKey]);
 
+  const filteredAssessments = useMemo(() => {
+    return filterByDateRange(bodyAssessments, timeRange, 'date').sort((a, b) => a.date.localeCompare(b.date));
+  }, [bodyAssessments, timeRange]);
+
   // Points for selected metric
   const points = useMemo(() => {
-    return bodyAssessments
-      .filter(a => a[selectedMetric.key] !== null && a[selectedMetric.key] !== undefined)
-      .slice()
-      .sort((a, b) => a.date.localeCompare(b.date));
-  }, [bodyAssessments, selectedMetric]);
+    return filteredAssessments
+      .filter(a => a[selectedMetric.key] !== null && a[selectedMetric.key] !== undefined);
+  }, [filteredAssessments, selectedMetric]);
 
   const latestVal = points.length > 0 ? points[points.length - 1][selectedMetric.key] : null;
   const goalVal = profile ? profile['goal_' + selectedMetric.key] : null;
@@ -54,6 +61,38 @@ export default function BodyDashboard({ onGoToCalendar }) {
     }
   };
 
+  const weightTrendData = useMemo(() => calculateWeightTrend(filteredAssessments), [filteredAssessments]);
+  const compositionData = useMemo(() => calculateCompositionTrend(filteredAssessments), [filteredAssessments]);
+
+  // KPI Calculations
+  const kpiPeso = useMemo(() => {
+    if (!filteredAssessments.length) return null;
+    const valid = filteredAssessments.filter(a => a.weight_kg);
+    if (!valid.length) return null;
+    const latest = valid[valid.length - 1].weight_kg;
+    const first = valid[0].weight_kg;
+    const diff = latest - first;
+    return { value: latest, trendValue: diff, trendType: diff > 0.5 ? 'up' : diff < -0.5 ? 'down' : 'neutral' };
+  }, [filteredAssessments]);
+
+  const kpiBF = useMemo(() => {
+    const valid = filteredAssessments.filter(a => a.body_fat_pct);
+    if (!valid.length) return null;
+    const latest = valid[valid.length - 1].body_fat_pct;
+    const first = valid[0].body_fat_pct;
+    const diff = latest - first;
+    return { value: latest, trendValue: diff, trendType: diff > 0.5 ? 'up' : diff < -0.5 ? 'down' : 'neutral' };
+  }, [filteredAssessments]);
+
+  const kpiLM = useMemo(() => {
+    const valid = filteredAssessments.filter(a => a.lean_body_mass_kg);
+    if (!valid.length) return null;
+    const latest = valid[valid.length - 1].lean_body_mass_kg;
+    const first = valid[0].lean_body_mass_kg;
+    const diff = latest - first;
+    return { value: latest, trendValue: diff, trendType: diff > 0.5 ? 'up' : diff < -0.5 ? 'down' : 'neutral' };
+  }, [filteredAssessments]);
+
   if (bodyAssessments.length === 0) {
     return (
       <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 fade-in">
@@ -75,10 +114,120 @@ export default function BodyDashboard({ onGoToCalendar }) {
     );
   }
 
+  const weightDualChartData = weightTrendData ? {
+    labels: weightTrendData.rawPoints.map(p => p.date.slice(8, 10) + '/' + p.date.slice(5, 7)),
+    datasets: [
+      {
+        label: 'EWMA (Tendência)',
+        data: weightTrendData.movingAverage.map(p => p.weight),
+        borderColor: 'var(--mod-corpo)',
+        borderWidth: 3,
+        pointRadius: 0,
+        tension: 0.4,
+        fill: false,
+      },
+      {
+        label: 'Pesagens (Raw)',
+        data: weightTrendData.rawPoints.map(p => p.weight),
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(99, 102, 241, 0.4)',
+        pointBackgroundColor: 'rgba(99, 102, 241, 0.4)',
+        pointRadius: 4,
+        borderWidth: 0,
+        tension: 0,
+        fill: false,
+        showLine: false,
+      }
+    ]
+  } : null;
+
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Header Evolução */}
-      <div className="flex items-center gap-3">
+      <TimeFilterBar
+        activeRange={timeRange}
+        onChange={setTimeRange}
+      />
+
+      <div className="grid grid-cols-3 gap-2">
+        {kpiPeso && (
+          <KPICard 
+            label="Peso" 
+            value={kpiPeso.value.toFixed(1)}
+            unit="kg"
+            delta={Math.round(kpiPeso.trendValue * 10) / 10}
+            moduleColor="var(--mod-corpo)" 
+          />
+        )}
+        {kpiBF && (
+          <KPICard 
+            label="BF%" 
+            value={kpiBF.value.toFixed(1)}
+            unit="%"
+            delta={Math.round(kpiBF.trendValue * 10) / 10}
+            moduleColor="var(--mod-corpo)" 
+          />
+        )}
+        {kpiLM && (
+          <KPICard 
+            label="Massa Magra" 
+            value={kpiLM.value.toFixed(1)}
+            unit="kg"
+            delta={Math.round(kpiLM.trendValue * 10) / 10}
+            moduleColor="var(--mod-corpo)" 
+          />
+        )}
+      </div>
+
+      {/* Weight Trend Chart */}
+      {weightDualChartData && (
+        <div className="card glass rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity className="w-5 h-5 text-[var(--mod-corpo)]" />
+            <h2 className="text-sm font-semibold text-slate-800">Tendência de Peso (EWMA)</h2>
+          </div>
+          <div className="h-48 relative">
+            <Line 
+              data={weightDualChartData} 
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
+                  x: { grid: { display: false } }
+                }
+              }} 
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Body Composition Stacked Area */}
+      {compositionData && compositionData.dates.length > 0 && (
+        <div className="card glass rounded-2xl p-4">
+          <h2 className="text-sm font-semibold text-slate-800 mb-3">Composição Corporal</h2>
+          <div className="h-48 relative">
+            <StackedAreaChart
+              labels={compositionData.dates.map(d => d.slice(8, 10) + '/' + d.slice(5, 7))}
+              datasets={[
+                {
+                  label: 'Massa Magra (kg)',
+                  data: compositionData.leanMassKg,
+                  color: '#10b981'
+                },
+                {
+                  label: 'Massa Gorda (kg)',
+                  data: compositionData.fatMassKg,
+                  color: '#ef4444'
+                }
+              ]}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Evolução Individual */}
+      <div className="flex items-center gap-3 mt-6">
         <div 
           className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
           style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}
@@ -86,12 +235,11 @@ export default function BodyDashboard({ onGoToCalendar }) {
           <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{bodyAssessments.length} avaliação(ões) no período</p>
+          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução por Métrica</h2>
+          <p className="text-[11px] text-slate-500 mt-1">{filteredAssessments.length} avaliação(ões) no período</p>
         </div>
       </div>
 
-      {/* Horizontal metric chips */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
         {BODY_METRICS.map(m => {
           const isSelected = selectedMetricKey === m.key;
@@ -111,8 +259,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
         })}
       </div>
 
-      {/* Selected Metric Detail & Line Chart */}
-      <div className="card rounded-2xl p-4">
+      <div className="card glass rounded-2xl p-4">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedMetric.color }} />
@@ -140,12 +287,12 @@ export default function BodyDashboard({ onGoToCalendar }) {
             <Line data={chartData} options={chartOptions} />
           </div>
         ) : (
-          <p className="text-xs text-slate-400 py-8 text-center">Sem leituras desta métrica ainda.</p>
+          <p className="text-xs text-slate-400 py-8 text-center">Sem leituras desta métrica ainda no período.</p>
         )}
       </div>
 
       {/* Valores mais recentes grid */}
-      <div className="flex items-center gap-2 px-1">
+      <div className="flex items-center gap-2 px-1 mt-6">
         <List size={16} className="text-[var(--accent)]" />
         <h2 className="text-sm font-semibold text-slate-800">Valores mais recentes</h2>
       </div>
@@ -155,7 +302,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
           const withVal = bodyAssessments.filter(as => as[m.key] !== null && as[m.key] !== undefined);
           const latest = withVal[0];
           return (
-            <div key={m.key} className="card rounded-xl p-3">
+            <div key={m.key} className="card glass rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <span style={{ color: m.color }}>{getBodyIcon(m.key, 14)}</span>
                 <p className="text-[10px] text-slate-500 truncate">{m.label}</p>

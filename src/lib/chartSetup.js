@@ -8,7 +8,12 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ArcElement,
+  RadialLinearScale,
+  DoughnutController,
+  RadarController,
+  ScatterController
 } from 'chart.js';
 
 ChartJS.register(
@@ -20,7 +25,12 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  ArcElement,
+  RadialLinearScale,
+  DoughnutController,
+  RadarController,
+  ScatterController
 );
 
 export default ChartJS;

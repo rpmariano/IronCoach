@@ -1,10 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3, Mountain } from 'lucide-react';
+import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
-import Chip from '../shared/Chip';
+import TimeFilterBar from '../BI/TimeFilterBar';
+import KPICard from '../BI/KPICard';
+import ACWRChart from '../BI/ACWRChart';
+import IntensityDonut from '../BI/IntensityDonut';
+import ScatterTrendChart from '../BI/ScatterTrendChart';
+import RacePredictionChart from '../BI/RacePredictionChart';
+import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime } from '../../utils/biEngine';
 
 function formatPace(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
@@ -50,30 +56,15 @@ function getBestPaceData(allRuns, minKm) {
 }
 
 export default function RunDashboard() {
-  const { runs } = useAppStore();
+  const { runs, profile, raceEvents = [] } = useAppStore();
   const [activeRange, setActiveRange] = useState('mes');
 
-  // Compute date bounds based on activeRange
-  const { startStr, endStr } = useMemo(() => {
-    const today = new Date();
-    const todayStr = format(today, 'yyyy-MM-dd');
-    if (activeRange === 'semana') {
-      const s = startOfWeek(today, { weekStartsOn: 1 });
-      return { startStr: format(s, 'yyyy-MM-dd'), endStr: todayStr };
-    }
-    if (activeRange === 'mes') {
-      const s = startOfMonth(today);
-      return { startStr: format(s, 'yyyy-MM-dd'), endStr: todayStr };
-    }
-    // 'trimestre' (90 days)
-    const s = subDays(today, 89);
-    return { startStr: format(s, 'yyyy-MM-dd'), endStr: todayStr };
-  }, [activeRange]);
+  const experienceLevel = profile?.experience_level || 'beginner';
 
-  // Filter runs in range
-  const periodRuns = useMemo(() => {
-    return runs.filter(r => r.date >= startStr && r.date <= endStr);
-  }, [runs, startStr, endStr]);
+  // BI Data processing
+  const periodRuns = useMemo(() => 
+    filterByDateRange(runs, activeRange), 
+  [runs, activeRange]);
 
   const totalDist = useMemo(() => {
     return periodRuns.reduce((sum, r) => sum + Number(r.distance_km || 0), 0);
@@ -94,16 +85,60 @@ export default function RunDashboard() {
     return totalDuration / totalDist;
   }, [periodRuns, totalDist]);
 
+  // BI - ACWR
+  const acwrData = useMemo(() => calculateACWR(runs), [runs]);
+  
+  const weeklyVolume = useMemo(() => calculateWeeklyVolume(runs), [runs]);
+  
+  const acwrWeeklyData = useMemo(() => {
+    let chronicAcc = 0;
+    return weeklyVolume.map((w, i) => {
+      const vol = Number(w.volume || w.distance || w.value || 0);
+      chronicAcc = i === 0 ? vol : (chronicAcc * 3 + vol) / 4;
+      return {
+        weekLabel: w.weekLabel || w.label || `Sem ${i+1}`,
+        acuteLoad: vol,
+        chronicLoad: chronicAcc,
+        ratio: chronicAcc > 0 ? Number((vol / chronicAcc).toFixed(2)) : 0
+      };
+    });
+  }, [weeklyVolume]);
+
+  // BI - Distribution
+  const distribution = useMemo(() => calculateTrainingDistribution(periodRuns), [periodRuns]);
+
+  // BI - Scatter
+  const scatterData = useMemo(() => calculatePaceVsHR(periodRuns), [periodRuns]);
+  
+  // Future Races
+  const futureRaces = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return raceEvents.filter(r => r.date >= today).sort((a,b) => a.date.localeCompare(b.date));
+  }, [raceEvents]);
+
   // Best pace records across ALL runs
   const b5 = useMemo(() => getBestPaceData(runs, 5), [runs]);
   const b10 = useMemo(() => getBestPaceData(runs, 10), [runs]);
   const b21 = useMemo(() => getBestPaceData(runs, 21), [runs]);
 
-  // Chart Data
+  // Daily Distance Bar Chart Data
   const chartData = useMemo(() => {
     if (periodRuns.length === 0) return null;
-    const startObj = parseISO(startStr);
-    const endObj = parseISO(endStr);
+    
+    // Calcula startObj e endObj com base nos dados reais ou no activeRange
+    const now = new Date();
+    let startObj = now;
+    switch (activeRange) {
+      case 'semana': startObj = subDays(now, 7); break;
+      case 'mes': startObj = subDays(now, 30); break;
+      case 'trimestre': startObj = subDays(now, 90); break;
+      case '6meses': startObj = subDays(now, 180); break;
+      case 'ano': startObj = subDays(now, 365); break;
+    }
+    const endObj = now;
+    
+    if (startObj > endObj) return null;
+    
     const days = eachDayOfInterval({ start: startObj, end: endObj });
 
     const labels = days.map(d => format(d, 'dd/MM'));
@@ -119,12 +154,25 @@ export default function RunDashboard() {
         {
           label: 'Distância (km)',
           data,
-          backgroundColor: 'rgba(217, 70, 239, 0.6)',
-          borderRadius: 4,
+          backgroundColor: (context) => {
+            const chart = context.chart;
+            const { ctx, chartArea } = chart;
+            if (!chartArea) return 'rgba(59, 130, 246, 0.6)';
+            
+            const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
+            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.8)');
+            return gradient;
+          },
+          borderRadius: 6,
+          borderSkipped: false,
         }
       ]
     };
-  }, [periodRuns, startStr, endStr]);
+    // startObj/endObj são derivados de activeRange aqui dentro — as antigas
+    // startDate/endDate deixaram de existir na reescrita e ficaram nas
+    // dependências, o que rebentava o componente ao montar (ReferenceError).
+  }, [periodRuns, activeRange]);
 
   const chartOptions = {
     responsive: true,
@@ -183,57 +231,100 @@ export default function RunDashboard() {
 
   return (
     <div className="space-y-4 fade-in pb-8">
+      {/* 1. TimeFilterBar */}
+      <TimeFilterBar
+        activeRange={activeRange}
+        onChange={setActiveRange}
+      />
+
       {/* Header Evolução */}
       <div className="flex items-center gap-2">
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, var(--mod-corrida-from), var(--mod-corrida-to))' }}
+          style={{ background: 'linear-gradient(135deg, var(--mod-corrida), #2563eb)' }}
         >
           <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{periodRuns.length} corrida(s) no período</p>
+          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução e BI</h2>
+          <p className="text-[11px] text-slate-500 mt-1">{periodRuns.length} corrida(s) no período selecionado</p>
         </div>
       </div>
 
-      {/* Range chips */}
-      <div className="flex gap-2">
-        {[
-          { k: 'semana', l: 'Esta Semana' },
-          { k: 'mes', l: 'Este Mês' },
-          { k: 'trimestre', l: '3 Meses' }
-        ].map(r => (
-          <Chip
-            key={r.k}
-            active={activeRange === r.k}
-            variant="run"
-            rounded="xl"
-            onClick={() => setActiveRange(r.k)}
-            className="flex-1"
-          >
-            {r.l}
-          </Chip>
-        ))}
+      {/* 2. KPICard row (2x2 grid) */}
+      <div className="grid grid-cols-2 gap-3">
+        <KPICard 
+          label="Total Corridas" 
+          value={periodRuns.length} 
+          icon={Activity}
+          moduleColor="var(--mod-corrida)"
+        />
+        <KPICard 
+          label="Distância Total" 
+          value={`${totalDist.toFixed(1)}`} 
+          unit="km"
+          icon={TrendingUp}
+          moduleColor="var(--mod-corrida)"
+        />
+        <KPICard 
+          label="Pace Médio" 
+          value={formatPace(avgPaceSec)} 
+          icon={Timer}
+          moduleColor="var(--mod-corrida)"
+        />
+        <KPICard 
+          label="ACWR Status" 
+          value={acwrData?.status === 'safe' ? 'Ideal' : acwrData?.status === 'caution' ? 'Alerta' : 'Perigo'} 
+          icon={Zap}
+          moduleColor="var(--mod-corrida)"
+          status={acwrData?.status || 'neutral'}
+        />
       </div>
 
-      {/* Grid summary: 3 columns */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{periodRuns.length}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Corridas</p>
-        </div>
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{totalDist.toFixed(1)}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Distância (km)</p>
-        </div>
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{formatPace(avgPaceSec)}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Pace médio</p>
+      {/* 3. ACWR Chart */}
+      <div className="card rounded-2xl p-4">
+        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Rácio de Carga Aguda/Crónica</h3>
+        <div className="h-44">
+          <ACWRChart weeklyData={acwrWeeklyData} />
         </div>
       </div>
 
-      {/* Chart or Empty state */}
+      {/* 4. Training Distribution */}
+      <div className="card rounded-2xl p-4">
+        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Distribuição de Treino (80/20)</h3>
+        <div className="h-44 flex justify-center">
+          <IntensityDonut data={distribution} />
+        </div>
+      </div>
+
+      {/* 5. Aerobic Efficiency */}
+      <div className="card rounded-2xl p-4">
+        <h3 className="text-[11px] font-semibold text-slate-700 mb-3">Eficiência Aeróbica</h3>
+        <div className="h-44">
+          <ScatterTrendChart data={scatterData} xLabel="Frequência Cardíaca (bpm)" yLabel="Pace (min/km)" />
+        </div>
+      </div>
+
+      {/* 6. Race Prediction */}
+      {futureRaces.length > 0 && (
+        <div className="card rounded-2xl p-4">
+          <h3 className="text-[11px] font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+            <Target className="w-3.5 h-3.5 text-blue-500" />
+            Previsão para Provas
+          </h3>
+          <div className="space-y-4">
+            {futureRaces.map((race, i) => (
+              <RacePredictionChart 
+                key={i} 
+                race={race} 
+                prediction={predictRaceTime(runs, race.distance_km, experienceLevel)} 
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 7. Daily Distance Bar Chart */}
       {periodRuns.length === 0 ? (
         <div className="min-h-[25vh] flex flex-col items-center justify-center text-center px-6 py-6">
           <BarChart3 className="w-10 h-10 text-slate-400 mb-3" />
@@ -250,7 +341,7 @@ export default function RunDashboard() {
         </div>
       )}
 
-      {/* Recordes: Melhor pace de sempre */}
+      {/* 8. Recordes: Melhor pace de sempre */}
       <div className="card rounded-2xl p-4">
         <h2 className="text-[11px] font-semibold text-slate-700 mb-2">Melhor pace de sempre</h2>
         <div className="space-y-1">
@@ -260,15 +351,15 @@ export default function RunDashboard() {
         </div>
       </div>
 
-      {/* Watch Metrics Card (if any data) */}
+      {/* 9. Watch Metrics Card (if any data) */}
       {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
         <div className="card rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
               <Mountain className="w-3.5 h-3.5 text-slate-500" /> Desnível, calorias e cadência
             </h2>
-            <p className="text-[10px] text-slate-400">
-              {activeRange === 'semana' ? 'Esta Semana' : activeRange === 'mes' ? 'Este Mês' : '3 Meses'}
+            <p className="text-[10px] text-slate-400 capitalize">
+              {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">

@@ -1,80 +1,51 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3 } from 'lucide-react';
+import { TrendingUp, BarChart3, Dumbbell, Activity, CalendarDays } from 'lucide-react';
 import { Bar, Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
-import Chip from '../shared/Chip';
 
-const RANGES = [
-  { k: 'semana', l: 'Esta Semana' },
-  { k: 'mes', l: 'Este Mês' },
-  { k: 'trimestre', l: '3 Meses' }
-];
+import TimeFilterBar from '../BI/TimeFilterBar';
+import KPICard from '../BI/KPICard';
+import VolumeLoadChart from '../BI/VolumeLoadChart';
+import { filterByDateRange, calculateVolumeLoad, calculate1RMProgression, calculateMuscleGroupVolume } from '../../utils/biEngine';
 
 export default function GymDashboard() {
   const { gymSessions } = useAppStore();
-  const [gymRange, setGymRange] = useState('mes');
+  const [timeRange, setTimeRange] = useState('mes');
   const [selectedExercise, setSelectedExercise] = useState('');
+  const rangeKey = timeRange;
 
-  // Filter sessions by selected range
-  const sessionsInRange = useMemo(() => {
-    const now = new Date();
-    let startDate = new Date();
-    
-    if (gymRange === 'semana') {
-      const day = now.getDay() || 7;
-      startDate.setDate(now.getDate() - day + 1);
-    } else if (gymRange === 'mes') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    } else if (gymRange === 'trimestre') {
-      startDate.setMonth(now.getMonth() - 3);
-    }
+  const sessionsInRange = useMemo(() => filterByDateRange(gymSessions, rangeKey), [gymSessions, rangeKey]);
+  const volumeData = useMemo(() => calculateVolumeLoad(gymSessions, rangeKey), [gymSessions, rangeKey]);
+  const muscleVolume = useMemo(() => calculateMuscleGroupVolume(gymSessions, rangeKey), [gymSessions, rangeKey]);
 
-    const startStr = startDate.toISOString().slice(0, 10);
-    return gymSessions.filter(s => s.date >= startStr);
-  }, [gymSessions, gymRange]);
-
-  // Calculate volume & sets
-  const { totalVolume, totalSets, trainedExercises, volumeByDay, exerciseProgress } = useMemo(() => {
-    let vol = 0;
+  const { totalSets, volumeByDay, trainedExercises } = useMemo(() => {
     let setsCount = 0;
-    const exercisesSet = new Set();
     const byDay = {};
-    const exMap = {};
-
+    const exercisesSet = new Set();
+    
     sessionsInRange.forEach(session => {
       const dateStr = session.date;
       let sessionVol = 0;
-
       const sets = session.workout_session_sets || session.logs || [];
       sets.forEach(set => {
         if (set.reps != null && set.weight != null) {
-          const v = set.weight * set.reps;
-          vol += v;
-          sessionVol += v;
+          sessionVol += set.weight * set.reps;
           setsCount += 1;
-
           const exName = set.exercise_name || set.muscle_group || 'Exercício';
           exercisesSet.add(exName);
-
-          if (!exMap[exName]) exMap[exName] = [];
-          exMap[exName].push({ date: dateStr, weight: set.weight, reps: set.reps });
         }
       });
-
       byDay[dateStr] = (byDay[dateStr] || 0) + sessionVol;
     });
-
+    
     return {
-      totalVolume: vol,
       totalSets: setsCount,
-      trainedExercises: Array.from(exercisesSet),
       volumeByDay: byDay,
-      exerciseProgress: exMap
+      trainedExercises: Array.from(exercisesSet).sort()
     };
   }, [sessionsInRange]);
 
-  // Chart configs
   const volChartData = useMemo(() => {
     const days = Object.keys(volumeByDay).sort();
     return {
@@ -82,29 +53,56 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Volume (kg)',
         data: days.map(d => volumeByDay[d]),
-        backgroundColor: 'rgba(202, 138, 4, 0.5)',
-        borderRadius: 6
+        backgroundColor: 'rgba(217, 119, 6, 0.6)',
+        borderRadius: 4
       }]
     };
   }, [volumeByDay]);
 
+  const progression = useMemo(() => {
+    if (!selectedExercise) return [];
+    return calculate1RMProgression(gymSessions, selectedExercise);
+  }, [gymSessions, selectedExercise]);
+
   const exChartData = useMemo(() => {
-    if (!selectedExercise || !exerciseProgress[selectedExercise]) return null;
-    const dataPoints = exerciseProgress[selectedExercise];
+    if (!progression.length) return null;
     return {
-      labels: dataPoints.map(dp => dp.date.slice(8, 10) + '/' + dp.date.slice(5, 7)),
+      labels: progression.map(dp => dp.date.slice(8, 10) + '/' + dp.date.slice(5, 7)),
+      datasets: [
+        {
+          label: '1RM Estimado (kg)',
+          data: progression.map(dp => dp.estimated1RM),
+          borderColor: '#d97706',
+          backgroundColor: 'rgba(217, 119, 6, 0.1)',
+          tension: 0.3,
+          fill: true
+        },
+        {
+          label: 'Carga Máxima (kg)',
+          data: progression.map(dp => dp.maxWeight),
+          borderColor: '#94a3b8',
+          borderDash: [5, 5],
+          tension: 0.3,
+          fill: false
+        }
+      ]
+    };
+  }, [progression]);
+
+  const muscleChartData = useMemo(() => {
+    const groups = Object.keys(muscleVolume).sort((a,b) => muscleVolume[b].sets - muscleVolume[a].sets);
+    return {
+      labels: groups,
       datasets: [{
-        label: 'Carga (kg)',
-        data: dataPoints.map(dp => dp.weight),
-        borderColor: '#ca8a04',
-        backgroundColor: 'rgba(202, 138, 4, 0.1)',
-        tension: 0.3,
-        fill: true
+        label: 'Séries',
+        data: groups.map(g => muscleVolume[g].sets),
+        backgroundColor: '#d97706',
+        borderRadius: 4
       }]
     };
-  }, [selectedExercise, exerciseProgress]);
+  }, [muscleVolume]);
 
-  const chartOptions = {
+  const defaultChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
@@ -114,92 +112,125 @@ export default function GymDashboard() {
     }
   };
 
+  const muscleChartOptions = {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+      y: { grid: { display: false } }
+    }
+  };
+
+  const exChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { 
+      legend: { 
+        display: true, 
+        position: 'top',
+        labels: { boxWidth: 12, usePointStyle: true, font: { size: 10 } }
+      } 
+    },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+      x: { grid: { display: false } }
+    }
+  };
+
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, var(--mod-ginasio-from), var(--mod-ginasio-to))' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{sessionsInRange.length} treino(s) no período</p>
-        </div>
+      {/* Time Filter Bar */}
+      <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} />
+
+      {/* KPI Row */}
+      <div className="grid grid-cols-3 gap-3">
+        <KPICard 
+          label="Treinos" 
+          value={sessionsInRange.length} 
+          icon={CalendarDays} 
+          moduleColor="var(--mod-ginasio)"
+        />
+        <KPICard 
+          label="Vol. Carga" 
+          value={Math.round(volumeData.totalVolumeLoad).toLocaleString('pt-PT')} 
+          unit="kg"
+          icon={TrendingUp} 
+          moduleColor="var(--mod-ginasio)"
+        />
+        <KPICard 
+          label="Séries" 
+          value={totalSets} 
+          icon={Activity} 
+          moduleColor="var(--mod-ginasio)"
+        />
       </div>
 
-      {/* Range Chips */}
-      <div className="flex gap-2">
-        {RANGES.map(r => (
-          <Chip
-            key={r.k}
-            active={gymRange === r.k}
-            variant="gym"
-            rounded="xl"
-            onClick={() => setGymRange(r.k)}
-            className="flex-1"
-          >
-            {r.l}
-          </Chip>
-        ))}
-      </div>
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{sessionsInRange.length}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Treinos</p>
-        </div>
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{Math.round(totalVolume).toLocaleString('pt-PT')}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Volume (kg)</p>
-        </div>
-        <div className="card rounded-2xl p-3 text-center">
-          <p className="text-lg font-bold text-slate-800 leading-none">{totalSets}</p>
-          <p className="text-[10px] text-slate-500 mt-1.5">Séries</p>
-        </div>
-      </div>
-
-      {/* Content / Charts */}
       {sessionsInRange.length === 0 ? (
-        <div className="min-h-[30vh] flex flex-col items-center justify-center text-center px-6 py-12">
-          <BarChart3 className="w-10 h-10 text-slate-400 mb-3" />
+        <div className="min-h-[30vh] flex flex-col items-center justify-center text-center px-6 py-12 card rounded-3xl">
+          <Dumbbell className="w-10 h-10 text-slate-400 mb-3" />
           <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
             Ainda não há treinos neste período. Termina uma sessão de treino para veres a tua evolução aqui.
           </p>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="card rounded-2xl p-4">
-            <p className="text-[11px] font-semibold text-slate-700 mb-3">Volume por dia</p>
-            <div className="h-44 relative">
-              <Bar data={volChartData} options={chartOptions} />
+          {/* Weekly Volume Load Chart */}
+          {volumeData.weeklyBreakdown.length > 0 && (
+            <VolumeLoadChart 
+              weeklyData={volumeData.weeklyBreakdown} 
+              acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus }} 
+              className="card"
+            />
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Daily Volume Bar Chart */}
+            <div className="card rounded-3xl p-4">
+              <p className="text-[12px] font-bold text-slate-700 mb-3">Volume Diário (kg)</p>
+              <div className="h-52 relative">
+                <Bar data={volChartData} options={defaultChartOptions} />
+              </div>
             </div>
+
+            {/* Muscle Group Volume Chart */}
+            {Object.keys(muscleVolume).length > 0 && (
+              <div className="card rounded-3xl p-4">
+                <p className="text-[12px] font-bold text-slate-700 mb-3">Séries por Grupo Muscular</p>
+                <div className="h-52 relative">
+                  <Bar data={muscleChartData} options={muscleChartOptions} />
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="card rounded-2xl p-4 space-y-3">
-            <p className="text-[11px] font-semibold text-slate-700">Progressão por exercício</p>
-            <select
-              value={selectedExercise}
-              onChange={e => setSelectedExercise(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-none focus:border-[var(--mod-ginasio-to)]"
-            >
-              <option value="">Escolhe um exercício…</option>
-              {trainedExercises.map(ex => (
-                <option key={ex} value={ex}>{ex}</option>
-              ))}
-            </select>
+          {/* 1RM Progression Chart */}
+          <div className="card rounded-3xl p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <p className="text-[12px] font-bold text-slate-700">Evolução do 1RM Estimado</p>
+              <select
+                value={selectedExercise}
+                onChange={e => setSelectedExercise(e.target.value)}
+                className="bg-white/60 border border-slate-200/60 rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-700 outline-none focus:border-[#d97706] shadow-sm backdrop-blur w-full sm:w-auto min-w-[160px]"
+              >
+                <option value="">Escolhe um exercício…</option>
+                {trainedExercises.map(ex => (
+                  <option key={ex} value={ex}>{ex}</option>
+                ))}
+              </select>
+            </div>
 
-            {selectedExercise && exChartData ? (
-              <div className="h-44 relative pt-2">
-                <Line data={exChartData} options={chartOptions} />
+            {selectedExercise && progression.length > 0 ? (
+              <div className="h-56 relative pt-2">
+                <Line data={exChartData} options={exChartOptions} />
               </div>
             ) : (
-              <p className="text-[11px] text-slate-400 text-center py-4">
-                Escolhe um exercício para veres a evolução da carga.
-              </p>
+              <div className="h-56 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/50 rounded-2xl">
+                <p className="text-[11px] text-slate-400 text-center px-4">
+                  Escolhe um exercício acima para acompanhares a evolução da tua carga máxima.
+                </p>
+              </div>
             )}
           </div>
         </div>
