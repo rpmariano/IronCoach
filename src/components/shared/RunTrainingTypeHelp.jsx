@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { HelpCircle, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { HelpCircle, X, Sparkles } from 'lucide-react';
 
 const RUN_TRAINING_TYPES_DOCS = [
   {
@@ -29,7 +29,105 @@ const RUN_TRAINING_TYPES_DOCS = [
 ];
 
 export default function RunTrainingTypeHelp({ label, children }) {
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const touchStartY = useRef(0);
+  const dragYRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const isClosingRef = useRef(false);
+
+  const scrollRef = useRef(null);
+  const dragAreaRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsClosing(false);
+      isClosingRef.current = false;
+      setDragY(0);
+      dragYRef.current = 0;
+    }
+  }, [isOpen]);
+
+  const handleDismiss = () => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsOpen(false);
+    }, 500);
+  };
+
+  useEffect(() => {
+    const el = dragAreaRef.current;
+    if (!el || !isOpen) return;
+
+    const handleTouchStart = (e) => {
+      touchStartY.current = e.touches[0].clientY;
+      isDraggingRef.current = true;
+      setIsDragging(true);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDraggingRef.current) return;
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY.current;
+      const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
+
+      if (deltaY > 0 && isAtTop) {
+        if (e.cancelable) e.preventDefault(); // CANCELA PULL-TO-REFRESH DO BROWSER
+        dragYRef.current = deltaY;
+        setDragY(deltaY);
+      } else if (deltaY < 0 && dragYRef.current > 0) {
+        if (e.cancelable) e.preventDefault();
+        const nextVal = Math.max(0, deltaY);
+        dragYRef.current = nextVal;
+        setDragY(nextVal);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (dragYRef.current > 60) {
+        handleDismiss();
+      } else {
+        setDragY(0);
+      }
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
+    const handleTouchCancel = () => {
+      setDragY(0);
+      dragYRef.current = 0;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+      el.removeEventListener('touchcancel', handleTouchCancel);
+    };
+  }, [isOpen]);
+
+  const sheetTransform = isClosing
+    ? 'translateY(100%)'
+    : dragY > 0
+    ? `translateY(${dragY}px)`
+    : 'translateY(0%)';
+
+  const sheetTransition = isDragging
+    ? 'none'
+    : 'transform 0.5s ease-in-out';
 
   return (
     <div>
@@ -37,9 +135,9 @@ export default function RunTrainingTypeHelp({ label, children }) {
         <label className="text-[12px] text-slate-500 block">{label}</label>
         <button
           type="button"
-          onClick={() => setOpen(o => !o)}
-          aria-expanded={open}
-          aria-label={open ? 'Fechar ajuda sobre tipos de treino' : 'O que significa cada tipo de treino?'}
+          onClick={() => setIsOpen(true)}
+          aria-expanded={isOpen}
+          aria-label="O que significa cada tipo de treino?"
           title="O que significa cada tipo de treino?"
           className="inline-flex items-center justify-center rounded-full active:scale-90 transition"
           style={{
@@ -55,35 +153,92 @@ export default function RunTrainingTypeHelp({ label, children }) {
 
       {children}
 
-      {open && (
-        <div className="rounded-xl p-3 mt-2 space-y-3" style={{ background: 'rgba(248,250,252,0.9)', border: '1px solid var(--brd-800)' }}>
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-[10px] leading-relaxed text-slate-600 mb-1 font-medium">
-              Tipologia baseada na fisiologia do desporto (Fórmula Jack Daniels / Regra 80/20):
-            </p>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Fechar ajuda"
-              className="tap-44 shrink-0 -mt-2 -mr-1 flex items-center justify-center text-slate-400"
-            >
-              <X size={14} />
-            </button>
-          </div>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+          {/* Overlay escuro com Backdrop Blur */}
+          <div 
+            className={`fixed inset-0 bg-slate-900/40 transition-all duration-500 ease-in-out ${
+              isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 backdrop-blur-sm'
+            }`}
+            onClick={handleDismiss}
+            aria-hidden="true"
+          />
 
-          {RUN_TRAINING_TYPES_DOCS.map((group, idx) => (
-            <div key={idx}>
-              <p className="text-[11px] font-bold text-slate-700">{group.group}</p>
-              <ul className="mt-0.5 space-y-1">
-                {group.items.map((item, i) => (
-                  <li key={i} className="text-[10px] leading-snug flex gap-1.5 text-slate-600">
-                    <span aria-hidden="true" className="font-bold text-slate-400">·</span>
-                    <span><strong className="font-semibold text-slate-700">{item.name}:</strong> {item.desc}</span>
-                  </li>
-                ))}
-              </ul>
+          {/* Persiana Bottom Sheet */}
+          <div 
+            ref={dragAreaRef}
+            className="relative z-10 w-full flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden max-h-[85vh]"
+            style={{
+              transform: sheetTransform,
+              transition: sheetTransition,
+              overscrollBehavior: 'contain',
+            }}
+          >
+            {/* Zona de Arrasto Superior (Pega) */}
+            <div className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
+              <div 
+                onClick={handleDismiss}
+                className="w-full py-3 cursor-pointer flex flex-col items-center justify-center group tap-44"
+                role="button"
+                aria-label="Fechar persiana"
+              >
+                <div className="w-12 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors mb-1" />
+                <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Toca para fechar</span>
+              </div>
+
+              {/* Cabeçalho */}
+              <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+                    style={{ background: 'linear-gradient(135deg, var(--mod-corrida-from), var(--mod-corrida-to))' }}
+                  >
+                    <HelpCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-800">
+                      Tipos de Treino
+                    </h2>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Doutrina Fisiológica (Regra 80/20)
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDismiss}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+                  aria-label="Fechar"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
-          ))}
+
+            {/* Conteúdo Scrollável */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-6 bg-slate-50/30">
+              {RUN_TRAINING_TYPES_DOCS.map((group, idx) => (
+                <div key={idx}>
+                  <p className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-slate-400" />
+                    {group.group}
+                  </p>
+                  <div className="space-y-2">
+                    {group.items.map((item, i) => (
+                      <div key={i} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex flex-col gap-1">
+                        <span className="text-[13px] font-semibold text-slate-800">{item.name}</span>
+                        <span className="text-[11px] leading-snug text-slate-500">{item.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Rodapé safe-area spacing */}
+            <div className="h-6 bg-slate-50/30 shrink-0" />
+          </div>
         </div>
       )}
     </div>
