@@ -15,7 +15,7 @@ const GYM_KINDS = [
 ];
 
 const GYM_CATEGORIES = {
-  forca: ['Peito', 'Costas', 'Pernas', 'Ombros', 'Biceps', 'Triceps', 'Glúteos', 'Full Body', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'],
+  forca: ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Biceps', 'Triceps', 'Glúteos', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'],
   aula:  ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'],
 };
 const GYM_CATEGORIES_VISIBLE = 6;

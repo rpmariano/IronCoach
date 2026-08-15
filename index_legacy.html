@@ -739,7 +739,7 @@ const GYM_KINDS = [
 // `category` não tem CHECK na BD, por isso estas listas podem crescer sem
 // migração. O utilizador pode sempre escrever uma categoria à mão.
 const GYM_CATEGORIES = {
-  forca: ['Peito','Costas','Pernas','Ombros','Bíceps','Tríceps','Braços','Core/Abdominais','Glúteos','Full Body','Push','Pull'],
+  forca: ['Peito','Costas','Pernas Superiores','Pernas Inferiores','Ombros','Bíceps','Tríceps','Braços','Core/Abdominais','Glúteos','Full Body','Push','Pull','Cardio'],
   aula:  ['HIIT','RPM/Cycling','Pilates','Yoga','Body Pump','Zumba','CrossFit','Treino Funcional','Natação','Outro'],
 };
 function gymCategoriesFor(kind){ return GYM_CATEGORIES[kind] || GYM_CATEGORIES.forca; }

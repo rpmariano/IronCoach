@@ -143,11 +143,11 @@ function buildPrompt(kind: string, notes: string | null): string {
       "uma coluna ou valor explícito para o 1RM estimado da série, extrai para one_rep_max_est. Se uma série não tiver " +
       "reps ou carga visíveis/registados, devolve null nesse campo (não inventes valores). " +
       "Sugere também um nome curto para a sessão (session_name) com base no tipo de treino " +
-      "(ex.: \"Peito e Tríceps\", \"Pernas\", \"Full Body\"), em português de Portugal, e " +
+      "(ex.: \"Peito e Tríceps\", \"Pernas Superiores\", \"Full Body\"), em português de Portugal, e " +
       "preenche categories com TODOS os grupos musculares trabalhados na sessão, não apenas " +
       "um (ex.: um treino de elevações laterais e extensões de tríceps é [\"Ombros\", " +
-      "\"Tríceps\"]). Escolhe de entre: Peito, Costas, Pernas, Ombros, Bíceps, Tríceps, " +
-      "Braços, Core/Abdominais, Glúteos, Full Body, Push, Pull. Se não for claro, devolve " +
+      "\"Tríceps\"]). Escolhe de entre: Peito, Costas, Pernas Superiores, Pernas Inferiores, Ombros, Bíceps, Tríceps, " +
+      "Braços, Core/Abdominais, Glúteos, Full Body, Push, Pull, Cardio. Se não for claro, devolve " +
       "categories vazio. " +
       METRICS_PROMPT +
       " Usa nomes de exercícios em português de Portugal quando o exercício for conhecido " +
