@@ -33,7 +33,15 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     if (activeTab !== 'coach') {
-      mainRef.current?.scrollTo(0, 0);
+      // Pequeno atraso para dar tempo aos componentes de renderizarem a sua altura
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        
+        // Caso o container interno tenha scroll (fallback)
+        if (mainRef.current) {
+          mainRef.current.scrollTo(0, 0);
+        }
+      }, 10);
     }
   }, [activeTab]);
 

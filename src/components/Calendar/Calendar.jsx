@@ -160,10 +160,10 @@ export default function Calendar() {
               <div className="flex justify-center items-center" key={dayStr}>
                 <button
                   onClick={() => setSelectedDate(date)}
-                  className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border transition cursor-pointer outline-none ${
+                  className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
-                      ? 'bg-white border-slate-200 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.05)] scale-[1.02] font-black' 
-                      : 'bg-white/50 border-white/70 text-slate-600 hover:bg-white/80'
+                      ? 'bg-white border-slate-300 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
+                      : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
