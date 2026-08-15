@@ -82,19 +82,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const planItem = completingPlanItemRef.current?.kind === 'corrida' ? completingPlanItemRef.current : null;
 
   // --- RUNS STATE ---
-  const [runKind, setRunKind] = useState('treino'); // 'treino' | 'competicao'
+  const [runKind, setRunKind] = useState(planItem?.isRace ? 'competicao' : 'treino'); // 'treino' | 'competicao'
   const [runTrainingType, setRunTrainingType] = useState(planItem?.training_type || 'continuo');
   const [runDate, setRunDate] = useState(planItem?.planned_date || dateIso || todayISO());
-  const [runName, setRunName] = useState('Corrida de Hoje');
+  const [runName, setRunName] = useState(planItem?.title || 'Corrida de Hoje');
   
   // Basic metrics
   const [runDistance, setRunDistance] = useState(planItem?.target_distance_km ? String(planItem.target_distance_km) : '');
-  const [runDuration, setRunDuration] = useState('');
+  const [runDuration, setRunDuration] = useState(planItem?.target_duration ? formatDuration(planItem.target_duration) : '');
   const [runEffortRpe, setRunEffortRpe] = useState(0); // 0-10
   const [runNotes, setRunNotes] = useState('');
   
   // Detailed metrics
-  const [elevationGain, setElevationGain] = useState('');
+  const [elevationGain, setElevationGain] = useState(planItem?.elevation_gain_m ? String(planItem.elevation_gain_m) : '');
   const [cadence, setCadence] = useState('');
   const [maxCadence, setMaxCadence] = useState('');
   const [calories, setCalories] = useState('');
@@ -123,9 +123,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [hrZones, setHrZones] = useState([]); // { zone, minutes }
   
   // Competition specifics (when runKind === 'competicao')
-  const [officialTime, setOfficialTime] = useState('');
+  const [officialTime, setOfficialTime] = useState(planItem?.target_duration ? formatDuration(planItem.target_duration) : '');
   const [position, setPosition] = useState('');
-  const [completedRaceType, setCompletedRaceType] = useState('10k');
+  const [completedRaceType, setCompletedRaceType] = useState(planItem?.race_type || '10k');
   
   // Photos
   const [runPhotos, setRunPhotos] = useState([]); // [{ file?, dataUrl, url? }]

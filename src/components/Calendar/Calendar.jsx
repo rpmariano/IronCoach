@@ -7,6 +7,7 @@ import { pt } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
 import RunCard from '../Run/RunCard';
+import RaceCard from '../Run/RaceCard';
 import GymSessionCard from '../Gym/GymSessionCard';
 import MealCard from '../Nutrition/MealCard';
 import BodyAssessmentCard from '../Body/BodyAssessmentCard';
@@ -17,7 +18,7 @@ import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 
 export default function Calendar() {
-  const { runs, gymSessions, meals, bodyAssessments, setRuns, setGymSessions, setMeals, setBodyAssessments } = useAppStore();
+  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId } = useAppStore();
   const { showToast } = useToast();
 
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -27,6 +28,7 @@ export default function Calendar() {
   const [editingGymId, setEditingGymId] = useState(null);
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingBodyId, setEditingBodyId] = useState(null);
+  const [racePrefillActive, setRacePrefillActive] = useState(false);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -35,7 +37,7 @@ export default function Calendar() {
     });
   }, [currentDate]);
 
-  const { runsByDay, gymByDay, mealsByDay, bodyByDay } = useMemo(() => {
+  const { runsByDay, racesByDay, gymByDay, mealsByDay, bodyByDay } = useMemo(() => {
     const groupBy = (rows) => {
       const map = new Map();
       for (const row of rows || []) {
@@ -46,11 +48,12 @@ export default function Calendar() {
     };
     return {
       runsByDay: groupBy(runs),
+      racesByDay: groupBy(raceEvents),
       gymByDay: groupBy(gymSessions),
       mealsByDay: groupBy(meals),
       bodyByDay: groupBy(bodyAssessments),
     };
-  }, [runs, gymSessions, meals, bodyAssessments]);
+  }, [runs, raceEvents, gymSessions, meals, bodyAssessments]);
 
   // Delete handlers
   const handleDeleteRun = async (id) => {
@@ -107,6 +110,52 @@ export default function Calendar() {
 
   if (editingRunId) return <RunRegistration onClose={() => setEditingRunId(null)} runIdToEdit={editingRunId} />;
   if (editingGymId) return <GymRegistration onClose={() => setEditingGymId(null)} sessionIdToEdit={editingGymId} />;
+  // raceEvents toggle status and delete are handled inside RaceCard via optimistic updates, 
+  // but to keep it simple, we can pass them down.
+  const handleToggleRaceStatus = async (ev) => {
+    const newStatus = ev.status === 'concluida' ? 'agendada' : 'concluida';
+    setRaceEvents(raceEvents.map(e => e.id === ev.id ? { ...e, status: newStatus } : e));
+    try {
+      const { error } = await supabase.from('race_events').update({ status: newStatus }).eq('id', ev.id);
+      if (error) throw error;
+      showToast('Estado da prova atualizado');
+    } catch (err) {
+      console.error(err);
+      setRaceEvents(raceEvents);
+    }
+  };
+
+  const handleDeleteRace = async (id) => {
+    if (!window.confirm("Eliminar prova?")) return;
+    const previous = [...raceEvents];
+    setRaceEvents(raceEvents.filter(e => e.id !== id));
+    try {
+      const { error } = await supabase.from('race_events').delete().eq('id', id);
+      if (error) throw error;
+      showToast('Prova eliminada');
+    } catch (err) {
+      console.error(err);
+      setRaceEvents(previous);
+    }
+  };
+
+  const handleCompleteRace = (ev) => {
+    useAppStore.setState({ planItemPrefill: {
+      kind: 'corrida',
+      isRace: true,
+      planned_date: ev.date,
+      title: ev.name,
+      target_distance_km: ev.distance_km,
+      target_duration: ev.target_time_seconds,
+      elevation_gain_m: ev.elevation_gain_m,
+      race_type: ev.race_type
+    }});
+    setRacePrefillActive(true);
+  };
+
+  if (editingRunId) return <RunRegistration onClose={() => setEditingRunId(null)} runIdToEdit={editingRunId} />;
+  if (racePrefillActive) return <RunRegistration onClose={() => { setRacePrefillActive(false); useAppStore.setState({ planItemPrefill: null }); }} runIdToEdit={null} />;
+  if (editingGymId) return <GymRegistration onClose={() => setEditingGymId(null)} sessionIdToEdit={editingGymId} />;
   if (editingMealId) return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;
   if (editingBodyId) return <BodyRegistration onClose={() => setEditingBodyId(null)} assessmentIdToEdit={editingBodyId} />;
 
@@ -114,11 +163,12 @@ export default function Calendar() {
   const selectedDayStr = format(selectedDate, 'yyyy-MM-dd');
 
   const selectedRuns = runsByDay.get(selectedDayStr) || [];
+  const selectedRaces = racesByDay.get(selectedDayStr) || [];
   const selectedGym = gymByDay.get(selectedDayStr) || [];
   const selectedMeals = mealsByDay.get(selectedDayStr) || [];
   const selectedBody = bodyByDay.get(selectedDayStr) || [];
 
-  const hasRecords = selectedRuns.length > 0 || selectedGym.length > 0 || selectedMeals.length > 0 || selectedBody.length > 0;
+  const hasRecords = selectedRuns.length > 0 || selectedRaces.length > 0 || selectedGym.length > 0 || selectedMeals.length > 0 || selectedBody.length > 0;
 
   return (
     <div className="space-y-4 fade-in pb-8">
@@ -152,6 +202,7 @@ export default function Calendar() {
             const isSelected = isSameDay(date, selectedDate);
             
             const dayRuns = runsByDay.get(dayStr) || [];
+            const dayRaces = racesByDay.get(dayStr) || [];
             const dayGym = gymByDay.get(dayStr) || [];
             const dayMeals = mealsByDay.get(dayStr) || [];
             const dayBody = bodyByDay.get(dayStr) || [];
@@ -163,17 +214,20 @@ export default function Calendar() {
                   className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
                       ? 'bg-white border-orange-500 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
-                      : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
+                      : dayRaces.length > 0
+                        ? 'bg-[var(--mod-coach-to)] border-transparent text-white shadow-[0_2px_8px_rgba(217,70,239,0.3)] hover:opacity-90'
+                        : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
                   <div className="flex gap-[3px] justify-center w-full px-1.5 h-1">
+                    {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--mod-coach-to)' : 'rgba(255,255,255,0.7)' }} />}
                     {dayRuns.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corrida-to, #c026d3)' }} />}
                     {dayGym.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-ginasio-to, #facc15)' }} />}
                     {dayMeals.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-nutricao-to, #059669)' }} />}
                     {dayBody.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: 'var(--mod-corpo-to, #e11d48)' }} />}
                     
-                    {!dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
+                    {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
                        <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
                     )}
                   </div>
@@ -185,6 +239,10 @@ export default function Calendar() {
 
         {/* Legend */}
         <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-coach-to)' }}></span>
+            <span>Prova</span>
+          </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corrida-to, #c026d3)' }}></span>
             <span>Corrida</span>
@@ -217,6 +275,9 @@ export default function Calendar() {
           </div>
         )}
 
+        {selectedRaces.map(race => (
+          <RaceCard key={race.id} ev={race} onEdit={setEditingRaceId} onToggleStatus={() => handleCompleteRace(race)} onDelete={handleDeleteRace} />
+        ))}
         {selectedRuns.map(run => (
           <RunCard key={run.id} run={run} onEdit={setEditingRunId} onDelete={handleDeleteRun} />
         ))}

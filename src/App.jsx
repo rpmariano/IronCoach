@@ -17,6 +17,7 @@ import Perfil from './components/Perfil/Perfil';
 import Admin from './components/Admin/Admin';
 import Dashboard from './components/Dashboard/Dashboard';
 import Calendar from './components/Calendar/Calendar';
+import RunAgenda from './components/Run/RunAgenda';
 
 const DEMO_PROFILE = {
   id: 'demo-user',
@@ -38,7 +39,7 @@ const DEMO_PROFILE = {
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
 
 export default function App() {
-  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab } = useAppStore();
+  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode } = useAppStore();
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
@@ -108,6 +109,10 @@ export default function App() {
         {activeTab === 'perfil' && <Perfil />}
         {activeTab === 'admin' && <Admin />}
       </Layout>
+      
+      {openCreationMode === 'race' && (
+        <RunAgenda onClose={() => setOpenCreationMode(null)} />
+      )}
     </ToastProvider>
   );
 }

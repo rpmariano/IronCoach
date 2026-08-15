@@ -36,7 +36,8 @@ export const useAppStore = create((set, get) => ({
   // UI State
   activeTab: 'home',
   lastDashboardTab: 'corrida',
-  openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout'
+  openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
+  editingRaceId: null,
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
@@ -59,6 +60,7 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
+  setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),

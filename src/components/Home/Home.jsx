@@ -49,7 +49,7 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
 }
 
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
-function NextRaceCard({ raceEvents = [], onNav }) {
+function NextRaceCard({ raceEvents = [], onNav, onEditRace }) {
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
@@ -99,7 +99,10 @@ function NextRaceCard({ raceEvents = [], onNav }) {
             <div 
               key={next.id} 
               className="relative w-full h-full shrink-0 snap-center" 
-              onClick={() => onNav('corrida')}
+              onClick={() => {
+                onNav('corrida');
+                onEditRace && onEditRace(next.id);
+              }}
             >
               <div className="cursor-pointer active:scale-[0.99] transition-transform w-full h-full">
                 <PremiumNextRaceCard 
@@ -211,7 +214,7 @@ export default function Home() {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
-    addWaterLog
+    addWaterLog, setEditingRaceId
   } = useAppStore();
 
   const handleNav = (tab) => setActiveTab(tab);
@@ -237,7 +240,26 @@ export default function Home() {
     }
   };
 
-  const handleCancelItem = (item) => {
+  const handleCancelItem = async (item) => {
+    if (item.isRace) {
+      if (window.confirm('Cancelar (eliminar) esta prova da agenda?')) {
+        const id = item.id.replace('race-', '');
+        const previous = [...raceEvents];
+        useAppStore.setState({ raceEvents: raceEvents.filter(r => r.id !== id) });
+        try {
+          const { supabase } = await import('../../lib/supabase');
+          const { error } = await supabase.from('race_events').delete().eq('id', id);
+          if (error) throw error;
+          showToast('Prova cancelada');
+        } catch (err) {
+          console.error(err);
+          useAppStore.setState({ raceEvents: previous });
+          showToast('Erro ao cancelar prova');
+        }
+      }
+      return;
+    }
+
     if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
       cancelPlanItem(item.id);
       showToast('Treino cancelado');
@@ -262,13 +284,45 @@ export default function Home() {
     }
   };
 
+  const modifiedPlanItems = useMemo(() => {
+    const raceDates = new Set(raceEvents.map(r => r.date));
+    
+    // Filter out coach items that fall on a race date
+    const itemsWithoutRaces = coachPlanItems.filter(item => !raceDates.has(item.planned_date));
+
+    // Convert races into mock planItems
+    const racePlanItems = raceEvents.map(race => ({
+      id: `race-${race.id}`,
+      // Just pick an active plan so it renders; if none, it's fine, it won't render unless we fake a plan too.
+      // But actually computeAcceptedWindow filters planItems by plan_id of ACCEPTED plans.
+      // So we MUST assign it to an accepted plan!
+      plan_id: coachPlans.find(p => p.status === 'aceite' && p.period_start <= race.date && p.period_end >= race.date)?.id 
+               || coachPlans.find(p => p.status === 'aceite')?.id, 
+      date: race.date,
+      planned_date: race.date,
+      kind: 'corrida',
+      isRace: true, 
+      title: race.name, 
+      training_type: 'competicao', 
+      target_distance_km: race.distance_km,
+      target_duration: race.target_time_seconds,
+      elevation_gain_m: race.elevation_gain_m,
+      race_type: race.race_type,
+      status: race.status === 'concluida' ? 'concluido' : 'pendente',
+      notes: race.notes
+    }));
+
+    // Only include races that actually got assigned to a plan (otherwise they won't render anyway)
+    return [...itemsWithoutRaces, ...racePlanItems.filter(r => r.plan_id)];
+  }, [coachPlanItems, raceEvents, coachPlans]);
+
   return (
     <div className="flex flex-col gap-6 fade-in pb-8">
       {/* Resumo do Coach — ver specs/plano-de-treino.md §11 */}
       <CoachDailySummaryCard />
 
       {/* Próxima Prova */}
-      <NextRaceCard raceEvents={raceEvents} onNav={handleNav} />
+      <NextRaceCard raceEvents={raceEvents} onNav={handleNav} onEditRace={setEditingRaceId} />
 
       {/* Nutrição & Água Carousel */}
       <NutritionWaterCarousel 
@@ -283,7 +337,7 @@ export default function Home() {
           do plano aceite + registo de execução (specs/plano-de-treino.md) */}
       <WeeklyPlanCard
         plans={coachPlans}
-        planItems={coachPlanItems}
+        planItems={modifiedPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
         onCompleteMeal={handleCompleteMeal}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard } from 'lucide-react';
+import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
@@ -135,6 +135,16 @@ export default function Layout({ children }) {
             style={{ bottom: 90 }}
             ref={fabRef}
           >
+            <FabItem 
+              label="Nova prova"
+              color={moduleGradient('coach')}
+              icon={<Trophy size={14} />} 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                closeFab(); 
+                goRegister('coach', 'race');
+              }} 
+            />
             <FabItem
               label="Registar refeição"
               color={moduleGradient('nutricao')}

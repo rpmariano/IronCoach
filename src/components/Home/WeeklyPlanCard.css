@@ -401,6 +401,10 @@
   color: #e11d48;
 }
 
+.wpc-info-box-header.coach {
+  color: var(--mod-coach-to);
+}
+
 .wpc-info-box-text {
   font-size: 0.8rem;
   color: #1e293b;

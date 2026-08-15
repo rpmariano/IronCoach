@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle } from 'lucide-react';
+import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase } from '../../lib/supabase';
@@ -54,19 +54,16 @@ const EMPTY_DRAFT = {
   notes: '',
 };
 
-export default function RunAgenda() {
-  const { raceEvents, profile, runs, setRaceEvents, setNavGuard } = useAppStore();
+export default function RunAgenda({ onClose }) {
+  const { raceEvents, profile, runs, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
-  // Volume médio semanal das últimas 4 semanas — base da flag volume_insuficiente.
-  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayISO()), [runs]);
-  const [editingEventId, setEditingEventId] = useState(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const editingEventId = editingRaceId;
+  const isFormOpen = true;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteCandidate, setDeleteCandidate] = useState(null);
+
   // Destino pendente quando se tenta sair (nav para outro módulo) com
   // alterações por gravar — null quando o pedido veio do próprio botão
   // "Cancelar" do formulário, sem navegação nenhuma envolvida.
@@ -78,14 +75,7 @@ export default function RunAgenda() {
 
   const todayIso = todayISO();
 
-  // Sort events
-  const upcoming = raceEvents
-    .filter(e => e.status !== 'concluida' && e.date >= todayIso)
-    .sort((a, b) => a.date.localeCompare(b.date));
 
-  const past = raceEvents
-    .filter(e => e.status === 'concluida' || e.date < todayIso)
-    .sort((a, b) => b.date.localeCompare(a.date));
 
   // Trava a navegação para fora da app enquanto houver alterações por
   // gravar no formulário — mesmo mecanismo usado em Perfil.jsx.
@@ -106,88 +96,7 @@ export default function RunAgenda() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isFormOpen, isDirty]);
 
-  const handleToggleStatus = async (ev) => {
-    const newStatus = ev.status === 'concluida' ? 'agendada' : 'concluida';
 
-    // Update local state optimistic
-    setRaceEvents(raceEvents.map(e => e.id === ev.id ? { ...e, status: newStatus } : e));
-
-    try {
-      const { error } = await supabase
-        .from('race_events')
-        .update({ status: newStatus })
-        .eq('id', ev.id);
-
-      if (error) throw error;
-      showToast('Estado da prova atualizado');
-    } catch (err) {
-      console.error('Error toggling status:', err);
-      // Revert if error
-      setRaceEvents(raceEvents);
-    }
-  };
-
-  const handleDeleteClick = (id) => {
-    setDeleteCandidate(id);
-    setShowDeleteConfirm(true);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteCandidate) return;
-    const id = deleteCandidate;
-    setDeleteCandidate(null);
-    setShowDeleteConfirm(false);
-    
-    // Optimistic delete
-    const previous = [...raceEvents];
-    setRaceEvents(raceEvents.filter(e => e.id !== id));
-
-    try {
-      const { error } = await supabase
-        .from('race_events')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      showToast('Prova eliminada');
-    } catch (err) {
-      console.error('Error deleting race event:', err);
-      setRaceEvents(previous);
-    }
-  };
-
-  const handleOpenForm = (eventId = null) => {
-    lastEditedTargetRef.current = null;
-    setEditingEventId(eventId);
-    if (eventId) {
-      const ev = raceEvents.find(e => e.id === eventId);
-      if (ev) setDraft({
-        date: ev.date || todayIso,
-        location: ev.location || '',
-        name: ev.name || '',
-        race_type: ev.race_type || 'estrada',
-        distance_km: ev.distance_km != null ? String(ev.distance_km) : '',
-        elevation_gain_m: ev.elevation_gain_m != null ? String(ev.elevation_gain_m) : '',
-        experience_level: ev.experience_level || '',
-        race_priority: ev.race_priority || 'a',
-        target_time: ev.target_time_seconds ? formatDuration(ev.target_time_seconds) : (ev.target_time || ''),
-        target_pace: formatPace(ev.target_pace_seconds_per_km),
-        website: ev.website || '',
-        notes: ev.notes || '',
-      });
-    } else {
-      setDraft({ ...EMPTY_DRAFT, date: todayIso });
-    }
-    setIsDirty(false);
-    setIsFormOpen(true);
-  };
-
-  const handleCloseForm = () => {
-    setEditingEventId(null);
-    setIsFormOpen(false);
-    setIsDirty(false);
-    setDraft(EMPTY_DRAFT);
-  };
 
   const updateDraft = (key, val) => {
     setIsDirty(true);
@@ -371,7 +280,7 @@ export default function RunAgenda() {
         </p>
         <div className="mt-5 space-y-2">
           <button onClick={saveAndLeave} disabled={isSubmitting} type="button"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--accent)] shadow-lg active:scale-95 transition disabled:opacity-60"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs bg-[var(--mod-coach-to)] shadow-lg active:scale-95 transition disabled:opacity-60"
             style={{ color: '#fff' }}>
             {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : null}
             {isSubmitting ? 'A guardar...' : 'Gravar e sair'}
@@ -389,136 +298,28 @@ export default function RunAgenda() {
     </div>
   );
 
-  const renderRaceEventCard = (ev) => {
-    const distanceLabel = raceDistanceLabel(ev.distance_km);
-    const isPast = ev.date < todayIso;
-    const done = ev.status === 'concluida';
 
-    // Viabilidade do objetivo — Bloco 1 da doutrina do Coach.
-    // Só avalia provas futuras não concluídas; usa o nível declarado para ESTA
-    // prova se existir, senão cai para o nível geral do perfil.
-    const weeksToRace = Math.floor(
-      (new Date(ev.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
-    );
-    const viability = !done ? assessRaceViability({
-      distanceKm: ev.distance_km,
-      experienceLevel: ev.experience_level || profile?.experience_level,
-      weeksToRace,
-      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
-    }) : { flags: [], isViable: true };
-
-    const FLAG_LABELS = {
-      ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
-      tempo_insuficiente:   `Tempo insuficiente — faltam ${weeksToRace} sem.`,
-      volume_insuficiente:  `Volume insuficiente — média ${weeklyVol} km/sem`,
-    };
-
-    return (
-      <div key={ev.id} className={`card rounded-2xl p-4 ${done ? 'opacity-60' : ''}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
-              {ev.name}
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-corrida-to)', borderColor: 'var(--mod-corrida-to)' }}>
-                {distanceLabel}
-              </span>
-              {ev.race_type === 'trail' && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
-                  Trail
-                </span>
-              )}
-              {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
-              {ev.experience_level && (
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
-                  {experienceLevelLabel(ev.experience_level)}
-                </span>
-              )}
-              {/* Pílula de prioridade A/B/C — cor diferente por nível. */}
-              {ev.race_priority && (
-                <span className={[
-                  'text-[10px] font-bold px-2 py-0.5 rounded-full border',
-                  ev.race_priority === 'a'
-                    ? 'bg-amber-50 border-amber-300 text-amber-700'
-                    : ev.race_priority === 'b'
-                    ? 'bg-blue-50 border-blue-300 text-blue-700'
-                    : 'bg-slate-50 border-slate-300 text-slate-500',
-                ].join(' ')}>
-                  {racePriorityLabel(ev.race_priority)}
-                </span>
-              )}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-1">
-              {formatDatePT(ev.date)}
-              {isPast && !done ? ' · já passou' : ''}
-              {ev.location ? ` · ${ev.location}` : ''}
-            </p>
-            {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
-            {viability.flags.length > 0 && (
-              <div className="mt-1.5 flex flex-col gap-0.5">
-                {viability.flags.map(flag => (
-                  <p key={flag} className="text-[10px] font-semibold flex items-center gap-1" style={{ color: 'var(--color-warn)' }}>
-                    <AlertTriangle size={10} />
-                    {FLAG_LABELS[flag] || flag}
-                  </p>
-                ))}
-              </div>
-            )}
-            {ev.elevation_gain_m != null && <p className="text-[11px] text-slate-500 mt-0.5">D+: {ev.elevation_gain_m} m</p>}
-            {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
-            {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}
-            {ev.website && (
-              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                <LinkIcon size={11} />
-                <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--accent)] transition truncate">
-                  {ev.website}
-                </a>
-              </p>
-            )}
-            {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0 flex-row">
-            <button onClick={() => handleToggleStatus(ev)} aria-label={done ? 'Marcar prova como agendada' : 'Marcar prova como concluída'} className="tap-44 text-slate-400 hover:text-emerald-500 transition">
-              {done ? <RotateCcw size={16} /> : <CheckCircle size={16} />}
-            </button>
-            <button onClick={() => handleOpenForm(ev.id)} aria-label="Editar prova" className="tap-44 text-slate-400 hover:text-[var(--accent)] transition">
-              <Pencil size={16} />
-            </button>
-            <button onClick={() => handleDeleteClick(ev.id)} aria-label="Eliminar prova" className="tap-44 text-slate-400 hover:text-red-500 transition">
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   return (
-    <>
-      <ConfirmDeleteModal 
-        isOpen={showDeleteConfirm} 
-        onClose={() => {
-          setShowDeleteConfirm(false);
-          setDeleteCandidate(null);
-        }}
-        onConfirm={handleConfirmDelete} 
-        title="Eliminar prova?"
-      />
-      <div className="space-y-4 fade-in pb-20">
+    <div className="fixed inset-0 z-50 bg-[var(--page-bg)] flex flex-col fade-in">
       {leaveModal}
-      {!isFormOpen ? (
+      <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <CalendarPlus size={18} style={{ color: 'var(--mod-coach-to)' }} />
+          <h2 className="text-[15px] font-semibold text-slate-700">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
+        </div>
         <button
-          onClick={() => handleOpenForm(null)}
-          className="w-full text-neutral-950 font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
-          style={{ background: 'var(--accent)' }}
+          onClick={attemptCloseForm}
+          type="button"
+          className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+          title="Fechar"
+          aria-label="Fechar"
         >
-          <CalendarPlus size={20} style={{ color: '#000' }} />
-          Nova Prova
+          <X size={16} />
         </button>
-      ) : (
-        <div className="rounded-2xl p-4 space-y-2.5" style={{ backgroundColor: 'rgba(217, 70, 239, 0.01)', border: '1px solid rgba(217, 70, 239, 0.03)', borderLeft: '4px solid var(--mod-corrida-to)' }}>
-          <p className="text-[11px] text-slate-500 font-semibold mb-1 uppercase tracking-wider">
-            {editingEventId ? 'Editar Prova' : 'Nova Prova'}
-          </p>
+      </div>
+      <div className="flex-1 overflow-y-auto px-4 py-5">
+        <div className="space-y-4 fade-in pb-20">
 
           {/* 1.1 Data · 1.2 Local */}
           <div className="grid grid-cols-2 gap-2">
@@ -528,7 +329,7 @@ export default function RunAgenda() {
                 type="date"
                 value={draft.date}
                 onChange={e => updateDraft('date', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
               />
             </div>
             <div>
@@ -539,7 +340,7 @@ export default function RunAgenda() {
                 placeholder="Ex.: Lisboa"
                 value={draft.location}
                 onChange={e => updateDraft('location', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
               />
             </div>
           </div>
@@ -554,7 +355,7 @@ export default function RunAgenda() {
                 placeholder="Ex.: Meia Maratona de Lisboa"
                 value={draft.name}
                 onChange={e => updateDraft('name', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
               />
             </div>
             <div>
@@ -562,7 +363,7 @@ export default function RunAgenda() {
               <select
                 value={draft.race_type}
                 onChange={e => updateTerrain(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
               >
                 {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
@@ -576,7 +377,7 @@ export default function RunAgenda() {
               <select
                 value={draft.distance_km}
                 onChange={e => updateDistance(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
               >
                 {RACE_DISTANCE_OPTIONS.map(opt => (
                   <option key={opt.km} value={opt.km}>{opt.label}</option>
@@ -594,7 +395,7 @@ export default function RunAgenda() {
                   placeholder="Ex.: 1200"
                   value={draft.elevation_gain_m}
                   onChange={e => updateDraft('elevation_gain_m', e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
                 />
               </div>
             )}
@@ -609,7 +410,7 @@ export default function RunAgenda() {
             <select
               value={draft.experience_level}
               onChange={e => updateDraft('experience_level', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
             >
               <option value="">Escolhe...</option>
               {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -627,7 +428,7 @@ export default function RunAgenda() {
             <select
               value={draft.race_priority}
               onChange={e => updateDraft('race_priority', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--accent)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
             >
               {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
@@ -646,7 +447,7 @@ export default function RunAgenda() {
                 placeholder="Ex.: 1:45:00"
                 value={draft.target_time}
                 onChange={e => handleTargetTimeChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
               />
             </div>
             <div>
@@ -657,7 +458,7 @@ export default function RunAgenda() {
                 placeholder="Ex.: 5.20 /km"
                 value={draft.target_pace}
                 onChange={e => handleTargetPaceChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
               />
             </div>
           </div>
@@ -672,7 +473,7 @@ export default function RunAgenda() {
               placeholder="https://..."
               value={draft.website}
               onChange={e => updateDraft('website', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
             />
           </div>
 
@@ -685,7 +486,7 @@ export default function RunAgenda() {
               placeholder="Logística, nutrição planeada..."
               value={draft.notes}
               onChange={e => updateDraft('notes', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)] resize-none"
             />
           </div>
 
@@ -697,30 +498,14 @@ export default function RunAgenda() {
               onClick={handleSaveForm}
               disabled={isSubmitting || !draft.name.trim()}
               type="button"
-              className="bg-[var(--accent)] text-neutral-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+              className="bg-[var(--mod-coach-to)] text-neutral-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
             >
               {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
             </button>
           </div>
         </div>
-      )}
-
-      <div className="space-y-3">
-        <h2 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">Próximas provas</h2>
-        {upcoming.length === 0 ? (
-          <p className="text-xs text-slate-400 px-1">Sem provas agendadas.</p>
-        ) : (
-          upcoming.map(renderRaceEventCard)
-        )}
       </div>
-
-      {past.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <h2 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">Passadas / concluídas</h2>
-          {past.map(renderRaceEventCard)}
-        </div>
-      )}
     </div>
-    </>
   );
 }
+

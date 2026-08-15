@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Award, StickyNote, Clock,
+  Utensils, Coffee, Award, StickyNote, Clock, Flag,
 } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
@@ -78,6 +78,13 @@ export function computeAcceptedWindow(plans = [], items = [], today = todayISO()
 
 /* Título curto de um item, usado na linha fechada. */
 function itemTitle(item) {
+  if (item.isRace) {
+    return [
+      'Prova',
+      item.title,
+      item.target_distance_km ? `${item.target_distance_km} km` : null,
+    ].filter(Boolean).join(' · ');
+  }
   if (item.kind === 'corrida') {
     return [
       item.training_type
@@ -96,12 +103,14 @@ function itemTitle(item) {
 }
 
 function itemIcon(item) {
+  if (item.isRace) return Flag;
   if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
   return Coffee;
 }
 
 function itemKindClass(item) {
+  if (item.isRace) return 'coach';
   if (item.kind === 'corrida') return 'run';
   if (item.kind === 'ginasio') return 'gym';
   if (item.kind === 'corpo') return 'corpo';
