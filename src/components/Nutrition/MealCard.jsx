@@ -122,20 +122,20 @@ export default function MealCard({ meal, onEdit }) {
         <div className="space-y-3 pt-2 border-t border-slate-200/60 fade-in">
           {/* Pílulas Coloridas com Ícones + Valores Reais */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-red-50/90 border border-red-200/80 text-red-800 shadow-xs flex items-center gap-1.5">
-              <Flame size={14} className="text-red-600" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
+              <Flame size={14} className="text-slate-500" />
               {n.calories.toFixed(0)} kcal
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-blue-50/90 text-blue-800 border border-blue-200/80 shadow-xs flex items-center gap-1.5">
-              <Beef size={14} className="text-blue-600" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
+              <Beef size={14} className="text-slate-500" />
               {n.protein.toFixed(1)}g Proteína
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50/90 text-amber-800 border border-amber-200/80 shadow-xs flex items-center gap-1.5">
-              <Wheat size={14} className="text-amber-600" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
+              <Wheat size={14} className="text-slate-500" />
               {n.carbs.toFixed(1)}g Hidratos
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-pink-50/90 text-pink-800 border border-pink-200/80 shadow-xs flex items-center gap-1.5">
-              <Droplet size={14} className="text-pink-600" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
+              <Droplet size={14} className="text-slate-500" />
               {n.fat.toFixed(1)}g Gordura
             </span>
           </div>
@@ -192,11 +192,11 @@ export default function MealCard({ meal, onEdit }) {
             );
           })}
 
-          {/* ANÁLISE DO COACH */}
+          {/* Análise do Coach */}
           {coachCommentary && (
-            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                <Award size={16} className="text-emerald-600 shrink-0" />
+            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
               <div className="text-xs text-slate-700 font-normal">

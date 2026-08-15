@@ -93,11 +93,11 @@ export default function GymSessionCard({ session, onEdit }) {
 
   // Pílulas Coloridas com Ícones (apenas métricas com dados)
   const metricChips = [
-    session.duration_seconds ? { key: 'dur', colorClass: 'bg-purple-100/90 text-purple-800 border-purple-200/80', icon: <Timer size={14} className="text-purple-600" />, label: formatDuration(session.duration_seconds) } : null,
-    session.calories_kcal ? { key: 'cal', colorClass: 'bg-orange-100/90 text-orange-800 border-orange-200/80', icon: <Flame size={14} className="text-orange-600" />, label: `${session.calories_kcal} kcal` } : null,
-    session.avg_hr ? { key: 'avghr', colorClass: 'bg-rose-100/90 text-rose-800 border-rose-200/80', icon: <HeartPulse size={14} className="text-rose-600" />, label: `${session.avg_hr} bpm méd` } : null,
-    session.max_hr ? { key: 'maxhr', colorClass: 'bg-red-100/90 text-red-800 border-red-200/80', icon: <TrendingUp size={14} className="text-red-600" />, label: `${session.max_hr} bpm máx` } : null,
-    session.exertion ? { key: 'exert', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Gauge size={14} className="text-amber-600" />, label: `Esforço ${session.exertion}/10` } : null,
+    session.duration_seconds ? { key: 'dur', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Timer size={14} className="text-slate-500" />, label: formatDuration(session.duration_seconds) } : null,
+    session.calories_kcal ? { key: 'cal', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Flame size={14} className="text-slate-500" />, label: `${session.calories_kcal} kcal` } : null,
+    session.avg_hr ? { key: 'avghr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${session.avg_hr} bpm méd` } : null,
+    session.max_hr ? { key: 'maxhr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${session.max_hr} bpm máx` } : null,
+    session.exertion ? { key: 'exert', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Gauge size={14} className="text-slate-500" />, label: `Esforço ${session.exertion}/10` } : null,
   ].filter(Boolean);
 
   return (
@@ -194,7 +194,7 @@ export default function GymSessionCard({ session, onEdit }) {
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? 'bg-purple-500' : 'bg-slate-200'}`} 
+                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? 'bg-[var(--green-dark)]' : 'bg-slate-200'}`} 
                   />
                 ))}
               </div>
@@ -230,9 +230,9 @@ export default function GymSessionCard({ session, onEdit }) {
 
           {/* ANÁLISE DO COACH */}
           {coachCommentary && (
-            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                <Award size={16} className="text-emerald-600 shrink-0" />
+            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
               <div className="text-xs text-slate-700 font-normal">

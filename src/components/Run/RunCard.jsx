@@ -164,18 +164,18 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const totalSteps = details.total_steps;
 
   const activeChips = [
-    distStr ? { key: 'dist', colorClass: 'bg-pink-100/90 text-pink-800 border-pink-200/80', icon: <Route size={14} className="text-pink-600" />, label: distStr } : null,
-    durStr ? { key: 'dur', colorClass: 'bg-purple-100/90 text-purple-800 border-purple-200/80', icon: <Timer size={14} className="text-purple-600" />, label: durStr } : null,
-    paceStr ? { key: 'pace', colorClass: 'bg-indigo-100/90 text-indigo-800 border-indigo-200/80', icon: <Gauge size={14} className="text-indigo-600" />, label: paceStr } : null,
-    sweatLoss ? { key: 'sweat', colorClass: 'bg-sky-100/90 text-sky-800 border-sky-200/80', icon: <Droplet size={14} className="text-sky-600" />, label: `${sweatLoss} ml transpiração` } : null,
-    totalSteps ? { key: 'steps', colorClass: 'bg-emerald-100/90 text-emerald-800 border-emerald-200/80', icon: <Footprints size={14} className="text-emerald-600" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
-    elevation ? { key: 'elev', colorClass: 'bg-teal-100/90 text-teal-800 border-teal-200/80', icon: <Navigation size={14} className="text-teal-600" />, label: `${elevation}m Desnível` } : null,
-    cadence ? { key: 'cad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${cadence} spm méd` } : null,
-    maxCadence ? { key: 'maxcad', colorClass: 'bg-amber-100/90 text-amber-800 border-amber-200/80', icon: <Zap size={14} className="text-amber-600" />, label: `${maxCadence} spm máx` } : null,
-    calories ? { key: 'cal', colorClass: 'bg-orange-100/90 text-orange-800 border-orange-200/80', icon: <Flame size={14} className="text-orange-600" />, label: `${calories} kcal` } : null,
-    vo2max ? { key: 'vo2', colorClass: 'bg-blue-100/90 text-blue-800 border-blue-200/80', icon: <Activity size={14} className="text-blue-600" />, label: `VO2 máx ${vo2max}` } : null,
-    avgHr ? { key: 'avghr', colorClass: 'bg-rose-100/90 text-rose-800 border-rose-200/80', icon: <HeartPulse size={14} className="text-rose-600" />, label: `${avgHr} bpm méd` } : null,
-    maxHr ? { key: 'maxhr', colorClass: 'bg-red-100/90 text-red-800 border-red-200/80', icon: <TrendingUp size={14} className="text-red-600" />, label: `${maxHr} bpm máx` } : null,
+    distStr ? { key: 'dist', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Route size={14} className="text-slate-500" />, label: distStr } : null,
+    durStr ? { key: 'dur', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Timer size={14} className="text-slate-500" />, label: durStr } : null,
+    paceStr ? { key: 'pace', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Gauge size={14} className="text-slate-500" />, label: paceStr } : null,
+    sweatLoss ? { key: 'sweat', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Droplet size={14} className="text-slate-500" />, label: `${sweatLoss} ml transpiração` } : null,
+    totalSteps ? { key: 'steps', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Footprints size={14} className="text-slate-500" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
+    elevation ? { key: 'elev', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Navigation size={14} className="text-slate-500" />, label: `${elevation}m Desnível` } : null,
+    cadence ? { key: 'cad', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Zap size={14} className="text-slate-500" />, label: `${cadence} spm méd` } : null,
+    maxCadence ? { key: 'maxcad', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Zap size={14} className="text-slate-500" />, label: `${maxCadence} spm máx` } : null,
+    calories ? { key: 'cal', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Flame size={14} className="text-slate-500" />, label: `${calories} kcal` } : null,
+    vo2max ? { key: 'vo2', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Activity size={14} className="text-slate-500" />, label: `VO2 máx ${vo2max}` } : null,
+    avgHr ? { key: 'avghr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${avgHr} bpm méd` } : null,
+    maxHr ? { key: 'maxhr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${maxHr} bpm máx` } : null,
   ].filter(Boolean);
 
   return (
@@ -392,7 +392,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? 'bg-purple-500' : 'bg-slate-200'}`} 
+                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? 'bg-[var(--green-dark)]' : 'bg-slate-200'}`} 
                   />
                 ))}
               </div>
@@ -407,11 +407,11 @@ export default function RunCard({ run, onEdit, onDelete }) {
             </div>
           )}
 
-          {/* ANÁLISE DO COACH */}
+          {/* Análise do Coach */}
           {coachCommentary && (
-            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                <Award size={16} className="text-emerald-600 shrink-0" />
+            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
               <div className="text-xs text-slate-700 font-normal">

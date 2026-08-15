@@ -146,9 +146,9 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
 
           {/* ANÁLISE DO COACH */}
           {coachCommentary && (
-            <div className="bg-[var(--surf-success-soft)] border border-emerald-200/80 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                <Award size={16} className="text-emerald-600 shrink-0" />
+            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
               <p className="text-xs text-slate-700 leading-relaxed font-normal">
