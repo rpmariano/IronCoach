@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock,
@@ -420,9 +420,25 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
     );
   }
 
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const todayIdx = useMemo(() => {
+    const idx = days.findIndex(d => d.isToday);
+    return idx !== -1 ? idx : 0;
+  }, [days]);
+
+  const [currentIndex, setCurrentIndex] = useState(todayIdx);
   const [allExpanded, setAllExpanded] = useState(false);
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollRef.current && todayIdx > 0) {
+      const timer = setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollLeft = todayIdx * scrollRef.current.offsetWidth;
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [todayIdx]);
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef,
     days.length,
