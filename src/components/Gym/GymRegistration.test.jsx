@@ -265,7 +265,7 @@ describe('GymRegistration — editar sessão existente', () => {
   it('mudar o esforço passa pelo Coach — é métrica analítica', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
-    fireEvent.change(screen.getByPlaceholderText(/Ex: 8/), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: '9' }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));

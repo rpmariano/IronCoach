@@ -155,18 +155,18 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
   });
 
-  it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
+  it('mostra o upload de fotos por omissão e esconde os campos manuais extra', () => {
     render(<RunRegistration onClose={onClose} />);
     expect(screen.getByText(/Escolhe os prints da app de corrida/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Ex: 48.5')).not.toBeInTheDocument(); // VO2 Max is an extra field
   });
 
-  it('ao escolher Manual, esconde o upload e mostra os campos manuais', () => {
+  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra', () => {
     render(<RunRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ex: 48.5')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar Corrida/i })).toBeInTheDocument();
   });
 

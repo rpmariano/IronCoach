@@ -9,6 +9,7 @@ import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/exper
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
 import { useToast } from '../shared/ToastProvider';
+import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
