@@ -316,7 +316,16 @@ export default function Perfil() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav */}
-      <div className="flex gap-2 p-1 bg-white border border-slate-200/80 rounded-2xl mb-4 shadow-sm">
+      <div className="relative flex gap-2 p-1 bg-white border border-slate-200/80 rounded-2xl mb-4 shadow-sm">
+        {/* Sliding indicator */}
+        <div 
+          className="absolute top-1 bottom-1 rounded-xl transition-all duration-300 ease-in-out shadow-[0_2px_10px_rgba(251,191,36,0.3)]"
+          style={{
+            width: 'calc((100% - 16px) / 3)', // 3 tabs, 2 gaps of 8px
+            transform: `translateX(calc(${['perfil', 'metas', 'coach'].indexOf(tab)} * 100% + ${['perfil', 'metas', 'coach'].indexOf(tab) * 8}px))`,
+            background: 'linear-gradient(135deg, #d97706, #fbbf24)'
+          }}
+        />
         {[
           { key: 'perfil', label: 'Pessoal', icon: User },
           { key: 'metas', label: 'Metas', icon: Target },
@@ -325,10 +334,9 @@ export default function Perfil() {
           <button
             key={t.key}
             onClick={() => requestTabChange(t.key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition ${
-              tab === t.key ? 'shadow-[0_2px_10px_rgba(251,191,36,0.3)]' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors duration-300 ${
+              tab === t.key ? 'text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
-            style={tab === t.key ? { background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: '#fff' } : {}}
           >
             <t.icon size={14} /> {t.label}
           </button>
