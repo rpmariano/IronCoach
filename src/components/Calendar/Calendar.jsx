@@ -125,19 +125,19 @@ export default function Calendar() {
       
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
       <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/80 shadow-[0_10px_40px_rgba(0,0,0,0.05),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
             <ChevronLeft size={16} />
           </button>
-          <span className="text-sm font-semibold capitalize text-slate-800">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
+          <span className="text-[15px] font-bold capitalize text-slate-900 tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
           <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
             <ChevronRight size={16} />
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-3">
+        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <span className="text-[10px] font-bold text-slate-500 uppercase" key={i}>{d}</span>
+            <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
           ))}
         </div>
 
@@ -162,7 +162,7 @@ export default function Calendar() {
                   onClick={() => setSelectedDate(date)}
                   className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
-                      ? 'bg-white border-slate-300 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
+                      ? 'bg-white border-orange-500 text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
                   }`}
                 >
@@ -184,7 +184,7 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 grid grid-cols-2 gap-2 text-[10px] font-semibold text-slate-500 shadow-sm">
+        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-1.5 rounded-[2px]" style={{ background: 'var(--mod-corrida-to, #c026d3)' }}></span>
             <span>Corrida</span>

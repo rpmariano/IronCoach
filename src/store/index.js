@@ -35,6 +35,7 @@ export const useAppStore = create((set, get) => ({
   
   // UI State
   activeTab: 'home',
+  lastDashboardTab: 'corrida',
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout'
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
@@ -50,7 +51,11 @@ export const useAppStore = create((set, get) => ({
   setActiveTab: (tab) => {
     const guard = get().navGuard;
     if (guard && !guard(tab)) return false;
-    set({ activeTab: tab });
+    if (['corrida', 'ginasio', 'nutricao', 'corpo'].includes(tab)) {
+      set({ activeTab: tab, lastDashboardTab: tab });
+    } else {
+      set({ activeTab: tab });
+    }
     return true;
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),

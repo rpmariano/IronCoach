@@ -24,7 +24,7 @@ const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode } = useAppStore();
+  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode, lastDashboardTab } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -189,7 +189,7 @@ export default function Layout({ children }) {
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
-        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} />
+        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} lastDashboardTab={lastDashboardTab} />
         <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
@@ -246,13 +246,13 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
   );
 }
 
-function DashboardVBarBtn({ activeTab, setTab }) {
+function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
   const active = ['corrida', 'ginasio', 'nutricao', 'corpo'].includes(activeTab);
   const activeColor = 'var(--accent)';
 
   return (
     <button
-      onClick={() => { if (!active) setTab('corrida'); }}
+      onClick={() => { if (!active) setTab(lastDashboardTab || 'corrida'); }}
       data-vert="dashboard"
       aria-label="Dashboard"
       aria-current={active ? 'page' : undefined}
