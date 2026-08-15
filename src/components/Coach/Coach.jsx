@@ -328,8 +328,8 @@ export default function Coach() {
                 if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
                 if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
               }}
-              className="text-white font-bold text-xs rounded-full px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
-              style={{ backgroundColor: 'var(--mod-coach-to)' }}
+              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
               <Sparkles className="w-4 h-4 text-white" />
               <span>

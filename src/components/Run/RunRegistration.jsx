@@ -1271,9 +1271,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <button
           type="button"
           onClick={() => setShowMissingMetricsSheet(true)}
-          className="fixed bottom-20 right-5 z-[90] bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-full px-3.5 py-2.5 shadow-lg flex items-center gap-1.5 transition active:scale-95 animate-bounce"
+          className="fixed bottom-20 right-5 z-[90] text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+          style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
         >
-          <Sparkles className="w-4 h-4 text-amber-100" />
+          <Sparkles className="w-4 h-4 text-white" />
           <span>Métricas em falta ({missingKeysList.length})</span>
         </button>
       )}
