@@ -137,7 +137,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     render(<GymRegistration onClose={onClose} />);
     goManual();
     fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
-    fireEvent.click(screen.getByRole('button', { name: '8' }));
+    fireEvent.click(screen.getByRole('button', { name: '7' }));
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
 
