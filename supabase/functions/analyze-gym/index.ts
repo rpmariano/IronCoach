@@ -47,6 +47,7 @@ const RESPONSE_SCHEMA = {
     avg_hr: { type: "NUMBER", nullable: true },
     max_hr: { type: "NUMBER", nullable: true },
     exertion: { type: "NUMBER", nullable: true },
+    volume_kg: { type: "NUMBER", nullable: true },
     // Tudo o que o print mostra e a app ainda não guarda. Não vai para a BD:
     // é registado nos logs para depois decidirmos o que vale a pena promover a
     // coluna própria (ver logEvent 'gym_analysis' no cliente).
@@ -74,6 +75,7 @@ const RESPONSE_SCHEMA = {
               properties: {
                 reps: { type: "NUMBER", nullable: true },
                 weight: { type: "NUMBER", nullable: true },
+                one_rep_max_est: { type: "NUMBER", nullable: true },
               },
               required: ["reps", "weight"],
             },
@@ -101,6 +103,7 @@ const METRICS_PROMPT =
   "de conversão. " +
   "Extrai ainda o esforço percebido (exertion) numa escala de 1 a 10, se o ecrã " +
   "o mostrar (ex.: \"6/10\" num campo chamado Exertion, Esforço ou RPE). " +
+  "Se vires o Volume Total da sessão em kg, extrai o número para volume_kg. " +
   "Devolve null em qualquer campo que não esteja visível — nunca inventes nem " +
   "estimes valores.\n\n" +
   "Por fim, preenche extra_fields com TODOS os outros dados numéricos ou " +
@@ -136,7 +139,8 @@ function buildPrompt(kind: string, notes: string | null): string {
       "(possivelmente ecrãs diferentes da mesma sessão). Combina a informação de todas as " +
       "imagens e identifica cada exercício distinto, sem o repetir se aparecer em mais do " +
       "que um ecrã. Para cada exercício, extrai a lista de séries pela ordem em que aparecem, " +
-      "cada uma com repetições (reps) e carga em quilogramas (weight). Se uma série não tiver " +
+      "cada uma com repetições (reps) e carga em quilogramas (weight). Se vires " +
+      "uma coluna ou valor explícito para o 1RM estimado da série, extrai para one_rep_max_est. Se uma série não tiver " +
       "reps ou carga visíveis/registados, devolve null nesse campo (não inventes valores). " +
       "Sugere também um nome curto para a sessão (session_name) com base no tipo de treino " +
       "(ex.: \"Peito e Tríceps\", \"Pernas\", \"Full Body\"), em português de Portugal, e " +
@@ -283,7 +287,7 @@ async function checkAndLogAppImage(
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
 type GeminiUsage = { input_tokens: number; output_tokens: number };
 
-type GymSet = { reps: number | null; weight: number | null };
+type GymSet = { reps: number | null; weight: number | null; one_rep_max_est: number | null };
 type GymExercise = { name: string; sets: GymSet[] };
 // Métricas do relógio. Os limites espelham os CHECKs da tabela
 // workout_sessions — um valor fora de gama vindo do modelo tem de virar null
@@ -295,6 +299,7 @@ type GymMetrics = {
   avg_hr: number | null;
   max_hr: number | null;
   exertion: number | null;
+  volume_kg: number | null;
 };
 // Campo visto no print para o qual ainda não há coluna. Só vai para os logs.
 type GymExtraField = { label: string; value: string };
@@ -376,7 +381,7 @@ async function analyzeWithGemini(
       name: String(ex?.name ?? "").slice(0, 120) || "Exercício",
       sets: (Array.isArray(ex?.sets) ? ex.sets : [])
         // deno-lint-ignore no-explicit-any
-        .map((s: any) => ({ reps: num(s?.reps), weight: num(s?.weight) })),
+        .map((s: any) => ({ reps: num(s?.reps), weight: num(s?.weight), one_rep_max_est: num(s?.one_rep_max_est) })),
     }))
     .filter((ex) => ex.sets.length > 0);
 
@@ -387,6 +392,7 @@ async function analyzeWithGemini(
     avg_hr: intInRange(parsed.avg_hr, 1, 299),
     max_hr: intInRange(parsed.max_hr, 1, 299),
     exertion: intInRange(parsed.exertion, 1, 10),
+    volume_kg: intInRange(parsed.volume_kg, 0, 1000000),
   };
 
   const hasAnyMetric = Object.values(metrics).some((v) => v !== null);
@@ -433,11 +439,11 @@ async function analyzeWithGemini(
 
 // Achata exercícios→séries em linhas prontas para workout_session_sets
 // (exercise_name + set_index sequencial por exercício).
-function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_index: number; reps: number | null; weight: number | null }[] {
-  const rows: { exercise_name: string; set_index: number; reps: number | null; weight: number | null }[] = [];
+function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_index: number; reps: number | null; weight: number | null; one_rep_max_est: number | null }[] {
+  const rows: { exercise_name: string; set_index: number; reps: number | null; weight: number | null; one_rep_max_est: number | null }[] = [];
   for (const ex of exercises) {
     ex.sets.forEach((s, i) => {
-      rows.push({ exercise_name: ex.name, set_index: i, reps: s.reps, weight: s.weight });
+      rows.push({ exercise_name: ex.name, set_index: i, reps: s.reps, weight: s.weight, one_rep_max_est: s.one_rep_max_est });
     });
   }
   return rows;
@@ -466,6 +472,7 @@ async function generateGymCoachNotes(
   const avgDuration = avg("duration_seconds");
   const avgCalories = avg("calories_kcal");
   const avgExertion = avg("exertion");
+  const avgVolume = avg("volume_kg");
 
   const contextLines = [
     `Tipo: ${kindLabel}`,
@@ -475,6 +482,7 @@ async function generateGymCoachNotes(
     m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
     m.max_hr ? `FC máxima: ${m.max_hr} bpm` : null,
     m.exertion ? `Esforço percebido: ${m.exertion}/10` : null,
+    m.volume_kg ? `Volume total: ${m.volume_kg} kg` : null,
     session.notes ? `Nota do utilizador: "${session.notes}"` : null,
   ].filter(Boolean).join("\n");
 
@@ -608,6 +616,7 @@ Deno.serve(async (req) => {
       avg_hr: intInRange(body.avg_hr, 1, 299),
       max_hr: intInRange(body.max_hr, 1, 299),
       exertion: intInRange(body.exertion, 1, 10),
+      volume_kg: intInRange(body.volume_kg, 0, 1000000),
     };
     // Campo a campo: o que o utilizador não preencheu é preenchido pela IA.
     const mergeMetrics = (ai: GymMetrics): GymMetrics => ({
@@ -616,6 +625,7 @@ Deno.serve(async (req) => {
       avg_hr: userMetrics.avg_hr ?? ai.avg_hr,
       max_hr: userMetrics.max_hr ?? ai.max_hr,
       exertion: userMetrics.exertion ?? ai.exertion,
+      volume_kg: userMetrics.volume_kg ?? ai.volume_kg,
     });
     // Se o utilizador escolheu categorias, são essas — não se misturam com as
     // da IA, senão bastava ele desmarcar uma para ela voltar a aparecer.
@@ -674,6 +684,7 @@ Deno.serve(async (req) => {
               set_index: Number.isFinite(Number(s?.set_index)) ? Number(s.set_index) : i,
               reps: Number.isFinite(reps) ? reps : null,
               weight: Number.isFinite(weight) ? weight : null,
+              one_rep_max_est: Number.isFinite(Number(s?.one_rep_max_est)) ? Number(s.one_rep_max_est) : null,
               session_id: sessionId,
               user_id: userId,
             };
