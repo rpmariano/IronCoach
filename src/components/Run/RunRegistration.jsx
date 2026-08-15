@@ -8,6 +8,7 @@ import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 
@@ -737,29 +738,30 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {runKind === 'treino' ? (
             <div className="mb-4">
-              <label className="text-[12px] text-slate-500 mb-1.5 block">Tipo de treino</label>
-              <select
-                value={runTrainingType}
-                onChange={e => setRunTrainingType(e.target.value)}
-                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
-              >
-                <optgroup label="Corrida solta">
-                  <option value="continuo">Contínuo</option>
-                  <option value="longo">Longo</option>
-                  <option value="recuperacao">Recuperação</option>
-                </optgroup>
-                <optgroup label="Estruturado">
-                  <option value="tempo">Ritmo (Tempo)</option>
-                  <option value="fartlek">Fartlek</option>
-                  <option value="intervalos">Intervalos</option>
-                </optgroup>
-                <optgroup label="Trilho">
-                  <option value="subidas">Subidas</option>
-                  <option value="trail">Trail</option>
-                  <option value="tecnico">Técnico (trilho)</option>
-                </optgroup>
-              </select>
-              <p className="text-[10px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+              <RunTrainingTypeHelp label="Tipo de treino">
+                <select
+                  value={runTrainingType}
+                  onChange={e => setRunTrainingType(e.target.value)}
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+                >
+                  <optgroup label="Corrida solta">
+                    <option value="continuo">Contínuo</option>
+                    <option value="longo">Longo</option>
+                    <option value="recuperacao">Recuperação</option>
+                  </optgroup>
+                  <optgroup label="Estruturado">
+                    <option value="tempo">Ritmo (Tempo)</option>
+                    <option value="fartlek">Fartlek</option>
+                    <option value="intervalos">Intervalos</option>
+                  </optgroup>
+                  <optgroup label="Trilho">
+                    <option value="subidas">Subidas</option>
+                    <option value="trail">Trail</option>
+                    <option value="tecnico">Técnico (trilho)</option>
+                  </optgroup>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+              </RunTrainingTypeHelp>
             </div>
           ) : (
             <div className="mb-4">
