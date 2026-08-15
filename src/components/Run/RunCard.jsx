@@ -186,7 +186,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-[var(--green-dark)] shrink-0 mt-0.5">
+          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
             <RunIcon className="w-5 h-5" />
           </div>
           <div className="min-w-0">

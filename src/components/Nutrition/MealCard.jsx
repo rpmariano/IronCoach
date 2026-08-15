@@ -86,7 +86,7 @@ export default function MealCard({ meal, onEdit }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-[var(--green-dark)] shrink-0">
+          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-nutricao)] shrink-0">
             <IconComponent size={20} />
           </div>
           <div>

@@ -162,33 +162,33 @@
 }
 
 .wpc-icon-wrap.run {
-  background: rgba(252, 231, 243, 0.7);
-  color: #db2777;
-  border: 1px solid rgba(251, 207, 232, 0.6);
+  background: var(--surf-900);
+  color: var(--mod-corrida);
+  border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.gym {
-  background: rgba(254, 249, 195, 0.7);
-  color: #ca8a04;
-  border: 1px solid rgba(254, 240, 138, 0.6);
+  background: var(--surf-900);
+  color: var(--mod-ginasio);
+  border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.corpo {
-  background: rgba(255, 228, 230, 0.7);
-  color: #e11d48;
-  border: 1px solid rgba(254, 205, 211, 0.6);
+  background: var(--surf-900);
+  color: var(--mod-corpo);
+  border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.nutri {
-  background: rgba(209, 250, 229, 0.7);
-  color: #059669;
-  border: 1px solid rgba(167, 243, 208, 0.6);
+  background: var(--surf-900);
+  color: var(--mod-nutricao);
+  border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.rest {
-  background: rgba(255, 237, 213, 0.7);
-  color: #ea580c;
-  border: 1px solid rgba(254, 215, 170, 0.6);
+  background: var(--surf-900);
+  color: var(--mod-descanso);
+  border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.empty {
@@ -323,11 +323,11 @@
   color: #94a3b8;
 }
 
-.wpc-detail-title.run { color: #db2777; }
-.wpc-detail-title.gym { color: #ca8a04; }
-.wpc-detail-title.corpo { color: #e11d48; }
-.wpc-detail-title.nutri { color: #059669; }
-.wpc-detail-title.rest { color: #ea580c; }
+.wpc-detail-title.run { color: var(--mod-corrida); }
+.wpc-detail-title.gym { color: var(--mod-ginasio); }
+.wpc-detail-title.corpo { color: var(--mod-corpo); }
+.wpc-detail-title.nutri { color: var(--mod-nutricao); }
+.wpc-detail-title.rest { color: var(--mod-descanso); }
 
 .wpc-pill-status {
   display: flex;
@@ -342,8 +342,9 @@
 }
 
 .wpc-pill-status.success {
-  background: rgba(5, 150, 105, 0.1);
-  color: #059669;
+  background: var(--surf-success-soft);
+  color: var(--color-success);
+  border-color: rgba(4, 120, 87, 0.2);
 }
 
 .wpc-pill-status.danger {
@@ -382,23 +383,23 @@
 }
 
 .wpc-info-box-header.nutri {
-  color: #059669;
+  color: var(--mod-nutricao);
 }
 
 .wpc-info-box-header.rest {
-  color: #ea580c;
+  color: var(--mod-descanso);
 }
 
 .wpc-info-box-header.run {
-  color: #db2777;
+  color: var(--mod-corrida);
 }
 
 .wpc-info-box-header.gym {
-  color: #ca8a04;
+  color: var(--mod-ginasio);
 }
 
 .wpc-info-box-header.corpo {
-  color: #e11d48;
+  color: var(--mod-corpo);
 }
 
 .wpc-info-box-header.coach {
@@ -414,7 +415,7 @@
 
 .wpc-info-box-disclaimer {
   font-size: 0.65rem;
-  color: #10b981;
+  color: var(--mod-nutricao);
   opacity: 0.8;
   margin-top: 6px;
   font-weight: 600;

@@ -221,11 +221,11 @@ export default function Calendar() {
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
                   <div className="flex gap-[3px] justify-center w-full px-1.5 h-1">
-                    {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--race-to)' : 'rgba(255,255,255,0.7)' }} />}
-                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--blue-glow)]" />}
-                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--chrome-dark)]" />}
-                    {dayMeals.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--green-glow)]" />}
-                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--accent-glow)]" />}
+                    {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--mod-prova)' : 'rgba(255,255,255,0.7)' }} />}
+                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corrida)]" />}
+                    {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-ginasio)]" />}
+                    {dayMeals.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-nutricao)]" />}
+                    {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corpo)]" />}
                     
                     {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
                        <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
@@ -240,23 +240,23 @@ export default function Calendar() {
         {/* Legend */}
         <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--race-to)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-prova)]"></span>
             <span>Prova</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--blue-glow)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-corrida)]"></span>
             <span>Corrida</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--chrome-dark)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-ginasio)]"></span>
             <span>Ginásio</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--green-glow)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-nutricao)]"></span>
             <span>Nutrição</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--accent-glow)]"></span>
+            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-corpo)]"></span>
             <span>Corpo</span>
           </div>
         </div>
