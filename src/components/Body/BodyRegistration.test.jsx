@@ -53,11 +53,11 @@ describe('BodyRegistration — cartão único: alternar entre Foto e Manual', ()
 
   it('ao escolher Manual, esconde o upload e mostra os campos de métricas', () => {
     render(<BodyRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app Renpho Health/)).not.toBeInTheDocument();
     expect(screen.getByText('Peso (kg)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analisar Avaliação' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar Avaliação/i })).toBeInTheDocument();
   });
 });
 
@@ -120,7 +120,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
   it('envia o registo manual para analyze-body em modo manual, sem imagens', async () => {
     mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-2' } }, error: null });
@@ -129,7 +129,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
     fireEvent.change(screen.getByLabelText('Gordura corporal (%)'), { target: { value: '18.2' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Avaliação' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -147,7 +147,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Avaliação' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
@@ -159,7 +159,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Avaliação' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
 
     await screen.findByText('Falha a gravar avaliação.');
     expect(onClose).not.toHaveBeenCalled();
@@ -195,7 +195,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
     expect(screen.getByText('Editar Avaliação')).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
-    expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
   });
 
   it('mudar uma métrica passa pelo Coach e regenera o resumo', async () => {
@@ -230,7 +230,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: '2026-01-09' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
 
     await waitFor(() => expect(mocks.updateAssessment).toHaveBeenCalledTimes(1));
     const [payload, id] = mocks.updateAssessment.mock.calls[0];

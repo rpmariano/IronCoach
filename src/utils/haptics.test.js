@@ -22,7 +22,7 @@ describe('haptics utility', () => {
     window.navigator.vibrate = vibrateMock;
 
     triggerCarouselTick();
-    expect(vibrateMock).toHaveBeenCalledWith(15);
+    expect(vibrateMock).toHaveBeenCalledWith(30);
   });
 
   it('triggerHaptic calls navigator.vibrate with pattern', () => {
@@ -59,7 +59,7 @@ describe('useCarouselHaptics hook', () => {
       result.current.scrollTo(1);
     });
 
-    expect(vibrateMock).toHaveBeenCalledWith(15);
+    expect(vibrateMock).toHaveBeenCalledWith(30);
     expect(setCurrentIndex).toHaveBeenCalledWith(1);
     expect(scrollRef.current.scrollTo).toHaveBeenCalledWith({ left: 300, behavior: 'smooth' });
   });
@@ -82,7 +82,7 @@ describe('useCarouselHaptics hook', () => {
       result.current.handleTouchMove();
     });
 
-    expect(vibrateMock).toHaveBeenCalledWith(15);
+    expect(vibrateMock).toHaveBeenCalledWith(30);
     expect(setCurrentIndex).toHaveBeenCalledWith(1);
   });
 });

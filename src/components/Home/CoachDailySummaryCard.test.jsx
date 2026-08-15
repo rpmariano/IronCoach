@@ -30,10 +30,10 @@ describe('CoachDailySummaryCard', () => {
     expect(screen.getByText('Treinaste 4x esta semana.')).toBeInTheDocument();
     expect(screen.getByText('Recapitulação')).toBeInTheDocument();
     // Uma só mensagem não mostra navegação nem pontos.
-    expect(screen.queryByLabelText('Próxima mensagem')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Ver mensagem 2')).not.toBeInTheDocument();
   });
 
-  it('navega entre mensagens pelos botões seguinte/anterior', () => {
+  it('navega entre mensagens pelos botões de paginação diretos (dots)', () => {
     useAppStore.setState({
       dailySummary: {
         date: '2026-08-11',
@@ -46,20 +46,11 @@ describe('CoachDailySummaryCard', () => {
     render(<CoachDailySummaryCard />);
     expect(screen.getByText('Recapitulação aqui.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('Próxima mensagem'));
+    fireEvent.click(screen.getByLabelText('Ver mensagem 2'));
     expect(screen.getByText('Bebe mais água hoje.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText('Mensagem anterior'));
+    fireEvent.click(screen.getByLabelText('Ver mensagem 1'));
     expect(screen.getByText('Recapitulação aqui.')).toBeInTheDocument();
-  });
-
-  it('o botão "seguinte" desativa-se na última mensagem', () => {
-    useAppStore.setState({
-      dailySummary: { date: '2026-08-11', recap: 'A', warnings: 'B', meal_suggestion: null, tomorrow_prep: null },
-    });
-    render(<CoachDailySummaryCard />);
-    fireEvent.click(screen.getByLabelText('Próxima mensagem'));
-    expect(screen.getByLabelText('Próxima mensagem')).toBeDisabled();
   });
 
   it('o botão atualizar força uma nova geração e volta ao início', () => {
@@ -67,7 +58,7 @@ describe('CoachDailySummaryCard', () => {
       dailySummary: { date: '2026-08-11', recap: 'A', warnings: 'B', meal_suggestion: null, tomorrow_prep: null },
     });
     render(<CoachDailySummaryCard />);
-    fireEvent.click(screen.getByLabelText('Próxima mensagem'));
+    fireEvent.click(screen.getByLabelText('Ver mensagem 2'));
     expect(screen.getByText('B')).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText('Atualizar resumo'));
@@ -86,6 +77,6 @@ describe('CoachDailySummaryCard', () => {
     });
     render(<CoachDailySummaryCard />);
     expect(screen.getByText('Come mais fibra.')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Próxima mensagem')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Ver mensagem 2')).not.toBeInTheDocument();
   });
 });

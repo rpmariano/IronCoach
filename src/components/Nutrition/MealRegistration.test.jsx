@@ -55,7 +55,7 @@ describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () 
   it('envia o payload correto (imagens, data, tipo de refeição, observações)', async () => {
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
     render(<MealRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Almoço' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
     fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Big Mac' } });
     await selectPhoto();
 
@@ -113,11 +113,11 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
 
   it('ao escolher Manual, esconde o upload e mostra o formulário de alimentos', () => {
     render(<MealRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Podes juntar várias fotos/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analisar Refeição' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar Refeição/i })).toBeInTheDocument();
   });
 });
 
@@ -130,12 +130,12 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
   const addItem = (name, grams) => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
     fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
   };
 
   it('"Adicionar alimento" só junta à lista local, sem chamar o Gemini/Coach', () => {
@@ -154,13 +154,13 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     render(<MealRegistration onClose={onClose} />);
     goManual();
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: '1 fatia de fiambre' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
 
     expect(screen.getByText('1 fatia de fiambre')).toBeInTheDocument();
     expect(screen.getByText('Porção estimada pelo Coach')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -176,7 +176,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     expect(screen.getByText('Arroz')).toBeInTheDocument();
     expect(screen.getByText('Feijão')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remover Arroz' }));
+    fireEvent.click(screen.getByRole('button', { name: /Remover Arroz/i }));
     expect(screen.queryByText('Arroz')).not.toBeInTheDocument();
     expect(screen.getByText('Feijão')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
@@ -187,11 +187,11 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
     render(<MealRegistration onClose={onClose} />);
     goManual();
-    fireEvent.click(screen.getByRole('button', { name: 'Almoço' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
     addItem('Ovos', 100);
     addItem('Aveia', 40);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -213,7 +213,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     goManual();
     addItem('Ovos', 100);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Refeição' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
 
     await screen.findByText('Falha a analisar a refeição.');
     expect(onClose).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     render(<MealRegistration onClose={onClose} />);
     goManual();
 
-    expect(screen.getByRole('button', { name: 'Analisar Refeição' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar Refeição/i })).toBeDisabled();
   });
 });
 
@@ -260,22 +260,22 @@ describe('MealRegistration — editar refeição existente', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     expect(screen.getByText('Editar Refeição')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Jantar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Jantar/i })).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Arroz')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Frango')).toBeInTheDocument();
     // Acrescentar um alimento novo ao editar passou a ser possível: guardar
     // chama o Coach, e é ele que estima os valores nutricionais do novo item.
-    expect(screen.getByRole('button', { name: 'Adicionar alimento' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Adicionar alimento/i })).toBeInTheDocument();
     // Sem nada alterado ainda, guardar não precisa do Coach.
-    expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
   });
 
   it('mudar só o tipo de refeição faz update direto, sem chamar o Gemini', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Almoço' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
 
     await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
     const [mealPayload, mealId] = mocks.updateMeal.mock.calls[0];
@@ -324,7 +324,7 @@ describe('MealRegistration — editar refeição existente', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Brócolos' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar alimento' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -337,7 +337,7 @@ describe('MealRegistration — editar refeição existente', () => {
   it('remover um alimento passa pelo Coach com a lista já sem ele', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remover Frango' }));
+    fireEvent.click(screen.getByRole('button', { name: /Remover Frango/i }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -350,8 +350,8 @@ describe('MealRegistration — editar refeição existente', () => {
   it('não deixa gravar uma refeição sem alimento nenhum', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remover Arroz' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remover Frango' }));
+    fireEvent.click(screen.getByRole('button', { name: /Remover Arroz/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Remover Frango/i }));
 
     expect(screen.getByRole('button', { name: /Guardar e Reanalisar/ })).toBeDisabled();
     expect(mocks.invoke).not.toHaveBeenCalled();

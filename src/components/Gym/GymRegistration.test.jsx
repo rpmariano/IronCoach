@@ -60,11 +60,11 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
 
   it('ao escolher Manual, esconde o upload e mostra as métricas do relógio', () => {
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app de treino/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 45m')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Analisar Treino' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar Treino/i })).toBeInTheDocument();
   });
 });
 
@@ -80,7 +80,7 @@ describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
   it('envia o payload correto (imagens, data, tipo, categorias, observações)', async () => {
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-1' } }, error: null });
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Peito' }));
+    fireEvent.click(screen.getByRole('button', { name: /Peito/i }));
     fireEvent.change(screen.getByPlaceholderText('Contexto do treino...'), { target: { value: 'treino pesado' } });
     await selectPhoto();
 
@@ -130,7 +130,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: 'Manual' }));
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
   it('envia o registo manual para analyze-gym em modo manual, sem imagens', async () => {
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-2' } }, error: null });
@@ -139,7 +139,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
     fireEvent.change(screen.getByPlaceholderText('Ex: 8'), { target: { value: '7' } });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Treino' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -157,7 +157,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     render(<GymRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Treino' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().gymSessions).toEqual([newSession]);
@@ -168,7 +168,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     render(<GymRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analisar Treino' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
 
     await screen.findByText('Falha a gravar treino.');
     expect(onClose).not.toHaveBeenCalled();
@@ -219,14 +219,14 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(reps).toHaveLength(2);
     expect(reps[0]).toHaveValue(10);
     expect(reps[1]).toHaveValue(8);
-    expect(screen.getByRole('button', { name: 'Guardar Alterações' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
   });
 
   it('mudar só o nome faz update direto, sem chamar o Gemini', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     fireEvent.change(screen.getByDisplayValue('Peito e Tríceps'), { target: { value: 'Push A' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar Alterações' }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
 
     await waitFor(() => expect(mocks.updateSession).toHaveBeenCalledTimes(1));
     const [payload, sessionId] = mocks.updateSession.mock.calls[0];

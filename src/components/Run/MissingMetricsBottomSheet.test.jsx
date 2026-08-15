@@ -26,18 +26,18 @@ describe('MissingMetricsBottomSheet', () => {
     expect(screen.getByText('Cadência de Corrida (spm)')).toBeInTheDocument();
     expect(screen.getByText('Perda por Transpiração (ml)')).toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: /Carregar mais prints da app/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Completar manualmente/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Mais prints/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Manual/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i })).toBeInTheDocument();
   });
 
   it('chama os respetivos callbacks ao clicar nos botões', () => {
     render(<MissingMetricsBottomSheet {...defaultProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Carregar mais prints da app/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Mais prints/i }));
     expect(defaultProps.onAddPhotos).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /Completar manualmente/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
     expect(defaultProps.onGoManual).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
