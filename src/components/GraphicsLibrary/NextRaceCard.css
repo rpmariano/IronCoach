@@ -20,7 +20,7 @@
 .nrc-left { flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 0; z-index: 2; }
 .nrc-header-row { display: flex; align-items: center; gap: 12px; }
 .nrc-lbl { font-size: 0.65rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
-.nrc-tag { background: rgba(251,191,36,0.2); color: #b45309; font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; }
+.nrc-tag { background: linear-gradient(135deg, #d97706, #fbbf24); color: white; font-size: 0.65rem; font-weight: 800; padding: 2px 8px; border-radius: 6px; box-shadow: 0 2px 10px rgba(251, 191, 36, 0.4); }
 
 /* Traffic Light */
 .nrc-traffic-light {
