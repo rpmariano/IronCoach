@@ -96,7 +96,37 @@ export default function RunAgenda({ onClose }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isFormOpen, isDirty]);
 
+  // Carrega a prova existente para o formulário, ou limpa se for nova.
+  useEffect(() => {
+    if (editingEventId) {
+      const ev = raceEvents.find(e => e.id === editingEventId);
+      if (ev) {
+        setDraft({
+          date: ev.date || todayISO(),
+          location: ev.location || '',
+          name: ev.name || '',
+          race_type: ev.race_type || 'estrada',
+          distance_km: ev.distance_km?.toString() || '',
+          elevation_gain_m: ev.elevation_gain_m?.toString() || '',
+          experience_level: ev.experience_level || '',
+          race_priority: ev.race_priority || 'a',
+          target_time: ev.target_time || '',
+          target_pace: ev.target_pace_seconds_per_km ? formatPace(ev.target_pace_seconds_per_km) : '',
+          website: ev.website || '',
+          notes: ev.notes || '',
+        });
+        setIsDirty(false);
+      }
+    } else {
+      setDraft(EMPTY_DRAFT);
+      setIsDirty(false);
+    }
+  }, [editingEventId, raceEvents]);
 
+  const handleCloseForm = () => {
+    useAppStore.getState().setEditingRaceId(null);
+    if (onClose) onClose();
+  };
 
   const updateDraft = (key, val) => {
     setIsDirty(true);
