@@ -19,11 +19,11 @@ export default function NextRaceCard({
         <div className="nrc-header-row">
           <span className="nrc-lbl">Próxima Prova</span>
           <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
-          {readiness && readiness !== 'green' && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200" title={`Preparação: ${readiness === 'yellow' ? 'Com Alertas' : 'Inadequada'}`}>
-              <span style={{ fontSize: '10px', color: readiness === 'red' ? '#be123c' : '#b45309', fontWeight: 'bold' }}>
-                {readiness === 'red' ? '!' : '?'}
-              </span>
+          {readiness && (
+            <div className="nrc-traffic-light" title={`Preparação do atleta: ${readiness === 'green' ? 'Adequada' : readiness === 'yellow' ? 'Com Alertas' : 'Inadequada'}`}>
+              <div className={`nrc-light nrc-light-red ${readiness === 'red' ? 'on' : ''}`}></div>
+              <div className={`nrc-light nrc-light-yellow ${readiness === 'yellow' ? 'on' : ''}`}></div>
+              <div className={`nrc-light nrc-light-green ${readiness === 'green' ? 'on' : ''}`}></div>
             </div>
           )}
         </div>
