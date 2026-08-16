@@ -60,7 +60,7 @@ describe('PlanProposalBottomSheet', () => {
     const onClose = vi.fn();
     render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onClose={onClose} />);
 
-    const closeBtn = screen.getByRole('button', { name: 'Voltar ao chat' });
+    const closeBtn = screen.getByRole('button', { name: 'Fechar' });
     expect(closeBtn).toBeInTheDocument();
     fireEvent.click(closeBtn);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));

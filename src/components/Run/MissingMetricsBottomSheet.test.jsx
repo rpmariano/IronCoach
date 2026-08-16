@@ -46,6 +46,7 @@ describe('MissingMetricsBottomSheet', () => {
 
   it('chama onClose ao clicar no traço de touch', () => {
     vi.useFakeTimers();
+    defaultProps.onClose.mockClear();
     render(<MissingMetricsBottomSheet {...defaultProps} />);
 
     const grabHandle = screen.getByTitle('Toca para fechar persiana');

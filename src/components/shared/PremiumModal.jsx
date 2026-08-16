@@ -51,6 +51,7 @@ export default function PremiumModal({
   children,
   maxWidth = 'max-w-md',
   enableDrag = true,
+  testId,
 }) {
   const [isClosing, setIsClosing] = useState(false);
   const [dragY, setDragY] = useState(0);
@@ -185,6 +186,10 @@ export default function PremiumModal({
       {/* Modal Container */}
       <div 
         ref={dragAreaRef}
+        data-testid={testId}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? "modal-title" : undefined}
         className={`relative z-10 w-full ${maxWidth} bg-white flex flex-col shadow-2xl overflow-hidden ${
           isDialog ? 'rounded-2xl max-h-[90vh]' : 'rounded-t-[28px] max-h-[90vh] pb-safe'
         }`}
@@ -192,7 +197,11 @@ export default function PremiumModal({
       >
         {/* Grab Handle for Bottom Sheet */}
         {!isDialog && enableDrag && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-white/40 z-20 pointer-events-none" />
+          <div 
+            title="Toca para fechar persiana" 
+            onClick={handleDismiss}
+            className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-white/40 z-20 cursor-pointer" 
+          />
         )}
 
         {/* Header */}
@@ -206,8 +215,8 @@ export default function PremiumModal({
                 <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
             )}
-            <div>
-              <h2 className="text-[17px] font-bold text-white leading-tight">{title}</h2>
+            <div className="flex-1 min-w-0 pr-4">
+              {title && <h3 id="modal-title" className={`text-base font-bold leading-tight truncate ${activeTheme.sub.replace('100', '50')}`}>{title}</h3>}
               {subtitle && <p className={`text-[12.5px] mt-0.5 leading-snug font-medium ${activeTheme.sub}`}>{subtitle}</p>}
             </div>
           </div>

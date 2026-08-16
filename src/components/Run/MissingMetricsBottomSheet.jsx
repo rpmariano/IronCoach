@@ -34,6 +34,7 @@ export default function MissingMetricsBottomSheet({
       icon={Sparkles}
       theme="run"
       variant="bottom-sheet"
+      testId="missing-metrics-bottom-sheet"
     >
       <div className="flex flex-col h-full">
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-slate-50/30">

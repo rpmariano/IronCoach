@@ -36,6 +36,44 @@ const DEMO_PROFILE = {
   coach_context: 'Objetivo: Sub 1h35 na Meia Maratona do Porto'
 };
 
+// Dados fictícios para o modo ?demo=true — deixa ver o layout real da app
+// sem precisar de sessão/login nenhuns. Duas provas de propósito: é o caso
+// que ativa o carrossel de pontos no NextRaceCard (upcoming.length > 1),
+// que foi exatamente o que ficou por verificar visualmente ao corrigir a
+// "caixa cinzenta" por baixo do cartão (ver git log de NextRaceCard.css).
+function buildDemoData() {
+  const today = new Date();
+  const inDays = (n) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  return {
+    raceEvents: [
+      {
+        id: 'demo-race-1', date: inDays(28), name: 'Corrida do Tejo',
+        location: 'Lisboa', race_type: 'estrada', distance_km: 10,
+        experience_level: 'medio', status: 'agendada',
+      },
+      {
+        id: 'demo-race-2', date: inDays(70), name: 'Meia Maratona do Porto',
+        location: 'Porto', race_type: '21k', distance_km: 21.0975,
+        experience_level: 'medio', status: 'agendada',
+      },
+    ],
+    waterLogs: [],
+    meals: [],
+    runs: [
+      { id: 'demo-run-1', date: inDays(-2), distance_km: 8, duration_seconds: 2400, kind: 'treino', training_type: 'continuo' },
+      { id: 'demo-run-2', date: inDays(-5), distance_km: 12, duration_seconds: 3900, kind: 'treino', training_type: 'longo' },
+    ],
+    gymSessions: [],
+    bodyAssessments: [],
+    coachPlans: [],
+    coachPlanItems: [],
+  };
+}
+
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
 
 export default function App() {
@@ -61,6 +99,11 @@ export default function App() {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironhealth.app' } };
         setSession(demoSession);
         setProfile(DEMO_PROFILE);
+        // setState direto (em vez dos setters individuais) porque isto é
+        // inicialização única fora do fluxo normal de dados — os setters
+        // existem para respostas do Supabase, não para semear um estado
+        // fictício de propósito.
+        useAppStore.setState(buildDemoData());
         setIsInitializing(false);
       } else {
         setSession(null);
