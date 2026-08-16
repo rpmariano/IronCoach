@@ -6,7 +6,7 @@ import CrossMetricsChart from '../BI/CrossMetricsChart';
 import { calculateCrossMetrics, calculateWeightTrend } from '../../utils/biEngine';
 import { startOfDay, parseISO, isAfter, subDays } from 'date-fns';
 
-function PremiumMetricCard({ title, value, unit, subtitle, icon: Icon, color, gradient, trend }) {
+function PremiumMetricCard({ title, value, unit, subtitle, icon: Icon, color, gradient, trendValue, trendSuffix = '' }) {
   return (
     <div className="bg-white/60 backdrop-blur-md border border-white/80 rounded-2xl p-4 shadow-[0_8px_20px_rgba(0,0,0,0.03),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden group">
       <div 
@@ -17,9 +17,9 @@ function PremiumMetricCard({ title, value, unit, subtitle, icon: Icon, color, gr
         <div className="p-2 rounded-xl" style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}>
           <Icon size={18} style={{ color }} strokeWidth={2.5} />
         </div>
-        {trend !== undefined && (
-          <div className={`px-2 py-1 rounded-lg text-[10px] font-bold ${trend > 0 ? 'bg-emerald-100 text-emerald-700' : trend < 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
-            {trend > 0 ? '+' : ''}{trend}%
+        {trendValue !== undefined && trendValue !== null && (
+          <div className={`px-2 py-1 rounded-lg text-[10px] font-bold ${trendValue > 0 ? 'bg-emerald-100 text-emerald-700' : trendValue < 0 ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+            {trendValue > 0 ? '+' : ''}{trendValue}{trendSuffix}
           </div>
         )}
       </div>
@@ -102,7 +102,8 @@ export default function CrossAnalyticsDashboard() {
           subtitle="Média 7 dias"
           icon={Droplet}
           color="#0ea5e9"
-          trend={waterMetrics.trend}
+          trendValue={waterMetrics.trend}
+          trendSuffix="%"
         />
         <PremiumMetricCard
           title="Peso Real"
@@ -111,7 +112,8 @@ export default function CrossAnalyticsDashboard() {
           subtitle={weightTrend?.trend === 'descendo' ? 'Em perda' : weightTrend?.trend === 'subindo' ? 'Em ganho' : 'Estável'}
           icon={Scale}
           color="#6366f1"
-          trend={weightTrend?.weeklyRate}
+          trendValue={weightTrend?.weeklyRate}
+          trendSuffix="kg"
         />
         <PremiumMetricCard
           title="Fadiga (ACWR)"
