@@ -114,15 +114,15 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
           }
 
           return (
-            <div 
-              key={next.id} 
-              className="relative w-full h-full shrink-0 snap-center" 
+            <div
+              key={next.id}
+              className="relative w-full h-full shrink-0 snap-center"
               onClick={() => {
                 if (onEditRace) onEditRace(next.id);
               }}
             >
               <div className="cursor-pointer active:scale-[0.99] transition-transform w-full h-full">
-                <PremiumNextRaceCard 
+                <PremiumNextRaceCard
                   title={next.name}
                   date={formattedDate}
                   location={next.location || 'Não definida'}
@@ -132,25 +132,32 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   readiness={readiness}
                 />
               </div>
-              {upcoming.length > 1 && (
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-                  <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-                    {upcoming.map((_, idx) => (
-                      <button 
-                        key={idx} 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); scrollTo(idx); }}
-                        aria-label={`Ver prova ${idx + 1}`}
-                        className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}
       </div>
+
+      {/* Pontos do carrossel FORA do cartão, em fluxo normal — antes ficavam
+          sobrepostos ao cartão translúcido (absolute bottom-4), o que
+          obrigava a reservar padding extra só para eles. Sem conteúdo
+          colorido nessa faixa reservada, lia-se como uma caixa cinzenta à
+          parte. Também deixou de haver um <div> de pontos repetido por
+          prova (um por slide, todos empilhados) — passa a ser um só. */}
+      {upcoming.length > 1 && (
+        <div className="flex justify-center pt-2">
+          <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
+            {upcoming.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => scrollTo(idx)}
+                aria-label={`Ver prova ${idx + 1}`}
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -190,12 +197,12 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
   );
 
   return (
-    <div className="relative flex flex-col gap-3">
-      <div 
+    <div className="flex flex-col gap-2">
+      <div
         ref={scrollRef}
         onScroll={handleScroll}
         onTouchMove={handleTouchMove}
-        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar pb-1"
+        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
         style={{ scrollBehavior: 'smooth' }}
       >
         <div className="w-full h-full shrink-0 snap-center">
@@ -205,12 +212,17 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
           <NutritionOptionA meals={meals} profile={profile} onNav={onNav} />
         </div>
       </div>
-      
-      <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none pb-2">
-        <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+
+      {/* Pontos fora do cartão, em fluxo normal — ver a mesma nota em
+          NextRaceCard acima. Sobrepostos ao cartão (absolute) obrigavam a
+          reservar padding extra sem conteúdo nenhum lá dentro, o que se
+          lia como uma caixa cinzenta à parte; e aqui sobrepunham-se aos
+          botões "+ml" do cartão de água. */}
+      <div className="flex justify-center">
+        <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
           {[0, 1].map((idx) => (
-            <button 
-              key={idx} 
+            <button
+              key={idx}
               type="button"
               onClick={() => scrollTo(idx)}
               aria-label={`Ver cartão ${idx + 1}`}

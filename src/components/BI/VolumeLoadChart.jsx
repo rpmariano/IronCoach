@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
+import MetricInfo from './MetricInfo';
 
 export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' }) {
   const chartRef = useRef(null);
@@ -89,8 +90,11 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
 
   return (
     <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
-      <div className="flex justify-between items-start mb-3">
-        <h3 className="text-[12px] font-bold text-slate-700">Volume-Carga Semanal (kg)</h3>
+      <div className="flex justify-between items-start mb-3 gap-2">
+        <div className="flex items-start flex-1">
+          <h3 className="text-[12px] font-bold text-slate-700 leading-tight">Volume-Carga Semanal (kg)</h3>
+          <MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />
+        </div>
         {acwr && (
           <div className="text-right">
             <span className="text-[10px] text-slate-500 block">ACWR</span>

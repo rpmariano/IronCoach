@@ -6,11 +6,12 @@
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 28px;
-  /* Extra espaço em baixo (vs. 24px dos outros lados) para os pontos do
-     carrossel não tapar os botões "+ml" — mas sem exagerar: era 48px,
-     lia-se como uma faixa em branco distinta ("caixa cinzenta") por baixo
-     do cartão, porque não há conteúdo colorido a preencher essa zona. */
-  padding: 24px 24px 32px 24px;
+  /* Simétrico, como WeeklyPlanCard.css/CoachDailySummaryCard.css — os
+     pontos do carrossel aí usam o mesmo padrão (overlay absoluto, sem
+     reserva de espaço) e não têm este problema. Qualquer padding extra
+     aqui, por menor que seja, ainda deixava uma faixa sem conteúdo por
+     cima do fundo translúcido — lia-se sempre como uma caixa à parte. */
+  padding: 24px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   display: flex;
   gap: 24px;
@@ -23,7 +24,7 @@
 
 @media (max-width: 480px) {
   .hydro-nrc-card {
-    padding: 16px 16px 26px 16px;
+    padding: 16px;
     gap: 12px;
   }
   

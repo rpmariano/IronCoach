@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import PremiumModal from '../shared/PremiumModal';
 import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -341,21 +342,31 @@ export default function RunAgenda({ onClose }) {
   );
 
   const validationModal = validationError && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/70 fade-in" role="dialog" aria-modal="true" aria-labelledby="prova-val-title">
-      <div className="w-full max-w-sm rounded-2xl p-5 bg-neutral-900 border border-neutral-800 shadow-2xl">
-        <h2 id="prova-val-title" className="text-sm font-semibold text-white">Dados Incompletos</h2>
-        <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+    <PremiumModal
+      isOpen={!!validationError}
+      onClose={() => setValidationError(null)}
+      title="Dados Incompletos"
+      subtitle="Por favor, corrige os seguintes erros:"
+      icon={AlertTriangle}
+      theme="warning"
+      variant="dialog"
+    >
+      <div className="p-6 space-y-6">
+        <p className="text-sm text-slate-600 leading-relaxed text-center">
           {validationError}
         </p>
-        <div className="mt-5">
-          <button onClick={() => setValidationError(null)} type="button"
-            className="w-full py-3 rounded-xl font-bold text-xs bg-[var(--mod-coach-to)] shadow-lg active:scale-95 transition"
-            style={{ color: '#fff' }}>
+        <div className="flex justify-center">
+          <Button
+            variant="module"
+            moduleColor="var(--mod-coach-to)"
+            onClick={() => setValidationError(null)}
+            className="w-full"
+          >
             Entendido
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </PremiumModal>
   );
 
   if (!isFormOpen) return null;

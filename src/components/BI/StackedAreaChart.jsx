@@ -3,6 +3,7 @@ import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import MetricInfo from './MetricInfo';
 
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
   const chartRef = useRef(null);
@@ -90,7 +91,10 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
 
   return (
     <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
-      <h3 className="text-[12px] font-bold text-slate-700 mb-3">Composição Corporal (kg)</h3>
+      <div className="flex items-start mb-3 gap-2">
+        <h3 className="text-[12px] font-bold text-slate-700 flex-1 leading-tight">Composição Corporal (kg)</h3>
+        <MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área verde se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />
+      </div>
       <div className="h-64 relative">
         <Line ref={chartRef} data={chartData} options={options} />
       </div>

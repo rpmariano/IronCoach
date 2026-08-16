@@ -3,6 +3,7 @@ import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import MetricInfo from './MetricInfo';
 
 export default function EnergyAvailabilityChart({ dailyData = [], className = '' }) {
   const chartRef = useRef(null);
@@ -95,7 +96,10 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
 
   return (
     <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
-      <h3 className="text-[12px] font-bold text-slate-700 mb-3">Disponibilidade Energética (kcal/kg FFM)</h3>
+      <div className="flex items-start mb-3">
+        <h3 className="text-[12px] font-bold text-slate-700">Disponibilidade Energética (EA)</h3>
+        <MetricInfo text="A EA (Energy Availability) é a energia que sobra para o teu corpo viver depois de descontar as calorias que queimaste a treinar. Se ficares repetidamente abaixo da linha vermelha (30 kcal/kg), corres um risco clínico severo de Síndrome de Deficiência Energética Relativa (RED-S). Come mais nos dias de treino duro!" />
+      </div>
       <div className="h-64 relative">
         <Line ref={chartRef} data={data} options={options} plugins={[backgroundBandsPlugin]} />
       </div>

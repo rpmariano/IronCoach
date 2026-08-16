@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Bot, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
+import PremiumModal from '../shared/PremiumModal';
+import Button from '../shared/Button';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -437,25 +439,19 @@ export default function Admin() {
             {/* Inspection Modal */}
             {selectedUnknownLog && (() => {
               const modalImgUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(selectedUnknownLog.image_path).data?.publicUrl;
-
+              
               return (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto fade-in">
-                  <div className="card w-full max-w-lg bg-neutral-900 border border-neutral-700 rounded-3xl p-5 space-y-4 max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
-                    <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-100">Inspeção de Imagem Desconhecida</h3>
-                        <p className="text-[11px] text-slate-400">
-                          {categoryLabels[selectedUnknownLog.category] || selectedUnknownLog.category} · {new Date(selectedUnknownLog.created_at).toLocaleString('pt-PT')}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setSelectedUnknownLog(null)}
-                        className="p-1.5 rounded-full bg-neutral-800 text-slate-400 hover:text-slate-200"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-
+                <PremiumModal
+                  isOpen={!!selectedUnknownLog}
+                  onClose={() => setSelectedUnknownLog(null)}
+                  title="Inspeção de Imagem Desconhecida"
+                  subtitle={`${categoryLabels[selectedUnknownLog.category] || selectedUnknownLog.category} · ${new Date(selectedUnknownLog.created_at).toLocaleString('pt-PT')}`}
+                  icon={FileQuestion}
+                  theme="info"
+                  variant="dialog"
+                  maxWidth="max-w-lg"
+                >
+                  <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
                     {/* Screenshot Preview */}
                     <div className="flex justify-center bg-neutral-950 rounded-2xl p-2 border border-neutral-800 max-h-72 overflow-hidden">
                       {modalImgUrl ? (
@@ -509,23 +505,27 @@ export default function Admin() {
                       </div>
 
                       <div className="flex gap-2 pt-2">
-                        <button
+                        <Button
+                          variant="light"
                           onClick={() => setSelectedUnknownLog(null)}
-                          className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-xs font-semibold text-slate-300 hover:bg-neutral-800"
+                          className="flex-1"
                         >
                           Cancelar
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          variant="module"
+                          moduleColor="var(--mod-coach-to)"
                           onClick={handleSaveUnknownLog}
                           disabled={savingLog}
-                          className="flex-1 py-2.5 rounded-xl bg-[var(--accent)] text-xs font-bold text-white hover:opacity-90 flex items-center justify-center gap-1.5"
+                          className="flex-1"
+                          icon={savingLog ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
                         >
-                          <Check size={16} /> {savingLog ? 'A guardar...' : 'Guardar Alterações'}
-                        </button>
+                          {savingLog ? 'A Guardar...' : 'Guardar Alterações'}
+                        </Button>
                       </div>
                     </div>
                   </div>
-                </div>
+                </PremiumModal>
               );
             })()}
           </div>

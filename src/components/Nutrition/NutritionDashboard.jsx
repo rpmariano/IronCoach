@@ -20,6 +20,7 @@ import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import MacroComplianceChart from '../BI/MacroComplianceChart';
 import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
+import MetricInfo from '../BI/MetricInfo';
 import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
 
 ChartJS.register(
@@ -239,13 +240,16 @@ export default function NutritionDashboard() {
 
       {/* Macro Trend Line Chart */}
       <div className="card rounded-2xl p-4 pb-6 bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
-        <h2 className="text-sm font-semibold text-slate-800 mb-2 flex items-center gap-1.5">
-          {(() => {
-            const SelectedIcon = getMacroIcon(selectedMacro);
-            return <SelectedIcon size={16} style={{ color: MACROS.find(m => m.key === selectedMacro)?.color }} />;
-          })()}
-          {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
-        </h2>
+        <div className="flex items-start mb-2 gap-2">
+          <h2 className="text-sm font-semibold text-slate-800 flex-1 flex items-center gap-1.5 leading-tight">
+            {(() => {
+              const SelectedIcon = getMacroIcon(selectedMacro);
+              return <SelectedIcon size={16} style={{ color: MACROS.find(m => m.key === selectedMacro)?.color }} />;
+            })()}
+            {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
+          </h2>
+          <MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />
+        </div>
         <div className="flex justify-center items-center gap-3 mb-4 text-[10px] text-slate-500 font-semibold">
           <span className="flex items-center gap-1">
             <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 

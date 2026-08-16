@@ -10,6 +10,7 @@ import Chip from '../shared/Chip';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import StackedAreaChart from '../BI/StackedAreaChart';
+import MetricInfo from '../BI/MetricInfo';
 import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
 
 export default function BodyDashboard({ onGoToCalendar }) {
@@ -181,9 +182,12 @@ export default function BodyDashboard({ onGoToCalendar }) {
       {/* Weight Trend Chart */}
       {weightDualChartData && (
         <div className="card glass rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Activity className="w-5 h-5 text-[var(--mod-corpo)]" />
-            <h2 className="text-sm font-semibold text-slate-800">Tendência de Peso (EWMA)</h2>
+          <div className="flex items-start gap-2 mb-3">
+            <div className="flex items-center gap-2 flex-1">
+              <Activity className="w-5 h-5 text-[var(--mod-corpo)]" />
+              <h2 className="text-sm font-semibold text-slate-800 leading-tight">Tendência de Peso (EWMA)</h2>
+            </div>
+            <MetricInfo text="O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha!" />
           </div>
           <div className="h-48 relative">
             <Line 

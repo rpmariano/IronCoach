@@ -7,6 +7,7 @@ import '../../lib/chartSetup';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
+import MetricInfo from '../BI/MetricInfo';
 import { filterByDateRange, calculateVolumeLoad, calculate1RMProgression, calculateMuscleGroupVolume } from '../../utils/biEngine';
 
 export default function GymDashboard() {
@@ -207,7 +208,10 @@ export default function GymDashboard() {
           {/* 1RM Progression Chart */}
           <div className="card rounded-3xl p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <p className="text-[12px] font-bold text-slate-700">Evolução do 1RM Estimado</p>
+              <div className="flex items-start">
+                <p className="text-[12px] font-bold text-slate-700">Evolução do 1RM Estimado</p>
+                <MetricInfo text="A tua 1 Repetição Máxima (1RM). Uso as tuas melhores séries para estimar o peso máximo que levantarias numa só repetição usando a fórmula científica de Epley. O objetivo é ver a linha subir ao longo do tempo!" />
+              </div>
               <select
                 value={selectedExercise}
                 onChange={e => setSelectedExercise(e.target.value)}

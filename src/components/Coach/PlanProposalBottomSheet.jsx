@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Sparkles, Check, X, Calendar, Target } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
 import Button from '../shared/Button';
+import PremiumModal from '../shared/PremiumModal';
 
 const GOAL_LABELS = {
   calorie_goal: { label: 'Calorias', unit: 'kcal/dia' },
@@ -23,87 +24,6 @@ export function PlanProposalBottomSheet({
   onRespondGoal,
   onClose,
 }) {
-  const [dragY, setDragY] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
-  const touchStartY = useRef(0);
-  const dragYRef = useRef(0);
-  const isDraggingRef = useRef(false);
-  const scrollRef = useRef(null);
-  const dragAreaRef = useRef(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  const handleDismiss = () => {
-    if (isClosing) return;
-    setIsClosing(true);
-    setTimeout(() => {
-      onCloseRef.current?.();
-    }, 500);
-  };
-
-  useEffect(() => {
-    const el = dragAreaRef.current;
-    if (!el) return;
-
-    const handleTouchStart = (e) => {
-      touchStartY.current = e.touches[0].clientY;
-      isDraggingRef.current = true;
-      setIsDragging(true);
-    };
-
-    const handleTouchMove = (e) => {
-      if (!isDraggingRef.current) return;
-      const currentY = e.touches[0].clientY;
-      const deltaY = currentY - touchStartY.current;
-      const isAtTop = !scrollRef.current || scrollRef.current.scrollTop <= 0;
-
-      if (deltaY > 0 && isAtTop) {
-        if (e.cancelable) e.preventDefault(); // CANCELA PULL-TO-REFRESH DO BROWSER
-        dragYRef.current = deltaY;
-        setDragY(deltaY);
-      } else if (deltaY < 0 && dragYRef.current > 0) {
-        if (e.cancelable) e.preventDefault();
-        const nextVal = Math.max(0, deltaY);
-        dragYRef.current = nextVal;
-        setDragY(nextVal);
-      }
-    };
-
-    const handleTouchEnd = () => {
-      if (dragYRef.current > 60) {
-        handleDismiss();
-      } else {
-        setDragY(0);
-      }
-      dragYRef.current = 0;
-      isDraggingRef.current = false;
-      setIsDragging(false);
-    };
-
-    const handleTouchCancel = () => {
-      setDragY(0);
-      dragYRef.current = 0;
-      isDraggingRef.current = false;
-      setIsDragging(false);
-    };
-
-    el.addEventListener('touchstart', handleTouchStart, { passive: true });
-    el.addEventListener('touchmove', handleTouchMove, { passive: false });
-    el.addEventListener('touchend', handleTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', handleTouchCancel, { passive: true });
-
-    return () => {
-      el.removeEventListener('touchstart', handleTouchStart);
-      el.removeEventListener('touchmove', handleTouchMove);
-      el.removeEventListener('touchend', handleTouchEnd);
-      el.removeEventListener('touchcancel', handleTouchCancel);
-    };
-  }, []);
-
   if (!plan && !goalProposal) return null;
 
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
@@ -119,97 +39,31 @@ export function PlanProposalBottomSheet({
     if (plan && onRespondPlan) {
       onRespondPlan(plan.id, accept);
     }
-    handleDismiss();
+    onClose();
   };
 
   const handleRespondGoalAction = (accept) => {
     if (goalProposal && onRespondGoal) {
       onRespondGoal(goalProposal.id, accept);
     }
-    handleDismiss();
+    onClose();
   };
 
-  const sheetTransform = isClosing
-    ? 'translateY(100%)'
-    : dragY > 0
-    ? `translateY(${dragY}px)`
-    : 'translateY(0%)';
-
-  const sheetTransition = isDragging
-    ? 'none'
-    : 'transform 0.5s ease-in-out';
+  const title = plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos';
+  const subtitle = plan ? `Período: ${plan.period_start} a ${plan.period_end}` : undefined;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      {/* Overlay escuro com Backdrop Blur */}
-      <div 
-        className={`fixed inset-0 bg-white/[0.01] transition-all duration-500 ease-in-out ${
-          isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 backdrop-blur-sm animate-bottom-sheet-overlay'
-        }`}
-        onClick={handleDismiss}
-        aria-hidden="true"
-      />
-
-      {/* Modal Bottom Sheet (Persiana) */}
-      <div 
-        ref={dragAreaRef}
-        className="relative z-10 w-full max-h-[85vh] flex flex-col rounded-t-[28px] border-t border-slate-200 bg-white shadow-2xl overflow-hidden"
-        style={{
-          transform: sheetTransform,
-          transition: sheetTransition,
-          overscrollBehavior: 'contain',
-        }}
-      >
-        {/* Zona de Arrasto Superior (Pega + Cabeçalho) */}
-        <div className="touch-none select-none shrink-0" style={{ touchAction: 'none' }}>
-          {/* Pega / Grab Handle — Tocar no traço ou deslizar para baixo fecha o modal */}
-          <div 
-            onClick={handleDismiss}
-            className="w-full py-3 cursor-pointer flex flex-col items-center justify-center group tap-44"
-            title="Toca para fechar persiana"
-            role="button"
-            aria-label="Fechar persiana"
-          >
-            <div className="w-12 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors mb-1" />
-            <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Toca para fechar</span>
-          </div>
-
-          {/* Cabeçalho inspirado em RunRegistration (sem bloco verde) */}
-          <div className="flex items-center justify-between gap-2 px-6 pb-4 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-              >
-                <Sparkles className="w-5 h-5 text-slate-900" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-800">
-                  {plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos'}
-                </h2>
-                {plan && (
-                  <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1 font-medium">
-                    <Calendar size={10} style={{ color: 'var(--mod-coach-to)' }} />
-                    <span>Período: {plan.period_start} a {plan.period_end}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Botão Fechar (voltar ao chat) */}
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
-              title="Voltar ao chat"
-              aria-label="Voltar ao chat"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-        {/* Conteúdo Scrollável */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-slate-50/30">
+    <PremiumModal
+      isOpen={true}
+      onClose={onClose}
+      title={title}
+      subtitle={subtitle}
+      icon={Sparkles}
+      theme="coach"
+      variant="bottom-sheet"
+      maxWidth="max-w-md"
+    >
+      <div className="px-6 py-4 space-y-5">
           {/* Seção 1: Proposta de Objetivos Independente */}
           {goalProposal && (
             <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
@@ -343,8 +197,7 @@ export function PlanProposalBottomSheet({
             </Button>
           </div>
         )}
-      </div>
-    </div>
+    </PremiumModal>
   );
 }
 
