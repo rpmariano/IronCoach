@@ -86,6 +86,70 @@ export function calculateACWR(runs) {
 }
 
 /**
+ * Calcula o histórico de ACWR (para as últimas 12 semanas) para apresentar no gráfico.
+ * Carga = Duração (minutos) * RPE.
+ */
+export function calculateACWRHistory(runs, weeksCount = 12) {
+  try {
+    const now = new Date();
+    
+    // Gerar as últimas `weeksCount` semanas
+    const weeks = [];
+    for (let i = weeksCount - 1; i >= 0; i--) {
+      const wStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
+      weeks.push({ start: wStart, label: format(wStart, 'dd MMM'), load: 0 });
+    }
+
+    // Gerar as 3 semanas anteriores para ter base para a Carga Crónica da primeira semana
+    const historyWeeks = [];
+    for (let i = weeksCount + 2; i >= weeksCount; i--) {
+      const wStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
+      historyWeeks.push({ start: wStart, load: 0 });
+    }
+    
+    const allWeeks = [...historyWeeks, ...weeks];
+
+    runs.forEach(run => {
+      const d = parseISO(run.date);
+      if (!isValid(d)) return;
+      
+      const rpe = run.effort_rpe || 5;
+      const durationMin = (run.duration_seconds || 0) / 60;
+      const load = durationMin * rpe;
+
+      const wStart = startOfWeek(d, { weekStartsOn: 1 }).getTime();
+      const targetWeek = allWeeks.find(w => w.start.getTime() === wStart);
+      if (targetWeek) {
+        targetWeek.load += load;
+      }
+    });
+
+    const result = [];
+    for (let i = historyWeeks.length; i < allWeeks.length; i++) {
+      const acuteLoad = allWeeks[i].load;
+      const w1 = allWeeks[i].load;
+      const w2 = allWeeks[i-1].load;
+      const w3 = allWeeks[i-2].load;
+      const w4 = allWeeks[i-3].load;
+      
+      const chronicLoad = (w1 + w2 + w3 + w4) / 4;
+      const ratio = chronicLoad > 0 ? Number((acuteLoad / chronicLoad).toFixed(2)) : 0;
+      
+      result.push({
+        weekLabel: allWeeks[i].label,
+        acuteLoad: Math.round(acuteLoad),
+        chronicLoad: Math.round(chronicLoad),
+        ratio
+      });
+    }
+
+    return result;
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
  * Calcula a distribuição de treino em zonas de intensidade.
  */
 export function calculateTrainingDistribution(runs, level = 'medio') {
@@ -107,8 +171,8 @@ export function calculateTrainingDistribution(runs, level = 'medio') {
     const highIntensity = z3 + z4 + z5;
     const total = lowIntensity + highIntensity;
     
-    const lowIntensityPct = total > 0 ? (lowIntensity / total) * 100 : 0;
-    const highIntensityPct = total > 0 ? (highIntensity / total) * 100 : 0;
+    const lowIntensityPct = total > 0 ? Math.round((lowIntensity / total) * 100) : 0;
+    const highIntensityPct = total > 0 ? Math.round((highIntensity / total) * 100) : 0;
     const targetLowPct = Constants.TARGET_LOW_INTENSITY_PCT[level] || 80;
     const isCompliant = lowIntensityPct >= targetLowPct - 5 && lowIntensityPct <= targetLowPct + 5;
 

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Chart } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
+import MetricInfo from './MetricInfo';
 
 export default function ACWRChart({ weeklyData = [], className = '' }) {
   const chartRef = useRef(null);
@@ -107,7 +108,6 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         display: true,
         position: 'right',
         min: 0,
-        max: 2, // Depending on actual data
         grid: {
           color: 'rgba(0, 0, 0, 0.05)'
         }
@@ -117,7 +117,10 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
 
   return (
     <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
-      <h3 className="text-[12px] font-bold text-slate-700 mb-3">Rácio de Carga Aguda:Crónica</h3>
+      <div className="flex items-start mb-3">
+        <h3 className="text-[12px] font-bold text-slate-700">Rácio de Carga Aguda:Crónica</h3>
+        <MetricInfo text="O ACWR compara a carga do teu treino na última semana (Aguda) com a média das últimas 4 semanas (Crónica). Mantém-te na zona verde (0.8 a 1.3) para evoluir com segurança. Valores > 1.5 indicam risco elevado de lesão." />
+      </div>
       <div className="h-64 relative">
         <Chart
           ref={chartRef}

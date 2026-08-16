@@ -1,6 +1,7 @@
 import React from 'react';
 import { Scatter } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
+import MetricInfo from './MetricInfo';
 
 export default function ScatterTrendChart({ data = [], className = '' }) {
   // data: array of {date, paceSecondsPerKm, avgHR, label}
@@ -77,7 +78,10 @@ export default function ScatterTrendChart({ data = [], className = '' }) {
 
   return (
     <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
-      <h3 className="text-[12px] font-bold text-slate-700 mb-3">Eficiência Aeróbica</h3>
+      <div className="flex items-start mb-3">
+        <h3 className="text-[12px] font-bold text-slate-700">Eficiência Aeróbica</h3>
+        <MetricInfo text="Cruza o teu Pace (Ritmo) com a Frequência Cardíaca Média. O objetivo é ver a nuvem de pontos descer e ir para a direita (correr mais rápido para o mesmo esforço cardíaco)." />
+      </div>
       <div className="h-64 relative">
         <Scatter data={chartData} options={options} />
       </div>

@@ -10,7 +10,7 @@ import ACWRChart from '../BI/ACWRChart';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
-import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime } from '../../utils/biEngine';
+import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime, calculateACWRHistory } from '../../utils/biEngine';
 
 function formatPace(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
@@ -87,22 +87,7 @@ export default function RunDashboard() {
 
   // BI - ACWR
   const acwrData = useMemo(() => calculateACWR(runs), [runs]);
-  
-  const weeklyVolume = useMemo(() => calculateWeeklyVolume(runs), [runs]);
-  
-  const acwrWeeklyData = useMemo(() => {
-    let chronicAcc = 0;
-    return weeklyVolume.map((w, i) => {
-      const vol = Number(w.volume || w.distance || w.value || 0);
-      chronicAcc = i === 0 ? vol : (chronicAcc * 3 + vol) / 4;
-      return {
-        weekLabel: w.weekLabel || w.label || `Sem ${i+1}`,
-        acuteLoad: vol,
-        chronicLoad: chronicAcc,
-        ratio: chronicAcc > 0 ? Number((vol / chronicAcc).toFixed(2)) : 0
-      };
-    });
-  }, [weeklyVolume]);
+  const acwrWeeklyData = useMemo(() => calculateACWRHistory(runs), [runs]);
 
   // BI - Distribution
   const distribution = useMemo(() => calculateTrainingDistribution(periodRuns), [periodRuns]);
