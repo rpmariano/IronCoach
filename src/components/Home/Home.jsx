@@ -49,6 +49,10 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
   );
 }
 
+// Valores válidos para o semáforo de prontidão da Carol — fora do componente
+// para evitar recriar o array a cada render/iteração do .map().
+const VALID_READINESS_LEVELS = ['green', 'yellow', 'red'];
+
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
 function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
   const { dailySummary } = useAppStore();
@@ -127,11 +131,10 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
 
           // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta.
           // Valida que o level é um valor esperado — previne semáforo silencioso se o modelo alucinar.
-          const VALID_LEVELS = ['green', 'yellow', 'red'];
           const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
             ? dailySummary.race_readiness.level
             : null;
-          const carolReadiness = VALID_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
+          const carolReadiness = VALID_READINESS_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
           const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
           const readiness = carolReadiness || deterministicReadiness;
 
