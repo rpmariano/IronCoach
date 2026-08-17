@@ -790,6 +790,40 @@ Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando 
   assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
 });
 
+Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curto), com teto de 14 dias alinhado à doutrina de microciclo", () => {
+  // Regressão: uma versão anterior desta regra limitava sempre a 3-4 dias,
+  // deixando de fora o resto de um plano ativo mais longo (ex.: plano até
+  // dia 27, proposta só cobria até dia 20) — o atleta esperava o plano
+  // todo, não um excerto. O teto existe só como salvaguarda técnica para
+  // planos excecionalmente longos (não deveria disparar na prática — a
+  // doutrina DURAÇÃO DO PLANO e o limite MAX_PLAN_ITEMS já capam qualquer
+  // plano a 7-14 dias por microciclo), por isso o teto está em 14 dias
+  // (não um número arbitrário menor) para coincidir com esse máximo.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
+  assertStringIncludes(sys, "se esse período tiver MAIS de 14 dias a partir de hoje");
+});
+
+Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas objetivos ao recalculares macros para o plano seguinte", () => {
+  // Regressão: depois de aceitar objetivos, a Carol às vezes recalculava os
+  // macros de novo ao preparar a proposta de plano/refeições seguinte, e a
+  // Regra 1 (chamar update_goals sempre que decidir valores diferentes)
+  // disparava outra vez — resultado: uma segunda proposta de objetivos
+  // aparecia logo a seguir a aceitar a primeira, num ciclo. As duas regras
+  // têm agora precedência cruzada explícita para o modelo não hesitar.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a))");
+  assertStringIncludes(sys, "esta regra tem PRECEDÊNCIA sobre a Regra 1");
+});
+
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
 // Ver src/coach-knowledge/07-sugestoes-alimentares.md. Antes disto, o campo
 // meal_suggestion vinha do conhecimento geral do Gemini, não da literatura
