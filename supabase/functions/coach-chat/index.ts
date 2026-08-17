@@ -1479,13 +1479,16 @@ export function computeBodyMetrics(
   if (latest.body_fat_pct !== null) {
     const bf = latest.body_fat_pct;
     const isFem = gender === "feminino" || gender === "F" || gender === "f";
-    const floor = isFem ? 14 : 6;  // piso mais conservador (Bloco 5 #6, regra do valor mais alto)
-    const upperFloor = isFem ? 16 : 8;
+    const lowerFloor = isFem ? 14 : 6;
+    // Alarme dispara no valor mais conservador da faixa (regra do valor mais alto,
+    // alinhado com BF_ALARM_MEN/BF_ALARM_WOMEN em src/utils/biConstants.js — o
+    // dashboard BI e o coach usam o mesmo limiar, para não haver dois "pisos" diferentes).
+    const alarmFloor = isFem ? 16 : 8;
     lines.push(`Gordura corporal (BIA, tendência apenas): ${bf.toFixed(1)}%`);
-    if (bf < floor) {
+    if (bf < alarmFloor) {
       lines.push(
         `⚠ CORPO #6 + RED-S — gordura corporal ${bf.toFixed(1)}% abaixo do piso fisiológico ` +
-        `(${isFem ? "M" : "H"}: ${floor}-${upperFloor}%) — avaliar em conjunto com EA, peso e sintomas`,
+        `(${isFem ? "M" : "H"}: ${lowerFloor}-${alarmFloor}%) — avaliar em conjunto com EA, peso e sintomas`,
       );
     }
   }

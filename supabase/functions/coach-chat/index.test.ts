@@ -1473,6 +1473,27 @@ Deno.test("computeBodyMetrics: sem flag RED-S quando gordura acima do piso", () 
   assertEquals(out?.includes("CORPO #6") ?? false, false);
 });
 
+// Limiar alinhado com BF_ALARM_MEN/BF_ALARM_WOMEN (src/utils/biConstants.js) —
+// o alarme dispara no valor mais conservador da faixa (8% H / 16% M), não no
+// mais baixo (6%/14%), para o coach e o dashboard BI concordarem sempre.
+Deno.test("computeBodyMetrics: flag RED-S no limiar conservador masculino (7%, entre 6% e 8%)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 7.0 })];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertStringIncludes(out!, "CORPO #6 + RED-S");
+});
+
+Deno.test("computeBodyMetrics: flag RED-S no limiar conservador feminino (15,5%, entre 14% e 16%)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 15.5 })];
+  const out = computeBodyMetrics(rows, "feminino", "2026-08-11");
+  assertStringIncludes(out!, "CORPO #6 + RED-S");
+});
+
+Deno.test("computeBodyMetrics: sem flag RED-S mesmo no limiar exato (8% masculino, não é < 8)", () => {
+  const rows = [makeBA("2026-08-10T07:00:00Z", { body_fat_pct: 8.0 })];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  assertEquals(out?.includes("CORPO #6") ?? false, false);
+});
+
 Deno.test("computeBodyMetrics: flag risco elevado visceral_fat ≥15", () => {
   const rows = [makeBA("2026-08-10T07:00:00Z", { visceral_fat: 16 })];
   const out = computeBodyMetrics(rows, null, "2026-08-11");
