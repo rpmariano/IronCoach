@@ -78,6 +78,8 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  coachIntent: null,
+  setCoachIntent: (intent) => set({ coachIntent: intent }),
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
