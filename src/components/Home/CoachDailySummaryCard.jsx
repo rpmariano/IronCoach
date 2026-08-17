@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, Lightbulb } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
@@ -107,6 +107,15 @@ export default function CoachDailySummaryCard() {
     }
     if (tomorrowPrepText) {
       list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#6d28d9', text: tomorrowPrepText });
+    }
+    if (dailySummary?.daily_concept?.body) {
+      list.push({
+        key: 'daily_concept',
+        label: dailySummary.daily_concept.title,
+        Icon: Lightbulb,
+        color: '#b45309',
+        text: dailySummary.daily_concept.body,
+      });
     }
     return list;
   }, [dailySummary, warningsText, tomorrowPrepText]);

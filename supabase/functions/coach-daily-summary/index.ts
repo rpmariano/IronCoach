@@ -56,6 +56,33 @@ const MEAL_DOCTRINE =
   `- Pré-prova 24-48h: arroz branco, massa branca, batata sem pele, banana madura, mel; ` +
   `evita integrais, leguminosas, fritos, picante.`;
 
+// Ciclo de conceitos educativos — 1 por dia, rotação de 21 dias (3 semanas).
+// A seleção é determinística: dayOfYear(today) % DAILY_CONCEPTS.length.
+// Carol explica o conceito selecionado; o key+title vêm daqui, o body vem do Gemini.
+const DAILY_CONCEPTS = [
+  { key: "rpe",                 title: "RPE — Esforço Percebido" },
+  { key: "acwr",                title: "ACWR — Rácio Carga Aguda:Crónica" },
+  { key: "zonas_fc",            title: "Zonas de Frequência Cardíaca" },
+  { key: "taper",               title: "Taper — Polimento Pré-Prova" },
+  { key: "supercompensacao",    title: "Supercompensação" },
+  { key: "regra_10pct",         title: "A Regra dos 10% no Treino" },
+  { key: "nutricao_peritreino", title: "Nutrição Peri-Treino" },
+  { key: "proteina",            title: "Proteína e Recuperação Muscular" },
+  { key: "vo2max",              title: "VO₂max" },
+  { key: "economia_corrida",    title: "Economia de Corrida" },
+  { key: "cadencia",            title: "Cadência de Corrida" },
+  { key: "limiar_latico",       title: "Limiar Lático" },
+  { key: "reds",                title: "RED-S — Deficiência Energética no Desporto" },
+  { key: "long_run",            title: "Long Run — A Corrida Longa Semanal" },
+  { key: "fartlek",             title: "Fartlek" },
+  { key: "intervalos",          title: "Treino de Intervalos" },
+  { key: "sono",                title: "Sono e Recuperação Desportiva" },
+  { key: "periodizacao",        title: "Periodização do Treino" },
+  { key: "tdee",                title: "TDEE — Gasto Energético Total Diário" },
+  { key: "composicao_corporal", title: "Composição Corporal vs. Peso na Balança" },
+  { key: "recuperacao_ativa",   title: "Recuperação Ativa vs. Passiva" },
+];
+
 const MEAL_TYPE_LABELS: Record<string, string> = {
   "pequeno-almoco": "Pequeno-almoço",
   "lanche-manha": "Lanche da manhã",
@@ -85,6 +112,13 @@ function totalsFromMeal(meal: any): MealTotals {
 
 function todayISO(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date());
+}
+
+// Número do dia no ano (0-indexed) — usado para selecionar o conceito diário.
+function dayOfYear(isoDate: string): number {
+  const d     = new Date(isoDate + "T00:00:00Z");
+  const start = new Date(d.getUTCFullYear() + "-01-01T00:00:00Z");
+  return Math.floor((d.getTime() - start.getTime()) / 86400000);
 }
 export function addDaysISO(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z");
@@ -411,28 +445,56 @@ function computeTDEE(profile: any): number | null {
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    recap: { type: "STRING", nullable: true },
-    meal_suggestion: { type: "STRING", nullable: true },
+    recap:            { type: "STRING", nullable: true },
+    meal_suggestion:  { type: "STRING", nullable: true },
+    // Avaliação de prontidão para a próxima prova (semáforo green/yellow/red).
+    // null se não houver prova agendada.
+    race_readiness: {
+      type: "OBJECT",
+      nullable: true,
+      properties: {
+        race_date: { type: "STRING" },
+        level:     { type: "STRING" },  // "green" | "yellow" | "red"
+        reason:    { type: "STRING" },
+      },
+      required: ["race_date", "level", "reason"],
+    },
+    // Corpo do conceito educativo do dia (key+title são determinísticos, vêm do servidor).
+    daily_concept_body: { type: "STRING", nullable: true },
   },
-  required: ["recap", "meal_suggestion"],
+  required: ["recap", "meal_suggestion", "race_readiness", "daily_concept_body"],
 };
 
 // deno-lint-ignore no-explicit-any
-async function generateSummary(ctx: Record<string, unknown>, geminiKey: string): Promise<any> {
+async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string): Promise<any> {
   const prompt =
-    `És o Coach de um atleta amador numa app de corrida/fitness/nutrição. Vais gerar até ` +
-    `DUAS mensagens curtas (1-2 frases cada) para o cartão do ecrã Início. Cada ` +
-    `uma é INDEPENDENTE — devolve null nas que não tiveres nada de útil para dizer, em vez de ` +
-    `inventar conteúdo. Português (PT), tom direto e próximo, nunca genérico.\n\n` +
+    `És a Carol, Coach de um atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
+    `conteúdos independentes para o cartão diário do Início. Português (PT), tom direto e próximo, ` +
+    `nunca genérico. Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
-    `CAMPOS:\n` +
-    `- recap: recapitulação dos últimos dias (treinos feitos nos últimos 30 dias, consistência, ` +
-    `uma tendência notável). Se houver dados recentes em "composicao_corporal_30_dias", menciona ` +
-    `a evolução de forma discreta e positiva. Lê a "fase_do_plano" da proxima_prova e orienta o ` +
-    `discurso para a fase do ciclo de treino (ex: manutenção se "Não iniciado", recuperação ativa ` +
-    `se "Polimento"). Só preenche se houver histórico suficiente para dizer algo real. Caso contrário devolve null.\n` +
-    `- meal_suggestion: sugestão alimentar para hoje, educativa e nunca prescritiva ("considera", ` +
-    `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto.\n\n` +
+    `CAMPOS A PREENCHER:\n\n` +
+    `1. recap — mensagem do Coach ao atleta (máx. 3 frases). ` +
+    `Combina: (a) balanço honesto dos treinos recentes — consistência, volume, tendências; ` +
+    `(b) se "proxima_prova" existir, inclui uma observação concreta sobre a preparação para a prova ` +
+    `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
+    `(c) uma sugestão prática para os próximos dias. ` +
+    `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n\n` +
+    `2. meal_suggestion — sugestão alimentar para hoje, educativa e nunca prescritiva ` +
+    `("considera", não "tens de"). Respeita SEMPRE restrições alimentares do contexto. ` +
+    `Usa "tdee_estimado_kcal" se disponível para calibrar porções.\n\n` +
+    `3. race_readiness — avalia a prontidão para "proxima_prova". Devolve null se não houver prova. ` +
+    `Critérios de level:\n` +
+    `  "green" — preparação adequada: semanas suficientes, volume ok, ACWR < 1.3, ` +
+    `paces (se disponíveis) dentro do intervalo necessário para o target_time, exertion controlada.\n` +
+    `  "yellow" — 1-2 alertas: ex. volume ok mas paces longe do alvo, ACWR 1.3-1.5, ` +
+    `semanas no limite, exertion elevada mas isolada.\n` +
+    `  "red" — múltiplos fatores em risco, ACWR > 1.5, tempo claramente insuficiente, ` +
+    `ou exertion cronicamente muito alta.\n` +
+    `  "race_date": copia de "proxima_prova.date" (formato yyyy-mm-dd).\n` +
+    `  "reason": 1-2 frases com os fatores determinantes, usando números reais do contexto.\n\n` +
+    `4. daily_concept_body — explica o conceito "${todayConceptTitle}" em 2-4 frases. ` +
+    `Tom de coach que quer que o atleta perceba o porquê, não apenas o quê. ` +
+    `Inclui um exemplo prático ou número concreto. Termina com uma dica de aplicação imediata.\n\n` +
     MEAL_DOCTRINE;
 
   const res = await fetch(
@@ -581,9 +643,18 @@ Deno.serve(async (req) => {
     );
     const tomorrowPrepMsg = buildTomorrowPrepMessage(tomorrowPlanItems);
 
-    let generated = { recap: null as string | null, meal_suggestion: null as string | null };
+    // Conceito educativo do dia — determinístico, sem risco de repetição a curto prazo
+    const todayConcept = DAILY_CONCEPTS[dayOfYear(today) % DAILY_CONCEPTS.length];
+
+    let generated: {
+      recap: string | null;
+      meal_suggestion: string | null;
+      race_readiness: { race_date: string; level: string; reason: string } | null;
+      daily_concept_body: string | null;
+    } = { recap: null, meal_suggestion: null, race_readiness: null, daily_concept_body: null };
+
     try {
-      generated = await generateSummary(ctx, geminiKey);
+      generated = await generateSummary(ctx, geminiKey, todayConcept.title);
     } catch (e) {
       console.error("coach-daily-summary generation failed:", e);
       // Se Gemini falhar, continuamos com as mensagens determinísticas sem crashar
@@ -596,6 +667,10 @@ Deno.serve(async (req) => {
       warnings: warningsMsg,
       meal_suggestion: generated.meal_suggestion || null,
       tomorrow_prep: tomorrowPrepMsg,
+      race_readiness: generated.race_readiness || null,
+      daily_concept: generated.daily_concept_body
+        ? { key: todayConcept.key, title: todayConcept.title, body: generated.daily_concept_body }
+        : null,
       generated_at: new Date().toISOString(),
     };
 
