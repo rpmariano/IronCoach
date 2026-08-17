@@ -3,6 +3,7 @@ import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
+import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
 import { useCarouselHaptics } from '../../utils/haptics';
@@ -476,9 +477,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
             <span className="wpc-lbl">Plano de {window.days} dias</span>
             <button 
               onClick={() => {
-                import('../../store').then(({ useAppStore }) => {
-                  useAppStore.getState().setCoachIntent('adapt_plan');
-                });
+                useAppStore.getState().setCoachIntent('adapt_plan');
                 onNav('coach');
               }}
               className="text-xs font-semibold px-2 py-1 rounded-md"

@@ -103,7 +103,7 @@ export default function Coach() {
   };
 
   const handleSend = async (textToSend) => {
-    const text = (textToSend || inputStr).trim();
+    const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
 
     setInputStr('');
