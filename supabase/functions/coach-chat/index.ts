@@ -325,10 +325,14 @@ const HEALTH_KEYWORDS_PT = [
   // Radicais antes do sufixo inflectido (-ção → -ções) para que includes()
   // apanhe singular e plural (ex: "refeiç" cobre "refeição" e "refeições").
   // "nutrição" omitido — "nutri" já cobre "nutrição", "nutricional", etc.
+  // "sugest" é intencional: apanha "sugestão", "sugestões de refeição",
+  // "sugere-me um lanche", etc. — falso-positivos aceitáveis (o Gemini faz
+  // a triagem fina via "on_topic"). "completa" omitido: coincidiria com
+  // "completamente", "completar" — demasiado genérico.
   "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
   "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
-  "receita", "ementa",
+  "sugest", "receita", "ementa", "petisco", "lanche", "refeição saudável",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
