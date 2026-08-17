@@ -1,6 +1,5 @@
-import CoachIcon from '../shared/CoachIcon';
 import React from 'react';
-import { AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { Bot, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 
 export default function CoachInsightModal({ insights, onClose }) {
@@ -12,7 +11,7 @@ export default function CoachInsightModal({ insights, onClose }) {
       onClose={onClose}
       title="Insights do Coach"
       subtitle={`${insights.length} alerta(s) para ti`}
-      icon={CoachIcon}
+      icon={Bot}
       theme="coach"
       variant="bottom-sheet"
     >
