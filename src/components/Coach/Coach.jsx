@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Bot, Trash2, Loader2, Sparkles, ChevronRight } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { Send, Bot, Loader2, Sparkles, Target } from 'lucide-react';
+import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
-import { PlanProposalCard } from '../Home/WeeklyPlanCard';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
