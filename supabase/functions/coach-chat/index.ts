@@ -1062,10 +1062,16 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
     .filter(f => !f.endsWith("_set_by_coach"))
     .map(f => `${GOAL_META[f].label}: ${profile[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
 
-  return `Proposta de alteração de metas criada com SUCESSO e enviada para a persiana (Modal Bottom Sheet) do atleta (status: proposto). ` +
+  // "persiana"/"Modal Bottom Sheet" é o nome interno do componente — nunca
+  // deve chegar à fala da Carol (jargão de implementação, sem significado
+  // para o atleta). Ao contrário do plano de treino (que também aparece no
+  // ecrã Início, ver runProposeTrainingPlan), a proposta de objetivos só
+  // existe no ecrã do Coach — dizer "ecrã Início" aqui mandaria o atleta
+  // procurar no sítio errado.
+  return `Proposta de alteração de metas criada com SUCESSO e disponível para o atleta rever aqui no Coach (estado: proposto). ` +
     `Campos a alterar: ${parts.join(", ")}. ` +
-    `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do utilizador na persiana. ` +
-    `Diz ao atleta que enviaste uma proposta de alteração de objetivos para a persiana para ele Aceitar ou Recusar.`;
+    `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do atleta aqui no Coach. ` +
+    `Diz ao atleta que enviaste uma proposta de alteração de objetivos para ele rever e Aceitar ou Recusar aqui mesmo, no botão que vai aparecer.`;
 }
 
 // ── Sugestões alimentares ────────────────────────────────────────────────
@@ -2238,8 +2244,8 @@ export function buildSystemInstruction(
   sys += biometrics.coach_can_set_nutrition_goals
     ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
       `1. SÓ DEVES PROPOR alterar objetivos (calorias, proteína, hidratos, gordura, água, peso-alvo) se os valores calculados forem EFETIVAMENTE DIFERENTES dos objetivos atuais do atleta no perfil. Se forem idênticos aos atuais, NÃO chames a ferramenta update_goals e NÃO sugiras alterar metas.\n` +
-      `2. Quando existirem alterações reais a fazer, chama a ferramenta update_goals. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
-      `3. NUNCA digas ao atleta que "já atualizaste o perfil" — diz sempre que "enviaste a proposta de alteração de objetivos para a persiana para ele rever e aceitar/recusar".\n` +
+      `2. Quando existirem alterações reais a fazer, chama a ferramenta update_goals. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
+      `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
