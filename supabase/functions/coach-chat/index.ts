@@ -1024,11 +1024,14 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   // e cada proposta (mesmo com valores idênticos aos já aceites) passava
   // como "mudança real", criando uma proposta nova a cada vez que a Carol
   // repetia os mesmos números. Só `water_goal_ml` (integer) escapava ao bug.
-  // Normalizar os dois lados para Number resolve o type mismatch.
+  // Normalizar os dois lados para Number resolve o type mismatch. `v` nunca
+  // é NaN aqui (já passou por Number.isFinite acima), por isso não é preciso
+  // tratar esse caso — se o campo ainda não existir no perfil, Number(undefined)
+  // dá NaN, que corretamente conta como "diferente" de qualquer valor proposto.
   const realChanges: Record<string, any> = {};
   for (const [k, v] of Object.entries(updates)) {
     const currentVal = profile ? Number(profile[k]) : null;
-    if (currentVal !== v && !(Number.isNaN(currentVal) && Number.isNaN(v))) {
+    if (currentVal !== v) {
       realChanges[k] = v;
       realChanges[GOAL_META[k].flag] = true;
     }
@@ -2255,7 +2258,7 @@ export function buildSystemInstruction(
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. NÃO REPROPÕES O QUE JÁ FOI ACEITE: se o atleta disser na conversa que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados). Em vez disso, cumpre imediatamente o que tinhas dito que farias a seguir (ex.: chama save_meal_suggestions ou propose_training_plan). Só chames update_goals de novo se o atleta pedir explicitamente outro ajuste.`
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. Só se genuinamente não conseguires determinar o pedido original é que perguntas o que ele quer a seguir.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +

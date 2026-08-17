@@ -757,8 +757,18 @@ Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta ime
   );
   assertStringIncludes(sys, "OBRIGATÓRIO");
   assertStringIncludes(sys, "TENS DE CHAMAR IMEDIATAMENTE");
-  assertStringIncludes(sys, "NÃO REPROPÕES O QUE JÁ FOI ACEITE");
+  assertStringIncludes(sys, "CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO");
   assertEquals(sys.includes("NÃO uses a ferramenta update_goals"), false);
+});
+
+Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (plano vs. refeições avulsas)", () => {
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "propose_training_plan com replace_active_plan=true");
+  assertStringIncludes(sys, "NÃO é suficiente escrever um resumo em texto");
 });
 
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
