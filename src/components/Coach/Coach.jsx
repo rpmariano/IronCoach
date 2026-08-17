@@ -357,11 +357,18 @@ export default function Coach() {
           <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
             <button
               type="button"
+              disabled={coachLoading}
+              // Desativado enquanto há uma troca de mensagens em curso: aceitar
+              // objetivos dispara um handleSend automático (ver
+              // handleRespondGoal), e handleSend descarta silenciosamente
+              // qualquer envio se coachLoading já for true — sem este guard, a
+              // persiana continua a abrir mas a mensagem de seguimento perdia-se.
               onClick={() => {
+                if (coachLoading) return;
                 setActiveProposalSheetPlan(pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
-              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
               style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
               <Sparkles className="w-4 h-4 text-white" />
