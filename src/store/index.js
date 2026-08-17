@@ -108,6 +108,7 @@ export const useAppStore = create((set, get) => ({
       supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
     ]);
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
+      return plans;
   },
 
   reloadCoachGoalProposals: async () => {
@@ -121,6 +122,7 @@ export const useAppStore = create((set, get) => ({
       .order('created_at', { ascending: false });
     if (!error && data) {
       set({ coachGoalProposals: data });
+      return data;
     }
   },
 
