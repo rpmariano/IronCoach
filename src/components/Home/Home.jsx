@@ -125,10 +125,13 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
               : 'yellow';
           }
 
-          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta
-          const carolReadiness = dailySummary?.race_readiness?.race_date === next.date
+          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta.
+          // Valida que o level é um valor esperado — previne semáforo silencioso se o modelo alucinar.
+          const VALID_LEVELS = ['green', 'yellow', 'red'];
+          const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
             ? dailySummary.race_readiness.level
             : null;
+          const carolReadiness = VALID_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
           const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
           const readiness = carolReadiness || deterministicReadiness;
 
