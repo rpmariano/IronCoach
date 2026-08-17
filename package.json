@@ -32,6 +32,7 @@
     "react-body-highlighter": "^2.0.5",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.2.8",
+    "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.14"
   },

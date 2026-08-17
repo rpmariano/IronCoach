@@ -251,7 +251,7 @@
 .hydro-bell-menu {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   margin-top: 8px;
   background: #ffffff;
   border: 1px solid #e2e8f0;
