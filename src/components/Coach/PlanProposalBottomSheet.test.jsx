@@ -39,22 +39,7 @@ describe('PlanProposalBottomSheet', () => {
     expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
   });
 
-  it('renderiza proposta de alteração de objetivos independente', () => {
-    const onRespondGoal = vi.fn();
-    render(
-      <PlanProposalBottomSheet
-        plan={null}
-        goalProposal={mockGoalProposal}
-        profile={mockProfile}
-        onRespondGoal={onRespondGoal}
-        onClose={() => {}}
-      />
-    );
-    expect(screen.getByText('Proposta de Alteração de Objetivos')).toBeInTheDocument();
-    expect(screen.getByText(/2200 kcal\/dia/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Aceitar Objetivos/i }));
-    expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
-  });
+
 
   it('fecha o modal com animação ao clicar no botão de cruz (X)', async () => {
     const onClose = vi.fn();

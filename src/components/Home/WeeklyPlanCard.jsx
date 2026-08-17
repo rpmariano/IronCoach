@@ -3,6 +3,7 @@ import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
+import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
 import { useCarouselHaptics } from '../../utils/haptics';
@@ -249,16 +250,20 @@ export function PlanDayCard({
 
                 {item.meal_suggestion && (
                   <div className="wpc-info-box" style={{ marginTop: '12px' }}>
-                    <div className="wpc-info-box-header nutri">
-                      <Award size={14} /> Sugestão alimentar
-                    </div>
-                    <div className="wpc-info-box-text text-sm font-normal text-slate-700">
-                      <CoachText>{item.meal_suggestion}</CoachText>
-                    </div>
-                    <p className="wpc-info-box-disclaimer">
-                      Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
-                      dúvida clínica, fala com um nutricionista.
-                    </p>
+                    <details className="wpc-info-box-details">
+                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Award size={14} /> Sugestão alimentar e nutricional
+                        </div>
+                      </summary>
+                      <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                        <CoachText>{item.meal_suggestion}</CoachText>
+                      </div>
+                      <p className="wpc-info-box-disclaimer mt-2">
+                        Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
+                        dúvida clínica, fala com um nutricionista.
+                      </p>
+                    </details>
                     
                     {!readOnly && (!item.meal_status || item.meal_status === 'pendente') && (
                       <div className="wpc-actions" style={{ marginTop: '12px' }}>
@@ -468,8 +473,18 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
         <div className="wpc-glow-coach"></div>
         <div className="wpc-content">
           <PendingBanner />
-          <div className="wpc-header-row mb-2">
+          <div className="wpc-header-row mb-2 flex justify-between items-center">
             <span className="wpc-lbl">Plano de {window.days} dias</span>
+            <button 
+              onClick={() => {
+                useAppStore.getState().setCoachIntent('adapt_plan');
+                onNav('coach');
+              }}
+              className="text-xs font-semibold px-2 py-1 rounded-md"
+              style={{ color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 15%, transparent)' }}
+            >
+              Adaptar Plano
+            </button>
           </div>
           
           <div 

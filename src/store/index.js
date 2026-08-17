@@ -78,6 +78,8 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  coachIntent: null,
+  setCoachIntent: (intent) => set({ coachIntent: intent }),
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
@@ -167,12 +169,30 @@ export const useAppStore = create((set, get) => ({
     if (accept) {
       const userId = get().session?.user?.id || get().profile?.id;
       if (userId) {
-        await supabase
-          .from('coach_plans')
-          .update({ status: 'recusado' })
-          .eq('user_id', userId)
-          .eq('status', 'aceite')
-          .neq('id', planId);
+        // Encontrar o plano novo para sabermos o period_start
+        const { data: newPlan } = await supabase.from('coach_plans').select('period_start, supersedes_plan_id').eq('id', planId).single();
+        if (newPlan) {
+          const { data: oldPlans } = await supabase.from('coach_plans').select('id, period_start, period_end').eq('user_id', userId).eq('status', 'aceite').neq('id', planId);
+          for (const old of oldPlans || []) {
+            if (old.period_start >= newPlan.period_start) {
+              // Se o antigo começou depois ou no mesmo dia do novo, recusa-o (foi totalmente substituído)
+              await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+            } else {
+              // Se o antigo começou antes, truncar o seu period_end para o dia anterior ao novo
+              const newEnd = new Date(newPlan.period_start + 'T00:00:00');
+              newEnd.setDate(newEnd.getDate() - 1);
+              const newEndStr = newEnd.toISOString().slice(0, 10);
+              
+              if (newEndStr >= old.period_start) {
+                await supabase.from('coach_plans').update({ period_end: newEndStr }).eq('id', old.id);
+                // Remover itens que caiam na parte truncada
+                await supabase.from('coach_plan_items').delete().eq('plan_id', old.id).gte('planned_date', newPlan.period_start);
+              } else {
+                await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+              }
+            }
+          }
+        }
       }
     }
 

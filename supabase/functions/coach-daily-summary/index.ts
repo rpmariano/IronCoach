@@ -112,6 +112,38 @@ function formatPlanItemsSummary(items: any[]): string {
   }).join(" + ");
 }
 
+const VIAB_MIN_WEEKS: Record<string, Record<string, number | null>> = {
+  iniciante: { "5k":  6, "10k": 10, "meia": 16, "maratona": 24, "ultra": null },
+  basico:    { "5k":  6, "10k":  8, "meia": 12, "maratona": 18, "ultra":   24 },
+  medio:     { "5k":  4, "10k":  6, "meia": 10, "maratona": 14, "ultra":   18 },
+  avancado:  { "5k":  4, "10k":  4, "meia":  8, "maratona": 12, "ultra":   14 },
+};
+
+function viabCatDist(km: number | null): string | null {
+  if (!km) return null;
+  if (km <=  5.5) return "5k";
+  if (km <= 11.0) return "10k";
+  if (km <= 22.5) return "meia";
+  if (km <= 50.0) return "maratona";
+  return "ultra";
+}
+
+function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
+  if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
+  const cat = viabCatDist(distanceKm);
+  let minWeeks = 12; // defeito
+  if (cat && level && VIAB_MIN_WEEKS[level] && VIAB_MIN_WEEKS[level][cat] !== null) {
+    minWeeks = VIAB_MIN_WEEKS[level][cat] as number;
+  }
+  const maxDays = minWeeks * 7;
+
+  if (daysUntil > maxDays + 14) return `Não iniciado (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
+  if (daysUntil > maxDays) return `A iniciar em breve (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
+  if (daysUntil === maxDays) return `Início do plano (arranca hoje o bloco de ${minWeeks} semanas)`;
+  if (daysUntil <= 14) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias)`;
+  return `Em curso / Carga (a meio da preparação, plano de ${minWeeks} semanas)`;
+}
+
 // Monta o contexto que vai para o Gemini a partir dos dados já buscados —
 // separado da leitura à BD para poder ser testado sem mockar o Supabase.
 // deno-lint-ignore no-explicit-any
@@ -200,7 +232,14 @@ export function buildDailySummaryContext(params: {
       data: dayAfterTomorrow,
       resumo: formatPlanItemsSummary(dayAfterPlan),
     },
-    proxima_prova: nextRace || null,
+    proxima_prova: nextRace ? {
+      ...nextRace,
+      fase_do_plano: getRacePhase(
+        Math.round((new Date(nextRace.date + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86400000),
+        nextRace.distance_km ?? null,
+        nextRace.experience_level || profile?.experience_level || 'iniciante'
+      )
+    } : null,
   };
 }
 
@@ -274,8 +313,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS:\n` +
     `- recap: recapitulação dos últimos dias (treinos feitos nos últimos 7 dias, consistência, ` +
-    `uma tendência notável). Só se houver histórico suficiente em corridas_ultimos_7_dias ou ` +
-    `ginasio_ultimos_7_dias para dizer algo real. Caso contrário devolve null.\n` +
+    `uma tendência notável). Lê a "fase_do_plano" da proxima_prova e orienta o discurso para a fase do ciclo de treino (ex: sugerir manutenção se "Não iniciado", ou focar na recuperação extrema se "Polimento"). Só preenche se houver histórico suficiente para dizer algo real. Caso contrário devolve null.\n` +
     `- meal_suggestion: sugestão alimentar para hoje, educativa e nunca prescritiva ("considera", ` +
     `não "tens de"). Respeita SEMPRE as restrições alimentares indicadas no contexto.\n\n` +
     MEAL_DOCTRINE;
