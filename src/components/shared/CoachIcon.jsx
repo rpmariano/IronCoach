@@ -1,25 +1,39 @@
 import React from 'react';
-import carolSvg from '../../assets/Carol.svg';
 
-export default function CoachIcon({ size = 24, className = '', style = {}, color }) {
-  // If color is passed, it means it's an active/inactive state in a tab.
-  // Since it's a full color SVG, we can use a CSS filter to gray it out when not active.
-  // "color" in lucide-react is usually passed as 'currentColor' or a hex.
-  // In the layout, active is usually a brand color, inactive is gray.
-  const isInactive = color === '#94a3b8' || color === 'var(--slate-400)' || className.includes('text-slate-400');
-  
+export default function CoachIcon({ size = 24, className = '', color = 'currentColor', ...props }) {
   return (
-    <img 
-      src={carolSvg} 
-      alt="Coach" 
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
       width={size} 
-      height={size}
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke={color} 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
       className={className}
-      style={{
-        ...style,
-        filter: isInactive ? 'grayscale(100%) opacity(70%)' : style.filter || 'none',
-        objectFit: 'contain'
-      }}
-    />
+      {...props}
+    >
+      {/* Antenna and Bow */}
+      <path d="M12 8V4" />
+      <circle cx="12" cy="3" r="1" />
+      <path d="M12 5 l2.5 -1.5 v3 z" />
+      <path d="M12 5 l-2.5 -1.5 v3 z" />
+      
+      {/* Head */}
+      <rect width="16" height="12" x="4" y="8" rx="4" />
+      
+      {/* Ears */}
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      
+      {/* Happy Eyes */}
+      <path d="M8 13c.5-1 1.5-1 2 0" />
+      <path d="M14 13c.5-1 1.5-1 2 0" />
+      
+      {/* Smiling Mouth */}
+      <path d="M9 16c1.5 1.5 4.5 1.5 6 0" />
+    </svg>
   );
 }
