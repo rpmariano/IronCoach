@@ -59,6 +59,13 @@ export default function Coach() {
     const ok = await respondToPlan(planId, accept);
     if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
     setActiveProposalSheetPlan(null);
+    // Mesmo problema que os objetivos (ver handleRespondGoal): decidir na
+    // persiana só grava o estado, não é uma troca de mensagens — sem isto a
+    // Carol nunca sabia se o atleta tinha aceitado ou recusado, e a
+    // conversa ficava suspensa sem reação nenhuma da parte dela.
+    if (ok) {
+      handleSend(accept ? 'Aceitei o plano.' : 'Recusei o plano.');
+    }
   };
 
   const handleRespondGoal = async (proposalId, accept) => {
