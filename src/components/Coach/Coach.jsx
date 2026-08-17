@@ -357,12 +357,14 @@ export default function Coach() {
           <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
             <button
               type="button"
-              disabled={coachLoading}
-              // Desativado enquanto há uma troca de mensagens em curso: aceitar
+              // disabled={coachLoading} é o único guard aqui — impede mesmo o
+              // clique de acontecer, não só o efeito. Necessário porque aceitar
               // objetivos dispara um handleSend automático (ver
               // handleRespondGoal), e handleSend descarta silenciosamente
-              // qualquer envio se coachLoading já for true — sem este guard, a
-              // persiana continua a abrir mas a mensagem de seguimento perdia-se.
+              // qualquer envio se coachLoading já for true; sem isto, a
+              // persiana continuaria a abrir mas a mensagem de seguimento
+              // perdia-se.
+              disabled={coachLoading}
               onClick={() => {
                 setActiveProposalSheetPlan(pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
