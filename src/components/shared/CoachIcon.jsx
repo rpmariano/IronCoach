@@ -15,11 +15,15 @@ export default function CoachIcon({ size = 24, className = '', color = 'currentC
       className={className}
       {...props}
     >
-      {/* Antenna and Bow */}
-      <path d="M12 8V4" />
-      <circle cx="12" cy="3" r="1" />
-      <path d="M12 5 l2.5 -1.5 v3 z" />
-      <path d="M12 5 l-2.5 -1.5 v3 z" />
+      {/* Gathered hair base */}
+      <path d="M10 8 L11 5" />
+      <path d="M14 8 L13 5" />
+      
+      {/* Hair tie */}
+      <path d="M10.5 5 h3" />
+      
+      {/* Ponytail leaf/teardrop */}
+      <path d="M 12 5 C 12 2 17 1 19 4 C 20.5 6.5 18 9 16 11 C 14 9 13 7 12 5" />
       
       {/* Head */}
       <rect width="16" height="12" x="4" y="8" rx="4" />
