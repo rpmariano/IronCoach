@@ -18,13 +18,10 @@ const GOAL_LABELS = {
 export function PlanProposalBottomSheet({
   plan,
   items = [],
-  goalProposal,
-  profile,
   onRespondPlan,
-  onRespondGoal,
   onClose,
 }) {
-  if (!plan && !goalProposal) return null;
+  if (!plan) return null;
 
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
   const days = useMemo(
@@ -42,14 +39,7 @@ export function PlanProposalBottomSheet({
     onClose();
   };
 
-  const handleRespondGoalAction = (accept) => {
-    if (goalProposal && onRespondGoal) {
-      onRespondGoal(goalProposal.id, accept);
-    }
-    onClose();
-  };
-
-  const title = plan && goalProposal ? 'Proposta de Plano & Objetivos' : plan ? 'Nova Proposta de Plano' : 'Proposta de Objetivos';
+  const title = 'Nova Proposta de Plano';
   const subtitle = plan ? `Período: ${plan.period_start} a ${plan.period_end}` : undefined;
 
   return (
@@ -64,60 +54,6 @@ export function PlanProposalBottomSheet({
       maxWidth="max-w-md"
     >
       <div className="px-6 py-4 space-y-5">
-          {/* Seção 1: Proposta de Objetivos Independente */}
-          {goalProposal && (
-            <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
-              <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-amber-500 shrink-0" />
-                <h4 className="text-sm font-bold text-slate-800">Proposta de Alteração de Objetivos</h4>
-              </div>
-
-              {goalProposal.rationale && (
-                <p className="text-xs text-slate-600 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
-                  💡 {goalProposal.rationale}
-                </p>
-              )}
-
-              <div className="space-y-1.5">
-                {Object.entries(goalProposal.goals || {})
-                  .filter(([k]) => !k.endsWith('_set_by_coach'))
-                  .map(([k, newVal]) => {
-                    const meta = GOAL_LABELS[k] || { label: k, unit: '' };
-                    const currentVal = profile?.[k] ?? '—';
-                    return (
-                      <div key={k} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/80 text-xs border border-slate-100">
-                        <span className="text-slate-600 font-medium">{meta.label}</span>
-                        <div className="flex items-center gap-2 font-bold">
-                          <span className="text-slate-400 line-through">{currentVal} {meta.unit}</span>
-                          <span style={{ color: 'var(--mod-coach-to)' }}>→ {newVal} {meta.unit}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-coach-to)"
-                  onClick={() => handleRespondGoalAction(true)}
-                  className="flex-1 text-xs py-2.5"
-                  icon={<Check size={15} />}
-                >
-                  Aceitar Objetivos
-                </Button>
-                <Button
-                  variant="light"
-                  onClick={() => handleRespondGoalAction(false)}
-                  className="text-xs py-2.5"
-                  icon={<X size={14} />}
-                >
-                  Recusar
-                </Button>
-              </div>
-            </div>
-          )}
-
           {/* Seção 2: Proposta de Plano (Treino / Refeições) */}
           {plan && (
             <div className="space-y-4 pb-4">

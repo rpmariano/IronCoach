@@ -9,6 +9,7 @@ import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
+import GoalProposalBottomSheet from './GoalProposalBottomSheet';
 
 export default function Coach() {
   const {
@@ -329,27 +330,36 @@ export default function Coach() {
 
       {/* Input Box Footer */}
       <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
-        {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante sobre a caixa de texto */}
+        {/* Sugestões pendentes (Planos / Objetivos) — Pill Buttons flutuantes sobre a caixa de texto */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="fixed bottom-[140px] right-4 z-50">
-            <button
-              type="button"
-              onClick={() => {
-                if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
-                if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
-              }}
-              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
-              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-            >
-              <Sparkles className="w-4 h-4 text-white" />
-              <span>
-                {pendingPlans.length > 0 && pendingGoalProposals.length > 0
-                  ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
-                  : pendingPlans.length > 0
-                  ? `Proposta de plano por rever (${pendingPlans.length})`
-                  : `Objetivos por rever (${pendingGoalProposals.length})`}
-              </span>
-            </button>
+          <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
+            {pendingGoalProposals.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveGoalProposal(pendingGoalProposals[0])}
+                className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+              >
+                <Target className="w-4 h-4 text-white" />
+                <span>
+                  {`Objetivos por rever (${pendingGoalProposals.length})`}
+                </span>
+              </button>
+            )}
+            
+            {pendingPlans.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveProposalSheetPlan(pendingPlans[0])}
+                className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 hover:opacity-90"
+                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+              >
+                <Sparkles className="w-4 h-4 text-white" />
+                <span>
+                  {`Proposta de plano por rever (${pendingPlans.length})`}
+                </span>
+              </button>
+            )}
           </div>
         )}
         <div className="flex gap-2 items-end">
@@ -386,19 +396,23 @@ export default function Coach() {
       </div>
 
 
-      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Propostas */}
-      {(activeProposalSheetPlan || activeGoalProposal) && (
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Plano */}
+      {activeProposalSheetPlan && (
         <PlanProposalBottomSheet
           plan={activeProposalSheetPlan}
           items={coachPlanItems}
-          goalProposal={activeGoalProposal}
-          profile={profile}
           onRespondPlan={handleRespond}
-          onRespondGoal={handleRespondGoal}
-          onClose={() => {
-            setActiveProposalSheetPlan(null);
-            setActiveGoalProposal(null);
-          }}
+          onClose={() => setActiveProposalSheetPlan(null)}
+        />
+      )}
+
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Objetivos */}
+      {activeGoalProposal && (
+        <GoalProposalBottomSheet
+          proposal={activeGoalProposal}
+          profile={profile}
+          onRespond={handleRespondGoal}
+          onClose={() => setActiveGoalProposal(null)}
         />
       )}
     </div>
