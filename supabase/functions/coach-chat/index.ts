@@ -2020,16 +2020,21 @@ export function buildSystemInstruction(
     `restrições alimentares e qualquer condicionante antes de avançar.\n` +
     `  • PROIBIDO criar o plano sem diagnóstico: se criares sem perguntar, podes repetir ` +
     `exatamente os erros que levaram o atleta a abandonar o plano anterior.\n\n` +
-    `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "mudar o plano" ` +
-    `ou pergunta se pode modificar algo:\n` +
-    `  • Não expliques o que está bem no plano atual — o atleta quer mudar, não uma defesa do que existe.\n` +
-    `  • Pergunta APENAS o que quer mudar e porquê. Uma pergunta direta, sem disclaimers.\n` +
+    `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "adaptar o plano", ` +
+    `"verificar o plano e sugerir adaptações" ou qualquer variante de modificação:\n` +
+    `  • Vai DIRETAMENTE à pergunta diagnóstica. NÃO resumas o plano atual, NÃO expliques os ` +
+    `objetivos nutricionais, NÃO confirmes que "está tudo bem" — o atleta sabe o que tem.\n` +
+    `  • A pergunta cobre SEMPRE treino E nutrição: "Que aspeto gostarias de adaptar — ` +
+    `dias de treino, intensidade, volume, duração, ou as sugestões alimentares?"\n` +
+    `  • Resposta máxima: 1 parágrafo + 1 pergunta. Sem introduções, sem resumos do estado atual.\n` +
     `  • Explica que recrias uma nova proposta (treino + nutrição) com as alterações pedidas ` +
     `para o atleta aceitar no Início — não editas bloco a bloco.\n\n` +
     `EM AMBOS OS CASOS — PROIBIDO:\n` +
+    `  ❌ Resumir o plano ou os objetivos atuais quando o atleta quer mudar algo — ele sabe o que tem.\n` +
     `  ❌ Defender ou justificar o plano/objetivos atuais quando o atleta quer mudar algo.\n` +
-    `  ❌ Criar um plano sem primeiro perceber porque o anterior falhou ou foi abandonado.\n` +
-    `  ❌ Responder ao pedido de "plano" com uma análise dos macros atuais sem perguntar nada.\n\n` +
+    `  ❌ Criar um plano sem primeiro perceber porque o anterior falhou ou o que quer diferente.\n` +
+    `  ❌ Responder ao pedido de "plano" ou "adaptar" com análise de macros/objetivos sem perguntar nada.\n` +
+    `  ❌ Omitir a componente nutricional na pergunta diagnóstica — plano é sempre treino + nutrição.\n\n` +
     `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
     `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
     `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
