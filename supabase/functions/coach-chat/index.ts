@@ -127,8 +127,9 @@ const PROPOSE_PLAN_TOOL = {
       summary: {
         type: "STRING",
         description:
-          "Um resumo descritivo do plano proposto. DEVE conter: 1. O que tiveste como base para propor o plano (os objetivos desportivos e nutricionais a atingir); 2. Breve explicação das recomendações indicadas (ginásio, corrida e nutrição); 3. Um conselho para ajudar o atleta a cumprir com o plano; 4. Um ponto motivacional. " +
-          "NÃO menciones o número exato de dias, sessões ou treinos (pois a UI já os calcula e mostra de forma determinística).",
+          "Um resumo descritivo do plano proposto. DEVE conter: 1. A base da proposta (objetivos desportivos/nutricionais); 2. Breve explicação das recomendações (ginásio, corrida, nutrição); 3. Um conselho prático; 4. Um ponto motivacional. " +
+          "CRÍTICO: Escreve num único parágrafo fluido, curto e cativante. NÃO uses listas numeradas (1., 2., etc) nem quebras de linha. " +
+          "NÃO menciones o número exato de dias, sessões ou treinos.",
       },
       items: {
         type: "ARRAY",
