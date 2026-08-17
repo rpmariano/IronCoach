@@ -188,18 +188,18 @@ const PROPOSE_PLAN_TOOL = {
 // é verificada no EXECUTOR (runUpdateGoals), não aqui — a ferramenta fica
 // sempre visível ao modelo, mas recusa escrever sem o interruptor ligado.
 //
-// FLUXO OBRIGATÓRIO: o modelo NÃO deve chamar esta ferramenta por iniciativa
-// própria. Deve primeiro PROPOR o valor em texto, perguntar "Queres que
-// atualize?", e só chamar a ferramenta quando o atleta confirmar. Ver prompt.
+// O modelo deve chamar esta ferramenta proativamente em vez de perguntar primeiro,
+// pois o utilizador tem agora uma persiana (bottom sheet) que lhe permite rever
+// e aceitar/recusar de forma segura as alterações sem afetar imediatamente o perfil.
 const UPDATE_GOALS_TOOL = {
   name: "update_goals",
   description:
-    "Escreve objetivos do atleta (macronutrientes, água, corpo) diretamente no perfil. " +
-    "NUNCA chames esta ferramenta sem o atleta ter confirmado explicitamente na conversa. " +
-    "O fluxo correto é: (1) propõe o valor em texto, (2) pergunta 'Queres que atualize?', " +
-    "(3) só chamas a ferramenta depois de o atleta dizer que sim. Requer que o atleta tenha " +
-    "ativado 'O Coach pode ajustar as metas' no Perfil — se devolver erro de autorização, " +
-    "diz onde ativar e não repitas a chamada.",
+    "Gera uma proposta de atualização de metas (macronutrientes, água, corpo) para o atleta. " +
+    "A proposta é enviada para a persiana do utilizador (Modal) para aprovação. Podes e deves " +
+    "chamar esta ferramenta de forma proativa sempre que notares que as metas atuais estão " +
+    "desadequadas face aos novos objetivos (ex. plano de emagrecimento, plano para prova). " +
+    "NÃO perguntes 'Queres que eu proponha os valores?' — em vez disso, chama a ferramenta " +
+    "logo na tua resposta e diz 'Enviei uma proposta de metas atualizadas para a persiana para aprovares'.",
   parameters: {
     type: "OBJECT",
     properties: {
