@@ -2522,6 +2522,7 @@ async function handler(req: Request): Promise<Response> {
         usage: null,
         plan_proposed: false,
         goals_updated: false,
+        goal_proposed: false,
       });
     }
 
@@ -2614,6 +2615,7 @@ async function handler(req: Request): Promise<Response> {
     // recarregar os itens para a proposta aparecer sem refrescar a página.
     let planWasProposed = false;
     let goalsWereUpdated = false;
+    let goalWasProposed = false;
 
     let geminiJson: Record<string, unknown> | undefined;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -2672,6 +2674,7 @@ async function handler(req: Request): Promise<Response> {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
+            goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
         } else {
@@ -2718,6 +2721,7 @@ async function handler(req: Request): Promise<Response> {
           usage: totalUsage,
           plan_proposed: false,
           goals_updated: false,
+        goal_proposed: false,
         });
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
@@ -2750,6 +2754,7 @@ async function handler(req: Request): Promise<Response> {
         usage: totalUsage,
         plan_proposed: planWasProposed,
         goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
       });
     }
 
@@ -2760,6 +2765,7 @@ async function handler(req: Request): Promise<Response> {
       usage: totalUsage,
       plan_proposed: planWasProposed,
       goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
     });
 
   } catch (e) {
