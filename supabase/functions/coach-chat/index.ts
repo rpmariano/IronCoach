@@ -332,7 +332,7 @@ const HEALTH_KEYWORDS_PT = [
   "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
   "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
-  "sugest", "receita", "ementa", "petisco", "lanche", "saudável",
+  "sugest", "receita", "ementa", "petisco", "lanche", "saudáv",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
