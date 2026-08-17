@@ -771,17 +771,23 @@ Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (
   assertStringIncludes(sys, "NÃO é suficiente escrever um resumo em texto");
 });
 
-Deno.test("regra 5 tem ação por omissão (sugerir refeições) quando não há pedido explícito anterior", () => {
+Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando não há pedido explícito anterior", () => {
   // Reproduz o cenário real: se a proposta de objetivos surgir sem um
   // pedido prévio de plano/refeições no histórico, a Carol não pode
   // limitar-se a perguntar "queres que detalhe?" — tem de agir.
+  // A ação por omissão é propose_training_plan (proposta com Aceitar/
+  // Recusar, cobrindo o período do plano ativo), NÃO save_meal_suggestions
+  // (grava direto sem revisão, e só para os dias explicitamente indicados
+  // — errado como omissão, o atleta esperava um plano para rever, cobrindo
+  // o período todo, não uma alteração silenciosa de 2-3 dias).
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
-  assertStringIncludes(sys, "a ação por omissão é CHAMAR save_meal_suggestions");
+  assertStringIncludes(sys, "a ação por omissão é CHAMAR propose_training_plan");
+  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
 });
 
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
