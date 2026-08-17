@@ -9,8 +9,13 @@ export default function NextRaceCard({
   tag = "estrada",
   daysRemaining = 40,
   progressPercentage = 60,
-  readiness = 'green'
+  readiness = 'green',
+  readinessReason = null,
 }) {
+  const readinessLabel = readiness === 'green' ? 'Adequada' : readiness === 'yellow' ? 'Com Alertas' : 'Inadequada';
+  const readinessTooltip = readinessReason
+    ? `Preparação ${readinessLabel}: ${readinessReason}`
+    : `Preparação do atleta: ${readinessLabel}`;
   return (
     <div className="next-race-card">
       <div className="nrc-glow"></div>
@@ -20,7 +25,7 @@ export default function NextRaceCard({
           <span className="nrc-lbl">Próxima Prova</span>
           <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
           {readiness && (
-            <div className="nrc-traffic-light" title={`Preparação do atleta: ${readiness === 'green' ? 'Adequada' : readiness === 'yellow' ? 'Com Alertas' : 'Inadequada'}`}>
+            <div className="nrc-traffic-light" title={readinessTooltip}>
               <div className={`nrc-light nrc-light-red ${readiness === 'red' ? 'on' : ''}`}></div>
               <div className={`nrc-light nrc-light-yellow ${readiness === 'yellow' ? 'on' : ''}`}></div>
               <div className={`nrc-light nrc-light-green ${readiness === 'green' ? 'on' : ''}`}></div>

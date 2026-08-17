@@ -39,22 +39,7 @@ describe('PlanProposalBottomSheet', () => {
     expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
   });
 
-  it('renderiza proposta de alteração de objetivos independente', () => {
-    const onRespondGoal = vi.fn();
-    render(
-      <PlanProposalBottomSheet
-        plan={null}
-        goalProposal={mockGoalProposal}
-        profile={mockProfile}
-        onRespondGoal={onRespondGoal}
-        onClose={() => {}}
-      />
-    );
-    expect(screen.getByText('Proposta de Alteração de Objetivos')).toBeInTheDocument();
-    expect(screen.getByText(/2200 kcal\/dia/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Aceitar Objetivos/i }));
-    expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
-  });
+
 
   it('fecha o modal com animação ao clicar no botão de cruz (X)', async () => {
     const onClose = vi.fn();
@@ -73,5 +58,49 @@ describe('PlanProposalBottomSheet', () => {
     const handles = screen.getAllByTitle('Toca para fechar persiana');
     fireEvent.click(handles[0]);
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('renderiza proposta de objetivos com botão de aceitar objetivos', () => {
+    render(<PlanProposalBottomSheet goalProposal={mockGoalProposal} profile={mockProfile} onRespondGoal={() => {}} onClose={() => {}} />);
+    expect(screen.getByText('Proposta de Objetivos')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar Objetivos/i })).toBeInTheDocument();
+  });
+
+  it('mostra plano e objetivos juntos na mesma persiana quando ambos estão pendentes', () => {
+    render(
+      <PlanProposalBottomSheet
+        plan={mockPlan}
+        items={mockItems}
+        onRespondPlan={() => {}}
+        goalProposal={mockGoalProposal}
+        profile={mockProfile}
+        onRespondGoal={() => {}}
+        onClose={() => {}}
+      />
+    );
+    expect(screen.getByText('Propostas do Coach')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar Objetivos/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
+  });
+
+  it('responder aos objetivos não invoca onRespondPlan nem fecha a persiana inteira', () => {
+    const onRespondGoal = vi.fn();
+    const onRespondPlan = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <PlanProposalBottomSheet
+        plan={mockPlan}
+        items={mockItems}
+        onRespondPlan={onRespondPlan}
+        goalProposal={mockGoalProposal}
+        profile={mockProfile}
+        onRespondGoal={onRespondGoal}
+        onClose={onClose}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Aceitar Objetivos/i }));
+    expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
+    expect(onRespondPlan).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

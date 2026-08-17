@@ -8,7 +8,7 @@ import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
-import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -49,8 +49,13 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
   );
 }
 
+// Valores válidos para o semáforo de prontidão da Carol — fora do componente
+// para evitar recriar o array a cada render/iteração do .map().
+const VALID_READINESS_LEVELS = ['green', 'yellow', 'red'];
+
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
 function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
+  const { dailySummary } = useAppStore();
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
@@ -93,25 +98,45 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
       >
         {upcoming.map(next => {
           const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
-          const maxDays = 84; 
+          
+          const distanceKm = parseFloat((next.distance_km || '').toString().replace(',', '.'));
+          const exp = next.experience_level || profile?.experience_level || 'iniciante';
+          const cat = categorizeDistance(distanceKm);
+          
+          let minWeeks = 12; // Valor padrão caso falhe o mapeamento
+          if (cat && MIN_PREP_WEEKS[exp] && MIN_PREP_WEEKS[exp][cat] !== null) {
+            minWeeks = MIN_PREP_WEEKS[exp][cat];
+          }
+          const maxDays = minWeeks * 7; 
+
           const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
           const dateObj = new Date(next.date + 'T00:00:00');
           const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
 
           const weeksToRace = Math.floor(daysUntil / 7);
           const viability = assessRaceViability({
-            distanceKm: parseFloat((next.distance_km || '').toString().replace(',', '.')),
-            experienceLevel: next.experience_level || profile?.experience_level,
+            distanceKm: distanceKm,
+            experienceLevel: exp,
             weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
           });
 
-          let readiness = 'green';
+          // Semáforo determinístico como fallback
+          let deterministicReadiness = 'green';
           if (viability.flags.length > 0) {
-            readiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) 
-              ? 'red' 
+            deterministicReadiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente'))
+              ? 'red'
               : 'yellow';
           }
+
+          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta.
+          // Valida que o level é um valor esperado — previne semáforo silencioso se o modelo alucinar.
+          const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
+            ? dailySummary.race_readiness.level
+            : null;
+          const carolReadiness = VALID_READINESS_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
+          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
+          const readiness = carolReadiness || deterministicReadiness;
 
           return (
             <div
@@ -130,6 +155,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   daysRemaining={daysUntil}
                   progressPercentage={progressPercentage}
                   readiness={readiness}
+                  readinessReason={carolReason}
                 />
               </div>
             </div>

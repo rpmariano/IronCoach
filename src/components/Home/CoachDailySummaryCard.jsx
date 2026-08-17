@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, Lightbulb } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
@@ -67,9 +67,14 @@ export default function CoachDailySummaryCard() {
     }
     const waterTotal = (todayWater || []).reduce((s, w) => s + (w.amount_ml || 0), 0);
     const waterGoal = profile?.water_goal_ml;
-    if (waterGoal && waterTotal < waterGoal / 2) {
-      const waterRem = ` Não te esqueças de começar a beber água desde já para manteres a hidratação.`;
-      msg = msg ? `${msg}${waterRem}` : `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+    if (waterGoal && waterTotal === 0) {
+      // Nunca registou água hoje
+      const waterRem = ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+      msg = msg ? `${msg}${waterRem}` : waterRem.trim();
+    } else if (waterGoal && waterTotal < waterGoal / 2) {
+      // Registou, mas ainda abaixo de metade da meta
+      const waterRem = ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+      msg = msg ? `${msg}${waterRem}` : waterRem.trim();
     }
     if (msg) return msg;
     return typeof dailySummary?.warnings === 'string' && dailySummary.warnings.trim() ? dailySummary.warnings.trim() : null;
@@ -102,6 +107,15 @@ export default function CoachDailySummaryCard() {
     }
     if (tomorrowPrepText) {
       list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#6d28d9', text: tomorrowPrepText });
+    }
+    if (dailySummary?.daily_concept?.body) {
+      list.push({
+        key: 'daily_concept',
+        label: dailySummary.daily_concept.title,
+        Icon: Lightbulb,
+        color: '#b45309',
+        text: dailySummary.daily_concept.body,
+      });
     }
     return list;
   }, [dailySummary, warningsText, tomorrowPrepText]);
