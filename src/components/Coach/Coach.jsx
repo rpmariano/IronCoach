@@ -65,6 +65,14 @@ export default function Coach() {
     const ok = await respondToGoalProposal(proposalId, accept);
     if (ok) showToast(accept ? 'Objetivos aceites e atualizados' : 'Proposta de objetivos recusada');
     setActiveGoalProposal(null);
+    // Aceitar na persiana só grava no perfil — não é uma troca de mensagens,
+    // por isso a Carol nunca fica a saber que pode agora avançar com o que
+    // tinha ficado pendente (ex.: sugestões de refeições, ver regra
+    // SEQUÊNCIA DE DEPENDÊNCIA no prompt do coach-chat). Dispara uma
+    // mensagem automática, tal como já se faz para coachIntent==='adapt_plan'.
+    if (ok && accept) {
+      handleSend('Aceitei os novos objetivos.');
+    }
   };
 
   // Fecho total da persiana (X, backdrop, arrastar) — abandona as duas
