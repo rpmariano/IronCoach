@@ -71,7 +71,13 @@ export default function Coach() {
     // SEQUÊNCIA DE DEPENDÊNCIA no prompt do coach-chat). Dispara uma
     // mensagem automática, tal como já se faz para coachIntent==='adapt_plan'.
     if (ok && accept) {
-      handleSend('Aceitei os novos objetivos.');
+      // Explícito de propósito: sem isto, a Carol por vezes recalculava os
+      // objetivos outra vez em vez de avançar para o que tinha ficado
+      // pendente — combinado com o bug de comparação de tipos em
+      // runUpdateGoals (numeric do Postgres vem como string do PostgREST),
+      // isso criava um loop de propostas repetidas (ver regra 5, "NÃO
+      // REPROPÕES O QUE JÁ FOI ACEITE", no prompt do coach-chat).
+      handleSend('Aceitei os novos objetivos. Não proponhas novos objetivos agora — avança com o que tinhas dito que farias a seguir.');
     }
   };
 

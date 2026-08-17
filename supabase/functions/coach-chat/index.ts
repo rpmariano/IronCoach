@@ -1016,11 +1016,19 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
       "e não tentes de novo nesta resposta.";
   }
 
-  // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil
+  // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil.
+  // BUG CORRIGIDO: a maioria destas colunas é `numeric` no Postgres, que o
+  // PostgREST devolve como STRING no JSON (ex.: "1900"), enquanto `v` é
+  // sempre um Number (calculado acima). "1900" !== 1900 é sempre true em JS
+  // — esta guarda nunca detetava "sem mudança nenhuma" para estes campos,
+  // e cada proposta (mesmo com valores idênticos aos já aceites) passava
+  // como "mudança real", criando uma proposta nova a cada vez que a Carol
+  // repetia os mesmos números. Só `water_goal_ml` (integer) escapava ao bug.
+  // Normalizar os dois lados para Number resolve o type mismatch.
   const realChanges: Record<string, any> = {};
   for (const [k, v] of Object.entries(updates)) {
-    const currentVal = profile ? profile[k] : null;
-    if (currentVal !== v) {
+    const currentVal = profile ? Number(profile[k]) : null;
+    if (currentVal !== v && !(Number.isNaN(currentVal) && Number.isNaN(v))) {
       realChanges[k] = v;
       realChanges[GOAL_META[k].flag] = true;
     }
@@ -2246,7 +2254,8 @@ export function buildSystemInstruction(
       `1. OBRIGATÓRIO: Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas.\n` +
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
-      `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.`
+      `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
+      `5. NÃO REPROPÕES O QUE JÁ FOI ACEITE: se o atleta disser na conversa que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados). Em vez disso, cumpre imediatamente o que tinhas dito que farias a seguir (ex.: chama save_meal_suggestions ou propose_training_plan). Só chames update_goals de novo se o atleta pedir explicitamente outro ajuste.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
