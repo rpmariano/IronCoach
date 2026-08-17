@@ -771,6 +771,19 @@ Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (
   assertStringIncludes(sys, "NÃO é suficiente escrever um resumo em texto");
 });
 
+Deno.test("regra 5 tem ação por omissão (sugerir refeições) quando não há pedido explícito anterior", () => {
+  // Reproduz o cenário real: se a proposta de objetivos surgir sem um
+  // pedido prévio de plano/refeições no histórico, a Carol não pode
+  // limitar-se a perguntar "queres que detalhe?" — tem de agir.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
+  assertStringIncludes(sys, "a ação por omissão é CHAMAR save_meal_suggestions");
+});
+
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
 // Ver src/coach-knowledge/07-sugestoes-alimentares.md. Antes disto, o campo
 // meal_suggestion vinha do conhecimento geral do Gemini, não da literatura
