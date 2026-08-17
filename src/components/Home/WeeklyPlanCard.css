@@ -512,3 +512,16 @@
   font-weight: 500;
   margin-bottom: 16px;
 }
+
+details.wpc-info-box-details > summary {
+  list-style: none;
+}
+details.wpc-info-box-details > summary::-webkit-details-marker {
+  display: none;
+}
+details.wpc-info-box-details .details-chevron {
+  transition: transform 0.2s ease;
+}
+details.wpc-info-box-details[open] .details-chevron {
+  transform: rotate(180deg);
+}

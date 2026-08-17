@@ -251,10 +251,11 @@ export function PlanDayCard({
                 {item.meal_suggestion && (
                   <div className="wpc-info-box" style={{ marginTop: '12px' }}>
                     <details className="wpc-info-box-details">
-                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none' }}>
+                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Award size={14} /> Sugestão alimentar e nutricional
                         </div>
+                        <ChevronDown size={14} className="details-chevron" />
                       </summary>
                       <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
                         <CoachText>{item.meal_suggestion}</CoachText>
