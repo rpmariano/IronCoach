@@ -1,8 +1,9 @@
+import CoachIcon from '../shared/CoachIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
+import { LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
@@ -200,7 +201,7 @@ export default function Layout({ children }) {
         <div aria-hidden="true" className="h-full" />
 
         <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} lastDashboardTab={lastDashboardTab} />
-        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} />
+        <VBarBtn tab="coach" icon={<CoachIcon size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button

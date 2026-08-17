@@ -1,9 +1,10 @@
+import CoachIcon from '../shared/CoachIcon';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { User, Target, Bot, LogOut, Bell, Sparkles, Loader2, X } from 'lucide-react';
+import { User, Target, LogOut, Bell, Sparkles, Loader2, X } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -329,7 +330,7 @@ export default function Perfil() {
         {[
           { key: 'perfil', label: 'Pessoal', icon: User },
           { key: 'metas', label: 'Metas', icon: Target },
-          { key: 'coach', label: 'Coach', icon: Bot },
+          { key: 'coach', label: 'Coach', icon: CoachIcon },
         ].map(t => (
           <button
             key={t.key}
@@ -600,7 +601,7 @@ export default function Perfil() {
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5">
-                  <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
+                  <CoachIcon size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
                 </p>
                 <p className="text-[11px] text-slate-500 mt-1">
                   Permite que o Coach grave metas diretamente no teu perfil (nutrição, água e objetivos corporais)
@@ -706,7 +707,7 @@ export default function Perfil() {
 
           <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-2">
-              <Bot size={16} className="text-[var(--mod-coach-to)]" />
+              <CoachIcon size={16} className="text-[var(--mod-coach-to)]" />
               <h2 className="text-sm font-semibold">Contexto do Coach</h2>
             </div>
             <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">

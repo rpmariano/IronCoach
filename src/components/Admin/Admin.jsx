@@ -1,7 +1,8 @@
+import CoachIcon from '../shared/CoachIcon';
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Bot, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
@@ -248,7 +249,7 @@ export default function Admin() {
 
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
               <div className="flex items-center gap-2 mb-1.5 text-slate-400">
-                <Bot size={16} />
+                <CoachIcon size={16} />
                 <span className="text-xs">Mensagens ao Coach</span>
               </div>
               <p className="text-2xl font-bold leading-none">{coachMsgs.filter(m => m.role === 'user').length}</p>
@@ -304,7 +305,7 @@ export default function Admin() {
                       <Utensils size={10} /> {mealCount}
                     </span>
                     <span className="flex items-center gap-1 text-[10px] text-slate-400" title="Mensagens Coach">
-                      <Bot size={10} /> {msgCount}
+                      <CoachIcon size={10} /> {msgCount}
                     </span>
                   </div>
                 </div>
