@@ -1031,6 +1031,22 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   }
 
   const rationale = typeof args?.rationale === "string" && args.rationale.trim() ? args.rationale.trim() : null;
+
+  // Uma nova proposta substitui qualquer proposta anterior ainda por decidir —
+  // sem isto, cada chamada a update_goals empilhava outra linha "proposto" na
+  // fila (ver Coach.jsx "Objetivos por rever (N)"), obrigando o atleta a
+  // decidir sobre propostas antigas e já desatualizadas em vez de só a mais
+  // recente. Não há coluna de estado extra para "substituído" (check
+  // constraint só aceita proposto/aceite/recusado), por isso reaproveita-se
+  // "recusado" — semanticamente correto: a proposta anterior deixou de ser a
+  // recomendação atual do Coach.
+  const { error: supersedeErr } = await sb
+    .from("coach_goal_proposals")
+    .update({ status: "recusado" })
+    .eq("user_id", userId)
+    .eq("status", "proposto");
+  if (supersedeErr) return `Erro ao substituir propostas anteriores: ${supersedeErr.message}`;
+
   const { error: propErr } = await sb
     .from("coach_goal_proposals")
     .insert({
@@ -2224,7 +2240,7 @@ export function buildSystemInstruction(
       `1. OBRIGATÓRIO: Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles.\n` +
       `2. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil" — diz sempre que "enviaste a proposta de alteração de objetivos para a persiana para ele rever e aceitar/recusar".\n` +
-      `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino e/ou nutrição que DEPENDA da aceitação destes novos objetivos, NÃO chames a ferramenta propose_training_plan na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals), e avisa o atleta de forma muito clara no chat que só lhe irás propor o plano de treino/nutrição depois dele Aceitar ou Recusar os objetivos.`
+      `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +

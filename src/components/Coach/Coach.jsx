@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Bot, Loader2, Sparkles, Target } from 'lucide-react';
+import { Send, Bot, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
-import GoalProposalBottomSheet from './GoalProposalBottomSheet';
 
 export default function Coach() {
   const {
@@ -52,14 +51,28 @@ export default function Coach() {
     }
   }, [coachIntent]);
 
+  // Fecha só a secção respondida — se a outra proposta (objetivos/plano)
+  // ainda estiver pendente, a persiana continua aberta a mostrá-la (ver
+  // PlanProposalBottomSheet, que já não fecha a persiana sozinho ao
+  // responder a uma secção).
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
     if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
+    setActiveProposalSheetPlan(null);
   };
 
   const handleRespondGoal = async (proposalId, accept) => {
     const ok = await respondToGoalProposal(proposalId, accept);
     if (ok) showToast(accept ? 'Objetivos aceites e atualizados' : 'Proposta de objetivos recusada');
+    setActiveGoalProposal(null);
+  };
+
+  // Fecho total da persiana (X, backdrop, arrastar) — abandona as duas
+  // propostas por decidir agora; continuam pendentes na base de dados e
+  // reaparecem no botão flutuante.
+  const handleCloseProposalsSheet = () => {
+    setActiveProposalSheetPlan(null);
+    setActiveGoalProposal(null);
   };
 
   const [inputStr, setInputStr] = useState('');
@@ -329,36 +342,29 @@ export default function Coach() {
 
       {/* Input Box Footer */}
       <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
-        {/* Sugestões pendentes (Planos / Objetivos) — Pill Buttons flutuantes sobre a caixa de texto */}
+        {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
+            propostas podem coexistir e abrem sempre a MESMA persiana, para
+            o atleta decidir ambas sem trocar de ecrã. */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
           <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
-            {pendingGoalProposals.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setActiveGoalProposal(pendingGoalProposals[0])}
-                className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
-              >
-                <Target className="w-4 h-4 text-white" />
-                <span>
-                  {`Objetivos por rever (${pendingGoalProposals.length})`}
-                </span>
-              </button>
-            )}
-            
-            {pendingPlans.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setActiveProposalSheetPlan(pendingPlans[0])}
-                className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-              >
-                <Sparkles className="w-4 h-4 text-white" />
-                <span>
-                  {`Proposta de plano por rever (${pendingPlans.length})`}
-                </span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveProposalSheetPlan(pendingPlans[0] || null);
+                setActiveGoalProposal(pendingGoalProposals[0] || null);
+              }}
+              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+            >
+              <Sparkles className="w-4 h-4 text-white" />
+              <span>
+                {pendingGoalProposals.length > 0 && pendingPlans.length > 0
+                  ? `Propostas por rever (${pendingGoalProposals.length + pendingPlans.length})`
+                  : pendingGoalProposals.length > 0
+                    ? `Objetivos por rever (${pendingGoalProposals.length})`
+                    : `Proposta de plano por rever (${pendingPlans.length})`}
+              </span>
+            </button>
           </div>
         )}
         <div className="flex gap-2 items-end">
@@ -395,23 +401,18 @@ export default function Coach() {
       </div>
 
 
-      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Plano */}
-      {activeProposalSheetPlan && (
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) — Objetivos e/ou
+          Plano, o que estiver pendente. Ver comentário no componente sobre
+          porque as duas propostas partilham a mesma persiana. */}
+      {(activeProposalSheetPlan || activeGoalProposal) && (
         <PlanProposalBottomSheet
           plan={activeProposalSheetPlan}
           items={coachPlanItems}
           onRespondPlan={handleRespond}
-          onClose={() => setActiveProposalSheetPlan(null)}
-        />
-      )}
-
-      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Proposta de Objetivos */}
-      {activeGoalProposal && (
-        <GoalProposalBottomSheet
-          proposal={activeGoalProposal}
+          goalProposal={activeGoalProposal}
           profile={profile}
-          onRespond={handleRespondGoal}
-          onClose={() => setActiveGoalProposal(null)}
+          onRespondGoal={handleRespondGoal}
+          onClose={handleCloseProposalsSheet}
         />
       )}
     </div>
