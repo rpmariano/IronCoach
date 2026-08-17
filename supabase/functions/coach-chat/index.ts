@@ -322,9 +322,17 @@ const HEALTH_KEYWORDS_PT = [
   "fartlek", "intervalos", "z1", "z2", "z3", "z4", "z5", "zona ",
   "vdot", "vo2", "acwr",
   // Nutrição
-  "nutrição", "caloria", "kcal", "proteína", "hidratos", "gordura",
-  "carbo", "refeição", "alimentação", "comer", "dieta", "suplemento",
+  // Radicais antes do sufixo inflectido (-ção → -ções) para que includes()
+  // apanhe singular e plural (ex: "refeiç" cobre "refeição" e "refeições").
+  // "nutrição" omitido — "nutri" já cobre "nutrição", "nutricional", etc.
+  // "sugest" é intencional: apanha "sugestão", "sugestões de refeição",
+  // "sugere-me um lanche", etc. — falso-positivos aceitáveis (o Gemini faz
+  // a triagem fina via "on_topic"). "completa" omitido: coincidiria com
+  // "completamente", "completar" — demasiado genérico.
+  "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
+  "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
+  "sugest", "receita", "ementa", "petisco", "lanche", "saudáv",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
