@@ -364,7 +364,6 @@ export default function Coach() {
               // qualquer envio se coachLoading já for true — sem este guard, a
               // persiana continua a abrir mas a mensagem de seguimento perdia-se.
               onClick={() => {
-                if (coachLoading) return;
                 setActiveProposalSheetPlan(pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
