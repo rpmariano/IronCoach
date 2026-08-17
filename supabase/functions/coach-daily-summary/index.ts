@@ -268,9 +268,14 @@ function buildWarningsMessage(todayPlanItems: any[], waterTotal: number, waterGo
     msg = `Para hoje tens agendado: ${itemsDesc}.`;
   }
 
-  if (waterGoal && waterTotal < waterGoal / 2) {
-    const waterRem = ` Não te esqueças de começar a beber água desde já para manteres a hidratação.`;
-    msg = msg ? `${msg}${waterRem}` : `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+  if (waterGoal && waterTotal === 0) {
+    // Nunca registou água hoje
+    const waterRem = ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+    msg = msg ? `${msg}${waterRem}` : waterRem.trim();
+  } else if (waterGoal && waterTotal < waterGoal / 2) {
+    // Registou, mas ainda abaixo de metade da meta
+    const waterRem = ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+    msg = msg ? `${msg}${waterRem}` : waterRem.trim();
   }
 
   return msg || null;
@@ -328,7 +333,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string):
         generationConfig: {
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
-          thinkingConfig: { thinkingLevel: "minimal" },
+          // Sem thinkingConfig de propósito: o campo para desativar/limitar
+          // o raciocínio interno varia de geração para geração e causa 400 em
+          // modelos que não o suportam (ex: gemini-flash-latest → 1.x/2.0).
+          // Deixar sem o campo funciona em todas as gerações.
         },
       }),
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
