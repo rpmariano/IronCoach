@@ -322,9 +322,12 @@ const HEALTH_KEYWORDS_PT = [
   "fartlek", "intervalos", "z1", "z2", "z3", "z4", "z5", "zona ",
   "vdot", "vo2", "acwr",
   // Nutrição
-  "nutrição", "caloria", "kcal", "proteína", "hidratos", "gordura",
-  "carbo", "refeição", "alimentação", "comer", "dieta", "suplemento",
+  // Radicais antes do sufixo inflectido (-ção → -ções) para que includes()
+  // apanhe singular e plural (ex: "refeiç" cobre "refeição" e "refeições").
+  "nutrição", "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
+  "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
+  "sugest", "completa", "receita", "ementa",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
