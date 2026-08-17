@@ -1,6 +1,5 @@
-import CoachIcon from '../shared/CoachIcon';
 import React from 'react';
-import { AlertTriangle, Info, AlertCircle } from 'lucide-react';
+import { Bot, AlertTriangle, Info, AlertCircle } from 'lucide-react';
 
 export default function CoachInsightButton({ insights, onClick }) {
   if (!insights || insights.length === 0) return null;
@@ -11,7 +10,7 @@ export default function CoachInsightButton({ insights, onClick }) {
 
   let ringColor = 'rgba(6, 182, 212, 0.4)'; // Cyan (Coach default)
   let badgeColor = 'bg-cyan-500';
-  let Icon = CoachIcon;
+  let Icon = Bot;
 
   if (hasCritical) {
     ringColor = 'rgba(239, 68, 68, 0.5)'; // Red

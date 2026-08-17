@@ -1,8 +1,7 @@
-import CoachIcon from '../shared/CoachIcon';
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Loader2, Sparkles } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
@@ -226,7 +225,7 @@ export default function Coach() {
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
             style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
           >
-            <CoachIcon className="w-5 h-5" style={{ color: '#fff' }} />
+            <Bot className="w-5 h-5" style={{ color: '#fff' }} />
           </div>
           <div>
             <h2 className="text-sm font-bold text-white leading-none">Coach IronHealth</h2>
@@ -247,7 +246,7 @@ export default function Coach() {
               className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-sm"
               style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
-              <CoachIcon className="w-8 h-8" style={{ color: '#fff' }} />
+              <Bot className="w-8 h-8" style={{ color: '#fff' }} />
             </div>
             <h3 className="text-sm font-bold text-white mb-1">O teu coach está pronto</h3>
             <p className="text-xs text-slate-400 leading-relaxed mb-5 max-w-xs">
