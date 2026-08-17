@@ -51,6 +51,7 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
 
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
 function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
+  const { dailySummary } = useAppStore();
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
@@ -116,12 +117,20 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
           });
 
-          let readiness = 'green';
+          // Semáforo determinístico como fallback
+          let deterministicReadiness = 'green';
           if (viability.flags.length > 0) {
-            readiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) 
-              ? 'red' 
+            deterministicReadiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente'))
+              ? 'red'
               : 'yellow';
           }
+
+          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta
+          const carolReadiness = dailySummary?.race_readiness?.race_date === next.date
+            ? dailySummary.race_readiness.level
+            : null;
+          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
+          const readiness = carolReadiness || deterministicReadiness;
 
           return (
             <div
@@ -140,6 +149,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   daysRemaining={daysUntil}
                   progressPercentage={progressPercentage}
                   readiness={readiness}
+                  readinessReason={carolReason}
                 />
               </div>
             </div>
