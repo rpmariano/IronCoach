@@ -80,7 +80,7 @@ Invocar automaticamente quando:
 2. O assistente deve **informar o utilizador** de que está a correr um agente (ex: "Vou correr o test_engineer para gerar testes para este componente novo")
 3. Se um agente reportar problemas, o assistente deve **corrigir os problemas antes de prosseguir**, não apenas reportá-los
 4. Os relatórios dos agentes devem ser **apresentados de forma sucinta** ao utilizador, não em formato bruto
-5. **NUNCA realizar commits ou pushes (`git commit`, `git push`) diretamente nas branches `dev` ou `master` sem autorização explícita e inequívoca do utilizador.**
+5. **NUNCA realizar commits ou pushes (`git commit`, `git push`) diretamente na branch `master` sem autorização explícita e inequívoca do utilizador.**
 6. Trabalhar exclusivamente na branch `dev-antigravity`. Nunca fazer git checkout para outra branch na pasta do projeto.
 7. O fluxo de deploy (ao concluir uma alteração) é **SEMPRE**:
    - `git add <ficheiros-alterados>` (Nunca usar `git add -A` ou `git commit -a`)
