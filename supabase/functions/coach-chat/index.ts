@@ -172,11 +172,11 @@ const PROPOSE_PLAN_TOOL = {
               description:
                 "Sugestão alimentar para este dia, ligada à carga do treino — o que comer " +
                 "antes, durante e depois, com alimentos concretos e porções aproximadas. " +
-                "É uma SUGESTÃO EDUCATIVA, nunca uma prescrição: escreve em tom de " +
-                "\"considera\"/\"costuma resultar\", não de imposição. Respeita sempre as " +
-                "restrições alimentares do atleta indicadas no contexto — nunca sugiras um " +
-                "alimento que elas excluam. Se detetares sinais de alarme (perda de peso " +
-                "rápida, ingestão muito baixa), não sugiras ementas: levanta a preocupação.",
+                "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares. " +
+                "CRÍTICO: Se indicares valores (kcal, proteína), especifica CLARAMENTE se são " +
+                "para aquela refeição ou para o dia inteiro. NUNCA coloques o total diário " +
+                "diretamente ao lado de um prato (ex.: 'Jantar de peixe (~2000 kcal)'), pois " +
+                "o atleta vai pensar que o peixe tem 2000 kcal.",
             },
           },
           required: ["planned_date", "kind"],
