@@ -106,11 +106,9 @@ const PROPOSE_PLAN_TOOL = {
     "pelo menos 7 dias de estímulo consistente para ocorrer — mudar mais rápido introduz ruído " +
     "que impede a supercompensação. Se pedir menos de 7 dias, aceita o pedido mas aconselha " +
     "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta. " +
-    "SUBSTITUIR PLANO ATIVO: se o contexto mostrar um plano aceite em curso e tiveres avisado " +
-    "o atleta disso, e ele DEPOIS confirmar explicitamente que quer mesmo substituí-lo (ex.: " +
-    "'sim', 'quero mesmo assim', 'substitui', 'cria na mesma'), chama esta função com " +
-    "replace_active_plan=true. NÃO voltes a perguntar nem a repetir o aviso — ele já respondeu, " +
-    "agir agora é a única forma de não ficar preso num ciclo de confirmação sem saída.",
+    "ADAPTAR PLANO ATIVO: se o contexto mostrar um plano em curso e o atleta pedir para o adaptar (ou se notares muitos treinos em atraso e sugerires tu próprio uma adaptação), " +
+    "chama esta função com replace_active_plan=true abrangendo as novas datas propostas. " +
+    "A nova proposta irá sobrepor-se aos dias futuros do plano atual, mas o histórico passado do atleta será preservado. Podes avançar diretamente com a proposta de adaptação se for claro o que ajustar.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -170,13 +168,11 @@ const PROPOSE_PLAN_TOOL = {
             meal_suggestion: {
               type: "STRING",
               description:
-                "Sugestão alimentar para este dia, ligada à carga do treino — o que comer " +
-                "antes, durante e depois, com alimentos concretos e porções aproximadas. " +
-                "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares. " +
-                "CRÍTICO: Se indicares valores (kcal, proteína), especifica CLARAMENTE se são " +
-                "para aquela refeição ou para o dia inteiro. NUNCA coloques o total diário " +
-                "diretamente ao lado de um prato (ex.: 'Jantar de peixe (~2000 kcal)'), pois " +
-                "o atleta vai pensar que o peixe tem 2000 kcal.",
+                "Sugestão alimentar OBRIGATÓRIA COMPLETA para todos os dias do plano, independentemente da carga do treino. " +
+                "Deves apresentar as refeições completas (Pequeno-almoço, Lanche da manhã, Almoço, Lanche da tarde, Jantar e Ceia), " +
+                "com a indicação dos macronutrientes esperados por cada refeição e o total do dia. " +
+                "Inclui a explicação das opções tomadas e adequa-as ao treino planeado para o dia. " +
+                "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares.",
             },
           },
           required: ["planned_date", "kind"],
@@ -1262,6 +1258,22 @@ function viabCatDist(km: number | null): string | null {
   return "ultra";
 }
 
+function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
+  if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
+  const cat = viabCatDist(distanceKm);
+  let minWeeks = 12; // defeito
+  if (cat && level && VIAB_MIN_WEEKS[level] && VIAB_MIN_WEEKS[level][cat] !== null) {
+    minWeeks = VIAB_MIN_WEEKS[level][cat] as number;
+  }
+  const maxDays = minWeeks * 7;
+
+  if (daysUntil > maxDays + 14) return `Não iniciado (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
+  if (daysUntil > maxDays) return `A iniciar em breve (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
+  if (daysUntil === maxDays) return `Início do plano (arranca hoje o bloco de ${minWeeks} semanas)`;
+  if (daysUntil <= 14) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias)`;
+  return `Em curso / Carga (a meio da preparação, plano de ${minWeeks} semanas)`;
+}
+
 function assessViability(
   distanceKm: number | null,
   level: string | null,
@@ -1378,6 +1390,7 @@ function buildRaceEventsContext(
       e.race_priority
         ? `prioridade: ${RACE_PRIORITY_LABELS[e.race_priority] || e.race_priority}`
         : null,
+      `fase do plano: ${getRacePhase(daysUntil, e.distance_km ?? null, effectiveLevel)}`,
     ].filter(Boolean).join(", ");
     // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel)
     const viabFlags = daysUntil > 0
@@ -1696,6 +1709,7 @@ export function buildSystemInstruction(
     // ── Abertura da Conversa ──────────────────────────────────────────────────
     `## Abertura de Conversa\n` +
     `Quando o atleta abre com "olá" ou cumprimento similar, aborda proativamente por esta prioridade:\n` +
+    `0. Pedido explícito ou intenção injetada de adaptação de plano (se o atleta quiser adaptar o plano e notares itens em atraso, sê proativa a sugerir logo a solução para a semana).\n` +
     `1. Alarme de saúde urgente nos dados (queda de peso >1,5% em 48h, gordura corporal abaixo do piso, FC anómala).\n` +
     `2. Evento recente relevante (último treino ou avaliação corporal, prova ontem/hoje).\n` +
     `3. Tema em discussão na conversa anterior — puxa do histórico.\n` +
@@ -1763,10 +1777,11 @@ export function buildSystemInstruction(
     `Propõe até 3 perguntas de seguimento curtas, escritas na primeira pessoa como se fosse o atleta a perguntar ` +
     `(ex.: "Queres um plano para esta semana?" → "Cria-me um plano para esta semana"). ` +
     `Não repitas no campo "reply" o convite para essas perguntas. Se não fizer sentido nenhuma, deixa o array vazio.\n\n` +
-    // ── Provas Próximas ───────────────────────────────────────────────────────
     `## Provas Próximas\n` +
-    `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
-    `- Última semana: tapering — menos quilómetros/carga, treinos curtos e leves, priorizar descanso e sono.\n` +
+    `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade e a "fase do plano" ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
+    `- Fase "Não iniciado": o atleta está fora da janela oficial de preparação para a distância. Treinos de manutenção ou base.\n` +
+    `- Exceção de Antecipação: Se a fase for "Não iniciado", mas o atleta pedir explicitamente para começar a treinar já para a prova, adapta-te. Propõe treinos ou antecipa o plano, em vez de o obrigar a esperar.\n` +
+    `- Fase "Polimento / Taper": menos quilómetros/carga, treinos curtos e leves, priorizar descanso e sono.\n` +
     `- Últimos 2-3 dias (>10 km): aumentar hidratos, intensidade quase zero.\n` +
     `- Dia da prova / dia seguinte: pergunta como correu, parabeniza — sem impor novo plano.\n` +
     `Não forces este tópico em perguntas não relacionadas — menciona só quando for relevante.\n\n` +

@@ -28,7 +28,9 @@ export default function Coach() {
     respondToPlan,
     coachGoalProposals,
     reloadCoachGoalProposals,
-    respondToGoalProposal
+    respondToGoalProposal,
+    coachIntent,
+    setCoachIntent
   } = useAppStore();
   const { showToast } = useToast();
 
@@ -41,6 +43,14 @@ export default function Coach() {
   useEffect(() => {
     reloadCoachGoalProposals();
   }, []);
+
+  useEffect(() => {
+    if (coachIntent === 'adapt_plan') {
+      setCoachIntent(null);
+      // Trigger a hidden message to the coach or pre-fill the chat
+      handleSend('Gostaria de adaptar o meu plano atual. Podes verificar o meu plano e sugerir adaptações?');
+    }
+  }, [coachIntent]);
 
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
