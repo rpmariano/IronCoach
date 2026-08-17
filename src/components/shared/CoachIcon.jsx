@@ -15,29 +15,28 @@ export default function CoachIcon({ size = 24, className = '', color = 'currentC
       className={className}
       {...props}
     >
-      {/* Gathered hair base */}
-      <path d="M10 8 L11 5" />
-      <path d="M14 8 L13 5" />
+      {/* Hair bun / gather */}
+      <path d="M 9 8 C 9 4 15 4 15 8" />
       
       {/* Hair tie */}
-      <path d="M10.5 5 h3" />
+      <path d="M 10 5 h 4" />
       
-      {/* Ponytail leaf/teardrop */}
-      <path d="M 12 5 C 12 2 17 1 19 4 C 20.5 6.5 18 9 16 11 C 14 9 13 7 12 5" />
+      {/* Sweeping Ponytail */}
+      <path d="M 14 5 C 18 2 23 5 21 10 C 20 12 18 13 16 13" />
       
       {/* Head */}
       <rect width="16" height="12" x="4" y="8" rx="4" />
       
       {/* Ears */}
-      <path d="M2 14h2" />
-      <path d="M20 14h2" />
+      <path d="M 2 14 h 2" />
+      <path d="M 20 14 h 2" />
       
-      {/* Happy Eyes */}
-      <path d="M8 13c.5-1 1.5-1 2 0" />
-      <path d="M14 13c.5-1 1.5-1 2 0" />
+      {/* Happy Eyes with Eyelashes */}
+      <path d="M 7 12 L 8 13 C 8.5 12 9.5 12 10 13" />
+      <path d="M 17 12 L 16 13 C 15.5 12 14.5 12 14 13" />
       
       {/* Smiling Mouth */}
-      <path d="M9 16c1.5 1.5 4.5 1.5 6 0" />
+      <path d="M 9 16 C 10.5 17.5 13.5 17.5 15 16" />
     </svg>
   );
 }
