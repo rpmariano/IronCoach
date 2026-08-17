@@ -324,10 +324,11 @@ const HEALTH_KEYWORDS_PT = [
   // Nutrição
   // Radicais antes do sufixo inflectido (-ção → -ções) para que includes()
   // apanhe singular e plural (ex: "refeiç" cobre "refeição" e "refeições").
-  "nutrição", "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
+  // "nutrição" omitido — "nutri" já cobre "nutrição", "nutricional", etc.
+  "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
   "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
-  "sugest", "completa", "receita", "ementa",
+  "receita", "ementa",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
