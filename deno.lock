@@ -38,6 +38,7 @@
         "npm:react-chartjs-2@^5.3.1",
         "npm:react-dom@^19.2.8",
         "npm:react@^19.2.8",
+        "npm:recharts@^3.10.1",
         "npm:tailwind-merge@^3.6.0",
         "npm:tailwindcss@^4.3.3",
         "npm:vite@^8.2.0",

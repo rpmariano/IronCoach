@@ -8,7 +8,7 @@ import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
-import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -93,15 +93,25 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
       >
         {upcoming.map(next => {
           const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
-          const maxDays = 84; 
+          
+          const distanceKm = parseFloat((next.distance_km || '').toString().replace(',', '.'));
+          const exp = next.experience_level || profile?.experience_level || 'iniciante';
+          const cat = categorizeDistance(distanceKm);
+          
+          let minWeeks = 12; // Valor padrão caso falhe o mapeamento
+          if (cat && MIN_PREP_WEEKS[exp] && MIN_PREP_WEEKS[exp][cat] !== null) {
+            minWeeks = MIN_PREP_WEEKS[exp][cat];
+          }
+          const maxDays = minWeeks * 7; 
+
           const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
           const dateObj = new Date(next.date + 'T00:00:00');
           const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
 
           const weeksToRace = Math.floor(daysUntil / 7);
           const viability = assessRaceViability({
-            distanceKm: parseFloat((next.distance_km || '').toString().replace(',', '.')),
-            experienceLevel: next.experience_level || profile?.experience_level,
+            distanceKm: distanceKm,
+            experienceLevel: exp,
             weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
           });

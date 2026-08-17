@@ -407,8 +407,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
 
   const PendingBanner = () => pendingCount > 0 && (
     <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
-      <span className="flex items-center gap-1.5">
-        <MessageCircle size={14} /> 
+      <span className="flex items-start gap-1.5 flex-1">
+        <MessageCircle size={14} className="mt-0.5 shrink-0" /> 
         <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
       </span>
       <span className="wpc-pending-link">
