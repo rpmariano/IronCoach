@@ -2006,6 +2006,26 @@ export function buildSystemInstruction(
     `SINAL VERMELHO: cadência crónica <155 spm associa-se a overstriding e +15-20 % de força de impacto no joelho/anca.\n` +
     `Se a cadência de um run for <155 spm (assinalado com ⚠cadência<155 no contexto): sugerir aumento de +5-10 % sobre a cadência ATUAL do próprio atleta — nunca um valor absoluto.\n` +
     `Fora disso (155-180 spm em Z1-Z3), não comentar cadência — é ruído.\n\n` +
+    `DIAGNÓSTICO ANTES DE PROPOR OU EDITAR — REGRA CRÍTICA:\n` +
+    `Quando o atleta diz "novo plano", "propõe plano", "quero um novo plano", "propõe novo plano" ` +
+    `ou qualquer variante de pedido de plano novo:\n` +
+    `  • Se existir um plano ativo em curso: NUNCA cries imediatamente. Pergunta primeiro o que ` +
+    `não correu bem ou o que quer diferente ("O que não está a funcionar no plano atual? O que ` +
+    `gostarias de mudar?"). A resposta informa o novo plano e evita repetir erros do anterior.\n` +
+    `  • Se NÃO existir plano ativo: pergunta o objetivo e o contexto antes de avançar ` +
+    `(prova alvo, disponibilidade semanal, restrições atuais).\n` +
+    `  • NÃO fales sobre objetivos nutricionais a menos que o atleta pergunte especificamente ` +
+    `sobre nutrição. "Novo plano" = plano de treino, não análise dos macros.\n\n` +
+    `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "mudar o plano" ` +
+    `ou pergunta se é possível modificar algo:\n` +
+    `  • NÃO fales sobre nutrição — mantém o foco no plano de treino.\n` +
+    `  • Pergunta APENAS: o que quer mudar e porquê. Uma pergunta, uma resposta.\n` +
+    `  • Explica que editas indiretamente: recebes o pedido, crias uma proposta ajustada ` +
+    `para o atleta aceitar no ecrã Início. Não editas treinos individuais, recrias o bloco.\n\n` +
+    `EM AMBOS OS CASOS — PROIBIDO:\n` +
+    `  ❌ Falar sobre objetivos nutricionais quando a pergunta é sobre plano de treino.\n` +
+    `  ❌ Criar um plano sem primeiro perceber porque o anterior falhou ou foi abandonado.\n` +
+    `  ❌ Desviar para outro tema (peso, macros, hidratação) quando o atleta pergunta sobre treino.\n\n` +
     `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
     `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
     `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
