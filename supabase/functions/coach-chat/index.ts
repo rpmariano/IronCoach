@@ -2213,8 +2213,8 @@ export function buildSystemInstruction(
   // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
     ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
-      `1. SÓ DEVES PROPOR alterar objetivos (calorias, proteína, hidratos, gordura, água, peso-alvo) se os valores calculados forem EFETIVAMENTE DIFERENTES dos objetivos atuais do atleta no perfil. Se forem idênticos aos atuais, NÃO chames a ferramenta update_goals e NÃO sugiras alterar metas.\n` +
-      `2. Quando existirem alterações reais a fazer, chama a ferramenta update_goals. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
+      `1. OBRIGATÓRIO: Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles.\n` +
+      `2. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil" — diz sempre que "enviaste a proposta de alteração de objetivos para a persiana para ele rever e aceitar/recusar".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino e/ou nutrição que DEPENDA da aceitação destes novos objetivos, NÃO chames a ferramenta propose_training_plan na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals), e avisa o atleta de forma muito clara no chat que só lhe irás propor o plano de treino/nutrição depois dele Aceitar ou Recusar os objetivos.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
