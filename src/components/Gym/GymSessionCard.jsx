@@ -56,7 +56,8 @@ export default function GymSessionCard({ session, onEdit }) {
     : (volume > 0 ? `${Math.round(volume).toLocaleString('pt-PT')} kg` : '');
 
   const dateParts = session.date ? session.date.split('-') : [];
-  const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : session.date;
+  const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-400', 'bg-rose-500'];
+    const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : session.date;
 
   const handleExpandToggle = async () => {
     onToggleExpand();
@@ -93,11 +94,11 @@ export default function GymSessionCard({ session, onEdit }) {
 
   // Pílulas Coloridas com Ícones (apenas métricas com dados)
   const metricChips = [
-    session.duration_seconds ? { key: 'dur', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Timer size={14} className="text-slate-500" />, label: formatDuration(session.duration_seconds) } : null,
-    session.calories_kcal ? { key: 'cal', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Flame size={14} className="text-slate-500" />, label: `${session.calories_kcal} kcal` } : null,
-    session.avg_hr ? { key: 'avghr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${session.avg_hr} bpm méd` } : null,
-    session.max_hr ? { key: 'maxhr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${session.max_hr} bpm máx` } : null,
-    session.exertion ? { key: 'exert', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Gauge size={14} className="text-slate-500" />, label: `Esforço ${session.exertion}/10` } : null,
+    session.duration_seconds ? { key: 'dur', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Timer size={14} className="text-slate-500" />, label: formatDuration(session.duration_seconds) } : null,
+    session.calories_kcal ? { key: 'cal', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Flame size={14} className="text-slate-500" />, label: `${session.calories_kcal} kcal` } : null,
+    session.avg_hr ? { key: 'avghr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${session.avg_hr} bpm méd` } : null,
+    session.max_hr ? { key: 'maxhr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${session.max_hr} bpm máx` } : null,
+    session.exertion ? { key: 'exert', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Gauge size={14} className="text-slate-500" />, label: `Esforço ${session.exertion}/10` } : null,
   ].filter(Boolean);
 
   return (
@@ -108,7 +109,7 @@ export default function GymSessionCard({ session, onEdit }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-ginasio)] shrink-0">
+          <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[var(--mod-ginasio)] shrink-0">
             {isAula ? <Users size={20} /> : <Dumbbell size={20} />}
           </div>
           <div>
@@ -194,7 +195,7 @@ export default function GymSessionCard({ session, onEdit }) {
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? 'bg-[var(--green-dark)]' : 'bg-slate-200'}`} 
+                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? effortColors[i] : 'bg-white/10'}`} 
                   />
                 ))}
               </div>
@@ -202,7 +203,7 @@ export default function GymSessionCard({ session, onEdit }) {
           )}
 
           {/* Observações — só leitura; alterar é pelo botão "Editar" */}
-          <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
               <MessageSquare size={14} className="text-slate-400" /> Observações
             </div>
@@ -214,11 +215,11 @@ export default function GymSessionCard({ session, onEdit }) {
           {/* Grouped Exercises Breakdown List */}
           {Object.keys(groupedSets).length > 0 && (
             Object.entries(groupedSets).map(([exName, exSets]) => (
-              <div key={exName} className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
+              <div key={exName} className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-2">
                 <h5 className="text-xs font-bold text-slate-800">{exName}</h5>
                 <div className="space-y-1.5">
                   {exSets.map((s, idx) => (
-                    <div key={s.id || idx} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-xs">
+                    <div key={s.id || idx} className="flex items-center justify-between bg-white/5 border border-white/5 rounded-lg px-2.5 py-1.5 text-xs">
                       <span className="font-semibold text-slate-500">Série {idx + 1}</span>
                       <span className="font-bold text-slate-800">{s.reps} reps × {s.weight} kg</span>
                     </div>
@@ -230,7 +231,7 @@ export default function GymSessionCard({ session, onEdit }) {
 
           {/* ANÁLISE DO COACH */}
           {coachCommentary && (
-            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2 shadow-xs">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
