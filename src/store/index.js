@@ -148,7 +148,12 @@ export const useAppStore = create((set, get) => ({
   },
 
   updateCoachNote: async (id, { category, note }) => {
-    const patch = { updated_at: new Date().toISOString() };
+    // Esta ação só existe no ecrã do atleta, por isso editar transfere a
+    // autoria: sem isto, o texto que ele escreveu por cima de uma nota da
+    // Carol continuava a aparecer com a cor e o rótulo dela. A cor serve
+    // para distinguir o que a Carol inferiu (e pode estar errado) do que o
+    // atleta confirmou — ao editar, ele passa a responder pela nota.
+    const patch = { updated_at: new Date().toISOString(), source: 'atleta' };
     if (category !== undefined) patch.category = category;
     if (note !== undefined) patch.note = (note || '').trim();
     const { error } = await supabase.from('coach_notes').update(patch).eq('id', id);
