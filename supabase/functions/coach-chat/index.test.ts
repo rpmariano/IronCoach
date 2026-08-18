@@ -900,6 +900,20 @@ Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
   assertStringIncludes(sys, "Mudança imprevista de agenda");
 });
 
+// Regressão: aceitar/recusar um plano na persiana só grava o estado — não
+// é uma troca de mensagens, por isso a Carol nunca reagia (mesmo bug já
+// corrigido para os objetivos, nunca aplicado aos planos). O cliente agora
+// dispara 'Aceitei o plano.'/'Recusei o plano.' via handleSend (Coach.jsx);
+// esta regra garante que o prompt sabe como reagir a cada uma sem tentar
+// repropor o plano que já foi decidido.
+Deno.test("o prompt tem reação a aceitar/recusar o plano, sem repropor o que já foi decidido", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "REAÇÃO A ACEITAR/RECUSAR O PLANO");
+  assertStringIncludes(sys, "NÃO chames propose_training_plan nem repitas a proposta que já foi decidida");
+  assertStringIncludes(sys, "SE ACEITOU: reage com uma frase curta, positiva e específica ao plano");
+  assertStringIncludes(sys, "SE RECUSOU: NÃO assumas o motivo nem proponhas outro plano de imediato — pergunta o que não");
+});
+
 // ─── runSaveMealSuggestions ──────────────────────────────────────────────────
 
 // deno-lint-ignore no-explicit-any
