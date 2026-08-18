@@ -26,7 +26,7 @@ export default function Dashboard({ activeModule }) {
     { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #facc15)' },
     { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #059669)' },
     { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #e11d48)' },
-    { key: 'holistica', label: 'Holística', icon: <Activity size={14} />, color: 'var(--accent)' },
+    { key: 'holistica', label: 'Holística', icon: <Activity size={14} />, color: 'var(--mod-coach-to)' },
   ];
 
   return (
