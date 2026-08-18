@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer } from 'lucide-react';
+import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
@@ -281,9 +281,28 @@ export default function RunDashboard() {
           fundo/borda/sombra que o componente já aplica. */}
       <ACWRChart weeklyData={acwrWeeklyData} />
 
-      <IntensityDonut distribution={distribution} />
+      {/* Ambos dependem de dados que as corridas manuais não trazem (zonas de
+          FC, FC média) — sem guarda, o donut fica só com o anel vazio e o
+          "0%" a solo, e o scatter fica sem nenhum ponto, os dois sem
+          explicação. Mesmo tratamento de vazio que o resto do BI (ver
+          CrossAnalyticsDashboard). */}
+      {(distribution.lowIntensityPct > 0 || distribution.highIntensityPct > 0) ? (
+        <IntensityDonut distribution={distribution} />
+      ) : (
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <Activity className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+          <p className="text-xs font-medium text-slate-500">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
+        </div>
+      )}
 
-      <ScatterTrendChart data={scatterData} />
+      {scatterData.length > 0 ? (
+        <ScatterTrendChart data={scatterData} />
+      ) : (
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <HeartPulse className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+          <p className="text-xs font-medium text-slate-500">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
+        </div>
+      )}
 
       {futureRaces.map((race, i) => (
         <RacePredictionChart

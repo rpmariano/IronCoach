@@ -101,13 +101,20 @@ body {
 [class~="border-neutral-800"] { border-color:var(--brd-800) !important; }
 [class~="border-neutral-700"] { border-color:var(--brd-700) !important; }
 
-/* ===== Carta / card ===== */
+/* ===== Carta / card =====
+   Fundo alinhado com .module-card-contrast e com o glass premium inline
+   (bg-white/5) usado nos cartões BI — a passagem para o dark mode "deep-teal"
+   (ver commit 91a4411) atualizou essa classe e as utilities Tailwind via
+   overrides acima, mas deixou esta por migrar: o branco a 40% ainda vinha do
+   tema claro original, o que dava um retângulo cinzento "lavado" por cima do
+   fundo escuro em todos os ecrãs que usam className="card" sem uma cor de
+   fundo própria (Login, Corrida/Ginásio/Corpo BI, calendários, Água). */
 .card {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
 }
 
 .module-card-contrast {
