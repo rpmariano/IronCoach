@@ -45,7 +45,10 @@ const coachFieldStyle = {
   border: '1px solid var(--mod-coach-to)',
   boxShadow: '0 0 0 1px color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
 };
-const plainFieldStyle = { border: '1px solid rgb(38 38 38)' };
+// rgba(255,255,255,0.1) é o mesmo tom que a override global dá a
+// border-slate-200 — mantém este campo igual aos outros do Perfil quando
+// NÃO está sob influência do Coach (coachFieldStyle, acima, fica intacto).
+const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 
 // Badge inline que assinala que um campo foi escrito pelo Coach.
 function CoachBadge() {
@@ -364,7 +367,7 @@ export default function Perfil() {
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
               </div>
               <div>
@@ -372,7 +375,7 @@ export default function Perfil() {
                 <select
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -391,7 +394,7 @@ export default function Perfil() {
                   max={todayISO()}
                   value={draft.birth_date || ''}
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
                 <p className="text-[10px] text-slate-600 mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
@@ -402,7 +405,7 @@ export default function Perfil() {
                 <select
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 >
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -436,7 +439,7 @@ export default function Perfil() {
                         className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
                           ativa
                             ? 'bg-[var(--accent)]/20 border-[var(--accent)]/60 text-[var(--accent)]'
-                            : 'bg-neutral-900 border-neutral-800 text-slate-400'
+                            : 'bg-slate-50/50 border-slate-200 text-slate-400'
                         }`}
                       >
                         {r.label}
@@ -454,7 +457,7 @@ export default function Perfil() {
                   placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
                   value={draft.dietary_notes || ''}
                   onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
-                  className="w-full mt-2 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
                 <p className="text-[10px] text-slate-600 mt-1">
                   O Coach trata isto como regra absoluta e nunca sugere nada que
@@ -471,7 +474,7 @@ export default function Perfil() {
                   placeholder="Ex.: 52"
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
                 <p className="text-[10px] text-slate-600 mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
@@ -504,12 +507,12 @@ export default function Perfil() {
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
                 <input type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
                 <input type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
             </div>
             
@@ -532,7 +535,7 @@ export default function Perfil() {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
                       }}
-                      className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                      className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                       style={isCoach ? coachFieldStyle : plainFieldStyle} />
                   </div>
                 );
@@ -553,7 +556,7 @@ export default function Perfil() {
                 </label>
                 <input type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -563,7 +566,7 @@ export default function Perfil() {
                 </label>
                 <input type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -573,7 +576,7 @@ export default function Perfil() {
                 </label>
                 <input type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -583,7 +586,7 @@ export default function Perfil() {
                 </label>
                 <input type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
@@ -593,7 +596,7 @@ export default function Perfil() {
                 </label>
                 <input type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-neutral-900 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
             </div>
@@ -642,7 +645,7 @@ export default function Perfil() {
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
                   <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -652,14 +655,14 @@ export default function Perfil() {
                   <div>
                     <label className="text-[11px] text-slate-500 block mb-1">Início</label>
                     <select value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="text-[11px] text-slate-500 block mb-1">Fim</label>
                     <select value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
@@ -734,7 +737,7 @@ export default function Perfil() {
               value={draft.coach_context || ''}
               onChange={e => updateDraft('coach_context', e.target.value)}
               placeholder="(vazio — usa a Memória do Coach acima)"
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
             />
           </div>
 
