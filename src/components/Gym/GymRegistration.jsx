@@ -413,6 +413,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         style={{
           background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-ginasio-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
           border: '1px solid rgba(255, 255, 255, 0.8)',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
