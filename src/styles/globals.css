@@ -140,6 +140,27 @@ body {
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
 }
 
+/* ===== Separadores que também se deslizam (Dashboard, Perfil) =====
+   Mesma mecânica dos carrosséis do Início (WeeklyPlanCard/CoachDailySummaryCard):
+   scroll nativo com snap, sem gestos escritos à mão — nunca compete com o
+   scroll vertical da página porque o browser já resolve isso sozinho. */
+.tab-swipe-carousel {
+  display: flex;
+  align-items: flex-start; /* páginas de alturas diferentes não esticam as outras */
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-swipe-carousel::-webkit-scrollbar { display: none; }
+.tab-swipe-page {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
 /* ===== Animações ===== */
 .fade-in { animation: fadeIn .25s ease-out; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
