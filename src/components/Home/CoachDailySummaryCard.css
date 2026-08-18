@@ -4,9 +4,9 @@
 
 .cds-card {
   position: relative; overflow: hidden; max-width: 600px; margin: 0 auto;
-  background: rgba(255, 255, 255, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.8); border-radius: 28px; padding: 24px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  background: rgba(30, 30, 32, 0.65); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 28px; padding: 24px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.15);
   min-height: 220px;
 }
 .cds-glow {
@@ -38,7 +38,7 @@
 .cds-msg-title { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
 .cds-msg-text { font-size: 0.83rem; line-height: 1.45; color: #334155; font-weight: 500; }
 
-.cds-empty { font-size: 0.8rem; color: #64748b; padding: 4px 0 2px; }
+.cds-empty { font-size: 0.8rem; color: #94a3b8; padding: 4px 0 2px; }
 .cds-skeleton { display: flex; flex-direction: column; gap: 8px; }
 .cds-skeleton-line { height: 10px; border-radius: 6px; background: linear-gradient(90deg, rgba(148,163,184,0.15), rgba(148,163,184,0.3), rgba(148,163,184,0.15)); background-size: 200% 100%; animation: cds-shimmer 1.4s ease-in-out infinite; }
 .cds-skeleton-line:nth-child(1) { width: 85%; }

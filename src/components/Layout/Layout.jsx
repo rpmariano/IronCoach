@@ -191,7 +191,7 @@ export default function Layout({ children }) {
 
       {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-white border-t border-slate-200/80 shadow-lg"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-black/40 backdrop-blur-2xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
       >
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
         <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />
@@ -289,7 +289,7 @@ function FabItem({ label, color, icon, onClick }) {
     <button
       onClick={onClick}
       type="button"
-      className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white border border-slate-200/80 shadow-md hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
+      className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white/10 backdrop-blur-xl border border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.3)] text-slate-100 hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
     >
       <span
         className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"

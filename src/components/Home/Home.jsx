@@ -171,14 +171,14 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
           prova (um por slide, todos empilhados) — passa a ser um só. */}
       {upcoming.length > 1 && (
         <div className="flex justify-center pt-2">
-          <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
+          <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full">
             {upcoming.map((_, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => scrollTo(idx)}
                 aria-label={`Ver prova ${idx + 1}`}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
               />
             ))}
           </div>
@@ -245,14 +245,14 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
           lia como uma caixa cinzenta à parte; e aqui sobrepunham-se aos
           botões "+ml" do cartão de água. */}
       <div className="flex justify-center">
-        <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
+        <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full">
           {[0, 1].map((idx) => (
             <button
               key={idx}
               type="button"
               onClick={() => scrollTo(idx)}
               aria-label={`Ver cartão ${idx + 1}`}
-              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
             />
           ))}
         </div>
