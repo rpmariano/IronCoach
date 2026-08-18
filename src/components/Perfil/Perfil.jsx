@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, Sparkles, Loader2, X } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, Sparkles, Loader2, X, ChevronRight, Utensils } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -419,51 +419,22 @@ export default function Perfil() {
                   na primeira trail.
                 </p>
               </ExperienceLevelHelp>
-              {/* Restrições alimentares — pré-requisito das sugestões do Coach.
-                  Sem isto o Coach não fica calado, fica errado: sugere frango a
-                  um vegetariano. Ver specs/coach-investigacao.md, Bloco 7 #5. */}
-              <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Restrições alimentares</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {DIETARY_RESTRICTIONS.map(r => {
-                    const ativa = (draft.dietary_restrictions || []).includes(r.key);
-                    return (
-                      <button
-                        key={r.key}
-                        type="button"
-                        aria-pressed={ativa}
-                        onClick={() => updateDraft(
-                          'dietary_restrictions',
-                          normalizeRestrictions(toggleRestriction(draft.dietary_restrictions, r.key))
-                        )}
-                        className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
-                          ativa
-                            ? 'bg-[var(--accent)]/20 border-[var(--accent)]/60 text-[var(--accent)]'
-                            : 'bg-slate-50/50 border-slate-200 text-slate-400'
-                        }`}
-                      >
-                        {r.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-[10px] text-slate-600 mt-1">
-                  Podes escolher mais que uma. Vegetariano e vegano excluem-se —
-                  escolher um desliga o outro. Sem nada selecionado, o Coach
-                  assume que comes de tudo.
-                </p>
-                <input
-                  type="text"
-                  placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
-                  value={draft.dietary_notes || ''}
-                  onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
-                  className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
-                />
-                <p className="text-[10px] text-slate-600 mt-1">
-                  O Coach trata isto como regra absoluta e nunca sugere nada que
-                  a contrarie.
-                </p>
-              </div>
+              {/* Restrições alimentares mudaram-se para a aba Coach — vivem ao
+                  lado da Memória do Coach, o outro sítio onde o atleta declara
+                  factos que a Carol tem de respeitar sempre. Ver o cartão
+                  "Restrições Alimentares" em tab === 'coach'. */}
+              <button
+                type="button"
+                onClick={() => requestTabChange('coach')}
+                className="w-full flex items-center justify-between gap-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50/70 transition"
+              >
+                <span className="text-[11px] text-slate-500">
+                  Restrições alimentares e alergias agora vivem na aba{' '}
+                  <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Coach</span>
+                  , junto da Memória do Coach.
+                </span>
+                <ChevronRight size={14} className="text-slate-500 shrink-0" />
+              </button>
               <div>
                 <label className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
                 <input
@@ -712,6 +683,62 @@ export default function Perfil() {
           </div>
 
           <CoachMemoryCard />
+
+          {/* Restrições alimentares — pré-requisito das sugestões do Coach.
+              Sem isto o Coach não fica calado, fica errado: sugere frango a
+              um vegetariano. Ver specs/coach-investigacao.md, Bloco 7 #5.
+              Vive aqui (não em "Alimentação" na Memória do Coach) porque é
+              vocabulário fechado com alvos nutricionais citados por trás
+              (utils/diet.js) — uma nota de texto livre não os dispara. */}
+          <div className="module-card-contrast">
+            <div className="flex items-center gap-2 mb-3">
+              <Utensils size={16} className="text-[var(--mod-coach-to)]" />
+              <h2 className="text-sm font-semibold">Restrições Alimentares</h2>
+            </div>
+            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+              Regra absoluta que o Coach nunca contraria — ao contrário da Memória, aqui é a
+              Carol que calcula por trás as metas de nutrientes certas para cada restrição.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {DIETARY_RESTRICTIONS.map(r => {
+                const ativa = (draft.dietary_restrictions || []).includes(r.key);
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    aria-pressed={ativa}
+                    onClick={() => updateDraft(
+                      'dietary_restrictions',
+                      normalizeRestrictions(toggleRestriction(draft.dietary_restrictions, r.key))
+                    )}
+                    className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
+                      ativa
+                        ? 'bg-[var(--mod-coach-to)]/20 border-[var(--mod-coach-to)]/60 text-[var(--mod-coach-to)]'
+                        : 'bg-slate-50/50 border-slate-200 text-slate-400'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-slate-600 mt-1">
+              Podes escolher mais que uma. Vegetariano e vegano excluem-se —
+              escolher um desliga o outro. Sem nada selecionado, o Coach
+              assume que comes de tudo.
+            </p>
+            <input
+              type="text"
+              placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
+              value={draft.dietary_notes || ''}
+              onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
+              className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
+            />
+            <p className="text-[10px] text-slate-600 mt-1">
+              O Coach trata isto como regra absoluta e nunca sugere nada que
+              a contrarie.
+            </p>
+          </div>
 
           {/* A descontinuar — substituído pela Memória do Coach acima. Fica
               visível e editável só para o atleta poder migrar o que aqui tem;
