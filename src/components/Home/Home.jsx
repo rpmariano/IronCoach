@@ -170,8 +170,8 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
           parte. Também deixou de haver um <div> de pontos repetido por
           prova (um por slide, todos empilhados) — passa a ser um só. */}
       {upcoming.length > 1 && (
-        <div className="flex justify-center pt-2">
-          <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full">
+        <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+          <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
             {upcoming.map((_, idx) => (
               <button
                 key={idx}
@@ -223,7 +223,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -239,13 +239,9 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
         </div>
       </div>
 
-      {/* Pontos fora do cartão, em fluxo normal — ver a mesma nota em
-          NextRaceCard acima. Sobrepostos ao cartão (absolute) obrigavam a
-          reservar padding extra sem conteúdo nenhum lá dentro, o que se
-          lia como uma caixa cinzenta à parte; e aqui sobrepunham-se aos
-          botões "+ml" do cartão de água. */}
-      <div className="flex justify-center">
-        <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full">
+      
+      <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+        <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
           {[0, 1].map((idx) => (
             <button
               key={idx}

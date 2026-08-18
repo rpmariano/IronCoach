@@ -90,7 +90,7 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col relative" style={{ background: 'var(--page-bg)' }}>
+    <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
       {/* Header fixo no topo */}
       <div className="sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--surf-950) 95%, transparent)', backdropFilter: 'blur(8px)', borderBottom: '1px solid var(--brd-800)' }}>
@@ -191,7 +191,7 @@ export default function Layout({ children }) {
 
       {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-black/40 backdrop-blur-2xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-[#0f172a]/70 backdrop-blur-3xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
       >
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
         <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />

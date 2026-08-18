@@ -69,8 +69,9 @@
 }
 
 html, body { 
-  /* Premium Apple-like dark metallic background */
-  background: radial-gradient(circle at 10% 0%, #3a3a3c 0%, #1c1c1e 40%, #000000 100%);
+  /* IronHealth Premium Deep Slate & Teal Background */
+  background-color: #0f172a;
+  background-image: radial-gradient(circle at top right, rgba(45, 74, 87, 0.5) 0%, #0f172a 60%, #020617 100%);
   background-attachment: fixed;
   min-height: 100vh;
 }

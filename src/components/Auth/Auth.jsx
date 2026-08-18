@@ -59,7 +59,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-[var(--page-bg)] text-slate-800 fade-in">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-transparent text-slate-800 fade-in">
       <div className="card rounded-3xl p-6 max-w-sm w-full shadow-lg border border-[var(--brd-700)] space-y-4">
         {/* Header */}
         <div className="flex items-center gap-2 justify-center mb-1">

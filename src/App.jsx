@@ -129,7 +129,7 @@ export default function App() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--page-bg)]">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <div className="animate-pulse flex flex-col items-center">
           <div className="w-12 h-12 bg-[var(--brd-700)] rounded-xl mb-4"></div>
           <div className="h-4 w-24 bg-[var(--brd-700)] rounded"></div>
