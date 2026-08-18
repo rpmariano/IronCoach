@@ -100,7 +100,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
   };
 
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-2xl p-4 shadow-lg ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Adesão às Macros (g/kg)</h3>
         <MetricInfo text="Compara o que realmente comeste (barras coloridas) com os teus alvos ideais de Nutrição Desportiva (linhas tracejadas). Tens de bater as linhas tracejadas, especialmente a proteína, para garantirmos recuperação máxima!" />
