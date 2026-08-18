@@ -33,23 +33,27 @@ export default function Dashboard({ activeModule }) {
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
       <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4">
-        {/* Sliding indicator */}
-        <div 
-          className="absolute top-[6px] bottom-[6px] rounded-xl transition-all duration-300 ease-in-out shadow-md"
+        {/* Sliding indicator — tint translúcido da cor do módulo em vez de
+            preenchimento sólido, a condizer com o glassmorphism escuro do
+            resto da app; o texto ativo fica na própria cor em vez de branco. */}
+        <div
+          className="absolute top-[6px] bottom-[6px] rounded-xl transition-all duration-300 ease-in-out shadow-md border"
           style={{
             // Calculado a partir de TABS.length em vez de fixo — um separador
             // a mais/a menos não desalinha o indicador outra vez.
             width: `calc((100% - ${(TABS.length - 1) * 8}px) / ${TABS.length})`,
             transform: `translateX(calc(${TABS.findIndex(t => t.key === activeModule)} * 100% + ${TABS.findIndex(t => t.key === activeModule) * 8}px))`,
-            background: TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'
+            background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 18%, transparent)`,
+            borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 40%, transparent)`,
           }}
         />
         {TABS.map(t => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
+            style={activeModule === t.key ? { color: t.color } : undefined}
             className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-xl transition-colors duration-300 ${
-              activeModule === t.key ? 'text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+              activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
             }`}
           >
             {t.icon}

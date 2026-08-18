@@ -56,7 +56,9 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
     <div 
       onClick={toggleExpand}
       className={`card rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition ${done ? 'opacity-60' : ''}`}
-      style={{ backgroundColor: 'rgba(251, 191, 36, 0.04)', borderLeft: '3px solid var(--mod-prova)' }}
+      // .card já traz a borda branca uniforme (ver globals.css) — sem
+      // borda lateral colorida, como os outros cartões.
+      style={{ backgroundColor: 'rgba(251, 191, 36, 0.04)' }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
