@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { todayISO } from '../lib/utils';
+import { todayISO, addDaysISO } from '../lib/utils';
 
 const getInitialDashboardTab = () => {
   try {
@@ -181,10 +181,8 @@ export const useAppStore = create((set, get) => ({
               await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
             } else {
               // Se o antigo começou antes, truncar o seu period_end para o dia anterior ao novo
-              const newEnd = new Date(newPlan.period_start + 'T00:00:00');
-              newEnd.setDate(newEnd.getDate() - 1);
-              const newEndStr = newEnd.toISOString().slice(0, 10);
-              
+              const newEndStr = addDaysISO(newPlan.period_start, -1);
+
               if (newEndStr >= old.period_start) {
                 await supabase.from('coach_plans').update({ period_end: newEndStr }).eq('id', old.id);
                 // Remover itens que caiam na parte truncada
@@ -198,17 +196,11 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
-    set((state) => ({
-      coachPlans: state.coachPlans.map(p => {
-        if (p.id === planId) {
-          return { ...p, ...updates };
-        }
-        if (accept && p.status === 'aceite') {
-          return { ...p, status: 'recusado' };
-        }
-        return p;
-      }),
-    }));
+    // Recarrega em vez de reconstruir o estado à mão: ao aceitar, a BD
+    // acima trunca o plano anterior mas MANTÉM-NO aceite (é ele que guarda
+    // os dias já passados). Marcar localmente todos os outros aceites como
+    // recusados apagava esse histórico do cartão até ao próximo refresh.
+    await get().reloadCoachPlans();
 
     if (accept) {
       get().loadDailySummary({ force: true }).catch(() => {});

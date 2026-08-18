@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
+import { classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -958,6 +958,89 @@ Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de 
 // proposta de OBJETIVOS novos em vez do plano corrigido. Essa resposta caía
 // no caso E, onde a regra de dependência mandava passar primeiro pelos
 // objetivos. O caso F trata-a como continuação do que foi recusado.
+// ─── classifyTurn / allowedToolsFor ─────────────────────────────────────────
+// O ESQUEMA DE DECISÃO no prompt não bastava: num prompt de ~166 KB as regras
+// da secção dos objetivos continuavam a ganhar e a Carol propunha metas onde
+// não devia. A whitelist abaixo é a mesma regra, mas imposta em código — o que
+// não vai na lista nem chega ao Gemini.
+
+const H = (...pares: [string, string][]) => pares.map(([role, content]) => ({ role, content }));
+
+Deno.test("classifyTurn reconhece as quatro frases de decisão", () => {
+  assertEquals(classifyTurn("Aceitei os novos objetivos.", []), "A");
+  assertEquals(classifyTurn("Recusei os novos objetivos.", []), "B");
+  assertEquals(classifyTurn("Aceitei o plano.", []), "C");
+  assertEquals(classifyTurn("Recusei o plano.", []), "D");
+});
+
+Deno.test("classifyTurn ignora maiúsculas e espaços à volta", () => {
+  assertEquals(classifyTurn("  aceitei o plano.  ", []), "C");
+});
+
+Deno.test("classifyTurn: resposta depois de recusar o plano é F_PLAN", () => {
+  // Cenário exato do bug: recusa → pergunta → resposta do atleta.
+  const hist = H(["user", "Recusei o plano."], ["model", "O que não encaixou?"]);
+  assertEquals(classifyTurn("Quero refeições predominantemente vegetarianas", hist), "F_PLAN");
+});
+
+Deno.test("classifyTurn: resposta depois de recusar objetivos é F_GOALS", () => {
+  const hist = H(["user", "Recusei os novos objetivos."], ["model", "O que não encaixou?"]);
+  assertEquals(classifyTurn("As calorias estão baixas de mais", hist), "F_GOALS");
+});
+
+Deno.test("classifyTurn: o caso F dura só um turno", () => {
+  // Já houve uma resposta do atleta depois da recusa — a partir daqui é E,
+  // senão as ferramentas ficavam bloqueadas no resto da conversa.
+  const hist = H(
+    ["user", "Recusei o plano."],
+    ["model", "O que não encaixou?"],
+    ["user", "Quero mais vegetariano"],
+    ["model", "Enviei a proposta ajustada."],
+  );
+  assertEquals(classifyTurn("E quantas calorias devo comer ao pequeno-almoço?", hist), "E");
+});
+
+Deno.test("classifyTurn: mensagem normal sem recusa anterior é E", () => {
+  const hist = H(["user", "Olá"], ["model", "Olá! Como estás?"]);
+  assertEquals(classifyTurn("Cria-me um plano para esta semana", hist), "E");
+});
+
+Deno.test("allowedToolsFor: aceitar objetivos (A) permite o plano mas proíbe update_goals", () => {
+  const a = allowedToolsFor("A")!;
+  assertEquals(a.has("propose_training_plan"), true);
+  assertEquals(a.has("update_goals"), false);
+  assertEquals(a.has("save_meal_suggestions"), false);
+});
+
+Deno.test("allowedToolsFor: reações (B, C, D) não permitem NENHUMA ferramenta de escrita", () => {
+  for (const caso of ["B", "C", "D"] as const) {
+    const a = allowedToolsFor(caso)!;
+    assertEquals(a.has("update_goals"), false);
+    assertEquals(a.has("propose_training_plan"), false);
+    assertEquals(a.has("save_meal_suggestions"), false);
+    // As de leitura mantêm-se sempre disponíveis.
+    assertEquals(a.has("get_running_history"), true);
+  }
+});
+
+Deno.test("allowedToolsFor: F_PLAN propõe plano e nunca objetivos", () => {
+  // É isto que impede o bug relatado: dizer "quero vegetariano" depois de
+  // recusar um plano não pode gerar uma proposta de metas.
+  const a = allowedToolsFor("F_PLAN")!;
+  assertEquals(a.has("propose_training_plan"), true);
+  assertEquals(a.has("update_goals"), false);
+});
+
+Deno.test("allowedToolsFor: F_GOALS corrige objetivos e nunca propõe plano", () => {
+  const a = allowedToolsFor("F_GOALS")!;
+  assertEquals(a.has("update_goals"), true);
+  assertEquals(a.has("propose_training_plan"), false);
+});
+
+Deno.test("allowedToolsFor: caso E não restringe nada", () => {
+  assertEquals(allowedToolsFor("E"), null);
+});
+
 Deno.test("esquema: caso F retoma o que foi recusado em vez de reiniciar o ciclo", () => {
   const sys = sysCom(null, null);
   assertStringIncludes(sys, "CASO F — O atleta responde à pergunta que fizeste depois de uma recusa");
