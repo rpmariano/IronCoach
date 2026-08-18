@@ -261,11 +261,55 @@ const SAVE_MEALS_TOOL = {
   },
 };
 
+// Memória de longo prazo. O histórico enviado ao modelo são só as últimas
+// MAX_HISTORY mensagens: um facto dito há semanas cai fora dessa janela e a
+// Carol volta a propor o que já sabia estar errado. Alargar a janela não
+// resolve (enche o prompt de conversa irrelevante); guardar o facto, sim.
+const SAVE_NOTE_TOOL = {
+  name: "save_coach_note",
+  description:
+    "Guarda na memória de longo prazo um facto DURADOURO sobre o atleta, para o teres " +
+    "sempre presente mesmo daqui a semanas. Usa SEMPRE que ele revelar algo que muda a " +
+    "forma de treinar ou de comer dele: preferências alimentares (\"quero refeições " +
+    "vegetarianas\"), limitações físicas (\"tenho epicondilite\"), disponibilidade " +
+    "(\"não posso treinar de manhã\", \"trabalho por turnos\"), objetivos pessoais, " +
+    "preferências de treino, ou contexto de vida relevante. " +
+    "NÃO uses para: o que já está estruturado noutras tabelas (metas numéricas, treinos " +
+    "registados, avaliações corporais, provas) — isso já te é dado no contexto; nem para " +
+    "coisas transitórias (\"hoje estou cansado\", \"comi mal ao almoço\"). " +
+    "Uma nota por facto, curta e na terceira pessoa (\"Prefere refeições predominantemente " +
+    "vegetarianas\"). Se um facto novo CONTRADIZ uma nota existente, chama com " +
+    "replaces_note_id para a substituir em vez de acumular as duas. " +
+    "Depois de guardares, diz ao atleta numa frase curta o que ficou registado.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      category: {
+        type: "STRING",
+        enum: ["preferencia_alimentar", "limitacao_fisica", "disponibilidade",
+               "objetivo_pessoal", "preferencia_treino", "contexto_vida", "outro"],
+        description: "Categoria do facto.",
+      },
+      note: {
+        type: "STRING",
+        description: "O facto, entre 3 e 500 caracteres, na terceira pessoa.",
+      },
+      replaces_note_id: {
+        type: "STRING",
+        description:
+          "Id da nota que este facto substitui (os ids aparecem na MEMÓRIA DO ATLETA). " +
+          "Só quando o facto novo contradiz ou atualiza um já registado.",
+      },
+    },
+    required: ["category", "note"],
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos ou sugestões alimentares.
 function buildTools(allowed?: Set<string> | null) {
-  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL];
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL];
   const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
   return [{ functionDeclarations: decls }];
 }
@@ -283,7 +327,10 @@ const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
 };
 
 // As de leitura nunca são restringidas — consultar histórico é sempre seguro.
-const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history"];
+// save_coach_note entra aqui porque é permitida em TODOS os casos: não cria
+// nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
+// explica o porquê — o momento em que há mais para aprender.
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note"];
 
 export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
 
@@ -1269,6 +1316,73 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
   return `Sugestões alimentares gravadas para: ${saved.sort().join(", ")}. Estão visíveis no ecrã Início.`;
 }
 
+const NOTE_CATEGORIES = new Set([
+  "preferencia_alimentar", "limitacao_fisica", "disponibilidade",
+  "objetivo_pessoal", "preferencia_treino", "contexto_vida", "outro",
+]);
+const MAX_NOTES = 40; // teto de bom senso: a memória é curada, não um diário
+
+// deno-lint-ignore no-explicit-any
+export async function runSaveCoachNote(sb: any, userId: string, args: any): Promise<string> {
+  const category = typeof args?.category === "string" ? args.category.trim() : "";
+  const note = typeof args?.note === "string" ? args.note.trim() : "";
+  const replaces = typeof args?.replaces_note_id === "string" ? args.replaces_note_id.trim() : "";
+
+  if (!NOTE_CATEGORIES.has(category)) {
+    return `Erro: category inválida. Usa uma de: ${[...NOTE_CATEGORIES].join(", ")}.`;
+  }
+  if (note.length < 3 || note.length > 500) {
+    return "Erro: note tem de ter entre 3 e 500 caracteres.";
+  }
+
+  // Substituir é apagar-e-inserir: mantém a memória limpa de factos que
+  // deixaram de ser verdade (ex.: passou a vegetariano depois de não o ser).
+  if (replaces) {
+    const { error: delErr } = await sb.from("coach_notes").delete().eq("id", replaces).eq("user_id", userId);
+    if (delErr) return `Erro ao substituir a nota anterior: ${delErr.message}`;
+  }
+
+  const { count } = await sb
+    .from("coach_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if ((count ?? 0) >= MAX_NOTES) {
+    return `Erro: já existem ${count} notas (máximo ${MAX_NOTES}). Substitui uma existente com replaces_note_id em vez de acrescentar.`;
+  }
+
+  const { error } = await sb
+    .from("coach_notes")
+    .insert({ user_id: userId, category, note, source: "coach" });
+  if (error) {
+    // 23505 = unique_violation no índice (user_id, category, lower(trim(note))):
+    // o facto já estava registado, o que não é um erro real.
+    if (error.code === "23505") {
+      return `Esse facto já estava registado ("${note}"). NÃO digas ao atleta que o guardaste agora.`;
+    }
+    return `Erro ao guardar a nota: ${error.message}`;
+  }
+
+  return `Nota guardada (${category}): "${note}". Passa a estar sempre presente no teu contexto, ` +
+    `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
+}
+
+/** Formata as notas para o prompt. Cada linha leva o id, para o modelo poder
+ *  indicar em replaces_note_id qual a nota a substituir. */
+// deno-lint-ignore no-explicit-any
+export function buildCoachNotesContext(notes: any[] | null): string | null {
+  if (!notes || notes.length === 0) return null;
+  // deno-lint-ignore no-explicit-any
+  const byCat: Record<string, any[]> = {};
+  for (const nt of notes) (byCat[nt.category] ||= []).push(nt);
+  const lines: string[] = [];
+  for (const [cat, list] of Object.entries(byCat)) {
+    lines.push(`  ${cat}:`);
+    for (const nt of list) lines.push(`    - ${nt.note} [id: ${nt.id}]`);
+  }
+  return "MEMÓRIA DO ATLETA (factos duradouros que já registaste — valem SEMPRE, mesmo que " +
+    "a conversa recente não os mencione; usa-os em todas as propostas):\n" + lines.join("\n");
+}
+
 // ── Agenda de provas ─────────────────────────────────────────────────────
 const RACE_TYPE_LABELS: Record<string, string> = {
   estrada: "Estrada", trail: "Trail", ultra: "Ultra", "5k": "5 km", "10k": "10 km",
@@ -1772,6 +1886,9 @@ export function buildSystemInstruction(
   acwrLine: string | null,
   raceEventsContext: string | null,
   planContext: string | null,
+  // Opcional: os testes antigos chamam sem este argumento, e um coach sem
+  // notas registadas é o estado normal de quem acabou de comecar.
+  coachNotesContext: string | null = null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -1816,6 +1933,11 @@ export function buildSystemInstruction(
     `Se não houver nada relevante, cumprimenta naturalmente e aguarda.\n\n` +
     // ── Uso dos Dados ─────────────────────────────────────────────────────────
     `## Uso dos Dados\n` +
+    `- Tens três fontes distintas, e confundi-las é a causa mais comum de más respostas:\n` +
+    `  1. DADOS ESTRUTURADOS (metas, treinos, refeições, avaliações, provas) — a verdade factual. Cita os valores exatos.\n` +
+    `  2. MEMÓRIA DO ATLETA — factos duradouros que registaste (preferências, limitações, disponibilidade). Valem SEMPRE, mesmo que ninguém os mencione há semanas. Aplica-os a TODAS as propostas sem esperar que ele repita.\n` +
+    `  3. HISTÓRICO DA CONVERSA — só as últimas mensagens. Serve para saber o que está a acontecer AGORA (o que ele acabou de pedir, decidir ou recusar). NÃO é fonte fiável para factos antigos: se algo importante só existe aí, provavelmente já caiu fora da janela.\n` +
+  `- Por isso: assim que o atleta revelar um facto duradouro, GUARDA-O com save_coach_note em vez de contares com o histórico para o recordar. É o que impede que voltes a propor daqui a duas semanas exatamente o que ele já disse que não quer.\n` +
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
@@ -2335,6 +2457,10 @@ export function buildSystemInstruction(
     sys += `\n\nPerfil e objetivos do utilizador (definido pelo próprio):\n${coachContext.trim()}`;
   }
 
+  if (coachNotesContext && coachNotesContext.trim()) {
+    sys += `\n\n${coachNotesContext.trim()}`;
+  }
+
   // Instruções de metas — o modelo só menciona update_goals quando autorizado,
   // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
@@ -2624,6 +2750,15 @@ async function handler(req: Request): Promise<Response> {
 
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
+    // ── Memória de longo prazo (ver runSaveCoachNote) ────────────────────
+    const { data: coachNotes } = await sb
+      .from("coach_notes")
+      .select("id, category, note")
+      .eq("user_id", userId)
+      .order("category", { ascending: true })
+      .order("updated_at", { ascending: false });
+    const coachNotesContext = buildCoachNotesContext(coachNotes);
+
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
     const { data: recentHistory } = await sb
       .from("coach_messages")
@@ -2689,6 +2824,7 @@ async function handler(req: Request): Promise<Response> {
       acwrLine,
       raceEventsContext,
       planContext,
+      coachNotesContext,
     );
 
     // deno-lint-ignore no-explicit-any
@@ -2818,6 +2954,8 @@ async function handler(req: Request): Promise<Response> {
           result = await runUpdateGoals(sb, userId, args || {});
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
+        } else if (name === "save_coach_note") {
+          result = await runSaveCoachNote(sb, userId, args || {});
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
         } else {
