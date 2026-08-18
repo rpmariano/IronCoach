@@ -80,11 +80,13 @@ export default function Coach() {
     // Mantida deliberadamente curta e natural — o texto que instruía a Carol
     // a não repropor objetivos e a "avançar com o que tinha dito que faria"
     // aparecia no chat como uma bolha do atleta, o que lia mal (ninguém
-    // escreve assim). Essa instrução já está coberta do lado do servidor
-    // (regra 5, "NÃO REPROPÕES O QUE JÁ FOI ACEITE", no prompt do coach-chat)
-    // — não precisa de ser repetida aqui.
-    if (ok && accept) {
-      handleSend('Aceitei os novos objetivos.');
+    // escreve assim). Essa instrução está no servidor, no ESQUEMA DE DECISÃO
+    // do prompt do coach-chat, que classifica exatamente estas quatro frases
+    // (casos A a D) e fixa que ferramentas podem ser chamadas em cada caso.
+    // As frases têm de bater certo com as do esquema — não as reformules sem
+    // atualizar o prompt.
+    if (ok) {
+      handleSend(accept ? 'Aceitei os novos objetivos.' : 'Recusei os novos objetivos.');
     }
   };
 

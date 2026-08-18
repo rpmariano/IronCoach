@@ -900,18 +900,68 @@ Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
   assertStringIncludes(sys, "Mudança imprevista de agenda");
 });
 
-// Regressão: aceitar/recusar um plano na persiana só grava o estado — não
-// é uma troca de mensagens, por isso a Carol nunca reagia (mesmo bug já
-// corrigido para os objetivos, nunca aplicado aos planos). O cliente agora
-// dispara 'Aceitei o plano.'/'Recusei o plano.' via handleSend (Coach.jsx);
-// esta regra garante que o prompt sabe como reagir a cada uma sem tentar
-// repropor o plano que já foi decidido.
-Deno.test("o prompt tem reação a aceitar/recusar o plano, sem repropor o que já foi decidido", () => {
+// ─── ESQUEMA DE DECISÃO (casos A-E) ─────────────────────────────────────────
+// Decidir na persiana só grava o estado — não é uma troca de mensagens, por
+// isso a Carol não reagia. O cliente dispara agora uma das quatro frases
+// sintéticas (Coach.jsx: handleRespond / handleRespondGoal), e o esquema
+// classifica-as e fixa que ferramentas podem ser chamadas em cada caso.
+//
+// O esquema substituiu um conjunto de regras espalhadas pelo prompt que se
+// CONTRADIZIAM: a "Regra de Autorização" mandava nunca chamar uma ferramenta
+// sem confirmação prévia em texto, enquanto a Regra 1 dos objetivos mandava
+// chamar update_goals IMEDIATAMENTE na mesma mensagem. O modelo resolvia o
+// conflito de forma diferente a cada turno — daí propostas de objetivos a
+// aparecerem como efeito colateral de aceitar/recusar um plano.
+
+Deno.test("o esquema de decisão está no prompt e declara precedência absoluta", () => {
   const sys = sysCom(null, null);
-  assertStringIncludes(sys, "REAÇÃO A ACEITAR/RECUSAR O PLANO");
-  assertStringIncludes(sys, "NÃO chames propose_training_plan nem repitas a proposta que já foi decidida");
-  assertStringIncludes(sys, "SE ACEITOU: reage com uma frase curta, positiva e específica ao plano");
-  assertStringIncludes(sys, "SE RECUSOU: NÃO assumas o motivo nem proponhas outro plano de imediato — pergunta o que não");
+  assertStringIncludes(sys, "ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS");
+  assertStringIncludes(sys, "Ferramentas fora da lista PERMITIDO são PROIBIDAS");
+});
+
+Deno.test("esquema: caso A (aceitou objetivos) propõe plano e proíbe update_goals", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO A — "Aceitei os novos objetivos."');
+  assertStringIncludes(sys, "PERMITIDO: propose_training_plan · PROIBIDO: update_goals, save_meal_suggestions");
+  // Não deve anunciar o plano como concluído — só que está à espera de revisão.
+  assertStringIncludes(sys, "NÃO assumas que vai aceitar");
+});
+
+Deno.test("esquema: casos B, C e D não permitem NENHUMA ferramenta", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO B — "Recusei os novos objetivos."');
+  assertStringIncludes(sys, 'CASO C — "Aceitei o plano."');
+  assertStringIncludes(sys, 'CASO D — "Recusei o plano."');
+  // Três casos, todos com a mesma lista fechada de ferramentas proibidas.
+  const proibidoTudo = sys.split(
+    "PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions",
+  ).length - 1;
+  assertEquals(proibidoTudo, 3);
+});
+
+Deno.test("esquema: caso D avisa explicitamente contra propor objetivos ao recusar um plano", () => {
+  // Foi exatamente isto que aconteceu em produção: recusar o plano fazia
+  // aparecer uma proposta de objetivos nova.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "ERRO GRAVE a evitar: propor objetivos novos");
+  assertStringIncludes(sys, "O que foi recusado foi o PLANO — os objetivos não estão em causa e NÃO se mexem");
+});
+
+Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de uma reação", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO E — Mensagem escrita pelo próprio atleta");
+  assertStringIncludes(sys, "NUNCA como reação a ele ter aceite ou recusado alguma coisa");
+});
+
+Deno.test("a contradição antiga (confirmar em texto antes de chamar) foi removida do prompt", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("Regra de Autorização"), false);
+  assertEquals(sys.includes("Aguarda uma confirmação clara do atleta"), false);
+  // ...e a frase que dizia ao modelo para anunciar objetivos como já gravados.
+  assertEquals(sys.includes("os objetivos estão atualizados no teu perfil"), false);
+  // O modelo correto: a ferramenta cria a proposta, o ecrã confirma.
+  assertStringIncludes(sys, "a confirmação é o ecrã de aceitação");
+  assertStringIncludes(sys, 'NUNCA digas que algo "já está atualizado"');
 });
 
 // ─── runSaveMealSuggestions ──────────────────────────────────────────────────
