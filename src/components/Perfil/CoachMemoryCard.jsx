@@ -88,7 +88,7 @@ export default function CoachMemoryCard() {
   };
 
   return (
-    <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+    <div className="module-card-contrast">
       <div className="flex items-center gap-2 mb-3">
         <Brain size={16} className="text-[var(--mod-coach-to)]" />
         <h2 className="text-sm font-semibold">Memória do Coach</h2>

@@ -316,15 +316,17 @@ export default function Perfil() {
 
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Subnav */}
-      <div className="relative flex gap-2 p-1 bg-white border border-slate-200/80 rounded-2xl mb-4 shadow-sm">
-        {/* Sliding indicator */}
-        <div 
-          className="absolute top-1 bottom-1 rounded-xl transition-all duration-300 ease-in-out shadow-[0_2px_10px_rgba(251,191,36,0.3)]"
+      {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
+      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        {/* Sliding indicator — tint translúcido em vez de preenchimento
+            sólido, a condizer com o resto da app (ver Dashboard.jsx). */}
+        <div
+          className="absolute top-1 bottom-1 rounded-xl transition-all duration-300 ease-in-out border"
           style={{
             width: 'calc((100% - 16px) / 3)', // 3 tabs, 2 gaps of 8px
             transform: `translateX(calc(${['perfil', 'metas', 'coach'].indexOf(tab)} * 100% + ${['perfil', 'metas', 'coach'].indexOf(tab) * 8}px))`,
-            background: 'linear-gradient(135deg, #d97706, #fbbf24)'
+            background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
+            borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
           }}
         />
         {[
@@ -335,8 +337,9 @@ export default function Perfil() {
           <button
             key={t.key}
             onClick={() => requestTabChange(t.key)}
+            style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
             className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors duration-300 ${
-              tab === t.key ? 'text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
             <t.icon size={14} /> {t.label}
@@ -349,7 +352,7 @@ export default function Perfil() {
       {/* TABS */}
       {tab === 'perfil' && (
         <>
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+          <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
               <h2 className="text-sm font-semibold">Pessoal</h2>
@@ -481,7 +484,7 @@ export default function Perfil() {
             {saveButton}
           </div>
           
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+          <div className="module-card-contrast">
             <p className="text-[11px] text-slate-500 mb-3">Sessão iniciada como <b className="text-slate-300">{session?.user?.email}</b></p>
             <button onClick={handleSignOut} className="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-red-500/10 transition">
               <LogOut size={14} /> Terminar sessão
@@ -492,7 +495,7 @@ export default function Perfil() {
 
       {tab === 'metas' && (
         <>
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+          <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
               <h2 className="text-sm font-semibold">Avaliação Corporal</h2>
@@ -537,7 +540,7 @@ export default function Perfil() {
             </div>
           </div>
 
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+          <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <Target size={16} className="text-[var(--accent)]" />
               <h2 className="text-sm font-semibold">Nutrição & Água</h2>
@@ -678,7 +681,7 @@ export default function Perfil() {
 
       {tab === 'coach' && (
         <>
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+          <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={16} className="text-[var(--mod-coach-to)]" />
               <h2 className="text-sm font-semibold">Objetivos com o Coach</h2>
@@ -711,7 +714,9 @@ export default function Perfil() {
               visível e editável só para o atleta poder migrar o que aqui tem;
               apagar já perderia texto escrito à mão. Quando estiver vazio para
               todos, remove-se o campo e a coluna coach_context. */}
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-amber-500/25">
+          {/* Mesmo vidro/glow dos outros cartões, mas com borda âmbar — sinaliza
+              "a descontinuar" sem perder a estética. */}
+          <div className="bg-white/5 backdrop-blur-[20px] border border-amber-500/25 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Bot size={16} className="text-slate-500" />
               <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
