@@ -97,7 +97,7 @@ const PROPOSE_PLAN_TOOL = {
     "Propõe ao atleta um plano de treinos para um período. Usa esta função SEMPRE que o " +
     "utilizador pedir um plano, sugestões de treinos para os próximos dias, ou o que deve " +
     "fazer numa semana — em vez de listares os treinos apenas no texto da resposta. A proposta " +
-    "fica pendente de aceitação pelo atleta, que a vê no ecrã Início. Depois de a criares, " +
+    "fica pendente de aceitação pelo atleta, que a revê e decide aqui mesmo no Coach. Depois de a criares, " +
     "menciona na tua resposta que a proposta está lá para ele aceitar. NÃO uses esta função " +
     "para responder a perguntas sobre treinos já feitos, nem quando o utilizador só quer uma " +
     "opinião sem plano concreto. DURAÇÃO DO PLANO: a janela ideal é 7-14 dias (um microciclo). " +
@@ -948,7 +948,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   }
 
   return `Plano criado com ${rows.length} treino(s), de ${period_start} a ${period_end}. ` +
-    `Está pendente de aceitação — o atleta vê-o no ecrã Início e decide se aceita.`;
+    `Está pendente de aceitação — o atleta revê-o e decide aqui mesmo no Coach (aparece também no ecrã Início). Não o mandes para outro ecrã.`;
 }
 
 // Limites de bom senso por campo — travam valores impossíveis para qualquer
@@ -1767,19 +1767,47 @@ export function buildSystemInstruction(
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +
     `(ex.: "Hoje está previsto um contínuo de 6 km"). Não o repitas desnecessariamente ao longo da conversa.\n\n` +
     // ── Ferramentas ───────────────────────────────────────────────────────────
-    `## Ferramentas Internas — Regra de Autorização\n` +
-    `NUNCA chames uma ferramenta (propose_training_plan, update_goals, save_meal_suggestions) sem autorização explícita do atleta nessa mesma troca de mensagens.\n` +
-    `O fluxo obrigatório é sempre:\n` +
-    `1. Apresenta o que pretendes fazer e porquê — ex.: "Com base nos teus dados, sugiro ajustar as calorias para 1900 kcal e a proteína para 160 g/dia. Posso atualizar?"\n` +
-    `2. Aguarda uma confirmação clara do atleta ("sim", "vai em frente", "atualiza", ou equivalente inequívoco).\n` +
-    `3. Só então chamas a ferramenta.\n` +
-    `4. Confirma que a ação correu: "Feito — os objetivos estão atualizados no teu perfil." / "O plano está no ecrã Início, pendente de aceitação."\n` +
-    `Esta regra aplica-se a QUALQUER alteração de dados — planos de treino, metas nutricionais, sugestões alimentares. Nunca ages sem o atleta dizer que quer avançar.\n\n` +
+    `## Ferramentas Internas — Quando Chamar\n` +
+    `As ferramentas de escrita criam PROPOSTAS que o atleta aceita ou recusa num ecrã próprio — chamar a ferramenta NÃO altera nada de forma definitiva. Por isso NÃO pedes confirmação em texto antes de as chamar: a confirmação é o ecrã de aceitação.\n` +
+    `- Quando concluíres que há algo a propor, chama a ferramenta NA MESMA RESPOSTA em que falas disso.\n` +
+    `- NUNCA apresentes valores ou um plano só em texto à espera que o atleta diga "sim" — sem a ferramenta ele não tem nada para aceitar e fica preso.\n` +
+    `- NUNCA digas que algo "já está atualizado", "já guardei" ou "já tens disponível" como se estivesse concluído — está PROPOSTO, à espera da decisão dele.\n` +
+    `- Exceção: save_meal_suggestions grava DIRETO, sem ecrã de revisão. Só a usas quando o atleta pediu explicitamente sugestões alimentares avulsas para dias concretos.\n\n` +
+    `## ⚠️ ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS\n` +
+    `Antes de responder, classifica SEMPRE a última mensagem do atleta num destes 5 casos. O caso determina que ferramentas podes chamar neste turno. Ferramentas fora da lista PERMITIDO são PROIBIDAS, mesmo que outra regra deste prompt pareça exigi-las.\n\n` +
+    `CASO A — "Aceitei os novos objetivos."\n` +
+    `  Estado: os valores JÁ ESTÃO gravados no perfil. Não há nada a confirmar nem a recalcular.\n` +
+    `  PERMITIDO: propose_training_plan · PROIBIDO: update_goals, save_meal_suggestions\n` +
+    `  AÇÃO: chama propose_training_plan (replace_active_plan=true; de hoje até ao fim do plano ativo, máx 14 dias; meal_suggestion completa em cada dia).\n` +
+    `  RESPOSTA: UMA frase a dizer que a proposta está à espera de revisão AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início nem para outro sítio, a proposta abre onde ele já está. NÃO descrevas o conteúdo do plano (ele vai vê-lo), NÃO assumas que vai aceitar.\n\n` +
+    `CASO B — "Recusei os novos objetivos."\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: pergunta o que não encaixou nos valores (quais e porquê). Só na resposta SEGUINTE, já com o motivo dele, propões valores novos.\n\n` +
+    `CASO C — "Aceitei o plano."\n` +
+    `  Estado: FIM DE CICLO. Está tudo decidido — objetivos e plano.\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: só uma reação curta, positiva e específica (menciona um treino concreto do plano ou o objetivo que serve). Mais nada.\n\n` +
+    `CASO D — "Recusei o plano."\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: pergunta o que não encaixou (volume, dias, tipo de treino, refeições). Só na resposta SEGUINTE, já com o motivo, propões um plano ajustado.\n` +
+    `  ERRO GRAVE a evitar: propor objetivos novos. O que foi recusado foi o PLANO — os objetivos não estão em causa e NÃO se mexem.\n\n` +
+    `CASO F — O atleta responde à pergunta que fizeste depois de uma recusa (casos B ou D)\n` +
+    `  Reconhece-se assim: a TUA mensagem anterior foi a perguntar o que não encaixou, e esta é a resposta dele.\n` +
+    `  AÇÃO: retoma o que foi recusado, já corrigido com o que ele acabou de dizer — e nada mais.\n` +
+    `    · Recusou o PLANO (caso D) → chama propose_training_plan com o ajuste pedido. PROIBIDO update_goals: ele pediu uma correção ao PLANO, não aos objetivos.\n` +
+    `    · Recusou os OBJETIVOS (caso B) → chama update_goals com os valores corrigidos. PROIBIDO propose_training_plan.\n` +
+    `  NUNCA reinicies o ciclo a propor objetivos outra vez — isso ignora o que ele te disse e obriga-o a repetir o processo todo.\n\n` +
+    `NOTA TRANSVERSAL — preferências alimentares NÃO são objetivos:\n` +
+    `  Uma preferência ou restrição alimentar (vegetariano, vegano, sem glúten, sem lactose, mais peixe, menos carne vermelha...) NÃO exige alterar objetivos numéricos. As calorias e os macros mantêm-se exatamente iguais; o que muda é a composição dos alimentos que os cumprem.\n` +
+    `  NUNCA chames update_goals por causa de uma mudança de preferência alimentar. Propõe o plano/refeições com os MESMOS macros, só com alimentos diferentes.\n\n` +
+    `CASO E — Mensagem escrita pelo próprio atleta (tudo o resto)\n` +
+    `  Aplica-se o resto deste prompt normalmente.\n` +
+    `  Regra de ouro: uma proposta de objetivos só nasce de um pedido ou necessidade do atleta — NUNCA como reação a ele ter aceite ou recusado alguma coisa.\n\n` +
     // ── Ritmo de Conversa ──────────────────────────────────────────────────────
     `## Ritmo de Conversa — Uma Decisão de Cada Vez\n` +
     `Quando há mais do que uma decisão a tomar em sequência, **não as empilhes na mesma mensagem**.\n` +
     `Exemplo errado: "Posso atualizar os teus objetivos de calorias? E aproveitando, queres também um novo plano de treino?" — obriga o atleta a responder "sim e sim", o que não é conversa natural.\n` +
-    `Exemplo correto: "Com base nos dados, sugiro ajustar as calorias para 1900 kcal — posso atualizar? (Após confirmares, falaremos sobre o plano de treino.)"\n` +
+    `Exemplo correto: propor SÓ os objetivos (com a ferramenta) e dizer "Enviei-te a proposta de objetivos para reveres. Assim que decidires, avançamos para o plano." — uma decisão de cada vez, e a decisão acontece no ecrã de aceitação, não por texto.\n` +
     `Regra: uma pergunta de confirmação/ação por turno. Podes telegrafar que há uma próxima questão, mas só a fazes depois de o atleta responder à atual.\n` +
     `Perguntas puramente informativas (sem ação associada) podem ser agrupadas quando for natural — ex.: "Tens uma prova específica em mente? E há alguma razão particular para os 4 kg?"\n\n` +
     // ── Recusas e Segurança ───────────────────────────────────────────────────
@@ -2030,8 +2058,6 @@ export function buildSystemInstruction(
     `Distribuição por nível (medir por TEMPO nas zonas, não n.º de sessões):\n` +
     `  Iniciante: 90-100 % Z1/Z2 · 0-10 % Z3 (modelo 80/20 NÃO se aplica — exige ≥6-12 sem contínuas e ≥20-25 km/sem já construídos)\n` +
     `  Básico:    85-90 % Z1/Z2 · 10-15 % Z3/Z4\n` +
-    `  Se o atleta pedir explicitamente um novo plano, substituir o plano atual, eliminar/cancelar o plano atual, ou responder a uma confirmação (ex.: "substitui", "cancela o plano", "elimina o plano", "cria um novo plano", "faz outro plano", "sim", "quero na mesma", "14 dias", ou qualquer pedido claro de plano), CHAMA IMEDIATAMENTE a ferramenta propose_training_plan com replace_active_plan=true NA MESMA RESPOSTA. É ESTRITAMENTE PROIBIDO hesitar, voltar a fazer avisos repetidos ou ficar preso em loop sem chamar a ferramenta.\n` +
-    `  Se o utilizador não tiver especificado a duração (7 ou 14 dias), usa 14 dias por omissão e CHAMA propose_training_plan diretamente.\n\n` +
     `  Médio:     80 % Z1/Z2 · 20 % Z3/Z5 (modelo 80/20 clássico, Fitzgerald/Seiler)\n` +
     `  Avançado:  75-80 % Z1/Z2 · 20-25 % Z3/Z5 (polarizado ou piramidal conforme fase)\n` +
     `Quando introduzir trabalho de qualidade (≥Z3):\n` +
@@ -2254,11 +2280,11 @@ export function buildSystemInstruction(
   // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
     ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
-      `1. OBRIGATÓRIO: Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas.\n` +
+      `1. OBRIGATÓRIO (aplica-se só no CASO E do ESQUEMA DE DECISÃO — nos casos A-D esta regra NÃO se aplica e update_goals está PROIBIDO): Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção 1: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas. Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a)): se o atleta acabou de confirmar que aceitou uma proposta de objetivos nesta troca de mensagens, usa os valores JÁ ACEITES tal como estão nos dados do perfil que te foram dados — não os recalcules nem os ajustes de novo só porque a tua própria conta interna dá um número ligeiramente diferente; isso NÃO conta como "discutir novos valores" para efeitos desta regra.\n` +
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
-      `4. SEQUÊNCIA DE DEPENDÊNCIA: Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação destes novos objetivos, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o MESMO período do plano de treino aceite em curso (não te limites a hoje + alguns dias) se houver um; se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. Cada dia leva meal_suggestion completa alinhada aos novos macros. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
+      `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). Exceção só por limite técnico: se esse período tiver MAIS de 14 dias a partir de hoje (não deveria acontecer — a doutrina Issurin 2008/Daniels 2021/Bompa 2015 e o próprio limite MAX_PLAN_ITEMS já capam qualquer plano a 7-14 dias por microciclo), cobre só os primeiros 14 dias e diz ao atleta que o resto fica para o próximo microciclo, a reavaliar no fim deste (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
@@ -2638,7 +2664,15 @@ async function handler(req: Request): Promise<Response> {
               // maxOutputTokens fica bem acima do necessário para a resposta,
               // para sobrar espaço aos tokens de raciocínio interno e a
               // resposta não ser cortada a meio.
-              maxOutputTokens: 4000,
+              // Subido de 4000 para 8192: confirmado em produção que uma
+              // chamada a propose_training_plan cobrindo um plano de vários
+              // dias, cada um com meal_suggestion COMPLETA (pequeno-almoço,
+              // lanches, almoço, jantar, macros por refeição — ver
+              // PROPOSE_PLAN_TOOL), facilmente ultrapassava 4000 tokens só
+              // nos argumentos da function call. A resposta ficava truncada
+              // a meio do JSON, rawText saía vazio, e o cliente via "O coach
+              // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
+              maxOutputTokens: 8192,
               response_mime_type: "application/json",
               response_schema: RESPONSE_SCHEMA,
             },

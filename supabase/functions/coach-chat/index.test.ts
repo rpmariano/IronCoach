@@ -790,6 +790,40 @@ Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando 
   assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
 });
 
+Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curto), com teto de 14 dias alinhado à doutrina de microciclo", () => {
+  // Regressão: uma versão anterior desta regra limitava sempre a 3-4 dias,
+  // deixando de fora o resto de um plano ativo mais longo (ex.: plano até
+  // dia 27, proposta só cobria até dia 20) — o atleta esperava o plano
+  // todo, não um excerto. O teto existe só como salvaguarda técnica para
+  // planos excecionalmente longos (não deveria disparar na prática — a
+  // doutrina DURAÇÃO DO PLANO e o limite MAX_PLAN_ITEMS já capam qualquer
+  // plano a 7-14 dias por microciclo), por isso o teto está em 14 dias
+  // (não um número arbitrário menor) para coincidir com esse máximo.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
+  assertStringIncludes(sys, "se esse período tiver MAIS de 14 dias a partir de hoje");
+});
+
+Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas objetivos ao recalculares macros para o plano seguinte", () => {
+  // Regressão: depois de aceitar objetivos, a Carol às vezes recalculava os
+  // macros de novo ao preparar a proposta de plano/refeições seguinte, e a
+  // Regra 1 (chamar update_goals sempre que decidir valores diferentes)
+  // disparava outra vez — resultado: uma segunda proposta de objetivos
+  // aparecia logo a seguir a aceitar a primeira, num ciclo. As duas regras
+  // têm agora precedência cruzada explícita para o modelo não hesitar.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a))");
+  assertStringIncludes(sys, "esta regra tem PRECEDÊNCIA sobre a Regra 1");
+});
+
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
 // Ver src/coach-knowledge/07-sugestoes-alimentares.md. Antes disto, o campo
 // meal_suggestion vinha do conhecimento geral do Gemini, não da literatura
@@ -864,6 +898,113 @@ Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
   assertStringIncludes(sys, "FC de repouso");
   assertStringIncludes(sys, "HRV");
   assertStringIncludes(sys, "Mudança imprevista de agenda");
+});
+
+// ─── ESQUEMA DE DECISÃO (casos A-E) ─────────────────────────────────────────
+// Decidir na persiana só grava o estado — não é uma troca de mensagens, por
+// isso a Carol não reagia. O cliente dispara agora uma das quatro frases
+// sintéticas (Coach.jsx: handleRespond / handleRespondGoal), e o esquema
+// classifica-as e fixa que ferramentas podem ser chamadas em cada caso.
+//
+// O esquema substituiu um conjunto de regras espalhadas pelo prompt que se
+// CONTRADIZIAM: a "Regra de Autorização" mandava nunca chamar uma ferramenta
+// sem confirmação prévia em texto, enquanto a Regra 1 dos objetivos mandava
+// chamar update_goals IMEDIATAMENTE na mesma mensagem. O modelo resolvia o
+// conflito de forma diferente a cada turno — daí propostas de objetivos a
+// aparecerem como efeito colateral de aceitar/recusar um plano.
+
+Deno.test("o esquema de decisão está no prompt e declara precedência absoluta", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS");
+  assertStringIncludes(sys, "Ferramentas fora da lista PERMITIDO são PROIBIDAS");
+});
+
+Deno.test("esquema: caso A (aceitou objetivos) propõe plano e proíbe update_goals", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO A — "Aceitei os novos objetivos."');
+  assertStringIncludes(sys, "PERMITIDO: propose_training_plan · PROIBIDO: update_goals, save_meal_suggestions");
+  // Não deve anunciar o plano como concluído — só que está à espera de revisão.
+  assertStringIncludes(sys, "NÃO assumas que vai aceitar");
+});
+
+Deno.test("esquema: casos B, C e D não permitem NENHUMA ferramenta", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO B — "Recusei os novos objetivos."');
+  assertStringIncludes(sys, 'CASO C — "Aceitei o plano."');
+  assertStringIncludes(sys, 'CASO D — "Recusei o plano."');
+  // Três casos, todos com a mesma lista fechada de ferramentas proibidas.
+  const proibidoTudo = sys.split(
+    "PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions",
+  ).length - 1;
+  assertEquals(proibidoTudo, 3);
+});
+
+Deno.test("esquema: caso D avisa explicitamente contra propor objetivos ao recusar um plano", () => {
+  // Foi exatamente isto que aconteceu em produção: recusar o plano fazia
+  // aparecer uma proposta de objetivos nova.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "ERRO GRAVE a evitar: propor objetivos novos");
+  assertStringIncludes(sys, "O que foi recusado foi o PLANO — os objetivos não estão em causa e NÃO se mexem");
+});
+
+Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de uma reação", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO E — Mensagem escrita pelo próprio atleta");
+  assertStringIncludes(sys, "NUNCA como reação a ele ter aceite ou recusado alguma coisa");
+});
+
+// Regressão concreta: o atleta recusou o plano, a Carol perguntou o que não
+// encaixou, ele respondeu "quero refeições vegetarianas" — e recebeu uma
+// proposta de OBJETIVOS novos em vez do plano corrigido. Essa resposta caía
+// no caso E, onde a regra de dependência mandava passar primeiro pelos
+// objetivos. O caso F trata-a como continuação do que foi recusado.
+Deno.test("esquema: caso F retoma o que foi recusado em vez de reiniciar o ciclo", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO F — O atleta responde à pergunta que fizeste depois de uma recusa");
+  assertStringIncludes(sys, "Recusou o PLANO (caso D) → chama propose_training_plan com o ajuste pedido. PROIBIDO update_goals");
+  assertStringIncludes(sys, "Recusou os OBJETIVOS (caso B) → chama update_goals com os valores corrigidos. PROIBIDO propose_training_plan");
+  assertStringIncludes(sys, "NUNCA reinicies o ciclo a propor objetivos outra vez");
+});
+
+Deno.test("esquema: preferência alimentar não desencadeia proposta de objetivos", () => {
+  // Domínio: mudar para vegetariano não altera calorias nem macros — altera
+  // que alimentos os cumprem. Era este raciocínio que faltava e levava a
+  // Carol a tratar "quero mais vegetariano" como um recálculo de metas.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NOTA TRANSVERSAL — preferências alimentares NÃO são objetivos");
+  assertStringIncludes(sys, "As calorias e os macros mantêm-se exatamente iguais");
+  assertStringIncludes(sys, "NUNCA chames update_goals por causa de uma mudança de preferência alimentar");
+});
+
+Deno.test("caso A manda rever a proposta no Coach, não no ecrã Início", () => {
+  // O atleta está no Coach quando aceita os objetivos; a proposta de plano
+  // abre ali mesmo. Mandá-lo ao Início é mandá-lo procurar noutro ecrã algo
+  // que tem à frente.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início");
+});
+
+Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {
+  // A regra 4 vive no ramo autorizado do prompt — sysCom() usa BIO_BASE, que
+  // tem coach_can_set_nutrition_goals: false, e aí esta secção nem existe.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos");
+  assertStringIncludes(sys, "avança DIRETO para o plano, sem passar outra vez pelos objetivos");
+});
+
+Deno.test("a contradição antiga (confirmar em texto antes de chamar) foi removida do prompt", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("Regra de Autorização"), false);
+  assertEquals(sys.includes("Aguarda uma confirmação clara do atleta"), false);
+  // ...e a frase que dizia ao modelo para anunciar objetivos como já gravados.
+  assertEquals(sys.includes("os objetivos estão atualizados no teu perfil"), false);
+  // O modelo correto: a ferramenta cria a proposta, o ecrã confirma.
+  assertStringIncludes(sys, "a confirmação é o ecrã de aceitação");
+  assertStringIncludes(sys, 'NUNCA digas que algo "já está atualizado"');
 });
 
 // ─── runSaveMealSuggestions ──────────────────────────────────────────────────
