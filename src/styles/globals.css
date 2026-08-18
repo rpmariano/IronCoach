@@ -11,7 +11,7 @@
 
   /* Surfaces */
   --surf-950: #eef1f6;
-  --surf-900: #ffffff;
+  --surf-900: rgba(255,255,255,0.02);
   --surf-800: #e9edf3;
   --surf-700: #dbe2ec;
   --brd-700:  #b9c3d1;
@@ -86,7 +86,7 @@ body {
 /* ===== Overrides de cor — portados do legado ===== */
 /* [class~="text-white"] { color:#0f172a !important; } */
 /* [class~="text-slate-200"] { color:#1e293b !important; } */
-/* [class~="text-slate-300"] { color:#334155 !important; } */
+/* [class~="text-slate-300"] { color:#e2e8f0 !important; } */
 /* [class~="text-slate-400"] { color:#475569 !important; } */
 /* [class~="text-slate-500"] { color:#516071 !important; } */
 [class~="text-slate-600"] { color:#5c6b7d !important; }
@@ -111,7 +111,7 @@ body {
 }
 
 .module-card-contrast {
-  background: rgba(241, 245, 249, 0.85);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(203, 213, 225, 0.8);
   border-radius: 20px;
   padding: 16px 20px;
@@ -184,7 +184,7 @@ body {
   pointer-events:none;
 }
 .water-glass-ml { font-weight:800; color:#0f172a; line-height:1; }
-.water-glass-ml small { font-weight:700; color:#334155; margin-left:2px; }
+.water-glass-ml small { font-weight:700; color:#e2e8f0; margin-left:2px; }
 .water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
 /* ===== Coach bubbles ===== */

@@ -84,7 +84,7 @@
 .hydro-nrc-lbl {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #94a3b8;
+  color: #cbd5e1;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -118,7 +118,7 @@
   align-items: center;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: #cbd5e1;
   position: relative;
 }
 
@@ -167,7 +167,7 @@
   justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 .hydro-nrc-right {
@@ -236,7 +236,7 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  color: #94a3b8;
+  color: #cbd5e1;
   cursor: pointer;
   transition: color 0.2s, background-color 0.2s;
   background: transparent;
@@ -256,7 +256,7 @@
   top: 100%;
   right: 0;
   margin-top: 8px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1);

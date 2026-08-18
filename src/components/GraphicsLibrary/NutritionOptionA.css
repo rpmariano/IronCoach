@@ -58,7 +58,7 @@
 .nutri-nrc-lbl {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #94a3b8;
+  color: #cbd5e1;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -85,7 +85,7 @@
   align-items: center;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: #cbd5e1;
   position: relative;
 }
 
@@ -143,7 +143,7 @@
   justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 .nutri-nrc-right {

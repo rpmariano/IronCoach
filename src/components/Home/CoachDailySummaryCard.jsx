@@ -97,23 +97,23 @@ export default function CoachDailySummaryCard() {
   const messages = useMemo(() => {
     const list = [];
     if (dailySummary?.recap) {
-      list.push({ key: 'recap', label: 'Recapitulação', Icon: History, color: '#0e7490', text: dailySummary.recap.trim() });
+      list.push({ key: 'recap', label: 'Recapitulação', Icon: History, color: '#22d3ee', text: dailySummary.recap.trim() });
     }
     if (warningsText) {
-      list.push({ key: 'warnings', label: 'Aviso de hoje', Icon: AlertTriangle, color: '#b45309', text: warningsText });
+      list.push({ key: 'warnings', label: 'Aviso de hoje', Icon: AlertTriangle, color: '#fbbf24', text: warningsText });
     }
     if (dailySummary?.meal_suggestion) {
-      list.push({ key: 'meal_suggestion', label: 'Sugestão alimentar', Icon: Utensils, color: '#047857', text: dailySummary.meal_suggestion.trim() });
+      list.push({ key: 'meal_suggestion', label: 'Sugestão alimentar', Icon: Utensils, color: '#34d399', text: dailySummary.meal_suggestion.trim() });
     }
     if (tomorrowPrepText) {
-      list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#6d28d9', text: tomorrowPrepText });
+      list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#a78bfa', text: tomorrowPrepText });
     }
     if (dailySummary?.daily_concept?.body) {
       list.push({
         key: 'daily_concept',
         label: dailySummary.daily_concept.title,
         Icon: Lightbulb,
-        color: '#b45309',
+        color: '#fbbf24',
         text: dailySummary.daily_concept.body,
       });
     }
@@ -222,14 +222,14 @@ export default function CoachDailySummaryCard() {
         
         {messages.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               {messages.map((_, idx) => (
                 <button 
                   key={idx} 
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver mensagem ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
                 />
               ))}
             </div>
