@@ -953,6 +953,49 @@ Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de 
   assertStringIncludes(sys, "NUNCA como reação a ele ter aceite ou recusado alguma coisa");
 });
 
+// Regressão concreta: o atleta recusou o plano, a Carol perguntou o que não
+// encaixou, ele respondeu "quero refeições vegetarianas" — e recebeu uma
+// proposta de OBJETIVOS novos em vez do plano corrigido. Essa resposta caía
+// no caso E, onde a regra de dependência mandava passar primeiro pelos
+// objetivos. O caso F trata-a como continuação do que foi recusado.
+Deno.test("esquema: caso F retoma o que foi recusado em vez de reiniciar o ciclo", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO F — O atleta responde à pergunta que fizeste depois de uma recusa");
+  assertStringIncludes(sys, "Recusou o PLANO (caso D) → chama propose_training_plan com o ajuste pedido. PROIBIDO update_goals");
+  assertStringIncludes(sys, "Recusou os OBJETIVOS (caso B) → chama update_goals com os valores corrigidos. PROIBIDO propose_training_plan");
+  assertStringIncludes(sys, "NUNCA reinicies o ciclo a propor objetivos outra vez");
+});
+
+Deno.test("esquema: preferência alimentar não desencadeia proposta de objetivos", () => {
+  // Domínio: mudar para vegetariano não altera calorias nem macros — altera
+  // que alimentos os cumprem. Era este raciocínio que faltava e levava a
+  // Carol a tratar "quero mais vegetariano" como um recálculo de metas.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NOTA TRANSVERSAL — preferências alimentares NÃO são objetivos");
+  assertStringIncludes(sys, "As calorias e os macros mantêm-se exatamente iguais");
+  assertStringIncludes(sys, "NUNCA chames update_goals por causa de uma mudança de preferência alimentar");
+});
+
+Deno.test("caso A manda rever a proposta no Coach, não no ecrã Início", () => {
+  // O atleta está no Coach quando aceita os objetivos; a proposta de plano
+  // abre ali mesmo. Mandá-lo ao Início é mandá-lo procurar noutro ecrã algo
+  // que tem à frente.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início");
+});
+
+Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {
+  // A regra 4 vive no ramo autorizado do prompt — sysCom() usa BIO_BASE, que
+  // tem coach_can_set_nutrition_goals: false, e aí esta secção nem existe.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos");
+  assertStringIncludes(sys, "avança DIRETO para o plano, sem passar outra vez pelos objetivos");
+});
+
 Deno.test("a contradição antiga (confirmar em texto antes de chamar) foi removida do prompt", () => {
   const sys = sysCom(null, null);
   assertEquals(sys.includes("Regra de Autorização"), false);
