@@ -2454,7 +2454,11 @@ export function buildSystemInstruction(
   }
 
   if (coachContext && coachContext.trim()) {
-    sys += `\n\nPerfil e objetivos do utilizador (definido pelo próprio):\n${coachContext.trim()}`;
+    // Campo de texto livre A DESCONTINUAR (ver Perfil > Coach). Continua a ser
+    // lido enquanto tiver conteudo, mas os factos novos vao para a memoria
+    // estruturada: texto corrido obriga a reinterpretar a mesma prosa a cada
+    // resposta, e nao ha forma de corrigir um facto isolado sem reescrever tudo.
+    sys += `\n\nPerfil e objetivos do utilizador (texto livre, campo A DESCONTINUAR — se um facto daqui for relevante e ainda nao constar da MEMORIA DO ATLETA, regista-o la com save_coach_note em vez de continuares a depender deste campo):\n${coachContext.trim()}`;
   }
 
   if (coachNotesContext && coachNotesContext.trim()) {
