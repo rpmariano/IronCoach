@@ -88,7 +88,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
   );
 
   return (
-    <div>
+    <div className="relative">
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
