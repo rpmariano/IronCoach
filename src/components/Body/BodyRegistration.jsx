@@ -241,9 +241,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         // isso as overrides de dark mode do globals.css não o apanhavam.
         style={{
           background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
-          borderStyle: 'solid',
-          borderWidth: '1px 1px 1px 3px',
-          borderColor: 'rgba(255, 255, 255, 0.1) rgba(255, 255, 255, 0.1) rgba(255, 255, 255, 0.1) color-mix(in srgb, var(--mod-corpo-to) 70%, transparent)'
+          border: '1px solid rgba(255, 255, 255, 0.8)',
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
