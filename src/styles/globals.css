@@ -68,29 +68,34 @@
   --data-peso:#dd3c71;
 }
 
-html, body { background: var(--page-bg); }
+html, body { 
+  /* Premium Apple-like dark metallic background */
+  background: radial-gradient(circle at 10% 0%, #3a3a3c 0%, #1c1c1e 40%, #000000 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
 
 body {
   font-family: ui-sans-serif, system-ui, sans-serif;
-  color: #1e293b;
+  color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* ===== Overrides de cor — portados do legado ===== */
-[class~="text-white"] { color:#0f172a !important; }
-[class~="text-slate-200"] { color:#1e293b !important; }
-[class~="text-slate-300"] { color:#334155 !important; }
-[class~="text-slate-400"] { color:#475569 !important; }
-[class~="text-slate-500"] { color:#516071 !important; }
+/* [class~="text-white"] { color:#0f172a !important; } */
+/* [class~="text-slate-200"] { color:#1e293b !important; } */
+/* [class~="text-slate-300"] { color:#334155 !important; } */
+/* [class~="text-slate-400"] { color:#475569 !important; } */
+/* [class~="text-slate-500"] { color:#516071 !important; } */
 [class~="text-slate-600"] { color:#5c6b7d !important; }
 [class~="text-emerald-400"] { color:#047857 !important; }
 [class~="text-red-400"] { color:#b91c1c !important; }
 [class~="text-[var(--accent)]"] { color: var(--accent-ink) !important; }
 
-[class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; }
-[class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; }
-[class~="bg-neutral-800"] { background-color:var(--surf-800) !important; }
+/* [class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; } */
+/* [class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; } */
+/* [class~="bg-neutral-800"] { background-color:var(--surf-800) !important; } */
 [class~="bg-neutral-700"] { background-color:var(--surf-700) !important; }
 [class~="border-neutral-800"] { border-color:var(--brd-800) !important; }
 [class~="border-neutral-700"] { border-color:var(--brd-700) !important; }
