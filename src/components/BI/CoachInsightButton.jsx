@@ -25,7 +25,7 @@ export default function CoachInsightButton({ insights, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="fixed bottom-[100px] right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+      className="fixed bottom-[100px] right-4 z-40 w-12 h-12 rounded-full flex items-center justify-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] active:scale-95 transition-transform"
       style={{
         background: 'linear-gradient(135deg, var(--mod-coach-from, #155e75), var(--mod-coach-to, #06b6d4))',
         boxShadow: `0 0 0 0 ${ringColor}`,

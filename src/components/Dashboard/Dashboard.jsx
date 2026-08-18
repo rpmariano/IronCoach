@@ -32,7 +32,7 @@ export default function Dashboard({ activeModule }) {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_1px_1px_rgba(255,255,255,0.15)] mb-4">
+      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4">
         {/* Sliding indicator */}
         <div 
           className="absolute top-[6px] bottom-[6px] rounded-xl transition-all duration-300 ease-in-out shadow-md"

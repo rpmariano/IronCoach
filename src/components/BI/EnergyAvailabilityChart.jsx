@@ -95,7 +95,7 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
   };
 
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-2xl p-4 shadow-lg ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Disponibilidade Energética (EA)</h3>
         <MetricInfo text="A EA (Energy Availability) é a energia que sobra para o teu corpo viver depois de descontar as calorias que queimaste a treinar. Se ficares repetidamente abaixo da linha vermelha (30 kcal/kg), corres um risco clínico severo de Síndrome de Deficiência Energética Relativa (RED-S). Come mais nos dias de treino duro!" />
