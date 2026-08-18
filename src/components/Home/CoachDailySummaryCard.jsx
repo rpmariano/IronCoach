@@ -229,7 +229,7 @@ export default function CoachDailySummaryCard() {
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver mensagem ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-white' : 'w-1.5 bg-white opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
                 />
               ))}
             </div>
