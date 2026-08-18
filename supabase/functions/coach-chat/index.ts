@@ -264,8 +264,67 @@ const SAVE_MEALS_TOOL = {
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos ou sugestões alimentares.
-function buildTools() {
-  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL] }];
+function buildTools(allowed?: Set<string> | null) {
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL];
+  const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
+  return [{ functionDeclarations: decls }];
+}
+
+// ── Casos do ESQUEMA DE DECISÃO, impostos em código ────────────────────────
+// Frases que o cliente envia quando o atleta decide na persiana (ver
+// Coach.jsx: handleRespond / handleRespondGoal). Não são escritas pelo
+// atleta — são o único sinal de que houve uma decisão. Se mudarem aqui,
+// têm de mudar lá (e no bloco ESQUEMA DE DECISÃO do prompt).
+const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
+  "aceitei os novos objetivos.": "A",
+  "recusei os novos objetivos.": "B",
+  "aceitei o plano.": "C",
+  "recusei o plano.": "D",
+};
+
+// As de leitura nunca são restringidas — consultar histórico é sempre seguro.
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history"];
+
+export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
+
+/** Classifica o turno. F_* = o atleta está a responder à pergunta que
+ *  fizemos logo a seguir a uma recusa, por isso o que ele diz é uma
+ *  correção ao que foi recusado — e não um pedido novo do zero. */
+export function classifyTurn(
+  message: string,
+  history: { role: string; content: string }[] | null,
+): TurnCase {
+  const norm = (s: string | undefined) => (s || "").trim().toLowerCase();
+  const direct = DECISION_PHRASES[norm(message)];
+  if (direct) return direct;
+  // Só conta a última mensagem do atleta: assim o caso F dura exatamente
+  // um turno e não fica a bloquear ferramentas no resto da conversa.
+  const lastUser = (history || []).slice().reverse().find((m) => m.role === "user");
+  const prev = DECISION_PHRASES[norm(lastUser?.content)];
+  if (prev === "D") return "F_PLAN";
+  if (prev === "B") return "F_GOALS";
+  return "E";
+}
+
+/** Ferramentas permitidas em cada caso. null = todas (caso E). */
+export function allowedToolsFor(kind: TurnCase): Set<string> | null {
+  switch (kind) {
+    // Aceitou objetivos → só falta propor o plano.
+    case "A":
+    // Recusou o plano e disse o que mudar → propõe o plano corrigido.
+    case "F_PLAN":
+      return new Set([...READ_TOOL_NAMES, "propose_training_plan"]);
+    // Recusou objetivos e disse o que mudar → propõe os valores corrigidos.
+    case "F_GOALS":
+      return new Set([...READ_TOOL_NAMES, "update_goals"]);
+    // Reações a uma decisão: só conversa, nada de escrever.
+    case "B":
+    case "C":
+    case "D":
+      return new Set(READ_TOOL_NAMES);
+    default:
+      return null;
+  }
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -2566,12 +2625,14 @@ async function handler(req: Request): Promise<Response> {
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
-    const { data: history } = await sb
+    const { data: recentHistory } = await sb
       .from("coach_messages")
       .select("role, content")
       .eq("user_id", userId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(MAX_HISTORY);
+    // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
+    const history = (recentHistory || []).slice().reverse();
 
     // ── Pré-filtro de âmbito (evita chamar a API para off-topic óbvio) ──
     // Verificação leve antes de guardar a mensagem ou construir o prompt.
@@ -2639,6 +2700,12 @@ async function handler(req: Request): Promise<Response> {
       { role: "user", parts: [{ text: message }] },
     ];
 
+    // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
+    // É a mesma regra do ESQUEMA DE DECISÃO no prompt, mas aqui é imposta:
+    // o que não vai na lista o modelo não consegue chamar.
+    const turnCase = classifyTurn(message, history);
+    const allowedTools = allowedToolsFor(turnCase);
+
     // ── Loop de function calling ──────────────────────────────────────────
     // tools + response_schema coexistem: quando o modelo decide chamar uma
     // função devolve uma parte functionCall (ignora o schema), quando decide
@@ -2652,7 +2719,7 @@ async function handler(req: Request): Promise<Response> {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents,
-            tools: buildTools(),
+            tools: buildTools(allowedTools),
             generationConfig: {
               temperature: 0.7,
               // Sem thinkingConfig de propósito: o campo para desativar/limitar
