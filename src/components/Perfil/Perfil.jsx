@@ -10,6 +10,7 @@ import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import CoachMemoryCard from './CoachMemoryCard';
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -720,6 +721,8 @@ export default function Perfil() {
               className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-[var(--mod-coach-to)]/70"
             />
           </div>
+
+          <CoachMemoryCard />
 
           {saveButton}
         </>
