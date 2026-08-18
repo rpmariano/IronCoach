@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -958,6 +958,143 @@ Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de 
 // proposta de OBJETIVOS novos em vez do plano corrigido. Essa resposta caía
 // no caso E, onde a regra de dependência mandava passar primeiro pelos
 // objetivos. O caso F trata-a como continuação do que foi recusado.
+// ─── Memória de longo prazo (coach_notes) ───────────────────────────────────
+// O histórico que vai ao modelo são as últimas MAX_HISTORY mensagens. Um facto
+// dito há semanas cai fora dessa janela e a Carol volta a propor o que já sabia
+// estar errado. As notas são o oposto: poucas, curadas, sempre no prompt.
+
+// deno-lint-ignore no-explicit-any
+function makeNotesSb(opts: { count?: number; insertError?: any; deleteError?: any } = {}) {
+  // deno-lint-ignore no-explicit-any
+  const calls: any = { inserts: [], deletes: [] };
+  const sb = {
+    from: (table: string) => {
+      if (table !== "coach_notes") throw new Error(`tabela inesperada: ${table}`);
+      return {
+        // deno-lint-ignore no-explicit-any
+        insert: (row: any) => {
+          calls.inserts.push(row);
+          return Promise.resolve({ error: opts.insertError ?? null });
+        },
+        select: () => ({
+          eq: () => Promise.resolve({ count: opts.count ?? 0, error: null }),
+        }),
+        delete: () => ({
+          eq: (_k: string, v: string) => {
+            calls.deletes.push(v);
+            return { eq: () => Promise.resolve({ error: opts.deleteError ?? null }) };
+          },
+        }),
+      };
+    },
+  };
+  return { sb, calls };
+}
+
+Deno.test("runSaveCoachNote grava um facto duradouro com a categoria certa", async () => {
+  const { sb, calls } = makeNotesSb();
+  const r = await runSaveCoachNote(sb, "u1", {
+    category: "preferencia_alimentar",
+    note: "Prefere refeições predominantemente vegetarianas",
+  });
+  assertStringIncludes(r, "Nota guardada");
+  assertEquals(calls.inserts[0].category, "preferencia_alimentar");
+  assertEquals(calls.inserts[0].source, "coach");
+  assertEquals(calls.inserts[0].user_id, "u1");
+});
+
+Deno.test("runSaveCoachNote rejeita categoria fora da lista", async () => {
+  const { sb, calls } = makeNotesSb();
+  const r = await runSaveCoachNote(sb, "u1", { category: "aleatorio", note: "qualquer coisa" });
+  assertStringIncludes(r, "category inválida");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("runSaveCoachNote rejeita nota vazia ou demasiado longa", async () => {
+  const { sb, calls } = makeNotesSb();
+  assertStringIncludes(await runSaveCoachNote(sb, "u1", { category: "outro", note: "ab" }), "Erro");
+  assertStringIncludes(await runSaveCoachNote(sb, "u1", { category: "outro", note: "x".repeat(501) }), "Erro");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("runSaveCoachNote apaga a nota substituída antes de inserir a nova", async () => {
+  // Passar a vegetariano contradiz uma nota anterior — substituir evita que a
+  // memória guarde as duas versões e a Carol siga a errada.
+  const { sb, calls } = makeNotesSb();
+  await runSaveCoachNote(sb, "u1", {
+    category: "preferencia_alimentar",
+    note: "Prefere refeições vegetarianas",
+    replaces_note_id: "nota-antiga",
+  });
+  assertEquals(calls.deletes[0], "nota-antiga");
+  assertEquals(calls.inserts.length, 1);
+});
+
+Deno.test("runSaveCoachNote trata facto repetido como já sabido, não como erro", async () => {
+  const { sb } = makeNotesSb({ insertError: { code: "23505", message: "duplicate key" } });
+  const r = await runSaveCoachNote(sb, "u1", { category: "outro", note: "Já sabido" });
+  assertStringIncludes(r, "já estava registado");
+  assertStringIncludes(r, "NÃO digas ao atleta que o guardaste agora");
+});
+
+Deno.test("runSaveCoachNote recusa passar do teto de notas", async () => {
+  const { sb, calls } = makeNotesSb({ count: 40 });
+  const r = await runSaveCoachNote(sb, "u1", { category: "outro", note: "mais uma" });
+  assertStringIncludes(r, "máximo 40");
+  assertStringIncludes(r, "replaces_note_id");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("buildCoachNotesContext agrupa por categoria e expõe os ids", () => {
+  const ctx = buildCoachNotesContext([
+    { id: "n1", category: "preferencia_alimentar", note: "Prefere vegetariano" },
+    { id: "n2", category: "limitacao_fisica", note: "Epicondilite no cotovelo direito" },
+    { id: "n3", category: "preferencia_alimentar", note: "Sem glúten" },
+  ])!;
+  assertStringIncludes(ctx, "MEMÓRIA DO ATLETA");
+  assertStringIncludes(ctx, "preferencia_alimentar:");
+  assertStringIncludes(ctx, "limitacao_fisica:");
+  // O id tem de ir junto para o modelo poder pedir a substituição da nota certa.
+  assertStringIncludes(ctx, "[id: n1]");
+  assertStringIncludes(ctx, "[id: n2]");
+});
+
+Deno.test("buildCoachNotesContext devolve null sem notas", () => {
+  assertEquals(buildCoachNotesContext([]), null);
+  assertEquals(buildCoachNotesContext(null), null);
+});
+
+Deno.test("as notas entram no system prompt e valem sempre", () => {
+  const ctx = buildCoachNotesContext([
+    { id: "n1", category: "limitacao_fisica", note: "Epicondilite no cotovelo direito" },
+  ]);
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null, ctx,
+  );
+  assertStringIncludes(sys, "Epicondilite no cotovelo direito");
+  assertStringIncludes(sys, "valem SEMPRE");
+});
+
+Deno.test("o prompt distingue as três fontes de informação", () => {
+  // Era o que faltava: a Carol não sabia quando o histórico ajuda e quando
+  // baralha, nem que factos duradouros se guardam em vez de recordar.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "DADOS ESTRUTURADOS");
+  assertStringIncludes(sys, "MEMÓRIA DO ATLETA");
+  assertStringIncludes(sys, "HISTÓRICO DA CONVERSA");
+  assertStringIncludes(sys, "NÃO é fonte fiável para factos antigos");
+  assertStringIncludes(sys, "GUARDA-O com save_coach_note");
+});
+
+Deno.test("save_coach_note é permitida em todos os casos do esquema", () => {
+  // Guardar um facto não cria nada que o atleta tenha de decidir, e é ao
+  // reagir a uma recusa que ele explica o porquê.
+  for (const caso of ["A", "B", "C", "D", "F_PLAN", "F_GOALS"] as const) {
+    assertEquals(allowedToolsFor(caso)!.has("save_coach_note"), true, `caso ${caso}`);
+  }
+  assertEquals(allowedToolsFor("E"), null); // E não restringe nada
+});
+
 // ─── classifyTurn / allowedToolsFor ─────────────────────────────────────────
 // O ESQUEMA DE DECISÃO no prompt não bastava: num prompt de ~166 KB as regras
 // da secção dos objetivos continuavam a ganhar e a Carol propunha metas onde
