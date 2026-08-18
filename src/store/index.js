@@ -111,6 +111,59 @@ export const useAppStore = create((set, get) => ({
       return plans;
   },
 
+  // ── Memória de longo prazo do Coach (tabela coach_notes) ────────────────
+  // Factos duradouros sobre o atleta que a Carol tem sempre no prompt. Ao
+  // contrário do histórico de conversa, não caem fora de nenhuma janela.
+  // A Carol escreve-os pela ferramenta save_coach_note; o atleta lê, corrige
+  // e acrescenta os seus aqui — é memória partilhada, não um registo dela.
+  coachNotes: [],
+
+  reloadCoachNotes: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return [];
+    const { data, error } = await supabase
+      .from('coach_notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    if (error) { console.error('Error loading coach notes:', error); return []; }
+    set({ coachNotes: data || [] });
+    return data || [];
+  },
+
+  addCoachNote: async ({ category, note }) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return false;
+    const { error } = await supabase.from('coach_notes').insert({
+      user_id: userId,
+      category,
+      note: (note || '').trim(),
+      source: 'atleta',
+    });
+    // 23505 = o mesmo facto já lá está (índice único por categoria+texto).
+    // Para quem está a escrever isso não é um erro: o resultado é o que queria.
+    if (error && error.code !== '23505') { console.error('Error adding coach note:', error); return false; }
+    await get().reloadCoachNotes();
+    return true;
+  },
+
+  updateCoachNote: async (id, { category, note }) => {
+    const patch = { updated_at: new Date().toISOString() };
+    if (category !== undefined) patch.category = category;
+    if (note !== undefined) patch.note = (note || '').trim();
+    const { error } = await supabase.from('coach_notes').update(patch).eq('id', id);
+    if (error) { console.error('Error updating coach note:', error); return false; }
+    await get().reloadCoachNotes();
+    return true;
+  },
+
+  deleteCoachNote: async (id) => {
+    const { error } = await supabase.from('coach_notes').delete().eq('id', id);
+    if (error) { console.error('Error deleting coach note:', error); return false; }
+    set((state) => ({ coachNotes: (state.coachNotes || []).filter(n => n.id !== id) }));
+    return true;
+  },
+
   reloadCoachGoalProposals: async () => {
     const userId = get().session?.user?.id || get().profile?.id;
     if (!userId) return;
