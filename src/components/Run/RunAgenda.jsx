@@ -380,7 +380,7 @@ export default function RunAgenda({ onClose }) {
         {/* Cartão de cabeçalho */}
         <div
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.02), rgba(251, 191, 36, 0.05))', border: '1px solid rgba(255, 255, 255, 0.8)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.02), rgba(251, 191, 36, 0.05))', border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)' }}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
