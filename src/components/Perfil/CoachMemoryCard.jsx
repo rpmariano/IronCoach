@@ -91,7 +91,9 @@ export default function CoachMemoryCard() {
       <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
         Factos que a Carol tem sempre presentes, mesmo em conversas de daqui a semanas.
         Ela regista o que percebe do que lhe contas — corrige ou apaga o que não estiver certo,
-        e acrescenta o que quiseres que ela nunca esqueça.
+        e acrescenta o que quiseres que ela nunca esqueça.{' '}
+        <span style={{ color: 'var(--mod-coach-to)' }}>A azul o que a Carol escreveu</span>;
+        a cinzento o que escreveste tu.
       </p>
 
       {notes.length === 0 && !adding && (
@@ -102,20 +104,37 @@ export default function CoachMemoryCard() {
       )}
 
       <div className="flex flex-col gap-2 mb-3">
-        {notes.map(n => (
-          <div key={n.id} className="rounded-xl border border-neutral-800 bg-neutral-900/70 p-3">
+        {notes.map(n => {
+          const byCoach = n.source === 'coach';
+          return (
+          <div
+            key={n.id}
+            className="rounded-xl border bg-neutral-900/70 p-3"
+            style={{
+              // Um filete na cor do coach chega para separar as duas autorias
+              // de relance, sem transformar a lista num arco-íris.
+              borderColor: byCoach
+                ? 'color-mix(in srgb, var(--mod-coach-to) 30%, transparent)'
+                : 'rgb(38 38 38)',
+            }}
+          >
             <div className="flex items-center gap-2 mb-1.5">
               <span
                 className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
-                  background: 'color-mix(in srgb, var(--mod-coach-to) 12%, transparent)',
-                  color: 'var(--mod-coach-to)',
+                  background: byCoach
+                    ? 'color-mix(in srgb, var(--mod-coach-to) 12%, transparent)'
+                    : 'rgb(38 38 38)',
+                  color: byCoach ? 'var(--mod-coach-to)' : 'rgb(148 163 184)',
                 }}
               >
                 {categoryLabel(n.category)}
               </span>
-              <span className="text-[9px] text-slate-600">
-                {n.source === 'coach' ? 'registado pela Carol' : 'escrito por ti'}
+              <span
+                className="text-[9px]"
+                style={{ color: byCoach ? 'var(--mod-coach-to)' : 'rgb(100 116 139)', opacity: byCoach ? 0.8 : 1 }}
+              >
+                {byCoach ? 'registado pela Carol' : 'escrito por ti'}
               </span>
 
               {editingId !== n.id && (
@@ -170,10 +189,16 @@ export default function CoachMemoryCard() {
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-300 leading-relaxed">{n.note}</p>
+              <p
+                className="text-xs leading-relaxed"
+                style={{ color: byCoach ? 'var(--mod-coach-to)' : 'rgb(203 213 225)' }}
+              >
+                {n.note}
+              </p>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {adding ? (
