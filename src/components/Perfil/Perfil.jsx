@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
@@ -11,6 +11,9 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import { useCarouselHaptics } from '../../utils/haptics';
+
+const TAB_KEYS = ['perfil', 'metas', 'coach'];
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -93,6 +96,36 @@ export default function Perfil() {
   // Coach UI
   const [suggestingGoals, setSuggestingGoals] = useState(false);
   const [goalsRationale, setGoalsRationale] = useState(profile?.goals_rationale || '');
+
+  // Separadores também se deslizam, como um carrossel (mesmo mecanismo do
+  // Dashboard — ver esse ficheiro). Trocar de sub-tab a deslizar passa pela
+  // mesma verificação de "alterações por gravar" que já existia ao tocar no
+  // separador: se estiver sujo, repõe a posição do carrossel e mostra o
+  // mesmo aviso em vez de deixar o deslize completar-se.
+  const tabIndex = TAB_KEYS.indexOf(tab);
+  const scrollRef = useRef(null);
+  const scrollToRef = useRef(() => {});
+  const handleTabIndexChange = useCallback((idx) => {
+    const nextTab = TAB_KEYS[idx];
+    if (!nextTab || nextTab === tab) return;
+    if (isDirty) {
+      scrollToRef.current(TAB_KEYS.indexOf(tab));
+      setLeavePrompt({ kind: 'tab', target: nextTab });
+      return;
+    }
+    setTab(nextTab);
+  }, [tab, isDirty]);
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef, TAB_KEYS.length, tabIndex, handleTabIndexChange
+  );
+  scrollToRef.current = scrollTo;
+
+  // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
+  // sincroniza o scroll nesses casos.
+  useEffect(() => {
+    scrollTo(tabIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabIndex]);
 
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
      por gravar. Depender da identidade do objeto `profile` não servia: o
@@ -219,20 +252,24 @@ export default function Perfil() {
     }
   };
 
-  // Mudar de sub-tab descarta o draft (ver o useEffect acima), por isso passa
-  // pelo mesmo aviso que sair do Perfil.
+  // Tocar num separador passa pelo mesmo aviso que sair do Perfil quando há
+  // alterações por gravar; scrollTo desliza o carrossel até lá (que por sua
+  // vez chama handleTabIndexChange, acima) em vez de mudar o tab só por si.
   const requestTabChange = (nextTab) => {
     if (nextTab === tab) return;
     if (isDirty) {
       setLeavePrompt({ kind: 'tab', target: nextTab });
       return;
     }
-    setTab(nextTab);
+    scrollTo(TAB_KEYS.indexOf(nextTab));
   };
 
   const goToPendingTarget = async ({ kind, target }) => {
     if (kind === 'tab') {
-      setTab(target);
+      // isDirty já está a false a esta altura (discardAndLeave/saveAndLeave
+      // repõem-no antes de chamar isto), por isso handleTabIndexChange segue
+      // direto para setTab em vez de voltar a mostrar o aviso.
+      scrollTo(TAB_KEYS.indexOf(target));
       return;
     }
     // O guard vive no store e ainda está registado neste render — limpa-o
@@ -327,7 +364,7 @@ export default function Perfil() {
           className="absolute top-1 bottom-1 rounded-xl transition-all duration-300 ease-in-out border"
           style={{
             width: 'calc((100% - 16px) / 3)', // 3 tabs, 2 gaps of 8px
-            transform: `translateX(calc(${['perfil', 'metas', 'coach'].indexOf(tab)} * 100% + ${['perfil', 'metas', 'coach'].indexOf(tab) * 8}px))`,
+            transform: `translateX(calc(${tabIndex} * 100% + ${tabIndex * 8}px))`,
             background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
             borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
           }}
@@ -352,9 +389,11 @@ export default function Perfil() {
 
       {leaveModal}
 
-      {/* TABS */}
-      {tab === 'perfil' && (
-        <>
+      {/* Separadores lado a lado, como o Dashboard — os 3 ficam sempre
+          montados (partilham o mesmo draft/isDirty, nada se perde ao
+          ficarem lado a lado) e o scroll nativo com snap trata do resto. */}
+      <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
+      <div className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
@@ -455,7 +494,6 @@ export default function Perfil() {
                 </p>
               </div>
             </div>
-            {saveButton}
           </div>
           
           <div className="module-card-contrast">
@@ -464,11 +502,9 @@ export default function Perfil() {
               <LogOut size={14} /> Terminar sessão
             </button>
           </div>
-        </>
-      )}
+      </div>
 
-      {tab === 'metas' && (
-        <>
+      <div className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
@@ -648,13 +684,9 @@ export default function Perfil() {
               </div>
             )}
           </div>
+      </div>
 
-          {saveButton}
-        </>
-      )}
-
-      {tab === 'coach' && (
-        <>
+      <div className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles size={16} className="text-[var(--mod-coach-to)]" />
@@ -767,10 +799,13 @@ export default function Perfil() {
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
             />
           </div>
+      </div>
+      </div>
 
-          {saveButton}
-        </>
-      )}
+      {/* Um só botão, fora do carrossel — os 3 separadores partilham o
+          mesmo rascunho, por isso "Guardar alterações" já grava tudo o
+          que estiver por gravar em qualquer um deles, não só no visível. */}
+      {saveButton}
     </div>
   );
 }
