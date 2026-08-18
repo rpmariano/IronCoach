@@ -93,7 +93,7 @@ export default function Layout({ children }) {
     <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
       {/* Header fixo no topo */}
-      <div className="sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--surf-950) 95%, transparent)', backdropFilter: 'blur(8px)', borderBottom: '1px solid var(--brd-800)' }}>
+      <div className="sticky top-0 z-20 bg-[#0f172a]/70 backdrop-blur-3xl border-b border-white/10">
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
@@ -297,7 +297,7 @@ function FabItem({ label, color, icon, onClick }) {
       >
         {icon}
       </span>
-      <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{label}</span>
+      <span className="text-xs font-bold text-slate-100 whitespace-nowrap">{label}</span>
     </button>
   );
 }

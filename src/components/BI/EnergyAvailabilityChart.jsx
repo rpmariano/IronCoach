@@ -54,8 +54,8 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
       {
         label: 'Disponibilidade Energética',
         data: dailyData.map(d => d.ea),
-        borderColor: '#0f172a',
-        backgroundColor: '#0f172a',
+        borderColor: '#f8fafc',
+        backgroundColor: '#f8fafc',
         tension: 0.4,
         pointBackgroundColor: dailyData.map(d => getStatusColor(d.status)),
         pointBorderColor: '#fff',
@@ -72,10 +72,10 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        titleColor: '#0f172a',
-        bodyColor: '#0f172a',
-        borderColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#f8fafc',
+        bodyColor: '#f8fafc',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
         callbacks: {
@@ -88,14 +88,14 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
     scales: {
       x: { grid: { display: false } },
       y: { 
-        grid: { color: 'rgba(0, 0, 0, 0.05)' },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
         min: Math.min(10, ...dailyData.map(d => d.ea))
       }
     }
   };
 
   return (
-    <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-2xl p-4 shadow-lg ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Disponibilidade Energética (EA)</h3>
         <MetricInfo text="A EA (Energy Availability) é a energia que sobra para o teu corpo viver depois de descontar as calorias que queimaste a treinar. Se ficares repetidamente abaixo da linha vermelha (30 kcal/kg), corres um risco clínico severo de Síndrome de Deficiência Energética Relativa (RED-S). Come mais nos dias de treino duro!" />

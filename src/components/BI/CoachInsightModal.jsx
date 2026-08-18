@@ -53,11 +53,11 @@ export default function CoachInsightModal({ insights, onClose }) {
                   </p>
 
                   <div className="mt-3 flex items-center gap-2">
-                    <span className="px-2 py-1 rounded-md bg-white/60 text-[11px] font-semibold text-slate-500 uppercase">
+                    <span className="px-2 py-1 rounded-md bg-white/5 text-[11px] font-semibold text-slate-500 uppercase">
                       {insight.module}
                     </span>
                     {insight.metric && (
-                      <span className={`px-2 py-1 rounded-md bg-white/60 text-[11px] font-semibold ${color}`}>
+                      <span className={`px-2 py-1 rounded-md bg-white/5 text-[11px] font-semibold ${color}`}>
                         {insight.metric}: {typeof insight.value === 'number' ? insight.value.toFixed(1) : insight.value}
                       </span>
                     )}

@@ -4,10 +4,10 @@
   color-scheme: only light;
 
   /* Brand Colors — Monocromático (Accent mapeado para Green-dark) */
-  --accent:var(--green-dark); --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:var(--green-dark);
+  --accent:#38bdf8; --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:#7dd3fc;
   --chrome:#eccea4; --chrome-dark:#c9a860; --chrome-glow:#f5ddb8;
-  --blue:#3e6b82; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
-  --green:#416e7f; --green-dark:#2d4a57; --green-glow:#5a8fa3;
+  --blue:#6f9cb2; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
+  --green:#5a8fa3; --green-dark:#2d4a57; --green-glow:#5a8fa3;
 
   /* Surfaces */
   --surf-950: #eef1f6;
@@ -238,3 +238,26 @@ body {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* ===== OVERRIDES DARK MODE (PREMIUM) ===== */
+[class~="text-slate-900"], [class*="text-slate-900/"] { color: #f8fafc !important; }
+[class~="text-slate-800"], [class*="text-slate-800/"] { color: #f1f5f9 !important; }
+[class~="text-slate-700"], [class*="text-slate-700/"] { color: #e2e8f0 !important; }
+[class~="text-slate-600"], [class*="text-slate-600/"] { color: #cbd5e1 !important; }
+[class~="text-slate-500"], [class*="text-slate-500/"] { color: #cbd5e1 !important; }
+[class~="text-slate-400"], [class*="text-slate-400/"] { color: #cbd5e1 !important; }
+
+[class~="bg-slate-50"], [class*="bg-slate-50/"] { background-color: rgba(255, 255, 255, 0.03) !important; }
+[class~="bg-slate-100"], [class*="bg-slate-100/"] { background-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="bg-slate-200"], [class*="bg-slate-200/"] { background-color: rgba(255, 255, 255, 0.1) !important; }
+[class~="bg-white"] { background-color: rgba(255, 255, 255, 0.02) !important; }
+[class~="bg-white/80"] { background-color: rgba(255, 255, 255, 0.08) !important; }
+[class~="bg-white/60"] { background-color: rgba(255, 255, 255, 0.06) !important; }
+[class~="bg-white/50"] { background-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="bg-white/40"] { background-color: rgba(255, 255, 255, 0.04) !important; }
+
+[class~="border-slate-50"], [class*="border-slate-50/"] { border-color: rgba(255, 255, 255, 0.03) !important; }
+[class~="border-slate-100"], [class*="border-slate-100/"] { border-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="border-slate-200"], [class*="border-slate-200/"] { border-color: rgba(255, 255, 255, 0.1) !important; }
+[class~="border-slate-300"], [class*="border-slate-300/"] { border-color: rgba(255, 255, 255, 0.15) !important; }

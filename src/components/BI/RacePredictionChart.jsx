@@ -28,7 +28,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       // Draw simple annotation in top right
       ctx.save();
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.shadowColor = 'rgba(0,0,0,0.1)';
+      ctx.shadowColor = 'rgba(255,255,255,0.15)';
       ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.roundRect(chartArea.right - 130, chartArea.top + 10, 120, 50, 8);
@@ -39,7 +39,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       ctx.font = '10px system-ui';
       ctx.fillText(prediction.raceName || 'Previsão Prova', chartArea.right - 120, chartArea.top + 25);
       
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#f8fafc';
       ctx.font = 'bold 14px system-ui';
       ctx.fillText(formatTime(prediction.predictedSeconds), chartArea.right - 120, chartArea.top + 45);
       ctx.restore();
@@ -68,22 +68,22 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        titleColor: '#0f172a',
-        bodyColor: '#0f172a',
-        borderColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#f8fafc',
+        bodyColor: '#f8fafc',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
       }
     },
     scales: {
       x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(0, 0, 0, 0.05)' } }
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
     }
   };
 
   return (
-    <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-2xl p-4 shadow-lg ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Evolução VDOT & Previsão de Prova</h3>
         <MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />
