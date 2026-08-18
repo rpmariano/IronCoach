@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2 } from 'lucide-react';
+import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
@@ -34,7 +34,8 @@ function categoryLabel(key) {
 }
 
 export default function CoachMemoryCard() {
-  const { coachNotes, reloadCoachNotes, addCoachNote, updateCoachNote, deleteCoachNote } = useAppStore();
+  const { coachNotes, reloadCoachNotes, addCoachNote, updateCoachNote, deleteCoachNote,
+          setCoachIntent, setActiveTab } = useAppStore();
   const { showToast } = useToast();
 
   const [adding, setAdding] = useState(false);
@@ -70,6 +71,14 @@ export default function CoachMemoryCard() {
     else showToast('Não foi possível atualizar');
   };
 
+  // Leva a conversa para o Coach já focada nesta nota. O atleta não
+  // reescreve o que a Carol registou — explica-lhe o que está errado e é
+  // ela que atualiza, mantendo a autoria de cada linha intacta.
+  const askCarolToChange = (note) => {
+    setCoachIntent({ kind: 'discuss_note', note });
+    setActiveTab('coach');
+  };
+
   const handleDelete = async (id) => {
     if (busy) return;
     setBusy(true);
@@ -92,8 +101,8 @@ export default function CoachMemoryCard() {
         Factos que a Carol tem sempre presentes, mesmo em conversas de daqui a semanas.
         Ela regista o que percebe do que lhe contas — corrige ou apaga o que não estiver certo,
         e acrescenta o que quiseres que ela nunca esqueça.{' '}
-        <span style={{ color: 'var(--mod-coach-to)' }}>A azul o que a Carol escreveu</span>;
-        a cinzento o que escreveste tu.
+        <span style={{ color: 'var(--mod-coach-to)' }}>A azul o que a Carol escreveu</span>
+        — para mudares uma dessas, fala com ela; a cinzento o que escreveste tu, que editas aqui.
       </p>
 
       {notes.length === 0 && !adding && (
@@ -139,14 +148,30 @@ export default function CoachMemoryCard() {
 
               {editingId !== n.id && (
                 <div className="ml-auto flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label="Editar nota"
-                    onClick={() => { setEditingId(n.id); setEditText(n.note); }}
-                    className="p-1 text-slate-500 hover:text-slate-200 transition"
-                  >
-                    <Pencil size={13} />
-                  </button>
+                  {byCoach ? (
+                    // Editar por cima do que a Carol escreveu misturava as duas
+                    // vozes na mesma linha e destruía a autoria. Em vez disso,
+                    // pede-se-lhe a alteração e discute-se no chat.
+                    <button
+                      type="button"
+                      aria-label="Pedir à Carol para alterar esta nota"
+                      title="Falar com a Carol sobre esta nota"
+                      onClick={() => askCarolToChange(n.note)}
+                      className="p-1 transition hover:opacity-70"
+                      style={{ color: 'var(--mod-coach-to)' }}
+                    >
+                      <MessageSquare size={13} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label="Editar nota"
+                      onClick={() => { setEditingId(n.id); setEditText(n.note); }}
+                      className="p-1 text-slate-500 hover:text-slate-200 transition"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label="Remover nota"
@@ -159,7 +184,7 @@ export default function CoachMemoryCard() {
               )}
             </div>
 
-            {editingId === n.id ? (
+            {editingId === n.id && !byCoach ? (
               <div className="flex flex-col gap-2">
                 <textarea
                   rows="3"

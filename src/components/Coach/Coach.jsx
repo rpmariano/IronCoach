@@ -48,6 +48,18 @@ export default function Coach() {
       setCoachIntent(null);
       // Trigger a hidden message to the coach or pre-fill the chat
       handleSend('Gostaria de adaptar o meu plano atual. Podes verificar o meu plano e sugerir adaptações?');
+      return;
+    }
+    // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
+    // que a Carol escreveu — pede-lhe que altere, e a conversa abre já
+    // centrada nessa nota para ele explicar o que está errado.
+    if (coachIntent && coachIntent.kind === 'discuss_note') {
+      const { note } = coachIntent;
+      setCoachIntent(null);
+      handleSend(
+        `Sobre o que tens registado na tua memória: "${note}". Queria mudar isto — ` +
+        `pergunta-me o que precisares e atualiza a nota quando estivermos de acordo.`,
+      );
     }
   }, [coachIntent]);
 
