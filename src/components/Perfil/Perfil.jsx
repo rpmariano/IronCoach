@@ -705,24 +705,33 @@ export default function Perfil() {
             )}
           </div>
 
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
-            <div className="flex items-center gap-2 mb-2">
-              <Bot size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold">Contexto do Coach</h2>
+          <CoachMemoryCard />
+
+          {/* A descontinuar — substituído pela Memória do Coach acima. Fica
+              visível e editável só para o atleta poder migrar o que aqui tem;
+              apagar já perderia texto escrito à mão. Quando estiver vazio para
+              todos, remove-se o campo e a coluna coach_context. */}
+          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-amber-500/25">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <Bot size={16} className="text-slate-500" />
+              <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+                A descontinuar
+              </span>
             </div>
             <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-              Descreve os teus objetivos, lesões ou preferências. O coach terá sempre isto em conta.
+              Este campo foi substituído pela <strong className="text-slate-400">Memória do Coach</strong>, logo acima,
+              onde cada facto fica separado, com categoria, e pode ser corrigido um a um.
+              Passa para lá o que ainda faz sentido e apaga aqui — enquanto tiver texto, a Carol continua a lê-lo.
             </p>
             <textarea
               rows="5"
               value={draft.coach_context || ''}
               onChange={e => updateDraft('coach_context', e.target.value)}
-              placeholder="Ex: Quero correr uma meia maratona em Novembro. Tenho uma lesão no joelho direito. Objetivo: ganhar massa muscular mantendo o peso."
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-[var(--mod-coach-to)]/70"
+              placeholder="(vazio — usa a Memória do Coach acima)"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
             />
           </div>
-
-          <CoachMemoryCard />
 
           {saveButton}
         </>
