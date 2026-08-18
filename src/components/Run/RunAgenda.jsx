@@ -399,8 +399,10 @@ export default function RunAgenda({ onClose }) {
           </div>
         </div>
 
-        {/* Corpo principal do formulário */}
-        <div className="space-y-4 fade-in bg-white p-4 rounded-2xl shadow-sm">
+        {/* Corpo principal do formulário — mesmo vidro/glow do cabeçalho
+            acima e dos outros ecrãs de registo (bg-white sem blur nem glow
+            era o único bloco desta tela ainda por alinhar). */}
+        <div className="space-y-4 fade-in module-card-contrast">
 
           {/* 1.1 Data · 1.2 Local */}
           <div className="grid grid-cols-2 gap-2">
