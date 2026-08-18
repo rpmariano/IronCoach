@@ -235,11 +235,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     <div className="space-y-4 fade-in">
       <div
         className="rounded-2xl p-4"
+        // --surf-detail (#f8fafc) era o fundo claro dos cartões expansíveis
+        // no tema original — aqui dava um gradiente que acaba num retângulo
+        // quase branco, com a borda #e2e8f0 a condizer. Style inline, por
+        // isso as overrides de dark mode do globals.css não o apanhavam.
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, var(--surf-900), var(--surf-detail))',
+          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
           borderStyle: 'solid',
           borderWidth: '1px 1px 1px 3px',
-          borderColor: '#e2e8f0 #e2e8f0 #e2e8f0 color-mix(in srgb, var(--mod-corpo-to) 70%, #e2e8f0)'
+          borderColor: 'rgba(255, 255, 255, 0.1) rgba(255, 255, 255, 0.1) rgba(255, 255, 255, 0.1) color-mix(in srgb, var(--mod-corpo-to) 70%, transparent)'
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">

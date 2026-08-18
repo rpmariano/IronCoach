@@ -701,7 +701,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             a reanalisar uma corrida já criada assim. */}
         <div
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
+          // O tom de fundo era magenta (rgba(217,70,239,...)) e não tinha
+          // nenhuma relação com a cor da Corrida — provável resto de outro
+          // módulo copiado. color-mix deriva sempre da var, como o resto do
+          // formulário, em vez de repetir o azul à mão.
+          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corrida-to) 3%, transparent), color-mix(in srgb, var(--mod-corrida-to) 6%, transparent))', borderLeft: '2px solid var(--mod-corrida-to)' }}
         >
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">

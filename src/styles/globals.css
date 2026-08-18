@@ -42,12 +42,19 @@
   --mod-corpo: #6366f1;
   --mod-descanso: #64748b;
 
-  /* Gradient de botões FAB e Dashboards (Mapeadas para neutros/verde para estética monocromática) */
-  --mod-nutricao-from:var(--green-dark); --mod-nutricao-to:var(--green);
-  --mod-corpo-from:var(--green-dark);    --mod-corpo-to:var(--green);  
-  --mod-ginasio-from:var(--green-dark);  --mod-ginasio-to:var(--green);
-  --mod-corrida-from:var(--green-dark);  --mod-corrida-to:var(--green);
-  
+  /* Gradiente de identidade de cada módulo (ecrãs de criar/editar/visualizar
+     registos, Chip/AddButton "active", badges de dashboard) — -to é sempre a
+     cor base do módulo (acima), -from uma variante mais escura da mesma
+     matiz, no mesmo espírito do par -from/-to do Coach e do dourado da Prova
+     (--race-from/-to). Antes as quatro estavam todas mapeadas para o mesmo
+     --green partilhado ("estética monocromática"), o que fazia os ecrãs de
+     registo de Corrida/Ginásio/Corpo/Nutrição ficarem todos com o mesmo tom
+     neutro em vez da cor própria de cada módulo. */
+  --mod-nutricao-from:#065f46; --mod-nutricao-to:var(--mod-nutricao);
+  --mod-corpo-from:#3730a3;    --mod-corpo-to:var(--mod-corpo);
+  --mod-ginasio-from:#92400e;  --mod-ginasio-to:var(--mod-ginasio);
+  --mod-corrida-from:#1e40af;  --mod-corrida-to:var(--mod-corrida);
+
   /* Coach permanece com a sua cor única de destaque */
   --mod-coach-from:#155e75;              --mod-coach-to:#06b6d4;
 
