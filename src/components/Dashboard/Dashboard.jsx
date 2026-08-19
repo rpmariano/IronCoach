@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User, Activity } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
-import { useTabCarousel } from '../../utils/haptics';
+import { useCarouselHaptics } from '../../utils/haptics';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -50,7 +50,7 @@ export default function Dashboard({ activeModule }) {
     if (!ok) scrollToRef.current(currentIndex);
   }, [activeModule, currentIndex, setActiveTab]);
 
-  const { handleScroll, handleTouchMove, scrollTo } = useTabCarousel(
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;

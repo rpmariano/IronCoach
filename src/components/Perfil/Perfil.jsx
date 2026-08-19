@@ -11,7 +11,7 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
-import { useTabCarousel } from '../../utils/haptics';
+import { useCarouselHaptics } from '../../utils/haptics';
 
 const TAB_KEYS = ['perfil', 'metas', 'coach'];
 
@@ -115,7 +115,7 @@ export default function Perfil() {
     }
     setTab(nextTab);
   }, [tab, isDirty]);
-  const { handleScroll, handleTouchMove, scrollTo } = useTabCarousel(
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef, TAB_KEYS.length, tabIndex, handleTabIndexChange
   );
   scrollToRef.current = scrollTo;
