@@ -158,6 +158,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
+    setIsFormDirty(true);
   };
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
@@ -235,12 +236,14 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
     setErrorMsg('');
     setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name, grams }]);
+    setIsFormDirty(true);
     setItemName('');
     setItemGrams('');
   };
 
   const handleRemoveManualItem = (key) => {
     setManualItems(prev => prev.filter(i => i.key !== key));
+    setIsFormDirty(true);
   };
 
   const handleFinalizeManual = async () => {
@@ -347,7 +350,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             type="date"
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
-            onChange={e => setDate(e.target.value)}
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--accent)] shadow-sm transition"
           />
           <div className="text-[11px] text-slate-500 mr-2">Data da refeição</div>
@@ -361,7 +364,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                 key={t.key}
                 active={isActive}
                 variant="nutrition"
-                onClick={() => setMealType(t.key)}
+                onClick={() => { setMealType(t.key); setIsFormDirty(true); }}
                 className="px-4 py-1.5"
                 type="button"
               >
@@ -547,7 +550,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             maxLength="500"
             placeholder="Detalhes que mudam os valores nutricionais..."
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
           />
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import GymRegistration from './GymRegistration';
@@ -295,5 +295,128 @@ describe('GymRegistration — editar sessão existente', () => {
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getAllByPlaceholderText('Reps')[0]).toHaveValue(12);
+  });
+});
+
+// Regressão: trocar de separador pela barra de navegação (Início, Calendário,
+// Dashboard, Coach) com o formulário sujo desmontava-o sem aviso nenhum — só
+// o botão X do próprio ecrã estava protegido. E na primeira correção, o
+// próprio navGuard ainda ativo bloqueava-se a si mesmo quando handleClose()
+// tentava completar a navegação pendente (mesma armadilha documentada em
+// Perfil.jsx/RunAgenda.jsx: o guard só é limpo no cleanup do useEffect,
+// que corre num render seguinte, não já a seguir a onClose()).
+describe('GymRegistration — guarda de navegação com formulário sujo', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+  const EXISTING_SESSION = {
+    id: 'sess-3',
+    date: '2026-01-05',
+    kind: 'forca',
+    name: 'Peito e Tríceps',
+    categories: ['Peito'],
+    notes: 'nota antiga',
+    duration_seconds: 3000,
+    calories_kcal: 400,
+    avg_hr: 120,
+    max_hr: 150,
+    exertion: 7,
+    workout_session_sets: [
+      { id: 'set-1', exercise_name: 'Supino', set_index: 0, reps: 10, weight: 60 },
+    ],
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: EXISTING_SESSION, sets: [] }, error: null });
+    mocks.updateSession.mockReset().mockResolvedValue({ error: null });
+    mocks.deleteSets.mockReset().mockResolvedValue({ error: null });
+    mocks.insertSets.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    loadInitialData.mockClear();
+    // navGuard/activeTab são estado real da store (não mockado) — o teste
+    // exercita exatamente o que Layout.jsx chama ao tocar num separador.
+    useAppStore.setState({
+      profile: PROFILE,
+      gymSessions: [EXISTING_SESSION],
+      loadInitialData,
+      activeTab: 'ginasio',
+      navGuard: null,
+    });
+  });
+
+  // O campo de nome NÃO marca o formulário como sujo (só duração, calorias,
+  // FC média/máx. e esforço o fazem — ver setIsFormDirty(true) no ficheiro
+  // fonte); usar o esforço é o caminho real que a UI oferece.
+  const dirtyTheForm = () => {
+    fireEvent.click(screen.getByRole('button', { name: '9' }));
+  };
+
+  // O navGuard corre fora de qualquer evento React (é chamado diretamente
+  // na store, tal como Layout.jsx faria ao tocar num separador) — sem act(),
+  // o setShowUnsavedModal(true) lá dentro não fica refletido no DOM a tempo
+  // da asserção seguinte.
+  const attemptLeave = (target) => {
+    let navigated;
+    act(() => { navigated = useAppStore.getState().setActiveTab(target); });
+    return navigated;
+  };
+
+  it('regista um navGuard assim que o formulário fica sujo, e limpa-o quando limpo', () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+    expect(useAppStore.getState().navGuard).toBeNull();
+
+    dirtyTheForm();
+    expect(useAppStore.getState().navGuard).toBeInstanceOf(Function);
+  });
+
+  it('trocar de separador com o formulário sujo mostra o aviso em vez de navegar logo', () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+    dirtyTheForm();
+
+    const navigated = attemptLeave('home');
+
+    expect(navigated).toBe(false);
+    expect(useAppStore.getState().activeTab).toBe('ginasio');
+    expect(screen.getByText('Tens alterações por gravar')).toBeInTheDocument();
+  });
+
+  it('"Sair sem gravar" descarta o formulário E completa a navegação pendente', () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sair sem gravar' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A parte que a correção original esquecia: sem limpar o navGuard antes
+    // de navegar, este setActiveTab ficava preso a bloquear-se a ele mesmo.
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().navGuard).toBeNull();
+  });
+
+  it('"Cancelar" fecha o aviso e mantém o formulário aberto, sem navegar', async () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useAppStore.getState().activeTab).toBe('ginasio');
+    // PremiumModal anima a saída (~400ms) antes de desmontar — o título ainda
+    // está no DOM logo a seguir ao clique, só desaparece passado esse tempo.
+    await waitFor(() => {
+      expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
+    });
+    // O formulário continua sujo — uma segunda tentativa de sair tem de voltar a avisar.
+    expect(attemptLeave('coach')).toBe(false);
+  });
+
+  it('fechar pelo botão X sem alterações não deixa navGuard nenhum registado', () => {
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
+
+    fireEvent.click(screen.getByLabelText('Fechar'));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().navGuard).toBeNull();
   });
 });
