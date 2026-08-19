@@ -358,7 +358,7 @@ export default function RunAgenda({ onClose }) {
         <div className="flex justify-center">
           <Button
             variant="module"
-            moduleColor="var(--mod-coach-to)"
+            moduleColor="var(--mod-prova)"
             onClick={() => setValidationError(null)}
             className="w-full"
           >
@@ -380,11 +380,11 @@ export default function RunAgenda({ onClose }) {
         {/* Cartão de cabeçalho */}
         <div
           className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.01), rgba(6, 182, 212, 0.03))', borderLeft: '2px solid var(--mod-coach-to)' }}
+          style={{ background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.02), rgba(251, 191, 36, 0.05))', border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)' }}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <CalendarPlus size={16} style={{ color: 'var(--mod-coach-to)' }} />
+              <CalendarPlus size={16} style={{ color: 'var(--mod-prova)' }} />
               <h2 className="text-sm font-semibold text-slate-800">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
             </div>
             <button
@@ -399,8 +399,10 @@ export default function RunAgenda({ onClose }) {
           </div>
         </div>
 
-        {/* Corpo principal do formulário */}
-        <div className="space-y-4 fade-in bg-white p-4 rounded-2xl shadow-sm">
+        {/* Corpo principal do formulário — mesmo vidro/glow do cabeçalho
+            acima e dos outros ecrãs de registo (bg-white sem blur nem glow
+            era o único bloco desta tela ainda por alinhar). */}
+        <div className="space-y-4 fade-in module-card-contrast">
 
           {/* 1.1 Data · 1.2 Local */}
           <div className="grid grid-cols-2 gap-2">
@@ -410,7 +412,7 @@ export default function RunAgenda({ onClose }) {
                 type="date"
                 value={draft.date}
                 onChange={e => updateDraft('date', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
             <div>
@@ -421,7 +423,7 @@ export default function RunAgenda({ onClose }) {
                 placeholder="Ex.: Lisboa"
                 value={draft.location}
                 onChange={e => updateDraft('location', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
           </div>
@@ -436,7 +438,7 @@ export default function RunAgenda({ onClose }) {
                 placeholder="Ex.: Meia Maratona de Lisboa"
                 value={draft.name}
                 onChange={e => updateDraft('name', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
             <div>
@@ -444,7 +446,7 @@ export default function RunAgenda({ onClose }) {
               <select
                 value={draft.race_type}
                 onChange={e => updateTerrain(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               >
                 {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
@@ -458,7 +460,7 @@ export default function RunAgenda({ onClose }) {
               <select
                 value={draft.distance_km}
                 onChange={e => updateDistance(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               >
                 {RACE_DISTANCE_OPTIONS.map(opt => (
                   <option key={opt.km} value={opt.km}>{opt.label}</option>
@@ -476,7 +478,7 @@ export default function RunAgenda({ onClose }) {
                   placeholder="Ex.: 1200"
                   value={draft.elevation_gain_m}
                   onChange={e => updateDraft('elevation_gain_m', e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                 />
               </div>
             )}
@@ -491,7 +493,7 @@ export default function RunAgenda({ onClose }) {
             <select
               value={draft.experience_level}
               onChange={e => updateDraft('experience_level', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-prova)]"
             >
               <option value="">Escolhe...</option>
               {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -509,7 +511,7 @@ export default function RunAgenda({ onClose }) {
             <select
               value={draft.race_priority}
               onChange={e => updateDraft('race_priority', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-coach-to)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-prova)]"
             >
               {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
             </select>
@@ -528,7 +530,7 @@ export default function RunAgenda({ onClose }) {
                 placeholder="Ex.: 1:45:00"
                 value={draft.target_time}
                 onChange={e => handleTargetTimeChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
             <div>
@@ -539,7 +541,7 @@ export default function RunAgenda({ onClose }) {
                 placeholder="Ex.: 5.20 /km"
                 value={draft.target_pace}
                 onChange={e => handleTargetPaceChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
           </div>
@@ -554,7 +556,7 @@ export default function RunAgenda({ onClose }) {
               placeholder="https://..."
               value={draft.website}
               onChange={e => updateDraft('website', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)]"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
             />
           </div>
 
@@ -567,7 +569,7 @@ export default function RunAgenda({ onClose }) {
               placeholder="Logística, nutrição planeada..."
               value={draft.notes}
               onChange={e => updateDraft('notes', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-coach-to)] resize-none"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
             />
           </div>
 
@@ -600,7 +602,9 @@ export default function RunAgenda({ onClose }) {
               onClick={handleSaveForm}
               disabled={isSubmitting || !draft.name.trim()}
               type="button"
-              className="bg-[var(--mod-coach-to)] text-white text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+              // Texto escuro, não branco: dourado (#fbbf24) é claro demais para
+              // branco em cima dar contraste WCAG (~1.7:1, falha o AA de 4.5:1).
+              className="bg-[var(--mod-prova)] text-amber-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
             >
               {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
             </button>

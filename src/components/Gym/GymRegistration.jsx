@@ -443,11 +443,15 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     <div className="space-y-4 fade-in">
       <div
         className="rounded-2xl p-4"
+        // O gradiente de fundo (#ffffff → #f8fafc) e a borda (#e2e8f0) eram
+        // do tema claro original e nunca foram migrados — ficava um
+        // retângulo quase branco com texto claro em cima, ilegível, porque
+        // é style inline e as overrides de dark mode do globals.css só
+        // apanham classes Tailwind, não isto.
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-ginasio-to) 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, #f8fafc)',
-          borderStyle: 'solid',
-          borderWidth: '1px 1px 1px 3px',
-          borderColor: '#e2e8f0 #e2e8f0 #e2e8f0 color-mix(in srgb, var(--mod-ginasio-to) 70%, #e2e8f0)'
+          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-ginasio-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
+          border: '1px solid rgba(255, 255, 255, 0.8)',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
@@ -694,8 +698,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                     key={i}
                     type="button"
                     onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    style={exertion == i + 1 ? { color: '#fff' } : undefined}
-                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
                   >
                     {i + 1}
                   </button>

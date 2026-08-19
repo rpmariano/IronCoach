@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, MessageSquare } from 'lucide-react';
+import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, MessageSquare, HelpCircle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
+import PremiumModal from '../shared/PremiumModal';
 
 /* Memória de longo prazo partilhada com a Carol (tabela coach_notes).
 
@@ -18,13 +19,48 @@ import Button from '../shared/Button';
    Coach, que também exigem confirmação do atleta. */
 
 export const NOTE_CATEGORIES = [
-  { key: 'preferencia_alimentar', label: 'Alimentação',   hint: 'Ex.: prefiro refeições vegetarianas' },
-  { key: 'limitacao_fisica',      label: 'Limitação',     hint: 'Ex.: epicondilite no cotovelo direito' },
-  { key: 'disponibilidade',       label: 'Disponibilidade', hint: 'Ex.: não treino às segundas' },
-  { key: 'objetivo_pessoal',      label: 'Objetivo',      hint: 'Ex.: quero acabar a meia maratona a correr' },
-  { key: 'preferencia_treino',    label: 'Treino',        hint: 'Ex.: prefiro correr ao ar livre' },
-  { key: 'contexto_vida',         label: 'Contexto',      hint: 'Ex.: trabalho por turnos' },
-  { key: 'outro',                 label: 'Outro',         hint: '' },
+  {
+    key: 'preferencia_alimentar', label: 'Alimentação',
+    hint: 'Ex.: prefiro refeições vegetarianas',
+    description: 'Preferências e recusas alimentares que não mudam de refeição para refeição.',
+    examples: ['Prefiro refeições vegetarianas (como ovos e lacticínios)', 'Não como marisco', 'Evito lacticínios ao pequeno-almoço, sinto-me pesado a treinar'],
+  },
+  {
+    key: 'limitacao_fisica',      label: 'Limitação',
+    hint: 'Ex.: epicondilite no cotovelo direito',
+    description: 'Lesões, dores ou condições físicas que o plano de treino tem de respeitar.',
+    examples: ['Epicondilite no cotovelo direito — evitar exercícios de tração e preensão forte', 'Joelho sensível em descidas prolongadas', 'Asma induzida por esforço, uso inalador antes de treinos intensos'],
+  },
+  {
+    key: 'disponibilidade',       label: 'Disponibilidade',
+    hint: 'Ex.: não treino às segundas',
+    description: 'Dias, horários ou épocas em que não podes ou preferes não treinar.',
+    examples: ['Não treino às segundas-feiras', 'Só consigo correr de manhã cedo, antes das 7h', 'Viagem de trabalho todo o mês de outubro, treinos limitados a ginásio de hotel'],
+  },
+  {
+    key: 'objetivo_pessoal',      label: 'Objetivo',
+    hint: 'Ex.: quero acabar a meia maratona a correr',
+    description: 'Motivações pessoais que vão além do tempo-alvo de uma prova.',
+    examples: ['Quero acabar a meia maratona a correr, sem parar a andar', 'Esta é a minha primeira maratona — o objetivo é terminar, não o tempo', 'Quero perder peso mantendo a massa muscular'],
+  },
+  {
+    key: 'preferencia_treino',    label: 'Treino',
+    hint: 'Ex.: prefiro correr ao ar livre',
+    description: 'Como preferes treinar — não são restrições, são gostos que tornam o plano mais fácil de cumprir.',
+    examples: ['Prefiro correr ao ar livre a passadeira', 'Gosto de treinos em grupo aos sábados', 'Detesto séries de intervalados curtos, prefiro fartlek'],
+  },
+  {
+    key: 'contexto_vida',         label: 'Contexto',
+    hint: 'Ex.: trabalho por turnos',
+    description: 'Circunstâncias de vida que afetam a tua disponibilidade, sono ou recuperação.',
+    examples: ['Trabalho por turnos, o sono é irregular', 'Bebé pequeno em casa — noites mal dormidas são frequentes', 'Escritório em pé o dia todo, chego cansado às pernas'],
+  },
+  {
+    key: 'outro',                 label: 'Outro',
+    hint: '',
+    description: 'Qualquer facto importante que não encaixe nas categorias acima.',
+    examples: [],
+  },
 ];
 
 const MAX_NOTE_LEN = 500;
@@ -44,6 +80,7 @@ export default function CoachMemoryCard() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showCategoryHelp, setShowCategoryHelp] = useState(false);
 
   useEffect(() => { reloadCoachNotes(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -88,10 +125,25 @@ export default function CoachMemoryCard() {
   };
 
   return (
-    <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+    <div className="module-card-contrast">
       <div className="flex items-center gap-2 mb-3">
         <Brain size={16} className="text-[var(--mod-coach-to)]" />
         <h2 className="text-sm font-semibold">Memória do Coach</h2>
+        <button
+          type="button"
+          onClick={() => setShowCategoryHelp(true)}
+          aria-label="O que colocar em cada categoria?"
+          title="O que colocar em cada categoria?"
+          className="inline-flex items-center justify-center rounded-full active:scale-90 transition"
+          style={{
+            color: 'var(--mod-coach-to)',
+            background: 'color-mix(in srgb, var(--mod-coach-to) 15%, transparent)',
+            width: 18,
+            height: 18,
+          }}
+        >
+          <HelpCircle size={12} />
+        </button>
         {notes.length > 0 && (
           <span className="text-[10px] text-slate-500 font-mono ml-auto">{notes.length}/40</span>
         )}
@@ -270,6 +322,40 @@ export default function CoachMemoryCard() {
           {notes.length >= 40 ? 'Memória cheia — remove uma nota primeiro' : 'Acrescentar um facto'}
         </button>
       )}
+
+      <PremiumModal
+        isOpen={showCategoryHelp}
+        onClose={() => setShowCategoryHelp(false)}
+        title="Categorias da Memória"
+        subtitle="O que colocar em cada uma?"
+        icon={Brain}
+        theme="coach"
+        variant="bottom-sheet"
+      >
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-slate-50/30">
+          <p className="text-[11px] leading-relaxed text-slate-500">
+            Cada facto fica só numa categoria — ajuda a Carol a saber onde procurar, e a ti a
+            veres de relance o que já lhe contaste.
+          </p>
+          {NOTE_CATEGORIES.filter(c => c.key !== 'outro').map(c => (
+            <div key={c.key} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+              <p className="text-[12px] font-bold text-slate-700 mb-1">{c.label}</p>
+              <p className="text-[11px] text-slate-600 leading-snug mb-2">{c.description}</p>
+              <ul className="space-y-1">
+                {c.examples.map((ex, i) => (
+                  <li key={i} className="text-[11px] leading-snug flex gap-1.5 text-slate-500 italic">
+                    <span aria-hidden="true" className="font-bold text-slate-400 not-italic">·</span>
+                    <span>"{ex}"</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          <p className="text-[10px] leading-relaxed text-slate-400 text-center pb-2">
+            Não encaixa em nenhuma? Usa "Outro" — a Carol lê à mesma.
+          </p>
+        </div>
+      </PremiumModal>
     </div>
   );
 }

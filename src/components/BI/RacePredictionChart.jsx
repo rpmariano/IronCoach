@@ -82,15 +82,36 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
     }
   };
 
+  // Com poucas corridas o VDOT não tem histórico para desenhar tendência —
+  // ficava um eixo 0 a 1.0 vazio, com a única informação real (a previsão)
+  // presa dentro do canvas, desenhada pelo predictionPlugin só no canto.
+  // Mostra-se a mesma previsão como texto normal, sem prometer uma
+  // tendência que ainda não existe.
+  const hasTrend = vdotTrend.length >= 2;
+
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Evolução VDOT & Previsão de Prova</h3>
         <MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />
       </div>
-      <div className="h-64 relative">
-        <Line data={data} options={options} plugins={[predictionPlugin]} />
-      </div>
+      {hasTrend ? (
+        <div className="h-64 relative">
+          <Line data={data} options={options} plugins={[predictionPlugin]} />
+        </div>
+      ) : prediction ? (
+        <div className="flex items-center justify-between gap-3 py-2">
+          <p className="text-[11px] text-slate-500 leading-snug max-w-[65%]">
+            Regista mais corridas para veres a evolução do VDOT ao longo do tempo.
+          </p>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] text-slate-500">{prediction.raceName || 'Previsão'}</p>
+            <p className="text-lg font-bold text-slate-100">{formatTime(prediction.predictedSeconds)}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-500 py-2">Regista corridas para veres a previsão desta prova.</p>
+      )}
     </div>
   );
 }

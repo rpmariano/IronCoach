@@ -6,6 +6,10 @@ import Perfil from './Perfil';
 
 // Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
 const mocks = vi.hoisted(() => ({ updates: [] }));
+// Os 3 separadores ficam sempre montados (carrossel de swipe — ver
+// Perfil.jsx), por isso o efeito da Memória do Coach dispara em todos os
+// testes, não só nos que abrem a aba Coach. select() tem de responder algo,
+// senão fica uma rejeição por apanhar.
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({
@@ -13,6 +17,11 @@ vi.mock('../../lib/supabase', () => ({
         mocks.updates.push(payload);
         return { eq: () => Promise.resolve({ error: null }) };
       },
+      select: () => ({
+        eq: () => ({
+          order: () => Promise.resolve({ data: [], error: null }),
+        }),
+      }),
     }),
     auth: { signOut: () => Promise.resolve({ error: null }) },
   },
