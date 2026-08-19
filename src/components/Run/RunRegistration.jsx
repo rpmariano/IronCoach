@@ -69,7 +69,7 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard } = useAppStore();
   const { showToast } = useToast();
 
   // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
@@ -142,6 +142,44 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) useAppStore.getState().setActiveTab(target);
+  };
 
   // Estado do Bottom Sheet de métricas em falta
   const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
@@ -456,7 +494,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const finishAndNavigateToCalendar = () => {
         useAppStore.getState().setActiveTab('calendario');
         useAppStore.getState().setOpenCreationMode(null);
-        onClose();
+        handleClose();
       };
 
       setRuns([...runs, createdRun]);
@@ -479,7 +517,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       showToast('Corrida registada');
       useAppStore.getState().setActiveTab('calendario');
       useAppStore.getState().setOpenCreationMode(null);
-      onClose();
+      handleClose();
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -611,7 +649,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
           showToast('Corrida atualizada');
         }
-        onClose();
+        handleClose();
         return;
       }
 
@@ -673,7 +711,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       showToast('Corrida registada');
       useAppStore.getState().setActiveTab('calendario');
       useAppStore.getState().setOpenCreationMode(null);
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
@@ -709,7 +747,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <h2 className="text-sm font-semibold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
             </div>
             <button
-              onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+              onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
               title="Fechar"
               aria-label="Fechar"
@@ -1293,8 +1331,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         isOpen={showUnsavedModal}
         isSaving={isSubmitting}
         onSaveAndLeave={handleSaveCorrida}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );
