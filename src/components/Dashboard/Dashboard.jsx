@@ -66,7 +66,7 @@ export default function Dashboard({ activeModule }) {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4">
+      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
         {/* Sliding indicator — tint translúcido da cor do módulo em vez de
             preenchimento sólido, a condizer com o glassmorphism escuro do
             resto da app; o texto ativo fica na própria cor em vez de branco. */}

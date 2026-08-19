@@ -357,7 +357,7 @@ export default function Perfil() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
-      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
         {/* Sliding indicator — tint translúcido em vez de preenchimento
             sólido, a condizer com o resto da app (ver Dashboard.jsx). */}
         <div
