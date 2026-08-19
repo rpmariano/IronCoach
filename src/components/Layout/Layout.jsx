@@ -92,8 +92,20 @@ export default function Layout({ children }) {
   return (
     <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
-      {/* Header fixo no topo */}
-      <div className="sticky top-0 z-20 bg-[#0f172a]/70 backdrop-blur-3xl border-b border-white/10">
+      {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
+          composição no Chromium em que o desfoque deixa de ser recalculado
+          a meio do scroll de páginas longas (ex.: o formulário de Prova
+          depois de "Obter informação do site"), ficando o texto de baixo
+          nítido e a aparecer através do cabeçalho em vez de desfocado — na
+          prática, o cabeçalho "desaparece". O menu inferior já usa fixed e
+          nunca teve este problema; mesmo padrão aqui (centrado com
+          left-1/2 -translate-x-1/2, como o nav). main ganha padding-top
+          equivalente à altura do cabeçalho para compensar ele ter saído do
+          fluxo normal. will-change-transform força uma camada de
+          composição própria para o cabeçalho — sem isto, um scroll grande
+          e abrupto (ex.: o próprio reset de scroll ao trocar de separador)
+          ainda conseguia repetir o mesmo problema mesmo já fixed. */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 z-20 w-full max-w-md bg-[#0f172a]/70 backdrop-blur-3xl border-b border-white/10 will-change-transform">
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
@@ -115,7 +127,7 @@ export default function Layout({ children }) {
       </div>
 
       {/* Conteúdo */}
-      <main ref={mainRef} className="flex-1 px-4 pt-4 pb-28 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-28 overflow-y-auto">
         {children}
       </main>
 
