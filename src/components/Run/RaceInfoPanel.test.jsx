@@ -55,7 +55,8 @@ describe('RaceInfoPanel', () => {
     const updatedEvent = {
       ...BASE_EVENT,
       web_info: {
-        schedule: [{ label: 'Partida', when: 'Domingo 09:00' }],
+        schedule: [{ label: 'Partida', when: 'Domingo 09:00', where: 'Praça do Comércio' }],
+        required_documents: 'Cartão de cidadão para levantar o dorsal.',
         category_info: 'Escalão M35: onda B às 09:10.',
         gear_recommendations: 'Chip obrigatório.',
         logistics: 'Parque de estacionamento junto à meta.',
@@ -83,6 +84,8 @@ describe('RaceInfoPanel', () => {
     await waitFor(() => {
       expect(screen.getByText(/Partida:/)).toBeInTheDocument();
     });
+    expect(screen.getAllByText(/Praça do Comércio/).length).toBeGreaterThan(0);
+    expect(screen.getByText('Cartão de cidadão para levantar o dorsal.')).toBeInTheDocument();
     expect(screen.getByText('Escalão M35: onda B às 09:10.')).toBeInTheDocument();
     expect(screen.getByText('Chip obrigatório.')).toBeInTheDocument();
     expect(screen.getByText('Parque de estacionamento junto à meta.')).toBeInTheDocument();

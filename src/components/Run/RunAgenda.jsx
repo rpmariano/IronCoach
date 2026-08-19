@@ -3,10 +3,12 @@ import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X } from 'lucide-react';
+import Button from '../shared/Button';
+import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
-import { supabase } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import RaceWebInfoSections from './RaceWebInfoSections';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -53,6 +55,11 @@ const EMPTY_DRAFT = {
   // recalcula sempre o outro a partir da distância selecionada.
   target_pace: '',
   website: '',
+  // Resultado de "Obter do site" (ver enrich-race-event) — null até se
+  // pedir. Numa prova nova só existe no rascunho até se gravar; a editar
+  // uma já gravada, o pedido persiste-o de imediato (ver
+  // handleFetchWebInfo), este campo só reflete esse valor.
+  web_info: null,
   notes: '',
 };
 
@@ -66,6 +73,7 @@ export default function RunAgenda({ onClose }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
   const [validationError, setValidationError] = useState(null);
+  const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
 
   const activeTab = useAppStore(state => state.activeTab);
   const [initialTab] = useState(activeTab);
@@ -135,6 +143,7 @@ export default function RunAgenda({ onClose }) {
           target_time: ev.target_time || '',
           target_pace: ev.target_pace_seconds_per_km ? formatPace(ev.target_pace_seconds_per_km) : '',
           website: ev.website || '',
+          web_info: ev.web_info || null,
           notes: ev.notes || '',
         });
         setIsDirty(false);
@@ -159,6 +168,54 @@ export default function RunAgenda({ onClose }) {
   const updateDraft = (key, val) => {
     setIsDirty(true);
     setDraft(prev => ({ ...prev, [key]: val }));
+  };
+
+  // "Obter do site" — a editar uma prova já gravada, usa o modo
+  // race_event_id da função (persiste de imediato em race_events.web_info,
+  // tal como o mesmo botão em RaceCard); a criar uma prova nova, ainda sem
+  // id, usa o modo por website (a função lê e devolve sem gravar) e o
+  // resultado fica só no rascunho até "Guardar" — ver payload em
+  // handleSaveForm, que é o que o persiste nesse caso.
+  const handleFetchWebInfo = async () => {
+    if (!draft.website?.trim()) return;
+    setFetchingWebInfo(true);
+    try {
+      const body = editingEventId
+        ? { race_event_id: editingEventId }
+        : {
+            website: draft.website.trim(),
+            name: draft.name?.trim() || undefined,
+            race_type: draft.race_type || undefined,
+            distance_km: parseFloat((draft.distance_km || '').toString().replace(',', '.')) || undefined,
+            location: draft.location?.trim() || undefined,
+            experience_level: draft.experience_level || undefined,
+            elevation_gain_m: draft.race_type === 'trail'
+              ? (parseFloat((draft.elevation_gain_m || '').toString().replace(',', '.')) || undefined)
+              : undefined,
+          };
+      const { data, error } = await invokeEdgeFunctionWithTimeout('enrich-race-event', { body }, 90000);
+      if (error) {
+        showToast(typeof error === 'string' ? error : 'Não consegui obter informação deste site.', 'error');
+        return;
+      }
+      if (data?.race_event) {
+        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? data.race_event : e));
+        // Direto, não updateDraft: já está gravado no servidor, não é uma
+        // alteração pendente que "Guardar" precise de submeter.
+        setDraft(prev => ({ ...prev, web_info: data.race_event.web_info }));
+        showToast('Informação da prova atualizada.', 'success');
+      } else if (data?.web_info) {
+        updateDraft('web_info', data.web_info);
+        showToast('Informação da prova obtida — grava a prova para a guardar.', 'success');
+      } else if (data?.message) {
+        showToast(data.message, 'error');
+      }
+    } catch (err) {
+      console.error('Erro a obter informação da prova:', err);
+      showToast('Não consegui obter informação deste site.', 'error');
+    } finally {
+      setFetchingWebInfo(false);
+    }
   };
 
   // Trocar o piso limpa o D+ quando deixa de fazer sentido (Estrada não tem
@@ -267,6 +324,11 @@ export default function RunAgenda({ onClose }) {
       target_time_seconds: targetTimeSecs,
       target_pace_seconds_per_km: targetPaceSecs,
       website: draft.website?.trim() || null,
+      // Numa edição, "Obter do site" já persiste isto de imediato (ver
+      // handleFetchWebInfo) — reenviá-lo aqui é inofensivo (mesmo valor).
+      // A criar uma prova nova é a ÚNICA forma deste valor chegar à BD, já
+      // que o pedido corre em modo rascunho sem id para persistir sozinho.
+      web_info: draft.web_info || null,
       notes: draft.notes?.trim() || null,
     };
 
@@ -558,6 +620,22 @@ export default function RunAgenda({ onClose }) {
               onChange={e => updateDraft('website', e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
             />
+            {draft.website?.trim() && (
+              <div className="mt-2 space-y-2.5">
+                <Button
+                  type="button"
+                  variant="module"
+                  moduleColor="var(--mod-prova)"
+                  size="sm"
+                  isLoading={fetchingWebInfo}
+                  onClick={handleFetchWebInfo}
+                  icon={draft.web_info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
+                >
+                  {draft.web_info ? 'Atualizar informação do site' : 'Obter informação do site'}
+                </Button>
+                <RaceWebInfoSections info={draft.web_info} />
+              </div>
+            )}
           </div>
 
           {/* Notas (opcional) */}
