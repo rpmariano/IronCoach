@@ -97,7 +97,10 @@ export default function CoachMemoryCard() {
         )}
       </div>
 
-      <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
+      {/* 12px, não 11px como o resto dos rótulos do cartão — é o único bloco
+          de leitura contínua aqui (os outros são etiquetas curtas), por isso
+          fica um degrau acima do piso tipográfico da app. */}
+      <p className="text-xs text-slate-500 mb-4 leading-relaxed">
         Factos que a Carol tem sempre presentes, mesmo em conversas de daqui a semanas.
         Ela regista o que percebe do que lhe contas — corrige ou apaga o que não estiver certo,
         e acrescenta o que quiseres que ela nunca esqueça.{' '}
@@ -147,7 +150,10 @@ export default function CoachMemoryCard() {
               </span>
 
               {editingId !== n.id && (
-                <div className="ml-auto flex items-center gap-1">
+                // flex-wrap: com categorias mais longas (ex. "Disponibilidade")
+                // + o alvo de toque maior dos botões, a linha pode deixar de
+                // caber a 375px — cai para a linha seguinte em vez de estourar.
+                <div className="ml-auto flex items-center gap-1 flex-wrap justify-end">
                   {byCoach ? (
                     // Editar por cima do que a Carol escreveu misturava as duas
                     // vozes na mesma linha e destruía a autoria. Em vez disso,
@@ -157,7 +163,14 @@ export default function CoachMemoryCard() {
                       aria-label="Pedir à Carol para alterar esta nota"
                       title="Falar com a Carol sobre esta nota"
                       onClick={() => askCarolToChange(n.note)}
-                      className="p-1 transition hover:opacity-70"
+                      // p-2.5 em vez de tap-44: os botões ficam lado a lado —
+                      // um alvo de 44px bateria certo com o vizinho. 33px é o
+                      // mínimo aceite (Material) quando 44 não cabe numa linha
+                      // de metadados tão densa. Sem margem negativa: encolhia
+                      // a área visível mas não a caixa clicável (isso é o
+                      // padding-box), só aproximava fisicamente os dois
+                      // botões até sobreporem-se.
+                      className="p-2.5 transition hover:opacity-70"
                       style={{ color: 'var(--mod-coach-to)' }}
                     >
                       <MessageSquare size={13} />
@@ -167,7 +180,7 @@ export default function CoachMemoryCard() {
                       type="button"
                       aria-label="Editar nota"
                       onClick={() => { setEditingId(n.id); setEditText(n.note); }}
-                      className="p-1 text-slate-500 hover:text-slate-200 transition"
+                      className="p-2.5 text-slate-500 hover:text-slate-200 transition"
                     >
                       <Pencil size={13} />
                     </button>
@@ -176,7 +189,7 @@ export default function CoachMemoryCard() {
                     type="button"
                     aria-label="Remover nota"
                     onClick={() => handleDelete(n.id)}
-                    className="p-1 text-slate-500 hover:text-rose-400 transition"
+                    className="p-2.5 text-slate-500 hover:text-rose-400 transition"
                   >
                     <Trash2 size={13} />
                   </button>

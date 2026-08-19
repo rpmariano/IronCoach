@@ -711,11 +711,15 @@ export default function Perfil() {
               visível e editável só para o atleta poder migrar o que aqui tem;
               apagar já perderia texto escrito à mão. Quando estiver vazio para
               todos, remove-se o campo e a coluna coach_context. */}
-          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-amber-500/25">
+          {/* Âmbar trocado por cinzento neutro: essa cor é a mesma dos
+              alarmes de saúde (RED-S, ACWR, hidratação) — um badge de campo
+              a descontinuar ao lado visual de um alerta de sobretreino
+              diluía o vocabulário de cor. Depreciação de UI não é um alarme. */}
+          <div className="rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Bot size={16} className="text-slate-500" />
               <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
                 A descontinuar
               </span>
             </div>
@@ -729,7 +733,7 @@ export default function Perfil() {
               value={draft.coach_context || ''}
               onChange={e => updateDraft('coach_context', e.target.value)}
               placeholder="(vazio — usa a Memória do Coach acima)"
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-slate-500/50"
             />
           </div>
 
