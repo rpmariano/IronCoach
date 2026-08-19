@@ -163,7 +163,9 @@ export default function CoachMemoryCard() {
                       aria-label="Pedir à Carol para alterar esta nota"
                       title="Falar com a Carol sobre esta nota"
                       onClick={() => askCarolToChange(n.note)}
-                      // tap-44 (PRD §5.1, linha 234): min-width/min-height
+                      // tap-44 (PRD §5.1, linha 246 — regra dos 44px mínimos;
+                      // linha 234 é o caso específico de badge/miniatura):
+                      // min-width/min-height
                       // reais via flexbox, não padding a inflar o ícone — por
                       // isso dois botões vizinhos não se sobrepõem, o alvo
                       // clicável fica 44px de verdade, e o flex-wrap acima
