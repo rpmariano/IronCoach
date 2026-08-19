@@ -76,3 +76,54 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
 
   return { handleScroll, handleTouchMove, scrollTo, changeCard };
 }
+
+/**
+ * Variante de useCarouselHaptics para carrosséis de separadores (Dashboard,
+ * Perfil). Ao contrário de um carrossel de cartões simples, aqui trocar de
+ * página também dispara um efeito lateral fora do carrossel — setActiveTab
+ * ou setTab, sujeitos ao navGuard de "alterações por gravar" — pelo que
+ * scrollTo() já atualiza o índice ativo (e esse efeito lateral) antes de a
+ * animação 'smooth' do scroll nativo sequer começar. Os eventos de scroll
+ * intermédios dessa animação (ainda a caminho do destino) arredondam para
+ * índices diferentes do já aplicado, e o handleScroll do hook base
+ * interpretava isso como uma nova troca — voltando a chamar setCurrentIndex,
+ * agora com o índice errado, e desfazendo a navegação a meio da animação.
+ * Este wrapper suprime handleScroll/handleTouchMove enquanto um scrollTo()
+ * programático (toque num separador, ou a sincronização externa do tab
+ * ativo) ainda está a animar; um toque genuíno do utilizador cancela a
+ * guarda de imediato, para não atrasar um deslize manual a seguir.
+ */
+export function useTabCarousel(scrollRef, itemCount, currentIndex, setCurrentIndex) {
+  const base = useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurrentIndex);
+  const guardRef = useRef(false);
+  const timeoutRef = useRef(null);
+
+  const clearGuard = useCallback(() => {
+    guardRef.current = false;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const handleScroll = useCallback((e) => {
+    if (guardRef.current) return;
+    base.handleScroll(e);
+  }, [base]);
+
+  const handleTouchMove = useCallback((e) => {
+    clearGuard();
+    base.handleTouchMove(e);
+  }, [base, clearGuard]);
+
+  const scrollTo = useCallback((idx) => {
+    guardRef.current = true;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    base.scrollTo(idx);
+    // 500ms cobre com folga a duração da animação 'smooth' do scroll nativo;
+    // ao terminar, os eventos de scroll voltam a ser processados normalmente.
+    timeoutRef.current = setTimeout(clearGuard, 500);
+  }, [base, clearGuard]);
+
+  return { handleScroll, handleTouchMove, scrollTo, changeCard: base.changeCard };
+}

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User, Activity } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
-import { useCarouselHaptics } from '../../utils/haptics';
+import { useTabCarousel } from '../../utils/haptics';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -50,7 +50,7 @@ export default function Dashboard({ activeModule }) {
     if (!ok) scrollToRef.current(currentIndex);
   }, [activeModule, currentIndex, setActiveTab]);
 
-  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+  const { handleScroll, handleTouchMove, scrollTo } = useTabCarousel(
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;
@@ -66,12 +66,17 @@ export default function Dashboard({ activeModule }) {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
+      <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
         {/* Sliding indicator — tint translúcido da cor do módulo em vez de
             preenchimento sólido, a condizer com o glassmorphism escuro do
-            resto da app; o texto ativo fica na própria cor em vez de branco. */}
+            resto da app; o texto ativo fica na própria cor em vez de branco.
+            Sem shadow-md: dentro de um contentor overflow-hidden a sombra
+            fica cortada a direito mesmo junto ao canto arredondado do
+            separador, em vez de esbater — mais visível na pílula da direita
+            porque é onde o canto do indicador fica mais perto do canto do
+            contentor. */}
         <div
-          className="absolute top-[6px] bottom-[6px] rounded-xl transition-all duration-300 ease-in-out shadow-md border"
+          className="absolute top-[6px] bottom-[6px] rounded-lg transition-all duration-300 ease-in-out border"
           style={{
             // Calculado a partir de TABS.length em vez de fixo — um separador
             // a mais/a menos não desalinha o indicador outra vez.
@@ -86,7 +91,7 @@ export default function Dashboard({ activeModule }) {
             key={t.key}
             onClick={() => scrollTo(i)}
             style={activeModule === t.key ? { color: t.color } : undefined}
-            className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-xl transition-colors duration-300 ${
+            className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-300 ${
               activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
             }`}
           >
