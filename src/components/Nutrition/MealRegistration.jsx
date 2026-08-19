@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
@@ -41,7 +41,7 @@ function getDefaultMealType() {
 
 export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const { showToast } = useToast();
-  const { profile, meals, setMeals, loadInitialData } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard } = useAppStore();
   const isEditing = !!mealIdToEdit;
 
   // Comum aos dois caminhos
@@ -78,6 +78,52 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) {
+      // O guard ainda está registado neste render — o próprio setActiveTab()
+      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
+      // porque onClose() só desmonta este ecrã no próximo render, não já.
+      // Limpar primeiro é o que falta para a navegação pendente completar
+      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
+      setNavGuard(null);
+      useAppStore.getState().setActiveTab(target);
+    }
+  };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
   const analyticalSignature = (notesValue, items) => JSON.stringify({
@@ -112,6 +158,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
+    setIsFormDirty(true);
   };
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
@@ -163,7 +210,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
       setMeals([...meals, { ...data.meal, meal_items: data.items }]);
       showToast('Refeição registada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -189,12 +236,14 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
     setErrorMsg('');
     setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name, grams }]);
+    setIsFormDirty(true);
     setItemName('');
     setItemGrams('');
   };
 
   const handleRemoveManualItem = (key) => {
     setManualItems(prev => prev.filter(i => i.key !== key));
+    setIsFormDirty(true);
   };
 
   const handleFinalizeManual = async () => {
@@ -216,7 +265,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
       setMeals([...meals, data.meal]);
       showToast('Refeição registada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');
@@ -265,7 +314,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -289,7 +338,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             <h2 className="text-[15px] font-semibold text-slate-700">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
             className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
             title="Fechar"
@@ -304,7 +353,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             type="date"
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
-            onChange={e => setDate(e.target.value)}
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--accent)] shadow-sm transition"
           />
           <div className="text-[11px] text-slate-500 mr-2">Data da refeição</div>
@@ -318,7 +367,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                 key={t.key}
                 active={isActive}
                 variant="nutrition"
-                onClick={() => setMealType(t.key)}
+                onClick={() => { setMealType(t.key); setIsFormDirty(true); }}
                 className="px-4 py-1.5"
                 type="button"
               >
@@ -504,7 +553,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             maxLength="500"
             placeholder="Detalhes que mudam os valores nutricionais..."
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
           />
         </div>
@@ -546,8 +595,8 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
         isOpen={showUnsavedModal}
         isSaving={isSaving || isFinalizing}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleFinalizeManual}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );

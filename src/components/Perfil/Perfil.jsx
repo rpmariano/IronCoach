@@ -780,13 +780,19 @@ export default function Perfil() {
               visível e editável só para o atleta poder migrar o que aqui tem;
               apagar já perderia texto escrito à mão. Quando estiver vazio para
               todos, remove-se o campo e a coluna coach_context. */}
-          {/* Mesmo vidro/glow dos outros cartões, mas com borda âmbar — sinaliza
-              "a descontinuar" sem perder a estética. */}
-          <div className="bg-white/5 backdrop-blur-[20px] border border-amber-500/25 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          {/* Mesmo vidro dos outros cartões (border-white/60, o padrão da app —
+              ver ACWRChart/KPICard/etc.), sem a borda âmbar que a versão
+              anterior usava para sinalizar "a descontinuar": essa cor é a
+              mesma dos alarmes de saúde (RED-S, ACWR, hidratação), e um
+              badge de campo a descontinuar ao lado visual de um alerta de
+              sobretreino diluía o vocabulário de cor. Depreciação de UI não
+              é um alarme — o badge cinzento abaixo já diz "a descontinuar"
+              sem precisar de tomar emprestada a cor de aviso. */}
+          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Bot size={16} className="text-slate-500" />
               <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">
+              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
                 A descontinuar
               </span>
             </div>
@@ -800,7 +806,7 @@ export default function Perfil() {
               value={draft.coach_context || ''}
               onChange={e => updateDraft('coach_context', e.target.value)}
               placeholder="(vazio — usa a Memória do Coach acima)"
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-amber-500/50"
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-slate-400/60"
             />
           </div>
       </div>

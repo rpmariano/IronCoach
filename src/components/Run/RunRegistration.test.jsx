@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
@@ -357,5 +357,110 @@ describe('RunRegistration — editar corrida existente', () => {
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+// Regressão: trocar de separador pela barra de navegação (Início, Calendário,
+// Dashboard, Coach) com o formulário sujo desmontava-o sem aviso nenhum — só
+// o botão X do próprio ecrã estava protegido. E a primeira versão da
+// correção tinha uma segunda armadilha: o próprio navGuard, ainda ativo,
+// bloqueava-se a si mesmo quando handleClose() tentava completar a
+// navegação pendente (o guard só é limpo no cleanup do useEffect, que só
+// corre num render seguinte a onClose(), não já a seguir).
+describe('RunRegistration — guarda de navegação com formulário sujo', () => {
+  const onClose = vi.fn();
+  const EXISTING_RUN = {
+    id: 'run-9',
+    kind: 'treino',
+    training_type: 'continuo',
+    date: '2026-08-01',
+    name: 'Rodagem',
+    distance_km: 10,
+    duration_seconds: 3000,
+    effort_rpe: 5,
+    details: { cadence_spm: 165 },
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { run: EXISTING_RUN }, error: null });
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    useAppStore.setState({
+      profile: PROFILE,
+      runs: [EXISTING_RUN],
+      raceEvents: [],
+      activeTab: 'corrida',
+      navGuard: null,
+    });
+  });
+
+  // O nome NÃO marca o formulário como sujo (só distância, duração e as
+  // métricas do relógio o fazem — ver setIsFormDirty(true) no ficheiro fonte).
+  const dirtyTheForm = () => {
+    fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
+  };
+
+  // navGuard corre fora de qualquer evento React (é chamado diretamente na
+  // store, tal como Layout.jsx faria ao tocar num separador) — sem act(),
+  // o setShowUnsavedModal(true) lá dentro não fica refletido no DOM a tempo.
+  const attemptLeave = (target) => {
+    let navigated;
+    act(() => { navigated = useAppStore.getState().setActiveTab(target); });
+    return navigated;
+  };
+
+  it('regista um navGuard assim que o formulário fica sujo, e nenhum antes disso', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    expect(useAppStore.getState().navGuard).toBeNull();
+
+    dirtyTheForm();
+    expect(useAppStore.getState().navGuard).toBeInstanceOf(Function);
+  });
+
+  it('trocar de separador com o formulário sujo mostra o aviso em vez de navegar logo', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    dirtyTheForm();
+
+    const navigated = attemptLeave('home');
+
+    expect(navigated).toBe(false);
+    expect(useAppStore.getState().activeTab).toBe('corrida');
+    expect(screen.getByText('Tens alterações por gravar')).toBeInTheDocument();
+  });
+
+  it('"Sair sem gravar" descarta o formulário E completa a navegação pendente', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sair sem gravar' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().navGuard).toBeNull();
+  });
+
+  it('"Cancelar" fecha o aviso e mantém o formulário aberto, sem navegar', async () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useAppStore.getState().activeTab).toBe('corrida');
+    await waitFor(() => {
+      expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
+    });
+    expect(attemptLeave('coach')).toBe(false);
+  });
+
+  it('fechar pelo botão X sem alterações não deixa navGuard nenhum registado', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.click(screen.getByLabelText('Fechar'));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().navGuard).toBeNull();
   });
 });
