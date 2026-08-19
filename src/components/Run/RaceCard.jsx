@@ -11,6 +11,7 @@ import {
 } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import RaceInfoPanel from './RaceInfoPanel';
 
 function todayISO() {
   const d = new Date();
@@ -128,6 +129,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
             )}
             {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
           </div>
+
+          <RaceInfoPanel ev={ev} />
 
           {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
           {!done && (
