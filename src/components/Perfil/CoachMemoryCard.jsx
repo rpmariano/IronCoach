@@ -215,14 +215,12 @@ export default function CoachMemoryCard() {
                       aria-label="Pedir à Carol para alterar esta nota"
                       title="Falar com a Carol sobre esta nota"
                       onClick={() => askCarolToChange(n.note)}
-                      // p-2.5 em vez de tap-44: os botões ficam lado a lado —
-                      // um alvo de 44px bateria certo com o vizinho. 33px é o
-                      // mínimo aceite (Material) quando 44 não cabe numa linha
-                      // de metadados tão densa. Sem margem negativa: encolhia
-                      // a área visível mas não a caixa clicável (isso é o
-                      // padding-box), só aproximava fisicamente os dois
-                      // botões até sobreporem-se.
-                      className="p-2.5 transition hover:opacity-70"
+                      // tap-44 (PRD §5.1, linha 234): min-width/min-height
+                      // reais via flexbox, não padding a inflar o ícone — por
+                      // isso dois botões vizinhos não se sobrepõem, o alvo
+                      // clicável fica 44px de verdade, e o flex-wrap acima
+                      // absorve a linha ficar mais larga.
+                      className="tap-44 transition hover:opacity-70"
                       style={{ color: 'var(--mod-coach-to)' }}
                     >
                       <MessageSquare size={13} />
@@ -232,7 +230,7 @@ export default function CoachMemoryCard() {
                       type="button"
                       aria-label="Editar nota"
                       onClick={() => { setEditingId(n.id); setEditText(n.note); }}
-                      className="p-2.5 text-slate-500 hover:text-slate-200 transition"
+                      className="tap-44 text-slate-500 hover:text-slate-200 transition"
                     >
                       <Pencil size={13} />
                     </button>
@@ -241,7 +239,7 @@ export default function CoachMemoryCard() {
                     type="button"
                     aria-label="Remover nota"
                     onClick={() => handleDelete(n.id)}
-                    className="p-2.5 text-slate-500 hover:text-rose-400 transition"
+                    className="tap-44 text-slate-500 hover:text-rose-400 transition"
                   >
                     <Trash2 size={13} />
                   </button>
