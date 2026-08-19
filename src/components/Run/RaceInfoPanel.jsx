@@ -3,25 +3,18 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
-import { Sparkles, Clock, Shirt, Car, Route, AlertTriangle, RefreshCw } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { pt } from 'date-fns/locale';
-import RaceRouteDiagram from './RaceRouteDiagram';
-
-function formatFetchedAt(iso) {
-  if (!iso) return '';
-  try {
-    return format(parseISO(iso), "d MMM yyyy 'às' HH:mm", { locale: pt });
-  } catch {
-    return '';
-  }
-}
+import { Sparkles, RefreshCw } from 'lucide-react';
+import RaceWebInfoSections from './RaceWebInfoSections';
 
 // Secção "Informação da Prova" dentro do cartão expandido (RaceCard) — botão
 // para pedir ao Gemini que leia o site oficial (ev.website) e extraia
-// horários, informação por escalão, equipamento e deslocação, e (quando o
-// site descrever o trajeto com detalhe) um esquema aproximado do percurso.
-// Pedido explícito do atleta (nunca automático) — ver enrich-race-event.
+// horários, documentos necessários, informação por escalão, equipamento e
+// deslocação, e (quando o site descrever o trajeto com detalhe) um esquema
+// aproximado do percurso. Pedido explícito do atleta (nunca automático) —
+// ver enrich-race-event. Esta prova já está gravada, por isso o resultado
+// persiste logo em race_events.web_info (modo race_event_id da função); o
+// equivalente no formulário de criação/edição fica em RunAgenda.jsx, que usa
+// o modo por website porque a prova pode ainda não ter id.
 export default function RaceInfoPanel({ ev }) {
   const { raceEvents, setRaceEvents } = useAppStore();
   const { showToast } = useToast();
@@ -38,7 +31,10 @@ export default function RaceInfoPanel({ ev }) {
       const { data, error } = await invokeEdgeFunctionWithTimeout(
         'enrich-race-event',
         { body: { race_event_id: ev.id } },
-        50000,
+        // Pode ler várias páginas do site (principal + até 4 sub-páginas em
+        // paralelo) antes de chamar o Gemini — folga generosa para o pior
+        // caso sem deixar um pedido preso indefinidamente.
+        90000,
       );
       if (error) {
         showToast(typeof error === 'string' ? error : 'Não consegui obter informação deste site.', 'error');
@@ -76,70 +72,7 @@ export default function RaceInfoPanel({ ev }) {
         </Button>
       </div>
 
-      {info && (
-        <div className="space-y-3 fade-in">
-          {info.schedule && info.schedule.length > 0 && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock size={11} /> Horários
-              </span>
-              {info.schedule.map((s, i) => (
-                <p key={i} className="text-[11px] text-slate-600">
-                  <span className="font-semibold text-slate-700">{s.label}:</span> {s.when}
-                </p>
-              ))}
-            </div>
-          )}
-
-          {info.category_info && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                Para o teu escalão
-              </span>
-              <p className="text-[11px] text-slate-600">{info.category_info}</p>
-            </div>
-          )}
-
-          {info.gear_recommendations && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Shirt size={11} /> Equipamento
-              </span>
-              <p className="text-[11px] text-slate-600">{info.gear_recommendations}</p>
-            </div>
-          )}
-
-          {info.logistics && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Car size={11} /> Deslocação
-              </span>
-              <p className="text-[11px] text-slate-600">{info.logistics}</p>
-            </div>
-          )}
-
-          {(info.route_summary || info.route_segments) && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <Route size={11} /> Percurso
-              </span>
-              {info.route_summary && <p className="text-[11px] text-slate-600">{info.route_summary}</p>}
-              <RaceRouteDiagram segments={info.route_segments} />
-            </div>
-          )}
-
-          {info.caveats && (
-            <p className="text-[10px] text-amber-600 flex items-start gap-1.5">
-              <AlertTriangle size={11} className="shrink-0 mt-0.5" />
-              {info.caveats}
-            </p>
-          )}
-
-          <p className="text-[10px] text-slate-400">
-            Obtido de {info.source_url} · {formatFetchedAt(info.fetched_at)}
-          </p>
-        </div>
-      )}
+      <RaceWebInfoSections info={info} />
     </div>
   );
 }
