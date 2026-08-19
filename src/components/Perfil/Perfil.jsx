@@ -357,11 +357,15 @@ export default function Perfil() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
-      <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+      <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
         {/* Sliding indicator — tint translúcido em vez de preenchimento
-            sólido, a condizer com o resto da app (ver Dashboard.jsx). */}
+            sólido, a condizer com o resto da app (ver Dashboard.jsx).
+            rounded-lg (não -xl) e p-2 (não -1.5): com o contentor a
+            rounded-2xl (16px), uma pílula com raio maior do que sobra depois
+            do preenchimento ficava com o canto cortado pelo overflow-hidden,
+            mais visível na pílula da direita. */}
         <div
-          className="absolute top-1 bottom-1 rounded-xl transition-all duration-300 ease-in-out border"
+          className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out border"
           style={{
             width: 'calc((100% - 16px) / 3)', // 3 tabs, 2 gaps of 8px
             transform: `translateX(calc(${tabIndex} * 100% + ${tabIndex * 8}px))`,
@@ -378,7 +382,7 @@ export default function Perfil() {
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
-            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl transition-colors duration-300 ${
+            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-colors duration-300 ${
               tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
