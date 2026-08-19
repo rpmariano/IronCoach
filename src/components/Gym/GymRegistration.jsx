@@ -161,7 +161,15 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
-    if (target) useAppStore.getState().setActiveTab(target);
+    if (target) {
+      // O guard ainda está registado neste render — o próprio setActiveTab()
+      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
+      // porque onClose() só desmonta este ecrã no próximo render, não já.
+      // Limpar primeiro é o que falta para a navegação pendente completar
+      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
+      setNavGuard(null);
+      useAppStore.getState().setActiveTab(target);
+    }
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
