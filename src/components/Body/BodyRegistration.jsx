@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -33,7 +33,7 @@ function todayISO() {
 }
 
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
-  const { bodyAssessments, setBodyAssessments, profile, loadInitialData } = useAppStore();
+  const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard } = useAppStore();
   const { showToast } = useToast();
   const isEditing = !!assessmentIdToEdit;
 
@@ -60,6 +60,44 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) useAppStore.getState().setActiveTab(target);
+  };
 
   const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
     notes: (notesValue || '').trim(),
@@ -134,7 +172,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -188,7 +226,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -222,7 +260,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
@@ -248,7 +286,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
             className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
             title="Fechar"
@@ -403,8 +441,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         isOpen={showUnsavedModal}
         isSaving={isSaving || isAnalyzing}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );

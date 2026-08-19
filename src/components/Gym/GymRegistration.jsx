@@ -68,7 +68,7 @@ function flattenExercises(exercises) {
 }
 
 export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
-  const { profile, gymSessions, setGymSessions, loadInitialData } = useAppStore();
+  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
   const { showToast } = useToast();
   const isEditing = !!sessionIdToEdit;
 
@@ -125,6 +125,44 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) useAppStore.getState().setActiveTab(target);
+  };
 
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
   // os valores em vez de os ler do estado, para poder ser calculada também a
@@ -272,7 +310,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       setGymSessions([data.session, ...gymSessions]);
       showToast('Treino registado');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -323,7 +361,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       }
 
       showToast('Treino registado');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
@@ -376,7 +414,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -418,7 +456,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
             className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
             title="Fechar"
@@ -788,8 +826,8 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         isOpen={showUnsavedModal}
         isSaving={isSaving}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );
