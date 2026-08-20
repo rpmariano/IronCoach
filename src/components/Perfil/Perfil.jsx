@@ -122,6 +122,32 @@ export default function Perfil() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabIndex]);
 
+  // O carrossel (tab-swipe-carousel, align-items:flex-start) fica sempre com
+  // a altura do separador mais alto dos 3 — "Guardar alterações" ficava
+  // sempre a essa distância fixa do topo, mesmo num separador bem mais curto
+  // (ex.: "Metas"), com um vão enorme e vazio até ao botão. Aqui só se
+  // ajusta a ALTURA do próprio carrossel à do separador atualmente visível —
+  // não mexe na classe partilhada tab-swipe-carousel (o Dashboard usa a
+  // mesma), só num estilo inline específico deste componente.
+  const pageRefs = useRef([]);
+  const [carouselHeight, setCarouselHeight] = useState(null);
+  useEffect(() => {
+    const el = pageRefs.current[tabIndex];
+    if (!el) return;
+    setCarouselHeight(el.offsetHeight);
+    // jsdom (testes) não implementa ResizeObserver — sem ele só perde-se o
+    // acompanhamento de alterações de altura dentro do separador (ex.: abrir
+    // os campos extra dos lembretes de água), a medição inicial acima já
+    // corre sempre.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setCarouselHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tabIndex]);
+
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
      por gravar. Depender da identidade do objeto `profile` não servia: o
      loadInitialData corre a cada onAuthStateChange (incluindo TOKEN_REFRESHED,
@@ -330,10 +356,19 @@ export default function Perfil() {
   const saveButton = (
     <Button
       variant="module"
+      // Sem moduleColor, "module" (Button.jsx) fica só com text-white
+      // shadow-sm — sem fundo nenhum, por isso "Guardar alterações"
+      // aparecia como texto solto em vez de botão. --mod-prova é a cor de
+      // identidade do Perfil (já usada no indicador dos separadores acima).
+      moduleColor="var(--mod-prova)"
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       isLoading={isSaving}
-      className="w-full mt-4 text-xs py-3"
+      // text-amber-950 sobrepõe-se ao text-white do variant="module" (ver
+      // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
+      // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
+      // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
+      className="w-full mt-4 text-xs py-3 text-amber-950"
     >
       Guardar alterações
     </Button>
@@ -381,8 +416,14 @@ export default function Perfil() {
       {/* Separadores lado a lado, como o Dashboard — os 3 ficam sempre
           montados (partilham o mesmo draft/isDirty, nada se perde ao
           ficarem lado a lado) e o scroll nativo com snap trata do resto. */}
-      <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
-      <div className="tab-swipe-page space-y-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onTouchMove={handleTouchMove}
+        className="tab-swipe-carousel"
+        style={carouselHeight != null ? { height: carouselHeight, overflowY: 'hidden', transition: 'height 0.2s ease' } : undefined}
+      >
+      <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
@@ -493,7 +534,7 @@ export default function Perfil() {
           </div>
       </div>
 
-      <div className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
@@ -675,7 +716,7 @@ export default function Perfil() {
           </div>
       </div>
 
-      <div className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
