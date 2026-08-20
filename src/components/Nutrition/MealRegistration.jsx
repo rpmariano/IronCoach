@@ -355,7 +355,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-            <h2 className="text-[15px] font-semibold text-slate-700">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
+            <h2 className="text-[15px] font-semibold text-slate-800">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -374,7 +374,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--accent)] shadow-sm transition"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--accent)] shadow-sm transition"
           />
           <div className="text-[11px] text-slate-500 mr-2">Data da refeição</div>
         </div>
@@ -500,7 +500,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                     placeholder="Ex.: peito de frango grelhado"
                     value={itemName}
                     onChange={e => setItemName(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                   />
                   <div className="relative w-24">
                     <input
@@ -508,7 +508,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                       placeholder="g (opcional)"
                       value={itemGrams}
                       onChange={e => setItemGrams(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                     />
                   </div>
                 </div>
@@ -574,7 +574,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
             placeholder="Detalhes que mudam os valores nutricionais..."
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-700 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
           />
         </div>
 
