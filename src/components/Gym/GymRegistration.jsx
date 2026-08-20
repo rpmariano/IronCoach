@@ -466,14 +466,14 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   return (
     <div className="space-y-4 fade-in">
       <div
-        className="rounded-2xl p-4 shadow-sm"
-        // Mesmo cartão de cabeçalho da Prova (RunAgenda), só a cor muda —
-        // gradiente diagonal suave na cor do módulo em vez do radial-gradient
-        // de canto que aqui não condizia com os restantes registos.
+        className="module-card-contrast"
+        // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
+        // versão anterior tinha a borda/glow do .card mas sem backdrop-filter
+        // nem base branca, o que dava um retângulo escuro plano em vez do
+        // vidro premium usado nos outros ecrãs. Lavagem na cor do módulo por
+        // cima, bem subtil.
         style={{
-          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-ginasio-to) 2%, transparent), color-mix(in srgb, var(--mod-ginasio-to) 5%, transparent))',
-          border: '1px solid rgba(255, 255, 255, 0.8)',
-          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-ginasio-to) 3%, transparent), color-mix(in srgb, var(--mod-ginasio-to) 6%, transparent)), rgba(255, 255, 255, 0.05)',
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
