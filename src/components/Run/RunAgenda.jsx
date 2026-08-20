@@ -458,13 +458,13 @@ export default function RunAgenda({ onClose }) {
       {validationModal}
       
       <div className="space-y-4">
-        {/* Cartão de cabeçalho — mesma classe module-card-contrast do corpo
-            do formulário abaixo (bg branco 5% + blur 20px), só com uma
-            lavagem dourada por cima. Antes não tinha backdrop-filter nem a
-            base branca, por isso ficava um retângulo escuro plano em vez do
-            vidro fosco usado no resto do ecrã. */}
+        {/* Cabeçalho + campos no MESMO cartão, como nos outros registos
+            (Avaliação/Refeição/Corrida/Treino) — antes era um cartão
+            module-card-contrast só para o título, separado do cartão dos
+            campos, o que dava dois vidros foscos empilhados em vez de um só
+            ecrã coeso. */}
         <div
-          className="module-card-contrast"
+          className="space-y-4 fade-in module-card-contrast"
           style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-prova) 3%, transparent), color-mix(in srgb, var(--mod-prova) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -482,12 +482,6 @@ export default function RunAgenda({ onClose }) {
               <X size={16} />
             </button>
           </div>
-        </div>
-
-        {/* Corpo principal do formulário — mesmo vidro/glow do cabeçalho
-            acima e dos outros ecrãs de registo (bg-white sem blur nem glow
-            era o único bloco desta tela ainda por alinhar). */}
-        <div className="space-y-4 fade-in module-card-contrast">
 
           {/* 1.1 Data · 1.2 Local */}
           <div className="grid grid-cols-2 gap-2">
