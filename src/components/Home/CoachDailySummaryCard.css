@@ -37,6 +37,18 @@
 }
 .cds-msg-title { font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
 .cds-msg-text { font-size: 0.83rem; line-height: 1.45; color: #e2e8f0; font-weight: 500; }
+/* Limita a mensagem a 4 linhas para o card não crescer além dos ~220px dos
+   outros cards do Início quando o texto é longo — "Ler mais" (ver
+   CoachDailySummaryCard.jsx) remove esta classe para mostrar tudo. */
+.cds-msg-text.cds-clamp {
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cds-read-more {
+  display: flex; align-items: center; gap: 2px; margin-top: 4px;
+  font-size: 0.72rem; font-weight: 700; color: #7dd3fc; cursor: pointer;
+}
+.cds-read-more:active { opacity: 0.7; }
 
 .cds-empty { font-size: 0.8rem; color: #cbd5e1; padding: 4px 0 2px; }
 .cds-skeleton { display: flex; flex-direction: column; gap: 8px; }
