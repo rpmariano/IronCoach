@@ -828,7 +828,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
           ) : (
             <div className="mb-4">
-              <label className="text-[12px] text-slate-500 mb-1.5 block">Disciplina</label>
+              <label className="text-[11px] text-slate-500 mb-1.5 block">Disciplina</label>
               <select
                 value={completedRaceType}
                 onChange={e => setCompletedRaceType(e.target.value)}
@@ -840,7 +840,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           <div className="mb-4">
-            <label className="text-[12px] text-slate-500 mb-1.5 block">Data da corrida</label>
+            <label className="text-[11px] text-slate-500 mb-1.5 block">Data da corrida</label>
             <input
               type="date"
               value={runDate}
@@ -851,7 +851,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           <div className="mb-4">
-            <label className="text-[12px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+            <label className="text-[11px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
             <div className="flex gap-1.5">
               {Array.from({ length: 10 }).map((_, i) => (
                 <button
@@ -866,7 +866,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           <div className="mb-4">
-            <label className="text-[12px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <label className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
               <PencilLine size={14} /> Observações (opcional)
             </label>
             <textarea
@@ -878,7 +878,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           <div className="mb-4">
-            <label className="text-[12px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
+            <label className="text-[11px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
             <input
               type="text"
               value={runName}
@@ -932,7 +932,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {showToggle && (
             <div className="mb-4">
-              <label className="text-[12px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+              <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
               <div className="flex gap-1.5">
                 <Chip
                   active={entryMethod === 'foto'}
@@ -990,7 +990,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-3 bg-white/50">
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                   <ImagePlus className="w-7 h-7 text-slate-400 mx-auto mb-2" />
-                  <p className="text-[12px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
+                  <p className="text-[11px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
                   <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
                 </label>
               )}
@@ -1006,7 +1006,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <>
           {runIdToEdit && runPhotos.length > 0 && (
             <div className="mb-4">
-              <label className="text-[12px] text-slate-500 mb-1.5 block">Prints carregados</label>
+              <label className="text-[11px] text-slate-500 mb-1.5 block">Prints carregados</label>
               <div className="grid grid-cols-3 gap-2">
                 {runPhotos.map((p, i) => (
                   <div key={i} className="relative aspect-square">

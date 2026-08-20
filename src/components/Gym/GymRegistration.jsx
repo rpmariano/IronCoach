@@ -479,7 +479,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
+            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -534,7 +534,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Nome do treino"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
           />
         </div>
 

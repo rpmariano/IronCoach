@@ -355,7 +355,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-            <h2 className="text-[15px] font-semibold text-slate-800">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
+            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
