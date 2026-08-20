@@ -93,7 +93,7 @@ export default function Layout({ children }) {
     <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
       {/* Marca d'água — emblema da União Recreativa da Charneca (50 anos),
-          fixo atrás de todos os ecrãs, a 6% e com mix-blend-mode: screen
+          fixo atrás de todos os ecrãs, a 12% e com mix-blend-mode: screen
           para o preto do fundo do brasão desaparecer por completo (contribui
           zero num blend "screen") — só o relevo dourado fica visível, sem
           nenhum retângulo escuro por trás. position:fixed (mesmo padrão do
@@ -109,7 +109,7 @@ export default function Layout({ children }) {
           backgroundPosition: 'center',
           backgroundSize: '72% auto',
           mixBlendMode: 'screen',
-          opacity: 0.06,
+          opacity: 0.12,
         }}
       />
 
