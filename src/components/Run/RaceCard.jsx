@@ -11,6 +11,7 @@ import {
 } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import RaceInfoPanel from './RaceInfoPanel';
 
 function todayISO() {
   const d = new Date();
@@ -55,14 +56,16 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
   return (
     <div 
       onClick={toggleExpand}
-      className={`card rounded-2xl p-4 shadow-sm border border-slate-100 cursor-pointer hover:shadow-md transition ${done ? 'opacity-60' : ''}`} 
-      style={{ backgroundColor: 'rgba(217, 70, 239, 0.02)' }}
+      className={`card rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition ${done ? 'opacity-60' : ''}`}
+      // .card já traz a borda branca uniforme (ver globals.css) — sem
+      // borda lateral colorida, como os outros cartões.
+      style={{ backgroundColor: 'rgba(251, 191, 36, 0.04)' }}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
             {ev.name}
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-coach-to)', borderColor: 'var(--mod-coach-to)' }}>
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
               {distanceLabel}
             </span>
             {ev.race_type === 'trail' && (
@@ -119,13 +122,15 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
             {ev.website && (
               <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
                 <LinkIcon size={11} />
-                <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-coach-to)] transition truncate">
+                <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
                   {ev.website}
                 </a>
               </p>
             )}
             {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
           </div>
+
+          <RaceInfoPanel ev={ev} />
 
           {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
           {!done && (

@@ -68,7 +68,7 @@ function flattenExercises(exercises) {
 }
 
 export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
-  const { profile, gymSessions, setGymSessions, loadInitialData } = useAppStore();
+  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
   const { showToast } = useToast();
   const isEditing = !!sessionIdToEdit;
 
@@ -125,6 +125,68 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) {
+      // O guard ainda está registado neste render — o próprio setActiveTab()
+      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
+      // porque onClose() só desmonta este ecrã no próximo render, não já.
+      // Limpar primeiro é o que falta para a navegação pendente completar
+      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
+      setNavGuard(null);
+      useAppStore.getState().setActiveTab(target);
+    }
+  };
+
+  // Ao gravar um treino NOVO (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia do treino — mesmo padrão de RunAgenda.jsx
+  // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
+  // sair" a caminho de outro separador (navGuard intercetado), respeita
+  // esse destino em vez de o substituir — por isso o alvo pendente é lido
+  // ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(date);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
 
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
   // os valores em vez de os ler do estado, para poder ser calculada também a
@@ -272,7 +334,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       setGymSessions([data.session, ...gymSessions]);
       showToast('Treino registado');
-      onClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -323,7 +385,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       }
 
       showToast('Treino registado');
-      onClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
@@ -376,7 +438,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
-      onClose();
+      handleClose();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -404,12 +466,14 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   return (
     <div className="space-y-4 fade-in">
       <div
-        className="rounded-2xl p-4"
+        className="module-card-contrast"
+        // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
+        // versão anterior tinha a borda/glow do .card mas sem backdrop-filter
+        // nem base branca, o que dava um retângulo escuro plano em vez do
+        // vidro premium usado nos outros ecrãs. Lavagem na cor do módulo por
+        // cima, bem subtil.
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-ginasio-to) 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, #f8fafc)',
-          borderStyle: 'solid',
-          borderWidth: '1px 1px 1px 3px',
-          borderColor: '#e2e8f0 #e2e8f0 #e2e8f0 color-mix(in srgb, var(--mod-ginasio-to) 70%, #e2e8f0)'
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-ginasio-to) 3%, transparent), color-mix(in srgb, var(--mod-ginasio-to) 6%, transparent)), rgba(255, 255, 255, 0.05)',
         }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
@@ -418,7 +482,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
             className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
             title="Fechar"
@@ -656,8 +720,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                     key={i}
                     type="button"
                     onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    style={exertion == i + 1 ? { color: '#fff' } : undefined}
-                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
                   >
                     {i + 1}
                   </button>
@@ -788,8 +851,8 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         isOpen={showUnsavedModal}
         isSaving={isSaving}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );

@@ -69,7 +69,7 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard } = useAppStore();
   const { showToast } = useToast();
 
   // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
@@ -142,6 +142,68 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
+  // separador com o formulário sujo — null quando a saída foi pedida pelo
+  // botão X do próprio ecrã, sem destino nenhum.
+  const pendingNavTarget = useRef(null);
+
+  // Trava a navegação para fora deste ecrã enquanto houver alterações por
+  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
+  useEffect(() => {
+    if (!isFormDirty) { setNavGuard(null); return; }
+    setNavGuard((intendedTab) => {
+      pendingNavTarget.current = intendedTab;
+      setShowUnsavedModal(true);
+      return false;
+    });
+    return () => setNavGuard(null);
+  }, [isFormDirty, setNavGuard]);
+
+  // Fechar/recarregar o separador do browser também avisa.
+  useEffect(() => {
+    if (!isFormDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isFormDirty]);
+
+  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
+  // de separador (navGuard), há ainda que completar essa navegação depois
+  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
+  // que já estava aberto antes de pedir para sair.
+  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
+  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
+  // foi trocado para handleClose(), precisamente para passar por aqui.
+  const handleClose = () => {
+    const target = pendingNavTarget.current;
+    pendingNavTarget.current = null;
+    onClose();
+    if (target) {
+      // O guard ainda está registado neste render — o próprio setActiveTab()
+      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
+      // porque onClose() só desmonta este ecrã no próximo render, não já.
+      // Limpar primeiro é o que falta para a navegação pendente completar
+      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
+      setNavGuard(null);
+      useAppStore.getState().setActiveTab(target);
+    }
+  };
+
+  // Ao gravar uma corrida NOVA (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia da corrida — mesmo padrão de RunAgenda.jsx
+  // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
+  // sair" a caminho de outro separador (navGuard intercetado), respeita
+  // esse destino em vez de o substituir — por isso o alvo pendente é lido
+  // ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(runDate);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
 
   // Estado do Bottom Sheet de métricas em falta
   const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
@@ -453,15 +515,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         return;
       }
 
-      const finishAndNavigateToCalendar = () => {
-        useAppStore.getState().setActiveTab('calendario');
-        useAppStore.getState().setOpenCreationMode(null);
-        onClose();
-      };
-
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
-      finishAndNavigateToCalendar();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -477,9 +533,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
       showToast('Corrida registada');
-      useAppStore.getState().setActiveTab('calendario');
-      useAppStore.getState().setOpenCreationMode(null);
-      onClose();
+      finishCreateAndGoToCalendar();
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -611,7 +665,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
           showToast('Corrida atualizada');
         }
-        onClose();
+        handleClose();
         return;
       }
 
@@ -671,9 +725,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       showToast('Corrida registada');
-      useAppStore.getState().setActiveTab('calendario');
-      useAppStore.getState().setOpenCreationMode(null);
-      onClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
@@ -700,8 +752,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             foto só cria; "Reanalisar" no cartão da corrida é a ação dedicada
             a reanalisar uma corrida já criada assim. */}
         <div
-          className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(217, 70, 239, 0.01), rgba(217, 70, 239, 0.03))', borderLeft: '2px solid var(--mod-corrida-to)' }}
+          className="module-card-contrast"
+          // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app —
+          // a versão anterior tinha a borda/glow do .card mas sem
+          // backdrop-filter nem base branca, o que dava um retângulo escuro
+          // plano em vez do vidro premium usado nos outros ecrãs.
+          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corrida-to) 3%, transparent), color-mix(in srgb, var(--mod-corrida-to) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
         >
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
@@ -709,7 +765,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <h2 className="text-sm font-semibold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
             </div>
             <button
-              onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else onClose(); }}
+              onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
               className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
               title="Fechar"
               aria-label="Fechar"
@@ -801,8 +857,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <button
                   key={i}
                   onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
-                  style={runEffortRpe === i + 1 ? { color: '#fff' } : undefined}
-                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
                 >
                   {i + 1}
                 </button>
@@ -1293,8 +1348,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         isOpen={showUnsavedModal}
         isSaving={isSubmitting}
         onSaveAndLeave={handleSaveCorrida}
-        onDiscardAndLeave={onClose}
-        onCancel={() => setShowUnsavedModal(false)}
+        onDiscardAndLeave={handleClose}
+        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
     </div>
   );

@@ -49,8 +49,13 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
   );
 }
 
+// Valores válidos para o semáforo de prontidão da Carol — fora do componente
+// para evitar recriar o array a cada render/iteração do .map().
+const VALID_READINESS_LEVELS = ['green', 'yellow', 'red'];
+
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
 function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
+  const { dailySummary } = useAppStore();
   const today = todayISO();
   const upcoming = raceEvents
     .filter(e => e.status !== 'concluida' && e.date >= today)
@@ -83,7 +88,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
   );
 
   return (
-    <div>
+    <div className="relative">
       <div 
         ref={scrollRef}
         onScroll={handleScroll}
@@ -116,12 +121,22 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
           });
 
-          let readiness = 'green';
+          // Semáforo determinístico como fallback
+          let deterministicReadiness = 'green';
           if (viability.flags.length > 0) {
-            readiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) 
-              ? 'red' 
+            deterministicReadiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente'))
+              ? 'red'
               : 'yellow';
           }
+
+          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta.
+          // Valida que o level é um valor esperado — previne semáforo silencioso se o modelo alucinar.
+          const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
+            ? dailySummary.race_readiness.level
+            : null;
+          const carolReadiness = VALID_READINESS_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
+          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
+          const readiness = carolReadiness || deterministicReadiness;
 
           return (
             <div
@@ -140,6 +155,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   daysRemaining={daysUntil}
                   progressPercentage={progressPercentage}
                   readiness={readiness}
+                  readinessReason={carolReason}
                 />
               </div>
             </div>
@@ -154,15 +170,15 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
           parte. Também deixou de haver um <div> de pontos repetido por
           prova (um por slide, todos empilhados) — passa a ser um só. */}
       {upcoming.length > 1 && (
-        <div className="flex justify-center pt-2">
-          <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
+        <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+          <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
             {upcoming.map((_, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => scrollTo(idx)}
                 aria-label={`Ver prova ${idx + 1}`}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
               />
             ))}
           </div>
@@ -207,7 +223,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="relative">
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -223,20 +239,16 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
         </div>
       </div>
 
-      {/* Pontos fora do cartão, em fluxo normal — ver a mesma nota em
-          NextRaceCard acima. Sobrepostos ao cartão (absolute) obrigavam a
-          reservar padding extra sem conteúdo nenhum lá dentro, o que se
-          lia como uma caixa cinzenta à parte; e aqui sobrepunham-se aos
-          botões "+ml" do cartão de água. */}
-      <div className="flex justify-center">
-        <div className="flex items-center gap-1.5 bg-white shadow-sm px-2 py-1.5 rounded-full">
+      
+      <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
+        <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
           {[0, 1].map((idx) => (
             <button
               key={idx}
               type="button"
               onClick={() => scrollTo(idx)}
               aria-label={`Ver cartão ${idx + 1}`}
-              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
             />
           ))}
         </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import BodyRegistration from './BodyRegistration';
@@ -96,6 +96,19 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
+  });
+
+  it('avaliação NOVA: ao gravar, navega para o Calendário e deixa a data da avaliação pendente', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1' } }, error: null });
+    useAppStore.setState({ activeTab: 'holistica', pendingCalendarDate: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+
+    await waitFor(() => expect(useAppStore.getState().activeTab).toBe('calendario'));
+    // BodyRegistration usa a data de hoje por omissão (sem dateIso a prefill).
+    expect(useAppStore.getState().pendingCalendarDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
@@ -249,5 +262,106 @@ describe('BodyRegistration — editar avaliação existente', () => {
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(77.0);
+  });
+});
+
+// Regressão: trocar de separador pela barra de navegação (Início, Calendário,
+// Dashboard, Coach) com o formulário sujo desmontava-o sem aviso nenhum — só
+// o botão X do próprio ecrã estava protegido. E a primeira versão da
+// correção tinha uma segunda armadilha: o próprio navGuard, ainda ativo,
+// bloqueava-se a si mesmo quando handleClose() tentava completar a
+// navegação pendente (o guard só é limpo no cleanup do useEffect, que só
+// corre num render seguinte a onClose(), não já a seguir).
+describe('BodyRegistration — guarda de navegação com formulário sujo', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+  const EXISTING = {
+    id: 'assess-3',
+    date: '2026-01-08',
+    notes: 'nota antiga',
+    weight_kg: 78.5,
+    body_fat_pct: 18.2,
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { assessment: EXISTING }, error: null });
+    mocks.updateAssessment.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    loadInitialData.mockClear();
+    useAppStore.setState({
+      profile: PROFILE,
+      bodyAssessments: [EXISTING],
+      loadInitialData,
+      activeTab: 'corpo',
+      navGuard: null,
+    });
+  });
+
+  const dirtyTheForm = () => {
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '77.0' } });
+  };
+
+  // navGuard corre fora de qualquer evento React (é chamado diretamente na
+  // store, tal como Layout.jsx faria ao tocar num separador) — sem act(),
+  // o setShowUnsavedModal(true) lá dentro não fica refletido no DOM a tempo.
+  const attemptLeave = (target) => {
+    let navigated;
+    act(() => { navigated = useAppStore.getState().setActiveTab(target); });
+    return navigated;
+  };
+
+  it('regista um navGuard assim que o formulário fica sujo, e nenhum antes disso', () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+    expect(useAppStore.getState().navGuard).toBeNull();
+
+    dirtyTheForm();
+    expect(useAppStore.getState().navGuard).toBeInstanceOf(Function);
+  });
+
+  it('trocar de separador com o formulário sujo mostra o aviso em vez de navegar logo', () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+    dirtyTheForm();
+
+    const navigated = attemptLeave('home');
+
+    expect(navigated).toBe(false);
+    expect(useAppStore.getState().activeTab).toBe('corpo');
+    expect(screen.getByText('Tens alterações por gravar')).toBeInTheDocument();
+  });
+
+  it('"Sair sem gravar" descarta o formulário E completa a navegação pendente', () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sair sem gravar' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().navGuard).toBeNull();
+  });
+
+  it('"Cancelar" fecha o aviso e mantém o formulário aberto, sem navegar', async () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useAppStore.getState().activeTab).toBe('corpo');
+    await waitFor(() => {
+      expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
+    });
+    expect(attemptLeave('coach')).toBe(false);
+  });
+
+  it('fechar pelo botão X sem alterações não deixa navGuard nenhum registado', () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+
+    fireEvent.click(screen.getByLabelText('Fechar'));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().navGuard).toBeNull();
   });
 });

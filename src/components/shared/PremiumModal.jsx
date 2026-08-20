@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const THEMES = {
@@ -174,7 +175,13 @@ export default function PremiumModal({
     };
   }
 
-  return (
+  // Portal para o body: sem isto, "fixed" ancora-se ao antepassado mais
+  // próximo com transform/filter/backdrop-filter (em vez do ecrã) — e com
+  // glassmorphism a espalhar backdrop-filter por toda a app, cada vez mais
+  // sítios tinham essa propriedade. O sintoma era a persiana abrir presa a
+  // meio da página, com a maior parte por baixo da dobra e sem forma de lhe
+  // chegar por scroll.
+  return createPortal(
     <div className={`fixed inset-0 z-[100] flex ${isDialog ? 'items-center justify-center p-4' : 'flex-col justify-end'}`}>
       {/* Backdrop */}
       <div 
@@ -230,13 +237,14 @@ export default function PremiumModal({
         </div>
 
         {/* Content */}
-        <div 
+        <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto overscroll-contain bg-slate-50"
         >
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

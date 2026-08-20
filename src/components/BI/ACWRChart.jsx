@@ -83,10 +83,10 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        titleColor: '#0f172a',
-        bodyColor: '#0f172a',
-        borderColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#f8fafc',
+        bodyColor: '#f8fafc',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
         boxPadding: 4,
@@ -109,14 +109,14 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         position: 'right',
         min: 0,
         grid: {
-          color: 'rgba(0, 0, 0, 0.05)'
+          color: 'rgba(255, 255, 255, 0.05)'
         }
       }
     }
   };
 
   return (
-    <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Rácio de Carga Aguda:Crónica</h3>
         <MetricInfo text="O ACWR compara a carga do teu treino na última semana (Aguda) com a média das últimas 4 semanas (Crónica). Mantém-te na zona verde (0.8 a 1.3) para evoluir com segurança. Valores > 1.5 indicam risco elevado de lesão." />

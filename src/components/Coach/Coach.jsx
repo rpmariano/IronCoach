@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Bot, Trash2, Loader2, Sparkles, ChevronRight } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { Bot, Send, Loader2, Sparkles } from 'lucide-react';
+import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
-import { PlanProposalCard } from '../Home/WeeklyPlanCard';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
@@ -49,17 +48,66 @@ export default function Coach() {
       setCoachIntent(null);
       // Trigger a hidden message to the coach or pre-fill the chat
       handleSend('Gostaria de adaptar o meu plano atual. Podes verificar o meu plano e sugerir adaptações?');
+      return;
+    }
+    // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
+    // que a Carol escreveu — pede-lhe que altere, e a conversa abre já
+    // centrada nessa nota para ele explicar o que está errado.
+    if (coachIntent && coachIntent.kind === 'discuss_note') {
+      const { note } = coachIntent;
+      setCoachIntent(null);
+      handleSend(
+        `Sobre o que tens registado na tua memória: "${note}". Queria mudar isto — ` +
+        `pergunta-me o que precisares e atualiza a nota quando estivermos de acordo.`,
+      );
     }
   }, [coachIntent]);
 
+  // Fecha só a secção respondida — se a outra proposta (objetivos/plano)
+  // ainda estiver pendente, a persiana continua aberta a mostrá-la (ver
+  // PlanProposalBottomSheet, que já não fecha a persiana sozinho ao
+  // responder a uma secção).
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
     if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
+    setActiveProposalSheetPlan(null);
+    // Mesmo problema que os objetivos (ver handleRespondGoal): decidir na
+    // persiana só grava o estado, não é uma troca de mensagens — sem isto a
+    // Carol nunca sabia se o atleta tinha aceitado ou recusado, e a
+    // conversa ficava suspensa sem reação nenhuma da parte dela.
+    if (ok) {
+      handleSend(accept ? 'Aceitei o plano.' : 'Recusei o plano.');
+    }
   };
 
   const handleRespondGoal = async (proposalId, accept) => {
     const ok = await respondToGoalProposal(proposalId, accept);
     if (ok) showToast(accept ? 'Objetivos aceites e atualizados' : 'Proposta de objetivos recusada');
+    setActiveGoalProposal(null);
+    // Aceitar na persiana só grava no perfil — não é uma troca de mensagens,
+    // por isso a Carol nunca fica a saber que pode agora avançar com o que
+    // tinha ficado pendente (ex.: sugestões de refeições, ver regra
+    // SEQUÊNCIA DE DEPENDÊNCIA no prompt do coach-chat). Dispara uma
+    // mensagem automática, tal como já se faz para coachIntent==='adapt_plan'.
+    // Mantida deliberadamente curta e natural — o texto que instruía a Carol
+    // a não repropor objetivos e a "avançar com o que tinha dito que faria"
+    // aparecia no chat como uma bolha do atleta, o que lia mal (ninguém
+    // escreve assim). Essa instrução está no servidor, no ESQUEMA DE DECISÃO
+    // do prompt do coach-chat, que classifica exatamente estas quatro frases
+    // (casos A a D) e fixa que ferramentas podem ser chamadas em cada caso.
+    // As frases têm de bater certo com as do esquema — não as reformules sem
+    // atualizar o prompt.
+    if (ok) {
+      handleSend(accept ? 'Aceitei os novos objetivos.' : 'Recusei os novos objetivos.');
+    }
+  };
+
+  // Fecho total da persiana (X, backdrop, arrastar) — abandona as duas
+  // propostas por decidir agora; continuam pendentes na base de dados e
+  // reaparecem no botão flutuante.
+  const handleCloseProposalsSheet = () => {
+    setActiveProposalSheetPlan(null);
+    setActiveGoalProposal(null);
   };
 
   const [inputStr, setInputStr] = useState('');
@@ -103,7 +151,7 @@ export default function Coach() {
   };
 
   const handleSend = async (textToSend) => {
-    const text = (textToSend || inputStr).trim();
+    const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
 
     setInputStr('');
@@ -329,25 +377,35 @@ export default function Coach() {
 
       {/* Input Box Footer */}
       <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
-        {/* Sugestões pendentes (Planos / Objetivos) — Pill Button flutuante sobre a caixa de texto */}
+        {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
+            propostas podem coexistir e abrem sempre a MESMA persiana, para
+            o atleta decidir ambas sem trocar de ecrã. */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="fixed bottom-[140px] right-4 z-50">
+          <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
             <button
               type="button"
+              // disabled={coachLoading} é o único guard aqui — impede mesmo o
+              // clique de acontecer, não só o efeito. Necessário porque aceitar
+              // objetivos dispara um handleSend automático (ver
+              // handleRespondGoal), e handleSend descarta silenciosamente
+              // qualquer envio se coachLoading já for true; sem isto, a
+              // persiana continuaria a abrir mas a mensagem de seguimento
+              // perdia-se.
+              disabled={coachLoading}
               onClick={() => {
-                if (pendingPlans.length > 0) setActiveProposalSheetPlan(pendingPlans[0]);
-                if (pendingGoalProposals.length > 0) setActiveGoalProposal(pendingGoalProposals[0]);
+                setActiveProposalSheetPlan(pendingPlans[0] || null);
+                setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
-              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
               style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
               <Sparkles className="w-4 h-4 text-white" />
               <span>
-                {pendingPlans.length > 0 && pendingGoalProposals.length > 0
-                  ? `Propostas por rever (${pendingPlans.length + pendingGoalProposals.length})`
-                  : pendingPlans.length > 0
-                  ? `Proposta de plano por rever (${pendingPlans.length})`
-                  : `Objetivos por rever (${pendingGoalProposals.length})`}
+                {pendingGoalProposals.length > 0 && pendingPlans.length > 0
+                  ? `Propostas por rever (${pendingGoalProposals.length + pendingPlans.length})`
+                  : pendingGoalProposals.length > 0
+                    ? `Objetivos por rever (${pendingGoalProposals.length})`
+                    : `Proposta de plano por rever (${pendingPlans.length})`}
               </span>
             </button>
           </div>
@@ -386,19 +444,18 @@ export default function Coach() {
       </div>
 
 
-      {/* Modal Bottom Sheet (Persiana de baixo para cima) para Propostas */}
+      {/* Modal Bottom Sheet (Persiana de baixo para cima) — Objetivos e/ou
+          Plano, o que estiver pendente. Ver comentário no componente sobre
+          porque as duas propostas partilham a mesma persiana. */}
       {(activeProposalSheetPlan || activeGoalProposal) && (
         <PlanProposalBottomSheet
           plan={activeProposalSheetPlan}
           items={coachPlanItems}
+          onRespondPlan={handleRespond}
           goalProposal={activeGoalProposal}
           profile={profile}
-          onRespondPlan={handleRespond}
           onRespondGoal={handleRespondGoal}
-          onClose={() => {
-            setActiveProposalSheetPlan(null);
-            setActiveGoalProposal(null);
-          }}
+          onClose={handleCloseProposalsSheet}
         />
       )}
     </div>

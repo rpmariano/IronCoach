@@ -97,7 +97,7 @@ const PROPOSE_PLAN_TOOL = {
     "Propõe ao atleta um plano de treinos para um período. Usa esta função SEMPRE que o " +
     "utilizador pedir um plano, sugestões de treinos para os próximos dias, ou o que deve " +
     "fazer numa semana — em vez de listares os treinos apenas no texto da resposta. A proposta " +
-    "fica pendente de aceitação pelo atleta, que a vê no ecrã Início. Depois de a criares, " +
+    "fica pendente de aceitação pelo atleta, que a revê e decide aqui mesmo no Coach. Depois de a criares, " +
     "menciona na tua resposta que a proposta está lá para ele aceitar. NÃO uses esta função " +
     "para responder a perguntas sobre treinos já feitos, nem quando o utilizador só quer uma " +
     "opinião sem plano concreto. DURAÇÃO DO PLANO: a janela ideal é 7-14 dias (um microciclo). " +
@@ -188,18 +188,18 @@ const PROPOSE_PLAN_TOOL = {
 // é verificada no EXECUTOR (runUpdateGoals), não aqui — a ferramenta fica
 // sempre visível ao modelo, mas recusa escrever sem o interruptor ligado.
 //
-// FLUXO OBRIGATÓRIO: o modelo NÃO deve chamar esta ferramenta por iniciativa
-// própria. Deve primeiro PROPOR o valor em texto, perguntar "Queres que
-// atualize?", e só chamar a ferramenta quando o atleta confirmar. Ver prompt.
+// O modelo deve chamar esta ferramenta proativamente em vez de perguntar primeiro,
+// pois o utilizador tem agora uma persiana (bottom sheet) que lhe permite rever
+// e aceitar/recusar de forma segura as alterações sem afetar imediatamente o perfil.
 const UPDATE_GOALS_TOOL = {
   name: "update_goals",
   description:
-    "Escreve objetivos do atleta (macronutrientes, água, corpo) diretamente no perfil. " +
-    "NUNCA chames esta ferramenta sem o atleta ter confirmado explicitamente na conversa. " +
-    "O fluxo correto é: (1) propõe o valor em texto, (2) pergunta 'Queres que atualize?', " +
-    "(3) só chamas a ferramenta depois de o atleta dizer que sim. Requer que o atleta tenha " +
-    "ativado 'O Coach pode ajustar as metas' no Perfil — se devolver erro de autorização, " +
-    "diz onde ativar e não repitas a chamada.",
+    "Gera uma proposta de atualização de metas (macronutrientes, água, corpo) para o atleta. " +
+    "A proposta é enviada para a persiana do utilizador (Modal) para aprovação. Podes e deves " +
+    "chamar esta ferramenta de forma proativa sempre que notares que as metas atuais estão " +
+    "desadequadas face aos novos objetivos (ex. plano de emagrecimento, plano para prova). " +
+    "NÃO perguntes 'Queres que eu proponha os valores?' — em vez disso, chama a ferramenta " +
+    "logo na tua resposta e diz 'Enviei uma proposta de metas atualizadas para a persiana para aprovares'.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -261,11 +261,117 @@ const SAVE_MEALS_TOOL = {
   },
 };
 
+// Memória de longo prazo. O histórico enviado ao modelo são só as últimas
+// MAX_HISTORY mensagens: um facto dito há semanas cai fora dessa janela e a
+// Carol volta a propor o que já sabia estar errado. Alargar a janela não
+// resolve (enche o prompt de conversa irrelevante); guardar o facto, sim.
+const SAVE_NOTE_TOOL = {
+  name: "save_coach_note",
+  description:
+    "Guarda na memória de longo prazo um facto DURADOURO sobre o atleta, para o teres " +
+    "sempre presente mesmo daqui a semanas. Usa SEMPRE que ele revelar algo que muda a " +
+    "forma de treinar ou de comer dele: preferências alimentares (\"quero refeições " +
+    "vegetarianas\"), limitações físicas (\"tenho epicondilite\"), disponibilidade " +
+    "(\"não posso treinar de manhã\", \"trabalho por turnos\"), objetivos pessoais, " +
+    "preferências de treino, ou contexto de vida relevante. " +
+    "NÃO uses para: o que já está estruturado noutras tabelas (metas numéricas, treinos " +
+    "registados, avaliações corporais, provas) — isso já te é dado no contexto; nem para " +
+    "coisas transitórias (\"hoje estou cansado\", \"comi mal ao almoço\"). " +
+    "Uma nota por facto, curta e na terceira pessoa (\"Prefere refeições predominantemente " +
+    "vegetarianas\"). Se um facto novo CONTRADIZ uma nota existente, chama com " +
+    "replaces_note_id para a substituir em vez de acumular as duas. " +
+    "Depois de guardares, diz ao atleta numa frase curta o que ficou registado.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      category: {
+        type: "STRING",
+        enum: ["preferencia_alimentar", "limitacao_fisica", "disponibilidade",
+               "objetivo_pessoal", "preferencia_treino", "contexto_vida", "outro"],
+        description: "Categoria do facto.",
+      },
+      note: {
+        type: "STRING",
+        description: "O facto, entre 3 e 500 caracteres, na terceira pessoa.",
+      },
+      replaces_note_id: {
+        type: "STRING",
+        description:
+          "Id da nota que este facto substitui (os ids aparecem na MEMÓRIA DO ATLETA). " +
+          "Só quando o facto novo contradiz ou atualiza um já registado.",
+      },
+    },
+    required: ["category", "note"],
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos ou sugestões alimentares.
-function buildTools() {
-  return [{ functionDeclarations: [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL] }];
+function buildTools(allowed?: Set<string> | null) {
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL];
+  const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
+  return [{ functionDeclarations: decls }];
+}
+
+// ── Casos do ESQUEMA DE DECISÃO, impostos em código ────────────────────────
+// Frases que o cliente envia quando o atleta decide na persiana (ver
+// Coach.jsx: handleRespond / handleRespondGoal). Não são escritas pelo
+// atleta — são o único sinal de que houve uma decisão. Se mudarem aqui,
+// têm de mudar lá (e no bloco ESQUEMA DE DECISÃO do prompt).
+const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
+  "aceitei os novos objetivos.": "A",
+  "recusei os novos objetivos.": "B",
+  "aceitei o plano.": "C",
+  "recusei o plano.": "D",
+};
+
+// As de leitura nunca são restringidas — consultar histórico é sempre seguro.
+// save_coach_note entra aqui porque é permitida em TODOS os casos: não cria
+// nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
+// explica o porquê — o momento em que há mais para aprender.
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note"];
+
+export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
+
+/** Classifica o turno. F_* = o atleta está a responder à pergunta que
+ *  fizemos logo a seguir a uma recusa, por isso o que ele diz é uma
+ *  correção ao que foi recusado — e não um pedido novo do zero. */
+export function classifyTurn(
+  message: string,
+  history: { role: string; content: string }[] | null,
+): TurnCase {
+  const norm = (s: string | undefined) => (s || "").trim().toLowerCase();
+  const direct = DECISION_PHRASES[norm(message)];
+  if (direct) return direct;
+  // Só conta a última mensagem do atleta: assim o caso F dura exatamente
+  // um turno e não fica a bloquear ferramentas no resto da conversa.
+  const lastUser = (history || []).slice().reverse().find((m) => m.role === "user");
+  const prev = DECISION_PHRASES[norm(lastUser?.content)];
+  if (prev === "D") return "F_PLAN";
+  if (prev === "B") return "F_GOALS";
+  return "E";
+}
+
+/** Ferramentas permitidas em cada caso. null = todas (caso E). */
+export function allowedToolsFor(kind: TurnCase): Set<string> | null {
+  switch (kind) {
+    // Aceitou objetivos → só falta propor o plano.
+    case "A":
+    // Recusou o plano e disse o que mudar → propõe o plano corrigido.
+    case "F_PLAN":
+      return new Set([...READ_TOOL_NAMES, "propose_training_plan"]);
+    // Recusou objetivos e disse o que mudar → propõe os valores corrigidos.
+    case "F_GOALS":
+      return new Set([...READ_TOOL_NAMES, "update_goals"]);
+    // Reações a uma decisão: só conversa, nada de escrever.
+    case "B":
+    case "C":
+    case "D":
+      return new Set(READ_TOOL_NAMES);
+    default:
+      return null;
+  }
 }
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
@@ -322,9 +428,17 @@ const HEALTH_KEYWORDS_PT = [
   "fartlek", "intervalos", "z1", "z2", "z3", "z4", "z5", "zona ",
   "vdot", "vo2", "acwr",
   // Nutrição
-  "nutrição", "caloria", "kcal", "proteína", "hidratos", "gordura",
-  "carbo", "refeição", "alimentação", "comer", "dieta", "suplemento",
+  // Radicais antes do sufixo inflectido (-ção → -ções) para que includes()
+  // apanhe singular e plural (ex: "refeiç" cobre "refeição" e "refeições").
+  // "nutrição" omitido — "nutri" já cobre "nutrição", "nutricional", etc.
+  // "sugest" é intencional: apanha "sugestão", "sugestões de refeição",
+  // "sugere-me um lanche", etc. — falso-positivos aceitáveis (o Gemini faz
+  // a triagem fina via "on_topic"). "completa" omitido: coincidiria com
+  // "completamente", "completar" — demasiado genérico.
+  "nutri", "caloria", "kcal", "proteína", "hidratos", "gordura",
+  "carbo", "refeiç", "alimentaç", "comer", "dieta", "suplemento",
   "vitamina", "ferro", "sódio", "glicogénio", "fibra",
+  "sugest", "receita", "ementa", "petisco", "lanche", "saudáv",
   // Hidratação
   "hidrat", "água", "sede", "ml ",
   // Corpo / composição
@@ -940,7 +1054,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   }
 
   return `Plano criado com ${rows.length} treino(s), de ${period_start} a ${period_end}. ` +
-    `Está pendente de aceitação — o atleta vê-o no ecrã Início e decide se aceita.`;
+    `Está pendente de aceitação — o atleta revê-o e decide aqui mesmo no Coach (aparece também no ecrã Início). Não o mandes para outro ecrã.`;
 }
 
 // Limites de bom senso por campo — travam valores impossíveis para qualquer
@@ -1008,10 +1122,21 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
       "e não tentes de novo nesta resposta.";
   }
 
-  // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil
+  // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil.
+  // BUG CORRIGIDO: a maioria destas colunas é `numeric` no Postgres, que o
+  // PostgREST devolve como STRING no JSON (ex.: "1900"), enquanto `v` é
+  // sempre um Number (calculado acima). "1900" !== 1900 é sempre true em JS
+  // — esta guarda nunca detetava "sem mudança nenhuma" para estes campos,
+  // e cada proposta (mesmo com valores idênticos aos já aceites) passava
+  // como "mudança real", criando uma proposta nova a cada vez que a Carol
+  // repetia os mesmos números. Só `water_goal_ml` (integer) escapava ao bug.
+  // Normalizar os dois lados para Number resolve o type mismatch. `v` nunca
+  // é NaN aqui (já passou por Number.isFinite acima), por isso não é preciso
+  // tratar esse caso — se o campo ainda não existir no perfil, Number(undefined)
+  // dá NaN, que corretamente conta como "diferente" de qualquer valor proposto.
   const realChanges: Record<string, any> = {};
   for (const [k, v] of Object.entries(updates)) {
-    const currentVal = profile ? profile[k] : null;
+    const currentVal = profile ? Number(profile[k]) : null;
     if (currentVal !== v) {
       realChanges[k] = v;
       realChanges[GOAL_META[k].flag] = true;
@@ -1023,6 +1148,22 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   }
 
   const rationale = typeof args?.rationale === "string" && args.rationale.trim() ? args.rationale.trim() : null;
+
+  // Uma nova proposta substitui qualquer proposta anterior ainda por decidir —
+  // sem isto, cada chamada a update_goals empilhava outra linha "proposto" na
+  // fila (ver Coach.jsx "Objetivos por rever (N)"), obrigando o atleta a
+  // decidir sobre propostas antigas e já desatualizadas em vez de só a mais
+  // recente. Não há coluna de estado extra para "substituído" (check
+  // constraint só aceita proposto/aceite/recusado), por isso reaproveita-se
+  // "recusado" — semanticamente correto: a proposta anterior deixou de ser a
+  // recomendação atual do Coach.
+  const { error: supersedeErr } = await sb
+    .from("coach_goal_proposals")
+    .update({ status: "recusado" })
+    .eq("user_id", userId)
+    .eq("status", "proposto");
+  if (supersedeErr) return `Erro ao substituir propostas anteriores: ${supersedeErr.message}`;
+
   const { error: propErr } = await sb
     .from("coach_goal_proposals")
     .insert({
@@ -1038,10 +1179,16 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
     .filter(f => !f.endsWith("_set_by_coach"))
     .map(f => `${GOAL_META[f].label}: ${profile[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
 
-  return `Proposta de alteração de metas criada com SUCESSO e enviada para a persiana (Modal Bottom Sheet) do atleta (status: proposto). ` +
+  // "persiana"/"Modal Bottom Sheet" é o nome interno do componente — nunca
+  // deve chegar à fala da Carol (jargão de implementação, sem significado
+  // para o atleta). Ao contrário do plano de treino (que também aparece no
+  // ecrã Início, ver runProposeTrainingPlan), a proposta de objetivos só
+  // existe no ecrã do Coach — dizer "ecrã Início" aqui mandaria o atleta
+  // procurar no sítio errado.
+  return `Proposta de alteração de metas criada com SUCESSO e disponível para o atleta rever aqui no Coach (estado: proposto). ` +
     `Campos a alterar: ${parts.join(", ")}. ` +
-    `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do utilizador na persiana. ` +
-    `Diz ao atleta que enviaste uma proposta de alteração de objetivos para a persiana para ele Aceitar ou Recusar.`;
+    `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do atleta aqui no Coach. ` +
+    `Diz ao atleta que enviaste uma proposta de alteração de objetivos para ele rever e Aceitar ou Recusar aqui mesmo, no botão que vai aparecer.`;
 }
 
 // ── Sugestões alimentares ────────────────────────────────────────────────
@@ -1167,6 +1314,73 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
   if (saved.length === 0) return "Nenhuma sugestão válida para gravar.";
   return `Sugestões alimentares gravadas para: ${saved.sort().join(", ")}. Estão visíveis no ecrã Início.`;
+}
+
+const NOTE_CATEGORIES = new Set([
+  "preferencia_alimentar", "limitacao_fisica", "disponibilidade",
+  "objetivo_pessoal", "preferencia_treino", "contexto_vida", "outro",
+]);
+const MAX_NOTES = 40; // teto de bom senso: a memória é curada, não um diário
+
+// deno-lint-ignore no-explicit-any
+export async function runSaveCoachNote(sb: any, userId: string, args: any): Promise<string> {
+  const category = typeof args?.category === "string" ? args.category.trim() : "";
+  const note = typeof args?.note === "string" ? args.note.trim() : "";
+  const replaces = typeof args?.replaces_note_id === "string" ? args.replaces_note_id.trim() : "";
+
+  if (!NOTE_CATEGORIES.has(category)) {
+    return `Erro: category inválida. Usa uma de: ${[...NOTE_CATEGORIES].join(", ")}.`;
+  }
+  if (note.length < 3 || note.length > 500) {
+    return "Erro: note tem de ter entre 3 e 500 caracteres.";
+  }
+
+  // Substituir é apagar-e-inserir: mantém a memória limpa de factos que
+  // deixaram de ser verdade (ex.: passou a vegetariano depois de não o ser).
+  if (replaces) {
+    const { error: delErr } = await sb.from("coach_notes").delete().eq("id", replaces).eq("user_id", userId);
+    if (delErr) return `Erro ao substituir a nota anterior: ${delErr.message}`;
+  }
+
+  const { count } = await sb
+    .from("coach_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if ((count ?? 0) >= MAX_NOTES) {
+    return `Erro: já existem ${count} notas (máximo ${MAX_NOTES}). Substitui uma existente com replaces_note_id em vez de acrescentar.`;
+  }
+
+  const { error } = await sb
+    .from("coach_notes")
+    .insert({ user_id: userId, category, note, source: "coach" });
+  if (error) {
+    // 23505 = unique_violation no índice (user_id, category, lower(trim(note))):
+    // o facto já estava registado, o que não é um erro real.
+    if (error.code === "23505") {
+      return `Esse facto já estava registado ("${note}"). NÃO digas ao atleta que o guardaste agora.`;
+    }
+    return `Erro ao guardar a nota: ${error.message}`;
+  }
+
+  return `Nota guardada (${category}): "${note}". Passa a estar sempre presente no teu contexto, ` +
+    `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
+}
+
+/** Formata as notas para o prompt. Cada linha leva o id, para o modelo poder
+ *  indicar em replaces_note_id qual a nota a substituir. */
+// deno-lint-ignore no-explicit-any
+export function buildCoachNotesContext(notes: any[] | null): string | null {
+  if (!notes || notes.length === 0) return null;
+  // deno-lint-ignore no-explicit-any
+  const byCat: Record<string, any[]> = {};
+  for (const nt of notes) (byCat[nt.category] ||= []).push(nt);
+  const lines: string[] = [];
+  for (const [cat, list] of Object.entries(byCat)) {
+    lines.push(`  ${cat}:`);
+    for (const nt of list) lines.push(`    - ${nt.note} [id: ${nt.id}]`);
+  }
+  return "MEMÓRIA DO ATLETA (factos duradouros que já registaste — valem SEMPRE, mesmo que " +
+    "a conversa recente não os mencione; usa-os em todas as propostas):\n" + lines.join("\n");
 }
 
 // ── Agenda de provas ─────────────────────────────────────────────────────
@@ -1672,6 +1886,9 @@ export function buildSystemInstruction(
   acwrLine: string | null,
   raceEventsContext: string | null,
   planContext: string | null,
+  // Opcional: os testes antigos chamam sem este argumento, e um coach sem
+  // notas registadas é o estado normal de quem acabou de comecar.
+  coachNotesContext: string | null = null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -1716,6 +1933,11 @@ export function buildSystemInstruction(
     `Se não houver nada relevante, cumprimenta naturalmente e aguarda.\n\n` +
     // ── Uso dos Dados ─────────────────────────────────────────────────────────
     `## Uso dos Dados\n` +
+    `- Tens três fontes distintas, e confundi-las é a causa mais comum de más respostas:\n` +
+    `  1. DADOS ESTRUTURADOS (metas, treinos, refeições, avaliações, provas) — a verdade factual. Cita os valores exatos.\n` +
+    `  2. MEMÓRIA DO ATLETA — factos duradouros que registaste (preferências, limitações, disponibilidade). Valem SEMPRE, mesmo que ninguém os mencione há semanas. Aplica-os a TODAS as propostas sem esperar que ele repita.\n` +
+    `  3. HISTÓRICO DA CONVERSA — só as últimas mensagens. Serve para saber o que está a acontecer AGORA (o que ele acabou de pedir, decidir ou recusar). NÃO é fonte fiável para factos antigos: se algo importante só existe aí, provavelmente já caiu fora da janela.\n` +
+  `- Por isso: assim que o atleta revelar um facto duradouro, GUARDA-O com save_coach_note em vez de contares com o histórico para o recordar. É o que impede que voltes a propor daqui a duas semanas exatamente o que ele já disse que não quer.\n` +
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
@@ -1726,19 +1948,47 @@ export function buildSystemInstruction(
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +
     `(ex.: "Hoje está previsto um contínuo de 6 km"). Não o repitas desnecessariamente ao longo da conversa.\n\n` +
     // ── Ferramentas ───────────────────────────────────────────────────────────
-    `## Ferramentas Internas — Regra de Autorização\n` +
-    `NUNCA chames uma ferramenta (propose_training_plan, update_goals, save_meal_suggestions) sem autorização explícita do atleta nessa mesma troca de mensagens.\n` +
-    `O fluxo obrigatório é sempre:\n` +
-    `1. Apresenta o que pretendes fazer e porquê — ex.: "Com base nos teus dados, sugiro ajustar as calorias para 1900 kcal e a proteína para 160 g/dia. Posso atualizar?"\n` +
-    `2. Aguarda uma confirmação clara do atleta ("sim", "vai em frente", "atualiza", ou equivalente inequívoco).\n` +
-    `3. Só então chamas a ferramenta.\n` +
-    `4. Confirma que a ação correu: "Feito — os objetivos estão atualizados no teu perfil." / "O plano está no ecrã Início, pendente de aceitação."\n` +
-    `Esta regra aplica-se a QUALQUER alteração de dados — planos de treino, metas nutricionais, sugestões alimentares. Nunca ages sem o atleta dizer que quer avançar.\n\n` +
+    `## Ferramentas Internas — Quando Chamar\n` +
+    `As ferramentas de escrita criam PROPOSTAS que o atleta aceita ou recusa num ecrã próprio — chamar a ferramenta NÃO altera nada de forma definitiva. Por isso NÃO pedes confirmação em texto antes de as chamar: a confirmação é o ecrã de aceitação.\n` +
+    `- Quando concluíres que há algo a propor, chama a ferramenta NA MESMA RESPOSTA em que falas disso.\n` +
+    `- NUNCA apresentes valores ou um plano só em texto à espera que o atleta diga "sim" — sem a ferramenta ele não tem nada para aceitar e fica preso.\n` +
+    `- NUNCA digas que algo "já está atualizado", "já guardei" ou "já tens disponível" como se estivesse concluído — está PROPOSTO, à espera da decisão dele.\n` +
+    `- Exceção: save_meal_suggestions grava DIRETO, sem ecrã de revisão. Só a usas quando o atleta pediu explicitamente sugestões alimentares avulsas para dias concretos.\n\n` +
+    `## ⚠️ ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS\n` +
+    `Antes de responder, classifica SEMPRE a última mensagem do atleta num destes 5 casos. O caso determina que ferramentas podes chamar neste turno. Ferramentas fora da lista PERMITIDO são PROIBIDAS, mesmo que outra regra deste prompt pareça exigi-las.\n\n` +
+    `CASO A — "Aceitei os novos objetivos."\n` +
+    `  Estado: os valores JÁ ESTÃO gravados no perfil. Não há nada a confirmar nem a recalcular.\n` +
+    `  PERMITIDO: propose_training_plan · PROIBIDO: update_goals, save_meal_suggestions\n` +
+    `  AÇÃO: chama propose_training_plan (replace_active_plan=true; de hoje até ao fim do plano ativo, máx 14 dias; meal_suggestion completa em cada dia).\n` +
+    `  RESPOSTA: UMA frase a dizer que a proposta está à espera de revisão AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início nem para outro sítio, a proposta abre onde ele já está. NÃO descrevas o conteúdo do plano (ele vai vê-lo), NÃO assumas que vai aceitar.\n\n` +
+    `CASO B — "Recusei os novos objetivos."\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: pergunta o que não encaixou nos valores (quais e porquê). Só na resposta SEGUINTE, já com o motivo dele, propões valores novos.\n\n` +
+    `CASO C — "Aceitei o plano."\n` +
+    `  Estado: FIM DE CICLO. Está tudo decidido — objetivos e plano.\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: só uma reação curta, positiva e específica (menciona um treino concreto do plano ou o objetivo que serve). Mais nada.\n\n` +
+    `CASO D — "Recusei o plano."\n` +
+    `  PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions\n` +
+    `  AÇÃO: pergunta o que não encaixou (volume, dias, tipo de treino, refeições). Só na resposta SEGUINTE, já com o motivo, propões um plano ajustado.\n` +
+    `  ERRO GRAVE a evitar: propor objetivos novos. O que foi recusado foi o PLANO — os objetivos não estão em causa e NÃO se mexem.\n\n` +
+    `CASO F — O atleta responde à pergunta que fizeste depois de uma recusa (casos B ou D)\n` +
+    `  Reconhece-se assim: a TUA mensagem anterior foi a perguntar o que não encaixou, e esta é a resposta dele.\n` +
+    `  AÇÃO: retoma o que foi recusado, já corrigido com o que ele acabou de dizer — e nada mais.\n` +
+    `    · Recusou o PLANO (caso D) → chama propose_training_plan com o ajuste pedido. PROIBIDO update_goals: ele pediu uma correção ao PLANO, não aos objetivos.\n` +
+    `    · Recusou os OBJETIVOS (caso B) → chama update_goals com os valores corrigidos. PROIBIDO propose_training_plan.\n` +
+    `  NUNCA reinicies o ciclo a propor objetivos outra vez — isso ignora o que ele te disse e obriga-o a repetir o processo todo.\n\n` +
+    `NOTA TRANSVERSAL — preferências alimentares NÃO são objetivos:\n` +
+    `  Uma preferência ou restrição alimentar (vegetariano, vegano, sem glúten, sem lactose, mais peixe, menos carne vermelha...) NÃO exige alterar objetivos numéricos. As calorias e os macros mantêm-se exatamente iguais; o que muda é a composição dos alimentos que os cumprem.\n` +
+    `  NUNCA chames update_goals por causa de uma mudança de preferência alimentar. Propõe o plano/refeições com os MESMOS macros, só com alimentos diferentes.\n\n` +
+    `CASO E — Mensagem escrita pelo próprio atleta (tudo o resto)\n` +
+    `  Aplica-se o resto deste prompt normalmente.\n` +
+    `  Regra de ouro: uma proposta de objetivos só nasce de um pedido ou necessidade do atleta — NUNCA como reação a ele ter aceite ou recusado alguma coisa.\n\n` +
     // ── Ritmo de Conversa ──────────────────────────────────────────────────────
     `## Ritmo de Conversa — Uma Decisão de Cada Vez\n` +
     `Quando há mais do que uma decisão a tomar em sequência, **não as empilhes na mesma mensagem**.\n` +
     `Exemplo errado: "Posso atualizar os teus objetivos de calorias? E aproveitando, queres também um novo plano de treino?" — obriga o atleta a responder "sim e sim", o que não é conversa natural.\n` +
-    `Exemplo correto: "Com base nos dados, sugiro ajustar as calorias para 1900 kcal — posso atualizar? (Após confirmares, falaremos sobre o plano de treino.)"\n` +
+    `Exemplo correto: propor SÓ os objetivos (com a ferramenta) e dizer "Enviei-te a proposta de objetivos para reveres. Assim que decidires, avançamos para o plano." — uma decisão de cada vez, e a decisão acontece no ecrã de aceitação, não por texto.\n` +
     `Regra: uma pergunta de confirmação/ação por turno. Podes telegrafar que há uma próxima questão, mas só a fazes depois de o atleta responder à atual.\n` +
     `Perguntas puramente informativas (sem ação associada) podem ser agrupadas quando for natural — ex.: "Tens uma prova específica em mente? E há alguma razão particular para os 4 kg?"\n\n` +
     // ── Recusas e Segurança ───────────────────────────────────────────────────
@@ -1989,8 +2239,6 @@ export function buildSystemInstruction(
     `Distribuição por nível (medir por TEMPO nas zonas, não n.º de sessões):\n` +
     `  Iniciante: 90-100 % Z1/Z2 · 0-10 % Z3 (modelo 80/20 NÃO se aplica — exige ≥6-12 sem contínuas e ≥20-25 km/sem já construídos)\n` +
     `  Básico:    85-90 % Z1/Z2 · 10-15 % Z3/Z4\n` +
-    `  Se o atleta pedir explicitamente um novo plano, substituir o plano atual, eliminar/cancelar o plano atual, ou responder a uma confirmação (ex.: "substitui", "cancela o plano", "elimina o plano", "cria um novo plano", "faz outro plano", "sim", "quero na mesma", "14 dias", ou qualquer pedido claro de plano), CHAMA IMEDIATAMENTE a ferramenta propose_training_plan com replace_active_plan=true NA MESMA RESPOSTA. É ESTRITAMENTE PROIBIDO hesitar, voltar a fazer avisos repetidos ou ficar preso em loop sem chamar a ferramenta.\n` +
-    `  Se o utilizador não tiver especificado a duração (7 ou 14 dias), usa 14 dias por omissão e CHAMA propose_training_plan diretamente.\n\n` +
     `  Médio:     80 % Z1/Z2 · 20 % Z3/Z5 (modelo 80/20 clássico, Fitzgerald/Seiler)\n` +
     `  Avançado:  75-80 % Z1/Z2 · 20-25 % Z3/Z5 (polarizado ou piramidal conforme fase)\n` +
     `Quando introduzir trabalho de qualidade (≥Z3):\n` +
@@ -2006,6 +2254,35 @@ export function buildSystemInstruction(
     `SINAL VERMELHO: cadência crónica <155 spm associa-se a overstriding e +15-20 % de força de impacto no joelho/anca.\n` +
     `Se a cadência de um run for <155 spm (assinalado com ⚠cadência<155 no contexto): sugerir aumento de +5-10 % sobre a cadência ATUAL do próprio atleta — nunca um valor absoluto.\n` +
     `Fora disso (155-180 spm em Z1-Z3), não comentar cadência — é ruído.\n\n` +
+    `DEFINIÇÃO DE "PLANO" — TREINO + NUTRIÇÃO (SEMPRE):\n` +
+    `Sempre que o atleta mencionar "plano", "novo plano", "propõe plano", "editar plano" ou ` +
+    `variantes, o plano é SEMPRE treino + nutrição juntos — nunca apenas um deles. ` +
+    `Um plano completo inclui as sessões de treino E as sugestões alimentares para cada dia ` +
+    `(pré-treino, pós-treino, dias de descanso). Esta é a norma por defeito.\n\n` +
+    `DIAGNÓSTICO ANTES DE PROPOR OU EDITAR — REGRA CRÍTICA:\n` +
+    `Quando o atleta pede "novo plano", "propõe novo plano" ou qualquer variante:\n` +
+    `  • Se existir um plano ativo em curso: NUNCA cries imediatamente. Pergunta primeiro o que ` +
+    `não correu bem ou o que quer diferente — tanto a nível de treino como de nutrição. ` +
+    `Só com essa informação consegues propor algo melhor e aprender com o anterior.\n` +
+    `  • Se NÃO existir plano ativo: pergunta o objetivo, a disponibilidade semanal, ` +
+    `restrições alimentares e qualquer condicionante antes de avançar.\n` +
+    `  • PROIBIDO criar o plano sem diagnóstico: se criares sem perguntar, podes repetir ` +
+    `exatamente os erros que levaram o atleta a abandonar o plano anterior.\n\n` +
+    `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "adaptar o plano", ` +
+    `"verificar o plano e sugerir adaptações" ou qualquer variante de modificação:\n` +
+    `  • Vai DIRETAMENTE à pergunta diagnóstica. NÃO resumas o plano atual, NÃO expliques os ` +
+    `objetivos nutricionais, NÃO confirmes que "está tudo bem" — o atleta sabe o que tem.\n` +
+    `  • A pergunta cobre SEMPRE treino E nutrição: "Que aspeto gostarias de adaptar — ` +
+    `dias de treino, intensidade, volume, duração, ou as sugestões alimentares?"\n` +
+    `  • Resposta máxima: 1 parágrafo + 1 pergunta. Sem introduções, sem resumos do estado atual.\n` +
+    `  • Explica que recrias uma nova proposta (treino + nutrição) com as alterações pedidas ` +
+    `para o atleta aceitar no Início — não editas bloco a bloco.\n\n` +
+    `EM AMBOS OS CASOS — PROIBIDO:\n` +
+    `  ❌ Resumir o plano ou os objetivos atuais quando o atleta quer mudar algo — ele sabe o que tem.\n` +
+    `  ❌ Defender ou justificar o plano/objetivos atuais quando o atleta quer mudar algo.\n` +
+    `  ❌ Criar um plano sem primeiro perceber porque o anterior falhou ou o que quer diferente.\n` +
+    `  ❌ Responder ao pedido de "plano" ou "adaptar" com análise de macros/objetivos sem perguntar nada.\n` +
+    `  ❌ Omitir a componente nutricional na pergunta diagnóstica — plano é sempre treino + nutrição.\n\n` +
     `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
     `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
     `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
@@ -2177,16 +2454,26 @@ export function buildSystemInstruction(
   }
 
   if (coachContext && coachContext.trim()) {
-    sys += `\n\nPerfil e objetivos do utilizador (definido pelo próprio):\n${coachContext.trim()}`;
+    // Campo de texto livre A DESCONTINUAR (ver Perfil > Coach). Continua a ser
+    // lido enquanto tiver conteudo, mas os factos novos vao para a memoria
+    // estruturada: texto corrido obriga a reinterpretar a mesma prosa a cada
+    // resposta, e nao ha forma de corrigir um facto isolado sem reescrever tudo.
+    sys += `\n\nPerfil e objetivos do utilizador (texto livre, campo A DESCONTINUAR — se um facto daqui for relevante e ainda nao constar da MEMORIA DO ATLETA, regista-o la com save_coach_note em vez de continuares a depender deste campo):\n${coachContext.trim()}`;
+  }
+
+  if (coachNotesContext && coachNotesContext.trim()) {
+    sys += `\n\n${coachNotesContext.trim()}`;
   }
 
   // Instruções de metas — o modelo só menciona update_goals quando autorizado,
   // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
   sys += biometrics.coach_can_set_nutrition_goals
     ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
-      `1. SÓ DEVES PROPOR alterar objetivos (calorias, proteína, hidratos, gordura, água, peso-alvo) se os valores calculados forem EFETIVAMENTE DIFERENTES dos objetivos atuais do atleta no perfil. Se forem idênticos aos atuais, NÃO chames a ferramenta update_goals e NÃO sugiras alterar metas.\n` +
-      `2. Quando existirem alterações reais a fazer, chama a ferramenta update_goals. Esta ferramenta envia a proposta para a persiana (Modal Bottom Sheet) com o estado "proposto" para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
-      `3. NUNCA digas ao atleta que "já atualizaste o perfil" — diz sempre que "enviaste a proposta de alteração de objetivos para a persiana para ele rever e aceitar/recusar".`
+      `1. OBRIGATÓRIO (aplica-se só no CASO E do ESQUEMA DE DECISÃO — nos casos A-D esta regra NÃO se aplica e update_goals está PROIBIDO): Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção 1: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas. Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a)): se o atleta acabou de confirmar que aceitou uma proposta de objetivos nesta troca de mensagens, usa os valores JÁ ACEITES tal como estão nos dados do perfil que te foram dados — não os recalcules nem os ajustes de novo só porque a tua própria conta interna dá um número ligeiramente diferente; isso NÃO conta como "discutir novos valores" para efeitos desta regra.\n` +
+      `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
+      `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
+      `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). Exceção só por limite técnico: se esse período tiver MAIS de 14 dias a partir de hoje (não deveria acontecer — a doutrina Issurin 2008/Daniels 2021/Bompa 2015 e o próprio limite MAX_PLAN_ITEMS já capam qualquer plano a 7-14 dias por microciclo), cobre só os primeiros 14 dias e diz ao atleta que o resto fica para o próximo microciclo, a reavaliar no fim deste (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
@@ -2467,13 +2754,24 @@ async function handler(req: Request): Promise<Response> {
 
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
+    // ── Memória de longo prazo (ver runSaveCoachNote) ────────────────────
+    const { data: coachNotes } = await sb
+      .from("coach_notes")
+      .select("id, category, note")
+      .eq("user_id", userId)
+      .order("category", { ascending: true })
+      .order("updated_at", { ascending: false });
+    const coachNotesContext = buildCoachNotesContext(coachNotes);
+
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
-    const { data: history } = await sb
+    const { data: recentHistory } = await sb
       .from("coach_messages")
       .select("role, content")
       .eq("user_id", userId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(MAX_HISTORY);
+    // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
+    const history = (recentHistory || []).slice().reverse();
 
     // ── Pré-filtro de âmbito (evita chamar a API para off-topic óbvio) ──
     // Verificação leve antes de guardar a mensagem ou construir o prompt.
@@ -2492,6 +2790,7 @@ async function handler(req: Request): Promise<Response> {
         usage: null,
         plan_proposed: false,
         goals_updated: false,
+        goal_proposed: false,
       });
     }
 
@@ -2529,6 +2828,7 @@ async function handler(req: Request): Promise<Response> {
       acwrLine,
       raceEventsContext,
       planContext,
+      coachNotesContext,
     );
 
     // deno-lint-ignore no-explicit-any
@@ -2539,6 +2839,12 @@ async function handler(req: Request): Promise<Response> {
       })),
       { role: "user", parts: [{ text: message }] },
     ];
+
+    // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
+    // É a mesma regra do ESQUEMA DE DECISÃO no prompt, mas aqui é imposta:
+    // o que não vai na lista o modelo não consegue chamar.
+    const turnCase = classifyTurn(message, history);
+    const allowedTools = allowedToolsFor(turnCase);
 
     // ── Loop de function calling ──────────────────────────────────────────
     // tools + response_schema coexistem: quando o modelo decide chamar uma
@@ -2553,7 +2859,7 @@ async function handler(req: Request): Promise<Response> {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemInstruction }] },
             contents,
-            tools: buildTools(),
+            tools: buildTools(allowedTools),
             generationConfig: {
               temperature: 0.7,
               // Sem thinkingConfig de propósito: o campo para desativar/limitar
@@ -2565,7 +2871,15 @@ async function handler(req: Request): Promise<Response> {
               // maxOutputTokens fica bem acima do necessário para a resposta,
               // para sobrar espaço aos tokens de raciocínio interno e a
               // resposta não ser cortada a meio.
-              maxOutputTokens: 4000,
+              // Subido de 4000 para 8192: confirmado em produção que uma
+              // chamada a propose_training_plan cobrindo um plano de vários
+              // dias, cada um com meal_suggestion COMPLETA (pequeno-almoço,
+              // lanches, almoço, jantar, macros por refeição — ver
+              // PROPOSE_PLAN_TOOL), facilmente ultrapassava 4000 tokens só
+              // nos argumentos da function call. A resposta ficava truncada
+              // a meio do JSON, rawText saía vazio, e o cliente via "O coach
+              // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
+              maxOutputTokens: 8192,
               response_mime_type: "application/json",
               response_schema: RESPONSE_SCHEMA,
             },
@@ -2584,6 +2898,7 @@ async function handler(req: Request): Promise<Response> {
     // recarregar os itens para a proposta aparecer sem refrescar a página.
     let planWasProposed = false;
     let goalsWereUpdated = false;
+    let goalWasProposed = false;
 
     let geminiJson: Record<string, unknown> | undefined;
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -2642,6 +2957,9 @@ async function handler(req: Request): Promise<Response> {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
+            goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
+        } else if (name === "save_coach_note") {
+          result = await runSaveCoachNote(sb, userId, args || {});
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
         } else {
@@ -2688,6 +3006,7 @@ async function handler(req: Request): Promise<Response> {
           usage: totalUsage,
           plan_proposed: false,
           goals_updated: false,
+        goal_proposed: false,
         });
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
@@ -2720,6 +3039,7 @@ async function handler(req: Request): Promise<Response> {
         usage: totalUsage,
         plan_proposed: planWasProposed,
         goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
       });
     }
 
@@ -2730,6 +3050,7 @@ async function handler(req: Request): Promise<Response> {
       usage: totalUsage,
       plan_proposed: planWasProposed,
       goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
     });
 
   } catch (e) {

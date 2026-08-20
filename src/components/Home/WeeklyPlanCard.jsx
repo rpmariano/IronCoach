@@ -3,6 +3,7 @@ import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
+import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
 import { useCarouselHaptics } from '../../utils/haptics';
@@ -250,10 +251,11 @@ export function PlanDayCard({
                 {item.meal_suggestion && (
                   <div className="wpc-info-box" style={{ marginTop: '12px' }}>
                     <details className="wpc-info-box-details">
-                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none' }}>
+                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <Award size={14} /> Sugestão alimentar e nutricional
                         </div>
+                        <ChevronDown size={14} className="details-chevron" />
                       </summary>
                       <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
                         <CoachText>{item.meal_suggestion}</CoachText>
@@ -374,14 +376,14 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               {days.map((_, idx) => (
                 <button 
                   key={idx} 
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
                 />
               ))}
             </div>
@@ -476,9 +478,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
             <span className="wpc-lbl">Plano de {window.days} dias</span>
             <button 
               onClick={() => {
-                import('../../store').then(({ useAppStore }) => {
-                  useAppStore.getState().setCoachIntent('adapt_plan');
-                });
+                useAppStore.getState().setCoachIntent('adapt_plan');
                 onNav('coach');
               }}
               className="text-xs font-semibold px-2 py-1 rounded-md"
@@ -518,14 +518,14 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               {days.map((_, idx) => (
                 <button 
                   key={idx} 
                   type="button"
                   onClick={() => scrollTo(idx)}
                   aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-[var(--accent)]' : 'w-1.5 bg-[var(--accent)] opacity-40'}`}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
                 />
               ))}
             </div>

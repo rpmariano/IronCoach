@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { LayoutGrid, Utensils, Dumbbell, Bot, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
+import { Bot, LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 
 const TAB_MODULE_COLORS = {
@@ -90,10 +90,22 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col relative" style={{ background: 'var(--page-bg)' }}>
+    <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
-      {/* Header fixo no topo */}
-      <div className="sticky top-0 z-20" style={{ background: 'color-mix(in srgb, var(--surf-950) 95%, transparent)', backdropFilter: 'blur(8px)', borderBottom: '1px solid var(--brd-800)' }}>
+      {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
+          composição no Chromium em que o desfoque deixa de ser recalculado
+          a meio do scroll de páginas longas (ex.: o formulário de Prova
+          depois de "Obter informação do site"), ficando o texto de baixo
+          nítido e a aparecer através do cabeçalho em vez de desfocado — na
+          prática, o cabeçalho "desaparece". O menu inferior já usa fixed e
+          nunca teve este problema; mesmo padrão aqui (centrado com
+          left-1/2 -translate-x-1/2, como o nav). main ganha padding-top
+          equivalente à altura do cabeçalho para compensar ele ter saído do
+          fluxo normal. will-change-transform força uma camada de
+          composição própria para o cabeçalho — sem isto, um scroll grande
+          e abrupto (ex.: o próprio reset de scroll ao trocar de separador)
+          ainda conseguia repetir o mesmo problema mesmo já fixed. */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 z-20 w-full max-w-md bg-[#0f172a]/70 backdrop-blur-3xl border-b border-white/10 will-change-transform">
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
@@ -115,7 +127,7 @@ export default function Layout({ children }) {
       </div>
 
       {/* Conteúdo */}
-      <main ref={mainRef} className="flex-1 px-4 pt-4 pb-28 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-28 overflow-y-auto">
         {children}
       </main>
 
@@ -135,15 +147,21 @@ export default function Layout({ children }) {
             style={{ bottom: 90 }}
             ref={fabRef}
           >
-            <FabItem 
+            <FabItem
               label="Nova prova"
               color="var(--mod-prova)"
-              icon={<Trophy size={14} />} 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                closeFab(); 
-                goRegister('coach', 'race');
-              }} 
+              icon={<Trophy size={14} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeFab();
+                // Ao contrário dos outros registos (cada um "mora" no seu
+                // separador — meal em nutricao, etc.), a Prova não tem
+                // separador próprio; passar o activeTab atual em vez de um
+                // fixo 'coach' preserva onde o atleta estava, para o
+                // formulário conseguir voltar exatamente aí ao cancelar/
+                // fechar sem gravar (ver RunAgenda.jsx, initialTab).
+                goRegister(activeTab, 'race');
+              }}
             />
             <FabItem
               label="Registar refeição"
@@ -191,7 +209,7 @@ export default function Layout({ children }) {
 
       {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-white border-t border-slate-200/80 shadow-lg"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-[#0f172a]/70 backdrop-blur-3xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
       >
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
         <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />
@@ -289,7 +307,7 @@ function FabItem({ label, color, icon, onClick }) {
     <button
       onClick={onClick}
       type="button"
-      className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white border border-slate-200/80 shadow-md hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
+      className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white/10 backdrop-blur-xl border border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.3)] text-slate-100 hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
     >
       <span
         className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
@@ -297,7 +315,7 @@ function FabItem({ label, color, icon, onClick }) {
       >
         {icon}
       </span>
-      <span className="text-xs font-bold text-slate-800 whitespace-nowrap">{label}</span>
+      <span className="text-xs font-bold text-slate-100 whitespace-nowrap">{label}</span>
     </button>
   );
 }

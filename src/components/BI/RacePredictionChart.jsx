@@ -28,7 +28,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       // Draw simple annotation in top right
       ctx.save();
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.shadowColor = 'rgba(0,0,0,0.1)';
+      ctx.shadowColor = 'rgba(255,255,255,0.15)';
       ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.roundRect(chartArea.right - 130, chartArea.top + 10, 120, 50, 8);
@@ -39,7 +39,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       ctx.font = '10px system-ui';
       ctx.fillText(prediction.raceName || 'Previsão Prova', chartArea.right - 120, chartArea.top + 25);
       
-      ctx.fillStyle = '#0f172a';
+      ctx.fillStyle = '#f8fafc';
       ctx.font = 'bold 14px system-ui';
       ctx.fillText(formatTime(prediction.predictedSeconds), chartArea.right - 120, chartArea.top + 45);
       ctx.restore();
@@ -68,29 +68,50 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        titleColor: '#0f172a',
-        bodyColor: '#0f172a',
-        borderColor: 'rgba(0,0,0,0.1)',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#f8fafc',
+        bodyColor: '#f8fafc',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
       }
     },
     scales: {
       x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(0, 0, 0, 0.05)' } }
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
     }
   };
 
+  // Com poucas corridas o VDOT não tem histórico para desenhar tendência —
+  // ficava um eixo 0 a 1.0 vazio, com a única informação real (a previsão)
+  // presa dentro do canvas, desenhada pelo predictionPlugin só no canto.
+  // Mostra-se a mesma previsão como texto normal, sem prometer uma
+  // tendência que ainda não existe.
+  const hasTrend = vdotTrend.length >= 2;
+
   return (
-    <div className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] ${className}`}>
+    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex items-start mb-3">
         <h3 className="text-[12px] font-bold text-slate-700">Evolução VDOT & Previsão de Prova</h3>
         <MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />
       </div>
-      <div className="h-64 relative">
-        <Line data={data} options={options} plugins={[predictionPlugin]} />
-      </div>
+      {hasTrend ? (
+        <div className="h-64 relative">
+          <Line data={data} options={options} plugins={[predictionPlugin]} />
+        </div>
+      ) : prediction ? (
+        <div className="flex items-center justify-between gap-3 py-2">
+          <p className="text-[11px] text-slate-500 leading-snug max-w-[65%]">
+            Regista mais corridas para veres a evolução do VDOT ao longo do tempo.
+          </p>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] text-slate-500">{prediction.raceName || 'Previsão'}</p>
+            <p className="text-lg font-bold text-slate-100">{formatTime(prediction.predictedSeconds)}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11px] text-slate-500 py-2">Regista corridas para veres a previsão desta prova.</p>
+      )}
     </div>
   );
 }

@@ -4,14 +4,14 @@
   color-scheme: only light;
 
   /* Brand Colors — Monocromático (Accent mapeado para Green-dark) */
-  --accent:var(--green-dark); --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:var(--green-dark);
+  --accent:#38bdf8; --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:#7dd3fc;
   --chrome:#eccea4; --chrome-dark:#c9a860; --chrome-glow:#f5ddb8;
-  --blue:#3e6b82; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
-  --green:#416e7f; --green-dark:#2d4a57; --green-glow:#5a8fa3;
+  --blue:#6f9cb2; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
+  --green:#5a8fa3; --green-dark:#2d4a57; --green-glow:#5a8fa3;
 
   /* Surfaces */
   --surf-950: #eef1f6;
-  --surf-900: #ffffff;
+  --surf-900: rgba(255,255,255,0.02);
   --surf-800: #e9edf3;
   --surf-700: #dbe2ec;
   --brd-700:  #b9c3d1;
@@ -42,12 +42,19 @@
   --mod-corpo: #6366f1;
   --mod-descanso: #64748b;
 
-  /* Gradient de botões FAB e Dashboards (Mapeadas para neutros/verde para estética monocromática) */
-  --mod-nutricao-from:var(--green-dark); --mod-nutricao-to:var(--green);
-  --mod-corpo-from:var(--green-dark);    --mod-corpo-to:var(--green);  
-  --mod-ginasio-from:var(--green-dark);  --mod-ginasio-to:var(--green);
-  --mod-corrida-from:var(--green-dark);  --mod-corrida-to:var(--green);
-  
+  /* Gradiente de identidade de cada módulo (ecrãs de criar/editar/visualizar
+     registos, Chip/AddButton "active", badges de dashboard) — -to é sempre a
+     cor base do módulo (acima), -from uma variante mais escura da mesma
+     matiz, no mesmo espírito do par -from/-to do Coach e do dourado da Prova
+     (--race-from/-to). Antes as quatro estavam todas mapeadas para o mesmo
+     --green partilhado ("estética monocromática"), o que fazia os ecrãs de
+     registo de Corrida/Ginásio/Corpo/Nutrição ficarem todos com o mesmo tom
+     neutro em vez da cor própria de cada módulo. */
+  --mod-nutricao-from:#065f46; --mod-nutricao-to:var(--mod-nutricao);
+  --mod-corpo-from:#3730a3;    --mod-corpo-to:var(--mod-corpo);
+  --mod-ginasio-from:#92400e;  --mod-ginasio-to:var(--mod-ginasio);
+  --mod-corrida-from:#1e40af;  --mod-corrida-to:var(--mod-corrida);
+
   /* Coach permanece com a sua cor única de destaque */
   --mod-coach-from:#155e75;              --mod-coach-to:#06b6d4;
 
@@ -68,54 +75,90 @@
   --data-peso:#dd3c71;
 }
 
-html, body { background: var(--page-bg); }
+html, body { 
+  /* IronHealth Premium Deep Slate & Teal Background */
+  background-color: #0f172a;
+  background-image: radial-gradient(circle at top right, rgba(45, 74, 87, 0.5) 0%, #0f172a 60%, #020617 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
 
 body {
   font-family: ui-sans-serif, system-ui, sans-serif;
-  color: #1e293b;
+  color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* ===== Overrides de cor — portados do legado ===== */
-[class~="text-white"] { color:#0f172a !important; }
-[class~="text-slate-200"] { color:#1e293b !important; }
-[class~="text-slate-300"] { color:#334155 !important; }
-[class~="text-slate-400"] { color:#475569 !important; }
-[class~="text-slate-500"] { color:#516071 !important; }
+/* [class~="text-white"] { color:#0f172a !important; } */
+/* [class~="text-slate-200"] { color:#1e293b !important; } */
+/* [class~="text-slate-300"] { color:#e2e8f0 !important; } */
+/* [class~="text-slate-400"] { color:#475569 !important; } */
+/* [class~="text-slate-500"] { color:#516071 !important; } */
 [class~="text-slate-600"] { color:#5c6b7d !important; }
 [class~="text-emerald-400"] { color:#047857 !important; }
 [class~="text-red-400"] { color:#b91c1c !important; }
 [class~="text-[var(--accent)]"] { color: var(--accent-ink) !important; }
 
-[class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; }
-[class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; }
-[class~="bg-neutral-800"] { background-color:var(--surf-800) !important; }
+/* [class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; } */
+/* [class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; } */
+/* [class~="bg-neutral-800"] { background-color:var(--surf-800) !important; } */
 [class~="bg-neutral-700"] { background-color:var(--surf-700) !important; }
 [class~="border-neutral-800"] { border-color:var(--brd-800) !important; }
 [class~="border-neutral-700"] { border-color:var(--brd-700) !important; }
 
-/* ===== Carta / card ===== */
+/* ===== Carta / card =====
+   Fundo alinhado com .module-card-contrast e com o glass premium inline
+   (bg-white/5) usado nos cartões BI — a passagem para o dark mode "deep-teal"
+   (ver commit 91a4411) atualizou essa classe e as utilities Tailwind via
+   overrides acima, mas deixou esta por migrar: o branco a 40% ainda vinha do
+   tema claro original, o que dava um retângulo cinzento "lavado" por cima do
+   fundo escuro em todos os ecrãs que usam className="card" sem uma cor de
+   fundo própria (Login, Corrida/Ginásio/Corpo BI, calendários, Água). */
 .card {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
 }
 
 .module-card-contrast {
-  background: rgba(241, 245, 249, 0.85);
-  border: 1px solid rgba(203, 213, 225, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 20px;
   padding: 16px 20px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s;
   overflow: hidden;
 }
 .module-card-contrast:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+}
+
+/* ===== Separadores que também se deslizam (Dashboard, Perfil) =====
+   Mesma mecânica dos carrosséis do Início (WeeklyPlanCard/CoachDailySummaryCard):
+   scroll nativo com snap, sem gestos escritos à mão — nunca compete com o
+   scroll vertical da página porque o browser já resolve isso sozinho. */
+.tab-swipe-carousel {
+  display: flex;
+  align-items: flex-start; /* páginas de alturas diferentes não esticam as outras */
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-swipe-carousel::-webkit-scrollbar { display: none; }
+.tab-swipe-page {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  scroll-snap-align: start;
 }
 
 /* ===== Animações ===== */
@@ -178,7 +221,7 @@ body {
   pointer-events:none;
 }
 .water-glass-ml { font-weight:800; color:#0f172a; line-height:1; }
-.water-glass-ml small { font-weight:700; color:#334155; margin-left:2px; }
+.water-glass-ml small { font-weight:700; color:#e2e8f0; margin-left:2px; }
 .water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
 /* ===== Coach bubbles ===== */
@@ -232,3 +275,26 @@ body {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* ===== OVERRIDES DARK MODE (PREMIUM) ===== */
+[class~="text-slate-900"], [class*="text-slate-900/"] { color: #f8fafc !important; }
+[class~="text-slate-800"], [class*="text-slate-800/"] { color: #f1f5f9 !important; }
+[class~="text-slate-700"], [class*="text-slate-700/"] { color: #e2e8f0 !important; }
+[class~="text-slate-600"], [class*="text-slate-600/"] { color: #cbd5e1 !important; }
+[class~="text-slate-500"], [class*="text-slate-500/"] { color: #cbd5e1 !important; }
+[class~="text-slate-400"], [class*="text-slate-400/"] { color: #cbd5e1 !important; }
+
+[class~="bg-slate-50"], [class*="bg-slate-50/"] { background-color: rgba(255, 255, 255, 0.03) !important; }
+[class~="bg-slate-100"], [class*="bg-slate-100/"] { background-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="bg-slate-200"], [class*="bg-slate-200/"] { background-color: rgba(255, 255, 255, 0.1) !important; }
+[class~="bg-white"] { background-color: rgba(255, 255, 255, 0.02) !important; }
+[class~="bg-white/80"] { background-color: rgba(255, 255, 255, 0.08) !important; }
+[class~="bg-white/60"] { background-color: rgba(255, 255, 255, 0.06) !important; }
+[class~="bg-white/50"] { background-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="bg-white/40"] { background-color: rgba(255, 255, 255, 0.04) !important; }
+
+[class~="border-slate-50"], [class*="border-slate-50/"] { border-color: rgba(255, 255, 255, 0.03) !important; }
+[class~="border-slate-100"], [class*="border-slate-100/"] { border-color: rgba(255, 255, 255, 0.05) !important; }
+[class~="border-slate-200"], [class*="border-slate-200/"] { border-color: rgba(255, 255, 255, 0.1) !important; }
+[class~="border-slate-300"], [class*="border-slate-300/"] { border-color: rgba(255, 255, 255, 0.15) !important; }

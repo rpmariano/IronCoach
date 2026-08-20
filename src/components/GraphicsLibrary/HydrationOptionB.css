@@ -48,7 +48,7 @@
 }
 .hydro-b-btn:hover { 
   transform: translateY(-2px); 
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
   border-color: rgba(14, 165, 233, 0.5);
   box-shadow: 0 4px 12px rgba(14, 165, 233, 0.1); 
 }

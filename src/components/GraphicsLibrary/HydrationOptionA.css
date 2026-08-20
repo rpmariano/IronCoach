@@ -1,18 +1,21 @@
 .hydro-nrc-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 28px;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
   /* Simétrico, como WeeklyPlanCard.css/CoachDailySummaryCard.css — os
      pontos do carrossel aí usam o mesmo padrão (overlay absoluto, sem
      reserva de espaço) e não têm este problema. Qualquer padding extra
      aqui, por menor que seja, ainda deixava uma faixa sem conteúdo por
      cima do fundo translúcido — lia-se sempre como uma caixa à parte. */
-  padding: 24px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  padding: 24px 24px 44px 24px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   display: flex;
   gap: 24px;
   align-items: stretch;
@@ -24,7 +27,7 @@
 
 @media (max-width: 480px) {
   .hydro-nrc-card {
-    padding: 16px;
+    padding: 16px 16px 36px 16px;
     gap: 12px;
   }
   
@@ -81,7 +84,7 @@
 .hydro-nrc-lbl {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #94a3b8;
+  color: #cbd5e1;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -99,7 +102,7 @@
 .hydro-nrc-title {
   font-size: 1.6rem;
   font-weight: 900;
-  color: #0f172a;
+  color: #f8fafc;
   margin-bottom: 12px;
   letter-spacing: -0.5px;
 }
@@ -115,7 +118,7 @@
   align-items: center;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #64748b;
+  color: #cbd5e1;
   position: relative;
 }
 
@@ -127,7 +130,7 @@
 .hydro-nrc-progress-bar {
   position: relative;
   height: 8px;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   margin-bottom: 8px;
   width: 100%;
@@ -164,7 +167,7 @@
   justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 .hydro-nrc-right {
@@ -233,7 +236,7 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  color: #64748b;
+  color: #cbd5e1;
   cursor: pointer;
   transition: color 0.2s, background-color 0.2s;
   background: transparent;
@@ -253,7 +256,7 @@
   top: 100%;
   right: 0;
   margin-top: 8px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1);
@@ -268,7 +271,7 @@
   padding: 12px 16px;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: #cbd5e1;
   border-bottom: 1px solid #f1f5f9;
   background: transparent;
   cursor: pointer;
@@ -281,5 +284,5 @@
 
 .hydro-bell-item:hover {
   background: #f8fafc;
-  color: #0f172a;
+  color: #f8fafc;
 }

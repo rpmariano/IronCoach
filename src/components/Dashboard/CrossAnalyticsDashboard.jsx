@@ -4,11 +4,12 @@ import { Activity, Droplet, Moon, Scale, Zap } from 'lucide-react';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import CrossMetricsChart from '../BI/CrossMetricsChart';
 import { calculateCrossMetrics, calculateWeightTrend } from '../../utils/biEngine';
+import { COACH_GRADIENT } from '../shared/CoachButton';
 import { startOfDay, parseISO, isAfter, subDays } from 'date-fns';
 
 function PremiumMetricCard({ title, value, unit, subtitle, icon: Icon, color, gradient, trendValue, trendSuffix = '' }) {
   return (
-    <div className="bg-white/60 backdrop-blur-md border border-white/80 rounded-2xl p-4 shadow-[0_8px_20px_rgba(0,0,0,0.03),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden group">
+    <div className="bg-white/5 backdrop-blur-md border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden group">
       <div 
         className="absolute inset-0 opacity-[0.04] transition-opacity group-hover:opacity-[0.08]"
         style={{ background: gradient || `linear-gradient(135deg, ${color}, transparent)` }}
@@ -75,16 +76,18 @@ export default function CrossAnalyticsDashboard() {
 
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Header Holística */}
-      <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-3xl p-5 text-white shadow-lg relative overflow-hidden">
+      {/* Header Holística — gradiente do Coach: a Holística é a leitura
+          cruzada que o Coach faz de todos os módulos, não uma prova (o
+          amber/orange antigo confundia-se com a identidade da Prova). */}
+      <div className="rounded-3xl p-5 text-white shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden" style={{ background: COACH_GRADIENT }}>
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-10 translate-x-10" />
         <div className="relative z-10 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-black tracking-tight flex items-center gap-2">
-              <Activity className="w-5 h-5 text-amber-200" />
+              <Activity className="w-5 h-5 text-cyan-100" />
               Visão Holística
             </h2>
-            <p className="text-sm text-amber-100/90 font-medium mt-1 max-w-[210px] leading-snug">
+            <p className="text-sm text-cyan-50/90 font-medium mt-1 max-w-[210px] leading-snug">
               A interligação do teu treino, descanso e nutrição.
             </p>
           </div>
@@ -151,7 +154,7 @@ export default function CrossAnalyticsDashboard() {
           className="mb-4"
         />
       ) : (
-        <div className="bg-white/50 border border-slate-200/50 rounded-3xl p-6 text-center">
+        <div className="bg-white/5 border border-slate-200/50 rounded-3xl p-6 text-center">
           <p className="text-xs font-medium text-slate-500">Registe avaliações corporais e corridas para ver a relação de Peso vs Pace.</p>
         </div>
       )}
@@ -173,7 +176,7 @@ export default function CrossAnalyticsDashboard() {
           }}
         />
       ) : (
-        <div className="bg-white/50 border border-slate-200/50 rounded-3xl p-6 text-center">
+        <div className="bg-white/5 border border-slate-200/50 rounded-3xl p-6 text-center">
           <p className="text-xs font-medium text-slate-500">Registe treinos de ginásio e corridas para analisar a interferência.</p>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { todayISO } from '../lib/utils';
+import { todayISO, addDaysISO } from '../lib/utils';
 
 const getInitialDashboardTab = () => {
   try {
@@ -50,6 +50,11 @@ export const useAppStore = create((set, get) => ({
   lastDashboardTab: getInitialDashboardTab(),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
+  // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar
+  // uma prova NOVA, para o Calendário abrir logo nesse dia em vez do de
+  // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
+  // clearPendingCalendarDate.
+  pendingCalendarDate: null,
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
@@ -78,6 +83,8 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  coachIntent: null,
+  setCoachIntent: (intent) => set({ coachIntent: intent }),
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
@@ -95,6 +102,8 @@ export const useAppStore = create((set, get) => ({
   setCoachPlanItems: (items) => set({ coachPlanItems: items }),
   setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
+  setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
+  clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
 
   // Recarrega planos e itens — usado pelo Coach quando a resposta criou uma
   // proposta (plan_proposed), para o Início a mostrar sem refrescar a página.
@@ -106,6 +115,65 @@ export const useAppStore = create((set, get) => ({
       supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
     ]);
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
+      return plans;
+  },
+
+  // ── Memória de longo prazo do Coach (tabela coach_notes) ────────────────
+  // Factos duradouros sobre o atleta que a Carol tem sempre no prompt. Ao
+  // contrário do histórico de conversa, não caem fora de nenhuma janela.
+  // A Carol escreve-os pela ferramenta save_coach_note; o atleta lê, corrige
+  // e acrescenta os seus aqui — é memória partilhada, não um registo dela.
+  coachNotes: [],
+
+  reloadCoachNotes: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return [];
+    const { data, error } = await supabase
+      .from('coach_notes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    if (error) { console.error('Error loading coach notes:', error); return []; }
+    set({ coachNotes: data || [] });
+    return data || [];
+  },
+
+  addCoachNote: async ({ category, note }) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return false;
+    const { error } = await supabase.from('coach_notes').insert({
+      user_id: userId,
+      category,
+      note: (note || '').trim(),
+      source: 'atleta',
+    });
+    // 23505 = o mesmo facto já lá está (índice único por categoria+texto).
+    // Para quem está a escrever isso não é um erro: o resultado é o que queria.
+    if (error && error.code !== '23505') { console.error('Error adding coach note:', error); return false; }
+    await get().reloadCoachNotes();
+    return true;
+  },
+
+  updateCoachNote: async (id, { category, note }) => {
+    // Esta ação só existe no ecrã do atleta, por isso editar transfere a
+    // autoria: sem isto, o texto que ele escreveu por cima de uma nota da
+    // Carol continuava a aparecer com a cor e o rótulo dela. A cor serve
+    // para distinguir o que a Carol inferiu (e pode estar errado) do que o
+    // atleta confirmou — ao editar, ele passa a responder pela nota.
+    const patch = { updated_at: new Date().toISOString(), source: 'atleta' };
+    if (category !== undefined) patch.category = category;
+    if (note !== undefined) patch.note = (note || '').trim();
+    const { error } = await supabase.from('coach_notes').update(patch).eq('id', id);
+    if (error) { console.error('Error updating coach note:', error); return false; }
+    await get().reloadCoachNotes();
+    return true;
+  },
+
+  deleteCoachNote: async (id) => {
+    const { error } = await supabase.from('coach_notes').delete().eq('id', id);
+    if (error) { console.error('Error deleting coach note:', error); return false; }
+    set((state) => ({ coachNotes: (state.coachNotes || []).filter(n => n.id !== id) }));
+    return true;
   },
 
   reloadCoachGoalProposals: async () => {
@@ -119,6 +187,7 @@ export const useAppStore = create((set, get) => ({
       .order('created_at', { ascending: false });
     if (!error && data) {
       set({ coachGoalProposals: data });
+      return data;
     }
   },
 
@@ -177,10 +246,8 @@ export const useAppStore = create((set, get) => ({
               await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
             } else {
               // Se o antigo começou antes, truncar o seu period_end para o dia anterior ao novo
-              const newEnd = new Date(newPlan.period_start + 'T00:00:00');
-              newEnd.setDate(newEnd.getDate() - 1);
-              const newEndStr = newEnd.toISOString().slice(0, 10);
-              
+              const newEndStr = addDaysISO(newPlan.period_start, -1);
+
               if (newEndStr >= old.period_start) {
                 await supabase.from('coach_plans').update({ period_end: newEndStr }).eq('id', old.id);
                 // Remover itens que caiam na parte truncada
@@ -194,17 +261,11 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
-    set((state) => ({
-      coachPlans: state.coachPlans.map(p => {
-        if (p.id === planId) {
-          return { ...p, ...updates };
-        }
-        if (accept && p.status === 'aceite') {
-          return { ...p, status: 'recusado' };
-        }
-        return p;
-      }),
-    }));
+    // Recarrega em vez de reconstruir o estado à mão: ao aceitar, a BD
+    // acima trunca o plano anterior mas MANTÉM-NO aceite (é ele que guarda
+    // os dias já passados). Marcar localmente todos os outros aceites como
+    // recusados apagava esse histórico do cartão até ao próximo refresh.
+    await get().reloadCoachPlans();
 
     if (accept) {
       get().loadDailySummary({ force: true }).catch(() => {});

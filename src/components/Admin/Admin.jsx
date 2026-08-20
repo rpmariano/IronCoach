@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Bot, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
+import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
@@ -367,5 +367,129 @@ describe('MealRegistration — editar refeição existente', () => {
     await screen.findByText('Falha na estimativa.');
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue('120')).toBeInTheDocument();
+  });
+});
+
+// Regressão dupla: (1) trocar de separador pela barra de navegação com o
+// formulário sujo desmontava-o sem aviso — só o X do próprio ecrã estava
+// protegido; (2) isFormDirty aqui não tinha NENHUM produtor além do
+// useState(false) inicial — nenhum onChange chamava setIsFormDirty(true),
+// por isso o aviso nunca disparava, nem pelo X nem pela barra de navegação.
+// Corrigido nos pontos onde o atleta perde trabalho real: data, tipo de
+// refeição, observações, e adicionar/editar/remover alimentos — nunca no
+// efeito que carrega uma refeição existente (é inicialização, não edição).
+describe('MealRegistration — guarda de navegação com formulário sujo', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+  const EXISTING_MEAL = {
+    id: 'meal-3',
+    date: '2026-01-10',
+    meal_type: 'jantar',
+    notes: 'nota antiga',
+    meal_items: [
+      { id: 'item-1', name: 'Arroz', quantity_grams: 100 },
+    ],
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { meal: EXISTING_MEAL }, error: null });
+    mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
+    mocks.updateItem.mockReset().mockResolvedValue({ error: null });
+    mocks.deleteItem.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    loadInitialData.mockClear();
+    useAppStore.setState({
+      profile: PROFILE,
+      meals: [EXISTING_MEAL],
+      loadInitialData,
+      activeTab: 'nutricao',
+      navGuard: null,
+    });
+  });
+
+  const dirtyTheForm = () => {
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), {
+      target: { value: 'com molho extra' },
+    });
+  };
+
+  // navGuard corre fora de qualquer evento React (é chamado diretamente na
+  // store, tal como Layout.jsx faria ao tocar num separador) — sem act(),
+  // o setShowUnsavedModal(true) lá dentro não fica refletido no DOM a tempo.
+  const attemptLeave = (target) => {
+    let navigated;
+    act(() => { navigated = useAppStore.getState().setActiveTab(target); });
+    return navigated;
+  };
+
+  it('sem alterações, não regista navGuard nenhum', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    expect(useAppStore.getState().navGuard).toBeNull();
+  });
+
+  it('regista um navGuard assim que o formulário fica sujo', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    dirtyTheForm();
+    expect(useAppStore.getState().navGuard).toBeInstanceOf(Function);
+  });
+
+  it('trocar de separador com o formulário sujo mostra o aviso em vez de navegar logo', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    dirtyTheForm();
+
+    const navigated = attemptLeave('home');
+
+    expect(navigated).toBe(false);
+    expect(useAppStore.getState().activeTab).toBe('nutricao');
+    expect(screen.getByText('Tens alterações por gravar')).toBeInTheDocument();
+  });
+
+  it('"Sair sem gravar" descarta o formulário E completa a navegação pendente', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sair sem gravar' }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // Sem limpar o navGuard antes de navegar, este setActiveTab ficava preso
+    // a bloquear-se a ele mesmo (o guard só é limpo no cleanup do useEffect,
+    // que só corre num render seguinte a onClose(), não já a seguir).
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().navGuard).toBeNull();
+  });
+
+  it('"Cancelar" fecha o aviso e mantém o formulário aberto, sem navegar', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    dirtyTheForm();
+    attemptLeave('home');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(useAppStore.getState().activeTab).toBe('nutricao');
+    await waitFor(() => {
+      expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
+    });
+    expect(attemptLeave('coach')).toBe(false);
+  });
+
+  it('adicionar ou remover um alimento também marca o formulário como sujo', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    expect(useAppStore.getState().navGuard).toBeNull();
+
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Brócolos' } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+
+    expect(useAppStore.getState().navGuard).toBeInstanceOf(Function);
+  });
+
+  it('fechar pelo botão X sem alterações não deixa navGuard nenhum registado', () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+
+    fireEvent.click(screen.getByLabelText('Fechar'));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().navGuard).toBeNull();
   });
 });

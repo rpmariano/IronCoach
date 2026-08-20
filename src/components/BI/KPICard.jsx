@@ -24,7 +24,7 @@ export default function KPICard({
 
   return (
     <div 
-      className={`bg-white/40 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_4px_24px_rgba(0,0,0,0.04)] relative overflow-hidden ${className}`}
+      className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden ${className}`}
     >
       {moduleColor && (
         <div 

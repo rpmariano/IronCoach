@@ -73,6 +73,8 @@ function formatDatePT(isoStr) {
 
 export default function RunCard({ run, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
+
   const { profile, loadInitialData, runs, setRuns } = useAppStore();
   const { showToast } = useToast();
   const [photos, setPhotos] = useState([]);
@@ -164,18 +166,18 @@ export default function RunCard({ run, onEdit, onDelete }) {
   const totalSteps = details.total_steps;
 
   const activeChips = [
-    distStr ? { key: 'dist', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Route size={14} className="text-slate-500" />, label: distStr } : null,
-    durStr ? { key: 'dur', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Timer size={14} className="text-slate-500" />, label: durStr } : null,
-    paceStr ? { key: 'pace', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Gauge size={14} className="text-slate-500" />, label: paceStr } : null,
-    sweatLoss ? { key: 'sweat', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Droplet size={14} className="text-slate-500" />, label: `${sweatLoss} ml transpiração` } : null,
-    totalSteps ? { key: 'steps', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Footprints size={14} className="text-slate-500" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
-    elevation ? { key: 'elev', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Navigation size={14} className="text-slate-500" />, label: `${elevation}m Desnível` } : null,
-    cadence ? { key: 'cad', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Zap size={14} className="text-slate-500" />, label: `${cadence} spm méd` } : null,
-    maxCadence ? { key: 'maxcad', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Zap size={14} className="text-slate-500" />, label: `${maxCadence} spm máx` } : null,
-    calories ? { key: 'cal', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Flame size={14} className="text-slate-500" />, label: `${calories} kcal` } : null,
-    vo2max ? { key: 'vo2', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Activity size={14} className="text-slate-500" />, label: `VO2 máx ${vo2max}` } : null,
-    avgHr ? { key: 'avghr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${avgHr} bpm méd` } : null,
-    maxHr ? { key: 'maxhr', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${maxHr} bpm máx` } : null,
+    distStr ? { key: 'dist', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Route size={14} className="text-slate-500" />, label: distStr } : null,
+    durStr ? { key: 'dur', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Timer size={14} className="text-slate-500" />, label: durStr } : null,
+    paceStr ? { key: 'pace', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Gauge size={14} className="text-slate-500" />, label: paceStr } : null,
+    sweatLoss ? { key: 'sweat', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Droplet size={14} className="text-slate-500" />, label: `${sweatLoss} ml transpiração` } : null,
+    totalSteps ? { key: 'steps', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Footprints size={14} className="text-slate-500" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
+    elevation ? { key: 'elev', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Navigation size={14} className="text-slate-500" />, label: `${elevation}m Desnível` } : null,
+    cadence ? { key: 'cad', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Zap size={14} className="text-slate-500" />, label: `${cadence} spm méd` } : null,
+    maxCadence ? { key: 'maxcad', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Zap size={14} className="text-slate-500" />, label: `${maxCadence} spm máx` } : null,
+    calories ? { key: 'cal', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Flame size={14} className="text-slate-500" />, label: `${calories} kcal` } : null,
+    vo2max ? { key: 'vo2', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Activity size={14} className="text-slate-500" />, label: `VO2 máx ${vo2max}` } : null,
+    avgHr ? { key: 'avghr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${avgHr} bpm méd` } : null,
+    maxHr ? { key: 'maxhr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${maxHr} bpm máx` } : null,
   ].filter(Boolean);
 
   return (
@@ -186,7 +188,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
+          <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
             <RunIcon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -268,7 +270,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
           {Array.isArray(hrZones) && hrZones.length > 0 && (() => {
             const maxMinutes = Math.max(...hrZones.map(z => Number(z.minutes) || 0), 1);
             return (
-              <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-1.5">
+              <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-1.5">
                 <span className="text-[11px] font-bold text-slate-500 block mb-1">Zonas de FC</span>
                 {[...hrZones].sort((a, b) => (a.zone || 0) - (b.zone || 0)).map((z, i) => (
                   <div key={i} className="flex items-center gap-2">
@@ -288,7 +290,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
           {/* Splits/voltas — troço a troço, lido do relógio (details.splits) */}
           {Array.isArray(splits) && splits.length > 0 && (
-            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs">
               <span className="text-[11px] font-bold text-slate-500 block mb-1.5">Splits</span>
               <div className="space-y-1">
                 {splits.map((s, i) => {
@@ -308,7 +310,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
           {/* Biomecânica de Corrida */}
           {(details.ground_contact_time_ms || details.vertical_oscillation_cm || details.asymmetry_pct || details.leg_stiffness_kn_m) && (
-            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-2">
               <span className="text-[11px] font-bold text-slate-700 block">Biomecânica de Corrida</span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.ground_contact_time_ms && (
@@ -347,7 +349,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
           {/* Limiares Fisiológicos FC */}
           {(details.aerobic_threshold_bpm || details.anaerobic_threshold_bpm) && (
-            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-2">
               <span className="text-[11px] font-bold text-slate-700 block">Limiares Fisiológicos (FC)</span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.aerobic_threshold_bpm && (
@@ -392,7 +394,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? 'bg-[var(--green-dark)]' : 'bg-slate-200'}`} 
+                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? effortColors[i] : 'bg-white/10'}`} 
                   />
                 ))}
               </div>
@@ -401,7 +403,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
           {/* Observações */}
           {run.notes && (
-            <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs">
               <span className="text-[11px] font-bold text-slate-500 block mb-1">Observações</span>
               <p className="text-xs text-slate-700 italic">{run.notes}</p>
             </div>
@@ -409,7 +411,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
 
           {/* Análise do Coach */}
           {coachCommentary && (
-            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2 shadow-xs">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach

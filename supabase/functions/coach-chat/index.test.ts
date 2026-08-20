@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -558,10 +558,37 @@ Deno.test("descarta a duração que o modelo ponha num dia de descanso", async (
 // Ver specs/coach-investigacao.md, DECISÃO N1. Só proteína e gordura (metas
 // estáveis); calorias e hidratos são metas variáveis e não passam por aqui.
 
-function makeGoalsSb(opts: { authorized?: boolean; profileError?: any; updateError?: any } = {}) {
-  const calls: { updates: any[] } = { updates: [] };
+// deno-lint-ignore no-explicit-any
+function makeGoalsSb(opts: {
+  authorized?: boolean;
+  profileError?: any;
+  updateError?: any;
+  profile?: any;
+  supersedeError?: any;
+  insertError?: any;
+} = {}) {
+  // deno-lint-ignore no-explicit-any
+  const calls: { updates: any[]; supersedes: any[]; inserts: any[] } = { updates: [], supersedes: [], inserts: [] };
   const sb = {
     from: (table: string) => {
+      if (table === "coach_goal_proposals") {
+        // Toda a proposta nova substitui qualquer 'proposto' anterior do
+        // atleta (ver comentário em runUpdateGoals) — o mock precisa de
+        // suportar tanto esse update() de substituição como o insert() da
+        // proposta nova, na mesma tabela.
+        return {
+          // deno-lint-ignore no-explicit-any
+          update: (row: any) => {
+            calls.supersedes.push(row);
+            return { eq: () => ({ eq: () => Promise.resolve({ error: opts.supersedeError ?? null }) }) };
+          },
+          // deno-lint-ignore no-explicit-any
+          insert: (row: any) => {
+            calls.inserts.push(row);
+            return Promise.resolve({ error: opts.insertError ?? null });
+          },
+        };
+      }
       if (table !== "profiles") throw new Error(`tabela inesperada: ${table}`);
       return {
         select: () => ({
@@ -569,7 +596,7 @@ function makeGoalsSb(opts: { authorized?: boolean; profileError?: any; updateErr
             maybeSingle: () => Promise.resolve(
               opts.profileError
                 ? { data: null, error: opts.profileError }
-                : { data: { coach_can_set_nutrition_goals: opts.authorized ?? true }, error: null },
+                : { data: { coach_can_set_nutrition_goals: opts.authorized ?? true, ...(opts.profile || {}) }, error: null },
             ),
           }),
         }),
@@ -584,82 +611,131 @@ function makeGoalsSb(opts: { authorized?: boolean; profileError?: any; updateErr
   return { sb, calls };
 }
 
+// Nota: runUpdateGoals já não escreve diretamente em `profiles` — grava
+// uma proposta em `coach_goal_proposals` (goals fica dentro de
+// calls.inserts[0].goals), que o atleta depois aceita ou recusa na
+// persiana. Estes testes foram reescritos para o fluxo atual; estavam
+// desatualizados de uma refactor anterior (checavam calls.updates, que
+// já não existe para este caminho) e passavam a throw silenciosamente
+// mal a lógica de auto-substituição de propostas foi adicionada.
+
 Deno.test("recusa escrever sem autorização, mesmo com valores válidos", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: false });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "não autorizou");
-  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.inserts.length, 0);
 });
 
-Deno.test("com autorização, grava a proteína e marca a origem", async () => {
+Deno.test("com autorização, propõe a proteína e marca a origem", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150.4 });
-  assertStringIncludes(result, "Metas atualizadas");
-  assertEquals(calls.updates[0].protein_goal, 150); // arredondado
-  assertEquals(calls.updates[0].protein_goal_set_by_coach, true);
-  assertEquals(calls.updates[0].fat_goal, undefined); // não mexe no que não foi pedido
+  assertStringIncludes(result, "criada com SUCESSO");
+  assertEquals(calls.inserts[0].goals.protein_goal, 150); // arredondado
+  assertEquals(calls.inserts[0].goals.protein_goal_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.fat_goal, undefined); // não mexe no que não foi pedido
 });
 
-Deno.test("grava proteína e gordura ao mesmo tempo", async () => {
+Deno.test("propõe proteína e gordura ao mesmo tempo", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   await runUpdateGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
-  assertEquals(calls.updates[0].protein_goal, 140);
-  assertEquals(calls.updates[0].fat_goal, 70);
-  assertEquals(calls.updates[0].fat_goal_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.protein_goal, 140);
+  assertEquals(calls.inserts[0].goals.fat_goal, 70);
+  assertEquals(calls.inserts[0].goals.fat_goal_set_by_coach, true);
 });
 
 Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora editáveis pelo Coach", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, carbs_goal: 300 });
-  assertEquals(calls.updates[0].calorie_goal, 2200);
-  assertEquals(calls.updates[0].calorie_goal_set_by_coach, true);
-  assertEquals(calls.updates[0].carbs_goal, 300);
-  assertEquals(calls.updates[0].carbs_goal_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.calorie_goal, 2200);
+  assertEquals(calls.inserts[0].goals.calorie_goal_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.carbs_goal, 300);
+  assertEquals(calls.inserts[0].goals.carbs_goal_set_by_coach, true);
 });
 
 Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15 });
-  assertEquals(calls.updates[0].water_goal_ml, 2500);
-  assertEquals(calls.updates[0].water_goal_set_by_coach, true);
-  assertEquals(calls.updates[0].goal_weight_kg, 70.5);
-  assertEquals(calls.updates[0].goal_weight_set_by_coach, true);
-  assertEquals(calls.updates[0].goal_body_fat_pct, 15);
-  assertEquals(calls.updates[0].goal_body_fat_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.water_goal_ml, 2500);
+  assertEquals(calls.inserts[0].goals.water_goal_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.goal_weight_kg, 70.5);
+  assertEquals(calls.inserts[0].goals.goal_weight_set_by_coach, true);
+  assertEquals(calls.inserts[0].goals.goal_body_fat_pct, 15);
+  assertEquals(calls.inserts[0].goals.goal_body_fat_set_by_coach, true);
 });
 
 Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   const result = await runUpdateGoals(sb, "user-1", {});
   assertStringIncludes(result, "Erro");
-  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor fora do intervalo plausível (proteína 900g)", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 900 });
   assertStringIncludes(result, "Erro");
-  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor negativo ou zero (gordura 0g)", async () => {
   const { sb, calls } = makeGoalsSb({ authorized: true });
   const result = await runUpdateGoals(sb, "user-1", { fat_goal: 0 });
   assertStringIncludes(result, "Erro");
-  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("propaga o erro se a leitura do perfil falhar", async () => {
   const { sb, calls } = makeGoalsSb({ profileError: { message: "timeout" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "timeout");
-  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.inserts.length, 0);
 });
 
-Deno.test("propaga o erro se a escrita falhar", async () => {
-  const { sb } = makeGoalsSb({ authorized: true, updateError: { message: "conflito" } });
+Deno.test("propaga o erro se substituir propostas anteriores falhar", async () => {
+  const { sb } = makeGoalsSb({ authorized: true, supersedeError: { message: "conflito ao substituir" } });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
+  assertStringIncludes(result, "conflito ao substituir");
+});
+
+Deno.test("propaga o erro se a escrita da proposta falhar", async () => {
+  const { sb } = makeGoalsSb({ authorized: true, insertError: { message: "conflito" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito");
+});
+
+Deno.test("uma nova proposta substitui (marca 'recusado') qualquer proposta anterior ainda pendente", async () => {
+  const { sb, calls } = makeGoalsSb({ authorized: true });
+  await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
+  assertEquals(calls.supersedes.length, 1);
+  assertEquals(calls.supersedes[0].status, "recusado");
+});
+
+// ─── regressão: colunas `numeric` do Postgres vêm como STRING via PostgREST ──
+// Bug real em produção: profile.calorie_goal chegava como "2200" (string),
+// e a comparação `currentVal !== v` (v é sempre Number) dava sempre true —
+// a proposta era tratada como "mudança real" mesmo com valores idênticos,
+// criando uma nova proposta pendente a cada chamada. Isto gerou um loop
+// visível: o atleta aceitava, a Carol recalculava e repropunha os "mesmos"
+// valores, o atleta aceitava outra vez, e assim sucessivamente.
+
+Deno.test("valores idênticos aos atuais NÃO geram proposta, mesmo vindo como string do Postgres (numeric)", async () => {
+  const { sb, calls } = makeGoalsSb({
+    authorized: true,
+    profile: { calorie_goal: "2200", protein_goal: "150" }, // como o PostgREST devolve `numeric`
+  });
+  const result = await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, protein_goal: 150 });
+  assertStringIncludes(result, "IDÊNTICOS");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("uma mudança real ainda é detetada quando o valor atual vem como string", async () => {
+  const { sb, calls } = makeGoalsSb({
+    authorized: true,
+    profile: { calorie_goal: "2200", protein_goal: "150" },
+  });
+  await runUpdateGoals(sb, "user-1", { calorie_goal: 2400, protein_goal: 150 });
+  assertEquals(calls.inserts[0].goals.calorie_goal, 2400);
+  assertEquals(calls.inserts[0].goals.protein_goal, undefined); // idêntico, não entra na proposta
 });
 
 // ─── autorização no system prompt ────────────────────────────────────────
@@ -669,15 +745,83 @@ Deno.test("sem autorização, o prompt diz ao modelo para não tentar a ferramen
   assertStringIncludes(sys, "NÃO uses a ferramenta update_goals");
 });
 
-Deno.test("com autorização, o prompt convida o modelo a usar a ferramenta com fluxo de 2 passos", () => {
+Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta imediatamente ao discutir valores", () => {
+  // Fluxo mudou de "propõe em texto, pede confirmação, só depois chama" para
+  // chamada imediata (commit 06edc19, "force tool usage when discussing
+  // goals") — a confirmação passou a acontecer na persiana (Aceitar/Recusar),
+  // não por troca de mensagens antes de a ferramenta ser chamada.
   const sys = buildSystemInstruction(
     null,
     { ...BIO_BASE, coach_can_set_nutrition_goals: true },
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
-  assertStringIncludes(sys, "autorizou-te a escrever metas");
-  assertStringIncludes(sys, "Queres que atualize agora");
+  assertStringIncludes(sys, "OBRIGATÓRIO");
+  assertStringIncludes(sys, "TENS DE CHAMAR IMEDIATAMENTE");
+  assertStringIncludes(sys, "CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO");
   assertEquals(sys.includes("NÃO uses a ferramenta update_goals"), false);
+});
+
+Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (plano vs. refeições avulsas)", () => {
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "propose_training_plan com replace_active_plan=true");
+  assertStringIncludes(sys, "NÃO é suficiente escrever um resumo em texto");
+});
+
+Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando não há pedido explícito anterior", () => {
+  // Reproduz o cenário real: se a proposta de objetivos surgir sem um
+  // pedido prévio de plano/refeições no histórico, a Carol não pode
+  // limitar-se a perguntar "queres que detalhe?" — tem de agir.
+  // A ação por omissão é propose_training_plan (proposta com Aceitar/
+  // Recusar, cobrindo o período do plano ativo), NÃO save_meal_suggestions
+  // (grava direto sem revisão, e só para os dias explicitamente indicados
+  // — errado como omissão, o atleta esperava um plano para rever, cobrindo
+  // o período todo, não uma alteração silenciosa de 2-3 dias).
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
+  assertStringIncludes(sys, "a ação por omissão é CHAMAR propose_training_plan");
+  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
+});
+
+Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curto), com teto de 14 dias alinhado à doutrina de microciclo", () => {
+  // Regressão: uma versão anterior desta regra limitava sempre a 3-4 dias,
+  // deixando de fora o resto de um plano ativo mais longo (ex.: plano até
+  // dia 27, proposta só cobria até dia 20) — o atleta esperava o plano
+  // todo, não um excerto. O teto existe só como salvaguarda técnica para
+  // planos excecionalmente longos (não deveria disparar na prática — a
+  // doutrina DURAÇÃO DO PLANO e o limite MAX_PLAN_ITEMS já capam qualquer
+  // plano a 7-14 dias por microciclo), por isso o teto está em 14 dias
+  // (não um número arbitrário menor) para coincidir com esse máximo.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
+  assertStringIncludes(sys, "se esse período tiver MAIS de 14 dias a partir de hoje");
+});
+
+Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas objetivos ao recalculares macros para o plano seguinte", () => {
+  // Regressão: depois de aceitar objetivos, a Carol às vezes recalculava os
+  // macros de novo ao preparar a proposta de plano/refeições seguinte, e a
+  // Regra 1 (chamar update_goals sempre que decidir valores diferentes)
+  // disparava outra vez — resultado: uma segunda proposta de objetivos
+  // aparecia logo a seguir a aceitar a primeira, num ciclo. As duas regras
+  // têm agora precedência cruzada explícita para o modelo não hesitar.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a))");
+  assertStringIncludes(sys, "esta regra tem PRECEDÊNCIA sobre a Regra 1");
 });
 
 // ─── doutrina de nutrição no prompt (Bloco 7) ───────────────────────────────
@@ -754,6 +898,333 @@ Deno.test("o prompt inclui os 4 sinais de interrupção do microciclo", () => {
   assertStringIncludes(sys, "FC de repouso");
   assertStringIncludes(sys, "HRV");
   assertStringIncludes(sys, "Mudança imprevista de agenda");
+});
+
+// ─── ESQUEMA DE DECISÃO (casos A-E) ─────────────────────────────────────────
+// Decidir na persiana só grava o estado — não é uma troca de mensagens, por
+// isso a Carol não reagia. O cliente dispara agora uma das quatro frases
+// sintéticas (Coach.jsx: handleRespond / handleRespondGoal), e o esquema
+// classifica-as e fixa que ferramentas podem ser chamadas em cada caso.
+//
+// O esquema substituiu um conjunto de regras espalhadas pelo prompt que se
+// CONTRADIZIAM: a "Regra de Autorização" mandava nunca chamar uma ferramenta
+// sem confirmação prévia em texto, enquanto a Regra 1 dos objetivos mandava
+// chamar update_goals IMEDIATAMENTE na mesma mensagem. O modelo resolvia o
+// conflito de forma diferente a cada turno — daí propostas de objetivos a
+// aparecerem como efeito colateral de aceitar/recusar um plano.
+
+Deno.test("o esquema de decisão está no prompt e declara precedência absoluta", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS");
+  assertStringIncludes(sys, "Ferramentas fora da lista PERMITIDO são PROIBIDAS");
+});
+
+Deno.test("esquema: caso A (aceitou objetivos) propõe plano e proíbe update_goals", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO A — "Aceitei os novos objetivos."');
+  assertStringIncludes(sys, "PERMITIDO: propose_training_plan · PROIBIDO: update_goals, save_meal_suggestions");
+  // Não deve anunciar o plano como concluído — só que está à espera de revisão.
+  assertStringIncludes(sys, "NÃO assumas que vai aceitar");
+});
+
+Deno.test("esquema: casos B, C e D não permitem NENHUMA ferramenta", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, 'CASO B — "Recusei os novos objetivos."');
+  assertStringIncludes(sys, 'CASO C — "Aceitei o plano."');
+  assertStringIncludes(sys, 'CASO D — "Recusei o plano."');
+  // Três casos, todos com a mesma lista fechada de ferramentas proibidas.
+  const proibidoTudo = sys.split(
+    "PERMITIDO: nenhuma ferramenta · PROIBIDO: update_goals, propose_training_plan, save_meal_suggestions",
+  ).length - 1;
+  assertEquals(proibidoTudo, 3);
+});
+
+Deno.test("esquema: caso D avisa explicitamente contra propor objetivos ao recusar um plano", () => {
+  // Foi exatamente isto que aconteceu em produção: recusar o plano fazia
+  // aparecer uma proposta de objetivos nova.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "ERRO GRAVE a evitar: propor objetivos novos");
+  assertStringIncludes(sys, "O que foi recusado foi o PLANO — os objetivos não estão em causa e NÃO se mexem");
+});
+
+Deno.test("esquema: caso E fixa que objetivos só nascem de um pedido, nunca de uma reação", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO E — Mensagem escrita pelo próprio atleta");
+  assertStringIncludes(sys, "NUNCA como reação a ele ter aceite ou recusado alguma coisa");
+});
+
+// Regressão concreta: o atleta recusou o plano, a Carol perguntou o que não
+// encaixou, ele respondeu "quero refeições vegetarianas" — e recebeu uma
+// proposta de OBJETIVOS novos em vez do plano corrigido. Essa resposta caía
+// no caso E, onde a regra de dependência mandava passar primeiro pelos
+// objetivos. O caso F trata-a como continuação do que foi recusado.
+// ─── Memória de longo prazo (coach_notes) ───────────────────────────────────
+// O histórico que vai ao modelo são as últimas MAX_HISTORY mensagens. Um facto
+// dito há semanas cai fora dessa janela e a Carol volta a propor o que já sabia
+// estar errado. As notas são o oposto: poucas, curadas, sempre no prompt.
+
+// deno-lint-ignore no-explicit-any
+function makeNotesSb(opts: { count?: number; insertError?: any; deleteError?: any } = {}) {
+  // deno-lint-ignore no-explicit-any
+  const calls: any = { inserts: [], deletes: [] };
+  const sb = {
+    from: (table: string) => {
+      if (table !== "coach_notes") throw new Error(`tabela inesperada: ${table}`);
+      return {
+        // deno-lint-ignore no-explicit-any
+        insert: (row: any) => {
+          calls.inserts.push(row);
+          return Promise.resolve({ error: opts.insertError ?? null });
+        },
+        select: () => ({
+          eq: () => Promise.resolve({ count: opts.count ?? 0, error: null }),
+        }),
+        delete: () => ({
+          eq: (_k: string, v: string) => {
+            calls.deletes.push(v);
+            return { eq: () => Promise.resolve({ error: opts.deleteError ?? null }) };
+          },
+        }),
+      };
+    },
+  };
+  return { sb, calls };
+}
+
+Deno.test("runSaveCoachNote grava um facto duradouro com a categoria certa", async () => {
+  const { sb, calls } = makeNotesSb();
+  const r = await runSaveCoachNote(sb, "u1", {
+    category: "preferencia_alimentar",
+    note: "Prefere refeições predominantemente vegetarianas",
+  });
+  assertStringIncludes(r, "Nota guardada");
+  assertEquals(calls.inserts[0].category, "preferencia_alimentar");
+  assertEquals(calls.inserts[0].source, "coach");
+  assertEquals(calls.inserts[0].user_id, "u1");
+});
+
+Deno.test("runSaveCoachNote rejeita categoria fora da lista", async () => {
+  const { sb, calls } = makeNotesSb();
+  const r = await runSaveCoachNote(sb, "u1", { category: "aleatorio", note: "qualquer coisa" });
+  assertStringIncludes(r, "category inválida");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("runSaveCoachNote rejeita nota vazia ou demasiado longa", async () => {
+  const { sb, calls } = makeNotesSb();
+  assertStringIncludes(await runSaveCoachNote(sb, "u1", { category: "outro", note: "ab" }), "Erro");
+  assertStringIncludes(await runSaveCoachNote(sb, "u1", { category: "outro", note: "x".repeat(501) }), "Erro");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("runSaveCoachNote apaga a nota substituída antes de inserir a nova", async () => {
+  // Passar a vegetariano contradiz uma nota anterior — substituir evita que a
+  // memória guarde as duas versões e a Carol siga a errada.
+  const { sb, calls } = makeNotesSb();
+  await runSaveCoachNote(sb, "u1", {
+    category: "preferencia_alimentar",
+    note: "Prefere refeições vegetarianas",
+    replaces_note_id: "nota-antiga",
+  });
+  assertEquals(calls.deletes[0], "nota-antiga");
+  assertEquals(calls.inserts.length, 1);
+});
+
+Deno.test("runSaveCoachNote trata facto repetido como já sabido, não como erro", async () => {
+  const { sb } = makeNotesSb({ insertError: { code: "23505", message: "duplicate key" } });
+  const r = await runSaveCoachNote(sb, "u1", { category: "outro", note: "Já sabido" });
+  assertStringIncludes(r, "já estava registado");
+  assertStringIncludes(r, "NÃO digas ao atleta que o guardaste agora");
+});
+
+Deno.test("runSaveCoachNote recusa passar do teto de notas", async () => {
+  const { sb, calls } = makeNotesSb({ count: 40 });
+  const r = await runSaveCoachNote(sb, "u1", { category: "outro", note: "mais uma" });
+  assertStringIncludes(r, "máximo 40");
+  assertStringIncludes(r, "replaces_note_id");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("buildCoachNotesContext agrupa por categoria e expõe os ids", () => {
+  const ctx = buildCoachNotesContext([
+    { id: "n1", category: "preferencia_alimentar", note: "Prefere vegetariano" },
+    { id: "n2", category: "limitacao_fisica", note: "Epicondilite no cotovelo direito" },
+    { id: "n3", category: "preferencia_alimentar", note: "Sem glúten" },
+  ])!;
+  assertStringIncludes(ctx, "MEMÓRIA DO ATLETA");
+  assertStringIncludes(ctx, "preferencia_alimentar:");
+  assertStringIncludes(ctx, "limitacao_fisica:");
+  // O id tem de ir junto para o modelo poder pedir a substituição da nota certa.
+  assertStringIncludes(ctx, "[id: n1]");
+  assertStringIncludes(ctx, "[id: n2]");
+});
+
+Deno.test("buildCoachNotesContext devolve null sem notas", () => {
+  assertEquals(buildCoachNotesContext([]), null);
+  assertEquals(buildCoachNotesContext(null), null);
+});
+
+Deno.test("as notas entram no system prompt e valem sempre", () => {
+  const ctx = buildCoachNotesContext([
+    { id: "n1", category: "limitacao_fisica", note: "Epicondilite no cotovelo direito" },
+  ]);
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null, ctx,
+  );
+  assertStringIncludes(sys, "Epicondilite no cotovelo direito");
+  assertStringIncludes(sys, "valem SEMPRE");
+});
+
+Deno.test("o prompt distingue as três fontes de informação", () => {
+  // Era o que faltava: a Carol não sabia quando o histórico ajuda e quando
+  // baralha, nem que factos duradouros se guardam em vez de recordar.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "DADOS ESTRUTURADOS");
+  assertStringIncludes(sys, "MEMÓRIA DO ATLETA");
+  assertStringIncludes(sys, "HISTÓRICO DA CONVERSA");
+  assertStringIncludes(sys, "NÃO é fonte fiável para factos antigos");
+  assertStringIncludes(sys, "GUARDA-O com save_coach_note");
+});
+
+Deno.test("save_coach_note é permitida em todos os casos do esquema", () => {
+  // Guardar um facto não cria nada que o atleta tenha de decidir, e é ao
+  // reagir a uma recusa que ele explica o porquê.
+  for (const caso of ["A", "B", "C", "D", "F_PLAN", "F_GOALS"] as const) {
+    assertEquals(allowedToolsFor(caso)!.has("save_coach_note"), true, `caso ${caso}`);
+  }
+  assertEquals(allowedToolsFor("E"), null); // E não restringe nada
+});
+
+// ─── classifyTurn / allowedToolsFor ─────────────────────────────────────────
+// O ESQUEMA DE DECISÃO no prompt não bastava: num prompt de ~166 KB as regras
+// da secção dos objetivos continuavam a ganhar e a Carol propunha metas onde
+// não devia. A whitelist abaixo é a mesma regra, mas imposta em código — o que
+// não vai na lista nem chega ao Gemini.
+
+const H = (...pares: [string, string][]) => pares.map(([role, content]) => ({ role, content }));
+
+Deno.test("classifyTurn reconhece as quatro frases de decisão", () => {
+  assertEquals(classifyTurn("Aceitei os novos objetivos.", []), "A");
+  assertEquals(classifyTurn("Recusei os novos objetivos.", []), "B");
+  assertEquals(classifyTurn("Aceitei o plano.", []), "C");
+  assertEquals(classifyTurn("Recusei o plano.", []), "D");
+});
+
+Deno.test("classifyTurn ignora maiúsculas e espaços à volta", () => {
+  assertEquals(classifyTurn("  aceitei o plano.  ", []), "C");
+});
+
+Deno.test("classifyTurn: resposta depois de recusar o plano é F_PLAN", () => {
+  // Cenário exato do bug: recusa → pergunta → resposta do atleta.
+  const hist = H(["user", "Recusei o plano."], ["model", "O que não encaixou?"]);
+  assertEquals(classifyTurn("Quero refeições predominantemente vegetarianas", hist), "F_PLAN");
+});
+
+Deno.test("classifyTurn: resposta depois de recusar objetivos é F_GOALS", () => {
+  const hist = H(["user", "Recusei os novos objetivos."], ["model", "O que não encaixou?"]);
+  assertEquals(classifyTurn("As calorias estão baixas de mais", hist), "F_GOALS");
+});
+
+Deno.test("classifyTurn: o caso F dura só um turno", () => {
+  // Já houve uma resposta do atleta depois da recusa — a partir daqui é E,
+  // senão as ferramentas ficavam bloqueadas no resto da conversa.
+  const hist = H(
+    ["user", "Recusei o plano."],
+    ["model", "O que não encaixou?"],
+    ["user", "Quero mais vegetariano"],
+    ["model", "Enviei a proposta ajustada."],
+  );
+  assertEquals(classifyTurn("E quantas calorias devo comer ao pequeno-almoço?", hist), "E");
+});
+
+Deno.test("classifyTurn: mensagem normal sem recusa anterior é E", () => {
+  const hist = H(["user", "Olá"], ["model", "Olá! Como estás?"]);
+  assertEquals(classifyTurn("Cria-me um plano para esta semana", hist), "E");
+});
+
+Deno.test("allowedToolsFor: aceitar objetivos (A) permite o plano mas proíbe update_goals", () => {
+  const a = allowedToolsFor("A")!;
+  assertEquals(a.has("propose_training_plan"), true);
+  assertEquals(a.has("update_goals"), false);
+  assertEquals(a.has("save_meal_suggestions"), false);
+});
+
+Deno.test("allowedToolsFor: reações (B, C, D) não permitem NENHUMA ferramenta de escrita", () => {
+  for (const caso of ["B", "C", "D"] as const) {
+    const a = allowedToolsFor(caso)!;
+    assertEquals(a.has("update_goals"), false);
+    assertEquals(a.has("propose_training_plan"), false);
+    assertEquals(a.has("save_meal_suggestions"), false);
+    // As de leitura mantêm-se sempre disponíveis.
+    assertEquals(a.has("get_running_history"), true);
+  }
+});
+
+Deno.test("allowedToolsFor: F_PLAN propõe plano e nunca objetivos", () => {
+  // É isto que impede o bug relatado: dizer "quero vegetariano" depois de
+  // recusar um plano não pode gerar uma proposta de metas.
+  const a = allowedToolsFor("F_PLAN")!;
+  assertEquals(a.has("propose_training_plan"), true);
+  assertEquals(a.has("update_goals"), false);
+});
+
+Deno.test("allowedToolsFor: F_GOALS corrige objetivos e nunca propõe plano", () => {
+  const a = allowedToolsFor("F_GOALS")!;
+  assertEquals(a.has("update_goals"), true);
+  assertEquals(a.has("propose_training_plan"), false);
+});
+
+Deno.test("allowedToolsFor: caso E não restringe nada", () => {
+  assertEquals(allowedToolsFor("E"), null);
+});
+
+Deno.test("esquema: caso F retoma o que foi recusado em vez de reiniciar o ciclo", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "CASO F — O atleta responde à pergunta que fizeste depois de uma recusa");
+  assertStringIncludes(sys, "Recusou o PLANO (caso D) → chama propose_training_plan com o ajuste pedido. PROIBIDO update_goals");
+  assertStringIncludes(sys, "Recusou os OBJETIVOS (caso B) → chama update_goals com os valores corrigidos. PROIBIDO propose_training_plan");
+  assertStringIncludes(sys, "NUNCA reinicies o ciclo a propor objetivos outra vez");
+});
+
+Deno.test("esquema: preferência alimentar não desencadeia proposta de objetivos", () => {
+  // Domínio: mudar para vegetariano não altera calorias nem macros — altera
+  // que alimentos os cumprem. Era este raciocínio que faltava e levava a
+  // Carol a tratar "quero mais vegetariano" como um recálculo de metas.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "NOTA TRANSVERSAL — preferências alimentares NÃO são objetivos");
+  assertStringIncludes(sys, "As calorias e os macros mantêm-se exatamente iguais");
+  assertStringIncludes(sys, "NUNCA chames update_goals por causa de uma mudança de preferência alimentar");
+});
+
+Deno.test("caso A manda rever a proposta no Coach, não no ecrã Início", () => {
+  // O atleta está no Coach quando aceita os objetivos; a proposta de plano
+  // abre ali mesmo. Mandá-lo ao Início é mandá-lo procurar noutro ecrã algo
+  // que tem à frente.
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início");
+});
+
+Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {
+  // A regra 4 vive no ramo autorizado do prompt — sysCom() usa BIO_BASE, que
+  // tem coach_can_set_nutrition_goals: false, e aí esta secção nem existe.
+  const sys = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos");
+  assertStringIncludes(sys, "avança DIRETO para o plano, sem passar outra vez pelos objetivos");
+});
+
+Deno.test("a contradição antiga (confirmar em texto antes de chamar) foi removida do prompt", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("Regra de Autorização"), false);
+  assertEquals(sys.includes("Aguarda uma confirmação clara do atleta"), false);
+  // ...e a frase que dizia ao modelo para anunciar objetivos como já gravados.
+  assertEquals(sys.includes("os objetivos estão atualizados no teu perfil"), false);
+  // O modelo correto: a ferramenta cria a proposta, o ecrã confirma.
+  assertStringIncludes(sys, "a confirmação é o ecrã de aceitação");
+  assertStringIncludes(sys, 'NUNCA digas que algo "já está atualizado"');
 });
 
 // ─── runSaveMealSuggestions ──────────────────────────────────────────────────

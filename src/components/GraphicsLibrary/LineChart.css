@@ -14,4 +14,4 @@
 .lc-grid-lines line { stroke: rgba(0,0,0,0.03); stroke-width: 1; }
 .lc-line { stroke-width: 4; fill: none; stroke-linecap: round; }
 .lc-area { opacity: 0.15; }
-.lc-labels-x { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #94a3b8; margin-top: 8px; }
+.lc-labels-x { display: flex; justify-content: space-between; font-size: 0.7rem; font-weight: 700; color: #cbd5e1; margin-top: 8px; }
