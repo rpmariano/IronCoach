@@ -18,6 +18,10 @@ import Admin from './components/Admin/Admin';
 import Dashboard from './components/Dashboard/Dashboard';
 import Calendar from './components/Calendar/Calendar';
 import RunAgenda from './components/Run/RunAgenda';
+import MealRegistration from './components/Nutrition/MealRegistration';
+import BodyRegistration from './components/Body/BodyRegistration';
+import RunRegistration from './components/Run/RunRegistration';
+import GymRegistration from './components/Gym/GymRegistration';
 
 const DEMO_PROFILE = {
   id: 'demo-user',
@@ -142,10 +146,22 @@ export default function App() {
     return <ToastProvider><Auth /></ToastProvider>;
   }
 
+  // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)
+  // é sempre um ecrã de topo, fora de qualquer separador — nunca aninhado
+  // dentro do Dashboard e do seu carrossel de módulos. Isto era só o caso
+  // da Prova (RunAgenda); os outros 4 abriam DENTRO do próprio módulo
+  // (Nutrition.jsx/Body.jsx/Run.jsx/Gym.jsx alternavam entre o dashboard e
+  // o registo), o que deixava o subnav do Dashboard (Corrida/Ginásio/...)
+  // por cima do formulário e — mais grave — dava ao formulário a altura do
+  // carrossel inteiro (as 5 páginas ficam sempre montadas lado a lado para
+  // o gesto de deslizar, e a altura do carrossel é a da mais alta delas),
+  // um "scroll infinito" para lá do fim do próprio formulário.
+  const isCreatingOrEditing = !!openCreationMode || !!editingRaceId;
+
   return (
     <ToastProvider>
       <Layout>
-        {!(openCreationMode === 'race' || editingRaceId) && (
+        {!isCreatingOrEditing && (
           <>
             {activeTab === 'home' && <Home />}
             {activeTab === 'calendario' && <Calendar />}
@@ -155,13 +171,17 @@ export default function App() {
             {activeTab === 'admin' && <Admin />}
           </>
         )}
-        
+
         {(openCreationMode === 'race' || editingRaceId) && (
           <RunAgenda onClose={() => {
             setOpenCreationMode(null);
             setEditingRaceId(null);
           }} />
         )}
+        {openCreationMode === 'meal' && <MealRegistration onClose={() => setOpenCreationMode(null)} />}
+        {openCreationMode === 'assessment' && <BodyRegistration onClose={() => setOpenCreationMode(null)} />}
+        {openCreationMode === 'run' && <RunRegistration onClose={() => setOpenCreationMode(null)} />}
+        {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
       </Layout>
     </ToastProvider>
   );

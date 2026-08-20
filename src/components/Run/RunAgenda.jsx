@@ -367,7 +367,12 @@ export default function RunAgenda({ onClose }) {
       // discardAndLeave: o próprio navGuard deste formulário ainda está
       // registado neste render e bloquearia este setActiveTab como se
       // fosse o atleta a tentar sair com alterações por gravar.
-      if (!editingEventId) {
+      // !leavePrompt?.target: se isto veio de "Gravar e sair" a caminho de
+      // outro separador (navGuard intercetado), saveAndLeave já vai repor
+      // esse destino a seguir — sem esta guarda, ficava pendingCalendarDate
+      // por aplicar (só à próxima visita ao Calendário) sem nunca lá se
+      // chegar agora.
+      if (!editingEventId && !leavePrompt?.target) {
         setNavGuard(null);
         useAppStore.getState().setPendingCalendarDate(draft.date);
         useAppStore.getState().setActiveTab('calendario');

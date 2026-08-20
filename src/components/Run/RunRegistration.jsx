@@ -189,6 +189,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   };
 
+  // Ao gravar uma corrida NOVA (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia da corrida — mesmo padrão de RunAgenda.jsx
+  // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
+  // sair" a caminho de outro separador (navGuard intercetado), respeita
+  // esse destino em vez de o substituir — por isso o alvo pendente é lido
+  // ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(runDate);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
+
   // Estado do Bottom Sheet de métricas em falta
   const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
   const [missingKeysList, setMissingKeysList] = useState([]);
@@ -499,15 +515,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         return;
       }
 
-      const finishAndNavigateToCalendar = () => {
-        useAppStore.getState().setActiveTab('calendario');
-        useAppStore.getState().setOpenCreationMode(null);
-        handleClose();
-      };
-
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
-      finishAndNavigateToCalendar();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -523,9 +533,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
       showToast('Corrida registada');
-      useAppStore.getState().setActiveTab('calendario');
-      useAppStore.getState().setOpenCreationMode(null);
-      handleClose();
+      finishCreateAndGoToCalendar();
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -717,9 +725,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       showToast('Corrida registada');
-      useAppStore.getState().setActiveTab('calendario');
-      useAppStore.getState().setOpenCreationMode(null);
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
