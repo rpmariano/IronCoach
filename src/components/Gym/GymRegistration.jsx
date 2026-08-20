@@ -172,6 +172,22 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     }
   };
 
+  // Ao gravar um treino NOVO (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia do treino — mesmo padrão de RunAgenda.jsx
+  // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
+  // sair" a caminho de outro separador (navGuard intercetado), respeita
+  // esse destino em vez de o substituir — por isso o alvo pendente é lido
+  // ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(date);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
+
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
   // os valores em vez de os ler do estado, para poder ser calculada também a
   // partir da sessão em bruto no momento do carregamento (quando o estado
@@ -318,7 +334,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       setGymSessions([data.session, ...gymSessions]);
       showToast('Treino registado');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -369,7 +385,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       }
 
       showToast('Treino registado');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');

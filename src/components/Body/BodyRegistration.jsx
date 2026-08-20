@@ -107,6 +107,22 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
+  // Ao gravar uma avaliação NOVA (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia da avaliação — mesmo padrão de
+  // RunAgenda.jsx (Prova) via pendingCalendarDate no store. Se isto veio
+  // de "Gravar e sair" a caminho de outro separador (navGuard
+  // intercetado), respeita esse destino em vez de o substituir — por isso
+  // o alvo pendente é lido ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(date);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
+
   const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
     notes: (notesValue || '').trim(),
     metrics: BODY_METRICS.reduce((acc, m) => {
@@ -234,7 +250,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -268,7 +284,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');

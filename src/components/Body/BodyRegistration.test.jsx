@@ -98,6 +98,19 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
   });
 
+  it('avaliação NOVA: ao gravar, navega para o Calendário e deixa a data da avaliação pendente', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1' } }, error: null });
+    useAppStore.setState({ activeTab: 'holistica', pendingCalendarDate: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+
+    await waitFor(() => expect(useAppStore.getState().activeTab).toBe('calendario'));
+    // BodyRegistration usa a data de hoje por omissão (sem dateIso a prefill).
+    expect(useAppStore.getState().pendingCalendarDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
     render(<BodyRegistration onClose={onClose} />);

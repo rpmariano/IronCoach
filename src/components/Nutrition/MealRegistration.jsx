@@ -125,6 +125,22 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
     }
   };
 
+  // Ao gravar uma refeição NOVA (foto ou manual), vai sempre para o
+  // Calendário, aberto no dia da refeição — mesmo padrão de RunAgenda.jsx
+  // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
+  // sair" a caminho de outro separador (navGuard intercetado), respeita
+  // esse destino em vez de o substituir — por isso o alvo pendente é lido
+  // ANTES de handleClose() o consumir.
+  const finishCreateAndGoToCalendar = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    handleClose();
+    if (!hadPendingNav) {
+      setNavGuard(null);
+      useAppStore.getState().setPendingCalendarDate(date);
+      useAppStore.getState().setActiveTab('calendario');
+    }
+  };
+
   // Assinatura do que é analítico, para comparar o antes com o agora.
   const analyticalSignature = (notesValue, items) => JSON.stringify({
     notes: (notesValue || '').trim(),
@@ -210,7 +226,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
       setMeals([...meals, { ...data.meal, meal_items: data.items }]);
       showToast('Refeição registada');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -265,7 +281,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
       setMeals([...meals, data.meal]);
       showToast('Refeição registada');
-      handleClose();
+      finishCreateAndGoToCalendar();
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');
