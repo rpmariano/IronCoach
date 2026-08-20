@@ -309,7 +309,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-[15px] font-bold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
+            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}

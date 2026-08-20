@@ -35,7 +35,7 @@ export default function RunTrainingTypeHelp({ label, children }) {
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-[10px] text-slate-500">{label}</label>
+        <label className="text-[11px] text-slate-500">{label}</label>
         <button
           type="button"
           onClick={() => setIsOpen(true)}
