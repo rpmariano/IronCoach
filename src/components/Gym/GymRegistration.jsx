@@ -466,14 +466,12 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   return (
     <div className="space-y-4 fade-in">
       <div
-        className="rounded-2xl p-4"
-        // O gradiente de fundo (#ffffff → #f8fafc) e a borda (#e2e8f0) eram
-        // do tema claro original e nunca foram migrados — ficava um
-        // retângulo quase branco com texto claro em cima, ilegível, porque
-        // é style inline e as overrides de dark mode do globals.css só
-        // apanham classes Tailwind, não isto.
+        className="rounded-2xl p-4 shadow-sm"
+        // Mesmo cartão de cabeçalho da Prova (RunAgenda), só a cor muda —
+        // gradiente diagonal suave na cor do módulo em vez do radial-gradient
+        // de canto que aqui não condizia com os restantes registos.
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-ginasio-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-ginasio-to) 2%, transparent), color-mix(in srgb, var(--mod-ginasio-to) 5%, transparent))',
           border: '1px solid rgba(255, 255, 255, 0.8)',
           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
         }}
