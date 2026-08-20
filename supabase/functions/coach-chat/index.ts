@@ -1876,6 +1876,11 @@ export function firstNameOf(displayName: string | null | undefined): string | nu
 }
 
 export function buildSystemInstruction(
+  // O handler passa sempre null desde 2026-08-20 — "Contexto do Coach" foi
+  // removido do Perfil (substituído pela Memória do Coach). Mantido como
+  // parâmetro para não obrigar a alterar os ~13 testes que já chamam esta
+  // função com null aqui; se algum dia sobrar código morto vale a pena
+  // remover a fundo (parâmetro + bloco de injeção abaixo).
   coachContext: string | null,
   biometrics: {
     height_cm: number | null;
@@ -2584,7 +2589,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
       .eq("id", userId)
       .maybeSingle();
 
@@ -2866,8 +2871,13 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
+    // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
+    // removido do Perfil a 2026-08-20 (substituído pela Memória do Coach,
+    // coach_notes), por isso profiles.coach_context deixou de ser lido
+    // aqui; a coluna em si fica (a Edge Function suggest-goals, não
+    // chamada por nenhum ecrã, ainda a lê — fora do âmbito desta limpeza).
     const systemInstruction = buildSystemInstruction(
-      profile?.coach_context ?? null,
+      null,
       {
         birth_date: (profile?.birth_date as string | null) ?? null,
         height_cm: (profile?.height_cm as number | null) ?? null,

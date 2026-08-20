@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, Sparkles, Loader2, X, ChevronRight, Utensils } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -91,11 +91,6 @@ export default function Perfil() {
      altera — water_last_activity_at (cron dos lembretes e registo de água) e
      water_reminder_muted_date — com valores que o rascunho tinha em cache. */
   const dirtyKeys = useRef(new Set());
-
-
-  // Coach UI
-  const [suggestingGoals, setSuggestingGoals] = useState(false);
-  const [goalsRationale, setGoalsRationale] = useState(profile?.goals_rationale || '');
 
   // Separadores também se deslizam, como um carrossel (mesmo mecanismo do
   // Dashboard — ver esse ficheiro). Trocar de sub-tab a deslizar passa pela
@@ -315,16 +310,6 @@ export default function Perfil() {
       return;
     }
     await supabase.auth.signOut();
-  };
-
-  const handleSuggestGoals = async () => {
-    setSuggestingGoals(true);
-    // Placeholder para a edge function de coach.
-    setTimeout(() => {
-      setSuggestingGoals(false);
-      setGoalsRationale('O Coach analisou o teu histórico e ajustou a proteína para garantir que ganhas massa muscular...');
-      showToast('A funcionalidade do Coach requer a Edge Function configurada.', 'error');
-    }, 2000);
   };
 
   const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;
@@ -691,33 +676,12 @@ export default function Perfil() {
       </div>
 
       <div className="tab-swipe-page space-y-4">
-          <div className="module-card-contrast">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold">Objetivos com o Coach</h2>
-            </div>
-            <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
-              O Coach analisa o teu histórico (Corpo, Nutrição, Ginásio, Corrida) e as tuas próximas provas para sugerir objetivos (na aba Metas).
-            </p>
-            <button onClick={handleSuggestGoals} disabled={suggestingGoals} type="button"
-              className="w-full border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50">
-              {suggestingGoals ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {suggestingGoals ? 'A analisar histórico...' : 'Pedir ao Coach para definir objetivos'}
-            </button>
-            
-            {goalsRationale && (
-              <div className="rounded-xl p-3 mt-4 border fade-in relative" style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)' }}>
-                <button onClick={() => { setGoalsRationale(''); updateDraft('goals_rationale', null); }} className="absolute top-3 right-3 text-slate-500 hover:text-white">
-                  <X size={14} />
-                </button>
-                <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-[var(--mod-coach-to)]">
-                  <Sparkles size={14} /> Porquê estes objetivos
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed pr-6">{goalsRationale}</p>
-              </div>
-            )}
-          </div>
-
+          {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
+              objetivos") foi removido — nunca chegou a chamar a Edge Function
+              suggest-goals (era um placeholder com setTimeout, ver histórico
+              git), e os objetivos já se discutem e definem a sério pelo Chat
+              (update_goals, com ecrã de aceitar/recusar). Manter os dois
+              caminhos seria redundante e o botão daqui nunca funcionou. */}
           <CoachMemoryCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.
@@ -776,39 +740,13 @@ export default function Perfil() {
             </p>
           </div>
 
-          {/* A descontinuar — substituído pela Memória do Coach acima. Fica
-              visível e editável só para o atleta poder migrar o que aqui tem;
-              apagar já perderia texto escrito à mão. Quando estiver vazio para
-              todos, remove-se o campo e a coluna coach_context. */}
-          {/* Mesmo vidro dos outros cartões (border-white/60, o padrão da app —
-              ver ACWRChart/KPICard/etc.), sem a borda âmbar que a versão
-              anterior usava para sinalizar "a descontinuar": essa cor é a
-              mesma dos alarmes de saúde (RED-S, ACWR, hidratação), e um
-              badge de campo a descontinuar ao lado visual de um alerta de
-              sobretreino diluía o vocabulário de cor. Depreciação de UI não
-              é um alarme — o badge cinzento abaixo já diz "a descontinuar"
-              sem precisar de tomar emprestada a cor de aviso. */}
-          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Bot size={16} className="text-slate-500" />
-              <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
-                A descontinuar
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-              Este campo foi substituído pela <strong className="text-slate-400">Memória do Coach</strong>, logo acima,
-              onde cada facto fica separado, com categoria, e pode ser corrigido um a um.
-              Passa para lá o que ainda faz sentido e apaga aqui — enquanto tiver texto, a Carol continua a lê-lo.
-            </p>
-            <textarea
-              rows="5"
-              value={draft.coach_context || ''}
-              onChange={e => updateDraft('coach_context', e.target.value)}
-              placeholder="(vazio — usa a Memória do Coach acima)"
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-slate-400/60"
-            />
-          </div>
+          {/* "Contexto do Coach" removido — era só uma migração temporária
+              para a Memória do Coach acima (coach_notes), com um badge "A
+              descontinuar". O texto que aqui havia (2 contas) já foi
+              transposto para lá a 2026-08-20; profiles.coach_context ficou
+              a null para todos. A coluna em si não foi apagada — a Edge
+              Function suggest-goals ainda a lê (fora do âmbito desta
+              limpeza), só deixou de ter UI para a preencher. */}
       </div>
       </div>
 
