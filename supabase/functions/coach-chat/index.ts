@@ -2497,6 +2497,12 @@ async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
 
+  // Declarados fora do try para ficarem visíveis no finally, que liberta o
+  // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
+  // deno-lint-ignore no-explicit-any
+  let sb: any = null;
+  let lockedUserId: string | null = null;
+
   try {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiKey) return jsonResponse({ error: "GEMINI_API_KEY não configurada" }, 500);
@@ -2504,7 +2510,7 @@ async function handler(req: Request): Promise<Response> {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return jsonResponse({ error: "Sem autorização" }, 401);
 
-    const sb = createClient(
+    sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
@@ -2513,6 +2519,36 @@ async function handler(req: Request): Promise<Response> {
     const { data: userData, error: userError } = await sb.auth.getUser();
     if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
     const userId = userData.user.id;
+
+    // ── Lock por utilizador ───────────────────────────────────────────────
+    // Impede duas invocações concorrentes do coach-chat para o MESMO
+    // utilizador (ex.: um pedido lento ainda em curso + um reenvio manual
+    // depois de um erro de rede/timeout no cliente) de gerarem efeitos
+    // duplicados — nomeadamente duas propostas de plano concorrentes para a
+    // mesma pergunta em aberto (ver migração 20260820120000_coach_chat_lock).
+    // UPDATE condicional otimista: só avança quem conseguir "reservar" o
+    // campo; um lock com mais de LOCK_STALE_MS é tratado como órfão (função
+    // anterior que morreu a meio) e pode ser reocupado.
+    const LOCK_STALE_MS = 120_000;
+    const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+    const { data: lockRows, error: lockErr } = await sb
+      .from("profiles")
+      .update({ coach_chat_busy_since: new Date().toISOString() })
+      .eq("id", userId)
+      .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
+      .select("id");
+    if (lockErr) {
+      // Falha a adquirir o lock não deve impedir a resposta — regista e segue
+      // em frente sem proteção de duplicação, é preferível a bloquear o coach.
+      console.error("Falha ao adquirir lock do coach-chat:", lockErr);
+    } else if (!lockRows || lockRows.length === 0) {
+      return jsonResponse({
+        busy: true,
+        error: "Ainda estou a preparar a resposta ao teu pedido anterior — aguarda mais um pouco.",
+      }, 409);
+    } else {
+      lockedUserId = userId;
+    }
 
     const body = await req.json();
     const message = typeof body.message === "string"
@@ -3056,6 +3092,18 @@ async function handler(req: Request): Promise<Response> {
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
+  } finally {
+    // Liberta sempre o lock adquirido acima, seja qual for o caminho de
+    // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
+    // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
+    // terminado.
+    if (lockedUserId && sb) {
+      const { error: unlockErr } = await sb
+        .from("profiles")
+        .update({ coach_chat_busy_since: null })
+        .eq("id", lockedUserId);
+      if (unlockErr) console.error("Falha ao libertar lock do coach-chat:", unlockErr);
+    }
   }
 }
 
