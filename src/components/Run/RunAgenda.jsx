@@ -358,6 +358,20 @@ export default function RunAgenda({ onClose }) {
       }
       showToast('Prova guardada');
       handleCloseForm();
+      // Gravar uma prova NOVA vai sempre para o Calendário, aberto no dia
+      // da prova — independentemente de onde a criação foi iniciada (ex.:
+      // o "+" a partir de outro separador). Editar uma já gravada continua
+      // a voltar para onde se estava, tal como cancelar/fechar sem gravar
+      // (handleCloseForm, acima, já revela o activeTab original intacto —
+      // ver initialTab). setNavGuard(null) primeiro, tal como
+      // discardAndLeave: o próprio navGuard deste formulário ainda está
+      // registado neste render e bloquearia este setActiveTab como se
+      // fosse o atleta a tentar sair com alterações por gravar.
+      if (!editingEventId) {
+        setNavGuard(null);
+        useAppStore.getState().setPendingCalendarDate(draft.date);
+        useAppStore.getState().setActiveTab('calendario');
+      }
       return true;
     } catch (err) {
       console.error('Error saving race event:', err);

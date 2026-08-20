@@ -147,15 +147,21 @@ export default function Layout({ children }) {
             style={{ bottom: 90 }}
             ref={fabRef}
           >
-            <FabItem 
+            <FabItem
               label="Nova prova"
               color="var(--mod-prova)"
-              icon={<Trophy size={14} />} 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                closeFab(); 
-                goRegister('coach', 'race');
-              }} 
+              icon={<Trophy size={14} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeFab();
+                // Ao contrário dos outros registos (cada um "mora" no seu
+                // separador — meal em nutricao, etc.), a Prova não tem
+                // separador próprio; passar o activeTab atual em vez de um
+                // fixo 'coach' preserva onde o atleta estava, para o
+                // formulário conseguir voltar exatamente aí ao cancelar/
+                // fechar sem gravar (ver RunAgenda.jsx, initialTab).
+                goRegister(activeTab, 'race');
+              }}
             />
             <FabItem
               label="Registar refeição"
