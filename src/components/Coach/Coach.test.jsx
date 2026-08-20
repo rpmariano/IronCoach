@@ -94,7 +94,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/está a demorar mais do que o costume/i)).toBeInTheDocument();
+    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
     // Não é um erro definitivo — não deve aparecer o prefixo "Erro:".
     expect(screen.queryByText(/^\*\*Erro/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).toBeDisabled();
@@ -125,13 +125,13 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText(/está a demorar mais do que o costume/i)).toBeInTheDocument();
+    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
 
     // 1ª sondagem (POLL_INTERVAL_MS = 4000ms): ainda vazio.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(screen.getByText(/está a demorar mais do que o costume/i)).toBeInTheDocument();
+    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(true);
 
     // 2ª sondagem: encontra a resposta real.
@@ -139,7 +139,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await vi.advanceTimersByTimeAsync(4000);
     });
 
-    expect(screen.queryByText(/está a demorar mais do que o costume/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/aproveita para fazer uns agachamentos/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Resposta real do coach\./i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     // O botão só fica ativo com texto por enviar — testa o destravar do
@@ -170,7 +170,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await vi.advanceTimersByTimeAsync(184000);
     });
 
-    expect(screen.queryByText(/está a demorar mais do que o costume/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/aproveita para fazer uns agachamentos/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Não foi possível obter uma resposta do Coach/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
@@ -189,5 +189,47 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     await waitFor(() => expect(screen.getByText(/Como posso ajudar/i)).toBeInTheDocument());
     expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('trata o atleta pelo primeiro nome no aviso de demora, quando o perfil o tem', async () => {
+    useAppStore.setState({ profile: { id: 'user-1', display_name: 'Patrícia Martins' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Calma Patrícia/i)).toBeInTheDocument();
+  });
+
+  it('sem nome no perfil, recua para "atleta" no aviso de demora', async () => {
+    useAppStore.setState({ profile: { id: 'user-1', display_name: null } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Calma atleta/i)).toBeInTheDocument();
   });
 });

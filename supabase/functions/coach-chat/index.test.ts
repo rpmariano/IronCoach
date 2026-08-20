@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -736,6 +736,42 @@ Deno.test("uma mudança real ainda é detetada quando o valor atual vem como str
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2400, protein_goal: 150 });
   assertEquals(calls.inserts[0].goals.calorie_goal, 2400);
   assertEquals(calls.inserts[0].goals.protein_goal, undefined); // idêntico, não entra na proposta
+});
+
+// ─── firstNameOf ──────────────────────────────────────────────────────────
+
+Deno.test("firstNameOf extrai só o primeiro nome de um display_name composto", () => {
+  assertEquals(firstNameOf("Patrícia Martins"), "Patrícia");
+});
+
+Deno.test("firstNameOf devolve o nome completo quando é uma só palavra", () => {
+  assertEquals(firstNameOf("Patrícia"), "Patrícia");
+});
+
+Deno.test("firstNameOf devolve null para vazio, espaços em branco, ou null/undefined", () => {
+  assertEquals(firstNameOf(""), null);
+  assertEquals(firstNameOf("   "), null);
+  assertEquals(firstNameOf(null), null);
+  assertEquals(firstNameOf(undefined), null);
+});
+
+// ─── tratar o atleta pelo nome no prompt de sistema ──────────────────────
+
+Deno.test("com athleteFirstName, o prompt instrui a Carol a tratar o atleta por esse nome", () => {
+  // O chamador real (handler) já passa só o primeiro nome, via firstNameOf —
+  // não o display_name completo.
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, "Patrícia",
+  );
+  assertStringIncludes(sys, "chama-se **Patrícia**");
+});
+
+Deno.test("sem athleteFirstName, o prompt não menciona nome próprio (recua para 'atleta')", () => {
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertEquals(sys.includes("chama-se **"), false);
 });
 
 // ─── autorização no system prompt ────────────────────────────────────────

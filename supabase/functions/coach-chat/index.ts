@@ -1863,6 +1863,18 @@ export function buildNutritionTargets(opts: {
   return `Targets nutricionais calculados (doutrina Bloco 4.1):\n${lines.map((l) => `- ${l}`).join("\n")}`;
 }
 
+// Extrai o primeiro nome de profiles.display_name — usado para tratar o
+// atleta pelo nome tanto nas mensagens de espera (lock ocupado, ver handler)
+// como no prompt de sistema da Carol. "null" (sem perfil ainda / nome vazio)
+// tem de ser tratado à parte por quem chama, para poder recuar para
+// "atleta" em vez de mostrar "undefined" ou uma frase estranha.
+export function firstNameOf(displayName: string | null | undefined): string | null {
+  if (!displayName || typeof displayName !== "string") return null;
+  const trimmed = displayName.trim();
+  if (!trimmed) return null;
+  return trimmed.split(/\s+/)[0];
+}
+
 export function buildSystemInstruction(
   coachContext: string | null,
   biometrics: {
@@ -1889,6 +1901,10 @@ export function buildSystemInstruction(
   // Opcional: os testes antigos chamam sem este argumento, e um coach sem
   // notas registadas é o estado normal de quem acabou de comecar.
   coachNotesContext: string | null = null,
+  // Opcional pela mesma razão — já o primeiro nome (profiles.display_name
+  // passado por firstNameOf no handler, não o nome completo). Sem perfil
+  // preenchido, a Carol trata por "atleta" como sempre fez.
+  athleteFirstName: string | null = null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -1907,6 +1923,9 @@ export function buildSystemInstruction(
     // ── Tom e Linguagem ───────────────────────────────────────────────────────
     `## Tom e Linguagem\n` +
     `- Trata sempre o atleta por **tu**.\n` +
+    (athleteFirstName
+      ? `- O atleta chama-se **${athleteFirstName}** — trata-o por esse nome com naturalidade (ao cumprimentar, a motivar, a celebrar progresso), não em toda a frase nem de forma mecânica.\n`
+      : "") +
     `- Sê equilibrada: encorajadora e positiva, mas honesta e direta quando há algo a corrigir ou recusar.\n` +
     `- Adapta a profundidade técnica ao nível de experiência descrito no perfil:\n` +
     `  - Iniciante: 1-2 recomendações simples, sem jargão, foca em sensações e hábitos.\n` +
@@ -2542,9 +2561,15 @@ async function handler(req: Request): Promise<Response> {
       // em frente sem proteção de duplicação, é preferível a bloquear o coach.
       console.error("Falha ao adquirir lock do coach-chat:", lockErr);
     } else if (!lockRows || lockRows.length === 0) {
+      // UPDATE não devolveu linhas (não passou no filtro is.null/lt) — outro
+      // pedido para este utilizador está mesmo em curso. Nome só para dar
+      // um tom descontraído à mensagem — não vale a pena falhar o pedido
+      // por causa disto, daí o fallback silencioso para "atleta".
+      const { data: nameRow } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+      const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
       return jsonResponse({
         busy: true,
-        error: "Ainda estou a preparar a resposta ao teu pedido anterior — aguarda mais um pouco.",
+        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)`,
       }, 409);
     } else {
       lockedUserId = userId;
@@ -2559,7 +2584,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
+      .select("display_name, coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
       .eq("id", userId)
       .maybeSingle();
 
@@ -2865,6 +2890,7 @@ async function handler(req: Request): Promise<Response> {
       raceEventsContext,
       planContext,
       coachNotesContext,
+      firstNameOf(profile?.display_name as string | null | undefined),
     );
 
     // deno-lint-ignore no-explicit-any
