@@ -343,10 +343,13 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
     <div className="fade-in pb-8">
       <div
         className="rounded-2xl p-4 shadow-sm relative overflow-hidden"
-        // Borda branca uniforme, como os outros cartões (.card/.module-card-contrast)
-        // — a identidade do módulo fica só no ícone/pílulas, não numa borda
-        // lateral colorida.
-        style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)' }}
+        // Mesmo cartão de cabeçalho da Prova (RunAgenda) — gradiente diagonal
+        // na cor do módulo, em vez do verde fixo que não seguia --mod-nutricao.
+        style={{
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-nutricao-to) 2%, transparent), color-mix(in srgb, var(--mod-nutricao-to) 5%, transparent))',
+          border: '1px solid rgba(255, 255, 255, 0.8)',
+          boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
+        }}
       >
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">

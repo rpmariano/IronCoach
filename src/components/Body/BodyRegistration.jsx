@@ -296,13 +296,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   return (
     <div className="space-y-4 fade-in">
       <div
-        className="rounded-2xl p-4"
-        // --surf-detail (#f8fafc) era o fundo claro dos cartões expansíveis
-        // no tema original — aqui dava um gradiente que acaba num retângulo
-        // quase branco, com a borda #e2e8f0 a condizer. Style inline, por
-        // isso as overrides de dark mode do globals.css não o apanhavam.
+        className="rounded-2xl p-4 shadow-sm"
+        // Mesmo cartão de cabeçalho da Prova (RunAgenda), só a cor muda —
+        // gradiente diagonal suave na cor do módulo em vez do radial-gradient
+        // de canto que aqui não condizia com os restantes registos.
         style={{
-          background: 'radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, var(--mod-corpo-to) 12%, transparent) 0%, transparent 60%), rgba(255, 255, 255, 0.04)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corpo-to) 2%, transparent), color-mix(in srgb, var(--mod-corpo-to) 5%, transparent))',
           border: '1px solid rgba(255, 255, 255, 0.8)',
           boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)',
         }}
