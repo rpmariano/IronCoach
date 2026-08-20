@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, Lightbulb } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
@@ -138,6 +138,41 @@ export default function CoachDailySummaryCard() {
     setIndex
   );
 
+  // Mensagens longas faziam o card crescer bem além dos ~220px dos outros
+  // cards do Início (NextRaceCard/WeeklyPlanCard) — pior ainda, um flex-row
+  // horizontal estica TODOS os slides à altura do mais alto dos 4, por isso
+  // uma mensagem curta aparecia num card gigante e vazio por causa de uma
+  // das outras três. Em vez de encurtar o texto (perdia-se informação),
+  // cada mensagem fica limitada a 4 linhas por omissão — o card volta ao
+  // tamanho dos outros — com "Ler mais" a mostrar o texto completo só para
+  // essa mensagem, só enquanto ela está visível.
+  const [expandedIndex, setExpandedIndex] = useState(null);
+  const [overflowMap, setOverflowMap] = useState({});
+  const textRefs = useRef({});
+
+  // Muda de mensagem (swipe ou bolinha) → volta a fechar; "Ler mais" é sobre
+  // a mensagem que se está a ver, não uma preferência que persiste ao mudar.
+  useEffect(() => {
+    setExpandedIndex(null);
+  }, [index]);
+
+  // scrollHeight > clientHeight no próprio parágrafo (já clampado a 4
+  // linhas via CSS) diz se o texto real excede essas 4 linhas — não precisa
+  // de remover o clamp para medir. Corre para todas as mensagens de uma vez
+  // (mesmo as fora do ecrã no carrossel), não só a atual.
+  useLayoutEffect(() => {
+    const next = {};
+    messages.forEach((m) => {
+      const el = textRefs.current[m.key];
+      if (el) next[m.key] = el.scrollHeight > el.clientHeight + 1;
+    });
+    setOverflowMap(next);
+  }, [messages]);
+
+  const setTextRef = useCallback((key) => (el) => {
+    textRefs.current[key] = el;
+  }, []);
+
   if (dailySummaryLoading && !dailySummary) {
     return (
       <div className="cds-card">
@@ -203,19 +238,37 @@ export default function CoachDailySummaryCard() {
             className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
             style={{ scrollBehavior: 'smooth' }}
           >
-            {messages.map((m, i) => (
-              <div key={m.key} className="w-full shrink-0 snap-center">
-                <div className="cds-msg" data-active={i === index}>
-                  <span className="cds-msg-icon" style={{ background: `${m.color}1a`, color: m.color }}>
-                    <m.Icon size={15} />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="cds-msg-title" style={{ color: m.color }}>{m.label}</p>
-                    <p className="cds-msg-text">{m.text}</p>
+            {messages.map((m, i) => {
+              const isExpanded = expandedIndex === i;
+              return (
+                <div key={m.key} className="w-full shrink-0 snap-center">
+                  <div className="cds-msg" data-active={i === index}>
+                    <span className="cds-msg-icon" style={{ background: `${m.color}1a`, color: m.color }}>
+                      <m.Icon size={15} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="cds-msg-title" style={{ color: m.color }}>{m.label}</p>
+                      <p
+                        ref={setTextRef(m.key)}
+                        className={`cds-msg-text${isExpanded ? '' : ' cds-clamp'}`}
+                      >
+                        {m.text}
+                      </p>
+                      {overflowMap[m.key] && (
+                        <button
+                          type="button"
+                          className="cds-read-more"
+                          onClick={() => setExpandedIndex(isExpanded ? null : i)}
+                        >
+                          {isExpanded ? 'Ler menos' : 'Ler mais'}
+                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div style={{ height: '32px' }} className="shrink-0" />
         </div>

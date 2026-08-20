@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, Sparkles, Loader2, X, ChevronRight, Utensils } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -92,11 +92,6 @@ export default function Perfil() {
      water_reminder_muted_date — com valores que o rascunho tinha em cache. */
   const dirtyKeys = useRef(new Set());
 
-
-  // Coach UI
-  const [suggestingGoals, setSuggestingGoals] = useState(false);
-  const [goalsRationale, setGoalsRationale] = useState(profile?.goals_rationale || '');
-
   // Separadores também se deslizam, como um carrossel (mesmo mecanismo do
   // Dashboard — ver esse ficheiro). Trocar de sub-tab a deslizar passa pela
   // mesma verificação de "alterações por gravar" que já existia ao tocar no
@@ -125,6 +120,32 @@ export default function Perfil() {
   useEffect(() => {
     scrollTo(tabIndex);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabIndex]);
+
+  // O carrossel (tab-swipe-carousel, align-items:flex-start) fica sempre com
+  // a altura do separador mais alto dos 3 — "Guardar alterações" ficava
+  // sempre a essa distância fixa do topo, mesmo num separador bem mais curto
+  // (ex.: "Metas"), com um vão enorme e vazio até ao botão. Aqui só se
+  // ajusta a ALTURA do próprio carrossel à do separador atualmente visível —
+  // não mexe na classe partilhada tab-swipe-carousel (o Dashboard usa a
+  // mesma), só num estilo inline específico deste componente.
+  const pageRefs = useRef([]);
+  const [carouselHeight, setCarouselHeight] = useState(null);
+  useEffect(() => {
+    const el = pageRefs.current[tabIndex];
+    if (!el) return;
+    setCarouselHeight(el.offsetHeight);
+    // jsdom (testes) não implementa ResizeObserver — sem ele só perde-se o
+    // acompanhamento de alterações de altura dentro do separador (ex.: abrir
+    // os campos extra dos lembretes de água), a medição inicial acima já
+    // corre sempre.
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setCarouselHeight(entry.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [tabIndex]);
 
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
@@ -317,16 +338,6 @@ export default function Perfil() {
     await supabase.auth.signOut();
   };
 
-  const handleSuggestGoals = async () => {
-    setSuggestingGoals(true);
-    // Placeholder para a edge function de coach.
-    setTimeout(() => {
-      setSuggestingGoals(false);
-      setGoalsRationale('O Coach analisou o teu histórico e ajustou a proteína para garantir que ganhas massa muscular...');
-      showToast('A funcionalidade do Coach requer a Edge Function configurada.', 'error');
-    }, 2000);
-  };
-
   const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;
   const reminderEndHour = draft.water_reminder_end_hour ?? DEFAULT_REMINDER_END_HOUR;
 
@@ -345,10 +356,19 @@ export default function Perfil() {
   const saveButton = (
     <Button
       variant="module"
+      // Sem moduleColor, "module" (Button.jsx) fica só com text-white
+      // shadow-sm — sem fundo nenhum, por isso "Guardar alterações"
+      // aparecia como texto solto em vez de botão. --mod-prova é a cor de
+      // identidade do Perfil (já usada no indicador dos separadores acima).
+      moduleColor="var(--mod-prova)"
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       isLoading={isSaving}
-      className="w-full mt-4 text-xs py-3"
+      // text-amber-950 sobrepõe-se ao text-white do variant="module" (ver
+      // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
+      // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
+      // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
+      className="w-full mt-4 text-xs py-3 text-amber-950"
     >
       Guardar alterações
     </Button>
@@ -396,8 +416,14 @@ export default function Perfil() {
       {/* Separadores lado a lado, como o Dashboard — os 3 ficam sempre
           montados (partilham o mesmo draft/isDirty, nada se perde ao
           ficarem lado a lado) e o scroll nativo com snap trata do resto. */}
-      <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
-      <div className="tab-swipe-page space-y-4">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onTouchMove={handleTouchMove}
+        className="tab-swipe-carousel"
+        style={carouselHeight != null ? { height: carouselHeight, overflowY: 'hidden', transition: 'height 0.2s ease' } : undefined}
+      >
+      <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
@@ -508,7 +534,7 @@ export default function Perfil() {
           </div>
       </div>
 
-      <div className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
@@ -690,34 +716,13 @@ export default function Perfil() {
           </div>
       </div>
 
-      <div className="tab-swipe-page space-y-4">
-          <div className="module-card-contrast">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold">Objetivos com o Coach</h2>
-            </div>
-            <p className="text-[11px] text-slate-500 mb-4 leading-relaxed">
-              O Coach analisa o teu histórico (Corpo, Nutrição, Ginásio, Corrida) e as tuas próximas provas para sugerir objetivos (na aba Metas).
-            </p>
-            <button onClick={handleSuggestGoals} disabled={suggestingGoals} type="button"
-              className="w-full border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-50">
-              {suggestingGoals ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {suggestingGoals ? 'A analisar histórico...' : 'Pedir ao Coach para definir objetivos'}
-            </button>
-            
-            {goalsRationale && (
-              <div className="rounded-xl p-3 mt-4 border fade-in relative" style={{ background: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)' }}>
-                <button onClick={() => { setGoalsRationale(''); updateDraft('goals_rationale', null); }} className="absolute top-3 right-3 text-slate-500 hover:text-white">
-                  <X size={14} />
-                </button>
-                <div className="flex items-center gap-1.5 mb-1 text-[11px] font-semibold text-[var(--mod-coach-to)]">
-                  <Sparkles size={14} /> Porquê estes objetivos
-                </div>
-                <p className="text-xs text-slate-300 leading-relaxed pr-6">{goalsRationale}</p>
-              </div>
-            )}
-          </div>
-
+      <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
+          {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
+              objetivos") foi removido — nunca chegou a chamar a Edge Function
+              suggest-goals (era um placeholder com setTimeout, ver histórico
+              git), e os objetivos já se discutem e definem a sério pelo Chat
+              (update_goals, com ecrã de aceitar/recusar). Manter os dois
+              caminhos seria redundante e o botão daqui nunca funcionou. */}
           <CoachMemoryCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.
@@ -776,39 +781,13 @@ export default function Perfil() {
             </p>
           </div>
 
-          {/* A descontinuar — substituído pela Memória do Coach acima. Fica
-              visível e editável só para o atleta poder migrar o que aqui tem;
-              apagar já perderia texto escrito à mão. Quando estiver vazio para
-              todos, remove-se o campo e a coluna coach_context. */}
-          {/* Mesmo vidro dos outros cartões (border-white/60, o padrão da app —
-              ver ACWRChart/KPICard/etc.), sem a borda âmbar que a versão
-              anterior usava para sinalizar "a descontinuar": essa cor é a
-              mesma dos alarmes de saúde (RED-S, ACWR, hidratação), e um
-              badge de campo a descontinuar ao lado visual de um alerta de
-              sobretreino diluía o vocabulário de cor. Depreciação de UI não
-              é um alarme — o badge cinzento abaixo já diz "a descontinuar"
-              sem precisar de tomar emprestada a cor de aviso. */}
-          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_10px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <Bot size={16} className="text-slate-500" />
-              <h2 className="text-sm font-semibold text-slate-400">Contexto do Coach</h2>
-              <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
-                A descontinuar
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
-              Este campo foi substituído pela <strong className="text-slate-400">Memória do Coach</strong>, logo acima,
-              onde cada facto fica separado, com categoria, e pode ser corrigido um a um.
-              Passa para lá o que ainda faz sentido e apaga aqui — enquanto tiver texto, a Carol continua a lê-lo.
-            </p>
-            <textarea
-              rows="5"
-              value={draft.coach_context || ''}
-              onChange={e => updateDraft('coach_context', e.target.value)}
-              placeholder="(vazio — usa a Memória do Coach acima)"
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none resize-none placeholder-slate-600 focus:border-slate-400/60"
-            />
-          </div>
+          {/* "Contexto do Coach" removido — era só uma migração temporária
+              para a Memória do Coach acima (coach_notes), com um badge "A
+              descontinuar". O texto que aqui havia (2 contas) já foi
+              transposto para lá a 2026-08-20; profiles.coach_context ficou
+              a null para todos. A coluna em si não foi apagada — a Edge
+              Function suggest-goals ainda a lê (fora do âmbito desta
+              limpeza), só deixou de ter UI para a preencher. */}
       </div>
       </div>
 

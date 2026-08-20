@@ -1863,7 +1863,24 @@ export function buildNutritionTargets(opts: {
   return `Targets nutricionais calculados (doutrina Bloco 4.1):\n${lines.map((l) => `- ${l}`).join("\n")}`;
 }
 
+// Extrai o primeiro nome de profiles.display_name — usado para tratar o
+// atleta pelo nome tanto nas mensagens de espera (lock ocupado, ver handler)
+// como no prompt de sistema da Carol. "null" (sem perfil ainda / nome vazio)
+// tem de ser tratado à parte por quem chama, para poder recuar para
+// "atleta" em vez de mostrar "undefined" ou uma frase estranha.
+export function firstNameOf(displayName: string | null | undefined): string | null {
+  if (!displayName || typeof displayName !== "string") return null;
+  const trimmed = displayName.trim();
+  if (!trimmed) return null;
+  return trimmed.split(/\s+/)[0];
+}
+
 export function buildSystemInstruction(
+  // O handler passa sempre null desde 2026-08-20 — "Contexto do Coach" foi
+  // removido do Perfil (substituído pela Memória do Coach). Mantido como
+  // parâmetro para não obrigar a alterar os ~13 testes que já chamam esta
+  // função com null aqui; se algum dia sobrar código morto vale a pena
+  // remover a fundo (parâmetro + bloco de injeção abaixo).
   coachContext: string | null,
   biometrics: {
     height_cm: number | null;
@@ -1889,6 +1906,10 @@ export function buildSystemInstruction(
   // Opcional: os testes antigos chamam sem este argumento, e um coach sem
   // notas registadas é o estado normal de quem acabou de comecar.
   coachNotesContext: string | null = null,
+  // Opcional pela mesma razão — já o primeiro nome (profiles.display_name
+  // passado por firstNameOf no handler, não o nome completo). Sem perfil
+  // preenchido, a Carol trata por "atleta" como sempre fez.
+  athleteFirstName: string | null = null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -1907,6 +1928,9 @@ export function buildSystemInstruction(
     // ── Tom e Linguagem ───────────────────────────────────────────────────────
     `## Tom e Linguagem\n` +
     `- Trata sempre o atleta por **tu**.\n` +
+    (athleteFirstName
+      ? `- O atleta chama-se **${athleteFirstName}** — trata-o por esse nome com naturalidade (ao cumprimentar, a motivar, a celebrar progresso), não em toda a frase nem de forma mecânica.\n`
+      : "") +
     `- Sê equilibrada: encorajadora e positiva, mas honesta e direta quando há algo a corrigir ou recusar.\n` +
     `- Adapta a profundidade técnica ao nível de experiência descrito no perfil:\n` +
     `  - Iniciante: 1-2 recomendações simples, sem jargão, foca em sensações e hábitos.\n` +
@@ -2497,6 +2521,12 @@ async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
 
+  // Declarados fora do try para ficarem visíveis no finally, que liberta o
+  // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
+  // deno-lint-ignore no-explicit-any
+  let sb: any = null;
+  let lockedUserId: string | null = null;
+
   try {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiKey) return jsonResponse({ error: "GEMINI_API_KEY não configurada" }, 500);
@@ -2504,7 +2534,7 @@ async function handler(req: Request): Promise<Response> {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return jsonResponse({ error: "Sem autorização" }, 401);
 
-    const sb = createClient(
+    sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } },
@@ -2513,6 +2543,42 @@ async function handler(req: Request): Promise<Response> {
     const { data: userData, error: userError } = await sb.auth.getUser();
     if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
     const userId = userData.user.id;
+
+    // ── Lock por utilizador ───────────────────────────────────────────────
+    // Impede duas invocações concorrentes do coach-chat para o MESMO
+    // utilizador (ex.: um pedido lento ainda em curso + um reenvio manual
+    // depois de um erro de rede/timeout no cliente) de gerarem efeitos
+    // duplicados — nomeadamente duas propostas de plano concorrentes para a
+    // mesma pergunta em aberto (ver migração 20260820120000_coach_chat_lock).
+    // UPDATE condicional otimista: só avança quem conseguir "reservar" o
+    // campo; um lock com mais de LOCK_STALE_MS é tratado como órfão (função
+    // anterior que morreu a meio) e pode ser reocupado.
+    const LOCK_STALE_MS = 120_000;
+    const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+    const { data: lockRows, error: lockErr } = await sb
+      .from("profiles")
+      .update({ coach_chat_busy_since: new Date().toISOString() })
+      .eq("id", userId)
+      .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
+      .select("id");
+    if (lockErr) {
+      // Falha a adquirir o lock não deve impedir a resposta — regista e segue
+      // em frente sem proteção de duplicação, é preferível a bloquear o coach.
+      console.error("Falha ao adquirir lock do coach-chat:", lockErr);
+    } else if (!lockRows || lockRows.length === 0) {
+      // UPDATE não devolveu linhas (não passou no filtro is.null/lt) — outro
+      // pedido para este utilizador está mesmo em curso. Nome só para dar
+      // um tom descontraído à mensagem — não vale a pena falhar o pedido
+      // por causa disto, daí o fallback silencioso para "atleta".
+      const { data: nameRow } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+      const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
+      return jsonResponse({
+        busy: true,
+        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)`,
+      }, 409);
+    } else {
+      lockedUserId = userId;
+    }
 
     const body = await req.json();
     const message = typeof body.message === "string"
@@ -2523,7 +2589,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("coach_context, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
       .eq("id", userId)
       .maybeSingle();
 
@@ -2805,8 +2871,13 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
+    // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
+    // removido do Perfil a 2026-08-20 (substituído pela Memória do Coach,
+    // coach_notes), por isso profiles.coach_context deixou de ser lido
+    // aqui; a coluna em si fica (a Edge Function suggest-goals, não
+    // chamada por nenhum ecrã, ainda a lê — fora do âmbito desta limpeza).
     const systemInstruction = buildSystemInstruction(
-      profile?.coach_context ?? null,
+      null,
       {
         birth_date: (profile?.birth_date as string | null) ?? null,
         height_cm: (profile?.height_cm as number | null) ?? null,
@@ -2829,6 +2900,7 @@ async function handler(req: Request): Promise<Response> {
       raceEventsContext,
       planContext,
       coachNotesContext,
+      firstNameOf(profile?.display_name as string | null | undefined),
     );
 
     // deno-lint-ignore no-explicit-any
@@ -3056,6 +3128,18 @@ async function handler(req: Request): Promise<Response> {
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
+  } finally {
+    // Liberta sempre o lock adquirido acima, seja qual for o caminho de
+    // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
+    // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
+    // terminado.
+    if (lockedUserId && sb) {
+      const { error: unlockErr } = await sb
+        .from("profiles")
+        .update({ coach_chat_busy_since: null })
+        .eq("id", lockedUserId);
+      if (unlockErr) console.error("Falha ao libertar lock do coach-chat:", unlockErr);
+    }
   }
 }
 

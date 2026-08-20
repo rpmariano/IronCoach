@@ -37,7 +37,6 @@ const DEMO_PROFILE = {
   fat_goal: 65,
   water_goal_ml: 2500,
   goal_weight_kg: 72.0,
-  coach_context: 'Objetivo: Sub 1h35 na Meia Maratona do Porto'
 };
 
 // Dados fictícios para o modo ?demo=true — deixa ver o layout real da app

@@ -88,6 +88,10 @@ export const useAppStore = create((set, get) => ({
   
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
+  // Usado para retirar a mensagem placeholder "isto está a demorar…" depois
+  // de resolvida (com a resposta real ou com o erro final) — ver
+  // handleAsyncFallback em Coach.jsx.
+  removeCoachMessage: (id) => set((state) => ({ coachMessages: state.coachMessages.filter((m) => m.id !== id) })),
   setCoachLoading: (loading) => set({ coachLoading: loading }),
   clearCoachChat: () => set({ coachMessages: [], coachSuggestions: [] }),
   setCoachSuggestions: (suggestions) => set({ coachSuggestions: suggestions }),
