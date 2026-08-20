@@ -458,10 +458,14 @@ export default function RunAgenda({ onClose }) {
       {validationModal}
       
       <div className="space-y-4">
-        {/* Cartão de cabeçalho */}
+        {/* Cartão de cabeçalho — mesma classe module-card-contrast do corpo
+            do formulário abaixo (bg branco 5% + blur 20px), só com uma
+            lavagem dourada por cima. Antes não tinha backdrop-filter nem a
+            base branca, por isso ficava um retângulo escuro plano em vez do
+            vidro fosco usado no resto do ecrã. */}
         <div
-          className="rounded-2xl p-4 shadow-sm"
-          style={{ background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.02), rgba(251, 191, 36, 0.05))', border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)' }}
+          className="module-card-contrast"
+          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-prova) 3%, transparent), color-mix(in srgb, var(--mod-prova) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">

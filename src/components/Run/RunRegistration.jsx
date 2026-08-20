@@ -752,10 +752,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             foto só cria; "Reanalisar" no cartão da corrida é a ação dedicada
             a reanalisar uma corrida já criada assim. */}
         <div
-          className="rounded-2xl p-4 shadow-sm"
-          // Mesmo cartão de cabeçalho da Prova (RunAgenda) — 2%/5%, como nos
-          // restantes registos, em vez do 3%/6% que ficava aqui sozinho.
-          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corrida-to) 2%, transparent), color-mix(in srgb, var(--mod-corrida-to) 5%, transparent))', border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6)' }}
+          className="module-card-contrast"
+          // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app —
+          // a versão anterior tinha a borda/glow do .card mas sem
+          // backdrop-filter nem base branca, o que dava um retângulo escuro
+          // plano em vez do vidro premium usado nos outros ecrãs.
+          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corrida-to) 3%, transparent), color-mix(in srgb, var(--mod-corrida-to) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
         >
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
