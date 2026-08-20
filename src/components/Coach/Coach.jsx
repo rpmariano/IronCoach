@@ -23,6 +23,15 @@ import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 const POLL_INTERVAL_MS = 4000;
 const POLL_MAX_MS = 180000; // cobre o pior caso de latência do coach-chat
 
+// Mesma extração que firstNameOf em coach-chat/index.ts — duplicada porque
+// vive noutro runtime (cliente vs. Edge Function), não porque a lógica seja
+// diferente. Usada para tratar o atleta pelo nome no aviso de demora abaixo.
+function getFirstName(displayName) {
+  if (!displayName || typeof displayName !== 'string') return null;
+  const trimmed = displayName.trim();
+  return trimmed ? trimmed.split(/\s+/)[0] : null;
+}
+
 export default function Coach() {
   const {
     coachMessages,
@@ -191,10 +200,11 @@ export default function Coach() {
   // só desiste de vez se a sondagem não encontrar nada no prazo.
   const handleAsyncFallback = async (requestStartedAt) => {
     const waitingId = `waiting-${Date.now()}`;
+    const firstName = getFirstName(profile?.display_name);
     addCoachMessage({
       id: waitingId,
       role: 'assistant',
-      content: 'Isto está a demorar mais do que o costume — a tua pergunta pode ainda estar a ser processada. Vou continuar a tentar obter a resposta, aguarda mais um pouco…'
+      content: `Calma ${firstName ?? 'atleta'}, isto está a demorar um bocadinho mais do que o costume — aproveita para fazer uns agachamentos enquanto preparo a resposta :)`
     });
 
     const modelRow = await waitForAsyncReply(requestStartedAt);
