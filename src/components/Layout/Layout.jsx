@@ -92,6 +92,27 @@ export default function Layout({ children }) {
   return (
     <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
 
+      {/* Marca d'água — emblema da União Recreativa da Charneca (50 anos),
+          fixo atrás de todos os ecrãs, a 12% e com mix-blend-mode: screen
+          para o preto do fundo do brasão desaparecer por completo (contribui
+          zero num blend "screen") — só o relevo dourado fica visível, sem
+          nenhum retângulo escuro por trás. position:fixed (mesmo padrão do
+          cabeçalho/menu abaixo) para não se mexer com o scroll interno do
+          <main>. Primeiro filho do container = pinta antes de tudo o resto
+          em DOM order, por isso fica sempre atrás sem precisar de z-index. */}
+      <div
+        aria-hidden="true"
+        className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-md h-screen pointer-events-none"
+        style={{
+          backgroundImage: `url(${publicUrl('urc-emblema.jpg')})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'center',
+          backgroundSize: '72% auto',
+          mixBlendMode: 'screen',
+          opacity: 0.12,
+        }}
+      />
+
       {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
           composição no Chromium em que o desfoque deixa de ser recalculado
           a meio do scroll de páginas longas (ex.: o formulário de Prova
