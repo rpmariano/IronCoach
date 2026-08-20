@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../shared/ToastProvider';
@@ -18,11 +18,26 @@ import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 
 export default function Calendar() {
-  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId } = useAppStore();
+  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
   const { showToast } = useToast();
 
-  const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  // Gravar uma prova nova (RunAgenda) deixa aqui a data da prova, para o
+  // Calendário abrir logo nesse dia/mês em vez do de hoje — ver
+  // pendingCalendarDate no store. Lido só na inicialização (lazy) porque só
+  // interessa no primeiro render a seguir a essa gravação; consumido uma
+  // única vez pelo useEffect abaixo, para não voltar a aplicar-se numa
+  // visita normal e futura ao Calendário.
+  const [currentDate, setCurrentDate] = useState(() =>
+    pendingCalendarDate ? new Date(`${pendingCalendarDate}T00:00:00`) : new Date()
+  );
+  const [selectedDate, setSelectedDate] = useState(() =>
+    pendingCalendarDate ? new Date(`${pendingCalendarDate}T00:00:00`) : new Date()
+  );
+
+  useEffect(() => {
+    if (pendingCalendarDate) clearPendingCalendarDate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [editingRunId, setEditingRunId] = useState(null);
   const [editingGymId, setEditingGymId] = useState(null);

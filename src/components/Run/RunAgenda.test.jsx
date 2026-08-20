@@ -51,6 +51,7 @@ describe('RunAgenda — "Obter informação do site"', () => {
       runs: [],
       editingRaceId: null,
       activeTab: 'holistica',
+      pendingCalendarDate: null,
       setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
       setNavGuard: () => {},
       setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
@@ -154,5 +155,45 @@ describe('RunAgenda — "Obter informação do site"', () => {
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
+  });
+
+  function fillRequiredFields() {
+    fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex.: Lisboa'), { target: { value: 'Porto' } });
+    const nivelSelect = screen.getAllByRole('combobox').find((s) => s.value === '');
+    fireEvent.change(nivelSelect, { target: { value: 'medio' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex.: 1:45:00'), { target: { value: '1:00:00' } });
+  }
+
+  it('prova NOVA: ao gravar, navega para o Calendário e deixa a data da prova pendente — independentemente do separador de origem', async () => {
+    useAppStore.setState({ activeTab: 'holistica' });
+    renderAgenda();
+    fillRequiredFields();
+    // Data (input type="date", sem label associada por htmlFor/id) fica no
+    // valor por omissão — hoje — o que já chega para verificar que a data
+    // gravada é a que fica pendente para o Calendário.
+    const dateInput = document.querySelector('input[type="date"]');
+    const expectedDate = dateInput.value;
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().activeTab).toBe('calendario');
+    });
+    expect(useAppStore.getState().pendingCalendarDate).toBe(expectedDate);
+  });
+
+  it('a editar uma prova: ao gravar, volta ao separador de origem sem tocar no Calendário', async () => {
+    useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
+    renderAgenda();
+    fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().editingRaceId).toBeNull();
+    });
+    expect(useAppStore.getState().activeTab).toBe('holistica');
+    expect(useAppStore.getState().pendingCalendarDate).toBeNull();
   });
 });

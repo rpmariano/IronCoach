@@ -50,6 +50,11 @@ export const useAppStore = create((set, get) => ({
   lastDashboardTab: getInitialDashboardTab(),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
+  // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar
+  // uma prova NOVA, para o Calendário abrir logo nesse dia em vez do de
+  // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
+  // clearPendingCalendarDate.
+  pendingCalendarDate: null,
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
@@ -97,6 +102,8 @@ export const useAppStore = create((set, get) => ({
   setCoachPlanItems: (items) => set({ coachPlanItems: items }),
   setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
+  setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
+  clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
 
   // Recarrega planos e itens — usado pelo Coach quando a resposta criou uma
   // proposta (plan_proposed), para o Início a mostrar sem refrescar a página.
