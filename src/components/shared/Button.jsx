@@ -48,7 +48,13 @@ export function Button({
     'danger-ghost': 'bg-transparent text-red-400 hover:text-red-500 hover:bg-red-500/10',
     'danger-outline': 'border border-red-500/40 text-red-400 hover:bg-red-500/10',
     light: 'bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200',
-    'light-danger': 'bg-red-50/50 hover:bg-red-50 text-red-600 font-bold border border-red-200',
+    // bg-red-50/border-red-200 eram cores do tema claro original — só o
+    // "light" (bg-white/border-slate-200) tem um override global para dark
+    // mode (globals.css), por isso este "light-danger" ficava sempre um
+    // bloco rosa-claro opaco ao lado do "Editar" já adaptado. Direto em
+    // rgba (não depende de nenhum override) e no mesmo espírito translúcido
+    // do "danger", mas com borda para pesar visualmente como o "light" ao lado.
+    'light-danger': 'bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold border border-red-500/30',
     module: 'text-white shadow-sm', // O bg é setado via style
     icon: 'bg-white/10 text-slate-400 hover:bg-white/20 hover:text-white rounded-full'
   };
