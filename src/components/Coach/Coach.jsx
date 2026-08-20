@@ -9,10 +9,25 @@ import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 
+// Quando invokeEdgeFunctionWithTimeout falha (rede ou o timeout de 45s do
+// cliente), não sabemos se o pedido chegou ou não a ser processado no
+// servidor — um incidente investigado em 2026-08-20 mostrou que SIM: o
+// coach-chat pode legitimamente demorar mais de 45s quando encadeia várias
+// rondas de function-calling (até 4 rondas × 2 tentativas × 40s cada), só a
+// resposta é que não chegava a tempo ao cliente. Mostrar logo um erro
+// definitivo e destravar o campo levava a reformular a mesma pergunta
+// enquanto o pedido original ainda estava em curso, gerando duas respostas
+// (e duas propostas de plano) concorrentes para a mesma pergunta. Por isso
+// aguardamos de forma assíncrona em vez de desistir logo — ver
+// handleAsyncFallback abaixo.
+const POLL_INTERVAL_MS = 4000;
+const POLL_MAX_MS = 180000; // cobre o pior caso de latência do coach-chat
+
 export default function Coach() {
   const {
     coachMessages,
     addCoachMessage,
+    removeCoachMessage,
     coachLoading,
     setCoachLoading,
     coachSuggestions,
@@ -150,6 +165,72 @@ export default function Coach() {
     }
   };
 
+  // Sonda coach_messages à procura da resposta do modelo criada DEPOIS do
+  // início deste pedido — usado quando o cliente não conseguiu resposta
+  // síncrona mas o pedido pode ainda estar em processamento no servidor.
+  const waitForAsyncReply = async (afterIso) => {
+    const deadline = Date.now() + POLL_MAX_MS;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const { data: rows } = await supabase
+        .from('coach_messages')
+        .select('id, content, created_at')
+        .eq('user_id', profile?.id)
+        .eq('role', 'model')
+        .gt('created_at', afterIso)
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (rows && rows.length > 0) return rows[0];
+    }
+    return null;
+  };
+
+  // Chamado quando invokeEdgeFunctionWithTimeout falha — ver comentário
+  // grande sobre POLL_MAX_MS acima. Mostra um aviso de demora (sem
+  // destravar o campo, para não convidar a reformular a mesma pergunta) e
+  // só desiste de vez se a sondagem não encontrar nada no prazo.
+  const handleAsyncFallback = async (requestStartedAt) => {
+    const waitingId = `waiting-${Date.now()}`;
+    addCoachMessage({
+      id: waitingId,
+      role: 'assistant',
+      content: 'Isto está a demorar mais do que o costume — a tua pergunta pode ainda estar a ser processada. Vou continuar a tentar obter a resposta, aguarda mais um pouco…'
+    });
+
+    const modelRow = await waitForAsyncReply(requestStartedAt);
+    removeCoachMessage(waitingId);
+
+    if (modelRow) {
+      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content });
+      // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
+      // goals_updated do payload síncrono (nem as sugestões rápidas, que só
+      // vêm nesse payload e não ficam persistidas) — por isso verificamos
+      // sempre se apareceu algo pendente, em vez de confiar num flag que
+      // aqui não existe.
+      const freshPlans = await reloadCoachPlans();
+      if (freshPlans && freshPlans.length > 0) {
+        const pending = freshPlans.filter(p => p.status === 'proposto');
+        if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+      }
+      const freshGoals = await reloadCoachGoalProposals();
+      if (freshGoals && freshGoals.length > 0) {
+        const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
+        if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
+      }
+      if (profile?.id) {
+        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+        if (freshProfile) setProfile(freshProfile);
+      }
+    } else {
+      addCoachMessage({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '**Erro:** Não foi possível obter uma resposta do Coach. Tenta novamente.'
+      });
+    }
+    setCoachLoading(false);
+  };
+
   const handleSend = async (textToSend) => {
     const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
@@ -158,6 +239,8 @@ export default function Coach() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+
+    const requestStartedAt = new Date().toISOString();
 
     // Add user message to state
     addCoachMessage({ id: Date.now().toString(), role: 'user', content: text });
@@ -175,52 +258,44 @@ export default function Coach() {
       });
 
       if (error) {
-        addCoachMessage({
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `**Erro:** ${typeof error === 'string' ? error : error.message || 'Não foi possível responder.'}`
-        });
-      } else {
-        // A função devolve a resposta em model_message.content — `data.reply`
-        // nunca existiu no payload, o que fazia cair sempre no texto de
-        // fallback e esconder a resposta real do coach.
-        addCoachMessage({
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data?.model_message?.content || 'Desculpa, não consegui obter uma resposta de momento.'
-        });
-        if (Array.isArray(data?.suggestions)) {
-          setCoachSuggestions(data.suggestions);
-        }
-        // O coach criou um plano nesta resposta — recarrega os itens para a
-        // proposta aparecer no Início sem ser preciso refrescar a página.
-        if (data?.plan_proposed) {
-          const freshPlans = await reloadCoachPlans();
-          if (freshPlans && freshPlans.length > 0) {
-            const pending = freshPlans.filter(p => p.status === 'proposto');
-            if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
-          }
-        }
-        if (data?.goal_proposed) {
-          const freshGoals = await reloadCoachGoalProposals();
-          if (freshGoals && freshGoals.length > 0) {
-            const pending = freshGoals.filter(g => g.status === 'proposto');
-            if (pending.length > 0) setActiveGoalProposal(pending[0]);
-          }
-        }
-        if (data?.goals_updated && profile?.id) {
-          const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
-          if (freshProfile) setProfile(freshProfile);
-        }
+        await handleAsyncFallback(requestStartedAt);
+        return;
       }
-    } catch (err) {
+
+      // A função devolve a resposta em model_message.content — `data.reply`
+      // nunca existiu no payload, o que fazia cair sempre no texto de
+      // fallback e esconder a resposta real do coach.
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '**Erro Crítico:** Não foi possível contactar o Coach. Tenta novamente mais tarde.'
+        content: data?.model_message?.content || 'Desculpa, não consegui obter uma resposta de momento.'
       });
-    } finally {
+      if (Array.isArray(data?.suggestions)) {
+        setCoachSuggestions(data.suggestions);
+      }
+      // O coach criou um plano nesta resposta — recarrega os itens para a
+      // proposta aparecer no Início sem ser preciso refrescar a página.
+      if (data?.plan_proposed) {
+        const freshPlans = await reloadCoachPlans();
+        if (freshPlans && freshPlans.length > 0) {
+          const pending = freshPlans.filter(p => p.status === 'proposto');
+          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+        }
+      }
+      if (data?.goal_proposed) {
+        const freshGoals = await reloadCoachGoalProposals();
+        if (freshGoals && freshGoals.length > 0) {
+          const pending = freshGoals.filter(g => g.status === 'proposto');
+          if (pending.length > 0) setActiveGoalProposal(pending[0]);
+        }
+      }
+      if (data?.goals_updated && profile?.id) {
+        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+        if (freshProfile) setProfile(freshProfile);
+      }
       setCoachLoading(false);
+    } catch (err) {
+      await handleAsyncFallback(requestStartedAt);
     }
   };
 
