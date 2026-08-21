@@ -80,7 +80,8 @@ export default function CreatedRecordModal() {
   };
 
   const handleGoToChat = () => {
-    setActiveTab('chat');
+    useAppStore.setState({ coachIntent: 'adapt_plan' });
+    setActiveTab('coach');
     clearNewlyCreatedRecord();
   };
 
