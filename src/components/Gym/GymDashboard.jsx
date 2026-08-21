@@ -142,7 +142,7 @@ export default function GymDashboard() {
   };
 
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       {/* Time Filter Bar */}
       <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} />
 

@@ -64,7 +64,7 @@ export default function Dashboard({ activeModule }) {
   }, [currentIndex]);
 
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
       <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
         {/* Sliding indicator — tint translúcido da cor do módulo em vez de

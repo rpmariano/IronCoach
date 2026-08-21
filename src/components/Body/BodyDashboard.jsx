@@ -144,7 +144,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
   } : null;
 
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       <TimeFilterBar
         activeRange={timeRange}
         onChange={setTimeRange}

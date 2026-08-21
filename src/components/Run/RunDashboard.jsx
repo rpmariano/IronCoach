@@ -221,7 +221,7 @@ export default function RunDashboard() {
   };
 
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       {/* 1. TimeFilterBar */}
       <TimeFilterBar
         activeRange={activeRange}
