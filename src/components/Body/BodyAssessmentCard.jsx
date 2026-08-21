@@ -13,8 +13,8 @@ import Button from '../shared/Button';
    nas observações muda a análise do Coach e tem de a regenerar. Editar aqui à
    mão deixava a "Análise do Coach" a descrever uma avaliação que já não
    existe. Mesmo padrão da Nutrição/Ginásio (ver PRD 3.2/3.3/3.5). */
-export default function BodyAssessmentCard({ assessment, onEdit }) {
-  const [expanded, setExpanded] = useState(false);
+export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);

@@ -506,7 +506,7 @@ async function generateGymCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'ginasio' ? `Ginásio (${i.categories?.join('/') || ''})` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão vermelho de Chat para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
+      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
     : ``;
 
   const crossActivitiesSection = sameDayRuns.length > 0
@@ -522,7 +522,7 @@ async function generateGymCoachNotes(
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo — cada frase tem de estar ancorada num número ou comparação concreta.\n` +
     `- Se o esforço percebido (RPE) não bater certo com a duração/intensidade, assinala isso.\n` +
-    `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo.\n` +
+    `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo (ou sugere clicar no botão "Falar com a Coach" se precisares de intervir no plano).\n` +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;
 
   try {
@@ -556,7 +556,7 @@ async function generateGymCoachNotes(
       return { text: null };
     }
     const json = await res.json();
-    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
     if (!rawText) return { text: null };
     
     let parsed: any = {};
@@ -644,8 +644,9 @@ async function attachGymCoachNotes(
           coach_intervention_status: "needed", 
           coach_intervention_reason: result.intervention_reason 
         })
-        .eq("id", userId)
-        .eq("coach_intervention_status", "none");
+        .eq("id", userId);
+      (session as any).coach_intervention_status = "needed";
+      (session as any).intervention_needed = true;
     }
   } catch (e) {
     console.warn("attachGymCoachNotes failed:", e);

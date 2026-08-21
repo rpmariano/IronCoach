@@ -2143,8 +2143,12 @@ export function buildSystemInstruction(
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
-    `- Se o perfil estiver incompleto (peso, objetivo, nível), pergunta o que falta para poderes dar recomendações mais precisas.\n` +
-    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5), aborda-o proativamente na próxima abertura.\n\n` +
+    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5), aborda-o proativamente na próxima abertura.\n` +
+    `- **FADIGA, CANSAÇO E CARGA DIÁRIA (REGRA CRÍTICA)**:\n` +
+    `  Quando o atleta disser que se sente cansado, fatigado, dorido, ou questionar o rendimento/próximo treino:\n` +
+    `  1. Analisa TODAS as atividades de hoje no contexto (soma de TODAS as corridas de hoje + sessões de ginásio). Se o atleta tiver feito múltiplas sessões (ex.: 3 corridas de 20 km ou corrida longa + ginásio intenso), CITA TODAS ELAS explicitamente pelo nome e volume/duração total acumulado!\n` +
+    `  2. Avalia SEMPRE a linha de ACWR fornecida no contexto. Se o ACWR estiver em PERIGO (≥1,50) ou risco acrescido (1,31-1,49), deves alertar com firmeza para o pico agudo de carga e perigo severo de lesão/sobrecarga.\n` +
+    `  3. Perante um dia de carga extrema ou ACWR em perigo, NÃO proponhas manter o treino normal planeado para o dia seguinte como se nada fosse; deves apontar que o volume de hoje comprometeu o planeamento e sugerir descanso ou ajuste do plano.\n\n` +
     // ── Plano Ativo ───────────────────────────────────────────────────────────
     `## Plano Ativo\n` +
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +

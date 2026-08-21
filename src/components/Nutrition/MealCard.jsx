@@ -22,9 +22,9 @@ const MEAL_ICONS = {
    observações entram no prompt de estimação — "hambúrguer" caseiro e do
    McDonald's não dão os mesmos valores). Editar aqui à mão deixava a
    "Análise do Coach" a descrever uma refeição que já não existe. */
-export default function MealCard({ meal, onEdit }) {
+export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
   const { showToast } = useToast();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
 

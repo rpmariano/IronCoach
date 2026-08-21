@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import PremiumModal from './PremiumModal';
 import Button from './Button';
 import { useAppStore } from '../../store';
@@ -20,12 +20,29 @@ export default function CreatedRecordModal() {
     setSelectedDate
   } = useAppStore();
 
+  // Busca o coach_intervention_status diretamente do perfil na BD, porque a
+  // Edge Function pode tê-lo acabado de atualizar e o store local ainda não
+  // refletiu essa mudança (race condition). Usa um state local para garantir
+  // que o botão aparece assim que o perfil é relido.
+  const [interventionNeeded, setInterventionNeeded] = useState(false);
+
   useEffect(() => {
+    setInterventionNeeded(false);
     async function checkProfile() {
       if (newlyCreatedRecord && profile?.id) {
-        const { data } = await supabase.from('profiles').select('coach_intervention_status').eq('id', profile.id).maybeSingle();
-        if (data && data.coach_intervention_status !== profile.coach_intervention_status) {
-          setProfile({ ...profile, coach_intervention_status: data.coach_intervention_status });
+        // Pequeno delay para dar tempo à Edge Function de gravar o status no
+        // perfil (attachCoachNotes corre em background após a resposta).
+        await new Promise(r => setTimeout(r, 1500));
+        const { data } = await supabase
+          .from('profiles')
+          .select('coach_intervention_status')
+          .eq('id', profile.id)
+          .maybeSingle();
+        if (data) {
+          if (data.coach_intervention_status !== profile.coach_intervention_status) {
+            setProfile({ ...profile, coach_intervention_status: data.coach_intervention_status });
+          }
+          setInterventionNeeded(data.coach_intervention_status === 'needed');
         }
       }
     }
@@ -35,7 +52,12 @@ export default function CreatedRecordModal() {
   if (!newlyCreatedRecord) return null;
 
   const { type, record } = newlyCreatedRecord;
-  const showCoachButton = profile?.coach_intervention_status === 'needed';
+  const hasInterventionInRecord = Boolean(
+    record?.intervention_needed ||
+    record?.coach_intervention_status === 'needed' ||
+    (record?.coach_notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(record.coach_notes))
+  );
+  const showCoachButton = interventionNeeded || profile?.coach_intervention_status === 'needed' || hasInterventionInRecord;
 
   const handleClose = () => {
     clearNewlyCreatedRecord();
@@ -72,10 +94,10 @@ export default function CreatedRecordModal() {
         </div>
 
         <div className="pointer-events-none origin-top">
-          {type === 'run' && <RunCard run={record} />}
-          {type === 'gym' && <GymSessionCard session={record} />}
-          {type === 'meal' && <MealCard meal={record} />}
-          {type === 'body' && <BodyAssessmentCard assessment={record} />}
+          {type === 'run' && <RunCard run={record} defaultExpanded={true} />}
+          {type === 'gym' && <GymSessionCard session={record} defaultExpanded={true} />}
+          {type === 'meal' && <MealCard meal={record} defaultExpanded={true} />}
+          {type === 'body' && <BodyAssessmentCard assessment={record} defaultExpanded={true} />}
         </div>
 
         <div className="space-y-3 pt-2">

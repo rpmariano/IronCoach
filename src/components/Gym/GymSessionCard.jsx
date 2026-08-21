@@ -25,8 +25,8 @@ function formatDuration(totalSeconds) {
    esforço ou nas observações muda a análise do Coach e tem de a regenerar.
    Editar aqui à mão deixava a "Análise do Coach" a descrever um treino que
    já não existe. Mesmo padrão da Nutrição (ver MealCard.jsx e PRD 3.2). */
-export default function GymSessionCard({ session, onEdit }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function GymSessionCard({ session, onEdit, defaultExpanded = false }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const onToggleExpand = () => setIsExpanded(prev => !prev);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();

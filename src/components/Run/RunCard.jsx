@@ -71,8 +71,8 @@ function formatDatePT(isoStr) {
   }
 }
 
-export default function RunCard({ run, onEdit, onDelete }) {
-  const [expanded, setExpanded] = useState(false);
+export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
 
   const { profile, loadInitialData, runs, setRuns } = useAppStore();

@@ -356,6 +356,8 @@ async function generateCoachNotes(
   planItems: any[],
   // deno-lint-ignore no-explicit-any
   sameDayGym: any[],
+  // deno-lint-ignore no-explicit-any
+  sameDayRuns: any[],
   geminiKey: string,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
@@ -482,11 +484,19 @@ async function generateCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta corrida desvia gravemente do que estava planeado (ex: era suposto ser leve e fez forte, ou faltou a treinos recentes e hoje compensou em excesso). Se o plano estiver comprometido, deves intervir marcando intervention_needed=true e preenchendo a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão vermelho de Chat para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
+      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta corrida desvia gravemente do que estava planeado (ex: era suposto ser leve e fez forte, ou faltou a treinos recentes e hoje compensou em excesso). Se o plano estiver comprometido, deves intervir marcando intervention_needed=true e preenchendo a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
     : ``;
 
   const crossActivitiesSection = sameDayGym.length > 0
     ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(g => `${g.name || 'Treino'} (${g.categories?.join(', ')}) - Duração: ${Math.round(g.duration_seconds/60)}m, Esforço: ${g.exertion}/10`).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
+    : ``;
+
+  const sameDayRunsSection = sameDayRuns.length > 0
+    ? `\nOUTRAS CORRIDAS HOJE: O atleta já registou mais ${sameDayRuns.length} corrida(s) neste mesmo dia (além desta): ` + sameDayRuns.map(r => {
+        const p = r.distance_km && r.duration_seconds && r.distance_km > 0 ? r.duration_seconds / r.distance_km : null;
+        const ps = p ? `${Math.floor(p / 60)}'${Math.round(p % 60)}"/km` : '?';
+        return `${r.name || 'Corrida'} - ${r.distance_km?.toFixed(1) || '?'}km, Pace: ${ps}, RPE: ${r.effort_rpe || '?'}/10`;
+      }).join('; ') + `. Isto é um volume enorme para um único dia! Deves OBRIGATORIAMENTE comentar sobre o volume total acumulado hoje, o risco de lesão e sobretreino, e sugerir fortemente que o atleta fale com a Coach para ajustar o plano.\n`
     : ``;
 
   const prompt =
@@ -500,7 +510,7 @@ async function generateCoachNotes(
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +
-    `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão vermelho do chat para falar contigo sobre adaptar o plano).\n\n` +
+    `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão "Falar com a Coach" para falar contigo sobre adaptar o plano).\n\n` +
     `Corrida de hoje:\n` +
     `- Tipo: ${run.kind === "competicao" ? "Competição" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
@@ -513,6 +523,7 @@ async function generateCoachNotes(
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
     contextSection +
     crossActivitiesSection +
+    sameDayRunsSection +
     planSection +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA de chat inicie uma intervenção) e "intervention_reason" (string, justificação curta se a intervenção for necessária).`;
 
@@ -655,11 +666,19 @@ async function attachCoachNotes(
       planItems = items || [];
     }
     
-    const { data: sameDayGym } = await sb
-      .from("workout_sessions")
-      .select("name, categories, exertion, duration_seconds")
-      .eq("user_id", userId)
-      .eq("date", ctx.date);
+    const [{ data: sameDayGym }, { data: sameDayRuns }] = await Promise.all([
+      sb
+        .from("workout_sessions")
+        .select("name, categories, exertion, duration_seconds")
+        .eq("user_id", userId)
+        .eq("date", ctx.date),
+      sb
+        .from("runs")
+        .select("name, kind, training_type, distance_km, duration_seconds, effort_rpe")
+        .eq("user_id", userId)
+        .eq("date", ctx.date)
+        .neq("id", run.id),
+    ]);
 
     const coachResult = await generateCoachNotes(
       {
@@ -675,6 +694,7 @@ async function attachCoachNotes(
       historyLabel,
       planItems,
       sameDayGym || [],
+      sameDayRuns || [],
       geminiKey,
     );
 
@@ -688,8 +708,9 @@ async function attachCoachNotes(
           coach_intervention_status: "needed", 
           coach_intervention_reason: coachResult.intervention_reason 
         })
-        .eq("id", userId)
-        .eq("coach_intervention_status", "none");
+        .eq("id", userId);
+      (run as any).coach_intervention_status = "needed";
+      (run as any).intervention_needed = true;
     }
   } catch (e) {
     console.warn("Coach generation failed:", e);
