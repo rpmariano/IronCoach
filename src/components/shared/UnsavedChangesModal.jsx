@@ -23,7 +23,7 @@ export function UnsavedChangesModal({
       maxWidth="max-w-[320px]"
     >
       <div className="p-6">
-        <p className="text-[13px] text-slate-600 mb-6 leading-relaxed">
+        <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
           {message}
         </p>
 
@@ -34,7 +34,7 @@ export function UnsavedChangesModal({
             onClick={onSaveAndLeave}
             disabled={isSaving}
             isLoading={isSaving}
-            className="w-full text-[13px] py-2.5 rounded-xl font-bold"
+            className="w-full"
           >
             {isSaving ? 'A guardar...' : 'Gravar e sair'}
           </Button>
@@ -44,7 +44,7 @@ export function UnsavedChangesModal({
             variant="danger-ghost"
             onClick={onDiscardAndLeave}
             disabled={isSaving}
-            className="w-full text-[13px] py-2.5 rounded-xl font-bold"
+            className="w-full"
           >
             Sair sem gravar
           </Button>
@@ -54,7 +54,7 @@ export function UnsavedChangesModal({
             variant="ghost"
             onClick={onCancel}
             disabled={isSaving}
-            className="w-full text-[13px] py-2.5 rounded-xl font-bold text-slate-500 hover:text-slate-700"
+            className="w-full"
           >
             Cancelar
           </Button>
