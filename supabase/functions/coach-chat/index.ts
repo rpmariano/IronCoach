@@ -3134,6 +3134,14 @@ async function handler(req: Request): Promise<Response> {
       profile?.coach_intervention_reason ?? null
     );
 
+    let finalSystemInstruction = systemInstruction;
+    if (Array.isArray(body.activeInsights) && body.activeInsights.length > 0) {
+      const insightsContext = body.activeInsights.map((i: any) => 
+        - []  (: ): 
+      ).join("\n");
+      finalSystemInstruction += "\n\n--- AVISOS ATIVOS (INSIGHTS BIOMETRICOS) ---\nO motor de regras gerou os seguintes alertas. Tem em conta que o utilizador os pode ter ignorado.\n" + insightsContext;
+    }
+
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
       ...(history || []).map((m: { role: string; content: string }) => ({
@@ -3160,7 +3168,7 @@ async function handler(req: Request): Promise<Response> {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemInstruction }] },
+            system_instruction: { parts: [{ text: finalSystemInstruction }] },
             contents,
             tools: buildTools(allowedTools),
             generationConfig: {

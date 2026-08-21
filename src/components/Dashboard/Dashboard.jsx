@@ -22,13 +22,15 @@ const TABS = [
 ];
 
 export default function Dashboard({ activeModule }) {
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, profile } = useAppStore();
+  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, profile, insightStates } = useAppStore();
   const [showInsights, setShowInsights] = useState(false);
 
-  const insights = useMemo(
-    () => detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents }, profile),
-    [runs, gymSessions, meals, bodyAssessments, raceEvents, profile],
-  );
+  const insights = useMemo(() => {
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents }, profile);
+    // Remove os que ja foram "Entendidos" (desativados).
+    // Os ignorados continuam a alimentar o CoachInsightButton e o contexto do bot.
+    return all.filter(i => insightStates[i.id] !== 'understood');
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, profile, insightStates]);
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);

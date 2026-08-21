@@ -1,8 +1,22 @@
 import React from 'react';
 import { Bot, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
+import { useAppStore } from '../../store';
+import Button from '../shared/Button';
 
 export default function CoachInsightModal({ insights, onClose }) {
+  const setInsightState = useAppStore(state => state.setInsightState);
+
+  const handleIgnorar = () => {
+    insights.forEach(i => setInsightState(i.id, 'ignored'));
+    onClose();
+  };
+
+  const handleEntendido = () => {
+    insights.forEach(i => setInsightState(i.id, 'understood'));
+    onClose();
+  };
+
   if (!insights || insights.length === 0) return null;
 
   return (
@@ -67,6 +81,10 @@ export default function CoachInsightModal({ insights, onClose }) {
             </div>
           );
         })}
+      </div>
+      <div className="px-5 pb-6 pt-2 flex gap-3">
+        <Button variant="ghost" className="flex-1" onClick={handleIgnorar}>Ignorar</Button>
+        <Button variant="primary" className="flex-1" onClick={handleEntendido}>Entendido</Button>
       </div>
     </PremiumModal>
   );

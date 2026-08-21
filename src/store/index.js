@@ -48,6 +48,13 @@ export const useAppStore = create((set, get) => ({
   // UI State
   activeTab: 'home',
   lastDashboardTab: getInitialDashboardTab(),
+  insightStates: JSON.parse(localStorage.getItem('ironhealth_insight_states') || '{}'), // { [insightId]: 'ignored' | 'understood' }
+  setInsightState: (insightId, state) => set((s) => {
+    // Guarda na cache local tambem para nao se perder ao fechar a app
+    const next = { ...s.insightStates, [insightId]: state };
+    localStorage.setItem('ironhealth_insight_states', JSON.stringify(next));
+    return { insightStates: next };
+  }),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
   // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar

@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
+import { detectCoachInsights } from '../../utils/biEngine';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 
@@ -53,7 +54,8 @@ export default function Coach() {
     reloadCoachGoalProposals,
     respondToGoalProposal,
     coachIntent,
-    setCoachIntent
+    setCoachIntent,
+    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates
   } = useAppStore();
   const { showToast } = useToast();
 
