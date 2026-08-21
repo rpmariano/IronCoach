@@ -8,6 +8,8 @@ import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
+import Card from '../shared/Card';
+import Button from '../shared/Button';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -479,7 +481,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
+            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -519,7 +521,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             value={date}
             max={todayISO()}
             onChange={e => setDate(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
         </div>
@@ -534,7 +536,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="Nome do treino"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
           />
         </div>
 
@@ -671,7 +673,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={durationStr}
                   onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 45m"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -683,7 +685,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={calories}
                   onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 350"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -695,7 +697,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={avgHr}
                   onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 135"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -707,7 +709,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={maxHr}
                   onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 168"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
             </div>
@@ -720,7 +722,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                     key={i}
                     type="button"
                     onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                   >
                     {i + 1}
                   </button>
@@ -745,14 +747,14 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 ) : (
                   <div className="space-y-2">
                     {exercises.map(ex => (
-                      <div key={ex.key} className="bg-white border border-slate-200 rounded-xl p-3">
+                      <div key={ex.key} className="bg-white/5 border border-white/10 text-white rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <input
                             type="text"
                             value={ex.name}
                             onChange={e => updateExercise(ex.key, { name: e.target.value })}
                             placeholder="Nome do exercício"
-                            className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
+                            className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
                           />
                           <button onClick={() => removeExercise(ex.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
                             <Trash2 size={14} />
@@ -767,7 +769,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                                 value={s.reps}
                                 onChange={e => updateSet(ex.key, s.key, { reps: e.target.value })}
                                 placeholder="Reps"
-                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
                               <input
                                 type="number"
@@ -775,7 +777,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                                 value={s.weight}
                                 onChange={e => updateSet(ex.key, s.key, { weight: e.target.value })}
                                 placeholder="kg"
-                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
                               <button onClick={() => removeSet(ex.key, s.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
                                 <X size={13} />
@@ -811,7 +813,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Contexto do treino..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
           />
         </div>
 

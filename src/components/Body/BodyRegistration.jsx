@@ -7,6 +7,8 @@ import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-reac
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
+import Card from '../shared/Card';
+import Button from '../shared/Button';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -309,7 +311,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
+            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -328,7 +330,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             value={date}
             max={todayISO()}
             onChange={e => setDate(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-corpo-to)]"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
         </div>
@@ -413,7 +415,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                   step={m.dec > 0 ? '0.1' : '1'}
                   value={metrics[m.key] ?? ''}
                   onChange={e => handleMetricChange(m.key, e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-corpo-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
                 />
               </label>
             ))}
@@ -428,7 +430,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Contexto da pesagem..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
           />
         </div>
 
