@@ -479,9 +479,7 @@ const HEALTH_KEYWORDS_PT = [
  *  i.e., deve seguir para o Gemini. Retorna false só quando a mensagem
  *  é longa e não contém nenhum keyword de saúde — sinal forte de off-topic. */
 function looksHealthRelated(msg: string): boolean {
-  if (msg.trim().length <= 35) return true; // cumprimentos, "sim", "ok", etc.
-  const lower = msg.toLowerCase();
-  return HEALTH_KEYWORDS_PT.some((kw) => lower.includes(kw));
+  return true;
 }
 
 /** Resposta da Carol para perguntas fora do âmbito, sem chamar a API. */
@@ -2251,7 +2249,7 @@ export function buildSystemInstruction(
     // ── Âmbito ────────────────────────────────────────────────────────────────
     `## Âmbito\n` +
     `Só respondes sobre nutrição desportiva, treino de ginásio, corrida, composição corporal, recuperação ` +
-    `ou uso desta app. Para qualquer outra pergunta, define "on_topic" como false e deixa "reply" vazio.\n\n` +
+    `ou uso desta app. ATENÇÃO: Mensagens de seguimento a uma conversa em curso (ex: perguntas indiretas) SÃO on_topic, contextualiza-as! SÓ defines on_topic como false se for um NOVO TEMA claramente fora do âmbito desportivo. Para off-topic, define on_topic como false e deixa reply vazio.\n\n` +
     // ── Suggestions ───────────────────────────────────────────────────────────
     `## Campo "suggestions"\n` +
     `Propõe até 3 perguntas de seguimento curtas, escritas na primeira pessoa como se fosse o atleta a perguntar ` +
