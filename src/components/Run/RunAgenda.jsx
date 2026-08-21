@@ -440,7 +440,7 @@ export default function RunAgenda({ onClose }) {
           <Button
             variant="module"
             moduleColor="var(--mod-prova)"
-            onClick={() => setValidationError(null)}
+            onClick={() => { setValidationError(null) }}
             className="w-full"
           >
             Entendido
@@ -490,7 +490,7 @@ export default function RunAgenda({ onClose }) {
               <input
                 type="date"
                 value={draft.date}
-                onChange={e => updateDraft('date', e.target.value)}
+                onChange={e => { updateDraft('date', e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
@@ -501,7 +501,7 @@ export default function RunAgenda({ onClose }) {
                 maxLength={120}
                 placeholder="Ex.: Lisboa"
                 value={draft.location}
-                onChange={e => updateDraft('location', e.target.value)}
+                onChange={e => { updateDraft('location', e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
@@ -516,7 +516,7 @@ export default function RunAgenda({ onClose }) {
                 maxLength={120}
                 placeholder="Ex.: Meia Maratona de Lisboa"
                 value={draft.name}
-                onChange={e => updateDraft('name', e.target.value)}
+                onChange={e => { updateDraft('name', e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
@@ -524,7 +524,7 @@ export default function RunAgenda({ onClose }) {
               <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
               <select
                 value={draft.race_type}
-                onChange={e => updateTerrain(e.target.value)}
+                onChange={e => { updateTerrain(e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               >
                 {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -538,7 +538,7 @@ export default function RunAgenda({ onClose }) {
               <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
               <select
                 value={draft.distance_km}
-                onChange={e => updateDistance(e.target.value)}
+                onChange={e => { updateDistance(e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
               >
                 {RACE_DISTANCE_OPTIONS.map(opt => (
@@ -556,7 +556,7 @@ export default function RunAgenda({ onClose }) {
                   inputMode="numeric"
                   placeholder="Ex.: 1200"
                   value={draft.elevation_gain_m}
-                  onChange={e => updateDraft('elevation_gain_m', e.target.value)}
+                  onChange={e => { updateDraft('elevation_gain_m', e.target.value) }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                 />
               </div>
@@ -572,7 +572,7 @@ export default function RunAgenda({ onClose }) {
           >
             <select
               value={draft.experience_level}
-              onChange={e => updateDraft('experience_level', e.target.value)}
+              onChange={e => { updateDraft('experience_level', e.target.value) }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
             >
               <option value="">Escolhe...</option>
@@ -590,7 +590,7 @@ export default function RunAgenda({ onClose }) {
             <label className="text-[11px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
             <select
               value={draft.race_priority}
-              onChange={e => updateDraft('race_priority', e.target.value)}
+              onChange={e => { updateDraft('race_priority', e.target.value) }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
             >
               {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
@@ -609,7 +609,7 @@ export default function RunAgenda({ onClose }) {
                 maxLength={60}
                 placeholder="Ex.: 1:45:00"
                 value={draft.target_time}
-                onChange={e => handleTargetTimeChange(e.target.value)}
+                onChange={e => { handleTargetTimeChange(e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
@@ -620,7 +620,7 @@ export default function RunAgenda({ onClose }) {
                 maxLength={20}
                 placeholder="Ex.: 5.20 /km"
                 value={draft.target_pace}
-                onChange={e => handleTargetPaceChange(e.target.value)}
+                onChange={e => { handleTargetPaceChange(e.target.value) }}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
               />
             </div>
@@ -635,7 +635,7 @@ export default function RunAgenda({ onClose }) {
               maxLength={200}
               placeholder="https://..."
               value={draft.website}
-              onChange={e => updateDraft('website', e.target.value)}
+              onChange={e => { updateDraft('website', e.target.value) }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
             />
             {draft.website?.trim() && (
@@ -664,7 +664,7 @@ export default function RunAgenda({ onClose }) {
               maxLength={300}
               placeholder="Logística, nutrição planeada..."
               value={draft.notes}
-              onChange={e => updateDraft('notes', e.target.value)}
+              onChange={e => { updateDraft('notes', e.target.value) }}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
             />
           </div>

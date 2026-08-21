@@ -86,7 +86,7 @@ export default function Layout({ children }) {
   // alterações por gravar). Sem isto, openCreationMode ficava no store e o
   // formulário de registo abria sozinho na visita seguinte a esse módulo.
   const goRegister = (tab, mode) => {
-    if (setActiveTab(tab)) setOpenCreationMode(mode);
+    if (setActiveTab('calendario')) setOpenCreationMode(mode);
   };
 
   return (

@@ -71,8 +71,15 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns, setNavGuard } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (activeTab !== initialTab) {
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose]);
 
   // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
   // no Início (ver Home.jsx e specs/plano-de-treino.md §5.2). Consumido uma
@@ -784,7 +791,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Chip
               active={runKind === 'treino'}
               variant="run"
-              onClick={() => setRunKind('treino')}
+              onClick={() => { setRunKind('treino'); setIsFormDirty(true); }}
               className="px-3 py-1.5"
               type="button"
             >
@@ -793,7 +800,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Chip
               active={runKind === 'competicao'}
               variant="run"
-              onClick={() => setRunKind('competicao')}
+              onClick={() => { setRunKind('competicao'); setIsFormDirty(true); }}
               className="px-3 py-1.5"
               type="button"
             >
@@ -806,7 +813,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <RunTrainingTypeHelp label="Tipo de treino">
                 <select
                   value={runTrainingType}
-                  onChange={e => setRunTrainingType(e.target.value)}
+                  onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
                 >
                   <optgroup label="Corrida solta">
@@ -833,7 +840,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <label className="text-[11px] text-slate-500 mb-1.5 block">Disciplina</label>
               <select
                 value={completedRaceType}
-                onChange={e => setCompletedRaceType(e.target.value)}
+                onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
                 className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
               >
                 {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
@@ -847,7 +854,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               type="date"
               value={runDate}
               max={todayISO()}
-              onChange={e => setRunDate(e.target.value)}
+              onChange={e => { setRunDate(e.target.value); setIsFormDirty(true); }}
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
           </div>
@@ -858,7 +865,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {Array.from({ length: 10 }).map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
+                  onClick={() => { setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
                   className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                 >
                   {i + 1}
@@ -875,7 +882,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
               placeholder="Como te sentiste, dores, condições atmosféricas..."
               value={runNotes}
-              onChange={e => setRunNotes(e.target.value)}
+              onChange={e => { setRunNotes(e.target.value); setIsFormDirty(true); }}
             />
           </div>
 
@@ -884,7 +891,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <input
               type="text"
               value={runName}
-              onChange={e => setRunName(e.target.value)}
+              onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
             <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
@@ -895,11 +902,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="grid grid-cols-2 gap-2 mb-4 bg-white/5 border border-white/10 text-white rounded-xl p-3">
               <div>
                 <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
-                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
                 <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
-                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <input type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
             </div>
           )}
@@ -976,7 +983,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   </div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                    <button onClick={() => setRunPhotos([])} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
+                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); }} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
                       <Trash2 className="w-3.5 h-3.5" /> Limpar todos
                     </button>
                   </div>
@@ -1201,7 +1208,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <div className="flex items-center justify-between mb-2">
                 <label className="text-[12px] font-bold text-slate-300">Zonas de FC (tempo em cada zona)</label>
                 <AddButton
-                  onClick={() => setHrZones([...hrZones, { zone: '', minutes: '' }])}
+                  onClick={() => { setHrZones([...hrZones, { zone: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
                 >
@@ -1215,9 +1222,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <div key={idx} className="flex items-center gap-1.5 mb-1.5">
                     <select 
                       value={z.zone} 
-                      onChange={e => {
-                        const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy);
-                      }} 
+                      onChange={e => { const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
                       className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none"
                     >
                       <option value="">Zona</option>
@@ -1226,13 +1231,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     <input 
                       type="number" placeholder="Minutos" 
                       value={z.minutes} 
-                      onChange={e => {
-                        const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy);
-                      }} 
+                      onChange={e => { const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
                       className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none" 
                     />
                     <button 
-                      onClick={() => setHrZones(hrZones.filter((_, i) => i !== idx))} 
+                      onClick={() => { setHrZones(hrZones.filter((_, i) => i !== idx)); setIsFormDirty(true); }} 
                       type="button" 
                       className="p-1 text-slate-400 hover:text-red-500"
                     >
@@ -1250,17 +1253,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div>
                   <label className="text-[10px] text-slate-500 block mb-1">Aquecimento (min)</label>
-                  <input type="number" value={warmupMinutes} onChange={e=>setWarmupMinutes(e.target.value)} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <input type="number" value={warmupMinutes} onChange={e => { setWarmupMinutes(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-500 block mb-1">Recuperação (seg)</label>
-                  <input type="number" value={recoverySeconds} onChange={e=>setRecoverySeconds(e.target.value)} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <input type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[11px] text-slate-500">Splits (voltas)</label>
                 <AddButton
-                  onClick={() => setSplits([...splits, { distance_km: '', minutes: '' }])}
+                  onClick={() => { setSplits([...splits, { distance_km: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
                 >
@@ -1270,13 +1273,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {splits.map((s, i) => (
                 <div key={i} className="flex gap-1 mb-1.5 items-center">
                   <span className="text-[10px] text-slate-400 w-3">{i+1}.</span>
-                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits);
-                  }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
-                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits);
-                  }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
-                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} type="button"
+                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
                     aria-label={`Remover parcial ${i + 1}`}
                     className="tap-44 text-slate-400 hover:text-red-500 shrink-0"><X className="w-3.5 h-3.5"/></button>
                 </div>
