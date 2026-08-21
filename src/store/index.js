@@ -115,6 +115,9 @@ export const useAppStore = create((set, get) => ({
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
   setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
   clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
+  newlyCreatedRecord: null,
+  setNewlyCreatedRecord: (recordInfo) => set({ newlyCreatedRecord: recordInfo }),
+  clearNewlyCreatedRecord: () => set({ newlyCreatedRecord: null }),
 
   // Recarrega planos e itens — usado pelo Coach quando a resposta criou uma
   // proposta (plan_proposed), para o Início a mostrar sem refrescar a página.

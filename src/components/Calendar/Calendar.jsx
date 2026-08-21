@@ -16,6 +16,7 @@ import RunRegistration from '../Run/RunRegistration';
 import GymRegistration from '../Gym/GymRegistration';
 import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
+import CreatedRecordModal from '../shared/CreatedRecordModal';
 
 export default function Calendar() {
   const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
@@ -306,6 +307,8 @@ export default function Calendar() {
           <BodyAssessmentCard key={assessment.id} assessment={assessment} onEdit={setEditingBodyId} onDelete={handleDeleteBody} />
         ))}
       </div>
+      
+      <CreatedRecordModal />
     </div>
   );
 }

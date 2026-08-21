@@ -688,3 +688,4 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
 });
+

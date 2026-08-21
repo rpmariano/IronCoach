@@ -191,11 +191,14 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord && !sessionIdToEdit) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'gym', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -347,7 +350,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
       setGymSessions([data.session, ...gymSessions]);
       showToast('Treino registado');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -398,7 +401,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       }
 
       showToast('Treino registado');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');

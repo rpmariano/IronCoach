@@ -208,11 +208,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord && !runIdToEdit) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'run', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(runDate);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -530,7 +533,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(createdRun);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -546,7 +549,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(pendingCreatedRun);
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -621,6 +624,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
 
+      let newlySavedRun = null;
       // Editar: dois caminhos. Se os dados analíticos mudaram (distância,
       // duração, RPE, tipo ou métricas), passa pelo Coach e regenera a
       // análise; se só mudou a data ou o nome, é update direto sem custo
@@ -724,7 +728,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setRuns([...runs, data.run]);
+      newlySavedRun = data.run;
+      setRuns([...runs, newlySavedRun]);
 
       // Se esta corrida vem do plano, marca o item como concluído — a data
       // usada é a que ficou no formulário (runDate), que pode ter sido
@@ -733,12 +738,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (completingPlanItemRef.current) {
         await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
           actualDate: runDate,
-          runId: data.run.id,
+          runId: newlySavedRun.id,
         });
       }
 
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(newlySavedRun);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');

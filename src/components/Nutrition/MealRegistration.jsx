@@ -143,11 +143,14 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord && !mealIdToEdit) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -238,7 +241,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
       setMeals([...meals, { ...data.meal, meal_items: data.items }]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -293,7 +296,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       setMeals([...meals, data.meal]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');

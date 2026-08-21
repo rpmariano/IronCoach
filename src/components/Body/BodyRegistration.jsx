@@ -126,11 +126,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // de "Gravar e sair" a caminho de outro separador (navGuard
   // intercetado), respeita esse destino em vez de o substituir — por isso
   // o alvo pendente é lido ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord && !assessmentIdToEdit) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -263,7 +266,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -297,7 +300,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');

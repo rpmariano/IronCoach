@@ -349,17 +349,15 @@ async function generateCoachNotes(
     effort_rpe: number | null;
     details: Record<string, unknown> | null;
   },
-  previousRuns: Array<{
-    date: string;
-    kind: string;
-    distance_km: number | null;
-    duration_seconds: number | null;
-    effort_rpe: number | null;
-    details: Record<string, unknown> | null;
-  }>,
+  // deno-lint-ignore no-explicit-any
+  previousRuns: any[],
   historyLabel: string,
+  // deno-lint-ignore no-explicit-any
+  planItems: any[],
+  // deno-lint-ignore no-explicit-any
+  sameDayGym: any[],
   geminiKey: string,
-): Promise<{ text: string | null; debug: unknown }> {
+): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
   const trainingTypeLabel = run.training_type
@@ -378,113 +376,131 @@ async function generateCoachNotes(
   // recorde pessoal/volume/tendência do que só as últimas 10, sem inchar o
   // prompt: só as 5 mais recentes vão em detalhe no texto.
   const recentRuns = previousRuns.slice(0, 5);
-  const recentPaces = recentRuns
-    .map((r) => (r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null))
-    .filter((p): p is number => p != null);
-  const avgRecentPace = recentPaces.length
-    ? recentPaces.reduce((a, b) => a + b, 0) / recentPaces.length
-    : null;
-  const avgRecentDistance = recentRuns.length
-    ? recentRuns.reduce((a, r) => a + (r.distance_km || 0), 0) / recentRuns.length
-    : null;
-  const paceDeltaStr = avgRecentPace && paceSec
-    ? `${paceSec < avgRecentPace ? "-" : "+"}${Math.round(Math.abs(paceSec - avgRecentPace))}s/km vs. média das últimas ${recentRuns.length}`
+
+  const daysSinceLastRun = previousRuns.length > 0
+    ? Math.floor((new Date(run.date).getTime() - new Date(previousRuns[0].date).getTime()) / (1000 * 3600 * 24))
     : null;
 
-  // Dias desde a corrida anterior do mesmo segmento — calculado aqui, nunca
-  // deixado para o modelo estimar a partir da lista (é isso que causava
-  // afirmações de hiato fabricadas/inconsistentes entre análises da mesma
-  // corrida, ex.: "15 dias desde 29 de maio" quando havia corridas nesse
-  // intervalo todo).
-  const daysSinceLastRun = previousRuns.length
-    ? Math.round((new Date(run.date).getTime() - new Date(previousRuns[0].date).getTime()) / (24 * 3600 * 1000))
-    : null;
+  let previousContext = "";
+  let avgRecentDistance: number | null = null;
+  let avgRecentPace: number | null = null;
 
-  // Lista em ordem cronológica (mais antiga primeiro, mais recente por
-  // último) para o modelo ler como uma narrativa de progresso.
-  const previousContext = [...recentRuns].reverse()
-    .map((r) => {
-      const d = (r.details || {}) as Record<string, unknown>;
-      const p =
-        r.distance_km && r.distance_km > 0 && r.duration_seconds
-          ? r.duration_seconds / r.distance_km
-          : null;
-      const ps = p ? `${Math.floor(p / 60)}'${Math.round(p % 60)}"` : "—";
-      const kindLabel = r.kind === "competicao" ? "Competição" : "Treino";
-      return `${r.date} (${kindLabel}): ${r.distance_km?.toFixed(1) || "?"}km, pace ${ps}, esforço ${r.effort_rpe || "?"}/10${d.avg_heart_rate_bpm ? `, FC média ${d.avg_heart_rate_bpm}bpm` : ""}`;
-    })
-    .join("\n");
+  if (recentRuns.length > 0) {
+    previousContext = recentRuns
+      .slice()
+      .reverse()
+      .map((r) => {
+        const d = r.distance_km?.toFixed(2) || "?";
+        const pSec = r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null;
+        const pStr = pSec ? `${Math.floor(pSec / 60)}'${Math.round(pSec % 60)}"` : "—";
+        const eStr = r.effort_rpe ? `RPE ${r.effort_rpe}/10` : "";
+        const hrStr = (r.details as Record<string, unknown>)?.avg_heart_rate_bpm
+          ? `FC ${(r.details as Record<string, unknown>).avg_heart_rate_bpm}`
+          : "";
+        return `- ${r.date}: ${d}km a ${pStr}/km ${eStr} ${hrStr}`.trim();
+      })
+      .join("\n");
 
-  // Estatísticas de longo prazo sobre TODO o histórico do segmento (até 100
-  // corridas): recorde pessoal de pace, volume total/semanal, e tendência
-  // comparando a metade mais recente do histórico com a mais antiga.
-  const allWithPace = previousRuns
-    .map((r) => ({ ...r, pace: r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null }))
-    .filter((r) => r.pace != null) as Array<{ date: string; distance_km: number | null; pace: number }>;
-  const bestPaceRun = allWithPace.length
-    ? allWithPace.reduce((best, r) => (r.pace < best.pace ? r : best))
-    : null;
-  const bestPaceStr = bestPaceRun ? `${Math.floor(bestPaceRun.pace / 60)}'${Math.round(bestPaceRun.pace % 60)}"/km (${bestPaceRun.date}, ${bestPaceRun.distance_km?.toFixed(1)}km)` : null;
-  const isNewPersonalBest = bestPaceRun && paceSec ? paceSec <= bestPaceRun.pace : false;
+    const sumDist = recentRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0);
+    const sumDur = recentRuns.reduce((acc, r) => acc + (r.duration_seconds || 0), 0);
+    avgRecentDistance = sumDist / recentRuns.length;
+    avgRecentPace = sumDist > 0 ? sumDur / sumDist : null;
+  }
 
-  const totalDistanceHistory = previousRuns.reduce((a, r) => a + (r.distance_km || 0), 0);
-  // previousRuns[0] é o mais recente, o último elemento é o mais antigo
-  // (ordem descendente da query) — usa-se o mais antigo para medir o
-  // período total coberto pelo histórico disponível.
-  const oldestDate = previousRuns.length ? previousRuns[previousRuns.length - 1].date : null;
-  const weeksSpanned = oldestDate
-    ? Math.max(1, (new Date(run.date).getTime() - new Date(oldestDate).getTime()) / (7 * 24 * 3600 * 1000))
-    : null;
-  const weeklyVolumeStr = weeksSpanned && totalDistanceHistory > 0
-    ? `${(totalDistanceHistory / weeksSpanned).toFixed(1)}km/semana em média nas últimas ${weeksSpanned.toFixed(1)} semanas (${previousRuns.length} corridas)`
-    : null;
-
-  // Tendência: compara o pace médio da metade mais recente do histórico com
-  // a metade mais antiga — sinal de progressão/regressão a médio prazo que
-  // a comparação só com as 5 últimas corridas não apanha. allWithPace vem
-  // ordenado do mais recente (índice 0) para o mais antigo (último índice),
-  // por isso a primeira metade é a MAIS RECENTE e a segunda é a mais antiga.
-  let trendStr: string | null = null;
-  if (allWithPace.length >= 6) {
-    const mid = Math.floor(allWithPace.length / 2);
-    const newerHalf = allWithPace.slice(0, mid);
-    const olderHalf = allWithPace.slice(mid);
-    const avgNewer = newerHalf.reduce((a, r) => a + r.pace, 0) / newerHalf.length;
-    const avgOlder = olderHalf.reduce((a, r) => a + r.pace, 0) / olderHalf.length;
-    const diff = Math.round(avgOlder - avgNewer);
-    trendStr = diff === 0
-      ? "pace estável ao longo do histórico disponível"
+  let paceDeltaStr = "";
+  if (paceSec && avgRecentPace) {
+    const diff = Math.round(avgRecentPace - paceSec);
+    paceDeltaStr = diff === 0
+      ? "igual à média recente"
       : diff > 0
-        ? `tendência de melhoria de pace: ~${diff}s/km mais rápido agora do que no início do histórico disponível`
-        : `tendência de abrandamento de pace: ~${Math.abs(diff)}s/km mais lento agora do que no início do histórico disponível`;
+        ? `~${diff}s/km mais rápido que a média recente`
+        : `~${Math.abs(diff)}s/km mais lento que a média recente`;
+  }
+
+  let weeklyVolumeStr = "";
+  let bestPaceStr = "";
+  let isNewPersonalBest = false;
+  let trendStr = "";
+
+  if (previousRuns.length > 0) {
+    const sevenDaysAgo = new Date(run.date);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const recentWeekRuns = previousRuns.filter((r) => new Date(r.date) >= sevenDaysAgo);
+    const weeklyVol = recentWeekRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0) + (run.distance_km || 0);
+    weeklyVolumeStr = `${weeklyVol.toFixed(1)} km (nos 7 dias terminados hoje)`;
+
+    const validPaces = previousRuns
+      .filter((r) => r.distance_km && r.distance_km > 0 && r.duration_seconds)
+      .map((r) => r.duration_seconds! / r.distance_km!);
+    if (validPaces.length > 0) {
+      const bestOldPace = Math.min(...validPaces);
+      if (paceSec && paceSec <= bestOldPace) {
+        isNewPersonalBest = true;
+        bestPaceStr = paceStr;
+      } else {
+        bestPaceStr = `${Math.floor(bestOldPace / 60)}'${Math.round(bestOldPace % 60)}"/km`;
+      }
+    }
+
+    if (previousRuns.length >= 10) {
+      const half = Math.floor(previousRuns.length / 2);
+      const newerHalf = previousRuns.slice(0, half);
+      const olderHalf = previousRuns.slice(half);
+
+      const avgPace = (arr: typeof previousRuns) => {
+        const valid = arr.filter((r) => r.distance_km && r.distance_km > 0 && r.duration_seconds);
+        if (!valid.length) return null;
+        const sumD = valid.reduce((acc, r) => acc + r.distance_km!, 0);
+        const sumT = valid.reduce((acc, r) => acc + r.duration_seconds!, 0);
+        return sumT / sumD;
+      };
+
+      const avgNewer = avgPace(newerHalf);
+      const avgOlder = avgPace(olderHalf);
+
+      if (avgNewer && avgOlder) {
+        const diff = Math.round(avgOlder - avgNewer);
+        trendStr = diff === 0
+          ? "pace estável ao longo do histórico disponível"
+          : diff > 0
+            ? `tendência de melhoria de pace: ~${diff}s/km mais rápido agora do que no início do histórico disponível`
+            : `tendência de abrandamento de pace: ~${Math.abs(diff)}s/km mais lento agora do que no início do histórico disponível`;
+      }
+    }
   }
 
   const contextSection = previousContext.trim()
     ? `\nBase de comparação usada: ${historyLabel}.\n` +
       `\nÚltimas ${recentRuns.length} corridas deste grupo (mais antiga primeiro, mais recente por último):\n${previousContext}\n` +
-      (avgRecentDistance ? `\nMédia de distância recente: ${avgRecentDistance.toFixed(1)}km\n` : "") +
       (avgRecentPace ? `Média de pace recente: ${Math.floor(avgRecentPace / 60)}'${Math.round(avgRecentPace % 60)}"/km\n` : "") +
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
       (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
-      `\nHistórico alargado (${previousRuns.length} corridas deste grupo disponíveis para estatística, mesmo sem irem todas em detalhe acima):\n` +
-      (weeklyVolumeStr ? `- Volume: ${weeklyVolumeStr}\n` : "") +
-      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " — a corrida de hoje IGUALA ou BATE este recorde\n" : "\n"}` : "") +
+      (weeklyVolumeStr ? `- Volume semanal: ${weeklyVolumeStr}\n` : "") +
+      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " (novo recorde pessoal!)\n" : "\n"}` : "") +
       (trendStr ? `- Tendência: ${trendStr}\n` : "")
-    : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação — nesse caso, comenta sobre o que os dados desta corrida por si só revelam (ex.: relação esforço/pace, consistência dos splits), não sobre progresso, e não inventes um histórico que não existe.\n`;
+    : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação.\n`;
+
+  const planSection = planItems.length > 0 
+    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
+      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta corrida desvia gravemente do que estava planeado (ex: era suposto ser leve e fez forte, ou faltou a treinos recentes e hoje compensou em excesso). Se o plano estiver comprometido, deves intervir marcando intervention_needed=true e preenchendo a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão vermelho de Chat para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
+    : ``;
+
+  const crossActivitiesSection = sameDayGym.length > 0
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(g => `${g.name || 'Treino'} (${g.categories?.join(', ')}) - Duração: ${Math.round(g.duration_seconds/60)}m, Esforço: ${g.exertion}/10`).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
+    : ``;
 
   const prompt =
     `És um treinador de corrida experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma corrida. ` +
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
     `REGRAS OBRIGATÓRIAS:\n` +
-    `- NUNCA inventes ou estimes números que não te foram dados explicitamente — em especial "dias desde a última corrida"/hiatos: usa exatamente o valor em "Dias desde a corrida anterior" quando existir, e se não existir, não fales de hiatos ou gaps.\n` +
-    `- Nunca uses frases genéricas de louvor sem conteúdo ("Excelente trabalho!", "Continua assim!", "Bom trabalho!") — cada frase tem de estar ancorada num número ou comparação concreta dos dados fornecidos.\n` +
+    `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
+    `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
     `- Se a corrida de hoje é um novo recorde pessoal de pace, assinala isso claramente logo no início.\n` +
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
-    `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas) — pode ser relação esforço/pace, cadência, FC, consistência de splits, risco de sobrecarga, etc. Só omite isto se genuinamente não houver nada de útil a dizer.\n` +
-    `- Se o esforço percebido (RPE) não bater certo com o pace/distância (ex.: esforço alto para um pace fácil, ou esforço baixo para um pace forte), assinala isso — é um sinal a que o atleta deve prestar atenção.\n` +
-    `- Termina com uma sugestão concreta e acionável para o próximo treino (não um conselho vago tipo "continua a treinar").\n` +
-    `- Não repitas os números todos, escolhe os 3-4 mais relevantes para a história que estás a contar.\n\n` +
+    `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
+    `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +
+    `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão vermelho do chat para falar contigo sobre adaptar o plano).\n\n` +
     `Corrida de hoje:\n` +
     `- Tipo: ${run.kind === "competicao" ? "Competição" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
@@ -495,15 +511,10 @@ async function generateCoachNotes(
     (details.cadence_spm ? `- Cadência: ${details.cadence_spm}spm${details.max_cadence_spm ? ` (máx ${details.max_cadence_spm}spm)` : ""}\n` : "") +
     (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
-    (details.vo2_max ? `- VO2 max: ${details.vo2_max}\n` : "") +
-    (details.sweat_loss_ml ? `- Perda por transpiração estimada: ${details.sweat_loss_ml} ml\n` : "") +
-    (details.aerobic_threshold_bpm ? `- Limiar Aeróbio (FC LA): ${details.aerobic_threshold_bpm} bpm\n` : "") +
-    (details.anaerobic_threshold_bpm ? `- Limiar Anaeróbio (FC LAn): ${details.anaerobic_threshold_bpm} bpm\n` : "") +
-    (details.ground_contact_time_ms ? `- Tempo de contacto no solo: ${details.ground_contact_time_ms} ms\n` : "") +
-    (details.vertical_oscillation_cm ? `- Oscilação vertical: ${details.vertical_oscillation_cm} cm\n` : "") +
-    (details.asymmetry_pct ? `- Assimetria da passada: ${details.asymmetry_pct}%\n` : "") +
     contextSection +
-    `\nResponde em português (PT), tom direto e técnico mas próximo — como um treinador real falaria, não um gerador de motivação genérica. Se houver perda por transpiração estimada, lembra brevemente o atleta da importância da hidratação pós-treino para compensar.`;
+    crossActivitiesSection +
+    planSection +
+    `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA de chat inicie uma intervenção) e "intervention_reason" (string, justificação curta se a intervenção for necessária).`;
 
   try {
     const res = await fetchGeminiWithTimeout(
@@ -513,17 +524,18 @@ async function generateCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // A falha anterior não era o parâmetro (thinkingLevel "minimal" é
-          // válido para a série Gemini 3 por trás de gemini-flash-latest) —
-          // era o timeout de 20s a ser demasiado curto para um prompt mais
-          // pesado (histórico de 30 corridas), confirmado por uma chamada
-          // real que bateu certo nos 30000ms do timeout seguinte. Junta-se
-          // aqui thinkingLevel "minimal" (reduz o tempo gasto a "pensar",
-          // logo reduz a hipótese de exceder o timeout) com um timeout bem
-          // mais folgado e um orçamento de tokens generoso como rede de
-          // segurança adicional.
           generationConfig: {
             maxOutputTokens: 8192,
+            response_mime_type: "application/json",
+            response_schema: {
+              type: "OBJECT",
+              properties: {
+                text: { type: "STRING" },
+                intervention_needed: { type: "BOOLEAN" },
+                intervention_reason: { type: "STRING" }
+              },
+              required: ["text", "intervention_needed"]
+            }
           },
         }),
       },
@@ -539,13 +551,25 @@ async function generateCoachNotes(
 
     const json = await res.json();
     const candidate = json?.candidates?.[0];
-    const coachText = candidate?.content?.parts?.[0]?.text;
-    if (!coachText) {
+    const rawText = candidate?.content?.parts?.[0]?.text;
+    if (!rawText) {
       const debugInfo = { finishReason: candidate?.finishReason, promptFeedback: json?.promptFeedback, usageMetadata: json?.usageMetadata };
       console.warn("Coach generation returned no text:", JSON.stringify(debugInfo).slice(0, 2000));
       return { text: null, debug: debugInfo };
     }
-    return { text: coachText.trim(), debug: null };
+    
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(rawText.replace(/```json\n/g, '').replace(/```/g, ''));
+    } catch (e) {
+      console.error("Coach generation json parse error", e, rawText);
+    }
+    return { 
+      text: parsed.text?.trim() || null, 
+      intervention_needed: parsed.intervention_needed,
+      intervention_reason: parsed.intervention_reason,
+      debug: null 
+    };
   } catch (e) {
     console.warn("Coach generation error:", e);
     return { text: null, debug: { exception: String(e) } };
@@ -609,6 +633,34 @@ async function attachCoachNotes(
       .order("date", { ascending: false })
       .limit(100);
 
+    const { data: activePlans } = await sb
+      .from("coach_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "aceite")
+      .lte("period_start", ctx.date)
+      .gte("period_end", ctx.date)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    let planItems = [];
+    if (activePlans && activePlans.length > 0) {
+      const { data: items } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, target_distance_km, target_duration_min, meal_suggestion, status")
+        .eq("user_id", userId)
+        .eq("plan_id", activePlans[0].id)
+        .gte("planned_date", new Date(new Date(ctx.date).getTime() - 2 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+        .lte("planned_date", ctx.date);
+      planItems = items || [];
+    }
+    
+    const { data: sameDayGym } = await sb
+      .from("workout_sessions")
+      .select("name, categories, exertion, duration_seconds")
+      .eq("user_id", userId)
+      .eq("date", ctx.date);
+
     const coachResult = await generateCoachNotes(
       {
         date: ctx.date,
@@ -621,12 +673,23 @@ async function attachCoachNotes(
       },
       previousRuns || [],
       historyLabel,
+      planItems,
+      sameDayGym || [],
       geminiKey,
     );
 
     if (coachResult.text) {
       await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
       run.coach_notes = coachResult.text;
+    }
+    if (coachResult.intervention_needed && coachResult.intervention_reason) {
+      await sb.from("profiles")
+        .update({ 
+          coach_intervention_status: "needed", 
+          coach_intervention_reason: coachResult.intervention_reason 
+        })
+        .eq("id", userId)
+        .eq("coach_intervention_status", "none");
     }
   } catch (e) {
     console.warn("Coach generation failed:", e);
@@ -1157,3 +1220,4 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
 });
+
