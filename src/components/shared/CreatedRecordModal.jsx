@@ -80,7 +80,16 @@ export default function CreatedRecordModal() {
   };
 
   const handleGoToChat = () => {
-    useAppStore.setState({ coachIntent: 'adapt_plan' });
+    useAppStore.setState({
+      coachIntent: {
+        kind: 'proactive_intervention',
+        recordType: type,
+        recordId: record?.id,
+        recordName: record?.name,
+        date: record?.date,
+        reason: record?.coach_intervention_reason || profile?.coach_intervention_reason || record?.coach_notes,
+      }
+    });
     setActiveTab('coach');
     clearNewlyCreatedRecord();
   };

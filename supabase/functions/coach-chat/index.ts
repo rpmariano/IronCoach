@@ -3152,7 +3152,14 @@ async function handler(req: Request): Promise<Response> {
         role: m.role,
         parts: [{ text: m.content }],
       })),
-      { role: "user", parts: [{ text: message || (body.is_intervention_start ? "O atleta abriu o chat através do botão vermelho de intervenção. Avança com o confronto inicial." : "") }] },
+      {
+        role: "user",
+        parts: [{
+          text: message || (body.is_intervention_start
+            ? `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.${body.intervention_details ? ` Detalhes da análise/motivo: "${body.intervention_details}".` : ''} INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`
+            : "")
+        }]
+      },
     ];
 
     // Restringe as ferramentas ao que este caso permite (ver classifyTurn).

@@ -69,11 +69,84 @@ export default function Coach() {
     reloadCoachGoalProposals();
   }, []);
 
+  const handleProactiveIntervention = async (intentData) => {
+    if (coachLoading) return;
+    setCoachLoading(true);
+    setCoachSuggestions([]);
+    const requestStartedAt = new Date().toISOString();
+
+    try {
+      const allInsights = detectCoachInsights(
+        { runs, gymSessions, meals, bodyAssessments, raceEvents }, profile
+      );
+      const insightsContext = allInsights.map(i => ({
+        title: i.title,
+        message: i.message,
+        metric: i.metric,
+        value: i.value,
+        state: insightStates[i.id] === 'understood'
+          ? 'Entendido (resolvido pelo atleta)'
+          : insightStates[i.id] === 'ignored'
+            ? 'Ativo (ignorado temporariamente pelo atleta)'
+            : 'Ativo (pendente)'
+      }));
+
+      const payload = {
+        message: '',
+        is_intervention_start: true,
+        intervention_details: intentData?.reason ? `Motivo/Análise: "${intentData.reason}"` : null,
+        userData: profile || {},
+        activeInsights: insightsContext
+      };
+
+      const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+        body: JSON.stringify(payload)
+      });
+
+      if (error) {
+        await handleAsyncFallback(requestStartedAt);
+        return;
+      }
+
+      if (data?.model_message?.content) {
+        addCoachMessage({
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.model_message.content
+        });
+      }
+      if (Array.isArray(data?.suggestions)) {
+        setCoachSuggestions(data.suggestions);
+      }
+      if (data?.plan_proposed) {
+        const freshPlans = await reloadCoachPlans();
+        if (freshPlans && freshPlans.length > 0) {
+          const pending = freshPlans.filter(p => p.status === 'proposto');
+          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+        }
+      }
+      if (data?.goal_proposed) {
+        const freshGoals = await reloadCoachGoalProposals();
+        if (freshGoals && freshGoals.length > 0) {
+          const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
+          if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
+        }
+      }
+      if (data?.goals_updated && profile?.id) {
+        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+        if (freshProfile) setProfile(freshProfile);
+      }
+      setCoachLoading(false);
+    } catch (err) {
+      await handleAsyncFallback(requestStartedAt);
+    }
+  };
+
   useEffect(() => {
-    if (coachIntent === 'adapt_plan') {
+    if (coachIntent === 'adapt_plan' || (coachIntent && coachIntent.kind === 'proactive_intervention')) {
+      const intentData = typeof coachIntent === 'object' ? coachIntent : null;
       setCoachIntent(null);
-      // Trigger a hidden message to the coach or pre-fill the chat
-      handleSend('Gostaria de adaptar o meu plano atual. Podes verificar o meu plano e sugerir adaptações?');
+      handleProactiveIntervention(intentData);
       return;
     }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do

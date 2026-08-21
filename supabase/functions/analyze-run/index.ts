@@ -355,7 +355,7 @@ async function generateCoachNotes(
   // deno-lint-ignore no-explicit-any
   planItems: any[],
   // deno-lint-ignore no-explicit-any
-  sameDayGym: any[],
+  recentGym: any[],
   // deno-lint-ignore no-explicit-any
   sameDayRuns: any[],
   geminiKey: string,
@@ -487,8 +487,25 @@ async function generateCoachNotes(
       `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano!\n`
     : ``;
 
+  const yesterdayISO = new Date(new Date(run.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const yesterdayRuns = previousRuns.filter((r) => r.date === yesterdayISO);
+  const yesterdayGym = recentGym.filter((g) => g.date === yesterdayISO);
+  const sameDayGym = recentGym.filter((g) => g.date === run.date);
+
+  let yesterdaySection = "";
+  if (yesterdayRuns.length > 0 || yesterdayGym.length > 0) {
+    const totalYesterdayKm = yesterdayRuns.reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
+    const runDetails = yesterdayRuns.map((r, i) => `${i + 1}.ª corrida: ${Number(r.distance_km || 0).toFixed(1)}km (RPE ${r.effort_rpe || '?'}/10)`).join(", ");
+    const gymDetails = yesterdayGym.map(g => `Ginásio ${g.name || 'Treino'} (${(g.categories || []).join('/') || ''}, ${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`).join(", ");
+    
+    yesterdaySection = `\nATIVIDADES REGISTADAS NO DIA ANTERIOR (${yesterdayISO}):\n` +
+      `- Total de corridas ontem: ${yesterdayRuns.length} corrida(s) somando ${totalYesterdayKm.toFixed(1)} km [${runDetails}].\n` +
+      (yesterdayGym.length > 0 ? `- Ginásio ontem: ${yesterdayGym.length} sessão/sessões [${gymDetails}].\n` : '') +
+      `REGRA DO DIA ANTERIOR: Deves citar explicitamente TODO o volume e treinos que o atleta realizou ontem (ex.: ${yesterdayRuns.length > 1 ? `as ${yesterdayRuns.length} corridas de ontem totalizando ${totalYesterdayKm.toFixed(1)} km` : `${totalYesterdayKm.toFixed(1)} km de corrida ontem`}${yesterdayGym.length > 0 ? ` mais o treino de ginásio` : ''}). NUNCA digas que ele fez apenas uma corrida de 20 km se ele registou duas corridas de 20 km (40 km)!`;
+  }
+
   const crossActivitiesSection = sameDayGym.length > 0
-    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(g => `${g.name || 'Treino'} (${g.categories?.join(', ')}) - Duração: ${Math.round(g.duration_seconds/60)}m, Esforço: ${g.exertion}/10`).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(g => `${g.name || 'Treino'} (${(g.categories || []).join(', ')}) - Duração: ${Math.round((g.duration_seconds || 0)/60)}m, Esforço: ${g.exertion}/10`).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
     : ``;
 
   const sameDayRunsSection = sameDayRuns.length > 0
@@ -508,6 +525,7 @@ async function generateCoachNotes(
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
     `- Se a corrida de hoje é um novo recorde pessoal de pace, assinala isso claramente logo no início.\n` +
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
+    `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +
     `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão "Falar com a Coach" para falar contigo sobre adaptar o plano).\n\n` +
@@ -522,6 +540,7 @@ async function generateCoachNotes(
     (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
     contextSection +
+    yesterdaySection +
     crossActivitiesSection +
     sameDayRunsSection +
     planSection +
@@ -666,12 +685,14 @@ async function attachCoachNotes(
       planItems = items || [];
     }
     
-    const [{ data: sameDayGym }, { data: sameDayRuns }] = await Promise.all([
+    const sevenDaysAgoISO = new Date(new Date(ctx.date).getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const [{ data: recentGym }, { data: sameDayRuns }] = await Promise.all([
       sb
         .from("workout_sessions")
-        .select("name, categories, exertion, duration_seconds")
+        .select("date, name, categories, exertion, duration_seconds")
         .eq("user_id", userId)
-        .eq("date", ctx.date),
+        .gte("date", sevenDaysAgoISO)
+        .lte("date", ctx.date),
       sb
         .from("runs")
         .select("name, kind, training_type, distance_km, duration_seconds, effort_rpe")
@@ -693,7 +714,7 @@ async function attachCoachNotes(
       previousRuns || [],
       historyLabel,
       planItems,
-      sameDayGym || [],
+      recentGym || [],
       sameDayRuns || [],
       geminiKey,
     );
