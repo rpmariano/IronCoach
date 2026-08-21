@@ -44,11 +44,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    if (activeTab !== initialTab) {
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose]);
+  
 
   const isEditing = !!mealIdToEdit;
 
@@ -85,6 +81,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -119,6 +122,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();

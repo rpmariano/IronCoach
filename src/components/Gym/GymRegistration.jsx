@@ -74,11 +74,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    if (activeTab !== initialTab) {
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose]);
+  
   const isEditing = !!sessionIdToEdit;
 
   // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
@@ -133,6 +129,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -167,6 +170,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();

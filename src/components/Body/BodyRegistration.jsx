@@ -39,11 +39,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    if (activeTab !== initialTab) {
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose]);
+  
   const isEditing = !!assessmentIdToEdit;
 
   // Comum aos dois caminhos
@@ -68,6 +64,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -102,6 +105,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
