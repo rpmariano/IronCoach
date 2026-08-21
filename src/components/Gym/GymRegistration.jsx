@@ -209,6 +209,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // partir da sessão em bruto no momento do carregamento (quando o estado
   // ainda não foi atualizado).
   const analyticalSignature = (v) => JSON.stringify({
+    date: v.date,
     kind: v.kind,
     categories: [...(v.categories || [])].sort(),
     notes: (v.notes || '').trim(),
@@ -221,6 +222,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   });
 
   const currentSignature = () => analyticalSignature({
+    date,
     kind, categories, notes,
     duration: parseDurationInput(durationStr),
     calories, avgHr, maxHr, exertion,
@@ -257,6 +259,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     }));
     setExercises(loadedExercises);
     setOriginalSnapshot(analyticalSignature({
+      date: session.date,
       kind: session.kind === 'aula' ? 'aula' : 'forca',
       categories: session.categories || [],
       notes: session.notes || '',

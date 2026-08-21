@@ -267,6 +267,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // chaves) para que o objeto vindo da BD e o construído a partir do
   // formulário sejam comparáveis campo a campo.
   const analyticalSignature = (v) => JSON.stringify({
+    date: v.date,
     kind: v.kind,
     trainingType: v.trainingType || null,
     distance: v.distance === '' || v.distance == null ? null : Number(v.distance),
@@ -375,6 +376,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         // regenerar. Mudar só a data ou o nome é update direto, sem custo de
         // API (mesmo padrão da Nutrição/Ginásio/Corpo — ver PRD 3.2).
         setOriginalSnapshot(analyticalSignature({
+          date: r.date,
           kind: r.kind || 'treino',
           trainingType: r.training_type || 'continuo',
           distance: r.distance_km,
@@ -396,11 +398,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   }, [runIdToEdit, runs]);
 
-  // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
-  // ou o nome não justifica uma chamada ao Gemini.
+  // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit
     && originalSnapshot !== null
     && analyticalSignature({
+      date: runDate,
       kind: runKind,
       trainingType: runKind === 'treino' ? runTrainingType : null,
       distance: runDistance,
@@ -587,6 +589,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     let signatureChanged = false;
     if (runIdToEdit && originalSnapshot !== null) {
       const newSig = analyticalSignature({
+        date: runDate,
         kind: runKind,
         trainingType: runKind === 'treino' ? runTrainingType : null,
         distance: runDistance,

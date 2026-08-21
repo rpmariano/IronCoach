@@ -484,7 +484,7 @@ async function generateCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta corrida desvia gravemente do que estava planeado (ex: era suposto ser leve e fez forte, ou faltou a treinos recentes e hoje compensou em excesso). Se o plano estiver comprometido, deves intervir marcando intervention_needed=true e preenchendo a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
+      `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano!\n`
     : ``;
 
   const crossActivitiesSection = sameDayGym.length > 0

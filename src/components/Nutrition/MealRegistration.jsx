@@ -157,7 +157,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
-  const analyticalSignature = (notesValue, items) => JSON.stringify({
+  const analyticalSignature = (dateValue, typeValue, notesValue, items) => JSON.stringify({
+    date: dateValue,
+    mealType: typeValue,
     notes: (notesValue || '').trim(),
     items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
   });
@@ -176,16 +178,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       grams: it.quantity_grams,
     }));
     setManualItems(items);
-    setOriginalSnapshot(analyticalSignature(meal.notes, items));
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.meal_type, meal.notes, items));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
 
-  // Só regenera a análise se os alimentos ou as observações mudaram; mudar
-  // apenas a data ou o tipo de refeição não justifica uma chamada ao Gemini.
+  // Regenera a análise se os alimentos, observações, data ou tipo de refeição mudaram
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(notes, manualItems) !== originalSnapshot;
+    && analyticalSignature(date, mealType, notes, manualItems) !== originalSnapshot;
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
