@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
@@ -321,27 +322,27 @@ export default function RunDashboard() {
           </p>
         </div>
       ) : (
-        <div className="card rounded-2xl p-4">
+        <Card className="rounded-2xl p-4">
           <p className="text-[11px] font-semibold text-slate-700 mb-3">Distância por dia</p>
           <div className="h-44">
             <Bar data={chartData} options={chartOptions} />
           </div>
-        </div>
+        </Card>
       )}
 
       {/* 8. Recordes: Melhor pace de sempre */}
-      <div className="card rounded-2xl p-4">
+      <Card className="rounded-2xl p-4">
         <h2 className="text-[11px] font-semibold text-slate-700 mb-2">Melhor pace de sempre</h2>
         <div className="space-y-1">
           {renderBucket('5 km+', b5)}
           {renderBucket('10 km+', b10)}
           {renderBucket('21 km+', b21)}
         </div>
-      </div>
+      </Card>
 
       {/* 9. Watch Metrics Card (if any data) */}
       {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
-        <div className="card rounded-2xl p-4">
+        <Card className="rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
               <Mountain className="w-3.5 h-3.5 text-slate-500" /> Desnível, calorias e cadência
@@ -370,7 +371,7 @@ export default function RunDashboard() {
               <p className="text-[10px] text-slate-500 mt-1">Cadência (spm)</p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   );

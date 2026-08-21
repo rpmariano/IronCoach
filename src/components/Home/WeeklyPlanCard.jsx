@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle

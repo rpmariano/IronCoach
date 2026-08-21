@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { Flag, ChevronLeft, ChevronRight } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';

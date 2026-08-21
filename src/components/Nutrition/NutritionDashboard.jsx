@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients } from '../../utils/nutrition';
 import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
@@ -239,7 +240,7 @@ export default function NutritionDashboard() {
       )}
 
       {/* Macro Trend Line Chart */}
-      <div className="card rounded-2xl p-4 pb-6 bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+      <Card className="rounded-2xl p-4 pb-6 bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
         <div className="flex items-start mb-2 gap-2">
           <h2 className="text-sm font-semibold text-slate-800 flex-1 flex items-center gap-1.5 leading-tight">
             {(() => {
@@ -259,10 +260,10 @@ export default function NutritionDashboard() {
         <div className="h-48">
           <Line data={chartData} options={chartOptions} />
         </div>
-      </div>
+      </Card>
 
       {/* Micronutrients */}
-      <div className="card rounded-2xl overflow-hidden bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
+      <Card className="rounded-2xl overflow-hidden bg-white/40 backdrop-blur-[20px] border border-white/60 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
         <button
           onClick={() => setMicrosExpanded(!microsExpanded)}
           className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50/50 transition"
@@ -285,7 +286,7 @@ export default function NutritionDashboard() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

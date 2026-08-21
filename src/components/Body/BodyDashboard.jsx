@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
@@ -181,7 +182,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
       {/* Weight Trend Chart */}
       {weightDualChartData && (
-        <div className="card glass rounded-2xl p-4">
+        <Card className="glass rounded-2xl p-4">
           <div className="flex items-start gap-2 mb-3">
             <div className="flex items-center gap-2 flex-1">
               <Activity className="w-5 h-5 text-[var(--mod-corpo)]" />
@@ -203,7 +204,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
               }} 
             />
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Body Composition Stacked Area.
@@ -248,7 +249,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
         })}
       </div>
 
-      <div className="card glass rounded-2xl p-4">
+      <Card className="glass rounded-2xl p-4">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedMetric.color }} />
@@ -278,7 +279,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
         ) : (
           <p className="text-xs text-slate-400 py-8 text-center">Sem leituras desta métrica ainda no período.</p>
         )}
-      </div>
+      </Card>
 
       {/* Valores mais recentes grid */}
       <div className="flex items-center gap-2 px-1 mt-6">
@@ -291,13 +292,13 @@ export default function BodyDashboard({ onGoToCalendar }) {
           const withVal = bodyAssessments.filter(as => as[m.key] !== null && as[m.key] !== undefined);
           const latest = withVal[0];
           return (
-            <div key={m.key} className="card glass rounded-xl p-3">
+            <Card key={m.key} className="glass rounded-xl p-3">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <span style={{ color: m.color }}>{getBodyIcon(m.key, 14)}</span>
                 <p className="text-[10px] text-slate-500 truncate">{m.label}</p>
               </div>
               <p className="text-sm font-bold text-slate-800 mt-0.5">{latest ? fmtMetric(m, latest[m.key]) : '—'}</p>
-            </div>
+            </Card>
           );
         })}
       </div>

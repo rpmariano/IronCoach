@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from 'react';
+import Card from '../shared/Card';
 import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
