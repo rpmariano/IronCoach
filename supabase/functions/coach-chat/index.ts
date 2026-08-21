@@ -125,9 +125,11 @@ const PROPOSE_PLAN_TOOL = {
       summary: {
         type: "STRING",
         description:
-          "Um resumo descritivo do plano proposto. DEVE conter: 1. A base da proposta (objetivos desportivos/nutricionais); 2. Breve explicação das recomendações (ginásio, corrida, nutrição); 3. Um conselho prático; 4. Um ponto motivacional. " +
-          "CRÍTICO: Escreve num único parágrafo fluido, curto e cativante. NÃO uses listas numeradas (1., 2., etc) nem quebras de linha. " +
-          "NÃO menciones o número exato de dias, sessões ou treinos.",
+          "Um resumo estruturado do plano proposto. DEVE conter obrigatoriamente 3 pontos claros: " +
+          "1. CAUSA DA ALTERAÇÃO: o finding ou desvio concreto que originou este ajuste (ex.: corrida de 25 km quando estavam previstos 7 km, somada à carga de 40 km e ginásio do dia anterior); " +
+          "2. O QUE SE PRETENDE CORRIGIR: o objetivo fisiológico da adaptação (ex.: baixar a fadiga aguda, prevenir lesões musculares e garantir supercompensação sem comprometer a prova); " +
+          "3. O QUE É ALTERADO: o resumo direto dos treinos ajustados (ex.: conversão de amanhã em descanso ativo, redução de volume no fim de semana e reforço de hidratos de recuperação). " +
+          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta.",
       },
       items: {
         type: "ARRAY",

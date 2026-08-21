@@ -164,7 +164,7 @@ export function PlanProposalBottomSheet({
                   </p>
                 )}
                 {plan.summary && (
-                  <div className={`opacity-90 leading-relaxed ${planItems?.length > 0 ? 'pl-5 border-l-2 mt-2' : ''}`} style={{ borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)' }}>
+                  <div className={`opacity-90 leading-relaxed whitespace-pre-line ${planItems?.length > 0 ? 'pl-5 border-l-2 mt-2' : ''}`} style={{ borderColor: 'color-mix(in srgb, var(--mod-coach-to) 20%, transparent)' }}>
                     {plan.summary}
                   </div>
                 )}
