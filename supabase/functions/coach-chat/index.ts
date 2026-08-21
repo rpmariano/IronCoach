@@ -352,7 +352,7 @@ const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
 // save_coach_note entra aqui porque é permitida em TODOS os casos: não cria
 // nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
 // explica o porquê — o momento em que há mais para aprender.
-const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note"];
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention"];
 
 export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
 
@@ -2810,7 +2810,7 @@ async function handler(req: Request): Promise<Response> {
     const message = typeof body.message === "string"
       ? body.message.slice(0, MAX_MSG_LEN).trim()
       : "";
-    if (!message) return jsonResponse({ error: "Mensagem vazia" }, 400);
+    if (!message && !body.is_intervention_start) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
@@ -3087,13 +3087,17 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Guardar mensagem do utilizador antes de chamar o Gemini ─────────
-    const { data: userMsg, error: userMsgErr } = await sb
-      .from("coach_messages")
-      .insert({ user_id: userId, role: "user", content: message })
-      .select()
-      .single();
-    if (userMsgErr) {
-      return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+    let userMsg = null;
+    if (message) {
+      const { data, error: userMsgErr } = await sb
+        .from("coach_messages")
+        .insert({ user_id: userId, role: "user", content: message })
+        .select()
+        .single();
+      if (userMsgErr) {
+        return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+      }
+      userMsg = data;
     }
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
@@ -3138,7 +3142,7 @@ async function handler(req: Request): Promise<Response> {
         role: m.role,
         parts: [{ text: m.content }],
       })),
-      { role: "user", parts: [{ text: message }] },
+      { role: "user", parts: [{ text: message || (body.is_intervention_start ? "O atleta abriu o chat através do botão vermelho de intervenção. Avança com o confronto inicial." : "") }] },
     ];
 
     // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
