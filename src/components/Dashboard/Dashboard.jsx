@@ -63,6 +63,43 @@ export default function Dashboard({ activeModule }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex]);
 
+  // JS avancado: Ajusta dinamicamente a altura do carrossel para a aba ativa.
+  // Evita o espaco vazio no fundo das abas mais curtas.
+  useEffect(() => {
+    const carousel = scrollRef.current;
+    if (!carousel) return;
+    
+    // Permite transicao suave da altura (desligar se causar artefactos com swiper rapido)
+    carousel.style.transition = 'height 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
+    carousel.style.overflowY = 'hidden';
+
+    let activePage = null;
+    let observer = null;
+
+    const updateHeight = () => {
+      activePage = carousel.children[currentIndex];
+      if (!activePage) return;
+      
+      const newHeight = activePage.scrollHeight; // scrollHeight acomoda melhor margens ocultas
+      if (newHeight > 0) {
+        carousel.style.height = `${newHeight}px`;
+      }
+    };
+
+    updateHeight();
+
+    if (window.ResizeObserver && activePage) {
+      observer = new ResizeObserver(() => {
+        updateHeight();
+      });
+      observer.observe(activePage);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [currentIndex]);
+
   return (
     <div className="space-y-4 fade-in">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
