@@ -260,9 +260,27 @@ export default function Coach() {
     setCoachSuggestions([]);
 
     try {
+      // Injeta os insights biométricos ativos no payload para a Carol
+      // ter contexto dos alertas que o atleta viu/ignorou/entendeu.
+      const allInsights = detectCoachInsights(
+        { runs, gymSessions, meals, bodyAssessments, raceEvents }, profile
+      );
+      const insightsContext = allInsights.map(i => ({
+        title: i.title,
+        message: i.message,
+        metric: i.metric,
+        value: i.value,
+        state: insightStates[i.id] === 'understood'
+          ? 'Entendido (resolvido pelo atleta)'
+          : insightStates[i.id] === 'ignored'
+            ? 'Ativo (ignorado temporariamente pelo atleta)'
+            : 'Ativo (pendente)'
+      }));
+
       const payload = {
         message: text,
-        userData: profile || {}
+        userData: profile || {},
+        activeInsights: insightsContext
       };
 
       const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {

@@ -3136,8 +3136,8 @@ async function handler(req: Request): Promise<Response> {
 
     let finalSystemInstruction = systemInstruction;
     if (Array.isArray(body.activeInsights) && body.activeInsights.length > 0) {
-      const insightsContext = body.activeInsights.map((i: any) => 
-        - []  (: ): 
+      const insightsContext = body.activeInsights.map((i: any) =>
+        `- [${i.state}] ${i.title} (${i.metric}: ${i.value}): ${i.message}`
       ).join("\n");
       finalSystemInstruction += "\n\n--- AVISOS ATIVOS (INSIGHTS BIOMETRICOS) ---\nO motor de regras gerou os seguintes alertas. Tem em conta que o utilizador os pode ter ignorado.\n" + insightsContext;
     }
