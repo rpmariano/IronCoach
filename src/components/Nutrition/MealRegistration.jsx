@@ -157,9 +157,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
-  const analyticalSignature = (dateValue, typeValue, notesValue, items) => JSON.stringify({
+  const analyticalSignature = (dateValue, notesValue, items) => JSON.stringify({
     date: dateValue,
-    mealType: typeValue,
     notes: (notesValue || '').trim(),
     items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
   });
@@ -178,15 +177,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       grams: it.quantity_grams,
     }));
     setManualItems(items);
-    setOriginalSnapshot(analyticalSignature(meal.date, meal.meal_type, meal.notes, items));
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, items));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
 
-  // Regenera a análise se os alimentos, observações, data ou tipo de refeição mudaram
+  // Regenera a análise se a data, alimentos ou observações mudaram
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(date, mealType, notes, manualItems) !== originalSnapshot;
+    && analyticalSignature(date, notes, manualItems) !== originalSnapshot;
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
