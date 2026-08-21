@@ -69,9 +69,12 @@ function flattenExercises(exercises) {
   return rows;
 }
 
-export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
-  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
+export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
+  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  
   const isEditing = !!sessionIdToEdit;
 
   // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
@@ -126,6 +129,13 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -160,6 +170,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -505,7 +516,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 active={isActive}
                 variant="gym"
                 rounded="xl"
-                onClick={() => handleKindChange(k.key)}
+                onClick={() => { handleKindChange(k.key); setIsFormDirty(true); }}
                 className="flex-1 py-2.5 gap-1.5"
                 type="button"
               >
@@ -520,7 +531,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             type="date"
             value={date}
             max={todayISO()}
-            onChange={e => setDate(e.target.value)}
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
@@ -534,7 +545,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             type="text"
             maxLength={80}
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); setIsFormDirty(true); }}
             placeholder="Nome do treino"
             className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
           />
@@ -550,7 +561,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 key={c}
                 active={categories.includes(c)}
                 variant="gym"
-                onClick={() => handleToggleCategory(c)}
+                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
                 type="button"
               >
                 {c}
@@ -582,7 +593,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 key={c}
                 active={true}
                 variant="gym"
-                onClick={() => handleToggleCategory(c)}
+                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
                 type="button"
               >
                 {c}
@@ -752,7 +763,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                           <input
                             type="text"
                             value={ex.name}
-                            onChange={e => updateExercise(ex.key, { name: e.target.value })}
+                            onChange={e => { updateExercise(ex.key, { name: e.target.value }); setIsFormDirty(true); }}
                             placeholder="Nome do exercício"
                             className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
                           />
@@ -767,7 +778,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                               <input
                                 type="number"
                                 value={s.reps}
-                                onChange={e => updateSet(ex.key, s.key, { reps: e.target.value })}
+                                onChange={e => { updateSet(ex.key, s.key, { reps: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="Reps"
                                 className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
@@ -775,7 +786,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                                 type="number"
                                 step="0.5"
                                 value={s.weight}
-                                onChange={e => updateSet(ex.key, s.key, { weight: e.target.value })}
+                                onChange={e => { updateSet(ex.key, s.key, { weight: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="kg"
                                 className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
@@ -811,7 +822,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             rows={2}
             maxLength={500}
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto do treino..."
             className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
           />

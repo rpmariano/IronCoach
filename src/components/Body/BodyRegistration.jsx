@@ -35,8 +35,11 @@ function todayISO() {
 }
 
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
-  const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard } = useAppStore();
+  const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  
   const isEditing = !!assessmentIdToEdit;
 
   // Comum aos dois caminhos
@@ -61,6 +64,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -95,6 +105,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -329,7 +340,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             type="date"
             value={date}
             max={todayISO()}
-            onChange={e => setDate(e.target.value)}
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
             className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
@@ -414,7 +425,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                   type="number"
                   step={m.dec > 0 ? '0.1' : '1'}
                   value={metrics[m.key] ?? ''}
-                  onChange={e => handleMetricChange(m.key, e.target.value)}
+                  onChange={e => { handleMetricChange(m.key, e.target.value); setIsFormDirty(true); }}
                   className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
                 />
               </label>
@@ -428,7 +439,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             rows={2}
             maxLength={500}
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto da pesagem..."
             className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
           />

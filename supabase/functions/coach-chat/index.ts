@@ -305,11 +305,33 @@ const SAVE_NOTE_TOOL = {
   },
 };
 
+const RESOLVE_INTERVENTION_TOOL = {
+  name: "resolve_intervention",
+  description:
+    "Zera o estado de intervenção proativa do atleta, removendo o botão flutuante de alerta da app. " +
+    "SÓ DEVES CHAMAR ESTA FUNÇÃO se o plano foi efetivamente ajustado (e o atleta aceitou o novo plano) " +
+    "OU se o atleta respondeu de forma EXPLÍCITA que compreendeu os riscos apontados mas quer ignorá-los " +
+    "e manter o plano como está. " +
+    "NÃO aciones isto perante desculpas genéricas ('amanhã volto ao foco', 'desculpa, falhei'). Nesses casos, " +
+    "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      action_taken: {
+        type: "STRING",
+        enum: ["plano_ajustado", "atleta_ignorou"],
+        description: "Qual foi o desfecho que permitiu resolver a intervenção."
+      }
+    },
+    required: ["action_taken"],
+  },
+};
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos ou sugestões alimentares.
 function buildTools(allowed?: Set<string> | null) {
-  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL];
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL];
   const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
   return [{ functionDeclarations: decls }];
 }
@@ -330,7 +352,7 @@ const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
 // save_coach_note entra aqui porque é permitida em TODOS os casos: não cria
 // nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
 // explica o porquê — o momento em que há mais para aprender.
-const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note"];
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention"];
 
 export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
 
@@ -457,9 +479,7 @@ const HEALTH_KEYWORDS_PT = [
  *  i.e., deve seguir para o Gemini. Retorna false só quando a mensagem
  *  é longa e não contém nenhum keyword de saúde — sinal forte de off-topic. */
 function looksHealthRelated(msg: string): boolean {
-  if (msg.trim().length <= 35) return true; // cumprimentos, "sim", "ok", etc.
-  const lower = msg.toLowerCase();
-  return HEALTH_KEYWORDS_PT.some((kw) => lower.includes(kw));
+  return true;
 }
 
 /** Resposta da Carol para perguntas fora do âmbito, sem chamar a API. */
@@ -1366,6 +1386,27 @@ export async function runSaveCoachNote(sb: any, userId: string, args: any): Prom
     `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
 }
 
+export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
+  const actionTaken = args?.action_taken;
+  if (actionTaken !== "plano_ajustado" && actionTaken !== "atleta_ignorou") {
+    return "Erro: action_taken tem de ser 'plano_ajustado' ou 'atleta_ignorou'. A intervenção não foi resolvida.";
+  }
+
+  const { error } = await sb
+    .from("profiles")
+    .update({ 
+      coach_intervention_status: "resolved", 
+      coach_intervention_reason: null 
+    })
+    .eq("id", userId);
+
+  if (error) {
+    return `Erro ao resolver a intervenção: ${error.message}`;
+  }
+
+  return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;
+}
+
 /** Formata as notas para o prompt. Cada linha leva o id, para o modelo poder
  *  indicar em replaces_note_id qual a nota a substituir. */
 // deno-lint-ignore no-explicit-any
@@ -1910,6 +1951,9 @@ export function buildSystemInstruction(
   // passado por firstNameOf no handler, não o nome completo). Sem perfil
   // preenchido, a Carol trata por "atleta" como sempre fez.
   athleteFirstName: string | null = null,
+  isInterventionStart: boolean = false,
+  interventionStatus: string | null = null,
+  interventionReason: string | null = null,
 ): string {
   const today = new Date().toLocaleDateString("pt-PT", {
     weekday: "long",
@@ -2205,7 +2249,7 @@ export function buildSystemInstruction(
     // ── Âmbito ────────────────────────────────────────────────────────────────
     `## Âmbito\n` +
     `Só respondes sobre nutrição desportiva, treino de ginásio, corrida, composição corporal, recuperação ` +
-    `ou uso desta app. Para qualquer outra pergunta, define "on_topic" como false e deixa "reply" vazio.\n\n` +
+    `ou uso desta app. ATENÇÃO: Mensagens de seguimento a uma conversa em curso (ex: perguntas indiretas) SÃO on_topic, contextualiza-as! SÓ defines on_topic como false se for um NOVO TEMA claramente fora do âmbito desportivo. Para off-topic, define on_topic como false e deixa reply vazio.\n\n` +
     // ── Suggestions ───────────────────────────────────────────────────────────
     `## Campo "suggestions"\n` +
     `Propõe até 3 perguntas de seguimento curtas, escritas na primeira pessoa como se fosse o atleta a perguntar ` +
@@ -2674,6 +2718,26 @@ export function buildSystemInstruction(
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
 
+  if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
+    sys += `\n\n=== MODO DE INTERVENÇÃO PROATIVA ATIVO ===\n` +
+           `Identificaste desvios significativos no cumprimento do plano (ex.: falhas repetidas na nutrição ou faltas/desvios grandes nos treinos) e decidiste intervir.\n` +
+           `O botão flutuante vermelho está visível na app para o atleta.\n` +
+           `OBJETIVO: Confrontar o atleta (com exigência e empatia) sobre os desvios, explicando por que o plano atual está comprometido e propondo ajustá-lo.\n`;
+           
+    if (isInterventionStart) {
+      sys += `\nO atleta acabou de carregar no botão vermelho pela primeira vez! INICIA tu a conversa com uma mensagem proativa, exigente mas empática, sobre o facto de o plano não estar a ser seguido.\n`;
+    }
+
+    if (interventionReason) {
+      sys += `O motivo técnico registado para esta intervenção é: "${interventionReason}". Usa este contexto para fundamentar a tua chamada de atenção.\n`;
+    }
+
+    sys += `\nREGRA PARA RESOLVER A INTERVENÇÃO: A intervenção SÓ FICA RESOLVIDA se:\n` +
+           `1) Propores um plano ajustado (propose_training_plan) E o atleta O ACEITAR. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'plano_ajustado'.\n` +
+           `2) O atleta afirmar EXPLÍCITAMENTE que percebeu mas quer ignorar o aviso e manter o plano como está. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'atleta_ignorou'.\n` +
+           `NÃO aceites meras promessas de "vou melhorar amanhã" para resolver a intervenção. Mantém o rigor e insiste que o plano ficou comprometido e precisa de revisão. Enquanto não resolveres a intervenção (chamando a ferramenta), o botão de alerta continuará ativo na app do atleta.\n`;
+  }
+
   return sys;
 }
 
@@ -2744,12 +2808,12 @@ async function handler(req: Request): Promise<Response> {
     const message = typeof body.message === "string"
       ? body.message.slice(0, MAX_MSG_LEN).trim()
       : "";
-    if (!message) return jsonResponse({ error: "Mensagem vazia" }, 400);
+    if (!message && !body.is_intervention_start) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals")
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason")
       .eq("id", userId)
       .maybeSingle();
 
@@ -3021,13 +3085,17 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Guardar mensagem do utilizador antes de chamar o Gemini ─────────
-    const { data: userMsg, error: userMsgErr } = await sb
-      .from("coach_messages")
-      .insert({ user_id: userId, role: "user", content: message })
-      .select()
-      .single();
-    if (userMsgErr) {
-      return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+    let userMsg = null;
+    if (message) {
+      const { data, error: userMsgErr } = await sb
+        .from("coach_messages")
+        .insert({ user_id: userId, role: "user", content: message })
+        .select()
+        .single();
+      if (userMsgErr) {
+        return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+      }
+      userMsg = data;
     }
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
@@ -3061,6 +3129,9 @@ async function handler(req: Request): Promise<Response> {
       planContext,
       coachNotesContext,
       firstNameOf(profile?.display_name as string | null | undefined),
+      body.is_intervention_start === true,
+      profile?.coach_intervention_status ?? null,
+      profile?.coach_intervention_reason ?? null
     );
 
     // deno-lint-ignore no-explicit-any
@@ -3069,7 +3140,7 @@ async function handler(req: Request): Promise<Response> {
         role: m.role,
         parts: [{ text: m.content }],
       })),
-      { role: "user", parts: [{ text: message }] },
+      { role: "user", parts: [{ text: message || (body.is_intervention_start ? "O atleta abriu o chat através do botão vermelho de intervenção. Avança com o confronto inicial." : "") }] },
     ];
 
     // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
@@ -3194,6 +3265,8 @@ async function handler(req: Request): Promise<Response> {
           result = await runSaveCoachNote(sb, userId, args || {});
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
+        } else if (name === "resolve_intervention") {
+          result = await runResolveIntervention(sb, userId, args || {});
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }

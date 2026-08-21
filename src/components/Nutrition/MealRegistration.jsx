@@ -39,9 +39,13 @@ function getDefaultMealType() {
   return 'ceia';                                         // 22:30 - 05:00
 }
 
-export default function MealRegistration({ onClose, mealIdToEdit = null }) {
+export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
-  const { profile, meals, setMeals, loadInitialData, setNavGuard } = useAppStore();
+
+  
+
   const isEditing = !!mealIdToEdit;
 
   // Comum aos dois caminhos
@@ -77,6 +81,13 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -111,6 +122,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -499,7 +511,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                     type="text"
                     placeholder="Ex.: peito de frango grelhado"
                     value={itemName}
-                    onChange={e => setItemName(e.target.value)}
+                    onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                   />
                   <div className="relative w-24">
@@ -507,7 +519,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                       type="number" min="1" step="1"
                       placeholder="g (opcional)"
                       value={itemGrams}
-                      onChange={e => setItemGrams(e.target.value)}
+                      onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                     />
                   </div>
@@ -532,13 +544,13 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                         <input
                           type="text"
                           value={item.name}
-                          onChange={e => updateManualItem(item.key, { name: e.target.value })}
+                          onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
                           className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent"
                         />
                         <input
                           type="number" min="1"
                           value={item.grams}
-                          onChange={e => updateManualItem(item.key, { grams: e.target.value })}
+                          onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
                           className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
                         />
                         <span className="text-[10px] text-slate-400">g</span>
@@ -550,7 +562,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                       </div>
                     )}
                     <button
-                      onClick={() => handleRemoveManualItem(item.key)}
+                      onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}
                       className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
                       aria-label={`Remover ${item.name}`}
                     >
