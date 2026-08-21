@@ -78,6 +78,7 @@ function buildDemoData() {
 }
 
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
+import UIAuditSandbox from './components/DesignSystem/UIAuditSandbox';
 
 export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
@@ -128,6 +129,10 @@ export default function App() {
 
   if (activeTab === 'design-system') {
     return <ButtonShowcase />;
+  }
+  
+  if (activeTab === 'audit-sandbox') {
+    return <UIAuditSandbox />;
   }
 
   if (isInitializing) {
