@@ -148,7 +148,7 @@ export default function Layout({ children }) {
       </div>
 
       {/* Conteúdo */}
-      <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-28 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-24 overflow-y-auto">
         {children}
       </main>
 
