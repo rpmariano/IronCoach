@@ -33,7 +33,7 @@ function formatItemSummary(item) {
 }
 
 export default function CoachDailySummaryCard() {
-  const { coachPlans, coachPlanItems, dailySummary, dailySummaryLoading, loadDailySummary, todayWater, profile } = useAppStore();
+  const { coachPlans, coachPlanItems, dailySummary, dailySummaryLoading, loadDailySummary, waterLogs, profile } = useAppStore();
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -66,20 +66,38 @@ export default function CoachDailySummaryCard() {
       const itemsDesc = nonRest.map(formatItemSummary).join(' e ');
       msg = `Para hoje tens agendado: ${itemsDesc}.`;
     }
-    const waterTotal = (todayWater || []).reduce((s, w) => s + (w.amount_ml || 0), 0);
+    const todayLogs = (waterLogs || []).filter(w => w.date === today);
+    const waterTotal = todayLogs.reduce((s, w) => s + (w.amount_ml || 0), 0);
     const waterGoal = profile?.water_goal_ml;
+    
+    // Se o backend tiver avisos (ex: RED-S, ACWR), tentamos fundir para não os perder.
+    let finalMsg = typeof dailySummary?.warnings === 'string' && dailySummary.warnings.trim() ? dailySummary.warnings.trim() : msg;
+    
     if (waterGoal && waterTotal === 0) {
-      // Nunca registou água hoje
-      const waterRem = ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
-      msg = msg ? `${msg}${waterRem}` : waterRem.trim();
-    } else if (waterGoal && waterTotal < waterGoal / 2) {
-      // Registou, mas ainda abaixo de metade da meta
-      const waterRem = ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
-      msg = msg ? `${msg}${waterRem}` : waterRem.trim();
+      if (finalMsg && !finalMsg.includes('Ainda não registaste consumo de água hoje')) {
+        finalMsg += ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+      } else if (!finalMsg) {
+        finalMsg = `Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+      }
+    } else if (waterGoal && waterTotal > 0 && waterTotal < waterGoal / 2) {
+      if (finalMsg) {
+        finalMsg = finalMsg.replace(' Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', '');
+        finalMsg = finalMsg.replace('Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', '');
+        finalMsg = finalMsg.replace(/Só registaste \d+ ml\. Continua a hidratar-te para atingir a tua meta\./, '');
+        finalMsg += ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+      } else {
+        finalMsg = `Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+      }
+    } else if (waterGoal && waterTotal >= waterGoal / 2) {
+      if (finalMsg) {
+        finalMsg = finalMsg.replace(' Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', '');
+        finalMsg = finalMsg.replace('Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', '');
+        finalMsg = finalMsg.replace(/ ?Só registaste \d+ ml\. Continua a hidratar-te para atingir a tua meta\./, '');
+      }
     }
-    if (msg) return msg;
-    return typeof dailySummary?.warnings === 'string' && dailySummary.warnings.trim() ? dailySummary.warnings.trim() : null;
-  }, [activePlanItems.today, todayWater, profile, dailySummary]);
+    
+    return finalMsg.trim() || null;
+  }, [activePlanItems.today, waterLogs, profile, dailySummary, today]);
 
   const tomorrowPrepText = useMemo(() => {
     const nonRest = activePlanItems.tomorrow.filter(i => i.kind !== 'descanso');
