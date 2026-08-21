@@ -448,6 +448,7 @@ async function generateMealCoachNotes(
   previousMeals: Array<{ date: string } & MealTotals>,
   // deno-lint-ignore no-explicit-any
   planItems: any[],
+  recentCompletedWorkouts: { runs: any[]; gym: any[] } = { runs: [], gym: [] },
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
@@ -480,9 +481,32 @@ async function generateMealCoachNotes(
 
   const restricoes = dietaryRestrictionsPromptBlock(diet.dietary_restrictions, diet.dietary_notes);
 
+  const yesterdayISO = new Date(new Date(meal.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const todayRuns = (recentCompletedWorkouts.runs || []).filter(r => r.date === meal.date);
+  const yesterdayRuns = (recentCompletedWorkouts.runs || []).filter(r => r.date === yesterdayISO);
+  const todayGym = (recentCompletedWorkouts.gym || []).filter(g => g.date === meal.date);
+  const yesterdayGym = (recentCompletedWorkouts.gym || []).filter(g => g.date === yesterdayISO);
+
+  let workoutsText = `\nHistórico de Treinos REALIZADOS (efetivamente concluídos e registados):\n`;
+  if (yesterdayRuns.length || yesterdayGym.length) {
+    workoutsText += `- Ontem (${yesterdayISO}): ` + [
+      ...yesterdayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...yesterdayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
+    ].join(", ") + "\n";
+  }
+  if (todayRuns.length || todayGym.length) {
+    workoutsText += `- Hoje (${meal.date}): ` + [
+      ...todayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...todayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
+    ].join(", ") + "\n";
+  } else {
+    workoutsText += `- Hoje (${meal.date}): ainda NENHUM treino foi realizado até ao momento.\n`;
+  }
+
   const planSection = planItems.length > 0 
-    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se as falhas na nutrição (muitas calorias, macros muito desalinhados) face ao treino que o atleta está a fazer e ao que está planeado são graves (comprometem recuperação, adaptações ou mostram 1 ou mais dias de descontrolo). Se estiver gravemente desalinhado a ponto de precisar intervir, marca intervention_needed=true e indica reason.\n`
+    ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
+      planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
+      `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n`
     : ``;
 
   const prompt =
@@ -495,9 +519,12 @@ async function generateMealCoachNotes(
     `${avgLine}\n` +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
+    workoutsText +
     planSection +
-    `\nREGRAS:\n` +
+    `\nREGRAS CRÍTICAS:\n` +
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
+    `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +
+    `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
     `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
@@ -609,12 +636,29 @@ async function attachMealCoachNotes(
       planItems = items || [];
     }
 
+    const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const [{ data: actualRuns }, { data: actualGym }] = await Promise.all([
+      sb
+        .from("runs")
+        .select("date, training_type, distance_km, duration_seconds, effort_rpe")
+        .eq("user_id", userId)
+        .gte("date", yesterdayISO)
+        .lte("date", ctx.date),
+      sb
+        .from("workout_sessions")
+        .select("date, name, categories, exertion, duration_seconds")
+        .eq("user_id", userId)
+        .gte("date", yesterdayISO)
+        .lte("date", ctx.date),
+    ]);
+
     const result = await generateMealCoachNotes(
       { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes },
       ctx.totals,
       profile || {},
       previousMeals,
       planItems,
+      { runs: actualRuns || [], gym: actualGym || [] },
       geminiKey,
       {
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
@@ -633,8 +677,9 @@ async function attachMealCoachNotes(
           coach_intervention_status: "needed", 
           coach_intervention_reason: result.intervention_reason 
         })
-        .eq("id", userId)
-        .eq("coach_intervention_status", "none");
+        .eq("id", userId);
+      (meal as any).coach_intervention_status = "needed";
+      (meal as any).intervention_needed = true;
     }
   } catch (e) {
     console.warn("attachMealCoachNotes failed:", e);
