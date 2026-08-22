@@ -20,6 +20,7 @@ import { pt } from 'date-fns/locale';
 import {
   raceDistanceLabel,
   racePriorityLabel,
+  raceTerrainLabel,
   formatPace,
 } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
@@ -70,9 +71,9 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
               {distanceLabel}
             </span>
-            {ev.race_type === 'trail' && (
+            {ev.race_type && (
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
-                Trail
+                {raceTerrainLabel(ev.race_type)}
               </span>
             )}
             {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}

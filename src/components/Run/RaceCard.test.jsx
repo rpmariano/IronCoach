@@ -48,6 +48,7 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
 
     expect(screen.getByText('Corrida do Tejo')).toBeInTheDocument();
     expect(screen.getByText('10 km')).toBeInTheDocument();
+    expect(screen.getByText('Estrada')).toBeInTheDocument();
     expect(screen.getByText('Principal')).toBeInTheDocument();
   });
 
