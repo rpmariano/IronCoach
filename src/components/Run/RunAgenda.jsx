@@ -70,7 +70,7 @@ export default function RunAgenda({ onClose }) {
 
   const editingEventId = editingRaceId;
   const isFormOpen = true;
-  const [activePage, setActivePage] = useState('details'); // 'details' | 'hub'
+  const [activePage, setActivePage] = useState('hub'); // 'hub' | 'details'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
@@ -485,20 +485,8 @@ export default function RunAgenda({ onClose }) {
             </button>
           </div>
 
-          {/* Seletor de Páginas (Detalhes & Edição vs Hub & Análise Carol AAA) */}
+          {/* Seletor de Páginas (Treino e Evolução vs Detalhes da prova) */}
           <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/70 gap-1">
-            <button
-              type="button"
-              onClick={() => setActivePage('details')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                activePage === 'details'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sliders size={13} />
-              Detalhes & Edição
-            </button>
             <button
               type="button"
               onClick={() => setActivePage('hub')}
@@ -509,11 +497,58 @@ export default function RunAgenda({ onClose }) {
               }`}
             >
               <Sparkles size={13} />
-              Hub & Análise Carol (AAA)
+              Treino e Evolução
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePage('details')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                activePage === 'details'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Sliders size={13} />
+              Detalhes da prova
             </button>
           </div>
 
-          {/* ─── PÁGINA 1: DETALHES & EDIÇÃO ─────────────────────────────────── */}
+          {/* ─── PÁGINA 1: TREINO E EVOLUÇÃO (AAA) ────────────────────────────── */}
+          {activePage === 'hub' && (
+            <div className="space-y-4 fade-in">
+              <RaceHubView
+                race={draft}
+                runs={runs}
+                profile={profile}
+                onFetchWebInfo={handleFetchWebInfo}
+                fetchingWebInfo={fetchingWebInfo}
+                onGoToEdit={() => setActivePage('details')}
+              />
+
+              <div className="flex items-center gap-2 pt-2 pb-6">
+                <Button
+                  variant="light"
+                  onClick={() => setActivePage('details')}
+                  className="flex-1 text-xs"
+                  icon={<Sliders size={14} />}
+                >
+                  Editar Detalhes
+                </Button>
+                <Button
+                  variant="module"
+                  moduleColor="var(--mod-prova)"
+                  onClick={handleSaveForm}
+                  disabled={isSubmitting || !draft.name.trim()}
+                  className="flex-1 text-xs"
+                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                >
+                  Guardar Prova
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
           {activePage === 'details' && (
             <div className="space-y-4 fade-in">
               {/* 1.1 Data · 1.2 Local */}
@@ -669,22 +704,6 @@ export default function RunAgenda({ onClose }) {
                   onChange={e => { updateDraft('website', e.target.value) }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                 />
-                {draft.website?.trim() && (
-                  <div className="mt-2 space-y-2.5">
-                    <Button
-                      type="button"
-                      variant="module"
-                      moduleColor="var(--mod-prova)"
-                      size="sm"
-                      isLoading={fetchingWebInfo}
-                      onClick={handleFetchWebInfo}
-                      icon={draft.web_info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
-                    >
-                      {draft.web_info ? 'Atualizar informação do site' : 'Obter informação do site'}
-                    </Button>
-                    <RaceWebInfoSections info={draft.web_info} />
-                  </div>
-                )}
               </div>
 
               {/* Notas (opcional) */}
@@ -721,7 +740,7 @@ export default function RunAgenda({ onClose }) {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1 pb-6">
                 <button onClick={attemptCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
                   Cancelar
                 </button>
@@ -733,41 +752,6 @@ export default function RunAgenda({ onClose }) {
                 >
                   {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* ─── PÁGINA 2: HUB & ANÁLISE CAROL (AAA) ──────────────────────────── */}
-          {activePage === 'hub' && (
-            <div className="space-y-4 fade-in">
-              <RaceHubView
-                race={draft}
-                runs={runs}
-                profile={profile}
-                onFetchWebInfo={handleFetchWebInfo}
-                fetchingWebInfo={fetchingWebInfo}
-                onGoToEdit={() => setActivePage('details')}
-              />
-
-              <div className="flex items-center gap-2 pt-2">
-                <Button
-                  variant="light"
-                  onClick={() => setActivePage('details')}
-                  className="flex-1 text-xs"
-                  icon={<Sliders size={14} />}
-                >
-                  Editar Detalhes
-                </Button>
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-prova)"
-                  onClick={handleSaveForm}
-                  disabled={isSubmitting || !draft.name.trim()}
-                  className="flex-1 text-xs"
-                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                >
-                  Guardar Prova
-                </Button>
               </div>
             </div>
           )}

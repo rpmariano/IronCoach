@@ -345,10 +345,12 @@ export default function RaceHubView({
       </div>
 
       {/* ─── 4. Informação Oficial do Site da Prova & Extração ─────────────── */}
-      <div className="rh-web-info-card">
+      <div className="rh-web-info-card mb-4">
         <div className="rh-web-header">
           <div className="flex items-center gap-2">
-            <Globe size={16} className="text-amber-400" />
+            <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+              <Globe size={14} />
+            </div>
             <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
               Informação do Site Oficial
             </span>
@@ -363,37 +365,39 @@ export default function RaceHubView({
               onClick={onFetchWebInfo}
               icon={info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
             >
-              {info ? 'Atualizar do Site' : 'Obter do Site'}
+              {info ? 'Atualizar Informação' : 'Obter Informação'}
             </Button>
           )}
         </div>
 
         {race?.website?.trim() ? (
-          <div className="space-y-2.5">
-            <p className="text-[11px] text-slate-400 flex items-center gap-1.5 truncate">
-              <LinkIcon size={12} className="text-amber-400 shrink-0" />
-              <a
-                href={race.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-amber-400 transition truncate"
-              >
-                {race.website}
-              </a>
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <LinkIcon size={13} className="text-amber-400 shrink-0" />
+                <a
+                  href={race.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-slate-200 underline hover:text-amber-400 transition truncate"
+                >
+                  {race.website}
+                </a>
+              </div>
+            </div>
 
             {info ? (
-              <RaceWebInfoSections info={info} />
+              <RaceWebInfoSections info={info} variant="dark" />
             ) : (
-              <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-center space-y-2">
-                <p className="text-xs text-slate-300">
-                  Clica em "Obter do Site" para extrair automaticamente horários, dorsais, documentos e altimetria do site oficial.
+              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center space-y-2">
+                <p className="text-xs text-slate-300 font-medium">
+                  Clica em <span className="text-amber-400 font-bold">"Obter Informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
                 </p>
               </div>
             )}
           </div>
         ) : (
-          <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-center gap-2">
+          <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col items-center justify-center text-center gap-2.5">
             <p className="text-xs text-slate-400">
               Ainda não adicionaste o site oficial desta prova.
             </p>
