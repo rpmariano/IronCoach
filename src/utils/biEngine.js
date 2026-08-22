@@ -2,7 +2,7 @@
  * biEngine.js
  * Todas as funções de cálculo para os dashboards de BI do IronHealth.
  */
-import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 
 /**
@@ -757,33 +757,76 @@ export function detectCoachInsights(data, profile) {
       }
     }
 
-    // 5. Volume insuficiente para próxima prova
-    if (data.raceEvents?.length > 0 && data.runs?.length > 0) {
+    // 5. Marcos de Preparação e Volume para Provas Futuras
+    if (data.raceEvents?.length > 0) {
       const now = new Date();
       const futureRaces = data.raceEvents
-        .filter(r => r.status === 'agendada' && isAfter(parseISO(r.date), now))
+        .filter(r => r.status === 'agendada' && (isAfter(parseISO(r.date), now) || format(parseISO(r.date), 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       if (futureRaces.length > 0) {
         const next = futureRaces[0];
-        const weeklyVol = calculateWeeklyVolume(data.runs);
-        const recent4 = weeklyVol.slice(-4);
-        const avgWeekly = recent4.length > 0 ? recent4.reduce((s, w) => s + w.distanceKm, 0) / recent4.length : 0;
+        const raceDate = parseISO(next.date);
+        const daysLeft = Math.max(0, differenceInDays(raceDate, now));
+        const dist = Number(next.distance_km) || 10;
+        const raceName = next.name || 'a prova';
 
-        // Verificar se o volume é adequado (usando limiares simplificados)
-        const minVolumes = { 5: 15, 10: 25, 21: 35, 42: 55, 50: 70 };
-        const closest = Object.entries(minVolumes).reduce((best, [dist, vol]) => {
-          return Math.abs(Number(dist) - next.distance_km) < Math.abs(Number(best[0]) - next.distance_km) ? [dist, vol] : best;
-        });
-        const minVol = closest[1];
-
-        if (avgWeekly < minVol * 0.7) {
+        // 5a. Marcos Temporais da Preparação (Timeline da Prova)
+        if (daysLeft === 0) {
           insights.push({
-            id: 'race_volume', severity: 'warning',
-            title: `Volume insuficiente para ${next.name || 'a prova'}`,
-            message: `O teu volume semanal médio é ${avgWeekly.toFixed(0)} km — abaixo do recomendado (~${minVol} km/semana) para uma prova de ${next.distance_km} km.`,
-            metric: 'Volume', value: avgWeekly, threshold: minVol, module: 'corrida'
+            id: `race_day_${next.id || 'next'}`,
+            severity: 'info',
+            title: `Dia da Prova: ${raceName}`,
+            message: `Chegou o grande dia de ${raceName} (${dist} km)! Executa o teu plano de ritmo e nutrição com confiança.`,
+            metric: 'Prova', value: 0, threshold: 0, module: 'corrida'
           });
+        } else if (daysLeft >= 1 && daysLeft <= 7) {
+          insights.push({
+            id: `race_final_week_${next.id || 'next'}`,
+            severity: 'warning',
+            title: `Reta Final: ${raceName}`,
+            message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km)! Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
+            metric: 'Prova', value: daysLeft, threshold: 7, module: 'corrida'
+          });
+        } else if ((dist >= 35 && daysLeft >= 8 && daysLeft <= 21) || (dist >= 15 && dist < 35 && daysLeft >= 8 && daysLeft <= 14) || (dist < 15 && daysLeft >= 4 && daysLeft <= 7)) {
+          insights.push({
+            id: `race_tapering_${next.id || 'next'}`,
+            severity: 'info',
+            title: `Fase de Polimento (Tapering): ${raceName}`,
+            message: `Fase de carga máxima terminada para ${raceName}! Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
+            metric: 'Tapering', value: daysLeft, threshold: dist >= 35 ? 21 : 14, module: 'corrida'
+          });
+        } else if ((dist >= 35 && daysLeft >= 90 && daysLeft <= 126) || (dist >= 15 && dist < 35 && daysLeft >= 56 && daysLeft <= 84) || (dist < 15 && daysLeft >= 35 && daysLeft <= 56)) {
+          insights.push({
+            id: `race_cycle_start_${next.id || 'next'}`,
+            severity: 'info',
+            title: `Início da Preparação: ${raceName}`,
+            message: `Arranque do ciclo específico para ${raceName} (${dist} km) — faltam ~${Math.ceil(daysLeft / 7)} semanas. O foco principal é a base aeróbica e a consistência.`,
+            metric: 'Ciclo', value: daysLeft, threshold: 84, module: 'corrida'
+          });
+        }
+
+        // 5b. Volume insuficiente para próxima prova
+        if (data.runs?.length > 0) {
+          const weeklyVol = calculateWeeklyVolume(data.runs);
+          const recent4 = weeklyVol.slice(-4);
+          const avgWeekly = recent4.length > 0 ? recent4.reduce((s, w) => s + w.distanceKm, 0) / recent4.length : 0;
+
+          // Verificar se o volume é adequado (usando limiares simplificados)
+          const minVolumes = { 5: 15, 10: 25, 21: 35, 42: 55, 50: 70 };
+          const closest = Object.entries(minVolumes).reduce((best, [d, vol]) => {
+            return Math.abs(Number(d) - dist) < Math.abs(Number(best[0]) - dist) ? [d, vol] : best;
+          });
+          const minVol = closest[1];
+
+          if (avgWeekly < minVol * 0.7) {
+            insights.push({
+              id: 'race_volume', severity: 'warning',
+              title: `Volume insuficiente para ${raceName}`,
+              message: `O teu volume semanal médio é ${avgWeekly.toFixed(0)} km — abaixo do recomendado (~${minVol} km/semana) para uma prova de ${dist} km.`,
+              metric: 'Volume', value: avgWeekly, threshold: minVol, module: 'corrida'
+            });
+          }
         }
       }
     }
