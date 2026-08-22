@@ -655,7 +655,7 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
 /**
  * Deteta insights proativos do Coach baseados nos limiares da doutrina.
  * Verifica múltiplas dimensões e retorna alertas ordenados por severidade.
- * @param {{ runs, gymSessions, meals, bodyAssessments, raceEvents }} data
+ * @param {{ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }} data
  * @param {object} profile
  * @returns {Array<{ id, severity, title, message, metric, value, threshold, module }>}
  */
@@ -664,6 +664,29 @@ export function detectCoachInsights(data, profile) {
     const insights = [];
     const level = profile?.experience_level || 'medio';
     const gender = profile?.gender || 'M';
+
+    // 0. Adesão ao Plano (Treinos em atraso)
+    if (data.coachPlanItems?.length > 0) {
+      const now = new Date();
+      const todayStr = format(now, 'yyyy-MM-dd');
+      const past14DaysStr = format(subDays(now, 14), 'yyyy-MM-dd');
+      
+      const overdueWorkouts = data.coachPlanItems.filter(i => 
+        i.kind !== 'descanso' && 
+        i.status === 'pendente' && 
+        i.planned_date < todayStr &&
+        i.planned_date >= past14DaysStr
+      );
+
+      if (overdueWorkouts.length >= 3) {
+        insights.push({
+          id: 'low_adherence', severity: 'warning',
+          title: 'Baixa adesão ao plano',
+          message: `Tens ${overdueWorkouts.length} treinos em atraso nas últimas 2 semanas. O plano atual pode estar desajustado da tua rotina. Avalia se precisas de reduzir o volume.`,
+          metric: 'Treinos pendentes', value: overdueWorkouts.length, threshold: 3, module: 'coach'
+        });
+      }
+    }
 
     // 1. ACWR de Corrida
     if (data.runs?.length > 0) {
