@@ -206,12 +206,17 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
           )}
 
           {/* Falar com a Coach se a análise indicar intervenção */}
-          {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[meal.id] !== coachCommentary
+          ) && (
             <Button
               variant="module"
               moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
               onClick={(e) => {
                 e.stopPropagation();
+                useAppStore.getState().dismissIntervention(meal.id, coachCommentary);
                 useAppStore.setState({
                   coachIntent: {
                     kind: 'proactive_intervention',

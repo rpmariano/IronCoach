@@ -134,6 +134,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));
+      useAppStore.getState().clearDismissedIntervention(run.id);
       showToast('Reanálise concluída');
     } catch (err) {
       console.error('Error reanalyzing run:', err);
@@ -423,12 +424,17 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           )}
 
           {/* Falar com a Coach se a análise indicar intervenção */}
-          {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[run.id] !== coachCommentary
+          ) && (
             <Button
               variant="module"
               moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
               onClick={(e) => {
                 e.stopPropagation();
+                useAppStore.getState().dismissIntervention(run.id, coachCommentary);
                 useAppStore.setState({
                   coachIntent: {
                     kind: 'proactive_intervention',

@@ -55,6 +55,28 @@ export const useAppStore = create((set, get) => ({
     localStorage.setItem('ironhealth_insight_states', JSON.stringify(next));
     return { insightStates: next };
   }),
+  dismissedInterventions: JSON.parse(localStorage.getItem('ironhealth_dismissed_interventions') || '{}'),
+  dismissIntervention: (recordId, notes) => set((s) => {
+    if (!recordId) return {};
+    const next = { ...s.dismissedInterventions, [recordId]: notes || 'dismissed' };
+    try {
+      localStorage.setItem('ironhealth_dismissed_interventions', JSON.stringify(next));
+    } catch (e) {
+      // ignore
+    }
+    return { dismissedInterventions: next };
+  }),
+  clearDismissedIntervention: (recordId) => set((s) => {
+    if (!recordId) return {};
+    const next = { ...s.dismissedInterventions };
+    delete next[recordId];
+    try {
+      localStorage.setItem('ironhealth_dismissed_interventions', JSON.stringify(next));
+    } catch (e) {
+      // ignore
+    }
+    return { dismissedInterventions: next };
+  }),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
   // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar

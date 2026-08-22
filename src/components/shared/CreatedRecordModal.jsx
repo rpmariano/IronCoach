@@ -23,41 +23,44 @@ export default function CreatedRecordModal() {
   // Busca o coach_intervention_status diretamente do perfil na BD, porque a
   // Edge Function pode tê-lo acabado de atualizar e o store local ainda não
   // refletiu essa mudança (race condition). Usa um state local para garantir
-  // que o botão aparece assim que o perfil é relido.
   const [interventionNeeded, setInterventionNeeded] = useState(false);
 
   useEffect(() => {
     setInterventionNeeded(false);
-    async function checkProfile() {
-      if (newlyCreatedRecord && profile?.id) {
-        // Pequeno delay para dar tempo à Edge Function de gravar o status no
-        // perfil (attachCoachNotes corre em background após a resposta).
-        await new Promise(r => setTimeout(r, 1500));
-        const { data } = await supabase
+    if (!newlyCreatedRecord?.record || !profile?.id) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
           .from('profiles')
           .select('coach_intervention_status')
           .eq('id', profile.id)
-          .maybeSingle();
-        if (data) {
+          .single();
+        if (!cancelled && data && !error) {
           if (data.coach_intervention_status !== profile.coach_intervention_status) {
             setProfile({ ...profile, coach_intervention_status: data.coach_intervention_status });
           }
           setInterventionNeeded(data.coach_intervention_status === 'needed');
         }
+      } catch (err) {
+        console.warn('Erro ao verificar coach_intervention_status', err);
       }
-    }
-    checkProfile();
+    })();
+
+    return () => { cancelled = true; };
   }, [newlyCreatedRecord, profile?.id]);
 
   if (!newlyCreatedRecord) return null;
 
   const { type, record } = newlyCreatedRecord;
+  const isDismissed = record?.id && (dismissedInterventions[record.id] === record?.coach_notes || dismissedInterventions[record.id] === 'dismissed');
   const hasInterventionInRecord = Boolean(
     record?.intervention_needed ||
     record?.coach_intervention_status === 'needed' ||
     (record?.coach_notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(record.coach_notes))
   );
-  const showCoachButton = interventionNeeded || profile?.coach_intervention_status === 'needed' || hasInterventionInRecord;
+  const showCoachButton = !isDismissed && (interventionNeeded || profile?.coach_intervention_status === 'needed' || hasInterventionInRecord);
 
   const handleClose = () => {
     clearNewlyCreatedRecord();
@@ -80,6 +83,9 @@ export default function CreatedRecordModal() {
   };
 
   const handleGoToChat = () => {
+    if (record?.id) {
+      dismissIntervention(record.id, record?.coach_notes);
+    }
     useAppStore.setState({
       coachIntent: {
         kind: 'proactive_intervention',

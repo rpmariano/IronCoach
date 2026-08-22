@@ -677,6 +677,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           if (error) throw new Error(error);
           const updatedRun = data.run;
           setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
+          useAppStore.getState().clearDismissedIntervention(runIdToEdit);
           showToast('Corrida reanalisada pelo Coach');
           finishCreateAndGoToCalendar(updatedRun);
         } else {
@@ -1301,13 +1302,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           {runIdToEdit && (() => {
             const editingRun = runs.find(r => r.id === runIdToEdit);
             const notes = editingRun?.coach_notes || editingRun?.coach_analysis;
-            const hasIntervention = notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+            const isDismissed = editingRun?.id && (useAppStore.getState().dismissedInterventions[editingRun.id] === notes || useAppStore.getState().dismissedInterventions[editingRun.id] === 'dismissed');
+            const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
             if (!hasIntervention) return null;
             return (
               <Button
                 variant="module"
                 moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
                 onClick={() => {
+                  useAppStore.getState().dismissIntervention(editingRun.id, notes);
                   useAppStore.setState({
                     coachIntent: {
                       kind: 'proactive_intervention',

@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
@@ -449,6 +449,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedSession = data?.session;
+        useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
         const { error: sessionError } = await supabase
           .from('workout_sessions')
@@ -838,11 +839,42 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
-            o registo manual acabam ambos analisados por ele. A editar, o
-            botão só leva o gradiente do Coach quando os dados analíticos
-            mudaram (séries, métricas, categorias, tipo ou observações);
-            mudar só a data ou o nome é update direto. */}
+        {isEditing && (() => {
+          const editingSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
+          const notes = editingSession?.coach_notes || editingSession?.coach_analysis;
+          const isDismissed = editingSession?.id && (useAppStore.getState().dismissedInterventions[editingSession.id] === notes || useAppStore.getState().dismissedInterventions[editingSession.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingSession.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'gym',
+                    recordId: editingSession.id,
+                    recordName: editingSession.name,
+                    date: editingSession.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ação */}
         {isEditing ? (
           <CoachAnalyzeButton
             onClick={handleSaveEdit}

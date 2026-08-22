@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-react';
+import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
@@ -204,6 +204,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedAssessment = data?.assessment;
+        useAppStore.getState().clearDismissedIntervention(assessmentIdToEdit);
       } else {
         const { error } = await supabase
           .from('body_assessments')
@@ -452,10 +453,42 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
-            o registo manual acabam ambos analisados por ele. A editar, o
-            botão só leva o gradiente do Coach quando as métricas ou as
-            observações mudaram; mudar só a data é update direto. */}
+        {isEditing && (() => {
+          const editingAssessment = (bodyAssessments || []).find(a => a.id === assessmentIdToEdit);
+          const notes = editingAssessment?.coach_notes || editingAssessment?.coach_analysis;
+          const isDismissed = editingAssessment?.id && (useAppStore.getState().dismissedInterventions[editingAssessment.id] === notes || useAppStore.getState().dismissedInterventions[editingAssessment.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingAssessment.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'body',
+                    recordId: editingAssessment.id,
+                    recordName: 'Avaliação Corporal',
+                    date: editingAssessment.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ação */}
         {isEditing ? (
           <CoachAnalyzeButton
             onClick={handleSaveEdit}

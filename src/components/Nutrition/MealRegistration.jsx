@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -9,6 +9,7 @@ import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
+import Button from '../shared/Button';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -337,6 +338,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedMeal = data?.meal;
+        useAppStore.getState().clearDismissedIntervention(mealIdToEdit);
       } else {
         const { error: mealError } = await supabase
           .from('meals')
@@ -597,12 +599,42 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           />
         </div>
 
-        {/* Ações — mesmo botão do Coach nos dois caminhos: a foto e o registo
-            manual acabam ambos analisados por ele, só a origem dos dados
-            muda (ver PRD 3.2). O manual só chega aqui a servidor nenhum —
-            "Adicionar alimento" é sempre local. A editar, o botão só leva o
-            gradiente do Coach quando os alimentos ou as observações mudaram
-            (dados analíticos); mudar só a data ou o tipo é update direto. */}
+        {isEditing && (() => {
+          const editingMeal = (meals || []).find(m => m.id === mealIdToEdit);
+          const notes = editingMeal?.coach_notes || editingMeal?.coach_analysis;
+          const isDismissed = editingMeal?.id && (useAppStore.getState().dismissedInterventions[editingMeal.id] === notes || useAppStore.getState().dismissedInterventions[editingMeal.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingMeal.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'meal',
+                    recordId: editingMeal.id,
+                    recordName: editingMeal.name || 'Refeição',
+                    date: editingMeal.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ações */}
         {isEditing ? (
             <CoachAnalyzeButton
               onClick={handleSaveEdit}
