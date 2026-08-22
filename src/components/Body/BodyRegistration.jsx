@@ -139,8 +139,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
-  const analyticalSignature = (dateValue, notesValue, metricsValue) => JSON.stringify({
-    date: dateValue,
+  const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
     notes: (notesValue || '').trim(),
     metrics: BODY_METRICS.reduce((acc, m) => {
       const raw = metricsValue?.[m.key];
@@ -160,14 +159,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (a[m.key] !== null && a[m.key] !== undefined) loaded[m.key] = String(a[m.key]);
     }
     setMetrics(loaded);
-    setOriginalSnapshot(analyticalSignature(a.date || todayISO(), a.notes, loaded));
+    setOriginalSnapshot(analyticalSignature(a.notes, loaded));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentIdToEdit]);
 
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(date, notes, metrics) !== originalSnapshot;
+    && analyticalSignature(notes, metrics) !== originalSnapshot;
 
   const handleMetricChange = (key, value) => {
     setIsFormDirty(true);

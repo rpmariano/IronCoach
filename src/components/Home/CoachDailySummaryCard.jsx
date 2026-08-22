@@ -122,7 +122,7 @@ export default function CoachDailySummaryCard() {
       list.push({ key: 'warnings', label: 'Aviso de hoje', Icon: AlertTriangle, color: '#fbbf24', text: warningsText });
     }
     if (dailySummary?.meal_suggestion) {
-      list.push({ key: 'meal_suggestion', label: 'Sugestão alimentar', Icon: Utensils, color: '#34d399', text: dailySummary.meal_suggestion.trim() });
+      list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', Icon: Utensils, color: '#34d399', text: dailySummary.meal_suggestion.trim() });
     }
     if (tomorrowPrepText) {
       list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', Icon: CalendarClock, color: '#a78bfa', text: tomorrowPrepText });
@@ -197,7 +197,7 @@ export default function CoachDailySummaryCard() {
       <div className="cds-card">
         <div className="cds-glow" />
         <div className="cds-header">
-          <span className="cds-lbl"><Sparkles size={12} /> Resumo do Coach</span>
+          <span className="cds-lbl"><Sparkles size={12} /> Insights do Coach</span>
         </div>
         <div className="cds-body">
           <div className="cds-skeleton">
@@ -214,7 +214,7 @@ export default function CoachDailySummaryCard() {
       <div className="cds-card">
         <div className="cds-glow" />
         <div className="cds-header">
-          <span className="cds-lbl"><Sparkles size={12} /> Resumo do Coach</span>
+          <span className="cds-lbl"><Sparkles size={12} /> Insights do Coach</span>
           <button type="button" onClick={handleRefresh} disabled={dailySummaryLoading} aria-label="Atualizar resumo" className="cds-refresh" data-spinning={dailySummaryLoading}>
             <RefreshCw size={13} />
           </button>
@@ -235,8 +235,8 @@ export default function CoachDailySummaryCard() {
 
         {/* Cabeçalho Único */}
         <div className="cds-header">
-          <span className="cds-lbl"><Sparkles size={12} /> Resumo do Coach</span>
-          <button
+          <span className="cds-lbl"><Sparkles size={12} /> Insights do Coach</span>
+        <button 
             type="button"
             onClick={handleRefresh}
             disabled={dailySummaryLoading}
