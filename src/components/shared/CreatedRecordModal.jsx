@@ -114,8 +114,9 @@ export default function CreatedRecordModal() {
           {showCoachButton && (
             <Button
               onClick={handleGoToChat}
-              variant="primary"
-              className="w-full bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20 border-transparent"
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              className="w-full text-white shadow-lg shadow-[var(--mod-coach-to)]/20 border-transparent font-semibold"
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={18} />
