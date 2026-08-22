@@ -30,3 +30,41 @@ export const CALENDAR_NO_DATA_DOT = 'bg-slate-300';
 export function publicUrl(file) {
   return `${import.meta.env.BASE_URL}${String(file).replace(/^\//, '')}`;
 }
+
+// Rótulos legíveis para o campo "página" do report de erro (ReportIssueButton)
+// — activeTab/openCreationMode são chaves internas, não fazem sentido para
+// um admin a ler a lista de reports.
+const TAB_PAGE_LABELS = {
+  home: 'Início',
+  calendario: 'Calendário',
+  nutricao: 'Dashboard · Nutrição',
+  ginasio: 'Dashboard · Ginásio',
+  corpo: 'Dashboard · Corpo',
+  corrida: 'Dashboard · Corrida',
+  holistica: 'Dashboard · Holística',
+  coach: 'Coach',
+  perfil: 'Perfil',
+  admin: 'Admin',
+};
+
+const CREATION_PAGE_LABELS = {
+  meal: 'Registo · Refeição',
+  assessment: 'Registo · Avaliação Corporal',
+  run: 'Registo · Corrida',
+  workout: 'Registo · Treino',
+};
+
+/* Deriva um rótulo de página legível a partir do estado de navegação atual
+   da app (ver useAppStore: activeTab, openCreationMode, editingRaceId). A
+   Prova é um caso à parte (ver App.jsx) — não tem separador próprio, abre
+   por cima do activeTab onde o atleta estava, por isso é sempre tratada
+   antes do resto, e distinguimos nova vs. edição. */
+export function currentPageLabel({ activeTab, openCreationMode, editingRaceId } = {}) {
+  if (openCreationMode === 'race' || editingRaceId) {
+    return editingRaceId ? 'Prova · Edição' : 'Prova · Nova';
+  }
+  if (openCreationMode) {
+    return CREATION_PAGE_LABELS[openCreationMode] || `Registo · ${openCreationMode}`;
+  }
+  return TAB_PAGE_LABELS[activeTab] || activeTab || 'Desconhecida';
+}

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter } from 'lucide-react';
+import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
   { key: 'users', label: 'Utilizadores', icon: Users },
+  { key: 'bug_reports', label: 'Reports de Erros', icon: Bug },
   { key: 'unknown_apps', label: 'Imagens Desconhecidas', icon: FileQuestion },
   { key: 'metrics', label: 'Métricas', icon: BarChart3 },
   { key: 'costs', label: 'Custos API', icon: CircleDollarSign },
@@ -61,6 +62,14 @@ export default function Admin() {
   const [modalNotes, setModalNotes] = useState('');
   const [modalStatus, setModalStatus] = useState('pending');
 
+  // States for Bug Reports
+  const [bugReports, setBugReports] = useState([]);
+  const [bugReportsLoading, setBugReportsLoading] = useState(false);
+  const [bugReportsStatusFilter, setBugReportsStatusFilter] = useState('open');
+  const [bugScreenshotUrls, setBugScreenshotUrls] = useState({});
+  const [selectedBugReport, setSelectedBugReport] = useState(null);
+  const [bugReportUpdating, setBugReportUpdating] = useState(false);
+
   useEffect(() => {
     if (!profile?.is_admin) return;
     loadAdminData();
@@ -75,6 +84,64 @@ export default function Admin() {
     if (!profile?.is_admin || activeTab !== 'unknown_apps') return;
     loadUnknownLogs();
   }, [activeTab, profile]);
+
+  useEffect(() => {
+    if (!profile?.is_admin || activeTab !== 'bug_reports') return;
+    loadBugReports();
+  }, [activeTab, profile]);
+
+  const loadBugReports = async () => {
+    setBugReportsLoading(true);
+    try {
+      const { data: reports, error } = await supabase
+        .from('bug_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(300);
+      if (error) throw error;
+      setBugReports(reports || []);
+
+      const paths = (reports || []).map(r => r.screenshot_path).filter(Boolean);
+      if (paths.length) {
+        const { data: signed, error: signError } = await supabase.storage
+          .from('bug-report-photos')
+          .createSignedUrls(paths, 3600);
+        if (signError) throw signError;
+        const map = {};
+        (signed || []).forEach(s => { if (s.signedUrl && s.path) map[s.path] = s.signedUrl; });
+        setBugScreenshotUrls(map);
+      } else {
+        setBugScreenshotUrls({});
+      }
+    } catch (err) {
+      console.error('Error loading bug reports:', err);
+      setBugReports([]);
+    } finally {
+      setBugReportsLoading(false);
+    }
+  };
+
+  const handleToggleBugReportStatus = async (report) => {
+    const nextStatus = report.status === 'resolved' ? 'open' : 'resolved';
+    setBugReportUpdating(true);
+    try {
+      const patch = {
+        status: nextStatus,
+        resolved_at: nextStatus === 'resolved' ? new Date().toISOString() : null,
+        resolved_by: nextStatus === 'resolved' ? (profile?.id || null) : null,
+      };
+      const { error } = await supabase.from('bug_reports').update(patch).eq('id', report.id);
+      if (error) throw error;
+
+      setBugReports(prev => prev.map(r => r.id === report.id ? { ...r, ...patch } : r));
+      setSelectedBugReport(prev => prev && prev.id === report.id ? { ...prev, ...patch } : prev);
+    } catch (err) {
+      console.error('Error updating bug report:', err);
+      alert('Falha ao atualizar o estado do report.');
+    } finally {
+      setBugReportUpdating(false);
+    }
+  };
 
   const loadUnknownLogs = async () => {
     setUnknownLoading(true);
@@ -314,6 +381,160 @@ export default function Admin() {
           {users.length === 0 && <p className="text-xs text-slate-500 text-center py-4">Nenhum utilizador encontrado.</p>}
         </div>
       )}
+
+      {activeTab === 'bug_reports' && (() => {
+        const filtered = bugReports.filter(item => bugReportsStatusFilter === 'todos' || item.status === bugReportsStatusFilter);
+        const openCount = bugReports.filter(r => r.status !== 'resolved').length;
+
+        return (
+          <div className="space-y-4 fade-in">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { key: 'open', label: `Abertos${openCount ? ` (${openCount})` : ''}` },
+                { key: 'resolved', label: 'Resolvidos' },
+                { key: 'todos', label: 'Todos' },
+              ].map(s => (
+                <button
+                  key={s.key}
+                  onClick={() => setBugReportsStatusFilter(s.key)}
+                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                    bugReportsStatusFilter === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {bugReportsLoading ? (
+              <div className="flex items-center justify-center py-12 text-slate-500 text-xs gap-2">
+                <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" /> A carregar reports...
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="card rounded-2xl p-8 text-center bg-neutral-900/40 border border-neutral-800 text-slate-500 text-xs">
+                Nenhum report de erro com o filtro selecionado.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {filtered.map(item => {
+                  const thumbUrl = item.screenshot_path ? bugScreenshotUrls[item.screenshot_path] : null;
+                  return (
+                    <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200 truncate">
+                            {item.user_name || item.user_email || 'Utilizador desconhecido'}
+                          </p>
+                          <p className="text-[10px] text-slate-500 truncate">{item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}</p>
+                        </div>
+                        <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                          item.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}>
+                          {item.status === 'resolved' ? 'Resolvido' : 'Aberto'}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-3 items-start">
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt="Screenshot do report"
+                            className="w-16 h-16 object-cover rounded-xl border border-neutral-700 shrink-0 bg-neutral-950"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        )}
+                        <p className="text-xs text-slate-300 line-clamp-3 flex-1">{item.description}</p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setSelectedBugReport(item)}
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                        >
+                          <Eye size={14} /> Ver Detalhes
+                        </button>
+                        <button
+                          onClick={() => handleToggleBugReportStatus(item)}
+                          disabled={bugReportUpdating}
+                          className={`flex-1 flex items-center justify-center gap-1.5 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl transition border disabled:opacity-50 ${
+                            item.status === 'resolved'
+                              ? 'bg-neutral-800 hover:bg-neutral-700 text-slate-300 border-neutral-700'
+                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                          }`}
+                        >
+                          {item.status === 'resolved' ? <><RotateCcw size={14} /> Reabrir</> : <><Check size={14} /> Marcar Resolvido</>}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Detail Modal */}
+            {selectedBugReport && (() => {
+              const modalImgUrl = selectedBugReport.screenshot_path ? bugScreenshotUrls[selectedBugReport.screenshot_path] : null;
+              return (
+                <PremiumModal
+                  isOpen={!!selectedBugReport}
+                  onClose={() => setSelectedBugReport(null)}
+                  title="Report de Erro"
+                  subtitle={`${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
+                  icon={Bug}
+                  theme="warning"
+                  variant="dialog"
+                  maxWidth="max-w-lg"
+                >
+                  <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Utilizador</label>
+                      <p className="text-xs text-slate-200">{selectedBugReport.user_name || '—'}</p>
+                      <p className="text-[10px] text-slate-500">{selectedBugReport.user_email || 'sem email registado'}</p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Descrição</label>
+                      <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 text-xs text-slate-200 whitespace-pre-wrap break-words">
+                        {selectedBugReport.description}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Screenshot</label>
+                      <div className="flex justify-center bg-neutral-950 rounded-2xl p-2 border border-neutral-800 max-h-72 overflow-hidden">
+                        {modalImgUrl ? (
+                          <img src={modalImgUrl} alt="Screenshot do report" className="max-h-68 object-contain rounded-xl" />
+                        ) : (
+                          <p className="text-xs text-slate-500 py-8">Sem screenshot anexado a este report.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedBugReport.status === 'resolved' && selectedBugReport.resolved_at && (
+                      <p className="text-[10px] text-emerald-400/80 text-center">
+                        Resolvido a {new Date(selectedBugReport.resolved_at).toLocaleString('pt-PT')}
+                      </p>
+                    )}
+
+                    <Button
+                      variant={selectedBugReport.status === 'resolved' ? 'light' : 'module'}
+                      moduleColor="var(--mod-coach-to)"
+                      onClick={() => handleToggleBugReportStatus(selectedBugReport)}
+                      disabled={bugReportUpdating}
+                      className="w-full"
+                      icon={bugReportUpdating
+                        ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" />
+                        : (selectedBugReport.status === 'resolved' ? <RotateCcw size={16} /> : <Check size={16} />)}
+                    >
+                      {bugReportUpdating ? 'A atualizar...' : (selectedBugReport.status === 'resolved' ? 'Reabrir Report' : 'Marcar como Resolvido')}
+                    </Button>
+                  </div>
+                </PremiumModal>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {activeTab === 'unknown_apps' && (() => {
         const filtered = unknownLogs.filter(item => {
