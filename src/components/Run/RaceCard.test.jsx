@@ -51,7 +51,7 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     expect(screen.getByText('Principal')).toBeInTheDocument();
   });
 
-  it('expande e apresenta os dados essenciais (Local, Distância, Objetivo, Contagem, Fase e Carol)', () => {
+  it('expande e apresenta os dados de prova prévia ao início (Início do Treino e Recomendações da Carol sem pílula de preparação adequada)', () => {
     render(
       <RaceCard
         ev={sampleRace}
@@ -65,14 +65,18 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     const card = screen.getByText('Corrida do Tejo').closest('.card');
     fireEvent.click(card);
 
-    // Verifica secções essenciais
+    // Verifica secções essenciais quando o treino ainda não se iniciou
     expect(screen.getByText(/Local & Distância/i)).toBeInTheDocument();
     expect(screen.getByText('Lisboa')).toBeInTheDocument();
     expect(screen.getByText(/Objetivo/i)).toBeInTheDocument();
     expect(screen.getByText(/Tempo: 50:00/i)).toBeInTheDocument();
     expect(screen.getByText(/Contagem/i)).toBeInTheDocument();
-    expect(screen.getByText(/Fase do Treino/i)).toBeInTheDocument();
-    expect(screen.getByText(/Evolução da Preparação/i)).toBeInTheDocument();
+    expect(screen.getByText(/Início do Treino/i)).toBeInTheDocument();
+    expect(screen.getByText(/Início da 1ª Fase/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recomendações Prévias da Carol/i)).toBeInTheDocument();
+
+    // Verifica que NÃO exibe a pílula de "Preparação Adequada" antes do início do treino
+    expect(screen.queryByText('Preparação Adequada')).not.toBeInTheDocument();
 
     // Verifica que NÃO renderiza a secção de scraper do site
     expect(screen.queryByText('Informação da Prova')).not.toBeInTheDocument();

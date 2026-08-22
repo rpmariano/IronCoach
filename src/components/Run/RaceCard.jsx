@@ -157,16 +157,21 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
               </span>
             </div>
 
-            {/* 4. Fase Atual */}
+            {/* 4. Fase Atual ou Contagem para Início */}
             <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Activity size={11} className="text-amber-500" /> Fase do Treino
+                <Activity size={11} className="text-amber-500" />
+                {plan.trainingStatus === 'not_started' ? 'Início do Treino' : 'Fase do Treino'}
               </span>
               <span className="text-xs font-bold text-amber-600 truncate">
-                {plan.currentPhase?.name || 'Base Aeróbica'}
+                {plan.trainingStatus === 'not_started'
+                  ? `Faltam ${plan.daysToStart} dias`
+                  : (plan.currentPhase?.name || 'Base Aeróbica')}
               </span>
               <span className="text-[11px] font-medium text-slate-500 truncate">
-                {plan.currentPhase?.weeksLabel || `Sem. 1-${plan.totalWeeks}`}
+                {plan.trainingStatus === 'not_started'
+                  ? 'Início da 1ª Fase (Base)'
+                  : (plan.currentPhase?.weeksLabel || `Sem. 1-${plan.totalWeeks}`)}
               </span>
             </div>
           </div>
@@ -177,24 +182,28 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={12} className="text-amber-500" />
-                  Evolução da Preparação
+                  {plan.trainingStatus === 'not_started' ? 'Recomendações Prévias da Carol' : 'Evolução da Preparação'}
                 </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
-                  plan.readinessLevel === 'green'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    : plan.readinessLevel === 'yellow'
-                    ? 'bg-amber-50 border-amber-200 text-amber-700'
-                    : 'bg-rose-50 border-rose-200 text-rose-700'
-                }`}>
-                  {plan.carolAnalysis.readinessLabel}
-                </span>
+                {plan.trainingStatus !== 'not_started' && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                    plan.readinessLevel === 'green'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : plan.readinessLevel === 'yellow'
+                      ? 'bg-amber-50 border-amber-200 text-amber-700'
+                      : 'bg-rose-50 border-rose-200 text-rose-700'
+                  }`}>
+                    {plan.carolAnalysis.readinessLabel}
+                  </span>
+                )}
               </div>
 
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                {plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText}
+                {plan.trainingStatus === 'not_started'
+                  ? plan.carolAnalysis.overviewText
+                  : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)}
               </p>
 
-              {plan.currentPhase?.evaluation?.score != null && (
+              {plan.trainingStatus !== 'not_started' && plan.currentPhase?.evaluation?.score != null && (
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 text-[11px] text-slate-500">
                   <span>Classificação da Fase:</span>
                   <span className="font-bold text-slate-700">
