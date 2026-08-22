@@ -1957,11 +1957,14 @@ export function buildSystemInstruction(
   interventionStatus: string | null = null,
   interventionReason: string | null = null,
 ): string {
-  const today = new Date().toLocaleDateString("pt-PT", {
+  const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Lisbon"
   });
 
   let sys =
@@ -2273,7 +2276,7 @@ export function buildSystemInstruction(
     `## Hidratação\n` +
     `Tem em conta o "Água hoje" no contexto ao dar conselhos de treino ou nutrição. ` +
     `Não forces o tema numa resposta sem relação com hidratação, e não repitas o lembrete em respostas consecutivas.\n\n` +
-    `Data atual: ${today}.\n\n` +
+    `Data e hora atual (fuso horário de Lisboa): ${today}.\nATENÇÃO: Se for madrugada (ex: 00:00 às 05:00), o atleta provavelmente ainda não foi dormir e a conversa flui como se ainda fosse a noite do dia anterior. No entanto, o sistema já virou o dia (hoje). Lembra-te que ele AINDA NÃO FEZ o treino que está agendado para o dia que acabou de começar (hoje). Não ignores "hoje" saltando logo para o planeamento de "amanhã"!\n\n` +
     `Sobre os treinos: há dois tipos. Os treinos de força trazem exercícios, séries, volume em ` +
     `kg e os grupos musculares trabalhados entre parênteses retos. As aulas de grupo e cardio ` +
     `vêm marcadas com "(aula)" — HIIT, RPM, pilates e afins — e NÃO têm séries nem volume, ` +
