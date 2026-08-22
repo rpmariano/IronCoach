@@ -69,9 +69,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   z-index: 2;
-  padding-right: 36px; /* espaço para o botão do sino no canto superior direito */
 }
 
 .hydro-nrc-top-left {
@@ -238,11 +237,12 @@
   background: #e0f2fe;
 }
 
-/* Bell Dropdown Styles */
+/* Bell Dropdown Styles - positioned to the left of the vertical divider */
 .hydro-bell-wrapper {
-  position: absolute;
-  top: 16px;
-  right: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 20;
 }
 
@@ -250,21 +250,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   color: #cbd5e1;
   cursor: pointer;
   transition: color 0.2s, background-color 0.2s;
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0;
   margin: 0;
   border-radius: 50%;
 }
 
 .hydro-bell-btn:hover {
-  color: #f97316;
-  background: rgba(249, 115, 22, 0.05);
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
 }
 
 .hydro-bell-menu {

@@ -57,29 +57,6 @@ export default function HydrationOptionA({
     <div className="hydro-nrc-card">
       <div className="hydro-nrc-glow"></div>
       
-      <div className="hydro-bell-wrapper" ref={menuRef}>
-        <button 
-          type="button"
-          className="hydro-bell-btn" 
-          onClick={handleToggleBell} 
-          title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
-          aria-label={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
-        >
-          {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
-        </button>
-        
-        {showBellMenu && (
-          <div className="hydro-bell-menu">
-            <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'next')}>
-              Ocultar próximo alarme
-            </button>
-            <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'today')}>
-              Desativar para hoje
-            </button>
-          </div>
-        )}
-      </div>
-      
       <div className="hydro-nrc-top">
         <div className="hydro-nrc-top-left">
           <div className="hydro-nrc-header-row">
@@ -93,6 +70,29 @@ export default function HydrationOptionA({
               <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc' }}>Faltam {remaining} ml</span>
             </div>
           </div>
+        </div>
+
+        <div className="hydro-bell-wrapper" ref={menuRef}>
+          <button 
+            type="button"
+            className="hydro-bell-btn" 
+            onClick={handleToggleBell} 
+            title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+            aria-label={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+          >
+            {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
+          </button>
+          
+          {showBellMenu && (
+            <div className="hydro-bell-menu">
+              <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'next')}>
+                Ocultar próximo alarme
+              </button>
+              <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'today')}>
+                Desativar para hoje
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="hydro-nrc-top-right">

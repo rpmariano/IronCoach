@@ -48,27 +48,36 @@ export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
     >
       <div className="nutri-nrc-glow"></div>
       
-      <div className="nutri-nrc-left">
-        <div className="nutri-nrc-header-row">
-          <span className="nutri-nrc-lbl">Nutrição Diária</span>
-          <span className="nutri-nrc-tag">hoje</span>
-        </div>
-        
-        {/* We omit the title h2 to match the shorter dimension of the hydration card */}
-        
-        <div className="nutri-nrc-sub">
-          <div className="nutri-nrc-sub-item">
-            <Utensils size={14} style={{ marginRight: '6px', color: '#10b981' }} />
-            {mealsToday} refeições registadas
+      <div className="nutri-nrc-top">
+        <div className="nutri-nrc-top-left">
+          <div className="nutri-nrc-header-row">
+            <span className="nutri-nrc-lbl">Nutrição Diária</span>
+            <span className="nutri-nrc-tag">hoje</span>
           </div>
-          {proteinStatus && (
+          
+          <div className="nutri-nrc-sub">
             <div className="nutri-nrc-sub-item">
-              <Info size={14} style={{ marginRight: '6px', color: proteinStatus.color }} />
-              <span style={{ color: proteinStatus.color }}>{proteinStatus.label}</span>
+              <Utensils size={14} style={{ marginRight: '6px', color: '#10b981' }} />
+              {mealsToday} refeições registadas
             </div>
-          )}
+            {proteinStatus && (
+              <div className="nutri-nrc-sub-item">
+                <Info size={14} style={{ marginRight: '6px', color: proteinStatus.color }} />
+                <span style={{ color: proteinStatus.color }}>{proteinStatus.label}</span>
+              </div>
+            )}
+          </div>
         </div>
 
+        <div className="nutri-nrc-top-right">
+          <span className="nutri-nrc-days" style={{ color: isOverLimit ? '#e11d48' : '#10b981' }}>
+            {totals.calories.toFixed(0)}
+          </span>
+          <span className="nutri-nrc-days-lbl" style={{ color: isOverLimit ? '#be123c' : '#16a34a' }}>kcal</span>
+        </div>
+      </div>
+
+      <div className="nutri-nrc-bottom">
         <div className="nutri-nrc-progress-container">
           <div className="nutri-nrc-progress-bar">
             <div className={`nutri-nrc-progress-fill ${barColor}`} style={{ width: `${percentage}%` }}></div>
@@ -84,13 +93,6 @@ export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
             <span>Meta</span>
           </div>
         </div>
-      </div>
-
-      <div className="nutri-nrc-right">
-        <span className="nutri-nrc-days" style={{ color: isOverLimit ? '#e11d48' : '#10b981' }}>
-          {totals.calories.toFixed(0)}
-        </span>
-        <span className="nutri-nrc-days-lbl" style={{ color: isOverLimit ? '#be123c' : '#16a34a' }}>kcal</span>
       </div>
     </div>
   );
