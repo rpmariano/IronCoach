@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
 import { Bot, LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
+import ReportIssueButton from '../shared/ReportIssueButton';
 
 const TAB_MODULE_COLORS = {
   home: 'var(--green)',
@@ -151,6 +152,11 @@ export default function Layout({ children }) {
       <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-28 overflow-y-auto">
         {children}
       </main>
+
+      {/* Botão discreto de report de erro — presente em todos os ecrãs,
+          porque vive aqui (Layout envolve tudo o que é renderizado depois
+          do login, incluindo os ecrãs de registo — ver App.jsx). */}
+      <ReportIssueButton />
 
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
       {fabOpen && (
