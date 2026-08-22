@@ -479,9 +479,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
     `(c) uma sugestão prática para os próximos dias. ` +
     `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n\n` +
-    `2. meal_suggestion — sugestão alimentar para hoje, educativa e nunca prescritiva ` +
-    `("considera", não "tens de"). Respeita SEMPRE restrições alimentares do contexto. ` +
-    `Usa "tdee_estimado_kcal" se disponível para calibrar porções.\n\n` +
+    `2. meal_suggestion — insight ou estratégia nutricional de valor acrescentado para hoje ` +
+    `(ex: timing de ingestão peri-treino, reforço de hidratação cruzada com o treino, ou importância de um macronutriente face à carga agendada). ` +
+    `CRÍTICO: NÃO sugiras ingredientes ou pratos específicos (ex: frango grelhado, arroz), pois o atleta já tem um plano alimentar detalhado a cumprir. ` +
+    `Foca-te exclusivamente no *porquê* e na estratégia fisiológica. Respeita SEMPRE restrições alimentares do contexto.\n\n` +
     `3. race_readiness — avalia a prontidão para "proxima_prova". Devolve null se não houver prova. ` +
     `Critérios de level:\n` +
     `  "green" — preparação adequada: semanas suficientes, volume ok, ACWR < 1.3, ` +

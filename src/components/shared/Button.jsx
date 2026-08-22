@@ -62,8 +62,8 @@ export function Button({
   // Sizes
   const sizes = {
     sm: 'text-xs px-3 py-1.5 rounded-xl tap-44 gap-1.5', // ensures 44px touch target if needed
-    md: 'text-sm px-4 py-3 rounded-xl tap-h-44 gap-2',
-    lg: 'text-base px-6 py-3.5 rounded-2xl tap-h-44 gap-2',
+    md: 'text-sm px-4 py-3 rounded-2xl tap-h-44 gap-2',
+    lg: 'text-base px-6 py-3.5 rounded-3xl tap-h-44 gap-2',
     icon: 'w-10 h-10 rounded-full flex-shrink-0'
   };
 

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { Flag, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Flag, ChevronLeft, ChevronRight, Bot } from 'lucide-react';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
@@ -9,6 +10,9 @@ import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
+import { detectCoachInsights } from '../../utils/biEngine';
+import CoachInsightButton from '../BI/CoachInsightButton';
+import CoachInsightModal from '../BI/CoachInsightModal';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -263,11 +267,18 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
 export default function Home() {
   const { showToast } = useToast();
   const {
-    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs,
+    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId
   } = useAppStore();
+
+  const [showInsights, setShowInsights] = useState(false);
+
+  const homeInsights = useMemo(() => {
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
+    return all.filter(i => insightStates[i.id] !== 'understood' && i.module === 'coach');
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
 
   const handleNav = (tab) => setActiveTab(tab);
 
@@ -396,6 +407,35 @@ export default function Home() {
         onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
+
+      {/* Botão de Intervenção Proativa do Coach */}
+      {(profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress') && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm">
+          <button
+            onClick={() => handleNav('coach')}
+            className="w-full shadow-lg shadow-orange-500/20 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform py-3 px-4 rounded-xl flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 p-2 rounded-full relative">
+                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 border border-white rounded-full animate-pulse"></span>
+                <Bot size={20} className="text-white" />
+              </div>
+              <div className="flex flex-col items-start">
+                <span className="text-white font-bold text-sm leading-tight">A Carol precisa de falar contigo</span>
+                <span className="text-orange-100 text-xs mt-0.5">O teu plano requer atenção</span>
+              </div>
+            </div>
+            <span className="text-white bg-black/20 p-1.5 rounded-full">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </span>
+          </button>
+        </div>
+      )}
+
+      <CoachInsightButton insights={homeInsights} onClick={() => setShowInsights(true)} />
+      {showInsights && (
+        <CoachInsightModal insights={homeInsights} onClose={() => setShowInsights(false)} />
+      )}
     </div>
   );
 }

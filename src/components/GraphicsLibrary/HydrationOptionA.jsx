@@ -57,42 +57,51 @@ export default function HydrationOptionA({
     <div className="hydro-nrc-card">
       <div className="hydro-nrc-glow"></div>
       
-      <div className="hydro-bell-wrapper" ref={menuRef}>
-        <button 
-          type="button"
-          className="hydro-bell-btn" 
-          onClick={handleToggleBell} 
-          title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
-          aria-label={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
-        >
-          {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
-        </button>
-        
-        {showBellMenu && (
-          <div className="hydro-bell-menu">
-            <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'next')}>
-              Ocultar próximo alarme
-            </button>
-            <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'today')}>
-              Desativar para hoje
-            </button>
+      <div className="hydro-nrc-top">
+        <div className="hydro-nrc-top-left">
+          <div className="hydro-nrc-header-row">
+            <span className="hydro-nrc-lbl">Hidratação Diária</span>
+            <span className="hydro-nrc-tag">hoje</span>
           </div>
-        )}
-      </div>
-      
-      <div className="hydro-nrc-left">
-        <div className="hydro-nrc-header-row">
-          <span className="hydro-nrc-lbl">Hidratação Diária</span>
-          <span className="hydro-nrc-tag">hoje</span>
-        </div>
-        
-        <div className="hydro-nrc-sub">
-          <div className="hydro-nrc-sub-item">
-            <Droplets size={14} style={{ marginRight: '4px', color: '#0ea5e9' }} />
-            Faltam {remaining} ml
+          
+          <div className="hydro-nrc-sub">
+            <div className="hydro-nrc-sub-item">
+              <Droplets size={16} style={{ marginRight: '6px', color: '#0ea5e9' }} />
+              <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc' }}>Faltam {remaining} ml</span>
+            </div>
           </div>
         </div>
 
+        <div className="hydro-bell-wrapper" ref={menuRef}>
+          <button 
+            type="button"
+            className="hydro-bell-btn" 
+            onClick={handleToggleBell} 
+            title={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+            aria-label={isMutedToday ? 'Lembretes silenciados' : 'Lembretes ativos'}
+          >
+            {isMutedToday ? <BellOff size={16} /> : <Bell size={16} />}
+          </button>
+          
+          {showBellMenu && (
+            <div className="hydro-bell-menu">
+              <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'next')}>
+                Ocultar próximo alarme
+              </button>
+              <button className="hydro-bell-item" onClick={(e) => handleSnooze(e, 'today')}>
+                Desativar para hoje
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="hydro-nrc-top-right">
+          <span className="hydro-nrc-days">{currentMl}</span>
+          <span className="hydro-nrc-days-lbl">ml</span>
+        </div>
+      </div>
+
+      <div className="hydro-nrc-bottom">
         <div className="hydro-nrc-progress-container">
           <div className="hydro-nrc-progress-bar">
             <div className="hydro-nrc-progress-fill" style={{ width: `${percentage}%` }}></div>
@@ -111,11 +120,6 @@ export default function HydrationOptionA({
           <button className="hydro-nrc-btn" onClick={(e) => handleAddWater(e, 200)}>+ 200 ml</button>
           <button className="hydro-nrc-btn" onClick={(e) => handleAddWater(e, 250)}>+ 250 ml</button>
         </div>
-      </div>
-
-      <div className="hydro-nrc-right">
-        <span className="hydro-nrc-days">{currentMl}</span>
-        <span className="hydro-nrc-days-lbl">ml</span>
       </div>
     </div>
   );

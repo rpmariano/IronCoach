@@ -22,9 +22,9 @@ const MEAL_ICONS = {
    observações entram no prompt de estimação — "hambúrguer" caseiro e do
    McDonald's não dão os mesmos valores). Editar aqui à mão deixava a
    "Análise do Coach" a descrever uma refeição que já não existe. */
-export default function MealCard({ meal, onEdit }) {
+export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
   const { showToast } = useToast();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -203,6 +203,39 @@ export default function MealCard({ meal, onEdit }) {
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>
+          )}
+
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[meal.id] !== coachCommentary
+          ) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.getState().dismissIntervention(meal.id, coachCommentary);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'meal',
+                    recordId: meal.id,
+                    recordName: meal.name || 'Refeição',
+                    date: meal.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
           )}
 
           {/* Action Buttons */}

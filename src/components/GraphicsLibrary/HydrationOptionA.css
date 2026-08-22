@@ -14,12 +14,12 @@
      reserva de espaço) e não têm este problema. Qualquer padding extra
      aqui, por menor que seja, ainda deixava uma faixa sem conteúdo por
      cima do fundo translúcido — lia-se sempre como uma caixa à parte. */
-  padding: 24px 24px 44px 24px;
+  padding: 20px 24px 40px 24px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   display: flex;
-  gap: 24px;
-  align-items: stretch;
+  flex-direction: column;
   justify-content: space-between;
+  gap: 16px;
   width: 100%;
   min-height: 220px;
   height: 100%;
@@ -31,9 +31,8 @@
     gap: 12px;
   }
   
-  .hydro-nrc-right {
-    min-width: 80px !important;
-    width: 80px !important;
+  .hydro-nrc-top-right {
+    min-width: 70px !important;
     padding-left: 12px !important;
   }
   
@@ -65,20 +64,28 @@
   pointer-events: none;
 }
 
-.hydro-nrc-left {
+/* Top 50% section */
+.hydro-nrc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  z-index: 2;
+}
+
+.hydro-nrc-top-left {
   flex: 1;
   position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
 }
 
 .hydro-nrc-header-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .hydro-nrc-lbl {
@@ -110,7 +117,6 @@
 .hydro-nrc-sub {
   display: flex;
   gap: 16px;
-  margin-bottom: 12px;
 }
 
 .hydro-nrc-sub-item {
@@ -122,8 +128,46 @@
   position: relative;
 }
 
+/* Top Right Counter */
+.hydro-nrc-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(14, 165, 233, 0.15);
+  padding-left: 20px;
+  min-width: 90px;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.hydro-nrc-days {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #0ea5e9;
+  line-height: 1;
+}
+
+.hydro-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #0284c7;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+/* Bottom 50% section */
+.hydro-nrc-bottom {
+  width: 100%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .hydro-nrc-progress-container {
-  margin-top: auto;
   width: 100%;
 }
 
@@ -170,39 +214,10 @@
   color: #cbd5e1;
 }
 
-.hydro-nrc-right {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-left: 2px solid rgba(14, 165, 233, 0.1);
-  padding-left: 24px;
-  min-width: 120px;
-  width: 120px;
-  flex-shrink: 0;
-  z-index: 1;
-}
-
-.hydro-nrc-days {
-  font-size: 2.2rem;
-  font-weight: 900;
-  color: #0ea5e9;
-  line-height: 1;
-}
-
-.hydro-nrc-days-lbl {
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: #0284c7;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 4px;
-}
-
 .hydro-nrc-actions {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  width: 100%;
 }
 
 .hydro-nrc-btn {
@@ -211,7 +226,7 @@
   color: #0ea5e9;
   border: 1px solid #bae6fd;
   border-radius: 8px;
-  padding: 6px 0;
+  padding: 7px 0;
   font-size: 0.8rem;
   font-weight: 800;
   cursor: pointer;
@@ -222,11 +237,12 @@
   background: #e0f2fe;
 }
 
-/* Bell Dropdown Styles */
+/* Bell Dropdown Styles - positioned to the left of the vertical divider */
 .hydro-bell-wrapper {
-  position: absolute;
-  top: 16px;
-  right: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 20;
 }
 
@@ -234,21 +250,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   color: #cbd5e1;
   cursor: pointer;
   transition: color 0.2s, background-color 0.2s;
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0;
   margin: 0;
   border-radius: 50%;
 }
 
 .hydro-bell-btn:hover {
-  color: #f97316;
-  background: rgba(249, 115, 22, 0.05);
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
 }
 
 .hydro-bell-menu {

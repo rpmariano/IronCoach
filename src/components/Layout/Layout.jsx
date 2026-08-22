@@ -86,7 +86,7 @@ export default function Layout({ children }) {
   // alterações por gravar). Sem isto, openCreationMode ficava no store e o
   // formulário de registo abria sozinho na visita seguinte a esse módulo.
   const goRegister = (tab, mode) => {
-    if (setActiveTab(tab)) setOpenCreationMode(mode);
+    if (setActiveTab('calendario')) setOpenCreationMode(mode);
   };
 
   return (
@@ -133,7 +133,7 @@ export default function Layout({ children }) {
               <img src={publicUrl('logo.png')} alt="" className="w-9 h-9 rounded-xl object-cover" onError={e => { e.target.style.display='none'; }} />
             </button>
             <div>
-              <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--green)' }}>IronHealth</h1>
+              <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--green)' }}>IronCoach</h1>
               <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{todayLabel}</p>
             </div>
           </div>

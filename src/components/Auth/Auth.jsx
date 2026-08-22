@@ -47,12 +47,14 @@ export default function Auth() {
 
   const handleGoogleLogin = async () => {
     try {
-      await supabase.auth.signInWithOAuth({
+      const redirectUrl = window.location.origin + (import.meta.env.BASE_URL || '/');
+      const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: redirectUrl
         }
       });
+      if (error) throw error;
     } catch (err) {
       setErrorMsg(err.message || 'Erro ao autenticar com o Google.');
     }
@@ -63,8 +65,8 @@ export default function Auth() {
       <div className="card rounded-3xl p-6 max-w-sm w-full shadow-lg border border-[var(--brd-700)] space-y-4">
         {/* Header */}
         <div className="flex items-center gap-2 justify-center mb-1">
-          <img src={publicUrl('logo.png')} alt="IronHealth" className="w-10 h-10 rounded-xl object-cover" />
-          <h1 className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>IronHealth</h1>
+          <img src={publicUrl('logo.png')} alt="IronCoach" className="w-10 h-10 rounded-xl object-cover" />
+          <h1 className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>IronCoach</h1>
         </div>
         <p className="text-xs text-slate-500 text-center">
           {authMode === 'signin' ? 'Entra na tua conta' : 'Cria a tua conta'}

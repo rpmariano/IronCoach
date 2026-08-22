@@ -446,9 +446,12 @@ async function generateMealCoachNotes(
   totals: MealTotals,
   goals: { calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null },
   previousMeals: Array<{ date: string } & MealTotals>,
+  // deno-lint-ignore no-explicit-any
+  planItems: any[],
+  recentCompletedWorkouts: { runs: any[]; gym: any[] } = { runs: [], gym: [] },
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
-): Promise<{ text: string | null }> {
+): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
 
@@ -478,6 +481,34 @@ async function generateMealCoachNotes(
 
   const restricoes = dietaryRestrictionsPromptBlock(diet.dietary_restrictions, diet.dietary_notes);
 
+  const yesterdayISO = new Date(new Date(meal.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const todayRuns = (recentCompletedWorkouts.runs || []).filter(r => r.date === meal.date);
+  const yesterdayRuns = (recentCompletedWorkouts.runs || []).filter(r => r.date === yesterdayISO);
+  const todayGym = (recentCompletedWorkouts.gym || []).filter(g => g.date === meal.date);
+  const yesterdayGym = (recentCompletedWorkouts.gym || []).filter(g => g.date === yesterdayISO);
+
+  let workoutsText = `\nHistórico de Treinos REALIZADOS (efetivamente concluídos e registados):\n`;
+  if (yesterdayRuns.length || yesterdayGym.length) {
+    workoutsText += `- Ontem (${yesterdayISO}): ` + [
+      ...yesterdayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...yesterdayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
+    ].join(", ") + "\n";
+  }
+  if (todayRuns.length || todayGym.length) {
+    workoutsText += `- Hoje (${meal.date}): ` + [
+      ...todayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...todayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
+    ].join(", ") + "\n";
+  } else {
+    workoutsText += `- Hoje (${meal.date}): ainda NENHUM treino foi realizado até ao momento.\n`;
+  }
+
+  const planSection = planItems.length > 0 
+    ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
+      planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
+      `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n`
+    : ``;
+
   const prompt =
     `És um nutricionista/treinador direto, a comentar uma refeição que um atleta amador acabou de registar. ` +
     `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
@@ -488,12 +519,17 @@ async function generateMealCoachNotes(
     `${avgLine}\n` +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
-    `\nREGRAS:\n` +
+    workoutsText +
+    planSection +
+    `\nREGRAS CRÍTICAS:\n` +
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
+    `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +
+    `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
     `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
     (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
+    `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise), "intervention_needed" (boolean, true se justificar intervenção) e "intervention_reason" (string, justificação).\n` +
     `\n${MEAL_DOCTRINE}\n`;
 
   try {
@@ -504,7 +540,19 @@ async function generateMealCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+          generationConfig: { 
+            maxOutputTokens: 4096, 
+            response_mime_type: "application/json",
+            response_schema: {
+              type: "OBJECT",
+              properties: {
+                text: { type: "STRING" },
+                intervention_needed: { type: "BOOLEAN" },
+                intervention_reason: { type: "STRING" }
+              },
+              required: ["text", "intervention_needed"]
+            }
+          },
         }),
       },
       45000,
@@ -515,8 +563,20 @@ async function generateMealCoachNotes(
       return { text: null };
     }
     const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return { text: text ? String(text).trim() : null };
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) return { text: null };
+
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(rawText.replace(/```json\n/g, '').replace(/```/g, ''));
+    } catch (e) {
+      console.error("Coach generation json parse error", e, rawText);
+    }
+    return { 
+      text: parsed.text?.trim() || null, 
+      intervention_needed: parsed.intervention_needed,
+      intervention_reason: parsed.intervention_reason
+    };
   } catch (e) {
     console.warn("Meal coach generation error:", e);
     return { text: null };
@@ -554,11 +614,51 @@ async function attachMealCoachNotes(
     // deno-lint-ignore no-explicit-any
     const previousMeals = (previous || []).map((m: any) => ({ date: m.date, ...totalsFromItems(m.meal_items || []) }));
 
+    const { data: activePlans } = await sb
+      .from("coach_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "aceite")
+      .lte("period_start", ctx.date)
+      .gte("period_end", ctx.date)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    let planItems = [];
+    if (activePlans && activePlans.length > 0) {
+      const { data: items } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, target_distance_km, target_duration_min, meal_suggestion, status")
+        .eq("user_id", userId)
+        .eq("plan_id", activePlans[0].id)
+        .gte("planned_date", new Date(new Date(ctx.date).getTime() - 2 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+        .lte("planned_date", ctx.date);
+      planItems = items || [];
+    }
+
+    const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const [{ data: actualRuns }, { data: actualGym }] = await Promise.all([
+      sb
+        .from("runs")
+        .select("date, training_type, distance_km, duration_seconds, effort_rpe")
+        .eq("user_id", userId)
+        .gte("date", yesterdayISO)
+        .lte("date", ctx.date),
+      sb
+        .from("workout_sessions")
+        .select("date, name, categories, exertion, duration_seconds")
+        .eq("user_id", userId)
+        .gte("date", yesterdayISO)
+        .lte("date", ctx.date),
+    ]);
+
     const result = await generateMealCoachNotes(
       { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes },
       ctx.totals,
       profile || {},
       previousMeals,
+      planItems,
+      { runs: actualRuns || [], gym: actualGym || [] },
       geminiKey,
       {
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
@@ -569,6 +669,17 @@ async function attachMealCoachNotes(
     if (result.text) {
       await sb.from("meals").update({ coach_notes: result.text }).eq("id", meal.id);
       meal.coach_notes = result.text;
+    }
+    
+    if (result.intervention_needed && result.intervention_reason) {
+      await sb.from("profiles")
+        .update({ 
+          coach_intervention_status: "needed", 
+          coach_intervention_reason: result.intervention_reason 
+        })
+        .eq("id", userId);
+      (meal as any).coach_intervention_status = "needed";
+      (meal as any).intervention_needed = true;
     }
   } catch (e) {
     console.warn("attachMealCoachNotes failed:", e);
@@ -858,3 +969,4 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
 });
+

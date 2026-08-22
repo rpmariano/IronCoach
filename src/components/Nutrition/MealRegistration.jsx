@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -9,6 +9,7 @@ import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
+import Button from '../shared/Button';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -39,9 +40,13 @@ function getDefaultMealType() {
   return 'ceia';                                         // 22:30 - 05:00
 }
 
-export default function MealRegistration({ onClose, mealIdToEdit = null }) {
+export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
-  const { profile, meals, setMeals, loadInitialData, setNavGuard } = useAppStore();
+
+  
+
   const isEditing = !!mealIdToEdit;
 
   // Comum aos dois caminhos
@@ -77,6 +82,13 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -111,6 +123,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -131,18 +144,22 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
-  const analyticalSignature = (notesValue, items) => JSON.stringify({
+  const analyticalSignature = (dateValue, notesValue, items) => JSON.stringify({
+    date: dateValue,
     notes: (notesValue || '').trim(),
     items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
   });
@@ -161,16 +178,15 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       grams: it.quantity_grams,
     }));
     setManualItems(items);
-    setOriginalSnapshot(analyticalSignature(meal.notes, items));
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, items));
     setEntryMethod('manual');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
 
-  // Só regenera a análise se os alimentos ou as observações mudaram; mudar
-  // apenas a data ou o tipo de refeição não justifica uma chamada ao Gemini.
+  // Regenera a análise se a data, alimentos ou observações mudaram
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(notes, manualItems) !== originalSnapshot;
+    && analyticalSignature(date, notes, manualItems) !== originalSnapshot;
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
@@ -226,7 +242,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
       setMeals([...meals, { ...data.meal, meal_items: data.items }]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -281,7 +297,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
 
       setMeals([...meals, data.meal]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');
@@ -307,6 +323,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
     setIsSaving(true);
     setErrorMsg('');
     try {
+      let savedMeal = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
           body: {
@@ -320,17 +337,21 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedMeal = data?.meal;
+        useAppStore.getState().clearDismissedIntervention(mealIdToEdit);
       } else {
         const { error: mealError } = await supabase
           .from('meals')
           .update({ date, meal_type: mealType })
           .eq('id', mealIdToEdit);
         if (mealError) throw mealError;
+        const currentMeal = (meals || []).find(m => m.id === mealIdToEdit);
+        savedMeal = currentMeal ? { ...currentMeal, date, meal_type: mealType } : { id: mealIdToEdit, date, meal_type: mealType };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
-      handleClose();
+      finishCreateAndGoToCalendar(savedMeal);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -499,7 +520,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                     type="text"
                     placeholder="Ex.: peito de frango grelhado"
                     value={itemName}
-                    onChange={e => setItemName(e.target.value)}
+                    onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                   />
                   <div className="relative w-24">
@@ -507,7 +528,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                       type="number" min="1" step="1"
                       placeholder="g (opcional)"
                       value={itemGrams}
-                      onChange={e => setItemGrams(e.target.value)}
+                      onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
                     />
                   </div>
@@ -532,13 +553,13 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                         <input
                           type="text"
                           value={item.name}
-                          onChange={e => updateManualItem(item.key, { name: e.target.value })}
+                          onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
                           className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent"
                         />
                         <input
                           type="number" min="1"
                           value={item.grams}
-                          onChange={e => updateManualItem(item.key, { grams: e.target.value })}
+                          onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
                           className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
                         />
                         <span className="text-[10px] text-slate-400">g</span>
@@ -550,7 +571,7 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
                       </div>
                     )}
                     <button
-                      onClick={() => handleRemoveManualItem(item.key)}
+                      onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}
                       className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
                       aria-label={`Remover ${item.name}`}
                     >
@@ -578,12 +599,42 @@ export default function MealRegistration({ onClose, mealIdToEdit = null }) {
           />
         </div>
 
-        {/* Ações — mesmo botão do Coach nos dois caminhos: a foto e o registo
-            manual acabam ambos analisados por ele, só a origem dos dados
-            muda (ver PRD 3.2). O manual só chega aqui a servidor nenhum —
-            "Adicionar alimento" é sempre local. A editar, o botão só leva o
-            gradiente do Coach quando os alimentos ou as observações mudaram
-            (dados analíticos); mudar só a data ou o tipo é update direto. */}
+        {isEditing && (() => {
+          const editingMeal = (meals || []).find(m => m.id === mealIdToEdit);
+          const notes = editingMeal?.coach_notes || editingMeal?.coach_analysis;
+          const isDismissed = editingMeal?.id && (useAppStore.getState().dismissedInterventions[editingMeal.id] === notes || useAppStore.getState().dismissedInterventions[editingMeal.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingMeal.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'meal',
+                    recordId: editingMeal.id,
+                    recordName: editingMeal.name || 'Refeição',
+                    date: editingMeal.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ações */}
         {isEditing ? (
             <CoachAnalyzeButton
               onClick={handleSaveEdit}

@@ -82,7 +82,7 @@ describe('RaceInfoPanel', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/Partida:/)).toBeInTheDocument();
+      expect(screen.getByText('Domingo 09:00')).toBeInTheDocument();
     });
     expect(screen.getAllByText(/Praça do Comércio/).length).toBeGreaterThan(0);
     expect(screen.getByText('Cartão de cidadão para levantar o dorsal.')).toBeInTheDocument();

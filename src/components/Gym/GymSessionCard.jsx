@@ -25,8 +25,8 @@ function formatDuration(totalSeconds) {
    esforço ou nas observações muda a análise do Coach e tem de a regenerar.
    Editar aqui à mão deixava a "Análise do Coach" a descrever um treino que
    já não existe. Mesmo padrão da Nutrição (ver MealCard.jsx e PRD 3.2). */
-export default function GymSessionCard({ session, onEdit }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function GymSessionCard({ session, onEdit, defaultExpanded = false }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const onToggleExpand = () => setIsExpanded(prev => !prev);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
@@ -242,10 +242,40 @@ export default function GymSessionCard({ session, onEdit }) {
             </div>
           )}
 
-          {/* Bottom Action Bar — "Reanalisar" (repescar os prints e voltar a
-              extrair exercícios/séries por IA) deixou de existir como ação
-              própria: editar já cobre a correção de exercícios/séries à mão,
-              por isso só resta editar ou eliminar a sessão toda. */}
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[session.id] !== coachCommentary
+          ) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.getState().dismissIntervention(session.id, coachCommentary);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'gym',
+                    recordId: session.id,
+                    recordName: session.name,
+                    date: session.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          )}
+
+          {/* Bottom Action Bar */}
           <div className="flex items-center gap-2 pt-1">
             {onEdit && (
               <Button

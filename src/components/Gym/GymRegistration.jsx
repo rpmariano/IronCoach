@@ -3,11 +3,13 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
+import Card from '../shared/Card';
+import Button from '../shared/Button';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -67,9 +69,12 @@ function flattenExercises(exercises) {
   return rows;
 }
 
-export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
-  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
+export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
+  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  
   const isEditing = !!sessionIdToEdit;
 
   // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
@@ -124,6 +129,13 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -158,6 +170,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -178,11 +191,14 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'gym', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -193,6 +209,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   // partir da sessão em bruto no momento do carregamento (quando o estado
   // ainda não foi atualizado).
   const analyticalSignature = (v) => JSON.stringify({
+    date: v.date,
     kind: v.kind,
     categories: [...(v.categories || [])].sort(),
     notes: (v.notes || '').trim(),
@@ -205,6 +222,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
   });
 
   const currentSignature = () => analyticalSignature({
+    date,
     kind, categories, notes,
     duration: parseDurationInput(durationStr),
     calories, avgHr, maxHr, exertion,
@@ -241,6 +259,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     }));
     setExercises(loadedExercises);
     setOriginalSnapshot(analyticalSignature({
+      date: session.date,
       kind: session.kind === 'aula' ? 'aula' : 'forca',
       categories: session.categories || [],
       notes: session.notes || '',
@@ -334,7 +353,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
 
       setGymSessions([data.session, ...gymSessions]);
       showToast('Treino registado');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -385,7 +404,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
       }
 
       showToast('Treino registado');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
@@ -408,6 +427,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
     try {
       const finalName = name.trim() || (categories.length ? categories.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
 
+      let savedSession = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
           body: {
@@ -428,17 +448,21 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedSession = data?.session;
+        useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
         const { error: sessionError } = await supabase
           .from('workout_sessions')
           .update({ date, name: finalName })
           .eq('id', sessionIdToEdit);
         if (sessionError) throw sessionError;
+        const currentSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
+        savedSession = currentSession ? { ...currentSession, date, name: finalName } : { id: sessionIdToEdit, date, name: finalName };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
-      handleClose();
+      finishCreateAndGoToCalendar(savedSession);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -479,7 +503,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
+            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -503,7 +527,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 active={isActive}
                 variant="gym"
                 rounded="xl"
-                onClick={() => handleKindChange(k.key)}
+                onClick={() => { handleKindChange(k.key); setIsFormDirty(true); }}
                 className="flex-1 py-2.5 gap-1.5"
                 type="button"
               >
@@ -518,8 +542,8 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             type="date"
             value={date}
             max={todayISO()}
-            onChange={e => setDate(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
         </div>
@@ -532,9 +556,9 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             type="text"
             maxLength={80}
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); setIsFormDirty(true); }}
             placeholder="Nome do treino"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
           />
         </div>
 
@@ -548,7 +572,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 key={c}
                 active={categories.includes(c)}
                 variant="gym"
-                onClick={() => handleToggleCategory(c)}
+                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
                 type="button"
               >
                 {c}
@@ -580,7 +604,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 key={c}
                 active={true}
                 variant="gym"
-                onClick={() => handleToggleCategory(c)}
+                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
                 type="button"
               >
                 {c}
@@ -671,7 +695,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={durationStr}
                   onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 45m"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -683,7 +707,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={calories}
                   onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 350"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -695,7 +719,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={avgHr}
                   onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 135"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
@@ -707,7 +731,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                   value={maxHr}
                   onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 168"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
             </div>
@@ -720,7 +744,7 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                     key={i}
                     type="button"
                     onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                   >
                     {i + 1}
                   </button>
@@ -745,14 +769,14 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                 ) : (
                   <div className="space-y-2">
                     {exercises.map(ex => (
-                      <div key={ex.key} className="bg-white border border-slate-200 rounded-xl p-3">
+                      <div key={ex.key} className="bg-white/5 border border-white/10 text-white rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <input
                             type="text"
                             value={ex.name}
-                            onChange={e => updateExercise(ex.key, { name: e.target.value })}
+                            onChange={e => { updateExercise(ex.key, { name: e.target.value }); setIsFormDirty(true); }}
                             placeholder="Nome do exercício"
-                            className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
+                            className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
                           />
                           <button onClick={() => removeExercise(ex.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
                             <Trash2 size={14} />
@@ -765,17 +789,17 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
                               <input
                                 type="number"
                                 value={s.reps}
-                                onChange={e => updateSet(ex.key, s.key, { reps: e.target.value })}
+                                onChange={e => { updateSet(ex.key, s.key, { reps: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="Reps"
-                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
                               <input
                                 type="number"
                                 step="0.5"
                                 value={s.weight}
-                                onChange={e => updateSet(ex.key, s.key, { weight: e.target.value })}
+                                onChange={e => { updateSet(ex.key, s.key, { weight: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="kg"
-                                className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
                               <button onClick={() => removeSet(ex.key, s.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
                                 <X size={13} />
@@ -809,17 +833,48 @@ export default function GymRegistration({ onClose, sessionIdToEdit = null }) {
             rows={2}
             maxLength={500}
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto do treino..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
-            o registo manual acabam ambos analisados por ele. A editar, o
-            botão só leva o gradiente do Coach quando os dados analíticos
-            mudaram (séries, métricas, categorias, tipo ou observações);
-            mudar só a data ou o nome é update direto. */}
+        {isEditing && (() => {
+          const editingSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
+          const notes = editingSession?.coach_notes || editingSession?.coach_analysis;
+          const isDismissed = editingSession?.id && (useAppStore.getState().dismissedInterventions[editingSession.id] === notes || useAppStore.getState().dismissedInterventions[editingSession.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingSession.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'gym',
+                    recordId: editingSession.id,
+                    recordName: editingSession.name,
+                    date: editingSession.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ação */}
         {isEditing ? (
           <CoachAnalyzeButton
             onClick={handleSaveEdit}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera } from 'lucide-react';
+import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -11,6 +11,8 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
+import Card from '../shared/Card';
+import Button from '../shared/Button';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -69,8 +71,11 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns, setNavGuard } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  
 
   // Item do plano que esta corrida vai concluir, se veio do botão "Concluir"
   // no Início (ver Home.jsx e specs/plano-de-treino.md §5.2). Consumido uma
@@ -141,6 +146,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [errorMsg, setErrorMsg] = useState('');
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -175,6 +187,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -195,11 +208,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'run', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(runDate);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -251,6 +267,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // chaves) para que o objeto vindo da BD e o construído a partir do
   // formulário sejam comparáveis campo a campo.
   const analyticalSignature = (v) => JSON.stringify({
+    date: v.date,
     kind: v.kind,
     trainingType: v.trainingType || null,
     distance: v.distance === '' || v.distance == null ? null : Number(v.distance),
@@ -359,6 +376,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         // regenerar. Mudar só a data ou o nome é update direto, sem custo de
         // API (mesmo padrão da Nutrição/Ginásio/Corpo — ver PRD 3.2).
         setOriginalSnapshot(analyticalSignature({
+          date: r.date,
           kind: r.kind || 'treino',
           trainingType: r.training_type || 'continuo',
           distance: r.distance_km,
@@ -380,11 +398,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   }, [runIdToEdit, runs]);
 
-  // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
-  // ou o nome não justifica uma chamada ao Gemini.
+  // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit
     && originalSnapshot !== null
     && analyticalSignature({
+      date: runDate,
       kind: runKind,
       trainingType: runKind === 'treino' ? runTrainingType : null,
       distance: runDistance,
@@ -517,7 +535,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(createdRun);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -533,7 +551,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(pendingCreatedRun);
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -571,6 +589,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     let signatureChanged = false;
     if (runIdToEdit && originalSnapshot !== null) {
       const newSig = analyticalSignature({
+        date: runDate,
         kind: runKind,
         trainingType: runKind === 'treino' ? runTrainingType : null,
         distance: runDistance,
@@ -608,6 +627,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
 
+      let newlySavedRun = null;
       // Editar: dois caminhos. Se os dados analíticos mudaram (distância,
       // duração, RPE, tipo ou métricas), passa pelo Coach e regenera a
       // análise; se só mudou a data ou o nome, é update direto sem custo
@@ -655,17 +675,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             },
           });
           if (error) throw new Error(error);
-          if (data?.error) throw new Error(data.error);
-          setRuns(runs.map(r => (r.id === runIdToEdit ? data.run : r)));
+          const updatedRun = data.run;
+          setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
+          useAppStore.getState().clearDismissedIntervention(runIdToEdit);
           showToast('Corrida reanalisada pelo Coach');
+          finishCreateAndGoToCalendar(updatedRun);
         } else {
           const payload = { date: runDate, name: runName.trim() };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
           if (error) throw error;
+          const currentRun = runs.find(r => r.id === runIdToEdit);
+          const updatedRun = currentRun ? { ...currentRun, ...payload } : payload;
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
           showToast('Corrida atualizada');
+          finishCreateAndGoToCalendar(updatedRun);
         }
-        handleClose();
         return;
       }
 
@@ -711,7 +735,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setRuns([...runs, data.run]);
+      newlySavedRun = data.run;
+      setRuns([...runs, newlySavedRun]);
 
       // Se esta corrida vem do plano, marca o item como concluído — a data
       // usada é a que ficou no formulário (runDate), que pode ter sido
@@ -720,12 +745,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (completingPlanItemRef.current) {
         await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
           actualDate: runDate,
-          runId: data.run.id,
+          runId: newlySavedRun.id,
         });
       }
 
       showToast('Corrida registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(newlySavedRun);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
@@ -762,7 +787,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           <div className="flex items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-2">
               <SneakerIcon className="w-4 h-4" style={{ color: 'var(--mod-corrida-to)' }} />
-              <h2 className="text-sm font-semibold text-slate-800">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
+              <h2 className="text-sm font-semibold text-white">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
             </div>
             <button
               onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -782,7 +807,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Chip
               active={runKind === 'treino'}
               variant="run"
-              onClick={() => setRunKind('treino')}
+              onClick={() => { setRunKind('treino'); setIsFormDirty(true); }}
               className="px-3 py-1.5"
               type="button"
             >
@@ -791,7 +816,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Chip
               active={runKind === 'competicao'}
               variant="run"
-              onClick={() => setRunKind('competicao')}
+              onClick={() => { setRunKind('competicao'); setIsFormDirty(true); }}
               className="px-3 py-1.5"
               type="button"
             >
@@ -804,8 +829,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <RunTrainingTypeHelp label="Tipo de treino">
                 <select
                   value={runTrainingType}
-                  onChange={e => setRunTrainingType(e.target.value)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+                  onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
                 >
                   <optgroup label="Corrida solta">
                     <option value="continuo">Contínuo</option>
@@ -831,8 +856,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <label className="text-[11px] text-slate-500 mb-1.5 block">Disciplina</label>
               <select
                 value={completedRaceType}
-                onChange={e => setCompletedRaceType(e.target.value)}
-                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+                onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
               >
                 {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
@@ -845,8 +870,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               type="date"
               value={runDate}
               max={todayISO()}
-              onChange={e => setRunDate(e.target.value)}
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+              onChange={e => { setRunDate(e.target.value); setIsFormDirty(true); }}
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
           </div>
 
@@ -856,8 +881,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {Array.from({ length: 10 }).map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1)}
-                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white border-slate-200 text-slate-400'}`}
+                  onClick={() => { setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
+                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                 >
                   {i + 1}
                 </button>
@@ -870,10 +895,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <PencilLine size={14} /> Observações (opcional)
             </label>
             <textarea
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
               placeholder="Como te sentiste, dores, condições atmosféricas..."
               value={runNotes}
-              onChange={e => setRunNotes(e.target.value)}
+              onChange={e => { setRunNotes(e.target.value); setIsFormDirty(true); }}
             />
           </div>
 
@@ -882,22 +907,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <input
               type="text"
               value={runName}
-              onChange={e => setRunName(e.target.value)}
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+              onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
             <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
           </div>
 
           {/* Competition Specifics */}
           {runKind === 'competicao' && (
-            <div className="grid grid-cols-2 gap-2 mb-4 bg-white/50 border border-slate-200 rounded-xl p-3">
+            <div className="grid grid-cols-2 gap-2 mb-4 bg-white/5 border border-white/10 text-white rounded-xl p-3">
               <div>
                 <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
-                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e=>setOfficialTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
                 <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
-                <input type="number" placeholder="ex: 12" value={position} onChange={e=>setPosition(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <input type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
             </div>
           )}
@@ -912,7 +937,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 type="number" min="0" step="0.01" 
                 placeholder="0.00" 
                 value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
-                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition" 
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-white outline-none focus:border-[var(--mod-corrida-to)] transition" 
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-slate-400 pointer-events-none">km</span>
             </div>
@@ -926,7 +951,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               type="text"
               placeholder="00:00"
               value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
-              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-corrida-to)] transition"
+              className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
           </div>
 
@@ -974,7 +999,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   </div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                    <button onClick={() => setRunPhotos([])} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
+                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); }} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
                       <Trash2 className="w-3.5 h-3.5" /> Limpar todos
                     </button>
                   </div>
@@ -1020,8 +1045,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           {/* Metrics Grid inside Organized Sub-containers */}
           <div className="space-y-3 mb-4">
             {/* Relógio & Fisiologia */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
-              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+            <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
+              <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Fisiologia & Relógio</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
@@ -1031,7 +1056,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 120" 
                     value={elevationGain} onChange={e=>{setElevationGain(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1039,7 +1064,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 80" 
                     value={elevationLoss} onChange={e=>{setElevationLoss(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1047,7 +1072,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input
                     type="number" placeholder="Ex: 158"
                     value={cadence} onChange={e=>{setCadence(e.target.value); setIsFormDirty(true);}}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition"
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition"
                   />
                 </div>
                 <div>
@@ -1055,7 +1080,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input
                     type="number" placeholder="Ex: 175"
                     value={maxCadence} onChange={e=>{setMaxCadence(e.target.value); setIsFormDirty(true);}}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition"
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition"
                   />
                 </div>
                 <div>
@@ -1063,7 +1088,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input
                     type="number" placeholder="Ex: 450"
                     value={calories} onChange={e=>{setCalories(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1071,7 +1096,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" step="0.1" placeholder="Ex: 48.5" 
                     value={vo2Max} onChange={e=>{setVo2Max(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1079,7 +1104,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 142" 
                     value={avgHeartRate} onChange={e=>{setAvgHeartRate(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1087,7 +1112,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 172" 
                     value={maxHeartRate} onChange={e=>{setMaxHeartRate(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1095,7 +1120,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 145" 
                     value={aerobicThreshold} onChange={e=>{setAerobicThreshold(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1103,15 +1128,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 165" 
                     value={anaerobicThreshold} onChange={e=>{setAnaerobicThreshold(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
               </div>
             </div>
 
             {/* Biomecânica de Corrida */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
-              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+            <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
+              <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Biomecânica de Corrida</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
@@ -1121,7 +1146,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 215" 
                     value={groundContactTime} onChange={e=>{setGroundContactTime(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1129,7 +1154,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 190" 
                     value={flightTime} onChange={e=>{setFlightTime(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1137,7 +1162,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" step="0.1" placeholder="Ex: 8.5" 
                     value={verticalOscillation} onChange={e=>{setVerticalOscillation(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1145,7 +1170,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" step="0.1" placeholder="Ex: 48.2" 
                     value={asymmetryPct} onChange={e=>{setAsymmetryPct(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1153,7 +1178,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" step="0.1" placeholder="Ex: 11.5" 
                     value={legStiffness} onChange={e=>{setLegStiffness(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1161,15 +1186,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="text" placeholder="Ex: 4:15" 
                     value={maxPace} onChange={e=>{setMaxPace(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
               </div>
             </div>
 
             {/* Hidratação & Passos */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3">
-              <p className="text-[12px] font-bold text-slate-700 mb-2.5 flex items-center justify-between">
+            <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
+              <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Hidratação & Atividade</span>
                 <span className="text-[10px] font-normal text-slate-400">opcional</span>
               </p>
@@ -1179,7 +1204,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 850" 
                     value={sweatLossMl} onChange={e=>{setSweatLossMl(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
@@ -1187,7 +1212,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input 
                     type="number" placeholder="Ex: 12500" 
                     value={totalSteps} onChange={e=>{setTotalSteps(e.target.value); setIsFormDirty(true);}} 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none focus:border-slate-400 transition" 
+                    className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
               </div>
@@ -1195,11 +1220,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
             {/* FC Zones */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3 mb-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[12px] font-bold text-slate-700">Zonas de FC (tempo em cada zona)</label>
+                <label className="text-[12px] font-bold text-slate-300">Zonas de FC (tempo em cada zona)</label>
                 <AddButton
-                  onClick={() => setHrZones([...hrZones, { zone: '', minutes: '' }])}
+                  onClick={() => { setHrZones([...hrZones, { zone: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
                 >
@@ -1213,10 +1238,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <div key={idx} className="flex items-center gap-1.5 mb-1.5">
                     <select 
                       value={z.zone} 
-                      onChange={e => {
-                        const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy);
-                      }} 
-                      className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none"
+                      onChange={e => { const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
+                      className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none"
                     >
                       <option value="">Zona</option>
                       {[1,2,3,4,5].map(n => <option key={n} value={n}>Z{n}</option>)}
@@ -1224,13 +1247,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     <input 
                       type="number" placeholder="Minutos" 
                       value={z.minutes} 
-                      onChange={e => {
-                        const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy);
-                      }} 
-                      className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-slate-800 outline-none" 
+                      onChange={e => { const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
+                      className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none" 
                     />
                     <button 
-                      onClick={() => setHrZones(hrZones.filter((_, i) => i !== idx))} 
+                      onClick={() => { setHrZones(hrZones.filter((_, i) => i !== idx)); setIsFormDirty(true); }} 
                       type="button" 
                       className="p-1 text-slate-400 hover:text-red-500"
                     >
@@ -1243,22 +1264,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {/* Repeat Specifics */}
           {runKind === 'treino' && isRepeatType && (
-            <div className="bg-white/50 rounded-xl p-3 border border-slate-200 mb-4">
+            <div className="bg-white/5 rounded-xl p-3 border border-white/10 text-white mb-4">
               <p className="text-[12px] font-semibold text-slate-500 mb-2">Estrutura da Sessão</p>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div>
                   <label className="text-[10px] text-slate-500 block mb-1">Aquecimento (min)</label>
-                  <input type="number" value={warmupMinutes} onChange={e=>setWarmupMinutes(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <input type="number" value={warmupMinutes} onChange={e => { setWarmupMinutes(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-500 block mb-1">Recuperação (seg)</label>
-                  <input type="number" value={recoverySeconds} onChange={e=>setRecoverySeconds(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <input type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[11px] text-slate-500">Splits (voltas)</label>
                 <AddButton
-                  onClick={() => setSplits([...splits, { distance_km: '', minutes: '' }])}
+                  onClick={() => { setSplits([...splits, { distance_km: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
                 >
@@ -1268,19 +1289,50 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {splits.map((s, i) => (
                 <div key={i} className="flex gap-1 mb-1.5 items-center">
                   <span className="text-[10px] text-slate-400 w-3">{i+1}.</span>
-                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits);
-                  }} className="w-20 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs" />
-                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => {
-                    const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits);
-                  }} className="flex-1 bg-white border border-slate-200 rounded-xl px-2 py-1 text-xs" />
-                  <button onClick={() => setSplits(splits.filter((_, idx) => idx !== i))} type="button"
+                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
                     aria-label={`Remover parcial ${i + 1}`}
                     className="tap-44 text-slate-400 hover:text-red-500 shrink-0"><X className="w-3.5 h-3.5"/></button>
                 </div>
               ))}
             </div>
           )}
+
+          {runIdToEdit && (() => {
+            const editingRun = runs.find(r => r.id === runIdToEdit);
+            const notes = editingRun?.coach_notes || editingRun?.coach_analysis;
+            const isDismissed = editingRun?.id && (useAppStore.getState().dismissedInterventions[editingRun.id] === notes || useAppStore.getState().dismissedInterventions[editingRun.id] === 'dismissed');
+            const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+            if (!hasIntervention) return null;
+            return (
+              <Button
+                variant="module"
+                moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+                onClick={() => {
+                  useAppStore.getState().dismissIntervention(editingRun.id, notes);
+                  useAppStore.setState({
+                    coachIntent: {
+                      kind: 'proactive_intervention',
+                      recordType: 'run',
+                      recordId: editingRun.id,
+                      recordName: editingRun.name,
+                      date: editingRun.date,
+                      reason: notes,
+                    }
+                  });
+                  handleClose();
+                  useAppStore.getState().setActiveTab('coach');
+                }}
+                className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+              >
+                <div className="flex items-center justify-center gap-2 w-full">
+                  <MessageSquare size={16} />
+                  <span>Falar com a Coach</span>
+                </div>
+              </Button>
+            );
+          })()}
 
           {runIdToEdit ? (
             <CoachAnalyzeButton

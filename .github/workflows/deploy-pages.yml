@@ -47,10 +47,10 @@ jobs:
         run: npx vitest run
 
       - name: Build
-        # O site vive em https://rpmariano.github.io/ironhealth/ — sem este base
+        # O site vive em https://rpmariano.github.io/IronCoach/ — sem este base
         # os caminhos dos assets apontam para a raiz do domínio e dão 404.
         env:
-          VITE_BASE: /ironhealth/
+          VITE_BASE: /IronCoach/
         run: npm run build
 
       - uses: actions/configure-pages@v5

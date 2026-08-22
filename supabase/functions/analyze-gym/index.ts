@@ -454,14 +454,24 @@ function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_ind
 // não são comparáveis) — curto de propósito, um comentário por sessão, não
 // uma análise de tendência de treino.
 async function generateGymCoachNotes(
-  session: { date: string; kind: string; categories: string[]; metrics: GymMetrics; notes: string | null },
-  previousSessions: Array<{ date: string } & GymMetrics>,
+  session: {
+    date: string;
+    kind: string;
+    categories: string[];
+    metrics: GymMetrics;
+    notes: string | null;
+  },
+  // deno-lint-ignore no-explicit-any
+  previousSessions: any[],
+  // deno-lint-ignore no-explicit-any
+  planItems: any[],
+  // deno-lint-ignore no-explicit-any
+  sameDayRuns: any[],
   geminiKey: string,
-): Promise<{ text: string | null }> {
+): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
+
   const m = session.metrics;
-  const hasAnyMetric = Object.values(m).some((v) => v !== null);
-  if (!hasAnyMetric && session.categories.length === 0) return { text: null }; // nada para comentar
 
   const kindLabel = session.kind === "aula" ? "Aula" : "Treino de força";
   const recent = previousSessions.slice(0, 5);
@@ -472,7 +482,6 @@ async function generateGymCoachNotes(
   const avgDuration = avg("duration_seconds");
   const avgCalories = avg("calories_kcal");
   const avgExertion = avg("exertion");
-  const avgVolume = avg("volume_kg");
 
   const contextLines = [
     `Tipo: ${kindLabel}`,
@@ -495,15 +504,26 @@ async function generateGymCoachNotes(
       ].filter(Boolean).join(", ") + "."
     : `Sem sessões anteriores de ${kindLabel.toLowerCase()} para comparar — comenta só o que estes dados por si só revelam.`;
 
+  const planSection = planItems.length > 0 
+    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'ginasio' ? `Ginásio (${i.categories?.join('/') || ''})` : i.kind}`).join("\n") +
+      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte!\n`
+    : ``;
+
+  const crossActivitiesSection = sameDayRuns.length > 0
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida hoje: ` + sameDayRuns.map(r => `${r.training_type || 'Corrida'} - ${r.distance_km}km em ${Math.round(r.duration_seconds/60)}m, Esforço: ${r.effort_rpe}/10`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia!\n`
+    : ``;
+
   const prompt =
     `És um treinador de ginásio experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma sessão. ` +
     `Escreve uma análise técnica curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
-    `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n\n` +
+    `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n` +
+    crossActivitiesSection + planSection + `\n` +
     `REGRAS:\n` +
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo — cada frase tem de estar ancorada num número ou comparação concreta.\n` +
     `- Se o esforço percebido (RPE) não bater certo com a duração/intensidade, assinala isso.\n` +
-    `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo.\n`;
+    `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo (ou sugere clicar no botão "Falar com a Coach" se precisares de intervir no plano).\n` +
+    `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;
 
   try {
     const res = await fetchGeminiWithTimeout(
@@ -513,7 +533,19 @@ async function generateGymCoachNotes(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+          generationConfig: { 
+            maxOutputTokens: 4096,
+            response_mime_type: "application/json",
+            response_schema: {
+              type: "OBJECT",
+              properties: {
+                text: { type: "STRING" },
+                intervention_needed: { type: "BOOLEAN" },
+                intervention_reason: { type: "STRING" }
+              },
+              required: ["intervention_needed"]
+            }
+          },
         }),
       },
       45000,
@@ -524,8 +556,20 @@ async function generateGymCoachNotes(
       return { text: null };
     }
     const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return { text: text ? String(text).trim() : null };
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    if (!rawText) return { text: null };
+    
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(rawText.replace(/```json\n/g, '').replace(/```/g, ''));
+    } catch (e) {
+      console.error("Coach generation json parse error", e, rawText);
+    }
+    return { 
+      text: parsed.text?.trim() || null, 
+      intervention_needed: parsed.intervention_needed,
+      intervention_reason: parsed.intervention_reason
+    };
   } catch (e) {
     console.warn("Gym coach generation error:", e);
     return { text: null };
@@ -553,15 +597,56 @@ async function attachGymCoachNotes(
       .order("date", { ascending: false })
       .limit(5);
 
+    const { data: activePlans } = await sb
+      .from("coach_plans")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "aceite")
+      .lte("period_start", ctx.date)
+      .gte("period_end", ctx.date)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    let planItems = [];
+    if (activePlans && activePlans.length > 0) {
+      const { data: items } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, kind, training_type, target_distance_km, target_duration_min, meal_suggestion, status, categories")
+        .eq("user_id", userId)
+        .eq("plan_id", activePlans[0].id)
+        .gte("planned_date", new Date(new Date(ctx.date).getTime() - 2 * 24 * 3600 * 1000).toISOString().slice(0, 10))
+        .lte("planned_date", ctx.date);
+      planItems = items || [];
+    }
+
+    const { data: sameDayRuns } = await sb
+      .from("runs")
+      .select("training_type, distance_km, duration_seconds, effort_rpe")
+      .eq("user_id", userId)
+      .eq("date", ctx.date);
+
     const result = await generateGymCoachNotes(
       { date: ctx.date, kind: ctx.kind, categories: ctx.categories, metrics: ctx.metrics, notes: ctx.notes },
       previous || [],
+      planItems,
+      sameDayRuns || [],
       geminiKey,
     );
 
     if (result.text) {
       await sb.from("workout_sessions").update({ coach_notes: result.text }).eq("id", session.id);
       session.coach_notes = result.text;
+    }
+    
+    if (result.intervention_needed && result.intervention_reason) {
+      await sb.from("profiles")
+        .update({ 
+          coach_intervention_status: "needed", 
+          coach_intervention_reason: result.intervention_reason 
+        })
+        .eq("id", userId);
+      (session as any).coach_intervention_status = "needed";
+      (session as any).intervention_needed = true;
     }
   } catch (e) {
     console.warn("attachGymCoachNotes failed:", e);
@@ -750,8 +835,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ session });
     }
 
-    // ── Modo reanálise: session_id presente ───────────────────────────
-    if (typeof body.session_id === "string" && body.session_id) {
+    // ── Modo reanálise por foto: session_id presente sem mode manual ───
+    if (typeof body.session_id === "string" && body.session_id && body.mode !== "manual") {
       const sessionId = body.session_id;
       const { data: existing, error: fetchError } = await sb
         .from("workout_sessions")
@@ -943,3 +1028,4 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
 });
+

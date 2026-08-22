@@ -4,11 +4,12 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw } from 'lucide-react';
+import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw, Sliders, Trophy } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
+import RaceHubView from './RaceHubView';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -69,6 +70,7 @@ export default function RunAgenda({ onClose }) {
 
   const editingEventId = editingRaceId;
   const isFormOpen = true;
+  const [activePage, setActivePage] = useState('hub'); // 'hub' | 'details'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
@@ -440,7 +442,7 @@ export default function RunAgenda({ onClose }) {
           <Button
             variant="module"
             moduleColor="var(--mod-prova)"
-            onClick={() => setValidationError(null)}
+            onClick={() => { setValidationError(null) }}
             className="w-full"
           >
             Entendido
@@ -483,228 +485,279 @@ export default function RunAgenda({ onClose }) {
             </button>
           </div>
 
-          {/* 1.1 Data · 1.2 Local */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
-              <input
-                type="date"
-                value={draft.date}
-                onChange={e => updateDraft('date', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                maxLength={120}
-                placeholder="Ex.: Lisboa"
-                value={draft.location}
-                onChange={e => updateDraft('location', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
-              />
-            </div>
-          </div>
-
-          {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                maxLength={120}
-                placeholder="Ex.: Meia Maratona de Lisboa"
-                value={draft.name}
-                onChange={e => updateDraft('name', e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
-              <select
-                value={draft.race_type}
-                onChange={e => updateTerrain(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
-              >
-                {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Distância · D+ (só em Trail) */}
-          <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
-              <select
-                value={draft.distance_km}
-                onChange={e => updateDistance(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
-              >
-                {RACE_DISTANCE_OPTIONS.map(opt => (
-                  <option key={opt.km} value={opt.km}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
-            {draft.race_type === 'trail' && (
-              <div>
-                <label className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  placeholder="Ex.: 1200"
-                  value={draft.elevation_gain_m}
-                  onChange={e => updateDraft('elevation_gain_m', e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Nível do atleta para esta prova — autodeclarado, não herdado do
-              Perfil, porque um avançado numa disciplina pode ser iniciante
-              noutra ou nesta distância em particular. */}
-          <ExperienceLevelHelp
-            label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
-            variant="dark"
-          >
-            <select
-              value={draft.experience_level}
-              onChange={e => updateDraft('experience_level', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
-            >
-              <option value="">Escolhe...</option>
-              {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
-            </select>
-            <p className="text-[10px] text-slate-400 mt-1">
-              {draft.experience_level
-                ? experienceLevelDescription(draft.experience_level)
-                : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
-            </p>
-          </ExperienceLevelHelp>
-
-          {/* Prioridade da prova — decide o taper (polimento pré-prova). */}
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
-            <select
-              value={draft.race_priority}
-              onChange={e => updateDraft('race_priority', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
-            >
-              {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-            </select>
-            <p className="text-[10px] text-slate-400 mt-1">
-              {racePriorityDescription(draft.race_priority)}
-            </p>
-          </div>
-
-          {/* Objetivo de tempo total · Objetivo de pace — cada um recalcula o outro */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                maxLength={60}
-                placeholder="Ex.: 1:45:00"
-                value={draft.target_time}
-                onChange={e => handleTargetTimeChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
-              <input
-                type="text"
-                maxLength={20}
-                placeholder="Ex.: 5.20 /km"
-                value={draft.target_pace}
-                onChange={e => handleTargetPaceChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
-              />
-            </div>
-          </div>
-          <p className="text-[10px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
-
-          {/* Site da prova (opcional) */}
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Site da prova (opcional)</label>
-            <input
-              type="url"
-              maxLength={200}
-              placeholder="https://..."
-              value={draft.website}
-              onChange={e => updateDraft('website', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+          {/* Subnav AAA — idêntico ao Perfil / Dashboard */}
+          <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+            {/* Sliding indicator com tint translúcido e borda âmbar */}
+            <div
+              className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
+              style={{
+                width: 'calc((100% - 20px) / 2)',
+                transform: `translateX(calc(${activePage === 'hub' ? 0 : 1} * 100% + ${(activePage === 'hub' ? 0 : 1) * 8}px))`,
+                background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+              }}
             />
-            {draft.website?.trim() && (
-              <div className="mt-2 space-y-2.5">
+            {[
+              { key: 'hub', label: 'Treino e Evolução', icon: Sparkles },
+              { key: 'details', label: 'Detalhes da prova', icon: Sliders },
+            ].map(t => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActivePage(t.key)}
+                style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-colors duration-300 ${
+                  activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <t.icon size={14} /> {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ─── PÁGINA 1: TREINO E EVOLUÇÃO (AAA) ────────────────────────────── */}
+          {activePage === 'hub' && (
+            <div className="space-y-4 fade-in">
+              <RaceHubView
+                race={draft}
+                runs={runs}
+                profile={profile}
+                onFetchWebInfo={handleFetchWebInfo}
+                fetchingWebInfo={fetchingWebInfo}
+                onGoToEdit={() => setActivePage('details')}
+              />
+
+              <div className="flex items-center gap-2 pt-2 pb-6">
                 <Button
-                  type="button"
+                  variant="light"
+                  onClick={() => setActivePage('details')}
+                  className="flex-1 text-xs"
+                  icon={<Sliders size={14} />}
+                >
+                  Editar Detalhes
+                </Button>
+                <Button
                   variant="module"
                   moduleColor="var(--mod-prova)"
-                  size="sm"
-                  isLoading={fetchingWebInfo}
-                  onClick={handleFetchWebInfo}
-                  icon={draft.web_info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
+                  onClick={handleSaveForm}
+                  disabled={isSubmitting || !draft.name.trim()}
+                  className="flex-1 text-xs"
+                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 >
-                  {draft.web_info ? 'Atualizar informação do site' : 'Obter informação do site'}
+                  Guardar Prova
                 </Button>
-                <RaceWebInfoSections info={draft.web_info} />
               </div>
-            )}
-          </div>
-
-          {/* Notas (opcional) */}
-          <div>
-            <label className="text-[11px] text-slate-500 mb-1 block">Notas (opcional)</label>
-            <textarea
-              rows={2}
-              maxLength={300}
-              placeholder="Logística, nutrição planeada..."
-              value={draft.notes}
-              onChange={e => updateDraft('notes', e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
-            />
-          </div>
-
-          {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                Avaliação do Coach
-              </span>
-              {viability.flags.length > 0 ? (
-                viability.flags.map(flag => (
-                  <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
-                    <AlertTriangle size={12} />
-                    {FLAG_LABELS[flag] || flag}
-                  </p>
-                ))
-              ) : (
-                <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
-                  <CheckCircle size={12} />
-                  Preparação adequada para a prova
-                </p>
-              )}
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button onClick={attemptCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
-              Cancelar
-            </button>
-            <button
-              onClick={handleSaveForm}
-              disabled={isSubmitting || !draft.name.trim()}
-              type="button"
-              // Texto escuro, não branco: dourado (#fbbf24) é claro demais para
-              // branco em cima dar contraste WCAG (~1.7:1, falha o AA de 4.5:1).
-              className="bg-[var(--mod-prova)] text-amber-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
-            >
-              {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
-            </button>
-          </div>
+          {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
+          {activePage === 'details' && (
+            <div className="space-y-4 fade-in">
+              {/* 1.1 Data · 1.2 Local */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
+                  <input
+                    type="date"
+                    value={draft.date}
+                    onChange={e => { updateDraft('date', e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    maxLength={120}
+                    placeholder="Ex.: Lisboa"
+                    value={draft.location}
+                    onChange={e => { updateDraft('location', e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  />
+                </div>
+              </div>
+
+              {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    maxLength={120}
+                    placeholder="Ex.: Meia Maratona de Lisboa"
+                    value={draft.name}
+                    onChange={e => { updateDraft('name', e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
+                  <select
+                    value={draft.race_type}
+                    onChange={e => { updateTerrain(e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  >
+                    {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Distância · D+ (só em Trail) */}
+              <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
+                  <select
+                    value={draft.distance_km}
+                    onChange={e => { updateDistance(e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  >
+                    {RACE_DISTANCE_OPTIONS.map(opt => (
+                      <option key={opt.km} value={opt.km}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {draft.race_type === 'trail' && (
+                  <div>
+                    <label className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      placeholder="Ex.: 1200"
+                      value={draft.elevation_gain_m}
+                      onChange={e => { updateDraft('elevation_gain_m', e.target.value) }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Nível do atleta para esta prova */}
+              <ExperienceLevelHelp
+                label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
+                variant="dark"
+              >
+                <select
+                  value={draft.experience_level}
+                  onChange={e => { updateDraft('experience_level', e.target.value) }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                >
+                  <option value="">Escolhe...</option>
+                  {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {draft.experience_level
+                    ? experienceLevelDescription(draft.experience_level)
+                    : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
+                </p>
+              </ExperienceLevelHelp>
+
+              {/* Prioridade da prova */}
+              <div>
+                <label className="text-[11px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
+                <select
+                  value={draft.race_priority}
+                  onChange={e => { updateDraft('race_priority', e.target.value) }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                >
+                  {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {racePriorityDescription(draft.race_priority)}
+                </p>
+              </div>
+
+              {/* Objetivo de tempo total · Objetivo de pace */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    maxLength={60}
+                    placeholder="Ex.: 1:45:00"
+                    value={draft.target_time}
+                    onChange={e => { handleTargetTimeChange(e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    placeholder="Ex.: 5.20 /km"
+                    value={draft.target_pace}
+                    onChange={e => { handleTargetPaceChange(e.target.value) }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
+
+              {/* Site da prova (opcional) */}
+              <div>
+                <label className="text-[11px] text-slate-500 mb-1 block">Site da prova (opcional)</label>
+                <input
+                  type="url"
+                  maxLength={200}
+                  placeholder="https://..."
+                  value={draft.website}
+                  onChange={e => { updateDraft('website', e.target.value) }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                />
+              </div>
+
+              {/* Notas (opcional) */}
+              <div>
+                <label className="text-[11px] text-slate-500 mb-1 block">Notas (opcional)</label>
+                <textarea
+                  rows={2}
+                  maxLength={300}
+                  placeholder="Logística, nutrição planeada..."
+                  value={draft.notes}
+                  onChange={e => { updateDraft('notes', e.target.value) }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
+                />
+              </div>
+
+              {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    Avaliação do Coach
+                  </span>
+                  {viability.flags.length > 0 ? (
+                    viability.flags.map(flag => (
+                      <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
+                        <AlertTriangle size={12} />
+                        {FLAG_LABELS[flag] || flag}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
+                      <CheckCircle size={12} />
+                      Preparação adequada para a prova
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 pt-1 pb-6">
+                <button onClick={attemptCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveForm}
+                  disabled={isSubmitting || !draft.name.trim()}
+                  type="button"
+                  className="bg-[var(--mod-prova)] text-amber-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+                >
+                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

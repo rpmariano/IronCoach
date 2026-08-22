@@ -13,8 +13,8 @@ import Button from '../shared/Button';
    nas observações muda a análise do Coach e tem de a regenerar. Editar aqui à
    mão deixava a "Análise do Coach" a descrever uma avaliação que já não
    existe. Mesmo padrão da Nutrição/Ginásio (ver PRD 3.2/3.3/3.5). */
-export default function BodyAssessmentCard({ assessment, onEdit }) {
-  const [expanded, setExpanded] = useState(false);
+export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -155,6 +155,39 @@ export default function BodyAssessmentCard({ assessment, onEdit }) {
                 {coachCommentary}
               </p>
             </div>
+          )}
+
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[assessment.id] !== coachCommentary
+          ) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.getState().dismissIntervention(assessment.id, coachCommentary);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'body',
+                    recordId: assessment.id,
+                    recordName: 'Avaliação Corporal',
+                    date: assessment.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
           )}
 
           {/* Ações */}

@@ -22,13 +22,15 @@ const TABS = [
 ];
 
 export default function Dashboard({ activeModule }) {
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, profile } = useAppStore();
+  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates } = useAppStore();
   const [showInsights, setShowInsights] = useState(false);
 
-  const insights = useMemo(
-    () => detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents }, profile),
-    [runs, gymSessions, meals, bodyAssessments, raceEvents, profile],
-  );
+  const insights = useMemo(() => {
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
+    // Remove os que ja foram "Entendidos" (desativados).
+    // Filtra apenas os que não são relativos ao ecrã inicial (ex: adesão ao plano).
+    return all.filter(i => insightStates[i.id] !== 'understood' && i.module !== 'coach');
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);
@@ -63,8 +65,45 @@ export default function Dashboard({ activeModule }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex]);
 
+  // JS avancado: Ajusta dinamicamente a altura do carrossel para a aba ativa.
+  // Evita o espaco vazio no fundo das abas mais curtas.
+  useEffect(() => {
+    const carousel = scrollRef.current;
+    if (!carousel) return;
+    
+    // Permite transicao suave da altura (desligar se causar artefactos com swiper rapido)
+    carousel.style.transition = 'height 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
+    carousel.style.overflowY = 'hidden';
+
+    let activePage = null;
+    let observer = null;
+
+    const updateHeight = () => {
+      activePage = carousel.children[currentIndex];
+      if (!activePage) return;
+      
+      const newHeight = activePage.scrollHeight; // scrollHeight acomoda melhor margens ocultas
+      if (newHeight > 0) {
+        carousel.style.height = `${newHeight}px`;
+      }
+    };
+
+    updateHeight();
+
+    if (window.ResizeObserver && activePage) {
+      observer = new ResizeObserver(() => {
+        updateHeight();
+      });
+      observer.observe(activePage);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [currentIndex]);
+
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
       <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
         {/* Sliding indicator — tint translúcido da cor do módulo em vez de

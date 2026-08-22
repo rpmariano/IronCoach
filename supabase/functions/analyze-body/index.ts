@@ -548,8 +548,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ assessment });
     }
 
-    // ── Modo reanálise: assessment_id presente ────────────────────────
-    if (typeof body.assessment_id === "string" && body.assessment_id) {
+    // ── Modo reanálise por foto: assessment_id presente sem mode manual ─
+    if (typeof body.assessment_id === "string" && body.assessment_id && body.mode !== "manual") {
       const assessmentId = body.assessment_id;
       const { data: existing, error: fetchError } = await sb
         .from("body_assessments")
@@ -688,3 +688,4 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
 });
+

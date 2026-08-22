@@ -25,7 +25,7 @@ import GymRegistration from './components/Gym/GymRegistration';
 
 const DEMO_PROFILE = {
   id: 'demo-user',
-  full_name: 'Atleta IronHealth',
+  full_name: 'Atleta IronCoach',
   gender: 'M',
   height_cm: 178,
   weight_kg: 74.2,
@@ -78,6 +78,7 @@ function buildDemoData() {
 }
 
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
+import UIAuditSandbox from './components/DesignSystem/UIAuditSandbox';
 
 export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
@@ -99,7 +100,7 @@ export default function App() {
         setSession(existingSession);
         loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
       } else if (isDemo) {
-        const demoSession = { user: { id: 'demo-user', email: 'atleta@ironhealth.app' } };
+        const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
         setProfile(DEMO_PROFILE);
         // setState direto (em vez dos setters individuais) porque isto é
@@ -128,6 +129,10 @@ export default function App() {
 
   if (activeTab === 'design-system') {
     return <ButtonShowcase />;
+  }
+  
+  if (activeTab === 'audit-sandbox') {
+    return <UIAuditSandbox />;
   }
 
   if (isInitializing) {

@@ -197,7 +197,7 @@ export default function PremiumModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
-        className={`relative z-10 w-full ${maxWidth} bg-white flex flex-col shadow-2xl overflow-hidden ${
+        className={`relative z-10 w-full ${maxWidth} bg-neutral-900/80 backdrop-blur-[20px] border border-white/10 flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
           isDialog ? 'rounded-2xl max-h-[90vh]' : 'rounded-t-[28px] max-h-[90vh] pb-safe'
         }`}
         style={transformStyle}

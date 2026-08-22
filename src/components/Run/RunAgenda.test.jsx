@@ -42,7 +42,7 @@ function renderAgenda() {
   );
 }
 
-describe('RunAgenda — "Obter informação do site"', () => {
+describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
   beforeEach(() => {
     invokeEdgeFunctionWithTimeout.mockReset();
     useAppStore.setState({
@@ -58,15 +58,20 @@ describe('RunAgenda — "Obter informação do site"', () => {
     });
   });
 
-  it('não mostra o botão sem site preenchido (prova nova)', () => {
+  it('não mostra o botão de obter do site sem website preenchido', () => {
     renderAgenda();
-    expect(screen.queryByRole('button', { name: /Obter informação do site/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Obter Informação/i })).not.toBeInTheDocument();
   });
 
-  it('mostra o botão assim que se escreve um site, numa prova nova', () => {
+  it('mostra o botão assim que se escreve um site e se visualiza a aba Treino e Evolução', () => {
     renderAgenda();
+    // Vai a Detalhes da prova para adicionar site
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
-    expect(screen.getByRole('button', { name: /Obter informação do site/i })).toBeInTheDocument();
+    
+    // Volta a Treino e Evolução
+    fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
+    expect(screen.getByRole('button', { name: /Obter Informação/i })).toBeInTheDocument();
   });
 
   it('prova nova: pede em modo rascunho (sem race_event_id) e guarda só no rascunho, sem persistir', async () => {
@@ -89,8 +94,11 @@ describe('RunAgenda — "Obter informação do site"', () => {
     });
 
     renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
-    fireEvent.click(screen.getByRole('button', { name: /Obter informação do site/i }));
+    
+    fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Obter Informação/i }));
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -101,7 +109,7 @@ describe('RunAgenda — "Obter informação do site"', () => {
     expect(callArgs.body.race_event_id).toBeUndefined();
 
     await waitFor(() => {
-      expect(screen.getByText(/Partida:/)).toBeInTheDocument();
+      expect(screen.getByText('Domingo 09:00')).toBeInTheDocument();
     });
     // Não persistiu nada — a prova ainda nem tem id.
     expect(useAppStore.getState().raceEvents).toEqual([EXISTING_RACE]);
@@ -128,7 +136,7 @@ describe('RunAgenda — "Obter informação do site"', () => {
     useAppStore.setState({ editingRaceId: 'race-1' });
     renderAgenda();
 
-    fireEvent.click(screen.getByRole('button', { name: /Obter informação do site/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Obter Informação/i }));
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -141,15 +149,12 @@ describe('RunAgenda — "Obter informação do site"', () => {
     });
     expect(screen.getByText(/Doca de Alcântara/)).toBeInTheDocument();
     expect(useAppStore.getState().raceEvents[0].web_info).toEqual(updatedEvent.web_info);
-    // Já persistido no servidor — o botão passa a "Atualizar", não fica
-    // marcado como alteração pendente por gravar.
-    expect(screen.getByRole('button', { name: /Atualizar informação do site/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Atualizar Informação/i })).toBeInTheDocument();
   });
 
   it('mostra o modal de dados incompletos sem rebentar ao gravar com campos obrigatórios em falta', () => {
     renderAgenda();
-    // "Guardar" só sai de disabled com o nome preenchido — a validação a
-    // seguir (local em falta) é a que dispara o modal.
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
@@ -158,6 +163,7 @@ describe('RunAgenda — "Obter informação do site"', () => {
   });
 
   function fillRequiredFields() {
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
     fireEvent.change(screen.getByPlaceholderText('Ex.: Lisboa'), { target: { value: 'Porto' } });
     const nivelSelect = screen.getAllByRole('combobox').find((s) => s.value === '');
@@ -169,9 +175,6 @@ describe('RunAgenda — "Obter informação do site"', () => {
     useAppStore.setState({ activeTab: 'holistica' });
     renderAgenda();
     fillRequiredFields();
-    // Data (input type="date", sem label associada por htmlFor/id) fica no
-    // valor por omissão — hoje — o que já chega para verificar que a data
-    // gravada é a que fica pendente para o Calendário.
     const dateInput = document.querySelector('input[type="date"]');
     const expectedDate = dateInput.value;
 
@@ -186,6 +189,7 @@ describe('RunAgenda — "Obter informação do site"', () => {
   it('a editar uma prova: ao gravar, volta ao separador de origem sem tocar no Calendário', async () => {
     useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
     renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
@@ -195,5 +199,24 @@ describe('RunAgenda — "Obter informação do site"', () => {
     });
     expect(useAppStore.getState().activeTab).toBe('holistica');
     expect(useAppStore.getState().pendingCalendarDate).toBeNull();
+  });
+
+  it('permite alternar entre "Treino e Evolução" e "Detalhes da prova"', () => {
+    useAppStore.setState({ editingRaceId: 'race-1' });
+    renderAgenda();
+
+    // Começa em Treino e Evolução
+    expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
+    expect(screen.getByText(/Análise da Carol · Evolução & Prontidão/i)).toBeInTheDocument();
+    expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
+    expect(screen.getByText(/Base Aeróbica/i)).toBeInTheDocument();
+
+    // Clica na aba Detalhes da prova
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa')).toBeInTheDocument();
+
+    // Volta para Treino e Evolução
+    fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
+    expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
   });
 });

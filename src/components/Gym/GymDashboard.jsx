@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { TrendingUp, BarChart3, Dumbbell, Activity, CalendarDays } from 'lucide-react';
 import { Bar, Line } from 'react-chartjs-2';
@@ -141,7 +142,7 @@ export default function GymDashboard() {
   };
 
   return (
-    <div className="space-y-4 fade-in pb-8">
+    <div className="space-y-4 fade-in">
       {/* Time Filter Bar */}
       <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} />
 
@@ -187,26 +188,26 @@ export default function GymDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Daily Volume Bar Chart */}
-            <div className="card rounded-3xl p-4">
+            <Card className="rounded-3xl p-4">
               <p className="text-[12px] font-bold text-slate-700 mb-3">Volume Diário (kg)</p>
               <div className="h-52 relative">
                 <Bar data={volChartData} options={defaultChartOptions} />
               </div>
-            </div>
+            </Card>
 
             {/* Muscle Group Volume Chart */}
             {Object.keys(muscleVolume).length > 0 && (
-              <div className="card rounded-3xl p-4">
+              <Card className="rounded-3xl p-4">
                 <p className="text-[12px] font-bold text-slate-700 mb-3">Séries por Grupo Muscular</p>
                 <div className="h-52 relative">
                   <Bar data={muscleChartData} options={muscleChartOptions} />
                 </div>
-              </div>
+              </Card>
             )}
           </div>
 
           {/* 1RM Progression Chart */}
-          <div className="card rounded-3xl p-4 space-y-3">
+          <Card className="rounded-3xl p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-start">
                 <p className="text-[12px] font-bold text-slate-700">Evolução do 1RM Estimado</p>
@@ -235,7 +236,7 @@ export default function GymDashboard() {
                 </p>
               </div>
             )}
-          </div>
+          </Card>
         </div>
       )}
     </div>

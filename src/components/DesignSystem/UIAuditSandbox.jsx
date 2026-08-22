@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import Button from '../shared/Button';
 
-export default function ButtonShowcase() {
+export default function UIAuditSandbox() {
   const [activeCategory, setActiveCategory] = useState('typography');
 
   return (
-    <div className="min-h-screen bg-slate-950 p-6 text-slate-100 pb-24 overflow-y-auto">
+    <div className="min-h-screen bg-[var(--page-bg)] p-6 text-slate-100 pb-24 overflow-y-auto">
       <div className="max-w-6xl mx-auto space-y-8">
         
         <div className="flex flex-col gap-2">

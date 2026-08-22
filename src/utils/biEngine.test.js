@@ -149,6 +149,36 @@ describe('detectCoachInsights', () => {
       expect(vol.value).toBeCloseTo(10, 0);
     });
 
+    it('alerta sobre a reta final quando faltam poucos dias para a prova', () => {
+      const raceEvents = [{
+        id: 'ev-1',
+        status: 'agendada',
+        date: iso(-5), // daqui a 5 dias
+        distance_km: 21,
+        name: 'Meia Maratona',
+      }];
+      const insights = detectCoachInsights({ runs: [], raceEvents }, {});
+      const finalWeek = insights.find((i) => i.id === 'race_final_week_ev-1');
+      expect(finalWeek).toBeTruthy();
+      expect(finalWeek.severity).toBe('warning');
+      expect(finalWeek.title).toContain('Reta Final');
+      expect(finalWeek.message).toContain('Meia Maratona');
+    });
+
+    it('alerta sobre a fase de polimento (tapering)', () => {
+      const raceEvents = [{
+        id: 'ev-2',
+        status: 'agendada',
+        date: iso(-12), // daqui a 12 dias para meia maratona
+        distance_km: 21,
+        name: 'Meia Maratona',
+      }];
+      const insights = detectCoachInsights({ runs: [], raceEvents }, {});
+      const taper = insights.find((i) => i.id === 'race_tapering_ev-2');
+      expect(taper).toBeTruthy();
+      expect(taper.title).toContain('Polimento');
+    });
+
     it('não alerta quando não há provas futuras agendadas', () => {
       const runs = [{ date: iso(1), distance_km: 5, duration_seconds: 1800 }];
       const insights = detectCoachInsights({ runs, raceEvents: [] }, {});

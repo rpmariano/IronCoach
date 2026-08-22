@@ -71,8 +71,8 @@ function formatDatePT(isoStr) {
   }
 }
 
-export default function RunCard({ run, onEdit, onDelete }) {
-  const [expanded, setExpanded] = useState(false);
+export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
 
   const { profile, loadInitialData, runs, setRuns } = useAppStore();
@@ -134,6 +134,7 @@ export default function RunCard({ run, onEdit, onDelete }) {
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));
+      useAppStore.getState().clearDismissedIntervention(run.id);
       showToast('Reanálise concluída');
     } catch (err) {
       console.error('Error reanalyzing run:', err);
@@ -420,6 +421,39 @@ export default function RunCard({ run, onEdit, onDelete }) {
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>
+          )}
+
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(
+            coachCommentary &&
+            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
+            useAppStore.getState().dismissedInterventions[run.id] !== coachCommentary
+          ) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.getState().dismissIntervention(run.id, coachCommentary);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'run',
+                    recordId: run.id,
+                    recordName: run.name,
+                    date: run.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
           )}
 
           <div className="flex items-center gap-2 pt-1">

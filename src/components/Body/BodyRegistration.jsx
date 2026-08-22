@@ -3,10 +3,12 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2 } from 'lucide-react';
+import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
+import Card from '../shared/Card';
+import Button from '../shared/Button';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -33,8 +35,11 @@ function todayISO() {
 }
 
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
-  const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard } = useAppStore();
+  const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
+
+  
   const isEditing = !!assessmentIdToEdit;
 
   // Comum aos dois caminhos
@@ -59,6 +64,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const autoCloseRef = useRef(false);
+  useEffect(() => {
+    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
+      autoCloseRef.current = true;
+      if (onClose) onClose();
+    }
+  }, [activeTab, initialTab, onClose, isFormDirty]);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   // Alvo de navegação pendente quando o navGuard intercepta uma troca de
   // separador com o formulário sujo — null quando a saída foi pedida pelo
@@ -93,6 +105,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
   // foi trocado para handleClose(), precisamente para passar por aqui.
   const handleClose = () => {
+    autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     onClose();
@@ -113,11 +126,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // de "Gravar e sair" a caminho de outro separador (navGuard
   // intercetado), respeita esse destino em vez de o substituir — por isso
   // o alvo pendente é lido ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = () => {
+  const finishCreateAndGoToCalendar = (createdRecord) => {
     const hadPendingNav = !!pendingNavTarget.current;
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
+      if (createdRecord) {
+        useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+      }
       useAppStore.getState().setPendingCalendarDate(date);
       useAppStore.getState().setActiveTab('calendario');
     }
@@ -168,6 +184,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setIsSaving(true);
     setErrorMsg('');
     try {
+      let savedAssessment = null;
       if (needsReanalysis) {
         const payloadMetrics = {};
         for (const m of BODY_METRICS) {
@@ -186,17 +203,21 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedAssessment = data?.assessment;
+        useAppStore.getState().clearDismissedIntervention(assessmentIdToEdit);
       } else {
         const { error } = await supabase
           .from('body_assessments')
           .update({ date })
           .eq('id', assessmentIdToEdit);
         if (error) throw error;
+        const currentAssessment = (bodyAssessments || []).find(a => a.id === assessmentIdToEdit);
+        savedAssessment = currentAssessment ? { ...currentAssessment, date } : { id: assessmentIdToEdit, date };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
-      handleClose();
+      finishCreateAndGoToCalendar(savedAssessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -250,7 +271,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -284,7 +305,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar();
+      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
@@ -309,7 +330,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
+            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -327,8 +348,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             type="date"
             value={date}
             max={todayISO()}
-            onChange={e => setDate(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-corpo-to)]"
+            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
           />
           <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
         </div>
@@ -412,8 +433,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                   type="number"
                   step={m.dec > 0 ? '0.1' : '1'}
                   value={metrics[m.key] ?? ''}
-                  onChange={e => handleMetricChange(m.key, e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 outline-none focus:border-[var(--mod-corpo-to)] transition"
+                  onChange={e => { handleMetricChange(m.key, e.target.value); setIsFormDirty(true); }}
+                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
                 />
               </label>
             ))}
@@ -426,16 +447,48 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             rows={2}
             maxLength={500}
             value={notes}
-            onChange={e => setNotes(e.target.value)}
+            onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto da pesagem..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
+            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
           />
         </div>
 
-        {/* Ação — mesmo botão do Coach nos dois caminhos de criação: a foto e
-            o registo manual acabam ambos analisados por ele. A editar, o
-            botão só leva o gradiente do Coach quando as métricas ou as
-            observações mudaram; mudar só a data é update direto. */}
+        {isEditing && (() => {
+          const editingAssessment = (bodyAssessments || []).find(a => a.id === assessmentIdToEdit);
+          const notes = editingAssessment?.coach_notes || editingAssessment?.coach_analysis;
+          const isDismissed = editingAssessment?.id && (useAppStore.getState().dismissedInterventions[editingAssessment.id] === notes || useAppStore.getState().dismissedInterventions[editingAssessment.id] === 'dismissed');
+          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+          if (!hasIntervention) return null;
+          return (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={() => {
+                useAppStore.getState().dismissIntervention(editingAssessment.id, notes);
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'body',
+                    recordId: editingAssessment.id,
+                    recordName: 'Avaliação Corporal',
+                    date: editingAssessment.date,
+                    reason: notes,
+                  }
+                });
+                handleClose();
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
+          );
+        })()}
+
+        {/* Ação */}
         {isEditing ? (
           <CoachAnalyzeButton
             onClick={handleSaveEdit}

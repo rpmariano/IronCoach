@@ -15,7 +15,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
       maxWidth="max-w-sm"
     >
       <div className="p-6">
-        <p className="text-[13px] text-slate-600 mb-6 leading-relaxed">
+        <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
           {message || 'Tem a certeza que deseja eliminar este registo? Esta ação não pode ser desfeita.'}
         </p>
         <div className="space-y-3">
@@ -25,7 +25,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
             isLoading={isDeleting}
             type="button"
             variant="danger"
-            className="w-full text-[13px] py-2.5 rounded-xl font-bold"
+            className="w-full"
           >
             {isDeleting ? 'A eliminar...' : 'Eliminar'}
           </Button>
@@ -34,7 +34,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
             disabled={isDeleting} 
             type="button"
             variant="ghost"
-            className="w-full text-[13px] py-2.5 rounded-xl font-bold"
+            className="w-full"
           >
             Cancelar
           </Button>

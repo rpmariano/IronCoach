@@ -9,12 +9,12 @@
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   -webkit-mask-image: -webkit-radial-gradient(white, black);
-  padding: 24px 24px 48px 24px;
+  padding: 20px 24px 40px 24px;
   box-shadow: 0 16px 40px rgba(0,0,0,0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
   display: flex;
-  gap: 24px;
-  align-items: stretch;
+  flex-direction: column;
   justify-content: space-between;
+  gap: 16px;
   width: 100%;
   min-height: 220px;
   height: 100%;
@@ -39,20 +39,28 @@
   pointer-events: none;
 }
 
-.nutri-nrc-left {
+/* Top 50% section */
+.nutri-nrc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 2;
+}
+
+.nutri-nrc-top-left {
   flex: 1;
   position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
 }
 
 .nutri-nrc-header-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
 }
 
 .nutri-nrc-lbl {
@@ -76,8 +84,7 @@
 .nutri-nrc-sub {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 4px;
 }
 
 .nutri-nrc-sub-item {
@@ -89,9 +96,49 @@
   position: relative;
 }
 
-.nutri-nrc-progress-container {
-  margin-top: auto;
+/* Top Right Counter */
+.nutri-nrc-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-left: 2px solid rgba(16, 185, 129, 0.15);
+  padding-left: 20px;
+  min-width: 90px;
+  flex-shrink: 0;
+  z-index: 2;
+}
+
+.nutri-nrc-days {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #10b981;
+  line-height: 1;
+}
+
+.nutri-nrc-days-lbl {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #16a34a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+/* Bottom 50% section */
+.nutri-nrc-bottom {
   width: 100%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.nutri-nrc-progress-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .nutri-nrc-progress-bar {
@@ -99,7 +146,6 @@
   height: 8px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  margin-bottom: 8px;
   width: 100%;
 }
 
@@ -146,43 +192,13 @@
   color: #cbd5e1;
 }
 
-.nutri-nrc-right {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-left: 2px solid rgba(16, 185, 129, 0.1);
-  padding-left: 24px;
-  min-width: 120px;
-  width: 120px;
-  flex-shrink: 0;
-  z-index: 1;
-}
-
-.nutri-nrc-days {
-  font-size: 2.2rem;
-  font-weight: 900;
-  color: #10b981;
-  line-height: 1;
-}
-
-.nutri-nrc-days-lbl {
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: #16a34a;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 4px;
-}
-
 @media (max-width: 480px) {
   .nutri-nrc-card {
-    padding: 16px 16px 44px 16px;
+    padding: 16px 16px 36px 16px;
     gap: 12px;
   }
-  .nutri-nrc-right {
-    min-width: 80px !important;
-    width: 80px !important;
+  .nutri-nrc-top-right {
+    min-width: 70px !important;
     padding-left: 12px !important;
   }
   .nutri-nrc-days {
