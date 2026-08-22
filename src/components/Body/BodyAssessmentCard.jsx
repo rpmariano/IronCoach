@@ -155,6 +155,8 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
                 {coachCommentary}
               </p>
             </div>
+          )}
+
           {/* Falar com a Coach se a análise indicar intervenção */}
           {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
             <Button

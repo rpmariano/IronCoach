@@ -203,6 +203,8 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>
+          )}
+
           {/* Falar com a Coach se a análise indicar intervenção */}
           {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
             <Button
