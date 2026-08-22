@@ -33,6 +33,25 @@ function getFirstName(displayName) {
   return trimmed ? trimmed.split(/\s+/)[0] : null;
 }
 
+// Variantes do aviso de demora (handleAsyncFallback) — mesmo espírito do
+// "Banco de Humor" do system prompt da Carol: leve, situacional, nunca
+// sempre a mesma frase (antes era só a dos agachamentos, repetida em toda
+// a demora de resposta). Escolhida ao acaso a cada aviso.
+const WAITING_MESSAGES = [
+  (name) => `Calma ${name}, isto está a demorar um bocadinho mais do que o costume — aproveita para fazer uns agachamentos enquanto preparo a resposta :)`,
+  (name) => `${name}, a ligação está com o ritmo de um treino regenerativo hoje. Aproveita para alongar os gémeos enquanto termino de pensar.`,
+  (name) => `Um segundo, ${name} — estou a analisar os teus dados com mais calma do que o costume. Aproveita para beber água.`,
+  (name) => `${name}, isto está a demorar tanto como o último quilómetro de um treino longo. Já não falta muito, prometo.`,
+  (name) => `Desculpa a demora, ${name} — parece que hoje até o servidor precisou de um dia de descanso ativo.`,
+  (name) => `${name}, estou a processar tudo com mais cuidado do que o costume. Aproveita para fazer uma prancha de 30 segundos enquanto esperas.`,
+];
+
+function pickWaitingMessage(firstName) {
+  const name = firstName ?? 'atleta';
+  const variant = WAITING_MESSAGES[Math.floor(Math.random() * WAITING_MESSAGES.length)];
+  return variant(name);
+}
+
 export default function Coach() {
   const {
     coachMessages,
@@ -279,7 +298,7 @@ export default function Coach() {
     addCoachMessage({
       id: waitingId,
       role: 'assistant',
-      content: `Calma ${firstName ?? 'atleta'}, isto está a demorar um bocadinho mais do que o costume — aproveita para fazer uns agachamentos enquanto preparo a resposta :)`
+      content: pickWaitingMessage(firstName)
     });
 
     const modelRow = await waitForAsyncReply(requestStartedAt);
@@ -501,6 +520,9 @@ export default function Coach() {
           return (
             <div key={idx} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
               <div
+                // Ancorada por id (waiting-*) em vez do texto — o conteúdo varia
+                // entre reformulações do aviso de demora (ver WAITING_MESSAGES).
+                data-testid={typeof msg.id === 'string' && msg.id.startsWith('waiting-') ? 'coach-waiting-message' : undefined}
                 className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed ${
                   isUser
                     ? 'bg-[var(--accent)] text-neutral-50 font-semibold rounded-[18px_18px_4px_18px]'
