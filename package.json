@@ -1,5 +1,5 @@
 {
-  "name": "ironhealth",
+  "name": "ironcoach",
   "version": "1.0.0",
   "description": "",
   "main": "sw.js",
@@ -12,15 +12,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rpmariano/ironhealth.git"
+    "url": "git+https://github.com/rpmariano/ironcoach.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/rpmariano/ironhealth/issues"
+    "url": "https://github.com/rpmariano/ironcoach/issues"
   },
-  "homepage": "https://github.com/rpmariano/ironhealth#readme",
+  "homepage": "https://github.com/rpmariano/ironcoach#readme",
   "dependencies": {
     "@supabase/supabase-js": "^2.111.0",
     "chart.js": "^4.5.1",

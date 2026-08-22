@@ -4,7 +4,7 @@ import { todayISO, addDaysISO } from '../lib/utils';
 
 const getInitialDashboardTab = () => {
   try {
-    const saved = localStorage.getItem('ironhealth_last_module');
+    const saved = localStorage.getItem('ironcoach_last_module');
     if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(saved)) {
       return saved;
     }
@@ -39,7 +39,7 @@ export const useAppStore = create((set, get) => ({
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
   planItemPrefill: null,
-
+  
   // Coach State
   coachMessages: [],
   coachLoading: false,
@@ -48,19 +48,19 @@ export const useAppStore = create((set, get) => ({
   // UI State
   activeTab: 'home',
   lastDashboardTab: getInitialDashboardTab(),
-  insightStates: JSON.parse(localStorage.getItem('ironhealth_insight_states') || '{}'), // { [insightId]: 'ignored' | 'understood' }
+  insightStates: JSON.parse(localStorage.getItem('ironcoach_insight_states') || '{}'), // { [insightId]: 'ignored' | 'understood' }
   setInsightState: (insightId, state) => set((s) => {
     // Guarda na cache local tambem para nao se perder ao fechar a app
     const next = { ...s.insightStates, [insightId]: state };
-    localStorage.setItem('ironhealth_insight_states', JSON.stringify(next));
+    localStorage.setItem('ironcoach_insight_states', JSON.stringify(next));
     return { insightStates: next };
   }),
-  dismissedInterventions: JSON.parse(localStorage.getItem('ironhealth_dismissed_interventions') || '{}'),
+  dismissedInterventions: JSON.parse(localStorage.getItem('ironcoach_dismissed_interventions') || '{}'),
   dismissIntervention: (recordId, notes) => set((s) => {
     if (!recordId) return {};
     const next = { ...s.dismissedInterventions, [recordId]: notes || 'dismissed' };
     try {
-      localStorage.setItem('ironhealth_dismissed_interventions', JSON.stringify(next));
+      localStorage.setItem('ironcoach_dismissed_interventions', JSON.stringify(next));
     } catch (e) {
       // ignore
     }
@@ -71,7 +71,7 @@ export const useAppStore = create((set, get) => ({
     const next = { ...s.dismissedInterventions };
     delete next[recordId];
     try {
-      localStorage.setItem('ironhealth_dismissed_interventions', JSON.stringify(next));
+      localStorage.setItem('ironcoach_dismissed_interventions', JSON.stringify(next));
     } catch (e) {
       // ignore
     }
@@ -87,7 +87,7 @@ export const useAppStore = create((set, get) => ({
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
-
+  
   // Actions
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
@@ -100,7 +100,7 @@ export const useAppStore = create((set, get) => ({
     if (guard && !guard(tab)) return false;
     if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(tab)) {
       try {
-        localStorage.setItem('ironhealth_last_module', tab);
+        localStorage.setItem('ironcoach_last_module', tab);
       } catch (e) {
         // ignore
       }

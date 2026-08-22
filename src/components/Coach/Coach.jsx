@@ -427,7 +427,7 @@ export default function Coach() {
             <Bot className="w-5 h-5" style={{ color: '#fff' }} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white leading-none">Coach IronHealth</h2>
+            <h2 className="text-sm font-bold text-white leading-none">Coach IronCoach</h2>
             <p className="text-[10px] text-slate-400 mt-0.5">Nutrição · Ginásio · Corrida</p>
           </div>
         </div>
