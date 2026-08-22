@@ -1,6 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../../store';
-import { RotateCcw, CheckCircle, PencilLine, Trash2, Link as LinkIcon, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  RotateCcw,
+  CheckCircle,
+  PencilLine,
+  Trash2,
+  Link as LinkIcon,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  Target,
+  Calendar,
+  Activity,
+  Sparkles,
+} from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import Button from '../shared/Button';
 import { pt } from 'date-fns/locale';
@@ -10,8 +23,7 @@ import {
   formatPace,
 } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
-import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
-import RaceInfoPanel from './RaceInfoPanel';
+import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 
 function todayISO() {
   const d = new Date();
@@ -28,7 +40,6 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
   const { profile, runs } = useAppStore();
   const [expanded, setExpanded] = useState(false);
   const todayIso = todayISO();
-  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayIso), [runs, todayIso]);
   
   const toggleExpand = () => setExpanded(!expanded);
   
@@ -36,29 +47,20 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
   const isPast = ev.date < todayIso;
   const done = ev.status === 'concluida';
 
-  // Viabilidade do objetivo — Bloco 1 da doutrina do Coach.
-  const weeksToRace = Math.floor(
-    (new Date(ev.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
-  );
-  const viability = !done ? assessRaceViability({
-    distanceKm: ev.distance_km,
-    experienceLevel: ev.experience_level || profile?.experience_level,
-    weeksToRace,
-    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
-  }) : { flags: [], isViable: true };
-
-  const FLAG_LABELS = {
-    ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
-    tempo_insuficiente:   `Tempo insuficiente — faltam ${weeksToRace} sem.`,
-    volume_insuficiente:  `Volume insuficiente — média ${weeklyVol} km/sem`,
-  };
+  // Macrociclo e evolução da preparação através do motor unificado
+  const plan = useMemo(() => {
+    return calculateRaceTrainingPlan({
+      race: ev,
+      profile,
+      runs,
+      todayISO: todayIso,
+    });
+  }, [ev, profile, runs, todayIso]);
 
   return (
     <div 
       onClick={toggleExpand}
       className={`card rounded-2xl p-4 shadow-sm cursor-pointer hover:shadow-md transition ${done ? 'opacity-60' : ''}`}
-      // .card já traz a borda branca uniforme (ver globals.css) — sem
-      // borda lateral colorida, como os outros cartões.
       style={{ backgroundColor: 'rgba(251, 191, 36, 0.04)' }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -79,7 +81,6 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
                 {experienceLevelLabel(ev.experience_level)}
               </span>
             )}
-            {/* Pílula de prioridade A/B/C — cor diferente por nível. */}
             {ev.race_priority && (
               <span className={[
                 'text-[10px] font-bold px-2 py-0.5 rounded-full border',
@@ -114,46 +115,110 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="space-y-3 pt-2 mt-2 border-t border-slate-200/60 fade-in">
-          <div className="space-y-1">
-            {ev.elevation_gain_m != null && <p className="text-[11px] text-slate-500 mt-0.5">D+: {ev.elevation_gain_m} m</p>}
-            {ev.target_time && <p className="text-[11px] text-slate-500 mt-0.5">Tempo-alvo: {ev.target_time}</p>}
-            {ev.target_pace_seconds_per_km && <p className="text-[11px] text-slate-500 mt-0.5">Ritmo-alvo: {formatPace(ev.target_pace_seconds_per_km)} /km</p>}
-            {ev.website && (
-              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                <LinkIcon size={11} />
-                <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
-                  {ev.website}
-                </a>
-              </p>
-            )}
-            {ev.notes && <p className="text-[11px] text-slate-500 mt-0.5 italic">"{ev.notes}"</p>}
+        <div className="space-y-3 pt-2.5 mt-2.5 border-t border-slate-200/60 fade-in">
+          {/* Grelha de Dados Essenciais */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* 1. Localização & Distância */}
+            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <MapPin size={11} className="text-amber-500" /> Local & Distância
+              </span>
+              <span className="text-xs font-bold text-slate-800 truncate">
+                {ev.location || 'Local a definir'}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                {distanceLabel} {ev.elevation_gain_m != null ? `· ${ev.elevation_gain_m}m D+` : ''} {ev.race_type === 'trail' ? '· Trail' : ''}
+              </span>
+            </div>
+
+            {/* 2. Objetivo */}
+            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Target size={11} className="text-amber-500" /> Objetivo
+              </span>
+              <span className="text-xs font-bold text-slate-800 truncate">
+                {ev.target_time ? `Tempo: ${ev.target_time}` : (ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : 'Sem meta')}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                {ev.target_time && ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : (ev.race_priority ? `Prioridade ${racePriorityLabel(ev.race_priority)}` : 'Treino contínuo')}
+              </span>
+            </div>
+
+            {/* 3. Tempo que Falta */}
+            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={11} className="text-amber-500" /> Contagem
+              </span>
+              <span className="text-xs font-bold text-slate-800">
+                {done ? 'Concluída' : plan.daysToRace === 0 ? 'É HOJE!' : plan.daysToRace > 0 ? `Faltam ${plan.daysToRace} dias` : `${Math.abs(plan.daysToRace)} dias atrás`}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                {plan.trainingStatus === 'in_progress' ? `Semana ${plan.currentWeek} de ${plan.totalWeeks}` : `${plan.totalWeeks} semanas total`}
+              </span>
+            </div>
+
+            {/* 4. Fase Atual */}
+            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <Activity size={11} className="text-amber-500" /> Fase do Treino
+              </span>
+              <span className="text-xs font-bold text-amber-600 truncate">
+                {plan.currentPhase?.name || 'Base Aeróbica'}
+              </span>
+              <span className="text-[11px] font-medium text-slate-500 truncate">
+                {plan.currentPhase?.weeksLabel || `Sem. 1-${plan.totalWeeks}`}
+              </span>
+            </div>
           </div>
 
-          <RaceInfoPanel ev={ev} />
-
-          {/* Avisos de viabilidade (Bloco 1 — objetivo_inviavel) */}
+          {/* Como Corre a Preparação (Parecer da Carol) */}
           {!done && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                Avaliação do Coach
-              </span>
-              {viability.flags.length > 0 ? (
-                viability.flags.map(flag => (
-                  <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
-                    <AlertTriangle size={12} />
-                    {FLAG_LABELS[flag] || flag}
-                  </p>
-                ))
-              ) : (
-                <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
-                  <CheckCircle size={12} />
-                  Preparação adequada para a prova
-                </p>
+            <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/70 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-amber-500" />
+                  Evolução da Preparação
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                  plan.readinessLevel === 'green'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : plan.readinessLevel === 'yellow'
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-rose-50 border-rose-200 text-rose-700'
+                }`}>
+                  {plan.carolAnalysis.readinessLabel}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                {plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText}
+              </p>
+
+              {plan.currentPhase?.evaluation?.score != null && (
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 text-[11px] text-slate-500">
+                  <span>Classificação da Fase:</span>
+                  <span className="font-bold text-slate-700">
+                    {plan.currentPhase.evaluation.gradeLabel} · {plan.currentPhase.evaluation.score}%
+                  </span>
+                </div>
               )}
             </div>
           )}
 
+          {/* Link para o site da prova se existir */}
+          {ev.website && (
+            <div className="text-[11px] text-slate-500 flex items-center gap-1 px-0.5 truncate">
+              <LinkIcon size={11} className="shrink-0 text-slate-400" />
+              <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
+                {ev.website}
+              </a>
+            </div>
+          )}
+
+          {/* Notas adicionais */}
+          {ev.notes && <p className="text-[11px] text-slate-500 italic px-0.5">"{ev.notes}"</p>}
+
+          {/* Botões de Ação */}
           <div className="flex items-center gap-2 pt-1">
             <Button
               variant="light"
