@@ -485,32 +485,35 @@ export default function RunAgenda({ onClose }) {
             </button>
           </div>
 
-          {/* Seletor de Páginas (Treino e Evolução vs Detalhes da prova) */}
-          <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200/70 gap-1">
-            <button
-              type="button"
-              onClick={() => setActivePage('hub')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                activePage === 'hub'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sparkles size={13} />
-              Treino e Evolução
-            </button>
-            <button
-              type="button"
-              onClick={() => setActivePage('details')}
-              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                activePage === 'details'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Sliders size={13} />
-              Detalhes da prova
-            </button>
+          {/* Subnav AAA — idêntico ao Perfil / Dashboard */}
+          <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+            {/* Sliding indicator com tint translúcido e borda âmbar */}
+            <div
+              className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
+              style={{
+                width: 'calc((100% - 20px) / 2)',
+                transform: `translateX(calc(${activePage === 'hub' ? 0 : 1} * 100% + ${(activePage === 'hub' ? 0 : 1) * 8}px))`,
+                background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
+                borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
+                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+              }}
+            />
+            {[
+              { key: 'hub', label: 'Treino e Evolução', icon: Sparkles },
+              { key: 'details', label: 'Detalhes da prova', icon: Sliders },
+            ].map(t => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActivePage(t.key)}
+                style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-colors duration-300 ${
+                  activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <t.icon size={14} /> {t.label}
+              </button>
+            ))}
           </div>
 
           {/* ─── PÁGINA 1: TREINO E EVOLUÇÃO (AAA) ────────────────────────────── */}
