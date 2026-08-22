@@ -655,7 +655,7 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
 /**
  * Deteta insights proativos do Coach baseados nos limiares da doutrina.
  * Verifica múltiplas dimensões e retorna alertas ordenados por severidade.
- * @param {{ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }} data
+ * @param {{ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }} data
  * @param {object} profile
  * @returns {Array<{ id, severity, title, message, metric, value, threshold, module }>}
  */
@@ -666,12 +666,15 @@ export function detectCoachInsights(data, profile) {
     const gender = profile?.gender || 'M';
 
     // 0. Adesão ao Plano (Treinos em atraso)
-    if (data.coachPlanItems?.length > 0) {
+    if (data.coachPlanItems?.length > 0 && data.coachPlans?.length > 0) {
       const now = new Date();
       const todayStr = format(now, 'yyyy-MM-dd');
       const past14DaysStr = format(subDays(now, 14), 'yyyy-MM-dd');
       
+      const activePlanIds = data.coachPlans.filter(p => p.status === 'ativo').map(p => p.id);
+
       const overdueWorkouts = data.coachPlanItems.filter(i => {
+        if (!activePlanIds.includes(i.plan_id)) return false;
         if (i.kind === 'descanso' || i.status !== 'pendente') return false;
         if (i.planned_date >= todayStr || i.planned_date < past14DaysStr) return false;
         

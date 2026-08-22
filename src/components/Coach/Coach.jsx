@@ -77,7 +77,7 @@ export default function Coach() {
 
     try {
       const allInsights = detectCoachInsights(
-        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile
+        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile
       );
       const insightsContext = allInsights.map(i => ({
         title: i.title,
@@ -336,7 +336,7 @@ export default function Coach() {
       // Injeta os insights biométricos ativos no payload para a Carol
       // ter contexto dos alertas que o atleta viu/ignorou/entendeu.
       const allInsights = detectCoachInsights(
-        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile
+        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile
       );
       const insightsContext = allInsights.map(i => ({
         title: i.title,

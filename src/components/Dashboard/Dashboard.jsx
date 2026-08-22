@@ -22,15 +22,15 @@ const TABS = [
 ];
 
 export default function Dashboard({ activeModule }) {
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems, profile, insightStates } = useAppStore();
+  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates } = useAppStore();
   const [showInsights, setShowInsights] = useState(false);
 
   const insights = useMemo(() => {
-    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile);
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
     // Remove os que ja foram "Entendidos" (desativados).
     // Filtra apenas os que não são relativos ao ecrã inicial (ex: adesão ao plano).
     return all.filter(i => insightStates[i.id] !== 'understood' && i.module !== 'coach');
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems, profile, insightStates]);
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);

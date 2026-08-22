@@ -276,9 +276,9 @@ export default function Home() {
   const [showInsights, setShowInsights] = useState(false);
 
   const homeInsights = useMemo(() => {
-    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile);
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
     return all.filter(i => insightStates[i.id] !== 'understood' && i.module === 'coach');
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems, profile, insightStates]);
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
 
   const handleNav = (tab) => setActiveTab(tab);
 
