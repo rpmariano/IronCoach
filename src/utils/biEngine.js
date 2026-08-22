@@ -671,12 +671,16 @@ export function detectCoachInsights(data, profile) {
       const todayStr = format(now, 'yyyy-MM-dd');
       const past14DaysStr = format(subDays(now, 14), 'yyyy-MM-dd');
       
-      const overdueWorkouts = data.coachPlanItems.filter(i => 
-        i.kind !== 'descanso' && 
-        i.status === 'pendente' && 
-        i.planned_date < todayStr &&
-        i.planned_date >= past14DaysStr
-      );
+      const overdueWorkouts = data.coachPlanItems.filter(i => {
+        if (i.kind === 'descanso' || i.status !== 'pendente') return false;
+        if (i.planned_date >= todayStr || i.planned_date < past14DaysStr) return false;
+        
+        // Verifica se o atleta registou algum treino nesse dia independentemente do plano
+        const hasRun = (data.runs || []).some(r => format(parseISO(r.date), 'yyyy-MM-dd') === i.planned_date);
+        const hasGym = (data.gymSessions || []).some(s => format(parseISO(s.date), 'yyyy-MM-dd') === i.planned_date);
+        
+        return !hasRun && !hasGym;
+      });
 
       if (overdueWorkouts.length >= 3) {
         insights.push({
