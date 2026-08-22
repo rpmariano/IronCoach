@@ -19,6 +19,10 @@ export default function CoachInsightModal({ insights, onClose }) {
 
   const handleDebater = () => {
     const titles = insights.map(i => i.title).join(', ');
+    
+    // Marca como entendido para que desapareçam do ecrã inicial/dashboard
+    insights.forEach(i => setInsightState(i.id, 'understood'));
+
     setCoachIntent({
       kind: 'proactive_intervention',
       reason: `O atleta abriu o chat a partir dos Insights do Coach. Aborda proativamente estes temas: ${titles}.`
