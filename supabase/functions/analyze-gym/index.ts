@@ -835,8 +835,8 @@ Deno.serve(async (req) => {
       return jsonResponse({ session });
     }
 
-    // ── Modo reanálise: session_id presente ───────────────────────────
-    if (typeof body.session_id === "string" && body.session_id) {
+    // ── Modo reanálise por foto: session_id presente sem mode manual ───
+    if (typeof body.session_id === "string" && body.session_id && body.mode !== "manual") {
       const sessionId = body.session_id;
       const { data: existing, error: fetchError } = await sb
         .from("workout_sessions")

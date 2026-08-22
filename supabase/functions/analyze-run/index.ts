@@ -943,8 +943,8 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
-    // ── Modo reanálise: run_id presente ────────────────────────────────
-    if (typeof body.run_id === "string" && body.run_id) {
+    // ── Modo reanálise por foto: run_id presente sem mode manual ───────
+    if (typeof body.run_id === "string" && body.run_id && body.mode !== "manual") {
       const runId = body.run_id;
       const { data: existing, error: fetchError } = await sb
         .from("runs")
