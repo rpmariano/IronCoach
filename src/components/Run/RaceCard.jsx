@@ -23,7 +23,6 @@ import {
   raceTerrainLabel,
   formatPace,
 } from '../../utils/run';
-import { experienceLevelLabel } from '../../utils/experience';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 
 function todayISO() {
@@ -77,11 +76,6 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
               </span>
             )}
             {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
-            {ev.experience_level && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
-                {experienceLevelLabel(ev.experience_level)}
-              </span>
-            )}
             {ev.race_priority && (
               <span className={[
                 'text-[10px] font-bold px-2 py-0.5 rounded-full border',
