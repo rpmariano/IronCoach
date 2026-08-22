@@ -94,7 +94,9 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
+    // O texto do aviso varia entre reformulações (ver WAITING_MESSAGES em
+    // Coach.jsx) — a bolha é identificada por data-testid, não por conteúdo.
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
     // Não é um erro definitivo — não deve aparecer o prefixo "Erro:".
     expect(screen.queryByText(/^\*\*Erro/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).toBeDisabled();
@@ -125,13 +127,13 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
 
     // 1ª sondagem (POLL_INTERVAL_MS = 4000ms): ainda vazio.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4000);
     });
-    expect(screen.getByText(/aproveita para fazer uns agachamentos/i)).toBeInTheDocument();
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(true);
 
     // 2ª sondagem: encontra a resposta real.
@@ -139,7 +141,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await vi.advanceTimersByTimeAsync(4000);
     });
 
-    expect(screen.queryByText(/aproveita para fazer uns agachamentos/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
     expect(screen.getByText(/Resposta real do coach\./i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     // O botão só fica ativo com texto por enviar — testa o destravar do
@@ -170,7 +172,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await vi.advanceTimersByTimeAsync(184000);
     });
 
-    expect(screen.queryByText(/aproveita para fazer uns agachamentos/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
     expect(screen.getByText(/Não foi possível obter uma resposta do Coach/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
@@ -209,7 +211,9 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Calma Patrícia/i)).toBeInTheDocument();
+    // Todas as variantes do aviso incluem o nome (ver WAITING_MESSAGES em
+    // Coach.jsx) — o texto exato varia, o nome não.
+    expect(screen.getByTestId('coach-waiting-message')).toHaveTextContent(/Patrícia/i);
   });
 
   it('sem nome no perfil, recua para "atleta" no aviso de demora', async () => {
@@ -230,6 +234,39 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
     });
 
-    expect(screen.getByText(/Calma atleta/i)).toBeInTheDocument();
+    expect(screen.getByTestId('coach-waiting-message')).toHaveTextContent(/atleta/i);
+  });
+
+  it('varia o texto do aviso de demora entre pedidos (não é sempre a mesma frase)', async () => {
+    // Regressão do bug relatado: a Carol usava sempre a mesma piada dos
+    // agachamentos. Força cada extração de Math.random a devolver um índice
+    // diferente do array WAITING_MESSAGES e confirma que o texto muda.
+    useAppStore.setState({ profile: { id: 'user-1', display_name: null } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random');
+    const seenTexts = new Set();
+
+    for (let i = 0; i < 3; i++) {
+      randomSpy.mockReturnValue(i / 3); // espalha por índices diferentes do array de 6 variantes
+      const { unmount } = renderCoach();
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      seenTexts.add(screen.getByTestId('coach-waiting-message').textContent);
+      unmount();
+      useAppStore.setState({ coachMessages: [], coachLoading: false });
+    }
+
+    randomSpy.mockRestore();
+    expect(seenTexts.size).toBeGreaterThan(1);
   });
 });
