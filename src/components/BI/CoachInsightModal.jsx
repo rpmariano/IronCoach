@@ -1,8 +1,9 @@
 import React from 'react';
-import { Bot, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { Bot, AlertTriangle, AlertCircle, Info, Sparkles } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
+import { COACH_GRADIENT, COACH_TEXT_SHADOW } from '../shared/CoachButton';
 
 export default function CoachInsightModal({ insights, onClose }) {
   const { setInsightState, setActiveTab, setCoachIntent } = useAppStore();
@@ -17,7 +18,7 @@ export default function CoachInsightModal({ insights, onClose }) {
     onClose();
   };
 
-  const handleDebater = () => {
+  const handleFalarComCoach = () => {
     const titles = insights.map(i => i.title).join(', ');
     
     // Marca como entendido para que desapareçam do ecrã inicial/dashboard
@@ -43,49 +44,64 @@ export default function CoachInsightModal({ insights, onClose }) {
       theme="coach"
       variant="bottom-sheet"
     >
-      <div className="px-5 py-6 overflow-y-auto space-y-4">
-        <p className="text-[13px] text-slate-500 mb-2">
+      <div className="px-5 py-5 overflow-y-auto space-y-3.5">
+        <p className="text-xs text-slate-400 leading-relaxed">
           Baseado na doutrina de treino e nutrição, identifiquei os seguintes pontos que merecem a tua atenção:
         </p>
 
         {insights.map((insight, idx) => {
-          let Icon = Info;
-          let color = 'text-cyan-500';
-          let bg = 'bg-cyan-50';
-          let border = 'border-cyan-100';
+          const isCritical = insight.severity === 'critical';
+          const isWarning = insight.severity === 'warning';
 
-          if (insight.severity === 'critical') {
-            Icon = AlertTriangle;
-            color = 'text-red-500';
-            bg = 'bg-red-50';
-            border = 'border-red-100';
-          } else if (insight.severity === 'warning') {
-            Icon = AlertCircle;
-            color = 'text-amber-500';
-            bg = 'bg-amber-50';
-            border = 'border-amber-100';
-          }
+          const Icon = isCritical ? AlertTriangle : isWarning ? AlertCircle : Info;
+
+          const cardStyles = isCritical
+            ? {
+                container: 'bg-red-500/10 border-red-500/30 text-red-200',
+                iconWrap: 'bg-red-500/20 border-red-500/40 text-red-400',
+                title: 'text-red-100',
+                metricBadge: 'bg-red-500/20 border-red-500/40 text-red-300',
+              }
+            : isWarning
+            ? {
+                container: 'bg-amber-500/10 border-amber-500/30 text-amber-200',
+                iconWrap: 'bg-amber-500/20 border-amber-500/40 text-amber-400',
+                title: 'text-amber-100',
+                metricBadge: 'bg-amber-500/20 border-amber-500/40 text-amber-300',
+              }
+            : {
+                container: 'bg-cyan-500/10 border-cyan-500/30 text-cyan-200',
+                iconWrap: 'bg-cyan-500/20 border-cyan-500/40 text-cyan-400',
+                title: 'text-cyan-100',
+                metricBadge: 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300',
+              };
 
           return (
-            <div key={insight.id || idx} className={`rounded-2xl border p-4 ${bg} ${border}`}>
+            <div
+              key={insight.id || idx}
+              className={`rounded-2xl border p-4 backdrop-blur-md shadow-sm flex flex-col gap-2.5 ${cardStyles.container}`}
+            >
               <div className="flex items-start gap-3">
-                <div className={`mt-0.5 ${color}`}>
-                  <Icon size={20} />
+                <div className={`w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 ${cardStyles.iconWrap}`}>
+                  <Icon size={16} strokeWidth={2.5} />
                 </div>
-                <div className="flex-1">
-                  <h3 className={`text-sm font-bold text-slate-800`}>{insight.title}</h3>
+                <div className="flex-1 min-w-0">
+                  <h3 className={`text-sm font-extrabold tracking-tight leading-snug ${cardStyles.title}`}>
+                    {insight.title}
+                  </h3>
                   
-                  {/* Resolution Framework */}
-                  <p className="text-[13px] text-slate-700 mt-2 leading-relaxed font-medium">
+                  {/* Mensagem / Doutrina */}
+                  <p className="text-xs text-slate-200 mt-1.5 leading-relaxed font-normal">
                     {insight.message}
                   </p>
 
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="px-2 py-1 rounded-md bg-white shadow-sm border border-slate-100 text-[11px] font-bold text-slate-600 uppercase">
+                  {/* Badges de Módulo e Métrica */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-1 rounded-lg bg-white/10 border border-white/15 text-[10px] font-black uppercase tracking-wider text-slate-300 shadow-sm">
                       {insight.module}
                     </span>
                     {insight.metric && (
-                      <span className={`px-2 py-1 rounded-md bg-white shadow-sm border border-slate-100 text-[11px] font-bold ${color}`}>
+                      <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-black uppercase tracking-wider shadow-sm ${cardStyles.metricBadge}`}>
                         {insight.metric}: {typeof insight.value === 'number' ? insight.value.toFixed(1) : insight.value}
                       </span>
                     )}
@@ -96,14 +112,33 @@ export default function CoachInsightModal({ insights, onClose }) {
           );
         })}
       </div>
-      <div className="px-5 pb-6 pt-2 flex flex-col gap-3">
-        <Button variant="primary" className="w-full flex justify-center items-center gap-2" onClick={handleDebater}>
-          <Bot size={18} />
-          Debater no Chat
+
+      {/* Ações */}
+      <div className="px-5 pb-6 pt-2 flex flex-col gap-2.5">
+        <Button
+          variant="module"
+          moduleColor={COACH_GRADIENT}
+          className="w-full flex justify-center items-center gap-2 py-3.5 rounded-2xl shadow-lg shadow-cyan-900/30 text-white font-extrabold text-sm"
+          onClick={handleFalarComCoach}
+        >
+          <Sparkles size={17} style={{ color: '#fff' }} />
+          <span style={{ textShadow: COACH_TEXT_SHADOW, color: '#fff' }}>Falar com o Coach</span>
         </Button>
-        <div className="flex gap-3 w-full">
-          <Button variant="ghost" className="flex-1" onClick={handleIgnorar}>Ignorar</Button>
-          <Button variant="outline" className="flex-1" onClick={handleEntendido}>Entendido</Button>
+        <div className="flex gap-2.5 w-full">
+          <Button
+            variant="ghost"
+            className="flex-1 text-xs text-slate-400 hover:text-slate-200 py-2.5"
+            onClick={handleIgnorar}
+          >
+            Ignorar
+          </Button>
+          <Button
+            variant="secondary"
+            className="flex-1 text-xs font-bold py-2.5 bg-white/10 hover:bg-white/15 text-slate-200 border border-white/10"
+            onClick={handleEntendido}
+          >
+            Entendido
+          </Button>
         </div>
       </div>
     </PremiumModal>
