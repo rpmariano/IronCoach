@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 
 export default function CoachInsightModal({ insights, onClose }) {
-  const setInsightState = useAppStore(state => state.setInsightState);
+  const { setInsightState, setActiveTab, setCoachIntent } = useAppStore();
 
   const handleIgnorar = () => {
     insights.forEach(i => setInsightState(i.id, 'ignored'));
@@ -14,6 +14,16 @@ export default function CoachInsightModal({ insights, onClose }) {
 
   const handleEntendido = () => {
     insights.forEach(i => setInsightState(i.id, 'understood'));
+    onClose();
+  };
+
+  const handleDebater = () => {
+    const titles = insights.map(i => i.title).join(', ');
+    setCoachIntent({
+      kind: 'proactive_intervention',
+      reason: `O atleta abriu o chat a partir dos Insights do Coach. Aborda proativamente estes temas: ${titles}.`
+    });
+    setActiveTab('coach');
     onClose();
   };
 
@@ -82,9 +92,15 @@ export default function CoachInsightModal({ insights, onClose }) {
           );
         })}
       </div>
-      <div className="px-5 pb-6 pt-2 flex gap-3">
-        <Button variant="ghost" className="flex-1" onClick={handleIgnorar}>Ignorar</Button>
-        <Button variant="primary" className="flex-1" onClick={handleEntendido}>Entendido</Button>
+      <div className="px-5 pb-6 pt-2 flex flex-col gap-3">
+        <Button variant="primary" className="w-full flex justify-center items-center gap-2" onClick={handleDebater}>
+          <Bot size={18} />
+          Debater no Chat
+        </Button>
+        <div className="flex gap-3 w-full">
+          <Button variant="ghost" className="flex-1" onClick={handleIgnorar}>Ignorar</Button>
+          <Button variant="outline" className="flex-1" onClick={handleEntendido}>Entendido</Button>
+        </div>
       </div>
     </PremiumModal>
   );

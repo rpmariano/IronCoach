@@ -244,15 +244,11 @@ export default function RaceHubView({
 
       {/* ─── 3. Fases do Treino & Classificação da Carol por Fase ──────────── */}
       <div className="rh-phases-section">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1">
-          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-            Macrociclo de Treino · {totalWeeks} Semanas
+        <div className="flex items-center justify-between gap-2 pt-1 pb-1">
+          <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <span className="w-1.5 h-3.5 rounded-full bg-amber-400 inline-block shrink-0" />
+            Macrociclo de Treino ({totalWeeks} Semanas)
           </span>
-          {currentPhase?.name && (
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full self-start sm:self-auto">
-              Fase Atual: {currentPhase.name}
-            </span>
-          )}
         </div>
 
         <div className="space-y-2.5">

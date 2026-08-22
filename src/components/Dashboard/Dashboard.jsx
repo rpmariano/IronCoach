@@ -28,8 +28,8 @@ export default function Dashboard({ activeModule }) {
   const insights = useMemo(() => {
     const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile);
     // Remove os que ja foram "Entendidos" (desativados).
-    // Os ignorados continuam a alimentar o CoachInsightButton e o contexto do bot.
-    return all.filter(i => insightStates[i.id] !== 'understood');
+    // Filtra apenas os que não são relativos ao ecrã inicial (ex: adesão ao plano).
+    return all.filter(i => insightStates[i.id] !== 'understood' && i.module !== 'coach');
   }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems, profile, insightStates]);
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);

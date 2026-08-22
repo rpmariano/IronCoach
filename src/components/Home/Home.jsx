@@ -10,6 +10,9 @@ import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
+import { detectCoachInsights } from '../../utils/biEngine';
+import CoachInsightButton from '../BI/CoachInsightButton';
+import CoachInsightModal from '../BI/CoachInsightModal';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -264,11 +267,18 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
 export default function Home() {
   const { showToast } = useToast();
   const {
-    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs,
+    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId
   } = useAppStore();
+
+  const [showInsights, setShowInsights] = useState(false);
+
+  const homeInsights = useMemo(() => {
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems }, profile);
+    return all.filter(i => insightStates[i.id] !== 'understood' && i.module === 'coach');
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlanItems, profile, insightStates]);
 
   const handleNav = (tab) => setActiveTab(tab);
 
@@ -420,6 +430,11 @@ export default function Home() {
             </span>
           </button>
         </div>
+      )}
+
+      <CoachInsightButton insights={homeInsights} onClick={() => setShowInsights(true)} />
+      {showInsights && (
+        <CoachInsightModal insights={homeInsights} onClose={() => setShowInsights(false)} />
       )}
     </div>
   );
