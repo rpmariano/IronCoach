@@ -244,11 +244,15 @@ export default function RaceHubView({
 
       {/* ─── 3. Fases do Treino & Classificação da Carol por Fase ──────────── */}
       <div className="rh-phases-section">
-        <div className="rh-section-title">
-          <span>Macrociclo de Treino ({totalWeeks} Semanas)</span>
-          <span className="text-[11px] font-bold text-amber-400">
-            Fase Atual: {currentPhase.name}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1">
+          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+            Macrociclo de Treino · {totalWeeks} Semanas
           </span>
+          {currentPhase?.name && (
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full self-start sm:self-auto">
+              Fase Atual: {currentPhase.name}
+            </span>
+          )}
         </div>
 
         <div className="space-y-2.5">
@@ -266,36 +270,39 @@ export default function RaceHubView({
                   isActive ? 'active-phase' : isCompleted ? 'completed-phase' : ''
                 }`}
               >
-                <div className="rh-phase-header">
-                  <div className="rh-phase-num-badge">
-                    {isCompleted ? <CheckCircle2 size={13} /> : phase.number}
-                  </div>
-
-                  <div className="rh-phase-title-wrap">
-                    <div className="flex items-center gap-2">
-                      <span className="rh-phase-name">{phase.name}</span>
-                      <span className={`rh-phase-status-pill rh-pill-${phase.state}`}>
-                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : 'Planeada'}
+                <div className="flex flex-col gap-2">
+                  {/* Linha 1: [Ícone + Título] à esquerda | [Pílula de Estado + Chevron] à direita */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="rh-phase-num-badge shrink-0">
+                        {isCompleted ? <CheckCircle2 size={13} /> : phase.number}
+                      </div>
+                      <span className="rh-phase-name truncate font-bold text-slate-100 text-sm">
+                        {phase.name}
                       </span>
                     </div>
-                    <p className="rh-phase-dates">
-                      {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
-                    </p>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
+                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : 'Planeada'}
+                      </span>
+                      <div className="text-slate-400 pl-0.5">
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {evalData?.score && (
-                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor}`}>
-                        {evalData.gradeLabel} ({evalData.score}%)
+                  {/* Linha 2: [Datas & Semanas] à esquerda | [Avaliação da Carol] à direita */}
+                  <div className="flex items-center justify-between gap-2 pt-0.5 pl-8">
+                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400 truncate">
+                      {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
+                    </p>
+
+                    {evalData?.score != null && (
+                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap shrink-0`}>
+                        {evalData.gradeLabel} · {evalData.score}%
                       </span>
                     )}
-                    <button
-                      type="button"
-                      aria-label="Expandir detalhes da fase"
-                      className="text-slate-400 hover:text-slate-200"
-                    >
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </button>
                   </div>
                 </div>
 

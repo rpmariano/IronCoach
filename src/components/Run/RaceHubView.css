@@ -406,18 +406,24 @@
 }
 
 .rh-phase-status-pill {
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   font-weight: 800;
   text-transform: uppercase;
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
   letter-spacing: 0.05em;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .rh-pill-active {
-  background: #f59e0b;
-  color: #fff;
-  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+  border: 1px solid rgba(251, 191, 36, 0.6);
 }
 
 .rh-pill-completed {
@@ -429,12 +435,13 @@
 .rh-pill-upcoming {
   background: rgba(148, 163, 184, 0.15);
   color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 /* Classificação da Carol por Fase */
 .rh-phase-eval {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
@@ -468,12 +475,18 @@
   font-weight: 800;
   padding: 2px 8px;
   border-radius: 6px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  border: 1px solid transparent;
 }
 
-.rh-eval-emerald { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-.rh-eval-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-.rh-eval-rose { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
-.rh-eval-slate { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+.rh-eval-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
+.rh-eval-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
+.rh-eval-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border-color: rgba(244, 63, 94, 0.3); }
+.rh-eval-slate { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.25); }
 
 .rh-eval-summary {
   font-size: 0.78rem;
