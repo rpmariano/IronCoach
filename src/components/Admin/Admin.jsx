@@ -17,10 +17,27 @@ const ADMIN_TABS = [
 const GEMINI_PRICE_PER_M_INPUT = 0.30;
 const GEMINI_PRICE_PER_M_OUTPUT = 2.50;
 const GEMINI_COST_EVENT_MODULE = {
-  meal_analysis: 'Nutrição', meal_reanalysis: 'Nutrição', meal_item_estimate: 'Nutrição',
-  body_analysis: 'Corpo', body_reanalysis: 'Corpo',
-  gym_analysis: 'Ginásio', gym_reanalysis: 'Ginásio',
-  run_analysis: 'Corrida', run_reanalysis: 'Corrida',
+  // Edge Functions (novas e atuais)
+  'analyze-meal': 'Nutrição',
+  'analyze-body': 'Corpo',
+  'analyze-gym': 'Ginásio',
+  'analyze-run': 'Corrida',
+  'coach-chat': 'Coach',
+  'coach-daily-summary': 'Coach',
+  'enrich-race-event': 'Corrida',
+  'suggest-goals': 'Perfil',
+  // Eventos legado
+  meal_analysis: 'Nutrição',
+  meal_reanalysis: 'Nutrição',
+  meal_item_estimate: 'Nutrição',
+  body_analysis: 'Corpo',
+  body_reanalysis: 'Corpo',
+  gym_analysis: 'Ginásio',
+  gym_reanalysis: 'Ginásio',
+  run_analysis: 'Corrida',
+  run_reanalysis: 'Corrida',
+  coach_message: 'Coach',
+  coach_daily_summary: 'Coach',
 };
 
 function geminiCost(inputTokens, outputTokens) {

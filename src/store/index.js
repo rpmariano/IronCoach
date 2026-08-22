@@ -263,50 +263,115 @@ export const useAppStore = create((set, get) => ({
   // Recusar tem de deixar o plano antigo intacto: o atleta pediu para ver uma
   // alternativa, não para deitar fora o microciclo que estava a cumprir.
   respondToPlan: async (planId, accept) => {
-    const updates = accept
-      ? { status: 'aceite', accepted_at: new Date().toISOString() }
-      : { status: 'recusado' };
-    const { error } = await supabase.from('coach_plans').update(updates).eq('id', planId);
-    if (error) { console.error('Error responding to plan:', error); return false; }
+    if (!accept) {
+      const { error } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', planId);
+      if (error) { console.error('Error rejecting plan:', error); return false; }
+      await get().reloadCoachPlans();
+      return true;
+    }
 
-    if (accept) {
-      const userId = get().session?.user?.id || get().profile?.id;
-      if (userId) {
-        // Encontrar o plano novo para sabermos o period_start
-        const { data: newPlan } = await supabase.from('coach_plans').select('period_start, supersedes_plan_id').eq('id', planId).single();
-        if (newPlan) {
-          const { data: oldPlans } = await supabase.from('coach_plans').select('id, period_start, period_end').eq('user_id', userId).eq('status', 'aceite').neq('id', planId);
-          for (const old of oldPlans || []) {
-            if (old.period_start >= newPlan.period_start) {
-              // Se o antigo começou depois ou no mesmo dia do novo, recusa-o (foi totalmente substituído)
-              await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
-            } else {
-              // Se o antigo começou antes, truncar o seu period_end para o dia anterior ao novo
-              const newEndStr = addDaysISO(newPlan.period_start, -1);
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return false;
 
-              if (newEndStr >= old.period_start) {
-                await supabase.from('coach_plans').update({ period_end: newEndStr }).eq('id', old.id);
-                // Remover itens que caiam na parte truncada
-                await supabase.from('coach_plan_items').delete().eq('plan_id', old.id).gte('planned_date', newPlan.period_start);
-              } else {
-                await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
-              }
-            }
-          }
+    // Obter dados da proposta a aceitar
+    const { data: newPlan, error: fetchErr } = await supabase
+      .from('coach_plans')
+      .select('id, period_start, period_end, summary, supersedes_plan_id')
+      .eq('id', planId)
+      .single();
+
+    if (fetchErr || !newPlan) {
+      console.error('Error fetching proposal plan:', fetchErr);
+      return false;
+    }
+
+    // Identificar se esta proposta adapta um plano ativo existente
+    let targetPlanId = newPlan.supersedes_plan_id;
+    if (!targetPlanId) {
+      const { data: activePlans } = await supabase
+        .from('coach_plans')
+        .select('id, period_start, period_end, summary')
+        .eq('user_id', userId)
+        .eq('status', 'aceite')
+        .neq('id', planId);
+
+      const overlapping = (activePlans || []).find(p =>
+        (p.period_start <= newPlan.period_end && p.period_end >= newPlan.period_start)
+      );
+      if (overlapping) {
+        targetPlanId = overlapping.id;
+      }
+    }
+
+    if (targetPlanId) {
+      // ── CASO A: Adaptação In-Place do Plano Ativo ──────────────────────────
+      const { data: originalPlan } = await supabase
+        .from('coach_plans')
+        .select('id, period_start, period_end, summary')
+        .eq('id', targetPlanId)
+        .single();
+
+      if (originalPlan) {
+        const finalStart = newPlan.period_start < originalPlan.period_start ? newPlan.period_start : originalPlan.period_start;
+        const finalEnd = newPlan.period_end > originalPlan.period_end ? newPlan.period_end : originalPlan.period_end;
+        const finalSummary = newPlan.summary || originalPlan.summary;
+
+        // 1. Atualizar limites e resumo do plano original
+        await supabase.from('coach_plans').update({
+          period_start: finalStart,
+          period_end: finalEnd,
+          summary: finalSummary,
+        }).eq('id', targetPlanId);
+
+        // 2. Apagar os treinos do plano original nas datas que estão a ser substituídas
+        await supabase
+          .from('coach_plan_items')
+          .delete()
+          .eq('plan_id', targetPlanId)
+          .gte('planned_date', newPlan.period_start)
+          .lte('planned_date', newPlan.period_end);
+
+        // 3. Mover os novos itens da proposta para o plano original
+        await supabase
+          .from('coach_plan_items')
+          .update({ plan_id: targetPlanId })
+          .eq('plan_id', planId);
+
+        // 4. Apagar o contentor temporário da proposta
+        await supabase
+          .from('coach_plans')
+          .delete()
+          .eq('id', planId);
+      }
+    } else {
+      // ── CASO B: Novo Plano Independente ────────────────────────────────────
+      const { error: updateErr } = await supabase
+        .from('coach_plans')
+        .update({ status: 'aceite', accepted_at: new Date().toISOString() })
+        .eq('id', planId);
+
+      if (updateErr) {
+        console.error('Error accepting new plan:', updateErr);
+        return false;
+      }
+
+      // Marcar como recusados planos antigos que tenham ficado completamente sobrepostos
+      const { data: oldPlans } = await supabase
+        .from('coach_plans')
+        .select('id, period_start, period_end')
+        .eq('user_id', userId)
+        .eq('status', 'aceite')
+        .neq('id', planId);
+
+      for (const old of oldPlans || []) {
+        if (old.period_start >= newPlan.period_start && old.period_end <= newPlan.period_end) {
+          await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
         }
       }
     }
 
-    // Recarrega em vez de reconstruir o estado à mão: ao aceitar, a BD
-    // acima trunca o plano anterior mas MANTÉM-NO aceite (é ele que guarda
-    // os dias já passados). Marcar localmente todos os outros aceites como
-    // recusados apagava esse histórico do cartão até ao próximo refresh.
     await get().reloadCoachPlans();
-
-    if (accept) {
-      get().loadDailySummary({ force: true }).catch(() => {});
-    }
-
+    get().loadDailySummary({ force: true }).catch(() => {});
     return true;
   },
 

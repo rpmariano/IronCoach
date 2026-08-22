@@ -148,12 +148,27 @@ const trainingPlan = (overrides: Row = {}) => ({
 function accept(db: Record<string, Row[]>, planId: string) {
   const p = db.coach_plans.find((x) => x.id === planId);
   if (!p) return;
-  p.status = "aceite";
-  p.accepted_at = new Date().toISOString();
   if (p.supersedes_plan_id) {
     const old = db.coach_plans.find((x) => x.id === p.supersedes_plan_id);
-    if (old) old.status = "recusado";
+    if (old) {
+      old.summary = p.summary || old.summary;
+      if (p.period_start < old.period_start) old.period_start = p.period_start;
+      if (p.period_end > old.period_end) old.period_end = p.period_end;
+      // remove antigos no intervalo substituído
+      db.coach_plan_items = db.coach_plan_items.filter(
+        (i) => !(i.plan_id === old.id && i.planned_date >= p.period_start && i.planned_date <= p.period_end),
+      );
+      // reatribui novos itens ao plano antigo
+      db.coach_plan_items.forEach((i) => {
+        if (i.plan_id === p.id) i.plan_id = old.id;
+      });
+      // apaga o registo temporário da proposta
+      db.coach_plans = db.coach_plans.filter((x) => x.id !== p.id);
+      return;
+    }
   }
+  p.status = "aceite";
+  p.accepted_at = new Date().toISOString();
 }
 
 // Recusar uma proposta — nunca toca no plano que ela pretendia substituir.
@@ -277,11 +292,12 @@ Deno.test("PERCURSO C: replace_active_plan recusa o plano de treino e poupa o de
   accept(db, novoId);
 
   const meal = db.coach_plans.find((p) => p.id === mealPlanId)!;
-  const oldTraining = db.coach_plans.find((p) => p.id === oldTrainingId)!;
+  const training = db.coach_plans.find((p) => p.id === oldTrainingId)!;
 
-  assertEquals(oldTraining.status, "recusado", "ao aceitar, o plano de treino antigo sai de ativo");
+  assertEquals(training.status, "aceite", "ao aceitar, o plano de treino mantém-se como o plano ativo atualizado");
+  assertEquals(training.summary, "Plano novo", "o resumo do plano ativo foi atualizado");
   assertEquals(meal.status, "aceite", "o plano de refeições não devia ser tocado");
-  assertEquals(db.coach_plans.length, 3);
+  assertEquals(db.coach_plans.length, 2, "a proposta temporária foi incorporada e removida");
 });
 
 Deno.test("PERCURSO C2: sem replace_active_plan, o plano ativo fica intacto", async () => {

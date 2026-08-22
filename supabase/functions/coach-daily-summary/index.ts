@@ -605,15 +605,15 @@ Deno.serve(async (req) => {
 
     const nextRace = upcomingRaces?.[0] ?? null;
 
-    // Encontra o plano ativo mais recente
-    const activePlanId = acceptedPlans?.[0]?.id ?? null;
+    // Encontra os treinos de todos os planos aceites relevantes para os próximos dias
+    const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
     let planItems: any[] = [];
-    if (activePlanId) {
+    if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
         .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
         .eq("user_id", userId)
-        .eq("plan_id", activePlanId)
+        .in("plan_id", acceptedPlanIds)
         .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
         .neq("status", "cancelado");
       planItems = fetchedItems || [];

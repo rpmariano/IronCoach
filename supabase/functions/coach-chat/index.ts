@@ -1039,8 +1039,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       .select("id, period_start, coach_plan_items(kind)")
       .eq("user_id", userId)
       .eq("status", "aceite")
-      .gte("period_end", todayISO)
-      .order("period_start", { ascending: false });
+      .gte("period_end", todayISO);
     // deno-lint-ignore no-explicit-any
     const candidate = (activePlans || []).find((p: any) =>
       // deno-lint-ignore no-explicit-any
@@ -3033,17 +3032,16 @@ async function handler(req: Request): Promise<Response> {
       .select("id, period_end")
       .eq("user_id", userId)
       .eq("status", "aceite")
-      .gte("period_end", todayISO)
-      .order("period_start", { ascending: false })
-      .limit(1);
-    const activePlanId = activePlans?.[0]?.id ?? null;
+      .gte("period_end", todayISO);
+
+    const activePlanIds = (activePlans || []).map((p: any) => p.id);
     // deno-lint-ignore no-explicit-any
     let activePlanItems: any[] = [];
-    if (activePlanId) {
+    if (activePlanIds.length > 0) {
       const { data } = await sb
         .from("coach_plan_items")
         .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
-        .eq("plan_id", activePlanId)
+        .in("plan_id", activePlanIds)
         .eq("status", "pendente")
         .gte("planned_date", todayISO)
         .order("planned_date", { ascending: true })

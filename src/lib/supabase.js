@@ -6,6 +6,25 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
+ * Regista um evento em app_logs para auditoria e cálculo de custos de tokens
+ */
+export async function logAppEvent(level, event, message = null, meta = {}) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id || null;
+    await supabase.from('app_logs').insert({
+      user_id: userId,
+      level,
+      event,
+      message,
+      meta,
+    });
+  } catch (err) {
+    console.warn('[logAppEvent] Falha ao registar log:', err);
+  }
+}
+
+/**
  * Invoca uma Edge Function do Supabase garantindo um tempo limite (timeoutMs)
  */
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
@@ -29,16 +48,24 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
         } catch (_) {}
       }
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
+      logAppEvent('error', fnName, detailedMsg || 'Erro na execução', { fnName });
       return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.' };
     }
+
+    if (data?.usage) {
+      logAppEvent('success', fnName, null, data.usage);
+    }
+
     return { data, error: null };
   } catch (err) {
     clearTimeout(timer);
     if (err.name === 'AbortError') {
       console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
+      logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
       return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.' };
     }
     console.error(`[EdgeFunction:${fnName}] Exceção não tratada:`, err);
+    logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
     return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.' };
   }
 }
