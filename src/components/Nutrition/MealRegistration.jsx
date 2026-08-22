@@ -148,7 +148,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
-      if (createdRecord && !mealIdToEdit) {
+      if (createdRecord) {
         useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
       }
       useAppStore.getState().setPendingCalendarDate(date);
@@ -322,6 +322,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setIsSaving(true);
     setErrorMsg('');
     try {
+      let savedMeal = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
           body: {
@@ -335,17 +336,20 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedMeal = data?.meal;
       } else {
         const { error: mealError } = await supabase
           .from('meals')
           .update({ date, meal_type: mealType })
           .eq('id', mealIdToEdit);
         if (mealError) throw mealError;
+        const currentMeal = (meals || []).find(m => m.id === mealIdToEdit);
+        savedMeal = currentMeal ? { ...currentMeal, date, meal_type: mealType } : { id: mealIdToEdit, date, meal_type: mealType };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
-      handleClose();
+      finishCreateAndGoToCalendar(savedMeal);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');

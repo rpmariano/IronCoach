@@ -36,9 +36,15 @@ export default function Calendar() {
   );
 
   useEffect(() => {
-    if (pendingCalendarDate) clearPendingCalendarDate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (pendingCalendarDate) {
+      const d = new Date(`${pendingCalendarDate}T00:00:00`);
+      if (!isNaN(d.getTime())) {
+        setCurrentDate(d);
+        setSelectedDate(d);
+      }
+      clearPendingCalendarDate();
+    }
+  }, [pendingCalendarDate, clearPendingCalendarDate]);
 
   const [editingRunId, setEditingRunId] = useState(null);
   const [editingGymId, setEditingGymId] = useState(null);

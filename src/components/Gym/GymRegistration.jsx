@@ -196,7 +196,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
-      if (createdRecord && !sessionIdToEdit) {
+      if (createdRecord) {
         useAppStore.getState().setNewlyCreatedRecord({ type: 'gym', record: createdRecord });
       }
       useAppStore.getState().setPendingCalendarDate(date);
@@ -427,6 +427,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     try {
       const finalName = name.trim() || (categories.length ? categories.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
 
+      let savedSession = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
           body: {
@@ -447,17 +448,20 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedSession = data?.session;
       } else {
         const { error: sessionError } = await supabase
           .from('workout_sessions')
           .update({ date, name: finalName })
           .eq('id', sessionIdToEdit);
         if (sessionError) throw sessionError;
+        const currentSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
+        savedSession = currentSession ? { ...currentSession, date, name: finalName } : { id: sessionIdToEdit, date, name: finalName };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
-      handleClose();
+      finishCreateAndGoToCalendar(savedSession);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');

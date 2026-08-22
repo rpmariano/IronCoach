@@ -155,6 +155,32 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
                 {coachCommentary}
               </p>
             </div>
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'body',
+                    recordId: assessment.id,
+                    recordName: 'Avaliação Corporal',
+                    date: assessment.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
           )}
 
           {/* Ações */}

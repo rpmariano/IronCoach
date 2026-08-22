@@ -240,12 +240,35 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>
+          {/* Falar com a Coach se a análise indicar intervenção */}
+          {Boolean(coachCommentary && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary)) && (
+            <Button
+              variant="module"
+              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              onClick={(e) => {
+                e.stopPropagation();
+                useAppStore.setState({
+                  coachIntent: {
+                    kind: 'proactive_intervention',
+                    recordType: 'gym',
+                    recordId: session.id,
+                    recordName: session.name,
+                    date: session.date,
+                    reason: coachCommentary,
+                  }
+                });
+                useAppStore.getState().setActiveTab('coach');
+              }}
+              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
+            >
+              <div className="flex items-center justify-center gap-2 w-full">
+                <MessageSquare size={16} />
+                <span>Falar com a Coach</span>
+              </div>
+            </Button>
           )}
 
-          {/* Bottom Action Bar — "Reanalisar" (repescar os prints e voltar a
-              extrair exercícios/séries por IA) deixou de existir como ação
-              própria: editar já cobre a correção de exercícios/séries à mão,
-              por isso só resta editar ou eliminar a sessão toda. */}
+          {/* Bottom Action Bar */}
           <div className="flex items-center gap-2 pt-1">
             {onEdit && (
               <Button

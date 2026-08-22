@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera } from 'lucide-react';
+import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -213,7 +213,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
-      if (createdRecord && !runIdToEdit) {
+      if (createdRecord) {
         useAppStore.getState().setNewlyCreatedRecord({ type: 'run', record: createdRecord });
       }
       useAppStore.getState().setPendingCalendarDate(runDate);
@@ -675,17 +675,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             },
           });
           if (error) throw new Error(error);
-          if (data?.error) throw new Error(data.error);
-          setRuns(runs.map(r => (r.id === runIdToEdit ? data.run : r)));
+          const updatedRun = data.run;
+          setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
           showToast('Corrida reanalisada pelo Coach');
+          finishCreateAndGoToCalendar(updatedRun);
         } else {
           const payload = { date: runDate, name: runName.trim() };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
           if (error) throw error;
+          const currentRun = runs.find(r => r.id === runIdToEdit);
+          const updatedRun = currentRun ? { ...currentRun, ...payload } : payload;
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
           showToast('Corrida atualizada');
+          finishCreateAndGoToCalendar(updatedRun);
         }
-        handleClose();
         return;
       }
 
@@ -1294,6 +1297,39 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               ))}
             </div>
           )}
+
+          {runIdToEdit && (() => {
+            const editingRun = runs.find(r => r.id === runIdToEdit);
+            const notes = editingRun?.coach_notes || editingRun?.coach_analysis;
+            const hasIntervention = notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
+            if (!hasIntervention) return null;
+            return (
+              <Button
+                variant="module"
+                moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+                onClick={() => {
+                  useAppStore.setState({
+                    coachIntent: {
+                      kind: 'proactive_intervention',
+                      recordType: 'run',
+                      recordId: editingRun.id,
+                      recordName: editingRun.name,
+                      date: editingRun.date,
+                      reason: notes,
+                    }
+                  });
+                  handleClose();
+                  useAppStore.getState().setActiveTab('coach');
+                }}
+                className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
+              >
+                <div className="flex items-center justify-center gap-2 w-full">
+                  <MessageSquare size={16} />
+                  <span>Falar com a Coach</span>
+                </div>
+              </Button>
+            );
+          })()}
 
           {runIdToEdit ? (
             <CoachAnalyzeButton

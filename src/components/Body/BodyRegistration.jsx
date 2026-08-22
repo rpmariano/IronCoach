@@ -131,7 +131,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     handleClose();
     if (!hadPendingNav) {
       setNavGuard(null);
-      if (createdRecord && !assessmentIdToEdit) {
+      if (createdRecord) {
         useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
       }
       useAppStore.getState().setPendingCalendarDate(date);
@@ -184,6 +184,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setIsSaving(true);
     setErrorMsg('');
     try {
+      let savedAssessment = null;
       if (needsReanalysis) {
         const payloadMetrics = {};
         for (const m of BODY_METRICS) {
@@ -202,17 +203,20 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
+        savedAssessment = data?.assessment;
       } else {
         const { error } = await supabase
           .from('body_assessments')
           .update({ date })
           .eq('id', assessmentIdToEdit);
         if (error) throw error;
+        const currentAssessment = (bodyAssessments || []).find(a => a.id === assessmentIdToEdit);
+        savedAssessment = currentAssessment ? { ...currentAssessment, date } : { id: assessmentIdToEdit, date };
       }
 
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
-      handleClose();
+      finishCreateAndGoToCalendar(savedAssessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
