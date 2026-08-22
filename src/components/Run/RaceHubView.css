@@ -1,0 +1,518 @@
+/* RaceHubView.css — Estética AAA Glassmorphism & Gold/Amber Glow */
+
+.race-hub-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* ─── Hero Card ───────────────────────────────────────────────────────────── */
+.rh-hero-card {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transform: translateZ(0);
+}
+
+.rh-glow {
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.22) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.rh-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 2;
+}
+
+.rh-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rh-tag {
+  background: linear-gradient(135deg, #d97706, #fbbf24);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+}
+
+.rh-priority-pill {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 10px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px solid;
+}
+
+.rh-priority-a {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fbbf24;
+}
+
+.rh-priority-b {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #60a5fa;
+}
+
+.rh-priority-c {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #cbd5e1;
+}
+
+/* Semáforo luminoso */
+.rh-traffic-light {
+  display: flex;
+  gap: 5px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.rh-light {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0.2;
+  transition: opacity 0.3s, box-shadow 0.3s;
+}
+
+.rh-light.on { opacity: 1; }
+.rh-light-red { background: #ef4444; }
+.rh-light-red.on { box-shadow: 0 0 8px #ef4444; }
+.rh-light-yellow { background: #f59e0b; }
+.rh-light-yellow.on { box-shadow: 0 0 8px #f59e0b; }
+.rh-light-green { background: #10b981; }
+.rh-light-green.on { box-shadow: 0 0 8px #10b981; }
+
+.rh-title {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #f8fafc;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.rh-sub-info {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.rh-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ─── Countdowns Grid ─────────────────────────────────────────────────────── */
+.rh-countdown-row {
+  display: grid;
+  grid-cols: 2;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+  z-index: 2;
+}
+
+.rh-countdown-box {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.rh-cd-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.rh-cd-num {
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: #fbbf24;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.rh-cd-desc {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #e2e8f0;
+  margin-top: 2px;
+}
+
+/* ─── Timeline / Progress Bar Track ───────────────────────────────────────── */
+.rh-track-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  z-index: 2;
+}
+
+.rh-track-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  position: relative;
+}
+
+.rh-track-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24 0%, #d97706 100%);
+  border-radius: 8px;
+  transition: width 0.5s ease;
+}
+
+.rh-runner-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  background: #ffffff;
+  border: 3px solid #d97706;
+  border-radius: 50%;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.5s ease;
+}
+
+.rh-track-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+/* ─── Specs Badges Bar ────────────────────────────────────────────────────── */
+.rh-specs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  z-index: 2;
+}
+
+.rh-spec-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rh-spec-lbl {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+
+.rh-spec-val {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #f8fafc;
+  margin-top: 2px;
+}
+
+/* ─── Carol Analysis Box ──────────────────────────────────────────────────── */
+.rh-carol-box {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 24px;
+  padding: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25), inset 0 2px 10px rgba(255, 255, 255, 0.5);
+  position: relative;
+  overflow: hidden;
+}
+
+.rh-carol-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.rh-carol-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #fbbf24;
+}
+
+.rh-carol-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d97706, #fbbf24);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+}
+
+.rh-carol-body {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+/* ─── Fases de Treino Cards ───────────────────────────────────────────────── */
+.rh-phases-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rh-section-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rh-phase-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 16px;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.rh-phase-card.active-phase {
+  border-color: rgba(251, 191, 36, 0.6);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(255, 255, 255, 0.06));
+  box-shadow: 0 8px 30px -5px rgba(217, 119, 6, 0.2);
+}
+
+.rh-phase-card.completed-phase {
+  opacity: 0.88;
+}
+
+.rh-phase-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rh-phase-num-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 900;
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+
+.active-phase .rh-phase-num-badge {
+  background: #fbbf24;
+  color: #78350f;
+}
+
+.completed-phase .rh-phase-num-badge {
+  background: #10b981;
+  color: #fff;
+}
+
+.rh-phase-title-wrap {
+  flex: 1;
+}
+
+.rh-phase-name {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.rh-phase-dates {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+.rh-phase-status-pill {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.rh-pill-active {
+  background: #f59e0b;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+.rh-pill-completed {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.rh-pill-upcoming {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+/* Classificação da Carol por Fase */
+.rh-phase-eval {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rh-eval-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rh-eval-carol-lbl {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #fbbf24;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rh-eval-stars {
+  color: #fbbf24;
+  font-size: 0.8rem;
+  letter-spacing: 2px;
+}
+
+.rh-eval-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.rh-eval-emerald { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.rh-eval-amber { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.rh-eval-rose { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+.rh-eval-slate { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; }
+
+.rh-eval-summary {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+/* ─── Web Info Glass Cards ────────────────────────────────────────────────── */
+.rh-web-info-card {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rh-web-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .rh-hero-card {
+    padding: 16px;
+    border-radius: 22px;
+  }
+  .rh-title {
+    font-size: 1.25rem;
+  }
+  .rh-cd-num {
+    font-size: 1.5rem;
+  }
+  .rh-countdown-row {
+    grid-template-columns: 1fr;
+  }
+}

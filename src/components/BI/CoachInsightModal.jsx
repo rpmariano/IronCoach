@@ -62,16 +62,16 @@ export default function CoachInsightModal({ insights, onClose }) {
                   <h3 className={`text-sm font-bold text-slate-800`}>{insight.title}</h3>
                   
                   {/* Resolution Framework */}
-                  <p className="text-[13px] text-slate-600 mt-2 leading-relaxed">
+                  <p className="text-[13px] text-slate-700 mt-2 leading-relaxed font-medium">
                     {insight.message}
                   </p>
 
                   <div className="mt-3 flex items-center gap-2">
-                    <span className="px-2 py-1 rounded-md bg-white/5 text-[11px] font-semibold text-slate-500 uppercase">
+                    <span className="px-2 py-1 rounded-md bg-white shadow-sm border border-slate-100 text-[11px] font-bold text-slate-600 uppercase">
                       {insight.module}
                     </span>
                     {insight.metric && (
-                      <span className={`px-2 py-1 rounded-md bg-white/5 text-[11px] font-semibold ${color}`}>
+                      <span className={`px-2 py-1 rounded-md bg-white shadow-sm border border-slate-100 text-[11px] font-bold ${color}`}>
                         {insight.metric}: {typeof insight.value === 'number' ? insight.value.toFixed(1) : insight.value}
                       </span>
                     )}

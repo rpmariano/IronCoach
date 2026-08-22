@@ -196,4 +196,59 @@ describe('RunAgenda — "Obter informação do site"', () => {
     expect(useAppStore.getState().activeTab).toBe('holistica');
     expect(useAppStore.getState().pendingCalendarDate).toBeNull();
   });
+
+  it('permite alternar entre "Detalhes & Edição" e "Hub & Análise Carol (AAA)"', () => {
+    useAppStore.setState({ editingRaceId: 'race-1' });
+    renderAgenda();
+
+    // Começa em Detalhes & Edição
+    expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa')).toBeInTheDocument();
+
+    // Clica na aba Hub & Análise Carol (AAA)
+    fireEvent.click(screen.getByRole('button', { name: /Hub & Análise Carol \(AAA\)/i }));
+
+    // Verifica que os elementos do Hub AAA são visíveis
+    expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
+    expect(screen.getByText(/Análise da Carol · Evolução & Prontidão/i)).toBeInTheDocument();
+    expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
+    expect(screen.getByText(/Base Aeróbica/i)).toBeInTheDocument();
+
+    // Volta para Detalhes & Edição
+    fireEvent.click(screen.getByRole('button', { name: /Detalhes & Edição/i }));
+    expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa')).toBeInTheDocument();
+  });
+
+  it('permite obter informação do site a partir da aba Hub & Análise Carol', async () => {
+    const updatedEvent = {
+      ...EXISTING_RACE,
+      web_info: {
+        schedule: [{ label: 'Partida', when: '10:00', where: 'Lisboa' }],
+        required_documents: 'Dorsal e chip.',
+        category_info: null,
+        gear_recommendations: null,
+        logistics: null,
+        route_summary: null,
+        route_segments: null,
+        caveats: null,
+        source_url: 'https://corridadotejo.com/',
+        fetched_at: '2026-08-19T10:00:00.000Z',
+      },
+    };
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { race_event: updatedEvent }, error: null });
+
+    useAppStore.setState({ editingRaceId: 'race-1' });
+    renderAgenda();
+
+    fireEvent.click(screen.getByRole('button', { name: /Hub & Análise Carol \(AAA\)/i }));
+
+    const fetchBtn = screen.getByRole('button', { name: /Obter do Site/i });
+    expect(fetchBtn).toBeInTheDocument();
+    fireEvent.click(fetchBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Dorsal e chip.')).toBeInTheDocument();
+    });
+    expect(useAppStore.getState().raceEvents[0].web_info).toEqual(updatedEvent.web_info);
+  });
 });
+
