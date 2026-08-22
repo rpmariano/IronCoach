@@ -11,23 +11,11 @@ vi.mock('../../store', () => ({
 }));
 
 const insertMock = vi.fn(() => Promise.resolve({ error: null }));
-const uploadMock = vi.fn(() => Promise.resolve({ error: null }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => ({ insert: insertMock })),
-    storage: { from: vi.fn(() => ({ upload: uploadMock })) },
   },
-}));
-
-// A captura real usa DOM->canvas; para os testes só interessa que o blob
-// resultante flui até ao upload, não o pixel a pixel do html2canvas.
-vi.mock('html2canvas', () => ({
-  default: vi.fn(() =>
-    Promise.resolve({
-      toBlob: (cb) => cb(new Blob(['fake-screenshot'], { type: 'image/png' })),
-    }),
-  ),
 }));
 
 function renderButton() {
@@ -38,18 +26,10 @@ function renderButton() {
   );
 }
 
-async function openAndWaitForCapture() {
-  fireEvent.click(screen.getByLabelText('Reportar um problema'));
-  await waitFor(() => expect(screen.queryByText(/A capturar o ecrã/)).not.toBeInTheDocument());
-}
-
 describe('ReportIssueButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     insertMock.mockResolvedValue({ error: null });
-    uploadMock.mockResolvedValue({ error: null });
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock-preview');
-    global.URL.revokeObjectURL = vi.fn();
 
     useAppStore.mockReturnValue({
       session: { user: { id: 'user-1', email: 'atleta@ironcoach.app' } },
@@ -66,20 +46,17 @@ describe('ReportIssueButton', () => {
     expect(screen.queryByText('O que aconteceu?')).not.toBeInTheDocument();
   });
 
-  it('ao clicar, abre a caixa de descrição imediatamente e captura o screenshot em segundo plano', async () => {
+  it('ao clicar, abre a caixa de descrição sem pedir mais nada (sem screenshot)', () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
-    // A caixa de texto já está disponível antes da captura terminar.
     expect(screen.getByPlaceholderText(/Descreve o problema/)).toBeInTheDocument();
-    expect(screen.getByText(/A capturar o ecrã/)).toBeInTheDocument();
-
-    await waitFor(() => expect(screen.getByAltText('Pré-visualização do screenshot anexado')).toBeInTheDocument());
+    expect(screen.queryByText(/screenshot/i)).not.toBeInTheDocument();
   });
 
   it('recusa submeter sem descrição e não chama o Supabase', async () => {
     renderButton();
-    await openAndWaitForCapture();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
     fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
 
@@ -87,9 +64,9 @@ describe('ReportIssueButton', () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('submete a descrição, faz upload do screenshot e regista a página atual', async () => {
+  it('submete a descrição e regista utilizador/página/data — sem qualquer screenshot', async () => {
     renderButton();
-    await openAndWaitForCapture();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
     fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
       target: { value: 'O botão de guardar não responde.' },
@@ -98,34 +75,32 @@ describe('ReportIssueButton', () => {
 
     await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
 
-    expect(uploadMock).toHaveBeenCalledTimes(1);
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        user_id: 'user-1',
-        user_email: 'atleta@ironcoach.app',
-        user_name: 'Atleta Teste',
-        description: 'O botão de guardar não responde.',
-        page: 'Coach',
-        screenshot_path: expect.stringContaining('user-1/'),
-      }),
-    );
+    const payload = insertMock.mock.calls[0][0];
+    expect(payload).toEqual({
+      user_id: 'user-1',
+      user_email: 'atleta@ironcoach.app',
+      user_name: 'Atleta Teste',
+      description: 'O botão de guardar não responde.',
+      page: 'Coach',
+      user_agent: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty('screenshot_path');
 
     expect(await screen.findByText('Obrigado! O teu report foi enviado à equipa.')).toBeInTheDocument();
-    // Modal fecha e limpa o estado após o sucesso.
     await waitFor(() => expect(screen.queryByText('O que aconteceu?')).not.toBeInTheDocument());
   });
 
-  it('segue sem screenshot quando o upload falha, mas ainda envia a descrição', async () => {
-    uploadMock.mockResolvedValueOnce({ error: { message: 'boom' } });
+  it('mostra erro e não fecha o modal quando o Supabase falha', async () => {
+    insertMock.mockResolvedValueOnce({ error: { message: 'boom' } });
     renderButton();
-    await openAndWaitForCapture();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
     fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
       target: { value: 'Falha ao carregar o dashboard.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
 
-    await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
-    expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({ screenshot_path: null }));
+    expect(await screen.findByText('Não foi possível enviar o report. Tenta novamente.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Descreve o problema/)).toBeInTheDocument();
   });
 });
