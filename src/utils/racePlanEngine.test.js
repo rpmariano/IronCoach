@@ -98,17 +98,22 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(plan.phases.some(p => p.state === 'active')).toBe(true);
   });
 
-  it('avalia o desempenho da Carol em fases com corridas registadas', () => {
-    const today = '2026-09-20';
+  it('avalia o desempenho da Carol proporcionalmente ao cumprimento do volume alvo e disciplina', () => {
+    // Prova a 15 de Dezembro de 2026 (8 semanas à frente de hoje = 20 de Outubro)
+    // 6 semanas de plano = início a 3 de Novembro
+    // Fase Base (2 semanas): 3 de Novembro a 16 de Novembro (alvo: 35 km/sem * 2 = 70 km)
+    // Atleta com 65 km realizados e 80% em Z1/Z2
+    const today = '2026-11-20';
     const runs = [
-      { date: '2026-09-02', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
-      { date: '2026-09-05', distance_km: 12, duration_seconds: 3600, training_type: 'longo' },
-      { date: '2026-09-08', distance_km: 8, duration_seconds: 2400, training_type: 'regenerativo' },
-      { date: '2026-09-12', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-04', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-06', distance_km: 15, duration_seconds: 4500, training_type: 'longo' },
+      { date: '2026-11-09', distance_km: 10, duration_seconds: 3000, training_type: 'regenerativo' },
+      { date: '2026-11-11', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-14', distance_km: 20, duration_seconds: 6000, training_type: 'longo' },
     ];
 
     const plan = calculateRaceTrainingPlan({
-      race: { ...sampleRace, date: '2026-10-15' },
+      race: { ...sampleRace, date: '2026-12-15' },
       profile: { experience_level: 'medio' },
       runs,
       todayISO: today,
@@ -116,10 +121,31 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
 
     const basePhase = plan.phases.find(p => p.id === 'base');
     expect(basePhase.evaluation).toBeDefined();
-    expect(basePhase.evaluation.metrics.runsCount).toBeGreaterThan(0);
-    expect(basePhase.evaluation.score).toBeGreaterThan(70);
-    expect(basePhase.evaluation.stars).toBeGreaterThanOrEqual(3);
+    expect(basePhase.evaluation.metrics.runsCount).toBe(5);
+    expect(basePhase.evaluation.metrics.totalKm).toBe(65);
+    expect(basePhase.evaluation.score).toBeGreaterThanOrEqual(85);
+    expect(basePhase.evaluation.stars).toBeGreaterThanOrEqual(4);
     expect(basePhase.evaluation.summary).toContain('Base aeróbica');
+  });
+
+  it('penaliza o score da fase quando o volume está muito abaixo do alvo e a prova tem tempo insuficiente', () => {
+    // Prova a 2 semanas da data atual com volume insuficiente
+    const today = '2026-09-20';
+    const runs = [
+      { date: '2026-09-02', distance_km: 5, duration_seconds: 1500, training_type: 'facil' },
+    ];
+
+    const plan = calculateRaceTrainingPlan({
+      race: { ...sampleRace, date: '2026-10-05' },
+      profile: { experience_level: 'medio' },
+      runs,
+      todayISO: today,
+    });
+
+    const basePhase = plan.phases.find(p => p.id === 'base');
+    expect(basePhase.evaluation.score).toBeLessThan(70);
+    expect(basePhase.evaluation.gradeLabel).toMatch(/Abaixo do Alvo|Ajuste Recomendado/);
+    expect(basePhase.evaluation.summary).toContain('abaixo do alvo');
   });
 
   it('lida graciosamente com provas no passado (concluídas)', () => {

@@ -145,6 +145,29 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     currentWeek = Math.min(totalWeeks, Math.floor(daysElapsed / 7) + 1);
   }
 
+  // ─── Análise Holística da Carol sobre a Evolução do Treino ───────────────────
+  const weeklyVol = recentWeeklyVolume(runs, today);
+  const weeksToRace = Math.floor(Math.max(0, daysToRace) / 7);
+  // Se o treino já está em curso ou concluído, a viabilidade avalia o ciclo total planeado (totalWeeks),
+  // evitando falsos positivos de "tempo insuficiente" a meio da preparação.
+  const prepWeeksForViability = (trainingStatus === 'in_progress' || trainingStatus === 'completed') 
+    ? totalWeeks 
+    : weeksToRace;
+
+  const viability = assessRaceViability({
+    distanceKm,
+    experienceLevel,
+    weeksToRace: prepWeeksForViability,
+    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+  });
+
+  let readinessLevel = 'green';
+  if (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) {
+    readinessLevel = 'red';
+  } else if (viability.flags.length > 0) {
+    readinessLevel = 'yellow';
+  }
+
   // ─── Divisão das 5 Fases do Treino ──────────────────────────────────────────
   // Semanas disponíveis antes do taper
   const preTaperWeeks = Math.max(2, totalWeeks - taperWeeks);
@@ -191,7 +214,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   };
 
   // ─── Avaliação de Desempenho do Atleta pela Carol por Fase ──────────────────
-  const evaluatePhasePerformance = (phaseId, phaseName, startDateStr, endDateStr, phaseState) => {
+  const evaluatePhasePerformance = (phaseId, phaseName, startDateStr, endDateStr, phaseState, phaseWeeks) => {
     // Filtrar corridas dentro da janela desta fase
     const phaseRuns = runs.filter(r => r.date && r.date >= startDateStr && r.date <= endDateStr);
     
@@ -231,61 +254,82 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     const polarizedPct = runsCount > 0 ? Math.round((z1z2Count / runsCount) * 100) : 0;
     const avgPaceSec = totalPacedKm > 0 ? Math.round(totalSeconds / totalPacedKm) : null;
 
-    // Se a fase está ativa ou concluída, atribuir classificação da Carol
-    let score = 85; // Base sólida
-    let stars = 4;
-    let gradeLabel = 'Muito Bom';
-    let statusColor = 'amber';
-    let commentary = '';
+    // Volume semanal alvo da prova baseado na tabela canónica MIN_VOLUME_KM
+    const distCategory = categorizeDistance(distanceKm) || '10k';
+    const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || 20;
+    const expectedPhaseKm = targetWeeklyKm * Math.max(1, phaseWeeks);
+    const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);
 
     if (runsCount === 0) {
-      score = 50;
-      stars = 2;
-      gradeLabel = 'Sem Registos';
+      return {
+        score: 40,
+        stars: 1,
+        gradeLabel: 'Sem Registos',
+        statusColor: 'rose',
+        summary: `Sem treinos registados nesta fase. Mantém a consistência de pelo menos 3 sessões semanais para garantir a adaptação.`,
+        metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: 0, avgPace: null },
+      };
+    }
+
+    // Cálculo proporcional rigoroso (Volume: 50%, Polarização: 30%, Consistência/Frequência: 20%)
+    const expectedRunsCount = Math.max(1, phaseWeeks * 3);
+    const frequencyRatio = Math.min(1.0, runsCount / expectedRunsCount);
+    const polFactor = polarizedPct >= 75 ? 1.0 : Math.max(0.4, polarizedPct / 75);
+
+    let rawScore = (volumeRatio * 50) + (polFactor * 30) + (frequencyRatio * 20);
+
+    // Ajuste de realismo: se o ciclo global tem tempo insuficiente, a fase reflete a compressão
+    if (viability.flags.includes('tempo_insuficiente')) {
+      rawScore = rawScore * 0.85;
+    }
+    if (viability.flags.includes('volume_insuficiente') && volumeRatio < 0.7) {
+      rawScore = rawScore * 0.9;
+    }
+
+    const score = Math.min(98, Math.max(35, Math.round(rawScore)));
+
+    let stars = 2;
+    let gradeLabel = 'Abaixo do Alvo';
+    let statusColor = 'rose';
+
+    if (score >= 90) {
+      stars = 5;
+      gradeLabel = 'Excelente';
+      statusColor = 'emerald';
+    } else if (score >= 80) {
+      stars = 4;
+      gradeLabel = 'Muito Bom';
+      statusColor = 'emerald';
+    } else if (score >= 68) {
+      stars = 3;
+      gradeLabel = 'Sólido';
       statusColor = 'amber';
-      commentary = `Sem treinos registados nesta fase. Mantém a consistência de pelo menos 3 sessões semanais para garantir a adaptação.`;
     } else {
-      // Bónus por polarização e consistência
-      if (polarizedPct >= 75) score += 8;
-      if (runsCount >= 3) score += 7;
-      if (totalKm >= (MIN_VOLUME_KM[experienceLevel]?.[categorizeDistance(distanceKm) || '10k'] || 20)) score += 5;
+      stars = 2;
+      gradeLabel = 'Ajuste Recomendado';
+      statusColor = 'rose';
+    }
 
-      score = Math.min(98, Math.max(45, score));
-
-      if (score >= 90) {
-        stars = 5;
-        gradeLabel = 'Excelente';
-        statusColor = 'emerald';
-      } else if (score >= 80) {
-        stars = 4;
-        gradeLabel = 'Muito Bom';
-        statusColor = 'emerald';
-      } else if (score >= 70) {
-        stars = 3;
-        gradeLabel = 'Sólido';
-        statusColor = 'amber';
-      } else {
-        stars = 2;
-        gradeLabel = 'Ajuste Recomendado';
-        statusColor = 'rose';
-      }
-
-      switch (phaseId) {
-        case 'base':
-          commentary = `Base aeróbica com ${runsCount} corridas (${Math.round(totalKm)} km). ${polarizedPct >= 75 ? 'Excelente disciplina nas zonas de baixa intensidade (Z1/Z2).' : 'Atenção: reduz o ritmo nos treinos fáceis para proteger a base aeróbica.'}`;
-          break;
-        case 'build':
-          commentary = `Fase de construção em bom ritmo (${runsCount} sessões). Foco na tolerância ao limiar e manutenção da progressão semanal abaixo de 10%.`;
-          break;
-        case 'peak':
-          commentary = `Pico de carga com simulação de ritmo de prova. Volume específico atingido com treinos longos chave concluídos.`;
-          break;
-        case 'taper':
-          commentary = `Polimento pré-prova. Redução controlada de volume para recarga total de glicogénio sem perda de sensações de ritmo.`;
-          break;
-        default:
-          commentary = `Execução consistente e registo regular de esforço.`;
-      }
+    let commentary = '';
+    switch (phaseId) {
+      case 'base':
+        commentary = volumeRatio < 0.6
+          ? `Volume realizado (${Math.round(totalKm)} km) abaixo do alvo da fase (${Math.round(expectedPhaseKm)} km). Prioriza aumentar a quilometragem fácil em Z1/Z2.`
+          : `Base aeróbica com ${runsCount} corridas (${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km alvo). ${polarizedPct >= 75 ? 'Excelente disciplina nas zonas de baixa intensidade (Z1/Z2).' : 'Atenção: reduz o ritmo nos treinos fáceis para proteger a base aeróbica.'}`;
+        break;
+      case 'build':
+        commentary = volumeRatio < 0.6
+          ? `Volume de construção (${Math.round(totalKm)} km) abaixo do previsto para suportar o ritmo de prova. Reforça treinos de limiar e rodagem contínua.`
+          : `Fase de construção em bom ritmo (${runsCount} sessões, ${Math.round(totalKm)} km). Foco na tolerância ao limiar e manutenção da progressão semanal.`;
+        break;
+      case 'peak':
+        commentary = `Pico de carga com simulação de ritmo de prova (${Math.round(totalKm)} km). Volume específico atingido com treinos longos chave concluídos.`;
+        break;
+      case 'taper':
+        commentary = `Polimento pré-prova. Redução controlada de volume para recarga total de glicogénio sem perda de sensações de ritmo.`;
+        break;
+      default:
+        commentary = `Execução consistente e registo regular de esforço.`;
     }
 
     return {
@@ -316,7 +360,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: baseDates.endDate,
       state: determinePhaseState(wBaseStart, wBaseEnd, baseDates.startDate, baseDates.endDate),
       focus: 'Volume predominante em Z1/Z2 (≥80% polarizado), reforço muscular e adaptação tendinosa.',
-      evaluation: evaluatePhasePerformance('base', 'Base Aeróbica', baseDates.startDate, baseDates.endDate, determinePhaseState(wBaseStart, wBaseEnd, baseDates.startDate, baseDates.endDate)),
+      evaluation: evaluatePhasePerformance('base', 'Base Aeróbica', baseDates.startDate, baseDates.endDate, determinePhaseState(wBaseStart, wBaseEnd, baseDates.startDate, baseDates.endDate), baseDates.weeksCount),
     },
     {
       id: 'build',
@@ -329,7 +373,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: buildDates.endDate,
       state: determinePhaseState(wBuildStart, wBuildEnd, buildDates.startDate, buildDates.endDate),
       focus: 'Sessões de limiar (Z3/Z4), intervalos de ritmo de prova e treinos com desnível/subidas.',
-      evaluation: evaluatePhasePerformance('build', 'Construção Específica', buildDates.startDate, buildDates.endDate, determinePhaseState(wBuildStart, wBuildEnd, buildDates.startDate, buildDates.endDate)),
+      evaluation: evaluatePhasePerformance('build', 'Construção Específica', buildDates.startDate, buildDates.endDate, determinePhaseState(wBuildStart, wBuildEnd, buildDates.startDate, buildDates.endDate), buildDates.weeksCount),
     },
     {
       id: 'peak',
@@ -342,7 +386,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: peakDates.endDate,
       state: determinePhaseState(wPeakStart, wPeakEnd, peakDates.startDate, peakDates.endDate),
       focus: 'Treino longo mais longo do ciclo, testes de nutrição/hidratação em prova e volume máximo.',
-      evaluation: evaluatePhasePerformance('peak', 'Pico de Carga', peakDates.startDate, peakDates.endDate, determinePhaseState(wPeakStart, wPeakEnd, peakDates.startDate, peakDates.endDate)),
+      evaluation: evaluatePhasePerformance('peak', 'Pico de Carga', peakDates.startDate, peakDates.endDate, determinePhaseState(wPeakStart, wPeakEnd, peakDates.startDate, peakDates.endDate), peakDates.weeksCount),
     },
     {
       id: 'taper',
@@ -357,15 +401,15 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       focus: racePriority === 'a'
         ? `Taper progressivo de ${taperWeeks} semana(s) (-30% a -50% de volume mantendo a intensidade-alvo).`
         : 'Taper curto de 2-4 dias com corte de 20-30% para prova secundária.',
-      evaluation: evaluatePhasePerformance('taper', 'Polimento (Taper)', taperDates.startDate, taperDates.endDate, determinePhaseState(wTaperStart, wTaperEnd, taperDates.startDate, taperDates.endDate)),
+      evaluation: evaluatePhasePerformance('taper', 'Polimento (Taper)', taperDates.startDate, taperDates.endDate, determinePhaseState(wTaperStart, wTaperEnd, taperDates.startDate, taperDates.endDate), taperDates.weeksCount),
     },
     {
       id: 'race_recovery',
       number: 5,
       name: 'Prova & Recuperação',
-      subtitle: 'Dia D & Janela Fisiológica de Regeneração',
-      weeksLabel: `Dia da Prova + ${recoveryDays} dias`,
-      weeksCount: Math.ceil(recoveryDays / 7),
+      subtitle: `Competição & Regeneração Pós-Esforço (${recoveryDays} dias)`,
+      weeksLabel: `Semana ${totalWeeks} + ${recoveryDays}d`,
+      weeksCount: 1,
       startDate: raceDate,
       endDate: planEndDate,
       state: daysToRace <= 0 ? 'active' : 'upcoming',
@@ -386,23 +430,6 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   // Fase atualmente ativa
   const currentPhase = phases.find(p => p.state === 'active') || 
                        (trainingStatus === 'completed' ? phases[phases.length - 1] : phases[0]);
-
-  // ─── Análise Holística da Carol sobre a Evolução do Treino ───────────────────
-  const weeklyVol = recentWeeklyVolume(runs, today);
-  const weeksToRace = Math.floor(Math.max(0, daysToRace) / 7);
-  const viability = assessRaceViability({
-    distanceKm,
-    experienceLevel,
-    weeksToRace,
-    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
-  });
-
-  let readinessLevel = 'green';
-  if (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente')) {
-    readinessLevel = 'red';
-  } else if (viability.flags.length > 0) {
-    readinessLevel = 'yellow';
-  }
 
   // Gera parecer dinâmico da Carol
   let carolOverviewText = '';
