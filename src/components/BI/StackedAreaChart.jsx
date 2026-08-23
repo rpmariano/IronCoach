@@ -91,8 +91,8 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
 
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex items-start mb-3 gap-2">
-        <h3 className="text-[12px] font-bold text-slate-700 flex-1 leading-tight">Composição Corporal (kg)</h3>
+      <div className="flex flex-wrap items-start mb-3 gap-2">
+        <h3 className="text-[12px] font-bold text-slate-200 flex-1 leading-tight">Composição Corporal (kg)</h3>
         <MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área verde se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />
       </div>
       <div className="h-64 relative">

@@ -27,7 +27,7 @@ function PremiumMetricCard({ title, value, unit, subtitle, icon: Icon, color, gr
       <div className="relative z-10">
         <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{title}</h3>
         <div className="flex items-baseline gap-1">
-          <span className="text-2xl font-black text-slate-800 tracking-tight">{value}</span>
+          <span className="text-2xl font-black text-white tracking-tight">{value}</span>
           {unit && <span className="text-xs font-semibold text-slate-500">{unit}</span>}
         </div>
         <p className="text-[10px] text-slate-500 mt-1 font-medium">{subtitle}</p>

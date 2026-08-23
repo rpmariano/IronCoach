@@ -91,8 +91,8 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
 
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex items-start mb-3">
-        <h3 className="text-[12px] font-bold text-slate-700">Evolução VDOT & Previsão de Prova</h3>
+      <div className="flex flex-wrap items-start mb-3">
+        <h3 className="text-[12px] font-bold text-slate-200">Evolução VDOT & Previsão de Prova</h3>
         <MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />
       </div>
       {hasTrend ? (

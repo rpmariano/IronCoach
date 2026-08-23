@@ -21,7 +21,7 @@ export default function TimeFilterBar({ activeRange, onChange, className = '' })
             className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
               isActive 
                 ? 'bg-[var(--mod-nutricao)] text-white shadow-sm' 
-                : 'bg-white/5 backdrop-blur text-slate-600 hover:bg-white/5'
+                : 'bg-white/5 backdrop-blur text-slate-300 hover:bg-white/5'
             }`}
           >
             {option.label}

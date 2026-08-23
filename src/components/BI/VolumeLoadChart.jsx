@@ -91,8 +91,8 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
       <div className="flex justify-between items-start mb-3 gap-2">
-        <div className="flex items-start flex-1">
-          <h3 className="text-[12px] font-bold text-slate-700 leading-tight">Volume-Carga Semanal (kg)</h3>
+        <div className="flex flex-wrap items-start flex-1">
+          <h3 className="text-[12px] font-bold text-slate-200 leading-tight">Volume-Carga Semanal (kg)</h3>
           <MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />
         </div>
         {acwr && (

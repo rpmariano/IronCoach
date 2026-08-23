@@ -56,7 +56,7 @@ export default function PerformanceCompass({ data }) {
     <div className="bg-white/40 backdrop-blur-3xl border border-white/60 p-4 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
       <div className="flex items-center gap-2 mb-4 px-1">
         <Compass className="w-5 h-5 text-indigo-500" />
-        <h3 className="text-base font-black text-slate-800 tracking-tight">Bússola de Desempenho</h3>
+        <h3 className="text-base font-black text-white tracking-tight">Bússola de Desempenho</h3>
       </div>
       
       <div className="space-y-4">

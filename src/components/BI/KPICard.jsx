@@ -39,7 +39,7 @@ export default function KPICard({
       </div>
       
       <div className="flex items-baseline gap-1 mb-1">
-        <span className="text-2xl font-bold text-slate-800">{value}</span>
+        <span className="text-2xl font-bold text-white">{value}</span>
         {unit && <span className="text-xs text-slate-500 font-medium">{unit}</span>}
       </div>
       

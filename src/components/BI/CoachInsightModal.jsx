@@ -81,7 +81,7 @@ export default function CoachInsightModal({ insights, onClose }) {
               key={insight.id || idx}
               className={`rounded-2xl border p-4 backdrop-blur-md shadow-sm flex flex-col gap-2.5 ${cardStyles.container}`}
             >
-              <div className="flex items-start gap-3">
+              <div className="flex flex-wrap items-start gap-3">
                 <div className={`w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 ${cardStyles.iconWrap}`}>
                   <Icon size={16} strokeWidth={2.5} />
                 </div>

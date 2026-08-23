@@ -117,8 +117,8 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
 
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex items-start mb-3">
-        <h3 className="text-[12px] font-bold text-slate-700">Rácio de Carga Aguda:Crónica</h3>
+      <div className="flex flex-wrap items-start mb-3">
+        <h3 className="text-[12px] font-bold text-slate-200">Rácio de Carga Aguda:Crónica</h3>
         <MetricInfo text="O ACWR compara a carga do teu treino na última semana (Aguda) com a média das últimas 4 semanas (Crónica). Mantém-te na zona verde (0.8 a 1.3) para evoluir com segurança. Valores > 1.5 indicam risco elevado de lesão." />
       </div>
       <div className="h-64 relative">
@@ -130,7 +130,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
           plugins={[backgroundBandsPlugin]}
         />
       </div>
-      <div className="flex justify-center items-center gap-5 mt-4 text-[11px] text-slate-600 font-medium w-full">
+      <div className="flex justify-center items-center gap-5 mt-4 text-[11px] text-slate-300 font-medium w-full">
         <span className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-blue-500"></div> Carga Aguda
         </span>

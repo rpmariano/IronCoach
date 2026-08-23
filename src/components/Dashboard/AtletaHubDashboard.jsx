@@ -61,7 +61,7 @@ export default function AtletaHubDashboard() {
 
   return (
     <div className="space-y-6 fade-in pb-8 pt-2">
-      <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2 mb-4 px-1">
+      <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2 mb-4 px-1">
         Atleta Hub
       </h2>
       

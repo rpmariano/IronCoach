@@ -133,7 +133,7 @@ export default function Dashboard({ activeModule }) {
             onClick={() => scrollTo(i)}
             style={activeModule === t.key ? { color: t.color } : undefined}
             className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-300 ${
-              activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-700 hover:bg-white/50'
+              activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-200 hover:bg-white/50'
             }`}
           >
             {t.icon}

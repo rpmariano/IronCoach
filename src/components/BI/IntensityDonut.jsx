@@ -65,14 +65,14 @@ export default function IntensityDonut({ distribution = {}, targetLowPct = 80, c
 
   return (
     <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] flex flex-col items-center ${className}`}>
-      <div className="flex items-start w-full mb-3">
-        <h3 className="text-[12px] font-bold text-slate-700 flex-1">Distribuição de Intensidade</h3>
+      <div className="flex flex-wrap items-start w-full mb-3">
+        <h3 className="text-[12px] font-bold text-slate-200 flex-1">Distribuição de Intensidade</h3>
         <MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />
       </div>
       <div className="w-48 h-48 relative">
         <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
       </div>
-      <div className="flex justify-center items-center gap-4 mt-5 text-[11px] text-slate-600 font-medium w-full">
+      <div className="flex justify-center items-center gap-4 mt-5 text-[11px] text-slate-300 font-medium w-full">
         <span className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm bg-teal-500"></div> Z1-Z2
         </span>
