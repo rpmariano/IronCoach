@@ -165,24 +165,11 @@ export default function NutritionDashboard() {
         activeRange={activeFilter} 
         onChange={setActiveFilter} 
       />
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
-          style={{ background: 'linear-gradient(135deg, var(--mod-nutricao), #10b981)' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-white leading-none">Evolução e BI</h2>
-          <p className="text-[11px] text-slate-400 mt-1">Cumprimento de metas no período</p>
-        </div>
-      </div>
-
       {/* 2x2 KPI Grid */}
       <div className="grid grid-cols-2 gap-3">
         <div 
           onClick={() => setSelectedMacro('calories')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Calorias"
@@ -197,7 +184,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('protein')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Proteína"
@@ -212,7 +199,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('carbs')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Hidratos"
@@ -227,7 +214,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('fat')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Gordura"

@@ -159,6 +159,7 @@ body {
   width: 100%;
   min-width: 0;
   scroll-snap-align: start;
+  overflow: hidden;
 }
 
 /* ===== Animações ===== */
