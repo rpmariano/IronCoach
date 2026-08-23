@@ -15,40 +15,26 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
     }),
     datasets: [
       {
-        label: 'Massa Gorda',
-        data: data.fatMassKg,
-        borderColor: '#ef4444',
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(239, 68, 68, 0.4)';
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
-          gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
-          return gradient;
-        },
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
-      },
-      {
         label: 'Massa Magra',
         data: data.leanMassKg,
-        borderColor: '#059669',
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(5, 150, 105, 0.4)';
-          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-          gradient.addColorStop(0, 'rgba(5, 150, 105, 0.6)');
-          gradient.addColorStop(1, 'rgba(5, 150, 105, 0.05)');
-          return gradient;
-        },
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
         fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        tension: 0.3,
+        pointRadius: data.dates.length > 20 ? 0 : 3,
+        pointHoverRadius: 5,
+        yAxisID: 'yLean',
+      },
+      {
+        label: 'Massa Gorda',
+        data: data.fatMassKg,
+        borderColor: '#f43f5e',
+        backgroundColor: 'rgba(244, 63, 94, 0.15)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: data.dates.length > 20 ? 0 : 3,
+        pointHoverRadius: 5,
+        yAxisID: 'yFat',
       }
     ]
   };
@@ -60,10 +46,10 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       legend: { 
         position: 'top',
         align: 'end',
-        labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle', color: 'rgba(255, 255, 255, 0.7)' }
+        labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', color: 'rgba(255, 255, 255, 0.8)', font: { size: 11 } }
       },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
         titleColor: '#f8fafc',
         bodyColor: '#f8fafc',
         borderColor: 'rgba(255,255,255,0.15)',
@@ -71,14 +57,49 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         padding: 10,
         mode: 'index',
         intersect: false,
+        callbacks: {
+          label: (context) => {
+            const val = context.parsed.y !== null ? Number(context.parsed.y).toFixed(1) : '—';
+            return ` ${context.dataset.label}: ${val} kg`;
+          }
+        }
       }
     },
     scales: {
       x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
-      y: {
-        stacked: true,
+      yLean: {
+        type: 'linear',
+        position: 'left',
+        beginAtZero: false,
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
+        ticks: { 
+          color: '#10b981',
+          callback: (v) => `${Number(v).toFixed(0)} kg`,
+          font: { size: 10 }
+        },
+        title: {
+          display: true,
+          text: 'Massa Magra',
+          color: '#10b981',
+          font: { size: 10, weight: 'bold' }
+        }
+      },
+      yFat: {
+        type: 'linear',
+        position: 'right',
+        beginAtZero: false,
+        grid: { drawOnChartArea: false },
+        ticks: { 
+          color: '#f43f5e',
+          callback: (v) => `${Number(v).toFixed(0)} kg`,
+          font: { size: 10 }
+        },
+        title: {
+          display: true,
+          text: 'Massa Gorda',
+          color: '#f43f5e',
+          font: { size: 10, weight: 'bold' }
+        }
       }
     },
     interaction: {
