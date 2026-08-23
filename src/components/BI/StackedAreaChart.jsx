@@ -27,7 +27,6 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         pointHoverRadius: 6,
         fill: 'origin',
         tension: 0.2,
-        order: 2,
       },
       {
         label: 'Massa Gorda',
@@ -40,7 +39,6 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         pointHoverRadius: 6,
         fill: '-1',
         tension: 0.2,
-        order: 1,
       }
     ]
   };
