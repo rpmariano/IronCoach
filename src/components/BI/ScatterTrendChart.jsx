@@ -60,9 +60,10 @@ export default function ScatterTrendChart({ data = [], className = '' }) {
     },
     scales: {
       x: {
-        title: { display: true, text: 'Ritmo (min/km)' },
+        title: { display: true, text: 'Ritmo (min/km)', color: 'rgba(255, 255, 255, 0.5)' },
         reverse: true, // faster pace on the right (lower seconds)
         ticks: {
+          color: 'rgba(255, 255, 255, 0.5)',
           callback: function(value) {
             return formatPace(value);
           }
@@ -70,8 +71,9 @@ export default function ScatterTrendChart({ data = [], className = '' }) {
         grid: { display: false }
       },
       y: {
-        title: { display: true, text: 'FC Média (bpm)' },
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        title: { display: true, text: 'FC Média (bpm)', color: 'rgba(255, 255, 255, 0.5)' },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       }
     }
   };

@@ -27,21 +27,35 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
 
       // Draw simple annotation in top right
       ctx.save();
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.shadowColor = 'rgba(255,255,255,0.15)';
-      ctx.shadowBlur = 10;
+      
+      // Shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.3)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+      
+      // Background
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
       ctx.beginPath();
       ctx.roundRect(chartArea.right - 130, chartArea.top + 10, 120, 50, 8);
       ctx.fill();
       
+      // Border
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#64748b';
-      ctx.font = '10px system-ui';
-      ctx.fillText(prediction.raceName || 'Previsão Prova', chartArea.right - 120, chartArea.top + 25);
+      ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
       
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 14px system-ui';
-      ctx.fillText(formatTime(prediction.predictedSeconds), chartArea.right - 120, chartArea.top + 45);
+      // Text - Title
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px system-ui';
+      ctx.fillText(prediction.raceName || 'Previsão Prova', chartArea.right - 120, chartArea.top + 26);
+      
+      // Text - Value
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 16px system-ui';
+      ctx.fillText(formatTime(prediction.predictedSeconds), chartArea.right - 120, chartArea.top + 46);
+      
       ctx.restore();
     }
   };
@@ -77,8 +91,8 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       }
     },
     scales: {
-      x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } }
     }
   };
 

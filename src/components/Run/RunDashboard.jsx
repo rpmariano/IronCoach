@@ -170,8 +170,8 @@ export default function RunDashboard() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-      x: { grid: { display: false } }
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
     }
   };
 

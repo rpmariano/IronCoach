@@ -95,13 +95,15 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     },
     scales: {
       x: {
-        grid: { display: false }
+        grid: { display: false },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       },
       load: {
         type: 'linear',
         display: true,
         position: 'left',
-        grid: { display: false }
+        grid: { display: false },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       },
       ratio: {
         type: 'linear',
@@ -110,7 +112,8 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         min: 0,
         grid: {
           color: 'rgba(255, 255, 255, 0.05)'
-        }
+        },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       }
     }
   };
