@@ -267,7 +267,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
 export default function Home() {
   const { showToast } = useToast();
   const {
-    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates,
+    profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId
@@ -276,9 +276,9 @@ export default function Home() {
   const [showInsights, setShowInsights] = useState(false);
 
   const homeInsights = useMemo(() => {
-    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
     return all.filter(i => insightStates[i.id] !== 'understood' && i.module === 'coach');
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
+  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates]);
 
   const handleNav = (tab) => setActiveTab(tab);
 

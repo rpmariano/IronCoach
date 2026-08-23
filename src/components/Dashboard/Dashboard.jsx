@@ -22,11 +22,11 @@ const TABS = [
 ];
 
 export default function Dashboard({ activeModule }) {
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates } = useAppStore();
+  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates, shoes } = useAppStore();
   const [showInsights, setShowInsights] = useState(false);
 
   const insights = useMemo(() => {
-    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile);
+    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
     // Remove os que ja foram "Entendidos" (desativados).
     // Filtra apenas os que não são relativos ao ecrã inicial (ex: adesão ao plano).
     return all.filter(i => insightStates[i.id] !== 'understood' && i.module !== 'coach');

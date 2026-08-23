@@ -74,7 +74,7 @@ export default function Coach() {
     respondToGoalProposal,
     coachIntent,
     setCoachIntent,
-    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates
+    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes
   } = useAppStore();
   const { showToast } = useToast();
 
@@ -96,7 +96,7 @@ export default function Coach() {
 
     try {
       const allInsights = detectCoachInsights(
-        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile
+        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile
       );
       const insightsContext = allInsights.map(i => ({
         title: i.title,
@@ -355,7 +355,7 @@ export default function Coach() {
       // Injeta os insights biométricos ativos no payload para a Carol
       // ter contexto dos alertas que o atleta viu/ignorou/entendeu.
       const allInsights = detectCoachInsights(
-        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems }, profile
+        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile
       );
       const insightsContext = allInsights.map(i => ({
         title: i.title,

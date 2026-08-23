@@ -910,6 +910,18 @@ function detailsFromExtraction(
 
 const VALID_KINDS = new Set(["simples", "treino", "competicao"]);
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/* Par de sapatilhas usado nesta corrida (Perfil → Equipamento). Validado
+   como UUID antes de chegar à BD: um valor mal formado rebentaria o insert
+   inteiro com um erro de sintaxe de uuid, e perder a corrida por causa de um
+   campo opcional seria um mau negócio. A RLS da tabela shoes trata do resto —
+   um id de outro utilizador não passa a foreign key. */
+function shoeId(body: Record<string, unknown>): string | null {
+  const raw = body.shoe_id;
+  return typeof raw === "string" && UUID_RE.test(raw) ? raw : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1090,6 +1102,7 @@ Deno.serve(async (req) => {
             notes: rawNotes,
             name: clientName,
             effort_rpe: effortRpe,
+            shoe_id: shoeId(body),
             distance_km: extraction.distance_km,
             duration_seconds: extraction.duration_seconds,
           })
@@ -1126,6 +1139,7 @@ Deno.serve(async (req) => {
           notes: rawNotes,
           name: clientName,
           effort_rpe: effortRpe,
+          shoe_id: shoeId(body),
           distance_km: extraction.distance_km,
           duration_seconds: extraction.duration_seconds,
         })
@@ -1232,6 +1246,7 @@ Deno.serve(async (req) => {
         notes: rawNotes,
         name: finalName,
         effort_rpe: effortRpe,
+        shoe_id: shoeId(body),
         distance_km: result.extraction.distance_km,
         duration_seconds: result.extraction.duration_seconds,
       })

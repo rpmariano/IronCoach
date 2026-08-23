@@ -186,6 +186,73 @@ describe('detectCoachInsights', () => {
     });
   });
 
+  describe('desgaste das sapatilhas', () => {
+    const shoe = (over = {}) => ({
+      id: 'shoe-1', brand: 'Nike', model: 'Pegasus 40',
+      initial_km: 0, lifespan_km: 700, status: 'ativa', ...over,
+    });
+    const runsWith = (km) => [{ date: iso(1), shoe_id: 'shoe-1', distance_km: km }];
+
+    it('não diz nada sobre um par ainda em bom estado', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(200) }, { weight_kg: 70 });
+      expect(insights.find((i) => i.id.startsWith('shoe_wear_'))).toBeUndefined();
+    });
+
+    it('não gasta um insight no patamar intermédio (75%) — isso é só a barra do armário', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(550) }, { weight_kg: 70 });
+      expect(insights.find((i) => i.id.startsWith('shoe_wear_'))).toBeUndefined();
+    });
+
+    it('avisa quando o par está perto do fim', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(650) }, { weight_kg: 70 });
+      const found = insights.find((i) => i.id === 'shoe_wear_shoe-1');
+      expect(found).toBeTruthy();
+      expect(found.severity).toBe('info');
+      expect(found.message).toContain('Nike Pegasus 40');
+    });
+
+    it('sobe a severidade quando a vida útil já foi excedida', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(800) }, { weight_kg: 70 });
+      const found = insights.find((i) => i.id === 'shoe_wear_shoe-1');
+      expect(found.severity).toBe('warning');
+      expect(found.title).toBe('Sapatilhas fora de prazo');
+    });
+
+    it('o peso do atleta antecipa o aviso no mesmo par e nos mesmos km', () => {
+      const runs = runsWith(600);
+      const leve = detectCoachInsights({ shoes: [shoe()], runs }, { weight_kg: 60 });
+      const pesado = detectCoachInsights({ shoes: [shoe()], runs }, { weight_kg: 95 });
+      expect(leve.find((i) => i.id === 'shoe_wear_shoe-1')).toBeUndefined();
+      expect(pesado.find((i) => i.id === 'shoe_wear_shoe-1').severity).toBe('warning');
+    });
+
+    it('ignora pares aposentados', () => {
+      const insights = detectCoachInsights(
+        { shoes: [shoe({ status: 'aposentada' })], runs: runsWith(900) }, { weight_kg: 70 },
+      );
+      expect(insights.find((i) => i.id.startsWith('shoe_wear_'))).toBeUndefined();
+    });
+
+    it('avisa só sobre o par mais gasto, para não enterrar os outros insights', () => {
+      const shoes = [shoe({ id: 'a' }), shoe({ id: 'b' })];
+      const runs = [
+        { date: iso(1), shoe_id: 'a', distance_km: 690 },
+        { date: iso(1), shoe_id: 'b', distance_km: 660 },
+      ];
+      const found = detectCoachInsights({ shoes, runs }, { weight_kg: 70 })
+        .filter((i) => i.id.startsWith('shoe_wear_'));
+      expect(found).toHaveLength(1);
+      expect(found[0].id).toBe('shoe_wear_a');
+    });
+
+    it('não avisa sobre um par sem vida útil definida, por muitos km que leve', () => {
+      const insights = detectCoachInsights(
+        { shoes: [shoe({ lifespan_km: null })], runs: runsWith(2000) }, { weight_kg: 70 },
+      );
+      expect(insights.find((i) => i.id.startsWith('shoe_wear_'))).toBeUndefined();
+    });
+  });
+
   it('ordena os insights por severidade: critical > warning > info', () => {
     const runs = [
       { date: iso(3), duration_seconds: 6000, effort_rpe: 9 },

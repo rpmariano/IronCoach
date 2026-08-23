@@ -1955,6 +1955,10 @@ export function buildSystemInstruction(
   isInterventionStart: boolean = false,
   interventionStatus: string | null = null,
   interventionReason: string | null = null,
+  // Opcional pelo mesmo motivo dos anteriores: o armário de sapatilhas é
+  // funcionalidade nova e a maior parte dos atletas ainda não tem nenhum par
+  // registado — sem ele a Carol comporta-se exatamente como antes.
+  shoesContext: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2726,6 +2730,7 @@ export function buildSystemInstruction(
   if (gymMetricsLine) sys += `\n${gymMetricsLine}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
   if (acwrLine) sys += `\n${acwrLine}`;
+  if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
 
@@ -2942,6 +2947,60 @@ async function handler(req: Request): Promise<Response> {
       ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
       : null;
 
+    // ── Armário de sapatilhas ────────────────────────────────────────────
+    // O acumulado de cada par é derivado (km iniciais + corridas com este
+    // shoe_id), não uma coluna — mesma regra do cliente, ver
+    // src/utils/shoes.js. A vida útil guardada é a de referência (70 kg) e é
+    // aqui ajustada ao peso real, para a Carol falar em números que batem
+    // certo com o que o atleta vê no armário.
+    const { data: shoeRows } = await sb
+      .from("shoes")
+      .select("id, brand, model, initial_km, lifespan_km, shoe_category, status")
+      .eq("user_id", userId)
+      .eq("status", "ativa");
+
+    let shoesContext: string | null = null;
+    if (shoeRows && shoeRows.length > 0) {
+      const { data: shoeRuns } = await sb
+        .from("runs")
+        .select("shoe_id, distance_km")
+        .eq("user_id", userId)
+        .not("shoe_id", "is", null);
+
+      const kmByShoe = new Map<string, number>();
+      for (const r of (shoeRuns || []) as Array<{ shoe_id: string; distance_km: number | null }>) {
+        const d = Number(r.distance_km);
+        if (!Number.isFinite(d) || d <= 0) continue;
+        kmByShoe.set(r.shoe_id, (kmByShoe.get(r.shoe_id) ?? 0) + d);
+      }
+
+      const weight = Number(profile?.weight_kg);
+      // Igual a weightFactor() em src/utils/shoes.js — se um mudar, o outro
+      // tem de mudar também, senão a Carol e o armário dizem números
+      // diferentes para o mesmo par.
+      const factor = Number.isFinite(weight) && weight > 0
+        ? Math.min(1.15, Math.max(0.70, 70 / weight))
+        : 1;
+
+      const lines = shoeRows.map((sh) => {
+        const km = Math.round(((Number(sh.initial_km) || 0) + (kmByShoe.get(sh.id as string) ?? 0)) * 10) / 10;
+        const baseline = Number(sh.lifespan_km);
+        const name = [sh.brand, sh.model].filter(Boolean).join(" ") || "Sapatilhas sem nome";
+        const cat = sh.shoe_category ? ` (${sh.shoe_category})` : "";
+        if (!Number.isFinite(baseline) || baseline <= 0) {
+          return `- ${name}${cat}: ${km} km acumulados — sem vida útil estimada`;
+        }
+        const lifespan = Math.round(baseline * factor);
+        const pct = Math.round((km / lifespan) * 100);
+        return `- ${name}${cat}: ${km} de ~${lifespan} km (${pct}% da vida útil ajustada ao peso)`;
+      });
+
+      shoesContext =
+        `SAPATILHAS EM USO (armário do atleta):\n${lines.join("\n")}\n` +
+        `Regra: acima de 90% da vida útil a entressola já não absorve como devia e o risco de lesão sobe — nessa altura recomenda trocar de par. ` +
+        `Se o atleta perguntar pelos km de um par, responde com estes números. Não inventes pares que não estejam nesta lista.`;
+    }
+
     // ── Próximas provas agendadas (base da proactividade do Coach) ───────
     // Inclui desde ontem (não só a partir de hoje) para o Coach poder
     // perguntar "como correu?" no dia seguinte a uma prova.
@@ -3141,7 +3200,8 @@ async function handler(req: Request): Promise<Response> {
       firstNameOf(profile?.display_name as string | null | undefined),
       body.is_intervention_start === true,
       profile?.coach_intervention_status ?? null,
-      profile?.coach_intervention_reason ?? null
+      profile?.coach_intervention_reason ?? null,
+      shoesContext
     );
 
     let finalSystemInstruction = systemInstruction;

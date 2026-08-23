@@ -154,6 +154,55 @@ export const useAppStore = create((set, get) => ({
       return plans;
   },
 
+  // ── Armário de sapatilhas (tabela shoes) ───────────────────────────────
+  // O acumulado de km de cada par NÃO vive aqui: é derivado das corridas com
+  // runs.shoe_id a apontar para o par (ver src/utils/shoes.js). Guardar um
+  // contador seria mais uma coisa a dessincronizar sempre que uma corrida é
+  // editada ou apagada.
+  shoes: [],
+
+  reloadShoes: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return [];
+    const { data, error } = await supabase
+      .from('shoes')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) { console.error('Error loading shoes:', error); return []; }
+    set({ shoes: data || [] });
+    return data || [];
+  },
+
+  addShoe: async (shoe) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return false;
+    const { error } = await supabase.from('shoes').insert({ ...shoe, user_id: userId });
+    if (error) { console.error('Error adding shoe:', error); return false; }
+    await get().reloadShoes();
+    return true;
+  },
+
+  updateShoe: async (id, patch) => {
+    const { error } = await supabase.from('shoes').update(patch).eq('id', id);
+    if (error) { console.error('Error updating shoe:', error); return false; }
+    set(s => ({ shoes: s.shoes.map(sh => (sh.id === id ? { ...sh, ...patch } : sh)) }));
+    return true;
+  },
+
+  deleteShoe: async (id) => {
+    const { error } = await supabase.from('shoes').delete().eq('id', id);
+    if (error) { console.error('Error deleting shoe:', error); return false; }
+    // runs.shoe_id é ON DELETE SET NULL — as corridas sobrevivem, só ficam
+    // sem par associado. Espelhar isso já em memória evita que a UI continue
+    // a contar km para um par que deixou de existir.
+    set(s => ({
+      shoes: s.shoes.filter(sh => sh.id !== id),
+      runs: s.runs.map(r => (r.shoe_id === id ? { ...r, shoe_id: null } : r)),
+    }));
+    return true;
+  },
+
   // ── Memória de longo prazo do Coach (tabela coach_notes) ────────────────
   // Factos duradouros sobre o atleta que a Carol tem sempre no prompt. Ao
   // contrário do histórico de conversa, não caem fora de nenhuma janela.
@@ -551,7 +600,8 @@ export const useAppStore = create((set, get) => ({
         { data: coachMsgs },
         { data: raceEvents },
         { data: coachPlans },
-        { data: coachPlanItems }
+        { data: coachPlanItems },
+        { data: shoes }
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -561,7 +611,8 @@ export const useAppStore = create((set, get) => ({
         supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
         supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
         supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
-        supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true })
+        supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
+        supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false })
       ]);
 
       set({
@@ -573,7 +624,8 @@ export const useAppStore = create((set, get) => ({
         coachMessages: coachMsgs || [],
         raceEvents: raceEvents || [],
         coachPlans: coachPlans || [],
-        coachPlanItems: coachPlanItems || []
+        coachPlanItems: coachPlanItems || [],
+        shoes: shoes || []
       });
 
     } catch (err) {

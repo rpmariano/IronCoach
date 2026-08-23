@@ -4,6 +4,7 @@
  */
 import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
+import { shoesNeedingAttention, shoeLabel } from './shoes';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -858,6 +859,29 @@ export function detectCoachInsights(data, profile) {
             });
           }
         }
+      }
+    }
+
+    // 6. Desgaste das sapatilhas
+    // Correr com a entressola gasta aumenta o risco de lesão. O limiar é por
+    // par e já vem ajustado ao peso do atleta (ver utils/shoes.js); aqui só
+    // se escolhe o par mais gasto — avisar sobre três pares ao mesmo tempo
+    // enterrava os outros insights.
+    if (data.shoes?.length > 0) {
+      const [worst] = shoesNeedingAttention(data.shoes, data.runs || [], profile?.weight_kg);
+      // 'atencao' (75%) fica de fora de propósito: dá para o armário mostrar
+      // a barra a amarelo, mas não chega para ocupar um insight do Coach.
+      if (worst && worst.wear.level !== 'atencao') {
+        const excedida = worst.wear.level === 'excedida';
+        insights.push({
+          id: `shoe_wear_${worst.shoe.id}`,
+          severity: excedida ? 'warning' : 'info',
+          title: excedida ? 'Sapatilhas fora de prazo' : 'Sapatilhas perto do fim',
+          message: excedida
+            ? `As ${shoeLabel(worst.shoe)} já levam ${worst.wear.km} km — passaste os ${worst.wear.lifespanKm} km de vida útil estimada para o teu peso. A entressola já não absorve como devia; trocar de par é das formas mais baratas de evitar uma lesão.`
+            : `As ${shoeLabel(worst.shoe)} vão em ${worst.wear.km} km dos ~${worst.wear.lifespanKm} km estimados para o teu peso. Faltam cerca de ${worst.wear.remainingKm} km — vai pensando no par seguinte para não seres apanhado a meio de um bloco de treino.`,
+          metric: 'Km das sapatilhas', value: worst.wear.km, threshold: worst.wear.lifespanKm, module: 'corrida'
+        });
       }
     }
 

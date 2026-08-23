@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera, MessageSquare } from 'lucide-react';
+import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera, MessageSquare, Footprints } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
+import { shoeLabel } from '../../utils/shoes';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
@@ -71,7 +72,7 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns, setNavGuard, activeTab } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard, activeTab, shoes } = useAppStore();
   const [initialTab] = useState(activeTab);
   const { showToast } = useToast();
 
@@ -91,6 +92,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [runTrainingType, setRunTrainingType] = useState(planItem?.training_type || 'continuo');
   const [runDate, setRunDate] = useState(planItem?.planned_date || dateIso || todayISO());
   const [runName, setRunName] = useState(planItem?.title || 'Corrida de Hoje');
+  // Par usado nesta corrida — é daqui que sai o acumulado de km do armário
+  // (Perfil → Equipamento). Fica fora da analyticalSignature de propósito:
+  // trocar o par não muda a análise do Coach, por isso não deve custar uma
+  // reanálise (ver needsReanalysis, mais abaixo).
+  const [shoeId, setShoeId] = useState(null);
+  /* Só pares ativos entram na lista — um par aposentado já não se calça. A
+     exceção é o par que ESTA corrida já tem: se foi aposentado depois de a
+     corrida ter sido registada, tem de continuar a aparecer, senão editar a
+     corrida perdia silenciosamente a associação. */
+  const activeShoes = (shoes || []).filter(s => s.status !== 'aposentada' || s.id === shoeId);
   
   // Basic metrics
   const [runDistance, setRunDistance] = useState(planItem?.target_distance_km ? String(planItem.target_distance_km) : '');
@@ -339,6 +350,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunDuration(r.duration_seconds ? formatDuration(r.duration_seconds) : '');
         setRunEffortRpe(r.effort_rpe || 0);
         setRunNotes(r.notes || '');
+        setShoeId(r.shoe_id || null);
         
         const d = r.details || {};
         setElevationGain(d.elevation_gain_m || '');
@@ -477,6 +489,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           notes: runNotes.trim() ? runNotes.trim() : null,
           training_type: runKind === 'treino' ? runTrainingType : null,
           race_type: runKind === 'competicao' ? completedRaceType : null,
+          shoe_id: shoeId,
         },
       });
       if (error) throw new Error(error);
@@ -645,6 +658,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               notes: runNotes.trim() ? runNotes.trim() : null,
               training_type: runKind === 'treino' ? runTrainingType : null,
               race_type: runKind === 'competicao' ? completedRaceType : null,
+              shoe_id: shoeId,
               distance_km: !isNaN(distVal) ? distVal : null,
               duration_seconds: durSecs,
               elevation_gain_m: parseInt(elevationGain) || null,
@@ -681,7 +695,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           showToast('Corrida reanalisada pelo Coach');
           finishCreateAndGoToCalendar(updatedRun);
         } else {
-          const payload = { date: runDate, name: runName.trim() };
+          const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
           if (error) throw error;
           const currentRun = runs.find(r => r.id === runIdToEdit);
@@ -703,6 +717,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           notes: runNotes.trim() ? runNotes.trim() : null,
           training_type: runKind === 'treino' ? runTrainingType : null,
           race_type: runKind === 'competicao' ? completedRaceType : null,
+          shoe_id: shoeId,
           distance_km: !isNaN(distVal) ? distVal : null,
           duration_seconds: durSecs,
           elevation_gain_m: parseInt(elevationGain) || null,
@@ -889,6 +904,30 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               ))}
             </div>
           </div>
+
+          {/* Sapatilhas usadas — alimenta o acumulado de km do armário
+              (Perfil → Equipamento). Só aparece se houver pares ativos: sem
+              armário montado seria um campo vazio a ocupar espaço. */}
+          {activeShoes.length > 0 && (
+            <div className="mb-4">
+              <label className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+                <Footprints size={14} /> Sapatilhas (opcional)
+              </label>
+              <select
+                value={shoeId || ''}
+                onChange={e => { setShoeId(e.target.value || null); setIsFormDirty(true); }}
+                className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+              >
+                <option value="">Não indicar</option>
+                {activeShoes.map(s => (
+                  <option key={s.id} value={s.id}>{shoeLabel(s)}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1.5">
+                Os km desta corrida somam-se ao par escolhido.
+              </p>
+            </div>
+          )}
 
           <div className="mb-4">
             <label className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">

@@ -284,6 +284,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
    já não existia. */
 describe('RunRegistration — editar corrida existente', () => {
   const onClose = vi.fn();
+  const SHOE_UUID = '11111111-2222-4333-8444-555555555555';
   const EXISTING_RUN = {
     id: 'run-9',
     kind: 'treino',
@@ -312,9 +313,30 @@ describe('RunRegistration — editar corrida existente', () => {
     await waitFor(() => expect(mocks.updateRun).toHaveBeenCalledTimes(1));
     const [payload, id] = mocks.updateRun.mock.calls[0];
     expect(id).toBe('run-9');
-    expect(payload).toEqual({ date: '2026-08-01', name: 'Rodagem longa' });
+    expect(payload).toEqual({ date: '2026-08-01', name: 'Rodagem longa', shoe_id: null });
     expect(mocks.invoke).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  /* As sapatilhas seguem pelo caminho leve de propósito: trocar o par muda
+     o acumulado de km do armário, não a análise da corrida — não faz sentido
+     custar uma chamada ao Gemini. */
+  it('trocar de sapatilhas é update direto, sem reanálise', async () => {
+    useAppStore.setState({
+      profile: PROFILE,
+      runs: [EXISTING_RUN],
+      raceEvents: [],
+      shoes: [{ id: SHOE_UUID, brand: 'Nike', model: 'Pegasus 40', status: 'ativa', initial_km: 0, lifespan_km: 700 }],
+    });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+
+    fireEvent.change(screen.getByDisplayValue('Não indicar'), { target: { value: SHOE_UUID } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+
+    await waitFor(() => expect(mocks.updateRun).toHaveBeenCalledTimes(1));
+    const [payload] = mocks.updateRun.mock.calls[0];
+    expect(payload.shoe_id).toBe(SHOE_UUID);
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
   it('mudar a distância passa pelo Coach e reanalisa', async () => {

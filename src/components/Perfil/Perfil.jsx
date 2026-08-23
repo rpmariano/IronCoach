@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -11,9 +11,10 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import ShoeCabinet from './ShoeCabinet';
 import { useCarouselHaptics } from '../../utils/haptics';
 
-const TAB_KEYS = ['perfil', 'metas', 'coach'];
+const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
 
 // Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
 // Ver 5.3 do PRD sobre escalas de data.
@@ -123,7 +124,7 @@ export default function Perfil() {
   }, [tabIndex]);
 
   // O carrossel (tab-swipe-carousel, align-items:flex-start) fica sempre com
-  // a altura do separador mais alto dos 3 — "Guardar alterações" ficava
+  // a altura do separador mais alto dos 4 — "Guardar alterações" ficava
   // sempre a essa distância fixa do topo, mesmo num separador bem mais curto
   // (ex.: "Metas"), com um vão enorme e vazio até ao botão. Aqui só se
   // ajusta a ALTURA do próprio carrossel à do separador atualmente visível —
@@ -387,7 +388,7 @@ export default function Perfil() {
         <div
           className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out border"
           style={{
-            width: 'calc((100% - 16px) / 3)', // 3 tabs, 2 gaps of 8px
+            width: 'calc((100% - 24px) / 4)', // 4 tabs, 3 gaps of 8px
             transform: `translateX(calc(${tabIndex} * 100% + ${tabIndex * 8}px))`,
             background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
             borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
@@ -396,24 +397,25 @@ export default function Perfil() {
         {[
           { key: 'perfil', label: 'Pessoal', icon: User },
           { key: 'metas', label: 'Metas', icon: Target },
+          { key: 'equipamento', label: 'Equipa.', icon: Footprints },
           { key: 'coach', label: 'Coach', icon: Bot },
         ].map(t => (
           <button
             key={t.key}
             onClick={() => requestTabChange(t.key)}
             style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
-            className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-lg transition-colors duration-300 ${
+            className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
               tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
-            <t.icon size={14} /> {t.label}
+            <t.icon size={13} /> {t.label}
           </button>
         ))}
       </div>
 
       {leaveModal}
 
-      {/* Separadores lado a lado, como o Dashboard — os 3 ficam sempre
+      {/* Separadores lado a lado, como o Dashboard — os 4 ficam sempre
           montados (partilham o mesmo draft/isDirty, nada se perde ao
           ficarem lado a lado) e o scroll nativo com snap trata do resto. */}
       <div
@@ -716,7 +718,15 @@ export default function Perfil() {
           </div>
       </div>
 
+      {/* Equipamento — ao contrário dos outros separadores, este não escreve
+          no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
+          shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
+          continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
+          <ShoeCabinet />
+      </div>
+
+      <div ref={(el) => { pageRefs.current[3] = el; }} className="tab-swipe-page space-y-4">
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
@@ -791,9 +801,10 @@ export default function Perfil() {
       </div>
       </div>
 
-      {/* Um só botão, fora do carrossel — os 3 separadores partilham o
+      {/* Um só botão, fora do carrossel — Pessoal/Metas/Coach partilham o
           mesmo rascunho, por isso "Guardar alterações" já grava tudo o
-          que estiver por gravar em qualquer um deles, não só no visível. */}
+          que estiver por gravar em qualquer um deles, não só no visível.
+          O Equipamento é a exceção: grava-se a si próprio, par a par. */}
       {saveButton}
     </div>
   );
