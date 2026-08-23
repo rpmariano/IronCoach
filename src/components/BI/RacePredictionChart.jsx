@@ -10,7 +10,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
     const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    return h > 0 ? `${h}:${m}:${s}` : `${m}m${s}s`;
+    return h > 0 ? `${h}h${m}:${s} min` : `${m}:${s} min`;
   };
 
   // Deduplicate: keep only the best (highest) VDOT per unique date
