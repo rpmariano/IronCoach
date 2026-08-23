@@ -33,9 +33,9 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
       };
 
       const sample = dailyData[0];
-      drawLine(sample.proteinTarget, '#1e3a8a'); // Dark blue for protein
-      drawLine(sample.carbsTarget, '#422006'); // Dark brown for carbs
-      drawLine(sample.fatTarget, '#831843'); // Dark pink for fat
+      drawLine(sample.proteinTarget, '#3c6cdd'); // Match protein bar
+      drawLine(sample.carbsTarget, '#8b8118'); // Match carbs bar
+      drawLine(sample.fatTarget, '#dd3cb7'); // Match fat bar
     }
   };
 
@@ -91,7 +91,15 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
     },
     scales: {
       x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+      y: { 
+        grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
+        beginAtZero: true,
+        suggestedMax: dailyData.length > 0 ? Math.max(
+          dailyData[0].proteinTarget || 0, 
+          dailyData[0].carbsTarget || 0, 
+          dailyData[0].fatTarget || 0
+        ) * 1.1 : undefined
+      }
     }
   };
 
