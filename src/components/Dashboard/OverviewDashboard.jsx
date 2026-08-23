@@ -63,13 +63,23 @@ export default function OverviewDashboard({ scrollToTab }) {
   const weekSessions = weekGymSessions.length;
   const weekClasses = weekGymSessions.filter(s => s.kind === 'aula').length;
   const weekStrengthSessions = weekSessions - weekClasses;
+  // Uma série fica gravada mesmo sem peso preenchido (flattenExercises só
+  // ignora a linha se reps E peso vierem os dois vazios — ver
+  // GymRegistration.jsx) — é o caso normal de exercícios de peso do corpo
+  // (flexões, dominadas, prancha). "Sem séries com peso registadas" nesse
+  // caso soava a esquecimento quando o atleta registou mesmo o treino.
+  const weekStrengthHasSets = weekGymSessions.some(
+    s => s.kind !== 'aula' && (s.workout_session_sets || []).length > 0
+  );
   const gymSubtitle = gymStats?.totalVolumeLoad > 0
     ? `${Math.round(gymStats.totalVolumeLoad / weekSessions).toLocaleString('pt-PT')} kg/sessão em média`
-    : weekStrengthSessions > 0
-      ? 'Sem séries com peso registadas'
-      : weekClasses > 0
-        ? `${weekClasses} aula${weekClasses !== 1 ? 's' : ''} de ginásio esta semana`
-        : 'Sem treinos esta semana';
+    : weekStrengthHasSets
+      ? 'Treino sem carga externa (peso do corpo)'
+      : weekStrengthSessions > 0
+        ? 'Sem séries com peso registadas'
+        : weekClasses > 0
+          ? `${weekClasses} aula${weekClasses !== 1 ? 's' : ''} de ginásio esta semana`
+          : 'Sem treinos esta semana';
 
   // ── Nutrição ──────────────────────────────────────────
   const adherence = useMemo(() =>
