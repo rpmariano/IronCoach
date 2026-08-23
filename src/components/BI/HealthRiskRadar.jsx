@@ -2,7 +2,15 @@ import React, { useMemo } from 'react';
 import ACWRChart from './ACWRChart';
 import EnergyAvailabilityChart from './EnergyAvailabilityChart';
 import { calculateACWRHistory, calculateEnergyAvailability } from '../../utils/biEngine';
-import { Activity, Flame, ShieldAlert, Info } from 'lucide-react';
+import { Activity } from 'lucide-react';
+import AnalysisAlert from './AnalysisAlert';
+
+function getACWRSeverity(acwr) {
+  if (acwr >= 0.8 && acwr <= 1.3) return 'success';
+  if (acwr > 1.3 && acwr < 1.5) return 'warning';
+  if (acwr >= 1.5) return 'critical';
+  return 'info';
+}
 
 function getACWRAnalysis(acwrData) {
   if (!acwrData || acwrData.length === 0) return null;
@@ -10,13 +18,13 @@ function getACWRAnalysis(acwrData) {
   const acwr = last.ratio || 0;
   
   if (acwr >= 0.8 && acwr <= 1.3) {
-    return { title: 'Sweet Spot (Ideal)', desc: `O teu rácio é ${acwr.toFixed(2)}. A carga aguda (esta semana) está perfeitamente equilibrada com a carga crónica (últimas 4 semanas). O risco de lesão é mínimo!`, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
+    return { title: 'Sweet Spot (Ideal)', desc: `O teu rácio é ${acwr.toFixed(2)}. A carga aguda (esta semana) está perfeitamente equilibrada com a carga crónica (últimas 4 semanas). O risco de lesão é mínimo!`, severity: 'success' };
   } else if (acwr > 1.3 && acwr < 1.5) {
-    return { title: 'Alerta de Sobrecarga', desc: `O teu rácio é ${acwr.toFixed(2)}. Estás na "Zona de Cuidado". O treino recente aumentou depressa face à tua fundação aeróbica.`, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' };
+    return { title: 'Alerta de Sobrecarga', desc: `O teu rácio é ${acwr.toFixed(2)}. Estás na "Zona de Cuidado". O treino recente aumentou depressa face à tua fundação aeróbica.`, severity: 'warning' };
   } else if (acwr >= 1.5) {
-    return { title: 'Risco Elevado de Lesão', desc: `O teu rácio é ${acwr.toFixed(2)}. Ultrapassaste o limite superior (1.5). O risco de lesão aumentou drasticamente nas próximas 4 semanas.`, color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' };
+    return { title: 'Risco Elevado de Lesão', desc: `O teu rácio é ${acwr.toFixed(2)}. Ultrapassaste o limite superior (1.5). O risco de lesão aumentou drasticamente nas próximas 4 semanas.`, severity: 'critical' };
   } else {
-    return { title: 'Des-treino / Carga Baixa', desc: `O teu rácio é ${acwr.toFixed(2)} (<0.8). Estás a treinar abaixo da tua capacidade recente. Aumenta gradualmente.`, color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' };
+    return { title: 'Des-treino / Carga Baixa', desc: `O teu rácio é ${acwr.toFixed(2)} (<0.8). Estás a treinar abaixo da tua capacidade recente. Aumenta gradualmente.`, severity: 'info' };
   }
 }
 
@@ -34,38 +42,21 @@ export default function HealthRiskRadar({ data }) {
   const renderREDSAlert = () => {
     if (!eaData || eaData.average === 0) return null;
 
-    let alertStyle = "bg-emerald-50 border-emerald-200 text-emerald-800";
-    let iconColor = "text-emerald-500";
-    let title = "Energia Adequada";
+    let severity = 'success';
+    let title = 'Energia Adequada';
     let message = `A tua EA média (3 dias) é ${eaData.average} kcal/kg. Excelente para suportar o treino e saúde.`;
 
     if (eaData.isAtRisk || eaData.average < 30) {
-      alertStyle = "bg-rose-50 border-rose-200 text-rose-800";
-      iconColor = "text-rose-500";
-      title = "ALERTA RED-S";
+      severity = 'critical';
+      title = 'Alerta RED-S';
       message = `A tua EA média (3 dias) é ${eaData.average} kcal/kg. Nível crítico. Aumenta a ingestão de hidratos hoje.`;
     } else if (eaData.average < 45) {
-      alertStyle = "bg-amber-50 border-amber-200 text-amber-800";
-      iconColor = "text-amber-500";
-      title = "Atenção: Energia Subótima";
+      severity = 'warning';
+      title = 'Atenção: Energia Subótima';
       message = `A tua EA média (3 dias) é ${eaData.average} kcal/kg. Pode ser insuficiente se aumentares o volume.`;
     }
 
-    return (
-      <div className={`mt-2 p-4 rounded-2xl border shadow-sm flex items-start gap-3 ${alertStyle}`}>
-        <div className="mt-0.5">
-          {eaData.average < 30 ? (
-            <ShieldAlert className={`w-5 h-5 ${iconColor}`} />
-          ) : (
-            <Flame className={`w-5 h-5 ${iconColor}`} />
-          )}
-        </div>
-        <div>
-          <h4 className="text-sm font-bold uppercase tracking-tight mb-1">{title}</h4>
-          <p className="text-[13px] font-medium leading-snug opacity-90">{message}</p>
-        </div>
-      </div>
-    );
+    return <AnalysisAlert title={title} desc={message} severity={severity} />;
   };
 
   const acwrAnalysis = getACWRAnalysis(acwrData);
@@ -81,14 +72,8 @@ export default function HealthRiskRadar({ data }) {
         <>
           <ACWRChart weeklyData={acwrData} />
           {acwrAnalysis && (
-            <div className={`mt-2 mb-6 p-4 rounded-2xl border ${acwrAnalysis.bg} shadow-sm`}>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Info className={`w-4 h-4 ${acwrAnalysis.color}`} />
-                <span className={`text-sm font-bold ${acwrAnalysis.color}`}>{acwrAnalysis.title}</span>
-              </div>
-              <p className={`text-xs ${acwrAnalysis.color} opacity-90 leading-relaxed`}>
-                {acwrAnalysis.desc}
-              </p>
+            <div className="mb-4">
+              <AnalysisAlert title={acwrAnalysis.title} desc={acwrAnalysis.desc} severity={acwrAnalysis.severity} />
             </div>
           )}
         </>

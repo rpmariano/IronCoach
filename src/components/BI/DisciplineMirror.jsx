@@ -2,16 +2,17 @@ import React, { useMemo } from 'react';
 import { calculateTrainingDistribution, calculateMacroAdherence } from '../../utils/biEngine';
 import IntensityDonut from './IntensityDonut';
 import MacroComplianceChart from './MacroComplianceChart';
-import { ShieldCheck, Info } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import AnalysisAlert from './AnalysisAlert';
 
 function getIntensityAnalysis(dist) {
   if (!dist || (dist.lowIntensityPct === 0 && dist.highIntensityPct === 0)) return null;
   if (dist.isCompliant) {
-    return { title: 'Polarização Excelente', desc: 'Estás a cumprir a regra 80/20 com mestria. Estás a construir base aeróbica sem acumular fadiga extrema!', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
+    return { title: 'Polarização Excelente', desc: 'Estás a cumprir a regra 80/20 com mestria. Estás a construir base aeróbica sem acumular fadiga extrema!', severity: 'success' };
   } else if (dist.highIntensityPct > (100 - dist.targetLowPct + 5)) {
-    return { title: 'Sobrecarga de Intensidade', desc: `Estás a passar ${dist.highIntensityPct}% do tempo em alta intensidade (alvo: <${100 - dist.targetLowPct}%). Risco elevado de overtraining e quebra de performance.`, color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' };
+    return { title: 'Sobrecarga de Intensidade', desc: `Estás a passar ${dist.highIntensityPct}% do tempo em alta intensidade (alvo: <${100 - dist.targetLowPct}%). Risco elevado de overtraining e quebra de performance.`, severity: 'critical' };
   } else {
-    return { title: 'Treino Demasiado Leve', desc: `Tens ${dist.lowIntensityPct}% de treino leve. Falta um pouco de estímulo intenso (Zonas 4/5) para evoluir o teu VDOT máximo.`, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' };
+    return { title: 'Treino Demasiado Leve', desc: `Tens ${dist.lowIntensityPct}% de treino leve. Falta um pouco de estímulo intenso (Zonas 4/5) para evoluir o teu VDOT máximo.`, severity: 'warning' };
   }
 }
 
@@ -21,13 +22,13 @@ function getNutritionAnalysis(nutri) {
   const c = nutri.carbs.compliance_pct;
   
   if (p >= 90 && c >= 90) {
-    return { title: 'Nutrição Impecável', desc: 'Estás a bater os teus alvos de Proteína e Hidratos de forma exemplar. A tua recuperação e níveis de energia estão otimizados!', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
+    return { title: 'Nutrição Impecável', desc: 'Estás a bater os teus alvos de Proteína e Hidratos de forma exemplar. A tua recuperação e níveis de energia estão otimizados!', severity: 'success' };
   } else if (p < 80) {
-    return { title: 'Falta de Proteína', desc: `A tua ingestão proteica média está em apenas ${p}% do alvo. Estás a comprometer a reconstrução muscular pós-treino!`, color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' };
+    return { title: 'Falta de Proteína', desc: `A tua ingestão proteica média está em apenas ${p}% do alvo. Estás a comprometer a reconstrução muscular pós-treino!`, severity: 'critical' };
   } else if (c < 80) {
-    return { title: 'Falta de Combustível', desc: `Estás a ingerir apenas ${c}% dos hidratos recomendados. Podes vir a "bater na parede" (falta de glicogénio) nos treinos mais longos.`, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' };
+    return { title: 'Falta de Combustível', desc: `Estás a ingerir apenas ${c}% dos hidratos recomendados. Podes vir a "bater na parede" (falta de glicogénio) nos treinos mais longos.`, severity: 'warning' };
   }
-  return { title: 'Consistência Razoável', desc: 'Estás no caminho certo, mas tenta aproximar-te um pouco mais das linhas tracejadas (alvos) todos os dias para máxima evolução.', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' };
+  return { title: 'Consistência Razoável', desc: 'Estás no caminho certo, mas tenta aproximar-te um pouco mais das linhas tracejadas (alvos) todos os dias para máxima evolução.', severity: 'info' };
 }
 
 export default function DisciplineMirror({ data, profile }) {
@@ -50,21 +51,13 @@ export default function DisciplineMirror({ data, profile }) {
         <ShieldCheck className="w-5 h-5 text-emerald-500" />
         <h3 className="text-base font-black text-white tracking-tight">Espelho da Disciplina</h3>
       </div>
-      
+
       <div className="space-y-4">
         {runs && runs.length > 0 ? (
           <>
             <IntensityDonut distribution={intensityDist} targetLowPct={80} />
             {intAnalysis && (
-              <div className={`p-4 rounded-2xl border ${intAnalysis.bg} shadow-sm`}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Info className={`w-4 h-4 ${intAnalysis.color}`} />
-                  <span className={`text-sm font-bold ${intAnalysis.color}`}>{intAnalysis.title}</span>
-                </div>
-                <p className={`text-xs ${intAnalysis.color} opacity-90 leading-relaxed`}>
-                  {intAnalysis.desc}
-                </p>
-              </div>
+              <AnalysisAlert title={intAnalysis.title} desc={intAnalysis.desc} severity={intAnalysis.severity} />
             )}
           </>
         ) : (
@@ -77,15 +70,7 @@ export default function DisciplineMirror({ data, profile }) {
           <>
             <MacroComplianceChart dailyData={nutritionData.dailyBreakdown} />
             {nutAnalysis && (
-              <div className={`p-4 rounded-2xl border ${nutAnalysis.bg} shadow-sm`}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Info className={`w-4 h-4 ${nutAnalysis.color}`} />
-                  <span className={`text-sm font-bold ${nutAnalysis.color}`}>{nutAnalysis.title}</span>
-                </div>
-                <p className={`text-xs ${nutAnalysis.color} opacity-90 leading-relaxed`}>
-                  {nutAnalysis.desc}
-                </p>
-              </div>
+              <AnalysisAlert title={nutAnalysis.title} desc={nutAnalysis.desc} severity={nutAnalysis.severity} />
             )}
           </>
         ) : (
