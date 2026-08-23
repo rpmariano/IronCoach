@@ -110,7 +110,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
   }, [points, selectedMetric]);
 
   const darkScales = {
-    y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
     x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
   };
 
@@ -151,7 +151,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
       {
         label: 'EWMA (Tendência)',
         data: weightTrendData.movingAverage.map(p => p.weight),
-        borderColor: 'var(--mod-corpo)',
+        borderColor: '#6366f1',
         borderWidth: 3,
         pointRadius: 0,
         tension: 0.4,
@@ -161,8 +161,8 @@ export default function BodyDashboard({ onGoToCalendar }) {
         label: 'Pesagens (Raw)',
         data: weightTrendData.rawPoints.map(p => p.weight),
         borderColor: 'transparent',
-        backgroundColor: 'rgba(99, 102, 241, 0.4)',
-        pointBackgroundColor: 'rgba(99, 102, 241, 0.4)',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
+        pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
         pointRadius: 4,
         borderWidth: 0,
         tension: 0,
