@@ -17,11 +17,13 @@ export default function MetricInfo({ text }) {
       </button>
       
       <div 
-        className={`overflow-hidden transition-all duration-300 ease-in-out block ${isOpen ? 'max-h-32 opacity-100 mt-2 mb-4' : 'max-h-0 opacity-0 m-0'}`}
+        className={`grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-2 mb-4' : 'grid-rows-[0fr] opacity-0 m-0'}`}
       >
-        <div className="bg-cyan-50 text-cyan-900 text-[11px] leading-relaxed p-3 rounded-xl border border-cyan-100 flex items-start gap-2 relative">
-          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-cyan-500" />
-          <p className="flex-1 font-medium">{text}</p>
+        <div className="overflow-hidden">
+          <div className="bg-cyan-50 text-cyan-900 text-[11px] leading-relaxed p-3 rounded-xl border border-cyan-100 flex items-start gap-2 relative">
+            <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-cyan-500" />
+            <p className="flex-1 font-medium">{text}</p>
+          </div>
         </div>
       </div>
     </>
