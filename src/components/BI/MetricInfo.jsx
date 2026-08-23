@@ -1,15 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Info } from 'lucide-react';
 
 export default function MetricInfo({ text }) {
   const [isOpen, setIsOpen] = useState(false);
+  const id = useId();
+
+  useEffect(() => {
+    const handleOtherOpen = (e) => {
+      if (e.detail !== id && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener('metricInfoOpened', handleOtherOpen);
+    return () => window.removeEventListener('metricInfoOpened', handleOtherOpen);
+  }, [id, isOpen]);
+
+  const toggle = (e) => {
+    e.preventDefault();
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState) {
+      window.dispatchEvent(new CustomEvent('metricInfoOpened', { detail: id }));
+    }
+  };
 
   if (!text) return null;
 
   return (
     <>
       <button 
-        onClick={(e) => { e.preventDefault(); setIsOpen(!isOpen); }}
+        onClick={toggle}
         className={`inline-flex ml-1.5 align-text-bottom rounded-full p-0.5 transition-all ${isOpen ? 'text-cyan-500 bg-cyan-50' : 'text-slate-400 active:bg-slate-100'}`}
         aria-label="Mais informações"
       >
