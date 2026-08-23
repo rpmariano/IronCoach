@@ -75,7 +75,7 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
     }
   }, [scrollRef, changeCard]);
 
-  const scrollTo = useCallback((idx) => {
+  const scrollTo = useCallback((idx, instant = false) => {
     const targetIdx = Math.max(0, Math.min(itemCount - 1, idx));
     if (targetIdx !== activeIndexRef.current) {
       changeCard(targetIdx);
@@ -92,7 +92,7 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
         programmaticScrollRef.current = false;
       }, 500);
       if (typeof scrollRef.current.scrollTo === 'function') {
-        scrollRef.current.scrollTo({ left: targetIdx * (scrollRef.current.offsetWidth || 0), behavior: 'smooth' });
+        scrollRef.current.scrollTo({ left: targetIdx * (scrollRef.current.offsetWidth || 0), behavior: instant ? 'instant' : 'smooth' });
       } else {
         scrollRef.current.scrollLeft = targetIdx * (scrollRef.current.offsetWidth || 0);
       }
