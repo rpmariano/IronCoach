@@ -1,84 +1,39 @@
 import React, { useMemo } from 'react';
-import { getVDOTTrend, calculateWeightTrend, calculate1RMProgression, calculateWeeklyVolume } from '../../utils/biEngine';
+import { getVDOTTrend, calculateWeightTrend } from '../../utils/biEngine';
 import CrossMetricsChart from './CrossMetricsChart';
-import { Compass } from 'lucide-react';
-import { Scatter } from 'react-chartjs-2';
-import MetricInfo from './MetricInfo';
+import { Compass, Info } from 'lucide-react';
 
-// Custom Scatter Chart for Hybrid Strength
-function HybridStrengthChart({ data, className = '' }) {
-  const chartData = {
-    datasets: [
-      {
-        label: 'Sessões',
-        data: data.map(d => ({
-          x: d.volKm,
-          y: d.rm1,
-          rawDate: d.date
-        })),
-        backgroundColor: 'rgba(250, 204, 21, 0.6)', // var(--mod-ginasio-to)
-        borderColor: '#eab308',
-        pointRadius: 6,
-        pointHoverRadius: 8,
-      }
-    ]
-  };
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        titleColor: '#f8fafc',
-        bodyColor: '#f8fafc',
-        borderColor: 'rgba(255,255,255,0.15)',
-        borderWidth: 1,
-        padding: 10,
-        callbacks: {
-          label: (context) => {
-            const pt = context.raw;
-            return ` ${pt.x} km/sem → ${Math.round(pt.y)} kg (1RM)`;
-          }
-        }
-      }
-    },
-    scales: {
-      x: {
-        title: { display: true, text: 'Volume Corrida (km/sem)', color: '#64748b' },
-        grid: { display: false }
-      },
-      y: {
-        title: { display: true, text: '1RM Estimado (kg)', color: '#64748b' },
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }
-      }
-    }
-  };
-
-  return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex items-start mb-3">
-        <h3 className="text-[12px] font-bold text-slate-700">Manutenção de Força Híbrida</h3>
-        <MetricInfo text="Cruza o volume semanal de corrida com a tua força (1RM) em exercícios compostos no ginásio. Atletas híbridos querem ver a linha reta ou subir, garantindo que a corrida não canibaliza a força." />
-      </div>
-      <div className="h-64 relative">
-        <Scatter data={chartData} options={options} />
-      </div>
-    </div>
-  );
+function getAeroWeightAnalysis(data) {
+  if (!data || data.length < 2) return null;
+  const first = data[0];
+  const last = data[data.length - 1];
+  
+  const vdotDiff = last.vdot - first.vdot;
+  const weightDiff = last.weight - first.weight;
+  
+  if (vdotDiff >= 0 && weightDiff < 0) {
+    return { title: 'Evolução Perfeita', desc: 'A tua performance aeróbica subiu (ou estabilizou) enquanto o peso desceu. O emagrecimento está a traduzir-se em eficácia!', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
+  }
+  if (vdotDiff > 0 && weightDiff >= 0) {
+    return { title: 'Motor Forte', desc: 'A tua performance aeróbica evoluiu mesmo sem perda de peso. O treino está a fazer efeito!', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' };
+  }
+  if (vdotDiff < 0 && weightDiff < 0) {
+    return { title: 'Atenção ao Défice', desc: 'Estás a perder peso, mas o teu VDOT caiu. Atenção ao défice calórico excessivo (risco de RED-S) ou falta de recuperação muscular.', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' };
+  }
+  if (vdotDiff < 0 && weightDiff >= 0) {
+    return { title: 'Desempenho em Queda', desc: 'A performance caiu e o peso não desceu. O aumento de peso pode estar a prejudicar o teu VDOT, ou há fadiga acumulada. Revê a nutrição e o descanso.', color: 'text-rose-700', bg: 'bg-rose-50 border-rose-200' };
+  }
+  return null;
 }
 
 export default function PerformanceCompass({ data }) {
-  const { runs, bodyAssessments, gymSessions } = data;
+  const { runs, bodyAssessments } = data;
 
   // 1. Eficiência Aeróbica vs Peso Suavizado
   const aeroVsWeightData = useMemo(() => {
     const vdotData = getVDOTTrend(runs || []);
     const weightData = calculateWeightTrend(bodyAssessments || [])?.movingAverage || [];
     
-    // We need to synchronize the dates to show them on the same X-axis.
-    // Let's create a combined timeline based on VDOT entries, matching with the closest EWMA weight.
     const combined = [];
     vdotData.forEach(v => {
       const closestWeight = weightData.reduce((best, w) => {
@@ -95,32 +50,7 @@ export default function PerformanceCompass({ data }) {
     return combined;
   }, [runs, bodyAssessments]);
 
-  // 2. Força Híbrida (Agachamento/Base vs Volume Semanal Corrida)
-  const hybridStrengthData = useMemo(() => {
-    // Pegamos no histórico de um composto base, por ex: Agachamento.
-    // O ideal seria que o exercício base viesse do perfil, mas usamos 'Agachamento' como padrão.
-    const rmProgression = calculate1RMProgression(gymSessions || [], 'Agachamento');
-    const weeklyVol = calculateWeeklyVolume(runs || []);
-    
-    const combined = [];
-    rmProgression.forEach(rm => {
-      // Find the week this 1RM was performed in
-      const rmDate = new Date(rm.date);
-      // We'll just look for a week in weeklyVol that contains this date, or just match by nearest week start.
-      // weeklyVol uses 'yyyy-MM-dd' string for the monday of the week.
-      const nearestWeek = weeklyVol.reduce((best, w) => {
-        const diff = Math.abs(new Date(w.weekLabel) - rmDate);
-        return (!best || diff < best.diff) ? { vol: w.distanceKm, diff } : best;
-      }, null);
-
-      // Apenas aceita se a semana de corrida for a mesma ou vizinha (até 14 dias de diferença)
-      if (nearestWeek && nearestWeek.vol > 0 && nearestWeek.diff <= 14 * 86400000) {
-        combined.push({ date: rm.date, rm1: rm.estimated1RM, volKm: nearestWeek.vol });
-      }
-    });
-    
-    return combined;
-  }, [gymSessions, runs]);
+  const analysis = useMemo(() => getAeroWeightAnalysis(aeroVsWeightData), [aeroVsWeightData]);
 
   return (
     <div className="bg-white/40 backdrop-blur-3xl border border-white/60 p-4 rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
@@ -131,32 +61,39 @@ export default function PerformanceCompass({ data }) {
       
       <div className="space-y-4">
         {aeroVsWeightData.length > 1 ? (
-          <CrossMetricsChart
-            title="Eficiência Aeróbica vs. Peso Suavizado (EWMA)"
-            leftData={{
-              label: 'Performance (VDOT)',
-              data: aeroVsWeightData.map(d => ({ x: d.date, y: d.vdot })),
-              color: '#c026d3', // Magenta
-              unit: ''
-            }}
-            rightData={{
-              label: 'Peso EWMA (kg)',
-              data: aeroVsWeightData.map(d => ({ x: d.date, y: d.weight })),
-              color: '#6366f1', // Indigo
-              unit: 'kg'
-            }}
-          />
+          <>
+            <CrossMetricsChart
+              title="Eficiência Aeróbica vs. Peso Suavizado (EWMA)"
+              helpText="Cruza a tua performance aeróbica (VDOT) estimada pelo ritmo e pulsação das corridas, com o teu Peso Real. O peso é suavizado usando uma Média Móvel Exponencial (EWMA) para eliminar o ruído das flutuações diárias de água e glicogénio. O objetivo é veres o VDOT a subir!"
+              leftData={{
+                label: 'Performance (VDOT)',
+                data: aeroVsWeightData.map(d => ({ x: d.date, y: d.vdot })),
+                color: '#c026d3', // Magenta
+                unit: ''
+              }}
+              rightData={{
+                label: 'Peso EWMA (kg)',
+                data: aeroVsWeightData.map(d => ({ x: d.date, y: d.weight })),
+                color: '#6366f1', // Indigo
+                unit: 'kg'
+              }}
+            />
+            
+            {analysis && (
+              <div className={`p-4 rounded-2xl border ${analysis.bg} shadow-sm`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Info className={`w-4 h-4 ${analysis.color}`} />
+                  <span className={`text-sm font-bold ${analysis.color}`}>{analysis.title}</span>
+                </div>
+                <p className={`text-xs ${analysis.color} opacity-90 leading-relaxed`}>
+                  {analysis.desc}
+                </p>
+              </div>
+            )}
+          </>
         ) : (
           <div className="h-48 flex items-center justify-center bg-white/20 rounded-2xl border border-white/40">
             <p className="text-xs font-medium text-slate-500">Regista avaliações corporais e treinos intervalados para analisar a eficiência aeróbica.</p>
-          </div>
-        )}
-
-        {hybridStrengthData.length > 0 ? (
-          <HybridStrengthChart data={hybridStrengthData} />
-        ) : (
-          <div className="h-48 flex items-center justify-center bg-white/20 rounded-2xl border border-white/40">
-            <p className="text-xs font-medium text-slate-500">Regista treinos de Agachamento e Corridas para veres a força híbrida.</p>
           </div>
         )}
       </div>
