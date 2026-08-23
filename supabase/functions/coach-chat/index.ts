@@ -3081,7 +3081,7 @@ async function handler(req: Request): Promise<Response> {
         ? Math.min(1.15, Math.max(0.70, 70 / weight))
         : 1;
 
-      const lines = shoeRows.map((sh) => {
+      const lines = shoeRows.map((sh: any) => {
         const km = Math.round(((Number(sh.initial_km) || 0) + (kmByShoe.get(sh.id as string) ?? 0)) * 10) / 10;
         const baseline = Number(sh.lifespan_km);
         const name = [sh.brand, sh.model].filter(Boolean).join(" ") || "Sapatilhas sem nome";
