@@ -151,7 +151,7 @@ export default function GymDashboard() {
       </div>
 
       {sessionsInRange.length === 0 ? (
-        <div className="min-h-[30vh] flex flex-col items-center justify-center text-center px-6 py-12 rounded-3xl bg-white/5 border border-white/10">
+        <div className="min-h-[30vh] flex flex-col items-center justify-center text-center px-6 py-12 rounded-2xl bg-white/5 border border-white/10">
           <Dumbbell className="w-10 h-10 text-slate-500 mb-3" />
           <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
             Ainda não há treinos neste período. Termina uma sessão de treino para veres a tua evolução aqui.
