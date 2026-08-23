@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import ACWRChart from './ACWRChart';
+import EnergyAvailabilityChart from './EnergyAvailabilityChart';
 import { calculateACWRHistory, calculateEnergyAvailability } from '../../utils/biEngine';
 import { Activity, Flame, ShieldAlert } from 'lucide-react';
 
@@ -69,6 +70,13 @@ export default function HealthRiskRadar({ data }) {
       ) : (
         <div className="h-48 flex items-center justify-center bg-white/20 rounded-2xl border border-white/40">
           <p className="text-xs font-medium text-slate-500">Regista mais corridas para analisar a carga de treino.</p>
+        </div>
+      )}
+
+      {/* Energy Availability Chart */}
+      {eaData.daily.length > 0 && (
+        <div className="mt-4">
+          <EnergyAvailabilityChart dailyData={eaData.daily} />
         </div>
       )}
 
