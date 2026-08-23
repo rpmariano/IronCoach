@@ -43,8 +43,8 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
   });
 
   const getStatusColor = (status) => {
-    if (status === 'danger') return '#DC3545';
-    if (status === 'caution') return '#FFC107';
+    if (status === 'critical' || status === 'danger') return '#DC3545';
+    if (status === 'subclinical' || status === 'caution') return '#FFC107';
     return '#28A745';
   };
 
