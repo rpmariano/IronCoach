@@ -84,7 +84,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
             if (context.length === 0) return '';
             const idx = context[0].dataIndex;
             const d = dailyData[idx];
-            return `\nAlvos:\nProt: ${d.proteinTarget}g\nHidr: ${d.carbsTarget}g\nGord: ${d.fatTarget}g`;
+            return `\nAlvos:\nProt: ${d.proteinTarget?.toFixed(1) || 0}g\nHidr: ${d.carbsTarget?.toFixed(1) || 0}g\nGord: ${d.fatTarget?.toFixed(1) || 0}g`;
           }
         }
       }
