@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import SmartInsightsBanner from '../BI/SmartInsightsBanner';
 import HealthRiskRadar from '../BI/HealthRiskRadar';
 import PerformanceCompass from '../BI/PerformanceCompass';
+import DisciplineMirror from '../BI/DisciplineMirror';
 
 export default function AtletaHubDashboard() {
   const { 
@@ -32,7 +33,7 @@ export default function AtletaHubDashboard() {
       
       <PerformanceCompass data={data} />
       
-      {/* <DisciplineMirror data={data} profile={profile} /> */}
+      <DisciplineMirror data={data} profile={profile} />
     </div>
   );
 }
