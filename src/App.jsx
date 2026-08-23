@@ -169,7 +169,7 @@ export default function App() {
           <>
             {activeTab === 'home' && <Home />}
             {activeTab === 'calendario' && <Calendar />}
-            {['nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
+            {['hub', 'nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
             {activeTab === 'coach' && <Coach />}
             {activeTab === 'perfil' && <Perfil />}
             {activeTab === 'admin' && <Admin />}
