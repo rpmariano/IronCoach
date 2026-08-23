@@ -1988,9 +1988,8 @@ export function buildSystemInstruction(
     // ── Tom e Linguagem ───────────────────────────────────────────────────────
     `## Tom e Linguagem\n` +
     `- Trata sempre o atleta por **tu**.\n` +
-    (athleteFirstName
-      ? `- O atleta chama-se **${athleteFirstName}** — trata-o por esse nome com naturalidade (ao cumprimentar, a motivar, a celebrar progresso), não em toda a frase nem de forma mecânica.\n`
-      : "") +
+    // O nome do atleta saiu daqui para o fim do prompt (secção de dados
+    // variáveis) — ver a nota sobre prefixo estável em buildSystemInstruction.
     `- Sê equilibrada: encorajadora e positiva, mas honesta e direta quando há algo a corrigir ou recusar.\n` +
     `- Adapta a profundidade técnica ao nível de experiência descrito no perfil:\n` +
     `  - Iniciante: 1-2 recomendações simples, sem jargão, foca em sensações e hábitos.\n` +
@@ -2282,7 +2281,6 @@ export function buildSystemInstruction(
     `## Hidratação\n` +
     `Tem em conta o "Água hoje" no contexto ao dar conselhos de treino ou nutrição. ` +
     `Não forces o tema numa resposta sem relação com hidratação, e não repitas o lembrete em respostas consecutivas.\n\n` +
-    `Data e hora atual (fuso horário de Lisboa): ${today}.\nATENÇÃO: Se for madrugada (ex: 00:00 às 05:00), o atleta provavelmente ainda não foi dormir e a conversa flui como se ainda fosse a noite do dia anterior. No entanto, o sistema já virou o dia (hoje). Lembra-te que ele AINDA NÃO FEZ o treino que está agendado para o dia que acabou de começar (hoje). Não ignores "hoje" saltando logo para o planeamento de "amanhã"!\n\n` +
     `Sobre os treinos: há dois tipos. Os treinos de força trazem exercícios, séries, volume em ` +
     `kg e os grupos musculares trabalhados entre parênteses retos. As aulas de grupo e cardio ` +
     `vêm marcadas com "(aula)" — HIIT, RPM, pilates e afins — e NÃO têm séries nem volume, ` +
@@ -2721,6 +2719,20 @@ export function buildSystemInstruction(
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
       `diretamente no teu perfil, ativa 'O Coach pode ajustar as metas' no Perfil, separador Metas."`;
+
+  /* ── A partir daqui é TUDO o que varia ────────────────────────────────
+     Tudo o que está acima é idêntico entre atletas e entre mensagens: é o
+     prefixo estável que o Gemini pode reaproveitar de chamada para chamada.
+     O nome do atleta e a data/hora estavam no meio da doutrina e partiam
+     esse prefixo logo no início — a hora é o pior caso, muda a cada minuto,
+     o que tornava o prefixo diferente em TODAS as mensagens, até do mesmo
+     atleta. Manter o que varia sempre no fim é o que dá ao prompt uma
+     cabeça reaproveitável. Ver MAX_TOOL_ROUNDS: o prompt é reenviado a cada
+     ronda de function calling, por isso isto multiplica-se. */
+  if (athleteFirstName) {
+    sys += `\n\nO atleta chama-se **${athleteFirstName}** — trata-o por esse nome com naturalidade (ao cumprimentar, a motivar, a celebrar progresso), não em toda a frase nem de forma mecânica.`;
+  }
+  sys += `\n\nData e hora atual (fuso horário de Lisboa): ${today}.\nATENÇÃO: Se for madrugada (ex: 00:00 às 05:00), o atleta provavelmente ainda não foi dormir e a conversa flui como se ainda fosse a noite do dia anterior. No entanto, o sistema já virou o dia (hoje). Lembra-te que ele AINDA NÃO FEZ o treino que está agendado para o dia que acabou de começar (hoje). Não ignores "hoje" saltando logo para o planeamento de "amanhã"!`;
 
   sys += `\n\n${nutritionSummary}`;
   sys += `\n\n${waterSummary}`;

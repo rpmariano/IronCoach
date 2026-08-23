@@ -15,8 +15,20 @@ const ADMIN_TABS = [
   { key: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
-const GEMINI_PRICE_PER_M_INPUT = 0.30;
-const GEMINI_PRICE_PER_M_OUTPUT = 2.50;
+/* Preços por milhão de tokens, em USD. Estavam em 0,30/2,50 — desatualizados,
+   o que fazia o painel subestimar o custo real em ~2,5x no input.
+   Valores atuais da linha Flash: 0,75 input / 3,75 output, promocionais até
+   31-12-2026; a 01-01-2027 passam ao padrão de 1,50 / 7,50 (é preciso vir cá
+   mudar nessa altura, ou o painel volta a mentir, agora para baixo).
+   Ressalva: GEMINI_MODEL é "gemini-flash-latest", um alias — se apontar para
+   uma variante com outra tabela (a Flash-Lite é bem mais barata, a 3.5 Flash
+   bem mais cara), estes números derrapam. Confirmar contra a fatura real. */
+const GEMINI_PRICE_PER_M_INPUT = 0.75;
+const GEMINI_PRICE_PER_M_OUTPUT = 3.75;
+// (Para referência futura: tokens de prefixo reaproveitado via context
+//  caching custam 0,075 — 10x menos que input normal. Só passa a haver o que
+//  contar quando o coach-chat declarar cache e a resposta separar os
+//  cached_tokens do input; acrescentar a constante nessa altura.)
 const GEMINI_COST_EVENT_MODULE = {
   // Edge Functions (novas e atuais)
   'analyze-meal': 'Nutrição',
@@ -837,7 +849,11 @@ export default function Admin() {
                   ))}
                 </div>
 
-                <p className="text-[10px] text-slate-600 text-center px-2">Preços de referência: ${GEMINI_PRICE_PER_M_INPUT.toFixed(2)} / milhão tokens input, ${GEMINI_PRICE_PER_M_OUTPUT.toFixed(2)} / milhão tokens output (gemini-flash-latest).</p>
+                <p className="text-[10px] text-slate-600 text-center px-2">
+                  Preços de referência: ${GEMINI_PRICE_PER_M_INPUT.toFixed(2)} / milhão tokens input,
+                  ${GEMINI_PRICE_PER_M_OUTPUT.toFixed(2)} / milhão output (gemini-flash-latest).
+                  Tarifa promocional até 31-12-2026 — duplica a 01-01-2027.
+                </p>
               </>
             )}
           </div>
