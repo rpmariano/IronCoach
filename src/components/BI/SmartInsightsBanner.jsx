@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
+import { useAppStore } from '../../store';
 import { AlertCircle, Zap, ShieldAlert, TrendingDown } from 'lucide-react';
 
 const SEVERITY_CONFIG = {
@@ -9,11 +10,14 @@ const SEVERITY_CONFIG = {
 };
 
 export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) {
+  const { insightStates } = useAppStore();
   const insights = useMemo(() => {
     // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade,
-    // filtrando aqueles que já estão visíveis nos painéis abaixo.
-    return detectCoachInsights(data, profile).filter(i => !excludeIds.includes(i.id));
-  }, [data, profile, excludeIds]);
+    // filtrando aqueles já entendidos/desativados ou visíveis noutros painéis.
+    return detectCoachInsights(data, profile).filter(
+      i => insightStates[i.id] !== 'understood' && !excludeIds.includes(i.id)
+    );
+  }, [data, profile, excludeIds, insightStates]);
 
   if (!insights || insights.length === 0) {
     return null; // Nenhum insight, não mostra nada

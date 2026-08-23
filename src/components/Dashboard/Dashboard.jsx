@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../store';
-import { Utensils, Dumbbell, User, Activity, Star } from 'lucide-react';
+import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
 
@@ -8,19 +8,17 @@ import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
 import Nutrition from '../Nutrition/Nutrition';
 import Body from '../Body/Body';
-import CrossAnalyticsDashboard from './CrossAnalyticsDashboard';
-import AtletaHubDashboard from './AtletaHubDashboard';
+import OverviewDashboard from './OverviewDashboard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import { detectCoachInsights } from '../../utils/biEngine';
 
 const TABS = [
-  { key: 'hub', label: 'Atleta Hub', icon: <Star size={14} fill="currentColor" />, color: '#0ea5e9' },
+  { key: 'hub', label: 'Visão Geral', icon: <LayoutDashboard size={14} />, color: '#0ea5e9' },
   { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #c026d3)' },
   { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #facc15)' },
   { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #059669)' },
   { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #e11d48)' },
-  { key: 'holistica', label: 'Holística', icon: <Activity size={14} />, color: 'var(--mod-coach-to)' },
 ];
 
 export default function Dashboard({ activeModule }) {
@@ -58,6 +56,15 @@ export default function Dashboard({ activeModule }) {
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;
+
+  // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
+  const scrollToTab = useCallback((key) => {
+    const idx = TABS.findIndex(t => t.key === key);
+    if (idx >= 0) {
+      setActiveTab(key);
+      scrollTo(idx);
+    }
+  }, [setActiveTab, scrollTo]);
 
   // activeModule também muda por fora do carrossel (ex.: FAB "Registar
   // refeição" chama setActiveTab diretamente) — sincroniza o scroll nesses
@@ -153,12 +160,11 @@ export default function Dashboard({ activeModule }) {
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
       >
-        <div className="tab-swipe-page"><AtletaHubDashboard /></div>
+        <div className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
         <div className="tab-swipe-page"><Run /></div>
         <div className="tab-swipe-page"><Gym /></div>
         <div className="tab-swipe-page"><Nutrition /></div>
         <div className="tab-swipe-page"><Body /></div>
-        <div className="tab-swipe-page"><CrossAnalyticsDashboard /></div>
       </div>
 
       <CoachInsightButton insights={insights} onClick={() => setShowInsights(true)} />

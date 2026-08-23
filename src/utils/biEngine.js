@@ -894,3 +894,105 @@ export function detectCoachInsights(data, profile) {
     return [];
   }
 }
+
+/**
+ * Calcula o Índice de Prontidão do Atleta (0-100%) face à próxima prova.
+ * Composto por 4 pilares com peso igual (25% cada):
+ *  1. ACWR no sweet-spot (0.8–1.3) → carga de treino equilibrada
+ *  2. Disponibilidade Energética adequada (EA ≥ 45 kcal/kg FFM)
+ *  3. Compliance calórica ≥ 80% do alvo
+ *  4. Tendência VDOT ascendente (última corrida > média das 4 anteriores)
+ *
+ * @param {Array} runs
+ * @param {Array} meals
+ * @param {Array} bodyAssessments
+ * @param {Array} gymSessions
+ * @param {object} profile
+ * @returns {{ score: number, pillars: Array<{label, score, desc}>, level: string }}
+ */
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile) {
+  try {
+    const pillars = [];
+
+    // --- Pilar 1: ACWR ---
+    const acwr = calculateACWR(runs || []);
+    const acwrRatio = acwr.ratio || 0;
+    let acwrScore = 0;
+    let acwrDesc = 'Sem dados de corrida suficientes.';
+    if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
+      acwrScore = 100;
+      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
+    } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
+      acwrScore = 50;
+      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
+    } else if (acwrRatio > 1.5) {
+      acwrScore = 0;
+      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
+    } else if (acwrRatio > 0 && acwrRatio < 0.8) {
+      acwrScore = 60;
+      acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+    }
+    pillars.push({ key: 'acwr', label: 'Carga de Treino', score: acwrScore, desc: acwrDesc });
+
+    // --- Pilar 2: Disponibilidade Energética ---
+    const ea = calculateEnergyAvailability(meals || [], bodyAssessments || [], runs || [], gymSessions || [], 'semana');
+    const eaAvg = ea?.average ?? 0;
+    let eaScore = 0;
+    let eaDesc = 'Sem dados nutricionais suficientes.';
+    if (eaAvg >= 45) {
+      eaScore = 100;
+      eaDesc = `EA de ${eaAvg} kcal/kg. Energia adequada para o treino.`;
+    } else if (eaAvg >= 30) {
+      eaScore = 60;
+      eaDesc = `EA de ${eaAvg} kcal/kg. Subótima — come mais para sustentar o volume.`;
+    } else if (eaAvg > 0) {
+      eaScore = 10;
+      eaDesc = `EA de ${eaAvg} kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.`;
+    }
+    pillars.push({ key: 'ea', label: 'Disponibilidade Energética', score: eaScore, desc: eaDesc });
+
+    // --- Pilar 3: Compliance Calórica ---
+    const macros = calculateMacroAdherence(meals || [], profile, bodyAssessments || [], 'semana');
+    const calPct = macros?.calories?.compliance_pct ?? 0;
+    let calScore = 0;
+    let calDesc = 'Sem dados de nutrição suficientes.';
+    if (calPct >= 90 && calPct <= 110) {
+      calScore = 100;
+      calDesc = `${calPct}% do alvo calórico. Nutrição alinhada com o esforço.`;
+    } else if (calPct >= 75) {
+      calScore = 65;
+      calDesc = `${calPct}% do alvo calórico. Podes melhorar a consistência nutricional.`;
+    } else if (calPct > 0) {
+      calScore = 20;
+      calDesc = `${calPct}% do alvo calórico. Ingestão muito baixa para o volume de treino.`;
+    }
+    pillars.push({ key: 'calories', label: 'Nutrição', score: calScore, desc: calDesc });
+
+    // --- Pilar 4: Tendência VDOT ---
+    const vdotTrend = getVDOTTrend(runs || []);
+    let vdotScore = 0;
+    let vdotDesc = 'Sem corridas qualificadas para calcular VDOT.';
+    if (vdotTrend.length >= 2) {
+      const last = vdotTrend[vdotTrend.length - 1].vdot;
+      const prev = vdotTrend.slice(0, -1).reduce((s, d) => s + d.vdot, 0) / (vdotTrend.length - 1);
+      if (last > prev) {
+        vdotScore = 100;
+        vdotDesc = `VDOT ${last.toFixed(1)} (↑ melhoria). A tua capacidade aeróbica está a crescer.`;
+      } else if (last >= prev * 0.97) {
+        vdotScore = 70;
+        vdotDesc = `VDOT ${last.toFixed(1)} (→ estável). A manter a forma — adiciona um treino de qualidade.`;
+      } else {
+        vdotScore = 30;
+        vdotDesc = `VDOT ${last.toFixed(1)} (↓ queda). A forma aeróbica desceu ligeiramente.`;
+      }
+    }
+    pillars.push({ key: 'vdot', label: 'Forma Aeróbica (VDOT)', score: vdotScore, desc: vdotDesc });
+
+    const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
+    const level = totalScore >= 75 ? 'high' : totalScore >= 50 ? 'medium' : 'low';
+
+    return { score: totalScore, pillars, level };
+  } catch (e) {
+    return { score: 0, pillars: [], level: 'low' };
+  }
+}
