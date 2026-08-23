@@ -106,15 +106,23 @@ export default function PillarSummaryCard({
         )}
       </div>
 
-      {/* Sparkline */}
-      {hasSparkData && (
-        <div className="h-8 w-full">
-          {sparkType === 'line'
+      {/* Sparkline — a área fica sempre reservada, com ou sem dados, para os
+          4 cartões da grelha manterem a mesma altura (ver print do
+          utilizador, 23/08: Nutrição e Ginásio ficavam mais baixos que
+          Corrida e Corpo sempre que não tinham dados para o mini-gráfico).
+          `relative` no contentor é o que falta ao Chart.js para calcular o
+          tamanho certo dentro de responsive+maintainAspectRatio:false —
+          sem isto o canvas às vezes desenhava num tamanho intrínseco
+          errado em vez de preencher a faixa. */}
+      <div className="h-8 w-full relative">
+        {hasSparkData ? (
+          sparkType === 'line'
             ? <Line data={sparkChartData} options={sparkOptions} />
             : <Bar data={sparkChartData} options={sparkOptions} />
-          }
-        </div>
-      )}
+        ) : (
+          <div className="absolute inset-x-0 bottom-0 h-px bg-white/10" />
+        )}
+      </div>
     </button>
   );
 }

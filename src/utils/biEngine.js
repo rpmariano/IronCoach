@@ -336,6 +336,25 @@ export function getVDOTTrend(runs) {
   }
 }
 
+/**
+ * Volume-carga (kg) de uma sessão de ginásio: Σ peso × repetições de todas
+ * as séries. `workout_session_sets` é o campo real gravado pelo registo
+ * (GymRegistration.jsx); `volume_kg` existe como coluna no esquema
+ * (migração 20260815155000_gym_advanced_metrics.sql) mas nenhum caminho de
+ * gravação alguma vez lá escreveu — ficava sempre NULL. Por isso o KPI
+ * "Vol. Carga", o ACWR de ginásio e a Análise Cruzada mostravam sempre 0/
+ * "—", mesmo com sessões registadas (ver Visão Geral, cartão Ginásio).
+ * Calcular a partir das séries reais evita depender de uma coluna morta e
+ * de uma migração de backfill — `volume_kg` fica só como atalho, caso
+ * algum dia passe a ser escrito.
+ */
+export function sessionVolumeKg(session) {
+  if (typeof session?.volume_kg === 'number' && session.volume_kg > 0) return session.volume_kg;
+  return (session?.workout_session_sets || []).reduce(
+    (sum, s) => sum + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0
+  );
+}
+
 /** Gym Analytics */
 export function calculateVolumeLoad(gymSessions, dateRange) {
   try {
@@ -344,7 +363,7 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
     const weeks = {};
 
     filtered.forEach(s => {
-      const vl = s.volume_kg || 0;
+      const vl = sessionVolumeKg(s);
       totalVolumeLoad += vl;
 
       const d = parseISO(s.date);
@@ -370,7 +389,7 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
     (gymSessions || []).forEach(s => {
       const d = parseISO(s.date);
       if (!isValid(d)) return;
-      const vl = s.volume_kg || 0;
+      const vl = sessionVolumeKg(s);
       if (isAfter(d, chronicDate)) {
         chronicLoad += vl;
         if (isAfter(d, acuteDate)) acuteLoad += vl;
@@ -430,7 +449,7 @@ export function calculateMuscleGroupVolume(gymSessions, dateRange) {
       cats.forEach(cat => {
         if (!groups[cat]) groups[cat] = { sets: 0, volumeLoad: 0 };
         groups[cat].sets += (s.workout_session_sets?.length || 0);
-        groups[cat].volumeLoad += (s.volume_kg || 0);
+        groups[cat].volumeLoad += sessionVolumeKg(s);
       });
     });
     return groups;
@@ -685,7 +704,7 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
       const d = parseISO(s.date);
       if (!isValid(d)) return;
       const wk = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      weeklyGym[wk] = (weeklyGym[wk] || 0) + (s.volume_kg || 0);
+      weeklyGym[wk] = (weeklyGym[wk] || 0) + sessionVolumeKg(s);
     });
     filteredRuns.forEach(r => {
       const d = parseISO(r.date);

@@ -1,10 +1,36 @@
 import { describe, it, expect } from 'vitest';
 import { subDays, format } from 'date-fns';
-import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel } from './biEngine';
+import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, sessionVolumeKg } from './biEngine';
 
 // Datas relativas a "agora" — daysAgo negativo devolve uma data futura
 // (útil para simular uma prova agendada).
 const iso = (daysAgo) => format(subDays(new Date(), daysAgo), 'yyyy-MM-dd');
+
+// Print do utilizador de 23/08: o cartão Ginásio da Visão Geral não tinha
+// nem KPI nem mini-gráfico apesar de haver sessões registadas.
+// `workout_session_sets` (não `volume_kg`, que nunca é escrito) é o campo
+// real de onde a app grava as séries — ver GymRegistration.jsx.
+describe('sessionVolumeKg', () => {
+  it('soma peso × repetições de todas as séries', () => {
+    const session = {
+      workout_session_sets: [
+        { weight: 80, reps: 10 },
+        { weight: 80, reps: 8 },
+        { weight: 60, reps: 12 },
+      ],
+    };
+    expect(sessionVolumeKg(session)).toBe(80 * 10 + 80 * 8 + 60 * 12);
+  });
+
+  it('sem séries, devolve 0 em vez de rebentar', () => {
+    expect(sessionVolumeKg({})).toBe(0);
+    expect(sessionVolumeKg({ workout_session_sets: [] })).toBe(0);
+  });
+
+  it('usa volume_kg como atalho, se algum dia vier preenchido', () => {
+    expect(sessionVolumeKg({ volume_kg: 4200, workout_session_sets: [{ weight: 1, reps: 1 }] })).toBe(4200);
+  });
+});
 
 // Auditoria de 23/08: calculateVolumeLoad devolvia sempre acwr: 1.0 fixo
 // ("Simplificação"), que o GymDashboard mostrava como se fosse real.

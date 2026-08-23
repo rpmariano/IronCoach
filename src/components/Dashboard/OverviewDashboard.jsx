@@ -12,7 +12,9 @@ import {
   calculateWeightTrend,
   filterByDateRange,
   acwrStatusLabel,
+  sessionVolumeKg,
 } from '../../utils/biEngine';
+import { mealNutrients } from '../../utils/nutrition';
 import { parseISO, subDays, format } from 'date-fns';
 
 export default function OverviewDashboard({ scrollToTab }) {
@@ -58,16 +60,17 @@ export default function OverviewDashboard({ scrollToTab }) {
 
   // ── Ginásio ───────────────────────────────────────────
   const gymStats = useMemo(() => calculateVolumeLoad(gymSessions || [], 'semana'), [gymSessions]);
+  // Lia session.exercises[].sets[].weight_kg — um formato que as sessões
+  // reais nunca tiveram (o registo grava em workout_session_sets, ver
+  // GymRegistration.jsx). Devolvia sempre zeros, por isso o cartão Ginásio
+  // nunca mostrava o mini-gráfico. sessionVolumeKg é a mesma conta que o
+  // resto do biEngine agora usa (ver calculateVolumeLoad).
   const gymSparkData = useMemo(() => {
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = subDays(new Date(), 6 - i);
       const dayStr = format(d, 'yyyy-MM-dd');
       return (gymSessions || []).filter(s => s.date === dayStr)
-        .reduce((sum, session) => {
-          return sum + (session.exercises || []).reduce((es, ex) =>
-            es + (ex.sets || []).reduce((ss, set) =>
-              ss + (set.reps || 0) * (set.weight_kg || 0), 0), 0);
-        }, 0);
+        .reduce((sum, session) => sum + sessionVolumeKg(session), 0);
     });
     return days;
   }, [gymSessions]);
@@ -97,6 +100,17 @@ export default function OverviewDashboard({ scrollToTab }) {
   }, [calPct]);
   const eaAvg = eaData?.average ?? 0;
   const nutriSubtitle = eaAvg > 0 ? `EA: ${eaAvg} kcal/kg` : 'Regista refeições';
+  // Estava sempre a [] — o cartão Nutrição nunca tinha mini-gráfico, ao
+  // contrário dos outros 3 pilares (ver print do utilizador, 23/08).
+  const nutriSparkData = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = subDays(new Date(), 6 - i);
+      const dayStr = format(d, 'yyyy-MM-dd');
+      return (meals || []).filter(m => m.date === dayStr)
+        .reduce((sum, m) => sum + mealNutrients(m).calories, 0);
+    });
+    return days;
+  }, [meals]);
 
   // ── Corpo ─────────────────────────────────────────────
   const weightTrend = useMemo(() => calculateWeightTrend(bodyAssessments || []), [bodyAssessments]);
@@ -175,7 +189,8 @@ export default function OverviewDashboard({ scrollToTab }) {
           kpiUnit={calPct > 0 ? 'calorias' : ''}
           badge={nutriBadge}
           subtitle={nutriSubtitle}
-          sparkData={[]}
+          sparkData={nutriSparkData}
+          sparkType="bar"
           sparkColor="#059669"
           onClick={() => scrollToTab('nutricao')}
         />
