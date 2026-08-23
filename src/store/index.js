@@ -98,7 +98,11 @@ export const useAppStore = create((set, get) => ({
   setActiveTab: (tab) => {
     const guard = get().navGuard;
     if (guard && !guard(tab)) return false;
-    if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(tab)) {
+    // 'hub' tem de constar aqui: é o que grava ironcoach_last_module, e
+    // getInitialDashboardTab (acima) já aceita 'hub' de volta do localStorage.
+    // Sem isto o Hub nunca chegava a ser o módulo memorizado — sair dele e
+    // voltar pelo botão Dashboard levava ao módulo ANTERIOR ao Hub.
+    if (['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(tab)) {
       try {
         localStorage.setItem('ironcoach_last_module', tab);
       } catch (e) {
