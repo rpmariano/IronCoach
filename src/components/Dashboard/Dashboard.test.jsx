@@ -39,8 +39,9 @@ vi.mock('react-chartjs-2', () => ({
 describe('Dashboard', () => {
   it('mostra os cinco separadores: Visão Geral, Corrida, Ginásio, Nutrição, Corpo', () => {
     render(<Dashboard activeModule="corrida" />);
+    // Usar getAllByText porque alguns labels aparecem tanto no tab como no PillarSummaryCard
     for (const label of ['Visão Geral', 'Corrida', 'Ginásio', 'Nutrição', 'Corpo']) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
 
