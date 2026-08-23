@@ -11,14 +11,14 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
     catch { return d.date; }
   });
 
-  // Custom plugin to draw target lines on bars
   const targetLinesPlugin = {
     id: 'targetLines',
-    afterDraw: (chart) => {
-      const { ctx, scales, _metasets } = chart;
-      if (!_metasets || _metasets.length < 3) return;
+    afterDatasetsDraw: (chart) => {
+      const { ctx, scales } = chart;
 
-      const drawTarget = (meta, targetData, color) => {
+      const drawTarget = (datasetIndex, targetData, color) => {
+        const meta = chart.getDatasetMeta(datasetIndex);
+        if (!meta || meta.hidden) return;
         meta.data.forEach((bar, index) => {
           const target = targetData[index];
           if (!target) return;
@@ -37,9 +37,9 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
         });
       };
 
-      drawTarget(_metasets[0], dailyData.map(d => d.proteinTarget), '#1e3a8a');
-      drawTarget(_metasets[1], dailyData.map(d => d.carbsTarget), '#422006');
-      drawTarget(_metasets[2], dailyData.map(d => d.fatTarget), '#831843');
+      drawTarget(0, dailyData.map(d => d.proteinTarget), '#1e3a8a');
+      drawTarget(1, dailyData.map(d => d.carbsTarget), '#422006');
+      drawTarget(2, dailyData.map(d => d.fatTarget), '#831843');
     }
   };
 
