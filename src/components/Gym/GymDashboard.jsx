@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3, Dumbbell, Activity, CalendarDays, Users, Clock, Zap } from 'lucide-react';
+import { TrendingUp, Dumbbell, Users } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 
@@ -31,8 +31,7 @@ export default function GymDashboard() {
   const volumeData = useMemo(() => calculateVolumeLoad(gymSessions, rangeKey), [gymSessions, rangeKey]);
   const muscleVolume = useMemo(() => calculateMuscleGroupVolume(gymSessions, rangeKey), [gymSessions, rangeKey]);
 
-  const { totalSets, volumeByDay } = useMemo(() => {
-    let setsCount = 0;
+  const { volumeByDay } = useMemo(() => {
     const byDay = {};
     
     sessionsInRange.forEach(session => {
@@ -42,14 +41,12 @@ export default function GymDashboard() {
       sets.forEach(set => {
         if (set.reps != null && set.weight != null) {
           sessionVol += set.weight * set.reps;
-          setsCount += 1;
         }
       });
       byDay[dateStr] = (byDay[dateStr] || 0) + sessionVol;
     });
     
     return {
-      totalSets: setsCount,
       volumeByDay: byDay
     };
   }, [sessionsInRange]);
