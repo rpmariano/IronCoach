@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 import { ChevronRight } from 'lucide-react';
 
@@ -27,6 +27,37 @@ const BADGE_COLORS = {
   neutral: 'bg-slate-100 text-slate-600',
 };
 
+/**
+ * Mini-gráfico de barras dos 7 dias, em CSS puro em vez de Chart.js.
+ *
+ * Print do utilizador (23/08): quando só 1 dos 7 dias tinha valor (ex.: os
+ * 65km de Corrida todos numa única saída), o Chart.js desenhava só essa
+ * barra — as outras 6, com altura zero, ficavam invisíveis — e sem eixos
+ * (escondidos de propósito, para um mini-gráfico) o resultado era um
+ * quadrado colorido a flutuar sozinho no cartão, sem se perceber que
+ * representava "1 em 7 dias". Barras em div/CSS garantem as 7 colunas
+ * sempre visíveis (as vazias com uma altura mínima), o que já se lê como
+ * "semana", e evita o problema à parte de o Chart.js por vezes não
+ * calcular bem o tamanho do canvas dentro de um contentor tão pequeno.
+ */
+function MiniBars({ data, color }) {
+  const max = Math.max(...data, 0);
+  return (
+    <div className="h-8 w-full flex items-end gap-[3px]">
+      {data.map((v, i) => {
+        const pct = max > 0 && v > 0 ? Math.max((v / max) * 100, 14) : 6;
+        return (
+          <div
+            key={i}
+            className="flex-1 rounded-[2px] transition-[height]"
+            style={{ height: `${pct}%`, background: v > 0 ? color : 'rgba(255,255,255,0.1)' }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PillarSummaryCard({
   title,
   icon,
@@ -42,20 +73,26 @@ export default function PillarSummaryCard({
 }) {
   const hasSparkData = sparkData && sparkData.some(v => v > 0);
 
+  // Só o tipo 'line' (tendência de peso do Corpo) ainda usa Chart.js — uma
+  // linha contínua não se presta bem a "7 colunas" como o bar. Sem
+  // beginAtZero: um peso à volta de 79kg com o eixo forçado a partir de 0
+  // preenchia quase todo o cartão (fill:true até à base), parecendo um
+  // bloco sólido em vez de uma linha de tendência — o Chart.js escala
+  // agora ao intervalo real dos dados, onde a variação fica visível.
   const sparkChartData = useMemo(() => {
-    const labels = sparkData.map((_, i) => i.toString());
-    const dataset = {
-      data: sparkData,
-      backgroundColor: sparkType === 'bar' ? `${sparkColor}80` : undefined,
-      borderColor: sparkColor,
-      borderWidth: sparkType === 'line' ? 1.5 : 0,
-      fill: sparkType === 'line',
-      backgroundColor: sparkType === 'line' ? `${sparkColor}20` : `${sparkColor}80`,
-      pointRadius: 0,
-      tension: 0.4,
-      borderRadius: sparkType === 'bar' ? 2 : undefined,
+    if (sparkType !== 'line') return null;
+    return {
+      labels: sparkData.map((_, i) => i.toString()),
+      datasets: [{
+        data: sparkData,
+        borderColor: sparkColor,
+        borderWidth: 1.5,
+        fill: true,
+        backgroundColor: `${sparkColor}20`,
+        pointRadius: 0,
+        tension: 0.4,
+      }],
     };
-    return { labels, datasets: [dataset] };
   }, [sparkData, sparkColor, sparkType]);
 
   const sparkOptions = {
@@ -65,7 +102,7 @@ export default function PillarSummaryCard({
     plugins: { legend: { display: false }, tooltip: { enabled: false } },
     scales: {
       x: { display: false },
-      y: { display: false, beginAtZero: true },
+      y: { display: false },
     },
   };
 
@@ -118,7 +155,7 @@ export default function PillarSummaryCard({
         {hasSparkData ? (
           sparkType === 'line'
             ? <Line data={sparkChartData} options={sparkOptions} />
-            : <Bar data={sparkChartData} options={sparkOptions} />
+            : <MiniBars data={sparkData} color={sparkColor} />
         ) : (
           <div className="absolute inset-x-0 bottom-0 h-px bg-white/10" />
         )}
