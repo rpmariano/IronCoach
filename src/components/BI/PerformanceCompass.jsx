@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
 import { getVDOTTrend, calculateWeightTrend, calculate1RMProgression, calculateWeeklyVolume } from '../../utils/biEngine';
 import CrossMetricsChart from './CrossMetricsChart';
-import ScatterTrendChart from './ScatterTrendChart';
-import { Compass, Info } from 'lucide-react';
+import { Compass } from 'lucide-react';
 import { Scatter } from 'react-chartjs-2';
 import MetricInfo from './MetricInfo';
 
@@ -87,7 +86,8 @@ export default function PerformanceCompass({ data }) {
         return (!best || diff < best.diff) ? { weight: w.weight, diff } : best;
       }, null);
       
-      if (closestWeight) {
+      // Apenas cruza dados se a avaliação corporal foi há menos de 7 dias (7 * 86400000 ms)
+      if (closestWeight && closestWeight.diff <= 7 * 86400000) {
         combined.push({ date: v.date, vdot: v.vdot, weight: closestWeight.weight });
       }
     });
@@ -113,7 +113,8 @@ export default function PerformanceCompass({ data }) {
         return (!best || diff < best.diff) ? { vol: w.distanceKm, diff } : best;
       }, null);
 
-      if (nearestWeek && nearestWeek.vol > 0) {
+      // Apenas aceita se a semana de corrida for a mesma ou vizinha (até 14 dias de diferença)
+      if (nearestWeek && nearestWeek.vol > 0 && nearestWeek.diff <= 14 * 86400000) {
         combined.push({ date: rm.date, rm1: rm.estimated1RM, volKm: nearestWeek.vol });
       }
     });
