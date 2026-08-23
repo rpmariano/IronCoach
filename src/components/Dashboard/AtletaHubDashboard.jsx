@@ -8,18 +8,20 @@ import DisciplineMirror from '../BI/DisciplineMirror';
 export default function AtletaHubDashboard() {
   const { 
     runs, 
+  const { 
+    runs, 
     gymSessions, 
     meals, 
     bodyAssessments, 
     raceEvents, 
     coachPlans, 
     coachPlanItems, 
-    profile 
+    session
   } = useAppStore();
 
   // MOCK DE DADOS TEMPORÁRIO PARA TESTES
   const processedRuns = useMemo(() => {
-    if (profile?.email === 'rpmariano@gmail.com') {
+    if (session?.user?.email === 'rpmariano@gmail.com') {
       const baseRuns = (runs && runs.length > 0) ? runs : [];
       
       // Se o utilizador não tem corridas nenhumas, vamos criar 3 fictícias
@@ -54,7 +56,7 @@ export default function AtletaHubDashboard() {
       });
     }
     return runs;
-  }, [runs, profile]);
+  }, [runs, session]);
 
   const data = { runs: processedRuns, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems };
 

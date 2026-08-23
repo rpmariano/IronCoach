@@ -14,32 +14,28 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
   const targetLinesPlugin = {
     id: 'targetLines',
     afterDatasetsDraw: (chart) => {
-      const { ctx, scales } = chart;
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea || dailyData.length === 0) return;
 
-      const drawTarget = (datasetIndex, targetData, color) => {
-        const meta = chart.getDatasetMeta(datasetIndex);
-        if (!meta || meta.hidden) return;
-        meta.data.forEach((bar, index) => {
-          const target = targetData[index];
-          if (!target) return;
-          const yPos = scales.y.getPixelForValue(target);
-          const { x, width } = bar;
-          
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(x - width / 2, yPos);
-          ctx.lineTo(x + width / 2, yPos);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = color;
-          ctx.setLineDash([2, 2]);
-          ctx.stroke();
-          ctx.restore();
-        });
+      const drawLine = (target, color) => {
+        if (!target || isNaN(target)) return;
+        const yPos = scales.y.getPixelForValue(target);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, yPos);
+        ctx.lineTo(chartArea.right, yPos);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = color;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
       };
 
-      drawTarget(0, dailyData.map(d => d.proteinTarget), '#1e3a8a');
-      drawTarget(1, dailyData.map(d => d.carbsTarget), '#422006');
-      drawTarget(2, dailyData.map(d => d.fatTarget), '#831843');
+      const sample = dailyData[0];
+      drawLine(sample.proteinTarget, '#1e3a8a'); // Dark blue for protein
+      drawLine(sample.carbsTarget, '#422006'); // Dark brown for carbs
+      drawLine(sample.fatTarget, '#831843'); // Dark pink for fat
     }
   };
 
