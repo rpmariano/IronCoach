@@ -285,7 +285,10 @@ async function checkAndLogAppImage(
 
 // Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
-type GeminiUsage = { input_tokens: number; output_tokens: number };
+// cached_tokens: tokens deste pedido servidos por caching implícito
+// (automático, sem custo de armazenamento) — instrumentado para decidir
+// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
+type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 type GymSet = { reps: number | null; weight: number | null; one_rep_max_est: number | null };
 type GymExercise = { name: string; sets: GymSet[] };
@@ -363,6 +366,7 @@ async function analyzeWithGemini(
   const usage: GeminiUsage = {
     input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
     output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
   };
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: Record<string, unknown>;

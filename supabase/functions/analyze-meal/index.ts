@@ -205,7 +205,10 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 // Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
-export type GeminiUsage = { input_tokens: number; output_tokens: number };
+export // cached_tokens: tokens deste pedido servidos por caching implícito
+// (automático, sem custo de armazenamento) — instrumentado para decidir
+// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
+type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 // Chama o Gemini com as partes de conteúdo dadas (imagens e/ou texto) e devolve
 // os itens já normalizados a partir do RESPONSE_SCHEMA (ou lança um erro com
@@ -251,6 +254,7 @@ async function runGeminiItemsRequest(
   const usage: GeminiUsage = {
     input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
     output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
   };
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: { items?: unknown[] };

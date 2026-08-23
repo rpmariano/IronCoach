@@ -531,6 +531,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     usage: {
       input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
       output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
+      cached_tokens: Number(json?.usageMetadata?.cachedContentTokenCount) || 0,
     },
   };
 }
