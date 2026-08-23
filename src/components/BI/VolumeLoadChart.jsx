@@ -58,11 +58,15 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       {
         label: 'Volume-Carga',
         data: weeklyData.map(d => d.volumeLoad),
-        backgroundColor: weeklyData.map((_, i) => {
-          // highlight current week (last item) if desired, or all gradient
-          if (i === weeklyData.length - 1) return '#d97706';
-          return gradient || 'rgba(217, 119, 6, 0.5)';
-        }),
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
+          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          return gradient;
+        },
         borderRadius: 6,
       }
     ]

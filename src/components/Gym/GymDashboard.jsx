@@ -54,6 +54,8 @@ export default function GymDashboard() {
     };
   }, [sessionsInRange]);
 
+  const strengthSessions = useMemo(() => sessionsInRange.filter(s => s.kind !== 'aula'), [sessionsInRange]);
+
   const volChartData = useMemo(() => {
     const days = Object.keys(volumeByDay).sort();
     return {
@@ -61,8 +63,16 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Volume (kg)',
         data: days.map(d => volumeByDay[d]),
-        backgroundColor: 'rgba(217, 119, 6, 0.6)',
-        borderRadius: 4
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
+          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          return gradient;
+        },
+        borderRadius: 6
       }]
     };
   }, [volumeByDay]);
@@ -74,8 +84,16 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Séries',
         data: groups.map(g => muscleVolume[g].sets),
-        backgroundColor: '#d97706',
-        borderRadius: 4
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
+          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          return gradient;
+        },
+        borderRadius: 6
       }]
     };
   }, [muscleVolume]);
@@ -141,9 +159,9 @@ export default function GymDashboard() {
       <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} />
       
       <div className="grid grid-cols-3 gap-3">
-        <KPICard label="Treinos" value={sessionsInRange.length} icon={CalendarDays} moduleColor="var(--mod-ginasio)" />
+        <KPICard label="Treinos de Força" value={strengthSessions.length} icon={Dumbbell} moduleColor="var(--mod-ginasio)" />
         <KPICard label="Vol. Carga" value={Math.round(volumeData.totalVolumeLoad).toLocaleString('pt-PT')} unit="kg" icon={TrendingUp} moduleColor="var(--mod-ginasio)" />
-        <KPICard label="Séries" value={totalSets} icon={Activity} moduleColor="var(--mod-ginasio)" />
+        <KPICard label="Aulas" value={classAnalytics.totalClasses} icon={Users} moduleColor="var(--mod-ginasio)" />
       </div>
 
       {sessionsInRange.length === 0 ? (
