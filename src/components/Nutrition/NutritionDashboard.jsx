@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients } from '../../utils/nutrition';
+import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
 import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -15,7 +15,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { format, eachDayOfInterval, subDays } from 'date-fns';
+import { format, eachDayOfInterval, subDays, subWeeks, subMonths, subYears } from 'date-fns';
 
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
@@ -80,13 +80,13 @@ export default function NutritionDashboard() {
     const now = new Date();
     let startObj = now;
     switch (activeFilter) {
-      case 'dia': startObj = now; break;
-      case 'semana': startObj = subDays(now, 7); break;
-      case 'mes': startObj = subDays(now, 30); break;
-      case 'trimestre': startObj = subDays(now, 90); break;
-      case '6meses': startObj = subDays(now, 180); break;
-      case 'ano': startObj = subDays(now, 365); break;
-      default: startObj = subDays(now, 7);
+      case 'dia': startObj = subDays(now, 1); break;
+      case 'semana': startObj = subWeeks(now, 1); break;
+      case 'mes': startObj = subMonths(now, 1); break;
+      case 'trimestre': startObj = subMonths(now, 3); break;
+      case '6meses': startObj = subMonths(now, 6); break;
+      case 'ano': startObj = subYears(now, 1); break;
+      default: startObj = subWeeks(now, 1);
     }
     const endObj = now;
     if (startObj > endObj) return null;
