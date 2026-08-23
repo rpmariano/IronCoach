@@ -7,24 +7,6 @@ import MetricInfo from './MetricInfo';
 
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
   const chartRef = useRef(null);
-  const [gradients, setGradients] = useState({ lean: null, fat: null });
-
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (chart) {
-      const ctx = chart.ctx;
-      
-      const leanGradient = ctx.createLinearGradient(0, 0, 0, 400);
-      leanGradient.addColorStop(0, 'rgba(5, 150, 105, 0.6)'); // --mod-nutricao
-      leanGradient.addColorStop(1, 'rgba(5, 150, 105, 0.1)');
-      
-      const fatGradient = ctx.createLinearGradient(0, 0, 0, 400);
-      fatGradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)'); // warm red
-      fatGradient.addColorStop(1, 'rgba(239, 68, 68, 0.1)');
-
-      setGradients({ lean: leanGradient, fat: fatGradient });
-    }
-  }, []);
 
   const chartData = {
     labels: data.dates.map(d => {
@@ -36,7 +18,15 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         label: 'Massa Gorda',
         data: data.fatMassKg,
         borderColor: '#ef4444',
-        backgroundColor: gradients.fat || 'rgba(239, 68, 68, 0.5)',
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(239, 68, 68, 0.4)';
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
+          gradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
+          return gradient;
+        },
         fill: true,
         tension: 0.4,
         pointRadius: 0,
@@ -46,7 +36,15 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         label: 'Massa Magra',
         data: data.leanMassKg,
         borderColor: '#059669',
-        backgroundColor: gradients.lean || 'rgba(5, 150, 105, 0.5)',
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(5, 150, 105, 0.4)';
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(5, 150, 105, 0.6)');
+          gradient.addColorStop(1, 'rgba(5, 150, 105, 0.05)');
+          return gradient;
+        },
         fill: true,
         tension: 0.4,
         pointRadius: 0,
@@ -62,7 +60,7 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       legend: { 
         position: 'top',
         align: 'end',
-        labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' }
+        labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle', color: 'rgba(255, 255, 255, 0.7)' }
       },
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -76,10 +74,11 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       }
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
       y: {
         stacked: true,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       }
     },
     interaction: {
