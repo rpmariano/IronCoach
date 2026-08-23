@@ -52,14 +52,24 @@ export default function OverviewDashboard({ scrollToTab }) {
 
   // ── Ginásio ───────────────────────────────────────────
   const gymStats = useMemo(() => calculateVolumeLoad(gymSessions || [], 'semana'), [gymSessions]);
-  const weekSessions = useMemo(() =>
-    filterByDateRange(gymSessions || [], 'semana').length, [gymSessions]
+  // A pílula "N sessões" já conta força e aulas juntas (weekGymSessions não
+  // filtra por `kind`) — o que faltava era a frase de baixo distinguir os
+  // dois: uma aula (yoga, spinning, CrossFit) legitimamente não tem séries
+  // com peso, não é um registo em falta. Sem esta distinção, "1 sessão" +
+  // "Sem séries com peso registadas" lia-se como uma contradição.
+  const weekGymSessions = useMemo(() =>
+    filterByDateRange(gymSessions || [], 'semana'), [gymSessions]
   );
+  const weekSessions = weekGymSessions.length;
+  const weekClasses = weekGymSessions.filter(s => s.kind === 'aula').length;
+  const weekStrengthSessions = weekSessions - weekClasses;
   const gymSubtitle = gymStats?.totalVolumeLoad > 0
     ? `${Math.round(gymStats.totalVolumeLoad / weekSessions).toLocaleString('pt-PT')} kg/sessão em média`
-    : weekSessions > 0
+    : weekStrengthSessions > 0
       ? 'Sem séries com peso registadas'
-      : 'Sem treinos esta semana';
+      : weekClasses > 0
+        ? `${weekClasses} aula${weekClasses !== 1 ? 's' : ''} de ginásio esta semana`
+        : 'Sem treinos esta semana';
 
   // ── Nutrição ──────────────────────────────────────────
   const adherence = useMemo(() =>
