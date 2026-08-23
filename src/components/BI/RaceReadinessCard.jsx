@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Trophy, Flag, ChevronRight } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
@@ -12,6 +12,7 @@ const PILLAR_ICONS = {
 };
 
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
+  const [selectedPillar, setSelectedPillar] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const nextRace = useMemo(() => {
     if (!raceEvents?.length) return null;
@@ -39,18 +40,18 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   const circumference = 2 * Math.PI * radius;
   const progress = circumference - (readiness.score / 100) * circumference;
 
-  const Component = nextRace && onClickRace ? 'button' : 'div';
-  const componentProps = Component === 'button' ? { 
+  const HeaderComponent = nextRace && onClickRace ? 'button' : 'div';
+  const headerProps = HeaderComponent === 'button' ? { 
     onClick: () => onClickRace(nextRace.id),
-    className: "w-full text-left bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] active:scale-[0.98] transition-transform"
+    className: "w-full text-left flex items-start gap-4 active:scale-[0.98] transition-transform cursor-pointer"
   } : {
-    className: "w-full bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]"
+    className: "w-full text-left flex items-start gap-4"
   };
 
   return (
-    <Component {...componentProps}>
+    <div className="w-full bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
       {/* Header */}
-      <div className="flex items-start gap-4">
+      <HeaderComponent {...headerProps}>
         {/* Ring */}
         <div className="relative shrink-0 w-20 h-20">
           <svg viewBox="0 0 88 88" className="w-20 h-20 -rotate-90">
@@ -104,19 +105,26 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 <span className="text-[11px] text-slate-400 font-medium"> — {nextRace.distance_km || '?'}km</span>
               )}
             </div>
-            {Component === 'button' && (
+            {HeaderComponent === 'button' && (
               <ChevronRight className="w-4 h-4 text-slate-400" />
             )}
           </div>
         </div>
-      </div>
+      </HeaderComponent>
 
       {/* Pillar breakdown */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         {readiness.pillars.map(pillar => {
           const pCfg = pillar.score >= 75 ? LEVEL_CONFIG.high : pillar.score >= 45 ? LEVEL_CONFIG.medium : LEVEL_CONFIG.low;
           return (
-            <div key={pillar.key} className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+            <div 
+              key={pillar.key} 
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedPillar(pillar);
+              }}
+              className="bg-white/5 rounded-xl p-2.5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
+            >
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] text-slate-400 font-semibold truncate pr-1">{PILLAR_ICONS[pillar.key]} {pillar.label}</span>
                 <span className={`text-[10px] font-bold ${pCfg.textColor} shrink-0`}>{pillar.score}%</span>
@@ -131,6 +139,46 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           );
         })}
       </div>
-    </Component>
+
+      {selectedPillar && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm fade-in"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedPillar(null);
+          }}
+        >
+          <div 
+            className="bg-[#1a1f2e] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl scale-in"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{PILLAR_ICONS[selectedPillar.key]}</span>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{selectedPillar.label}</h3>
+              </div>
+              <span className={`text-sm font-bold ${
+                selectedPillar.score >= 75 ? 'text-emerald-400' : 
+                selectedPillar.score >= 45 ? 'text-amber-400' : 'text-rose-400'
+              }`}>{selectedPillar.score}%</span>
+            </div>
+            
+            <p className="text-sm text-slate-300 leading-relaxed mb-6">
+              {selectedPillar.desc}
+            </p>
+            
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedPillar(null);
+              }}
+              className="w-full py-3 bg-white/10 hover:bg-white/20 active:bg-white/5 text-white text-sm font-bold rounded-2xl transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

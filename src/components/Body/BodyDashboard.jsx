@@ -101,8 +101,8 @@ export default function BodyDashboard({ onGoToCalendar }) {
         <span className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}>
           <User className="w-7 h-7" style={{ color: '#fff' }} />
         </span>
-        <h2 className="text-sm font-bold text-slate-800 mb-1">Composição corporal</h2>
-        <p className="text-xs text-slate-500 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>
+        <h2 className="text-sm font-bold text-white mb-1">Composição corporal</h2>
+        <p className="text-xs text-slate-400 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>
         <Button 
           variant="module"
           moduleColor="var(--accent)"
@@ -182,11 +182,11 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
       {/* Weight Trend Chart */}
       {weightDualChartData && (
-        <Card className="glass rounded-2xl p-4">
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
           <div className="flex items-start gap-2 mb-3">
             <div className="flex items-center gap-2 flex-1">
-              <Activity className="w-5 h-5 text-[var(--mod-corpo)]" />
-              <h2 className="text-sm font-semibold text-slate-800 leading-tight">Tendência de Peso (EWMA)</h2>
+              <Activity className="w-4 h-4 text-[var(--mod-corpo)]" />
+              <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider leading-tight">Tendência de Peso (EWMA)</h2>
             </div>
             <MetricInfo text="O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha!" />
           </div>
@@ -198,20 +198,16 @@ export default function BodyDashboard({ onGoToCalendar }) {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                  y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
-                  x: { grid: { display: false } }
+                  y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+                  x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
                 }
               }} 
             />
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Body Composition Stacked Area.
-          O componente traz o seu próprio cartão, título e alturas, e monta
-          as séries a partir de `data` ({ dates, leanMassKg, fatMassKg }) —
-          os antigos labels/datasets eram simplesmente ignorados, e o
-          cartão exterior com h-48 fixo cortava o gráfico. */}
+      {/* Body Composition Stacked Area */}
       {compositionData && compositionData.dates.length > 0 && (
         <StackedAreaChart data={compositionData} />
       )}
@@ -219,14 +215,14 @@ export default function BodyDashboard({ onGoToCalendar }) {
       {/* Evolução Individual */}
       <div className="flex items-center gap-3 mt-6">
         <div 
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
           style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}
         >
           <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução por Métrica</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{filteredAssessments.length} avaliação(ões) no período</p>
+          <h2 className="text-sm font-bold text-white leading-none">Evolução por Métrica</h2>
+          <p className="text-[11px] text-slate-400 mt-1">{filteredAssessments.length} avaliação(ões) no período</p>
         </div>
       </div>
 
@@ -249,24 +245,24 @@ export default function BodyDashboard({ onGoToCalendar }) {
         })}
       </div>
 
-      <Card className="glass rounded-2xl p-4">
+      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedMetric.color }} />
-            <h2 className="text-sm font-semibold text-slate-800 truncate">{selectedMetric.label}</h2>
+            <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider truncate">{selectedMetric.label}</h2>
           </div>
           {latestVal !== null && (
-            <span className="text-lg font-bold text-slate-800">{fmtMetric(selectedMetric, latestVal)}</span>
+            <span className="text-lg font-bold text-white">{fmtMetric(selectedMetric, latestVal)}</span>
           )}
         </div>
 
         <div className="mb-3">
           {goalVal != null && latestVal != null ? (
-            <span className="text-[11px] text-slate-500">
-              Objetivo: <span className="text-slate-700 font-semibold">{fmtMetric(selectedMetric, goalVal)}</span>
+            <span className="text-[11px] text-slate-400">
+              Objetivo: <span className="text-slate-200 font-semibold">{fmtMetric(selectedMetric, goalVal)}</span>
             </span>
           ) : (
-            <span className="text-[11px] text-slate-500">
+            <span className="text-[11px] text-slate-400">
               {points.length} leitura(s){goalVal == null ? ' · sem objetivo definido' : ''}
             </span>
           )}
@@ -274,17 +270,23 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
         {points.length >= 1 ? (
           <div className="h-48 relative">
-            <Line data={chartData} options={chartOptions} />
+            <Line data={chartData} options={{
+              ...chartOptions, 
+              scales: {
+                y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+                x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+              }
+            }} />
           </div>
         ) : (
-          <p className="text-xs text-slate-400 py-8 text-center">Sem leituras desta métrica ainda no período.</p>
+          <p className="text-[11px] text-slate-500 py-8 text-center uppercase tracking-wider">Sem leituras desta métrica ainda no período.</p>
         )}
-      </Card>
+      </div>
 
       {/* Valores mais recentes grid */}
       <div className="flex items-center gap-2 px-1 mt-6">
-        <List size={16} className="text-[var(--accent)]" />
-        <h2 className="text-sm font-semibold text-slate-800">Valores mais recentes</h2>
+        <List size={14} className="text-[var(--accent)]" />
+        <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Valores mais recentes</h2>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -292,13 +294,13 @@ export default function BodyDashboard({ onGoToCalendar }) {
           const withVal = bodyAssessments.filter(as => as[m.key] !== null && as[m.key] !== undefined);
           const latest = withVal[0];
           return (
-            <Card key={m.key} className="glass rounded-xl p-3">
+            <div key={m.key} className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-xl p-3 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
               <div className="flex items-center gap-1.5 mb-0.5">
-                <span style={{ color: m.color }}>{getBodyIcon(m.key, 14)}</span>
-                <p className="text-[10px] text-slate-500 truncate">{m.label}</p>
+                <span style={{ color: m.color }}>{getBodyIcon(m.key, 12)}</span>
+                <p className="text-[10px] text-slate-400 truncate">{m.label}</p>
               </div>
-              <p className="text-sm font-bold text-slate-800 mt-0.5">{latest ? fmtMetric(m, latest[m.key]) : '—'}</p>
-            </Card>
+              <p className="text-sm font-bold text-white mt-0.5">{latest ? fmtMetric(m, latest[m.key]) : '—'}</p>
+            </div>
           );
         })}
       </div>

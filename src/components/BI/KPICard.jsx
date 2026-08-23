@@ -34,13 +34,13 @@ export default function KPICard({
       )}
       
       <div className="flex justify-between items-start mb-2">
-        <span className="text-[12px] font-medium text-slate-500">{label}</span>
+        <span className="text-[12px] font-medium text-slate-400">{label}</span>
         {Icon && <Icon className="w-4 h-4 text-slate-400" />}
       </div>
       
       <div className="flex items-baseline gap-1 mb-1">
         <span className="text-2xl font-bold text-white">{value}</span>
-        {unit && <span className="text-xs text-slate-500 font-medium">{unit}</span>}
+        {unit && <span className="text-xs text-slate-400 font-medium">{unit}</span>}
       </div>
       
       <div className="flex items-center justify-between mt-2">

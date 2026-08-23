@@ -201,21 +201,21 @@ export default function RunDashboard() {
   const renderBucket = (label, b) => {
     if (!b) {
       return (
-        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0">
-          <p className="text-xs text-slate-500 font-medium">{label}</p>
-          <p className="text-xs text-slate-400">Sem dados</p>
+        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
+          <p className="text-xs text-slate-400 font-medium">{label}</p>
+          <p className="text-xs text-slate-500">Sem dados</p>
         </div>
       );
     }
     return (
-      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-slate-100 last:border-0">
+      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
         <div>
-          <p className="text-xs text-slate-500 font-medium">{label}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-300 font-medium">{label}</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">
             {formatDatePT(b.date)} · {b.count} corrida{b.count > 1 ? 's' : ''}
           </p>
         </div>
-        <p className="text-base font-extrabold text-slate-800">{formatPace(b.pace)}</p>
+        <p className="text-base font-extrabold text-white">{formatPace(b.pace)}</p>
       </div>
     );
   };
@@ -229,16 +229,16 @@ export default function RunDashboard() {
       />
 
       {/* Header Evolução */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
           style={{ background: 'linear-gradient(135deg, var(--mod-corrida), #2563eb)' }}
         >
           <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
         </div>
         <div>
-          <h2 className="text-sm font-bold text-slate-800 leading-none">Evolução e BI</h2>
-          <p className="text-[11px] text-slate-500 mt-1">{periodRuns.length} corrida(s) no período selecionado</p>
+          <h2 className="text-sm font-bold text-white leading-none">Evolução e BI</h2>
+          <p className="text-[11px] text-slate-400 mt-1">{periodRuns.length} corrida(s) no período selecionado</p>
         </div>
       </div>
 
@@ -316,36 +316,36 @@ export default function RunDashboard() {
       {/* 7. Daily Distance Bar Chart */}
       {periodRuns.length === 0 ? (
         <div className="min-h-[25vh] flex flex-col items-center justify-center text-center px-6 py-6">
-          <BarChart3 className="w-10 h-10 text-slate-400 mb-3" />
-          <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
+          <BarChart3 className="w-10 h-10 text-slate-500 mb-3" />
+          <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
             Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
           </p>
         </div>
       ) : (
-        <Card className="rounded-2xl p-4">
-          <p className="text-[11px] font-semibold text-slate-700 mb-3">Distância por dia</p>
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <p className="text-[11px] font-semibold text-slate-200 mb-3 uppercase tracking-wider">Distância por dia</p>
           <div className="h-44">
             <Bar data={chartData} options={chartOptions} />
           </div>
-        </Card>
+        </div>
       )}
 
       {/* 8. Recordes: Melhor pace de sempre */}
-      <Card className="rounded-2xl p-4">
-        <h2 className="text-[11px] font-semibold text-slate-700 mb-2">Melhor pace de sempre</h2>
+      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        <h2 className="text-[11px] font-semibold text-slate-200 mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
         <div className="space-y-1">
           {renderBucket('5 km+', b5)}
           {renderBucket('10 km+', b10)}
           {renderBucket('21 km+', b21)}
         </div>
-      </Card>
+      </div>
 
       {/* 9. Watch Metrics Card (if any data) */}
       {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
-        <Card className="rounded-2xl p-4">
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5">
-              <Mountain className="w-3.5 h-3.5 text-slate-500" /> Desnível, calorias e cadência
+            <h2 className="text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
+              <Mountain className="w-3.5 h-3.5 text-slate-400" /> Desnível, calorias e cadência
             </h2>
             <p className="text-[10px] text-slate-400 capitalize">
               {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
@@ -353,25 +353,25 @@ export default function RunDashboard() {
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-base font-extrabold text-slate-800 leading-none">
+              <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalElevation > 0 ? Math.round(watchMetrics.totalElevation) : '-'}
               </p>
-              <p className="text-[10px] text-slate-500 mt-1">Desnível (m)</p>
+              <p className="text-[10px] text-slate-400 mt-1">Desnível (m)</p>
             </div>
             <div>
-              <p className="text-base font-extrabold text-slate-800 leading-none">
+              <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalCalories > 0 ? Math.round(watchMetrics.totalCalories) : '-'}
               </p>
-              <p className="text-[10px] text-slate-500 mt-1">Calorias</p>
+              <p className="text-[10px] text-slate-400 mt-1">Calorias</p>
             </div>
             <div>
-              <p className="text-base font-extrabold text-slate-800 leading-none">
+              <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.avgCadence !== null ? watchMetrics.avgCadence : '-'}
               </p>
-              <p className="text-[10px] text-slate-500 mt-1">Cadência (spm)</p>
+              <p className="text-[10px] text-slate-400 mt-1">Cadência (spm)</p>
             </div>
           </div>
-        </Card>
+        </div>
       )}
     </div>
   );
