@@ -178,6 +178,7 @@ Deno.serve(async (req) => {
     const usage = {
       input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
       output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
     };
 
     if (parsed.recognized !== true) {

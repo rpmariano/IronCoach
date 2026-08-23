@@ -400,7 +400,12 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 
 // Contagem de tokens de uma (ou mais, somadas) chamadas ao Gemini —
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
-type GeminiUsage = { input_tokens: number; output_tokens: number };
+// cached_tokens: soma, ao longo de TODAS as rondas de function calling
+// deste pedido, dos tokens servidos por caching implícito (automático,
+// sem custo de armazenamento — Google deteta prefixos repetidos sozinho).
+// Instrumentado para decidir se compensa passar a caching explícito: ver
+// a sinalética "Cache do Coach" no painel Custos API/Admin.
+type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3293,7 +3298,7 @@ async function handler(req: Request): Promise<Response> {
     // Soma tokens de TODAS as chamadas ao Gemini neste pedido — o loop de
     // function calling pode fazer várias idas-e-voltas (cada uma consome
     // tokens) antes de chegar à resposta final que o utilizador vê.
-    const totalUsage: GeminiUsage = { input_tokens: 0, output_tokens: 0 };
+    const totalUsage: GeminiUsage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
 
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
@@ -3329,6 +3334,7 @@ async function handler(req: Request): Promise<Response> {
       const parsedRes: any = await geminiRes.json();
       totalUsage.input_tokens += Number(parsedRes?.usageMetadata?.promptTokenCount) || 0;
       totalUsage.output_tokens += Number(parsedRes?.usageMetadata?.candidatesTokenCount) || 0;
+      totalUsage.cached_tokens += Number(parsedRes?.usageMetadata?.cachedContentTokenCount) || 0;
       // deno-lint-ignore no-explicit-any
       const parts: any[] = parsedRes?.candidates?.[0]?.content?.parts || [];
       // deno-lint-ignore no-explicit-any

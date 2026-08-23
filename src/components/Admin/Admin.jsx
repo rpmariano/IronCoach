@@ -53,6 +53,26 @@ const GEMINI_COST_EVENT_MODULE = {
   coach_daily_summary: 'Coach',
 };
 
+/* Limiares da sinalética "Cache do Coach" (separador Custos API).
+   Contas feitas com os preços reais da linha Flash (0,75 input / 3,75
+   output / 0,075 leitura em cache / 0,50 armazenamento por hora): manter
+   uma cache explícita viva só se paga a si própria se houver pelo menos
+   ~2 pedidos nessa mesma hora — abaixo disso a poupança na leitura não
+   cobre o custo de a ter criado. É invariante ao tamanho do prompt (a conta
+   dá o mesmo com 15 mil ou com 200 mil tokens), por isso o número fica fixo
+   aqui em vez de derivado do tamanho do prompt do momento. */
+const COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR = 2;
+// Menos chamadas registadas que isto e a amostra ainda é demasiado pequena
+// para o padrão de horas-com-tráfego significar alguma coisa.
+const COACH_CACHE_MIN_CALLS_FOR_SIGNAL = 20;
+// % de tokens de input já servidos pelo caching IMPLÍCITO (automático, sem
+// custo de armazenamento — o Google deteta sozinho o prefixo repetido).
+// Acima disto, a explícita já não teria muito a acrescentar.
+const COACH_CACHE_ALREADY_SAVING_PCT = 25;
+// Nº de horas distintas que já bateram o break-even — exige um padrão
+// sustentado, não uma rajada isolada de um teste manual.
+const COACH_CACHE_SUSTAINED_HOURS = 3;
+
 function geminiCost(inputTokens, outputTokens) {
   return (inputTokens / 1e6) * GEMINI_PRICE_PER_M_INPUT + (outputTokens / 1e6) * GEMINI_PRICE_PER_M_OUTPUT;
 }
@@ -811,6 +831,59 @@ export default function Admin() {
         const totalCost = geminiCost(totalIn, totalOut);
         const modules = Object.entries(byModule).sort((a, b) => geminiCost(b[1].input, b[1].output) - geminiCost(a[1].input, a[1].output));
 
+        // ── Sinalética "Cache do Coach" ─────────────────────────────────
+        // Decide, com dados reais em vez de estimativa, se compensa passar
+        // o prompt do coach-chat a caching explícito. Ver constantes acima
+        // para a matemática do break-even (COACH_CACHE_*).
+        const coachLogs = costLogs.filter(l => l.event === 'coach-chat');
+        const coachCalls = coachLogs.length;
+        let coachInput = 0, coachCached = 0;
+        const hourBuckets = {};
+        for (const l of coachLogs) {
+          const meta = l.meta || {};
+          coachInput += Number(meta.input_tokens) || 0;
+          coachCached += Number(meta.cached_tokens) || 0;
+          const hour = (l.created_at || '').slice(0, 13); // YYYY-MM-DDTHH
+          if (hour) hourBuckets[hour] = (hourBuckets[hour] || 0) + 1;
+        }
+        const cacheHitPct = coachInput > 0 ? Math.round((coachCached / coachInput) * 100) : 0;
+        const activeHourCounts = Object.values(hourBuckets);
+        const sustainedHours = activeHourCounts.filter(c => c >= COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR).length;
+
+        let cacheSignal;
+        if (coachCalls < COACH_CACHE_MIN_CALLS_FOR_SIGNAL) {
+          cacheSignal = {
+            level: 'insuficiente',
+            label: 'Ainda sem dados suficientes',
+            detail: `${coachCalls} chamada(s) registadas — volta aqui daqui a uns dias, a partir de ${COACH_CACHE_MIN_CALLS_FOR_SIGNAL} já dá para ler um padrão.`,
+          };
+        } else if (cacheHitPct >= COACH_CACHE_ALREADY_SAVING_PCT) {
+          cacheSignal = {
+            level: 'ja_poupa',
+            label: 'O caching implícito já está a poupar',
+            detail: `${cacheHitPct}% dos tokens de input já vêm de cache automática, sem custo de armazenamento — não parece valer a pena montar caching explícito agora.`,
+          };
+        } else if (sustainedHours >= COACH_CACHE_SUSTAINED_HOURS) {
+          cacheSignal = {
+            level: 'vale_a_pena',
+            label: 'Vale a pena montar caching explícito',
+            detail: `${sustainedHours} hora(s) diferentes já tiveram ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas ao Coach — nessas horas, uma cache explícita já se teria pago sozinha.`,
+          };
+        } else {
+          cacheSignal = {
+            level: 'ainda_nao',
+            label: 'Tráfego ainda baixo para compensar',
+            detail: `Só ${sustainedHours} hora(s) com ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas em ${activeHourCounts.length} hora(s) com atividade — o custo de armazenamento ainda não se pagaria com regularidade.`,
+          };
+        }
+        const CACHE_SIGNAL_STYLES = {
+          insuficiente: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
+          ja_poupa: { badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30', text: 'text-blue-300' },
+          vale_a_pena: { badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30', text: 'text-amber-300' },
+          ainda_nao: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
+        };
+        const cacheStyle = CACHE_SIGNAL_STYLES[cacheSignal.level];
+
         return (
           <div className="space-y-3 fade-in">
             <div className="flex gap-2">
@@ -847,6 +920,39 @@ export default function Admin() {
                       <p className="text-[11px] text-slate-500">{v.calls} chamada(s) · {v.input.toLocaleString('pt-PT')} in / {v.output.toLocaleString('pt-PT')} out tokens</p>
                     </div>
                   ))}
+                </div>
+
+                {/* Sinalética de decisão: caching explícito do prompt do Coach.
+                    Só o coach-chat entra nesta análise — é o único caminho
+                    onde o prefixo do prompt é grande (~15,6 mil tokens) e
+                    idêntico entre TODOS os atletas, ver commit da
+                    reestruturação do prompt. Nos outros módulos o prompt é
+                    pequeno e específico de cada pedido — caching não se
+                    aplica. */}
+                <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold flex items-center gap-1.5">
+                      <Bot size={14} className="text-[var(--mod-coach-to)]" /> Cache do Coach
+                    </p>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cacheStyle.badge}`}>
+                      {cacheSignal.label}
+                    </span>
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${cacheStyle.text}`}>{cacheSignal.detail}</p>
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    <div className="text-center">
+                      <p className="text-sm font-bold">{coachCalls}</p>
+                      <p className="text-[9px] text-slate-500">chamadas</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold">{cacheHitPct}%</p>
+                      <p className="text-[9px] text-slate-500">já em cache</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold">{sustainedHours}<span className="text-slate-600">/{activeHourCounts.length}</span></p>
+                      <p className="text-[9px] text-slate-500">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
+                    </div>
+                  </div>
                 </div>
 
                 <p className="text-[10px] text-slate-600 text-center px-2">

@@ -493,6 +493,7 @@ Deno.serve(async (req) => {
     const usage = {
       input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
       output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
     };
     const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
     let parsed: Record<string, unknown>;

@@ -274,7 +274,10 @@ function buildPrompt(notes: string | null, history: unknown[]): string {
 
 // Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
 // usada para estimar o custo real da API — ver admin_logs/painel de custos.
-type GeminiUsage = { input_tokens: number; output_tokens: number };
+// cached_tokens: tokens deste pedido servidos por caching implícito
+// (automático, sem custo de armazenamento) — instrumentado para decidir
+// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
+type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 // Chama o Gemini com as imagens (base64) + histórico + observações, devolve as
 // métricas normalizadas, o resumo e os tokens consumidos (ou lança um erro
@@ -322,6 +325,7 @@ async function analyzeWithGemini(
   const usage: GeminiUsage = {
     input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
     output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
   };
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: { metrics?: Record<string, unknown>; classifications?: Record<string, unknown>; summary?: unknown };
