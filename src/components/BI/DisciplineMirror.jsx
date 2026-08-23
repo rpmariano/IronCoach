@@ -5,7 +5,7 @@ import MacroComplianceChart from './MacroComplianceChart';
 import { ShieldCheck, Info } from 'lucide-react';
 
 function getIntensityAnalysis(dist) {
-  if (!dist) return null;
+  if (!dist || (dist.lowIntensityPct === 0 && dist.highIntensityPct === 0)) return null;
   if (dist.isCompliant) {
     return { title: 'Polarização Excelente', desc: 'Estás a cumprir a regra 80/20 com mestria. Estás a construir base aeróbica sem acumular fadiga extrema!', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
   } else if (dist.highIntensityPct > (100 - dist.targetLowPct + 5)) {
