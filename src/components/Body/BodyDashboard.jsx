@@ -188,12 +188,12 @@ export default function BodyDashboard({ onGoToCalendar }) {
               key={m.key}
               type="button"
               onClick={() => setSelectedMetricKey(m.key)}
-              className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer ${
+              className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
                 isSelected 
-                  ? 'bg-white/15 ring-2 shadow-[0_0_12px_rgba(255,255,255,0.2)]' 
-                  : 'bg-white/5 border border-white/20 hover:bg-white/10'
+                  ? 'bg-white/5' 
+                  : 'bg-white/5 border-white/20 hover:bg-white/10'
               }`}
-              style={isSelected ? { borderColor: m.color, ringColor: m.color } : {}}
+              style={isSelected ? { borderColor: m.color, boxShadow: `0 0 0 2px ${m.color}cc` } : {}}
             >
               <div className="flex items-center justify-between gap-1 mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
