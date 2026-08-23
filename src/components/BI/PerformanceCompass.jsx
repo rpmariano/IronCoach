@@ -136,13 +136,13 @@ export default function PerformanceCompass({ data }) {
             leftData={{
               label: 'Performance (VDOT)',
               data: aeroVsWeightData.map(d => ({ x: d.date, y: d.vdot })),
-              color: 'var(--mod-corrida-to, #c026d3)',
+              color: '#c026d3', // Magenta
               unit: ''
             }}
             rightData={{
               label: 'Peso EWMA (kg)',
               data: aeroVsWeightData.map(d => ({ x: d.date, y: d.weight })),
-              color: 'var(--mod-corpo-to, #6366f1)',
+              color: '#6366f1', // Indigo
               unit: 'kg'
             }}
           />
