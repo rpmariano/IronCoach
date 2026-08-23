@@ -406,14 +406,20 @@ export function calculateWeightTrend(bodyAssessments) {
 
     const rawPoints = sorted.map(a => ({ date: a.date, weight: a.weight_kg }));
 
-    // EWMA com alpha = 2/(N+1), onde N = 7 dias (suavização de 7 dias)
     const alpha = 2 / (7 + 1); // ~0.25
     const movingAverage = [];
-    let ewma = rawPoints[0].weight;
+    const isEWMASmoothing = rawPoints.length >= 5;
 
-    for (const pt of rawPoints) {
-      ewma = alpha * pt.weight + (1 - alpha) * ewma;
-      movingAverage.push({ date: pt.date, weight: Math.round(ewma * 100) / 100 });
+    if (isEWMASmoothing) {
+      let ewma = rawPoints[0].weight;
+      for (const pt of rawPoints) {
+        ewma = alpha * pt.weight + (1 - alpha) * ewma;
+        movingAverage.push({ date: pt.date, weight: Math.round(ewma * 100) / 100 });
+      }
+    } else {
+      for (const pt of rawPoints) {
+        movingAverage.push({ date: pt.date, weight: pt.weight });
+      }
     }
 
     // Calcular tendência e taxa semanal
@@ -441,7 +447,7 @@ export function calculateWeightTrend(bodyAssessments) {
       }
     }
 
-    return { rawPoints, movingAverage, trend, weeklyRate };
+    return { rawPoints, movingAverage, trend, weeklyRate, isEWMASmoothing };
   } catch (e) {
     return null;
   }

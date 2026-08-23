@@ -149,7 +149,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
     labels: weightTrendData.rawPoints.map(p => p.date.slice(8, 10) + '/' + p.date.slice(5, 7)),
     datasets: [
       {
-        label: 'EWMA (Tendência)',
+        label: weightTrendData.isEWMASmoothing ? 'EWMA (Tendência)' : 'Evolução (Raw)',
         data: weightTrendData.movingAverage.map(p => p.weight),
         borderColor: '#6366f1',
         borderWidth: 3,
@@ -263,9 +263,15 @@ export default function BodyDashboard({ onGoToCalendar }) {
           <div className="flex items-start gap-2 mb-3">
             <div className="flex items-center gap-2 flex-1">
               <Activity className="w-4 h-4 text-[var(--mod-corpo)]" />
-              <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider leading-tight">Tendência de Peso (EWMA)</h2>
+              <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider leading-tight">
+                {weightTrendData.isEWMASmoothing ? 'Tendência de Peso (EWMA)' : 'Evolução de Peso'}
+              </h2>
             </div>
-            <MetricInfo text="O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha!" />
+            <MetricInfo text={
+              weightTrendData.isEWMASmoothing 
+                ? "O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha!"
+                : "A evolução direta do teu peso no período selecionado. A tendência (EWMA) será ativada automaticamente quando registares pelo menos 5 pesagens neste período."
+            } />
           </div>
           <div className="h-48 relative">
             <Line 
