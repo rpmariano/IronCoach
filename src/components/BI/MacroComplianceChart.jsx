@@ -70,7 +70,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
       legend: {
         position: 'top',
         align: 'end',
-        labels: { boxWidth: 12, usePointStyle: true }
+        labels: { boxWidth: 12, usePointStyle: true, color: 'rgba(255, 255, 255, 0.7)' }
       },
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -90,9 +90,10 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
       }
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
       y: { 
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }, 
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }, 
         beginAtZero: true,
         suggestedMax: dailyData.length > 0 ? Math.max(
           dailyData[0].proteinTarget || 0, 
