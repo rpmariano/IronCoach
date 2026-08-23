@@ -165,7 +165,15 @@ const PROPOSE_PLAN_TOOL = {
             target_duration_min: { type: "NUMBER", description: "Duração alvo em minutos." },
             notes: {
               type: "STRING",
-              description: "Instrução curta ao atleta, ex.: \"Z2, fácil, sem olhar ao ritmo\"",
+              description:
+                "Instrução ao atleta para o dia. Para kind=corrida, segue a doutrina " +
+                "\"DETALHE DOS TREINOS DE CORRIDA NO PLANO\" acima — não te limites à zona de " +
+                "FC, inclui pace-alvo derivado do histórico real e, para intervalos/fartlek, a " +
+                "estrutura do treino. Exemplos: \"8×400m a 4:15/km, 90s trote de recuperação " +
+                "entre séries\" (intervalos); \"14km em Z2, ~5:40-5:55/km, ritmo de conversa\" " +
+                "(longo); \"25min sustentados a 5:00/km, foco em manter o ritmo constante\" " +
+                "(tempo); \"40min com blocos de 2min forte / 2min fácil alternados\" (fartlek); " +
+                "\"6km bem lentos, sem pressa nenhuma\" (recuperacao).",
             },
             meal_suggestion: {
               type: "STRING",
@@ -2616,6 +2624,24 @@ export function buildSystemInstruction(
     `Depois de criares a proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
+    `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
+    `que sentir. Para cada dia kind=corrida, combina na notes, sempre que o histórico o permita:\n` +
+    `  • Pace-alvo (min/km), derivado dos paces REAIS das últimas corridas do atleta (contexto ` +
+    `abaixo já traz pace por corrida) — nunca inventes um número às cegas: recuperação/longo = ` +
+    `mais lento que o pace confortável habitual; tempo/limiar = perto do pace que já mostrou ` +
+    `aguentar ~20-40 min a esforço moderado-alto; intervalos/subidas = mais rápido que o pace de ` +
+    `prova recente, em blocos curtos.\n` +
+    `  • Para training_type=intervalos ou fartlek: a ESTRUTURA do treino, não só o nome — nº de ` +
+    `repetições, distância ou tempo de cada bloco, e o tipo/duração da recuperação entre eles ` +
+    `(ex.: "8×400m a 4:15/km, 90s trote de recuperação entre séries").\n` +
+    `  • Cadência-alvo: só menciona se o histórico mostrar cadência crónica <155 spm ` +
+    `(assinalado com ⚠cadência<155 nas corridas do contexto) — pede então +5-10% sobre a ` +
+    `cadência ATUAL do atleta, nunca um valor absoluto. Fora disso, omite — é ruído (Bloco 2.4).\n` +
+    `  • A zona de FC pode continuar como referência complementar, nunca como único dado.\n` +
+    `Sem histórico de pace suficiente para o training_type em causa (atleta novo, sem corridas ` +
+    `qualificadas nesse ritmo), descreve o esforço por sensação ("ritmo de conversa", "esforço ` +
+    `moderado, ainda consegues falar em frases curtas") em vez de inventar um número.\n\n` +
     `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
     `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
     `explicitamente um dos seguintes sinais de interrupção:\n` +
