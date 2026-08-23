@@ -45,9 +45,9 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       ctx.stroke();
       
       // Label
-      ctx.fillStyle = '#64748b'; // slate-500
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '10px system-ui';
-      ctx.fillText('Média 4s', chartArea.right - 45, yPos - 5);
+      ctx.fillText('Média 4s', chartArea.right - 48, yPos - 5);
       ctx.restore();
     }
   };
@@ -83,8 +83,8 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       }
     },
     scales: {
-      x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true, ticks: { color: 'rgba(255, 255, 255, 0.5)' } }
     }
   };
 

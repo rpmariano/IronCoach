@@ -104,38 +104,40 @@ export default function GymDashboard() {
     };
   }, [muscleVolume]);
 
-  const defaultChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-      x: { grid: { display: false } }
-    }
-  };
-
-  const muscleChartOptions = {
-    indexAxis: 'y',
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-      y: { grid: { display: false } }
-    }
-  };
-
   const exChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { 
-      legend: { 
-        display: true, 
+    plugins: {
+      legend: {
+        display: true,
         position: 'top',
-        labels: { boxWidth: 12, usePointStyle: true, font: { size: 10 } }
-      } 
+        labels: {
+          boxWidth: 12,
+          usePointStyle: true,
+          font: { size: 10 },
+          color: 'rgba(255,255,255,0.7)'
+        }
+      }
     },
-    scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+    }
+  };
+
+  // Shared scale options
+  const darkScalesVertical = {
+    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+    x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+  };
+  const darkScalesHorizontal = {
+    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+    y: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+  };
+  const baseChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } }
   };
 
   return (
@@ -162,24 +164,24 @@ export default function GymDashboard() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.05)]">
+            <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
               <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Volume Diário (kg)</p>
               <div className="h-52 relative">
-                <Bar data={volChartData} options={{...defaultChartOptions, scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, y: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }}} />
+                <Bar data={volChartData} options={{ ...baseChartOptions, scales: darkScalesVertical }} />
               </div>
             </div>
 
             {Object.keys(muscleVolume).length > 0 && (
-              <div className="bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.05)]">
+              <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
                 <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Séries por Músculo</p>
                 <div className="h-52 relative">
-                  <Bar data={muscleChartData} options={{...defaultChartOptions, indexAxis: 'y', scales: { x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, y: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }}} />
+                  <Bar data={muscleChartData} options={{ ...baseChartOptions, indexAxis: 'y', scales: darkScalesHorizontal }} />
                 </div>
               </div>
             )}
           </div>
 
-          <div className="bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.05)]">
+          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div className="flex items-start">
                 <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Evolução do 1RM Estimado</p>
@@ -198,12 +200,12 @@ export default function GymDashboard() {
             </div>
             {selectedExercise && progression.length > 0 ? (
               <div className="h-64 relative">
-                <Line data={exChartData} options={{...exChartOptions, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }}} />
+                <Line data={exChartData} options={exChartOptions} />
               </div>
             ) : (
               <div className="h-56 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-2xl">
                 <p className="text-[11px] text-slate-400 text-center px-4 uppercase tracking-wider">
-                  Escolhe um exercício acima para acompanhares a evolução.
+                  {selectedExercise ? 'Sem dados para este exercício ainda.' : 'Escolhe um exercício acima para acompanhares a evolução.'}
                 </p>
               </div>
             )}
@@ -213,4 +215,5 @@ export default function GymDashboard() {
     </div>
   );
 }
+
 
