@@ -10,6 +10,7 @@ import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
+import { calculateRaceTrainingPlan, formatDatePTShort } from '../../utils/racePlanEngine';
 import { detectCoachInsights } from '../../utils/biEngine';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
@@ -101,46 +102,23 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
         style={{ scrollBehavior: 'smooth' }}
       >
         {upcoming.map(next => {
-          const daysUntil = Math.max(0, Math.round((new Date(next.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000));
-          
-          const distanceKm = parseFloat((next.distance_km || '').toString().replace(',', '.'));
-          const exp = next.experience_level || profile?.experience_level || 'iniciante';
-          const cat = categorizeDistance(distanceKm);
-          
-          let minWeeks = 12; // Valor padrão caso falhe o mapeamento
-          if (cat && MIN_PREP_WEEKS[exp] && MIN_PREP_WEEKS[exp][cat] !== null) {
-            minWeeks = MIN_PREP_WEEKS[exp][cat];
-          }
-          const maxDays = minWeeks * 7; 
-
-          const progressPercentage = Math.max(0, Math.min(100, ((maxDays - daysUntil) / maxDays) * 100));
-          const dateObj = new Date(next.date + 'T00:00:00');
-          const formattedDate = dateObj.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short', year: 'numeric' });
-
-          const weeksToRace = Math.floor(daysUntil / 7);
-          const viability = assessRaceViability({
-            distanceKm: distanceKm,
-            experienceLevel: exp,
-            weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
-            weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+          const plan = calculateRaceTrainingPlan({
+            race: next,
+            profile,
+            runs,
+            todayISO: today,
           });
 
-          // Semáforo determinístico como fallback
-          let deterministicReadiness = 'green';
-          if (viability.flags.length > 0) {
-            deterministicReadiness = (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente'))
-              ? 'red'
-              : 'yellow';
-          }
+          const formattedDate = formatDatePTShort(plan.raceDate);
+          const daysUntil = Math.max(0, plan.daysToRace);
 
-          // Preferir avaliação da Carol (mais rica) se disponível para esta prova concreta.
-          // Valida que o level é um valor esperado — previne semáforo silencioso se o modelo alucinar.
+          // Preferir avaliação da Carol (mais rica) do dailySummary se disponível para esta prova concreta, senão usar o readinessLevel unificado do motor.
           const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
             ? dailySummary.race_readiness.level
             : null;
-          const carolReadiness = VALID_READINESS_LEVELS.includes(rawCarolLevel) ? rawCarolLevel : null;
-          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : null;
-          const readiness = carolReadiness || deterministicReadiness;
+          const carolReadiness = (rawCarolLevel === 'green' || rawCarolLevel === 'yellow' || rawCarolLevel === 'red') ? rawCarolLevel : null;
+          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : (plan.carolAnalysis?.overviewText || null);
+          const readiness = carolReadiness || plan.readinessLevel || 'green';
 
           return (
             <div
@@ -157,7 +135,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   location={next.location || 'Não definida'}
                   tag={next.race_type || 'Prova'}
                   daysRemaining={daysUntil}
-                  progressPercentage={progressPercentage}
+                  progressPercentage={plan.progressPercentage}
                   readiness={readiness}
                   readinessReason={carolReason}
                 />
