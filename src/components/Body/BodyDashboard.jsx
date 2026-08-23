@@ -179,8 +179,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
         onChange={setTimeRange}
       />
 
-      {/* 1. Grelha de Cards Pequenos e Acionáveis com Variação */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2 px-1">
         {metricSummaries.map(({ metric: m, value, deltaText, deltaType }) => {
           const isSelected = selectedMetricKey === m.key;
           return (
@@ -188,12 +187,12 @@ export default function BodyDashboard({ onGoToCalendar }) {
               key={m.key}
               type="button"
               onClick={() => setSelectedMetricKey(m.key)}
-              className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer ${
+              className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
                 isSelected 
-                  ? 'bg-white/5 border-[2px]' 
-                  : 'bg-white/5 border border-white/20 hover:bg-white/10'
+                  ? 'bg-white/5' 
+                  : 'bg-white/5 border-white/20 hover:bg-white/10'
               }`}
-              style={isSelected ? { borderColor: m.color } : {}}
+              style={isSelected ? { borderColor: m.color, boxShadow: `0 0 0 2px ${m.color}cc` } : {}}
             >
               <div className="flex items-center justify-between gap-1 mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
