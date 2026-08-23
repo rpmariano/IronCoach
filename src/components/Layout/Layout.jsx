@@ -304,12 +304,12 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
 }
 
 function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
-  const active = ['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(activeTab);
+  const active = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(activeTab);
   const activeColor = 'var(--accent)';
 
   return (
     <button
-      onClick={() => { if (!active) setTab(lastDashboardTab || 'corrida'); }}
+      onClick={() => { if (!active) setTab(lastDashboardTab || 'hub'); }}
       data-vert="dashboard"
       aria-label="Dashboard"
       aria-current={active ? 'page' : undefined}

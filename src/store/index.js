@@ -5,13 +5,13 @@ import { todayISO, addDaysISO } from '../lib/utils';
 const getInitialDashboardTab = () => {
   try {
     const saved = localStorage.getItem('ironcoach_last_module');
-    if (['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(saved)) {
+    if (['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(saved)) {
       return saved;
     }
   } catch (err) {
     // ignore
   }
-  return 'corrida';
+  return 'hub';
 };
 
 export const useAppStore = create((set, get) => ({
