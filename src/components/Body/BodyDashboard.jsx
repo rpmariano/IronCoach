@@ -189,10 +189,10 @@ export default function BodyDashboard({ onGoToCalendar }) {
               onClick={() => setSelectedMetricKey(m.key)}
               className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
                 isSelected 
-                  ? 'bg-white/5' 
+                  ? 'bg-white/5 ring-2' 
                   : 'bg-white/5 border-white/20 hover:bg-white/10'
               }`}
-              style={isSelected ? { borderColor: m.color, boxShadow: `0 0 0 2px ${m.color}cc` } : {}}
+              style={isSelected ? { borderColor: m.color, '--tw-ring-color': `${m.color}cc` } : {}}
             >
               <div className="flex items-center justify-between gap-1 mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
