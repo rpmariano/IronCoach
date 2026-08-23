@@ -8,15 +8,14 @@ import DisciplineMirror from '../BI/DisciplineMirror';
 export default function AtletaHubDashboard() {
   const { 
     runs, 
-  const { 
-    runs, 
     gymSessions, 
     meals, 
     bodyAssessments, 
     raceEvents, 
     coachPlans, 
     coachPlanItems, 
-    session
+    session,
+    profile
   } = useAppStore();
 
   // MOCK DE DADOS TEMPORÁRIO PARA TESTES
