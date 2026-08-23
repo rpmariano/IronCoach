@@ -439,6 +439,48 @@ function totalsFromItems(items: any[]): MealTotals {
   );
 }
 
+/* Enquadramento da análise conforme a situação do atleta.
+
+   Duplicado em analyze-run / analyze-meal / analyze-gym e espelhado na
+   doutrina "Modos de Acompanhamento" do coach-chat — as Edge Functions não
+   partilham módulos (ver PRD 3.7). Mexer num obriga a mexer nos outros.
+
+   Porquê: sem plano, planSection ficava a string vazia e a Carol não recebia
+   orientação nenhuma — caía na doutrina genérica, que pressupõe plano, e
+   falava de "desvio" e "atraso" a atletas que nunca tiveram plano.
+
+   intervention_needed fica SUPRIMIDO nos dois modos sem plano: o fluxo de
+   intervenção existe para renegociar um plano (resolve_intervention só aceita
+   "plano_ajustado" ou "atleta_ignorou"), por isso o botão vermelho sem plano
+   nenhum não teria ação possível do outro lado. O aviso de risco continua a
+   chegar ao atleta pelo texto da nota. */
+function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+  if (hasPlan) {
+    return hasUpcomingRace
+      ? ""
+      : `\nNOTA DE ENQUADRAMENTO: este plano NÃO serve nenhuma prova — serve manutenção da ` +
+        `condição física ou progresso geral. Não fales de taper, pico de forma nem contagem ` +
+        `decrescente para uma data. O critério de sucesso é consistência e progressão ` +
+        `sustentável, não um tempo-alvo.\n`;
+  }
+  if (hasUpcomingRace) {
+    return `\nENQUADRAMENTO — PROVA AGENDADA, SEM PLANO: o atleta tem prova marcada mas NÃO tem ` +
+      `plano de treino. NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
+      `"o plano está comprometido" — não existe plano de que desviar. Julga-o pela adequação ao ` +
+      `objetivo da prova e à fase de preparação, usando o histórico e o volume semanal como base ` +
+      `de comparação. Se houver risco real (carga aguda, fadiga acumulada, progressão rápida ` +
+      `demais), diz-o como conselho direto. NÃO marques intervention_needed: a ausência de plano ` +
+      `é uma escolha do atleta, não um problema a corrigir.\n`;
+  }
+  return `\nENQUADRAMENTO — SEM PROVA E SEM PLANO (acompanhamento): o atleta não tem prova ` +
+    `agendada nem plano, e não te pediu nada. O pressuposto por omissão é que quer MANTER os ` +
+    `seus hábitos — não assumas que quer melhorar, nem que quer plano. A análise é de ` +
+    `acompanhamento: diz o que vês neste registo face ao histórico, reforça o que está ` +
+    `consistente, avisa do que for risco real (carga aguda, fadiga, lesão) e fica por aí. ` +
+    `NUNCA fales de "desvio", "atraso" ou "plano". NÃO marques intervention_needed — sem plano ` +
+    `nem objetivo declarado não há nada a renegociar.\n`;
+}
+
 // Gera o comentário do Coach sobre uma refeição: compara-a com uma fatia
 // proporcional das metas diárias (não há forma leve de somar o dia todo
 // aqui sem outra ronda de queries) e com as últimas refeições do mesmo tipo,
@@ -452,6 +494,9 @@ async function generateMealCoachNotes(
   previousMeals: Array<{ date: string } & MealTotals>,
   // deno-lint-ignore no-explicit-any
   planItems: any[],
+  // Há prova agendada? Decide o enquadramento quando não há plano — ver
+  // planningFrameSection.
+  hasUpcomingRace: boolean,
   recentCompletedWorkouts: { runs: any[]; gym: any[] } = { runs: [], gym: [] },
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
@@ -510,8 +555,9 @@ async function generateMealCoachNotes(
   const planSection = planItems.length > 0 
     ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
       planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n`
-    : ``;
+      `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n` +
+      planningFrameSection(true, hasUpcomingRace)
+    : planningFrameSection(false, hasUpcomingRace);
 
   const prompt =
     `És um nutricionista/treinador direto, a comentar uma refeição que um atleta amador acabou de registar. ` +
@@ -640,6 +686,18 @@ async function attachMealCoachNotes(
       planItems = items || [];
     }
 
+    /* Prova agendada? Só o facto de existir, não os detalhes — serve para
+       escolher o enquadramento da análise (planningFrameSection). Inclui o
+       próprio dia: uma prova hoje ainda enquadra o registo de hoje. */
+    const { data: upcomingRaces } = await sb
+      .from("race_events")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "agendada")
+      .gte("date", ctx.date)
+      .limit(1);
+    const hasUpcomingRace = (upcomingRaces || []).length > 0;
+
     const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
     const [{ data: actualRuns }, { data: actualGym }] = await Promise.all([
       sb
@@ -662,6 +720,7 @@ async function attachMealCoachNotes(
       profile || {},
       previousMeals,
       planItems,
+      hasUpcomingRace,
       { runs: actualRuns || [], gym: actualGym || [] },
       geminiKey,
       {

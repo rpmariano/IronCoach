@@ -340,6 +340,48 @@ type RunExtraction = {
   regularity_score?: number | null;
 };
 
+/* Enquadramento da análise conforme a situação do atleta.
+
+   Duplicado em analyze-run / analyze-meal / analyze-gym e espelhado na
+   doutrina "Modos de Acompanhamento" do coach-chat — as Edge Functions não
+   partilham módulos (ver PRD 3.7). Mexer num obriga a mexer nos outros.
+
+   Porquê: sem plano, planSection ficava a string vazia e a Carol não recebia
+   orientação nenhuma — caía na doutrina genérica, que pressupõe plano, e
+   falava de "desvio" e "atraso" a atletas que nunca tiveram plano.
+
+   intervention_needed fica SUPRIMIDO nos dois modos sem plano: o fluxo de
+   intervenção existe para renegociar um plano (resolve_intervention só aceita
+   "plano_ajustado" ou "atleta_ignorou"), por isso o botão vermelho sem plano
+   nenhum não teria ação possível do outro lado. O aviso de risco continua a
+   chegar ao atleta pelo texto da nota. */
+function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+  if (hasPlan) {
+    return hasUpcomingRace
+      ? ""
+      : `\nNOTA DE ENQUADRAMENTO: este plano NÃO serve nenhuma prova — serve manutenção da ` +
+        `condição física ou progresso geral. Não fales de taper, pico de forma nem contagem ` +
+        `decrescente para uma data. O critério de sucesso é consistência e progressão ` +
+        `sustentável, não um tempo-alvo.\n`;
+  }
+  if (hasUpcomingRace) {
+    return `\nENQUADRAMENTO — PROVA AGENDADA, SEM PLANO: o atleta tem prova marcada mas NÃO tem ` +
+      `plano de treino. NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
+      `"o plano está comprometido" — não existe plano de que desviar. Julga-o pela adequação ao ` +
+      `objetivo da prova e à fase de preparação, usando o histórico e o volume semanal como base ` +
+      `de comparação. Se houver risco real (carga aguda, fadiga acumulada, progressão rápida ` +
+      `demais), diz-o como conselho direto. NÃO marques intervention_needed: a ausência de plano ` +
+      `é uma escolha do atleta, não um problema a corrigir.\n`;
+  }
+  return `\nENQUADRAMENTO — SEM PROVA E SEM PLANO (acompanhamento): o atleta não tem prova ` +
+    `agendada nem plano, e não te pediu nada. O pressuposto por omissão é que quer MANTER os ` +
+    `seus hábitos — não assumas que quer melhorar, nem que quer plano. A análise é de ` +
+    `acompanhamento: diz o que vês neste registo face ao histórico, reforça o que está ` +
+    `consistente, avisa do que for risco real (carga aguda, fadiga, lesão) e fica por aí. ` +
+    `NUNCA fales de "desvio", "atraso" ou "plano". NÃO marques intervention_needed — sem plano ` +
+    `nem objetivo declarado não há nada a renegociar.\n`;
+}
+
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
 // baseado na corrida acabada de ser criada e no contexto das últimas corridas.
 async function generateCoachNotes(
@@ -357,6 +399,9 @@ async function generateCoachNotes(
   historyLabel: string,
   // deno-lint-ignore no-explicit-any
   planItems: any[],
+  // Há prova agendada? Decide o enquadramento quando não há plano — ver
+  // planningFrameSection.
+  hasUpcomingRace: boolean,
   // deno-lint-ignore no-explicit-any
   recentGym: any[],
   // deno-lint-ignore no-explicit-any
@@ -487,8 +532,9 @@ async function generateCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano!\n`
-    : ``;
+      `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, na sugestão final ('text') aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano!\n` +
+      planningFrameSection(true, hasUpcomingRace)
+    : planningFrameSection(false, hasUpcomingRace);
 
   const yesterdayISO = new Date(new Date(run.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
   const yesterdayRuns = previousRuns.filter((r) => r.date === yesterdayISO);
@@ -687,6 +733,18 @@ async function attachCoachNotes(
         .lte("planned_date", ctx.date);
       planItems = items || [];
     }
+
+    /* Prova agendada? Só o facto de existir, não os detalhes — serve para
+       escolher o enquadramento da análise (planningFrameSection). Inclui o
+       próprio dia: uma prova hoje ainda enquadra o treino de hoje. */
+    const { data: upcomingRaces } = await sb
+      .from("race_events")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("status", "agendada")
+      .gte("date", ctx.date)
+      .limit(1);
+    const hasUpcomingRace = (upcomingRaces || []).length > 0;
     
     const sevenDaysAgoISO = new Date(new Date(ctx.date).getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
     const [{ data: recentGym }, { data: sameDayRuns }] = await Promise.all([
@@ -717,6 +775,7 @@ async function attachCoachNotes(
       previousRuns || [],
       historyLabel,
       planItems,
+      hasUpcomingRace,
       recentGym || [],
       sameDayRuns || [],
       geminiKey,

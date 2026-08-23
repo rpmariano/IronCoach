@@ -283,6 +283,13 @@ export function buildDailySummaryContext(params: {
       data: dayAfterTomorrow,
       resumo: formatPlanItemsSummary(dayAfterPlan),
     },
+    /* Em qual das quatro situações o atleta está — espelha a doutrina "Modos
+       de Acompanhamento" do coach-chat e o planningFrameSection dos analyze-*.
+       Sem isto o resumo diário falava de plano e de preparação de prova a quem
+       não tem nem uma coisa nem outra. */
+    modo_acompanhamento: (planItems || []).length > 0
+      ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
+      : (nextRace ? "PROVA_SEM_PLANO" : "LIVRE"),
     proxima_prova: nextRace ? {
       ...nextRace,
       fase_do_plano: getRacePhase(
@@ -478,7 +485,17 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `(b) se "proxima_prova" existir, inclui uma observação concreta sobre a preparação para a prova ` +
     `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
     `(c) uma sugestão prática para os próximos dias. ` +
-    `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n\n` +
+    `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n` +
+    `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
+    `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
+    `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +
+    `pico de forma ou contagem decrescente — o critério é consistência e progressão sustentável.\n` +
+    `  - PROVA_SEM_PLANO: há prova mas NÃO há plano. NUNCA menciones plano, dias previstos, ` +
+    `"desvio" ou "atraso" — não existe plano. A referência é a prova e o histórico.\n` +
+    `  - LIVRE: não há prova nem plano. É acompanhamento pontual: o pressuposto é que o atleta ` +
+    `quer MANTER hábitos. Comenta o que vês e o que é risco real; NUNCA fales de plano, prova, ` +
+    `"desvio" ou "atraso", e não o pressiones para definir objetivos neste cartão (esse convite ` +
+    `é da conversa no chat, não daqui).\n\n` +
     `2. meal_suggestion — insight ou estratégia nutricional de valor acrescentado para hoje ` +
     `(ex: timing de ingestão peri-treino, reforço de hidratação cruzada com o treino, ou importância de um macronutriente face à carga agendada). ` +
     `CRÍTICO: NÃO sugiras ingredientes ou pratos específicos (ex: frango grelhado, arroz), pois o atleta já tem um plano alimentar detalhado a cumprir. ` +

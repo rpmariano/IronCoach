@@ -1685,6 +1685,41 @@ function describeItem(i: any): string {
 }
 
 // deno-lint-ignore no-explicit-any
+/* Modo de acompanhamento — em qual das quatro situações o atleta está.
+   A doutrina de cada modo é ESTÁTICA e vive no prompt (secção "Modos de
+   Acompanhamento"); aqui só se decide qual deles se aplica agora, para a
+   linha que vai na cauda do prompt (o que varia fica sempre no fim, ver a
+   nota sobre prefixo estável em buildSystemInstruction).
+
+   Só conta plano ACEITE em curso: uma proposta ainda por aceitar não é um
+   plano, e tratá-la como tal faria a Carol falar de "desvio" a algo que o
+   atleta nunca aceitou. */
+export type CoachingMode =
+  | "PROVA_COM_PLANO"
+  | "PROVA_SEM_PLANO"
+  | "MANUTENCAO_COM_PLANO"
+  | "LIVRE";
+
+export function resolveCoachingMode(hasUpcomingRace: boolean, hasActivePlan: boolean): CoachingMode {
+  if (hasUpcomingRace && hasActivePlan) return "PROVA_COM_PLANO";
+  if (hasUpcomingRace) return "PROVA_SEM_PLANO";
+  if (hasActivePlan) return "MANUTENCAO_COM_PLANO";
+  return "LIVRE";
+}
+
+const COACHING_MODE_SUMMARY: Record<CoachingMode, string> = {
+  PROVA_COM_PLANO: "tem prova agendada e plano aceite em curso",
+  PROVA_SEM_PLANO: "tem prova agendada mas NÃO tem plano — a referência é a prova, não um plano inexistente",
+  MANUTENCAO_COM_PLANO: "tem plano mas NÃO tem prova agendada — o plano serve manutenção/progresso sem data-alvo",
+  LIVRE: "não tem prova nem plano — acompanhamento pontual, o pressuposto é manter hábitos",
+};
+
+export function buildCoachingModeContext(mode: CoachingMode): string {
+  return `MODO DE ACOMPANHAMENTO ATUAL: ${mode} — ${COACHING_MODE_SUMMARY[mode]}. ` +
+    `Aplica as regras deste modo (secção "Modos de Acompanhamento") acima de qualquer outra ` +
+    `orientação que pressuponha plano ou prova.`;
+}
+
 export function buildPlanContext(pendingItems: any[], activeItems: any[], todayISO: string): string | null {
   const sections: string[] = [];
 
@@ -1964,6 +1999,10 @@ export function buildSystemInstruction(
   // funcionalidade nova e a maior parte dos atletas ainda não tem nenhum par
   // registado — sem ele a Carol comporta-se exatamente como antes.
   shoesContext: string | null = null,
+  // Opcional pela mesma razão dos anteriores. Sem ele o comportamento é o de
+  // antes (doutrina que pressupõe plano e prova) — mas o handler passa-o
+  // sempre, por isso na prática está sempre presente.
+  coachingMode: CoachingMode | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2168,6 +2207,45 @@ export function buildSystemInstruction(
     `## Plano Ativo\n` +
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +
     `(ex.: "Hoje está previsto um contínuo de 6 km"). Não o repitas desnecessariamente ao longo da conversa.\n\n` +
+    // ── Modos de Acompanhamento ──────────────────────────────────────────────
+    // Doutrina ESTÁTICA (igual para todos os atletas) — o modo concreto de cada
+    // um vai na cauda do prompt, com o resto do que varia. Ver
+    // buildCoachingModeContext.
+    `## Modos de Acompanhamento\n` +
+    `Nem todos os atletas têm prova agendada, e nem todos querem plano. O contexto no fim deste ` +
+    `prompt diz-te em qual dos quatro modos este atleta está ("MODO DE ACOMPANHAMENTO ATUAL"). ` +
+    `O modo muda o que julgas, o que propões e o que perguntas — lê-o antes de responder.\n` +
+    `**PROVA_COM_PLANO** — tem prova agendada E plano aceite em curso. É a situação de referência: ` +
+    `julgas o treino contra o plano e contra a fase de preparação da prova. É o ÚNICO modo em que ` +
+    `podes falar de "desvio ao plano", "treino em atraso" ou "plano comprometido".\n` +
+    `**PROVA_SEM_PLANO** — tem prova agendada mas NÃO tem plano. A referência é a prova, não um plano ` +
+    `que não existe: julgas cada treino pela adequação ao objetivo e à fase de preparação, usando o ` +
+    `volume semanal e o histórico como base de comparação. NUNCA digas que algo está "fora do plano". ` +
+    `Podes oferecer um plano UMA vez, com o benefício concreto e verificável (ex.: garantir o taper ` +
+    `no timing certo, distribuir o volume sem picos de ACWR) — se ele recusar ou não pegar, não voltas ` +
+    `a insistir e continuas a acompanhar sem plano. Regista a recusa com save_coach_note ` +
+    `(categoria preferencia_treino) para não voltares a oferecer noutra conversa.\n` +
+    `**MANUTENCAO_COM_PLANO** — tem plano mas NÃO tem prova agendada. O plano não serve uma prova: ` +
+    `serve manter a condição física ou progredir sem data-alvo. Antes de propores um plano destes, ` +
+    `PERGUNTA o objetivo — nunca o inventes. Precisas de saber, no mínimo: (1) o que quer (manter a ` +
+    `forma, perder massa gorda, ganhar resistência, ganhar força, voltar a treinar depois de uma pausa); ` +
+    `(2) quantos dias por semana consegue treinar e quais; (3) limitações (lesão, tempo, equipamento). ` +
+    `Guarda a resposta com save_coach_note (categoria objetivo_pessoal): passa a ser o critério contra o ` +
+    `qual julgas tudo daí em diante, no lugar que a prova ocuparia. Sem prova não há taper nem pico — a ` +
+    `progressão é contínua e a métrica de sucesso é consistência e ausência de lesão, não um tempo-alvo. ` +
+    `Se o objetivo já estiver na tua memória de longo prazo, NÃO voltes a perguntar.\n` +
+    `**LIVRE** — não tem prova nem plano, mas regista atividades. O atleta não te pediu nada, e o ` +
+    `pressuposto por omissão é que quer MANTER os seus hábitos — não que quer melhorar, nem que quer ` +
+    `plano. Todas as análises são de acompanhamento: dizes o que vês, reforças o que está consistente, ` +
+    `avisas do que é risco real (ACWR, carga aguda, sinais de RED-S, lesão) e paras aí. NUNCA fales de ` +
+    `"desvio", "atraso" ou "plano comprometido" — não há nada de que desviar. Podes, no máximo UMA vez ` +
+    `por conversa e só quando vier a propósito, convidá-lo a dar-te um objetivo, porque sem objetivo o ` +
+    `teu valor é limitado. Formula sempre como oferta, nunca como cobrança nem como aviso ` +
+    `(ex.: "Se me disseres onde queres chegar, consigo ser bastante mais útil do que só comentar treinos ` +
+    `soltos"). Se ele não pegar, deixas cair e continuas a acompanhar sem repetir o convite.\n` +
+    `REGRA TRANSVERSAL: os gatilhos proativos de adaptação de plano (secção seguinte) só se aplicam nos ` +
+    `modos que TÊM plano. Em PROVA_SEM_PLANO e LIVRE não existe plano para adaptar — os sinais de risco ` +
+    `(ACWR, fadiga, lesão) continuam a valer, mas resolves-os com conselho direto, não com adaptação.\n\n` +
     // ── Quando Sugerir Adaptação de Plano ────────────────────────────────────
     `## Quando Sugerir Adaptação de Plano\n` +
     `Quando a conversa ou os dados revelam uma das situações abaixo, sugere proativamente uma adaptação ` +
@@ -2734,6 +2812,10 @@ export function buildSystemInstruction(
      atleta. Manter o que varia sempre no fim é o que dá ao prompt uma
      cabeça reaproveitável. Ver MAX_TOOL_ROUNDS: o prompt é reenviado a cada
      ronda de function calling, por isso isto multiplica-se. */
+  // Primeiro item da cauda: é a chave que diz à Carol quais das regras acima
+  // se aplicam. Vem antes dos dados para ela ler o enquadramento antes dos números.
+  if (coachingMode) sys += `\n\n${buildCoachingModeContext(coachingMode)}`;
+
   if (athleteFirstName) {
     sys += `\n\nO atleta chama-se **${athleteFirstName}** — trata-o por esse nome com naturalidade (ao cumprimentar, a motivar, a celebrar progresso), não em toda a frase nem de forma mecânica.`;
   }
@@ -3130,6 +3212,17 @@ async function handler(req: Request): Promise<Response> {
 
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
+    /* Modo de acompanhamento — qual das quatro situações se aplica.
+       Usa activePlanIds (plano ACEITE cujo período cobre hoje) e não
+       activePlanItems: um plano em curso cujos dias restantes já passaram
+       continua a ser um plano, e tratá-lo como "sem plano" faria a Carol
+       mudar de registo a meio do microciclo. Uma proposta por aceitar
+       também não conta — ver resolveCoachingMode. */
+    const coachingMode = resolveCoachingMode(
+      (upcomingRaces || []).length > 0,
+      activePlanIds.length > 0,
+    );
+
     // ── Memória de longo prazo (ver runSaveCoachNote) ────────────────────
     const { data: coachNotes } = await sb
       .from("coach_notes")
@@ -3219,7 +3312,8 @@ async function handler(req: Request): Promise<Response> {
       body.is_intervention_start === true,
       profile?.coach_intervention_status ?? null,
       profile?.coach_intervention_reason ?? null,
-      shoesContext
+      shoesContext,
+      coachingMode
     );
 
     let finalSystemInstruction = systemInstruction;

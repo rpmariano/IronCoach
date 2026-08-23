@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2199,4 +2199,59 @@ Deno.test("summariseRuns: sem flag cadência quando cadence_spm ≥ 155", () => 
   assertEquals(lines[0].includes("⚠cadência<155"), false);
   assertStringIncludes(lines[0], "162 spm");
   assertStringIncludes(lines[0], "FC média 140 bpm");
+});
+
+
+/* ── Modos de acompanhamento ─────────────────────────────────────────────
+   Nem todo o atleta tem prova ou plano. Antes disto, a ausência de um ou do
+   outro fazia os blocos correspondentes desaparecerem do prompt sem nada em
+   substituição, e a Carol caía na doutrina genérica — que pressupõe plano —
+   falando de "desvio" e "atraso" a quem nunca teve plano nenhum. */
+
+Deno.test("resolveCoachingMode cobre as quatro combinações", () => {
+  assertEquals(resolveCoachingMode(true, true), "PROVA_COM_PLANO");
+  assertEquals(resolveCoachingMode(true, false), "PROVA_SEM_PLANO");
+  assertEquals(resolveCoachingMode(false, true), "MANUTENCAO_COM_PLANO");
+  assertEquals(resolveCoachingMode(false, false), "LIVRE");
+});
+
+Deno.test("o modo atual entra no prompt e manda aplicar as regras desse modo", () => {
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA",
+    null, null, null, null, null, null,
+    null, null, false, null, null, null, "LIVRE",
+  );
+  assertStringIncludes(sys, "MODO DE ACOMPANHAMENTO ATUAL: LIVRE");
+  assertStringIncludes(sys, "não tem prova nem plano");
+});
+
+Deno.test("a doutrina dos quatro modos está sempre no prompt, seja qual for o modo", () => {
+  // É a parte ESTÁTICA — tem de ficar no prefixo cacheável, igual para todos
+  // os atletas. Só a linha do modo atual é que varia.
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA",
+    null, null, null, null, null, null,
+    null, null, false, null, null, null, "PROVA_COM_PLANO",
+  );
+  assertStringIncludes(sys, "## Modos de Acompanhamento");
+  assertStringIncludes(sys, "PROVA_SEM_PLANO");
+  assertStringIncludes(sys, "MANUTENCAO_COM_PLANO");
+  assertStringIncludes(sys, "LIVRE");
+});
+
+Deno.test("sem modo (chamadas antigas) o prompt não ganha linha de modo", () => {
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA",
+    null, null, null, null, null, null,
+  );
+  assertEquals(sys.includes("MODO DE ACOMPANHAMENTO ATUAL"), false);
+});
+
+Deno.test("buildCoachingModeContext manda o modo prevalecer sobre a doutrina de plano", () => {
+  const ctx = buildCoachingModeContext("PROVA_SEM_PLANO");
+  assertStringIncludes(ctx, "PROVA_SEM_PLANO");
+  assertStringIncludes(ctx, "NÃO tem plano");
+  // Sem esta precedência, as regras que pressupõem plano continuariam a
+  // ganhar por estarem escritas primeiro e em maior volume.
+  assertStringIncludes(ctx, "acima de qualquer outra");
 });
