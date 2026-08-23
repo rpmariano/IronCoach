@@ -468,7 +468,7 @@ function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_ind
    "plano_ajustado" ou "atleta_ignorou"), por isso o botão vermelho sem plano
    nenhum não teria ação possível do outro lado. O aviso de risco continua a
    chegar ao atleta pelo texto da nota. */
-function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
   if (hasPlan) {
     return hasUpcomingRace
       ? ""
@@ -903,7 +903,7 @@ Deno.serve(async (req) => {
       const sessionId = body.session_id;
       const { data: existing, error: fetchError } = await sb
         .from("workout_sessions")
-        .select("id, photo_paths, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion")
+        .select("id, photo_paths, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, volume_kg")
         .eq("id", sessionId)
         .eq("user_id", userId)
         .maybeSingle();
@@ -961,6 +961,7 @@ Deno.serve(async (req) => {
         avg_hr: reanalysedMetrics.avg_hr ?? existing.avg_hr ?? null,
         max_hr: reanalysedMetrics.max_hr ?? existing.max_hr ?? null,
         exertion: reanalysedMetrics.exertion ?? existing.exertion ?? null,
+        volume_kg: reanalysedMetrics.volume_kg ?? existing.volume_kg ?? null,
       };
       const { data: updatedSession, error: updateError } = await sb
         .from("workout_sessions")
