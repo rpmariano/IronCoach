@@ -486,6 +486,14 @@ Deno.serve(async (req) => {
     }
 
     const geminiJson = await geminiRes.json();
+    // Consumo devolvido ao cliente, que é quem o regista em app_logs — ver
+    // invokeEdgeFunctionWithTimeout (src/lib/supabase.js), que grava sempre
+    // que a resposta traz `usage`. Sem isto esta função ficava invisível no
+    // painel de Custos API do Admin.
+    const usage = {
+      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
+      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+    };
     const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
     let parsed: Record<string, unknown>;
     try {
@@ -497,6 +505,7 @@ Deno.serve(async (req) => {
 
     const notFoundResponse = () => jsonResponse({
       web_info: null,
+      usage,
       message: "Não encontrei informação relevante (horários, equipamento, deslocação ou percurso) neste site.",
     });
 
@@ -553,7 +562,7 @@ Deno.serve(async (req) => {
     if (!persistRaceEventId) {
       // Modo rascunho (formulário de criação/edição ainda não gravado) —
       // devolve só o resultado, sem tocar na BD.
-      return jsonResponse({ web_info: webInfo });
+      return jsonResponse({ web_info: webInfo, usage });
     }
 
     const { data: updated, error: updateError } = await sb
@@ -565,7 +574,7 @@ Deno.serve(async (req) => {
       .single();
     if (updateError) return jsonResponse({ error: `Falha a gravar a informação: ${updateError.message}` }, 500);
 
-    return jsonResponse({ race_event: updated });
+    return jsonResponse({ race_event: updated, usage });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

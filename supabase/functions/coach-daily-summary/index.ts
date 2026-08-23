@@ -523,7 +523,16 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
   const json = await res.json();
   const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error("Gemini devolveu resposta vazia.");
-  return JSON.parse(text);
+  // O consumo vai junto com o resultado para a resposta o poder devolver ao
+  // cliente, que é quem o regista em app_logs (ver invokeEdgeFunctionWithTimeout
+  // em src/lib/supabase.js — regista sempre que a resposta traz `usage`).
+  return {
+    parsed: JSON.parse(text),
+    usage: {
+      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
+      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
+    },
+  };
 }
 
 Deno.serve(async (req) => {
@@ -654,8 +663,14 @@ Deno.serve(async (req) => {
       daily_concept_body: string | null;
     } = { recap: null, meal_suggestion: null, race_readiness: null, daily_concept_body: null };
 
+    // Fica a null quando o Gemini falha ou quando a resposta vem da cache —
+    // nesses casos não houve chamada, e não há consumo para registar.
+    let usage: { input_tokens: number; output_tokens: number } | null = null;
+
     try {
-      generated = await generateSummary(ctx, geminiKey, todayConcept.title);
+      const result = await generateSummary(ctx, geminiKey, todayConcept.title);
+      generated = result.parsed;
+      usage = result.usage;
     } catch (e) {
       console.error("coach-daily-summary generation failed:", e);
       // Se Gemini falhar, continuamos com as mensagens determinísticas sem crashar
@@ -682,7 +697,7 @@ Deno.serve(async (req) => {
       .single();
     if (saveError) return jsonResponse({ error: `Falha a gravar resumo: ${saveError.message}` }, 500);
 
-    return jsonResponse({ summary: saved, cached: false });
+    return jsonResponse({ summary: saved, cached: false, usage });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

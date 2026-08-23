@@ -116,11 +116,12 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } },
     );
 
+    // A sessão é validada mesmo sem se usar o id: a estimativa custa uma
+    // chamada ao Gemini, e isso não pode ficar aberto a quem não tem sessão.
     const { data: userData, error: userError } = await sb.auth.getUser();
     if (userError || !userData?.user) {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
-    const userId = userData.user.id;
 
     const body = await req.json();
     const brand = typeof body.brand === "string" ? body.brand.trim().slice(0, 60) : "";
@@ -170,25 +171,19 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "A estimativa devolveu um formato inesperado. Tenta novamente." }, 502);
     }
 
-    // Registo de consumo para o painel de Custos API do Admin (mesmo formato
-    // das restantes funções: level 'success', tokens em meta).
-    const usage = geminiJson?.usageMetadata;
-    if (usage) {
-      await sb.from("app_logs").insert({
-        user_id: userId,
-        level: "success",
-        event: "estimate-shoe-lifespan",
-        message: `${brand} ${model}`,
-        meta: {
-          input_tokens: usage.promptTokenCount ?? 0,
-          output_tokens: usage.candidatesTokenCount ?? 0,
-        },
-      });
-    }
+    // Consumo devolvido ao cliente em vez de inserido aqui: o registo em
+    // app_logs é feito num único sítio, o invokeEdgeFunctionWithTimeout
+    // (src/lib/supabase.js), que grava sempre que a resposta traz `usage`.
+    // Fazê-lo aqui duplicava o mecanismo e gastava um INSERT por chamada.
+    const usage = {
+      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
+      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
+    };
 
     if (parsed.recognized !== true) {
       return jsonResponse({
         estimate: null,
+        usage,
         message: `Não conheço o modelo "${brand} ${model}" bem o suficiente para arriscar uma estimativa. Podes escrever a vida útil à mão — normalmente vem na caixa ou no site da marca.`,
       });
     }
@@ -198,11 +193,13 @@ Deno.serve(async (req) => {
       console.error("Gemini devolveu vida útil fora do plausível:", parsed.lifespan_km);
       return jsonResponse({
         estimate: null,
+        usage,
         message: "A estimativa que recebi não faz sentido para uma sapatilha de corrida. Escreve a vida útil à mão, se souberes.",
       });
     }
 
     return jsonResponse({
+      usage,
       estimate: {
         lifespan_km: Math.round(lifespanKm),
         category: typeof parsed.category === "string" ? parsed.category.slice(0, 60) : null,
