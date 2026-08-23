@@ -19,19 +19,34 @@ export default function AtletaHubDashboard() {
 
   // MOCK DE DADOS TEMPORÁRIO PARA TESTES
   const processedRuns = useMemo(() => {
-    if (profile?.email === 'rpmariano@gmail.com' && runs) {
-      return runs.map((r, i) => {
+    if (profile?.email === 'rpmariano@gmail.com') {
+      const baseRuns = (runs && runs.length > 0) ? runs : [];
+      
+      // Se o utilizador não tem corridas nenhumas, vamos criar 3 fictícias
+      let finalRuns = [...baseRuns];
+      if (finalRuns.length === 0) {
+        for (let i = 0; i < 3; i++) {
+          finalRuns.push({
+            id: `fake-run-${i}`,
+            date: new Date(Date.now() - i * 86400000).toISOString(),
+            distance_km: 5,
+            duration_seconds: 2400,
+            details: {}
+          });
+        }
+      }
+
+      return finalRuns.map((r, i) => {
         // Injeta zonas fictícias se não existirem
         if (!r.details?.hr_zones || r.details.hr_zones.length === 0) {
-          // Cria uma proporção 80/20 fake (exemplo: 40 min leve, 10 min intenso)
-          const isIntense = i % 3 === 0; // 1 em cada 3 treinos é mais intenso
+          const isIntense = i % 3 === 0;
           return {
             ...r,
             details: {
               ...r.details,
               hr_zones: isIntense 
-                ? [{ zone: 1, minutes: 10 }, { zone: 2, minutes: 15 }, { zone: 3, minutes: 10 }, { zone: 4, minutes: 15 }] // 25 min Z1/Z2, 25 min Z3/Z4
-                : [{ zone: 1, minutes: 30 }, { zone: 2, minutes: 20 }] // 50 min leve
+                ? [{ zone: 1, minutes: 10 }, { zone: 2, minutes: 15 }, { zone: 3, minutes: 10 }, { zone: 4, minutes: 15 }]
+                : [{ zone: 1, minutes: 30 }, { zone: 2, minutes: 20 }]
             }
           };
         }
