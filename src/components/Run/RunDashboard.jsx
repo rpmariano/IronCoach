@@ -256,7 +256,7 @@ export default function RunDashboard() {
           <p className="text-xs text-slate-300 font-medium">{label}</p>
           <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
             {formatDatePT(b.date)}
-            {b.runCount > 0 && (
+            {b.source === 'run' && b.runCount > 0 && (
               <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
             )}
             {b.source === 'split' && (
