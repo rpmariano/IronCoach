@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppStore } from '../../store';
 import SmartInsightsBanner from '../BI/SmartInsightsBanner';
 import HealthRiskRadar from '../BI/HealthRiskRadar';
+import PerformanceCompass from '../BI/PerformanceCompass';
 
 export default function AtletaHubDashboard() {
   const { 
@@ -29,8 +30,8 @@ export default function AtletaHubDashboard() {
       {/* 1. Radar de Saúde e Risco */}
       <HealthRiskRadar data={data} />
       
-      {/* Placeholders para o resto do plano */}
-      {/* <PerformanceCompass data={data} /> */}
+      <PerformanceCompass data={data} />
+      
       {/* <DisciplineMirror data={data} profile={profile} /> */}
     </div>
   );
