@@ -72,7 +72,15 @@ export default function IntensityDonut({ distribution = {}, targetLowPct = 80, c
       <div className="w-48 h-48 relative">
         <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
       </div>
-      <p className="text-xs text-slate-500 mt-4 text-center">
+      <div className="flex justify-center items-center gap-4 mt-5 text-[11px] text-slate-600 font-medium w-full">
+        <span className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm bg-teal-500"></div> Z1-Z2
+        </span>
+        <span className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm bg-orange-500"></div> Z3+
+        </span>
+      </div>
+      <p className="text-[11px] text-slate-400 mt-2 text-center">
         Objetivo: {targetLowPct}% baixa intensidade
       </p>
     </div>

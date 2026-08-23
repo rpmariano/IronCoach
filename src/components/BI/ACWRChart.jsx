@@ -130,6 +130,14 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
           plugins={[backgroundBandsPlugin]}
         />
       </div>
+      <div className="flex justify-center items-center gap-5 mt-4 text-[11px] text-slate-600 font-medium w-full">
+        <span className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-sm bg-blue-500"></div> Carga Aguda
+        </span>
+        <span className="flex items-center gap-1.5">
+          <div className="w-4 h-0.5 bg-slate-700"></div> Rácio ACWR
+        </span>
+      </div>
     </div>
   );
 }
