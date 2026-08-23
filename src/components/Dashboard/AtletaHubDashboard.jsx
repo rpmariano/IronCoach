@@ -66,7 +66,11 @@ export default function AtletaHubDashboard() {
       </h2>
       
       {/* Smart Insights Dinâmicos */}
-      <SmartInsightsBanner data={data} profile={profile} />
+      <SmartInsightsBanner 
+        data={data} 
+        profile={profile} 
+        excludeIds={['acwr_danger', 'acwr_caution', 'reds_risk', 'ea_subclinical', 'intensity_imbalance']}
+      />
       
       {/* 1. Radar de Saúde e Risco */}
       <HealthRiskRadar data={data} />

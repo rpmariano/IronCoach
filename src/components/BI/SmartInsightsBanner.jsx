@@ -8,11 +8,12 @@ const SEVERITY_CONFIG = {
   info: { bg: 'bg-blue-100', border: 'border-blue-300', text: 'text-blue-900', icon: Zap, iconColor: 'text-blue-600' }
 };
 
-export default function SmartInsightsBanner({ data, profile }) {
+export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) {
   const insights = useMemo(() => {
-    // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade.
-    return detectCoachInsights(data, profile);
-  }, [data, profile]);
+    // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade,
+    // filtrando aqueles que já estão visíveis nos painéis abaixo.
+    return detectCoachInsights(data, profile).filter(i => !excludeIds.includes(i.id));
+  }, [data, profile, excludeIds]);
 
   if (!insights || insights.length === 0) {
     return null; // Nenhum insight, não mostra nada
