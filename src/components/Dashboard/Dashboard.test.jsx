@@ -4,12 +4,10 @@ import { describe, it, expect, vi } from 'vitest';
 import Dashboard from './Dashboard';
 
 /* Teste de fumo dos separadores do Dashboard. Existe sobretudo para travar
-   uma regressão concreta: o separador "Holística" já esteve ligado aqui a
-   importar ficheiros que não existiam no repositório (CrossAnalyticsDashboard,
-   utils/biEngine, CoachInsight*), o que partia o build de produção com
-   UNRESOLVED_IMPORT sem partir nenhum teste — porque a versão anterior deste
-   ficheiro vivia em __tests__/ na raiz, fora do `include` do vitest
-   (src/**), e por isso nunca chegava a correr. */
+   uma regressão concreta: a reestruturação de 2026-08-23 removeu o separador
+   "Holística" e adicionou "Visão Geral" (hub). Se alguém voltar a adicionar
+   um separador que importe ficheiros inexistentes, este teste falha antes do
+   build de produção. */
 
 vi.mock('../../store', () => ({
   useAppStore: () => ({
@@ -18,7 +16,13 @@ vi.mock('../../store', () => ({
     meals: [],
     bodyAssessments: [],
     raceEvents: [],
+    coachPlans: [],
+    coachPlanItems: [],
+    shoes: [],
     profile: { experience_level: 'medio' },
+    insightStates: {},
+    session: null,
+    waterLogs: [],
     setActiveTab: vi.fn(),
   }),
 }));
@@ -33,17 +37,22 @@ vi.mock('react-chartjs-2', () => ({
 }));
 
 describe('Dashboard', () => {
-  it('mostra os cinco separadores, incluindo Holística', () => {
+  it('mostra os cinco separadores: Visão Geral, Corrida, Ginásio, Nutrição, Corpo', () => {
     render(<Dashboard activeModule="corrida" />);
-    for (const label of ['Corrida', 'Ginásio', 'Nutrição', 'Corpo', 'Holística']) {
+    for (const label of ['Visão Geral', 'Corrida', 'Ginásio', 'Nutrição', 'Corpo']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it('não mostra o separador Holística (foi removido)', () => {
+    render(<Dashboard activeModule="hub" />);
+    expect(screen.queryByText('Holística')).not.toBeInTheDocument();
   });
 
   it('monta cada módulo sem rebentar', () => {
     // Se um separador voltar a importar um ficheiro inexistente, isto falha
     // aqui em vez de só no build de produção.
-    for (const mod of ['corrida', 'ginasio', 'nutricao', 'corpo', 'holistica']) {
+    for (const mod of ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo']) {
       const { unmount } = render(<Dashboard activeModule={mod} />);
       unmount();
     }
