@@ -24,7 +24,8 @@ Segues rigorosamente as instruções da skill `supabase` (localizada em `.agents
   - `coach-chat` — Chat com o Coach IA
   - `save-push-subscription` — Guardar subscrições Web Push
   - `send-water-reminders` — Enviar lembretes de água (cron)
-  - `suggest-goals` — Sugerir objetivos ao utilizador
+  - `enrich-race-event` — Ler o site oficial de uma prova
+  - `estimate-shoe-lifespan` — Estimar vida útil de sapatilhas
 - **Nota crítica**: Não existe base de dados de desenvolvimento separada — todas as alterações afetam produção
 
 ## Quando Sou Invocado

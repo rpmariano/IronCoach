@@ -50,7 +50,8 @@ O código do projeto reside na raiz `C:\Users\rpmar\IronHealth-master` (ramo `ma
 * `supabase/` — Código do backend Supabase
   * `supabase/functions/` — Edge Functions escritas em TypeScript para Deno:
     * `coach-chat/` — Gestor principal do chat, orquestração e ferramentas.
-    * `suggest-goals/` — IA que avalia o perfil e gera metas corporais e nutricionais realistas.
+    * `coach-daily-summary/` — Resumo diário do Coach, gerado 1x/dia e cacheado.
+    * `enrich-race-event/`, `estimate-shoe-lifespan/` — Enriquecimento por IA a pedido do atleta (site da prova, vida útil de sapatilhas).
     * `analyze-meal/`, `analyze-gym/`, `analyze-run/`, `analyze-body/` — Especialistas de leitura de prints/fotos e registo manual.
     * `save-push-subscription/`, `send-water-reminders/` — Infraestrutura de envio de lembretes Web Push.
   * `supabase/migrations/` — Ficheiros de migração SQL aplicados à base de dados.

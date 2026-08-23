@@ -30,9 +30,10 @@ As seguintes Edge Functions em Deno/TypeScript compõem a inteligência da aplic
 3. **`analyze-run`**: Analisa prints e dados de corrida (distância, tempo, pace, splits).
 4. **`analyze-gym`**: Analisa treinos de força (volume, repetições, carga) e aulas de grupo.
 5. **`analyze-body`**: Analisa avaliações físicas (peso, gordura, músculo da balança Renpho).
-6. **`suggest-goals`**: Gera sugestões de metas de nutrição e composição corporal no Perfil.
-7. **`send-water-reminders`**: Disparada por `pg_cron` para enviar lembretes push periódicos.
-8. **`save-push-subscription`**: Grava as subscrições Web Push do browser na base de dados.
+6. **`send-water-reminders`**: Disparada por `pg_cron` para enviar lembretes push periódicos.
+7. **`save-push-subscription`**: Grava as subscrições Web Push do browser na base de dados.
+8. **`enrich-race-event`**: Lê o site oficial de uma prova e extrai horários, percurso e logística.
+9. **`estimate-shoe-lifespan`**: Estima a vida útil de um modelo de sapatilhas (Perfil → Equipamento).
 
 ---
 

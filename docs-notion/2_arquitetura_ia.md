@@ -100,4 +100,4 @@ Toda a análise do Coach é orientada aos objetivos do atleta, priorizando a **p
 * **Meta de Água**: Exigência reforçada de hidratação (meta de água sobe em 500-1000ml).
 
 ### 🛡️ Salvaguardas Nutricionais de Performance
-* **Défices Proibidos**: O algoritmo `suggest-goals` impede ativamente qualquer meta de perda de peso ou défice calórico significativo num raio de **10 dias** antes de meias-maratonas ou maratonas, priorizando a performance e prevenindo a síndrome RED-S (Deficiência Energética Relativa no Desporto).
+* **Défices Proibidos**: ao propor metas (ferramenta `update_goals` do `coach-chat`), a Carol evita qualquer meta de perda de peso ou défice calórico significativo perto de meias-maratonas e maratonas, priorizando a performance e prevenindo a síndrome RED-S (Deficiência Energética Relativa no Desporto). O `coach-chat` aplica ainda um teto de défice seguro (300-500 kcal/dia) e alarmes de RED-S por gordura corporal, ingestão calórica e FC em repouso. *(Esta regra vivia na função `suggest-goals`, removida a 2026-08-23.)*

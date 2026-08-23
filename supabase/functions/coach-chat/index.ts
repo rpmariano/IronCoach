@@ -3171,8 +3171,9 @@ async function handler(req: Request): Promise<Response> {
     // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
     // removido do Perfil a 2026-08-20 (substituído pela Memória do Coach,
     // coach_notes), por isso profiles.coach_context deixou de ser lido
-    // aqui; a coluna em si fica (a Edge Function suggest-goals, não
-    // chamada por nenhum ecrã, ainda a lê — fora do âmbito desta limpeza).
+    // aqui. Desde que suggest-goals foi removida (2026-08-23) a coluna não
+    // tem leitor nenhum — está morta, e pode ser largada quando alguém
+    // quiser mexer no esquema de profiles.
     const systemInstruction = buildSystemInstruction(
       null,
       {

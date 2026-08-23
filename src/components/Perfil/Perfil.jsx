@@ -732,7 +732,9 @@ export default function Perfil() {
               suggest-goals (era um placeholder com setTimeout, ver histórico
               git), e os objetivos já se discutem e definem a sério pelo Chat
               (update_goals, com ecrã de aceitar/recusar). Manter os dois
-              caminhos seria redundante e o botão daqui nunca funcionou. */}
+              caminhos seria redundante e o botão daqui nunca funcionou.
+              A própria Edge Function suggest-goals foi removida a
+              2026-08-23, já sem nada que a chamasse. */}
           <CoachMemoryCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.
@@ -795,9 +797,9 @@ export default function Perfil() {
               para a Memória do Coach acima (coach_notes), com um badge "A
               descontinuar". O texto que aqui havia (2 contas) já foi
               transposto para lá a 2026-08-20; profiles.coach_context ficou
-              a null para todos. A coluna em si não foi apagada — a Edge
-              Function suggest-goals ainda a lê (fora do âmbito desta
-              limpeza), só deixou de ter UI para a preencher. */}
+              a null para todos. A coluna em si não foi apagada, mas desde
+              que a suggest-goals foi removida (2026-08-23) já não tem
+              leitor nenhum — está morta. */}
       </div>
       </div>
 

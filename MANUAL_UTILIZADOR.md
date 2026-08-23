@@ -261,9 +261,13 @@ flowchart TD
     B -->|Sem Provas Próximas| F[Manutenção Normal do Plano de Treino/Nutrição]
 ```
 
-### 🎯 Automação de Objetivos no Perfil (`suggest-goals`)
-Através da função `suggest-goals` no Perfil, o Coach analisa todo o histórico e gera sugestões realistas para `goal_*` de Corpo e metas de Nutrição.
-* **Salvaguarda de Segurança**: O algoritmo proíbe explicitamente a sugestão de défices calóricos agressivos ou perda rápida de peso perto de meias-maratonas e maratonas.
+### 🎯 Definição de Objetivos pela Carol (no Chat)
+Os objetivos corporais e as metas de nutrição definem-se **em conversa com a Carol**, não por um botão no Perfil. Basta pedires ("acho que devia perder uns quilos"), e ela própria levanta o assunto quando nota que as metas atuais deixaram de fazer sentido — por exemplo ao entrares em preparação para uma prova.
+
+A proposta chega numa persiana com os valores concretos, para **aceitares ou recusares**: nada é escrito no teu perfil sem a tua aprovação. Os campos que ela definiu ficam assinalados com o selo *Coach*; se os editares à mão, o selo desaparece e passas a responder tu por eles.
+
+* **Salvaguarda de Segurança**: a Carol trabalha com pisos fisiológicos e um teto de défice seguro (300-500 kcal/dia), e sinaliza risco de RED-S a partir da gordura corporal, das calorias e da FC em repouso.
+* *(Até 2026-08-23 isto era uma função à parte, `suggest-goals`, com um botão no Perfil. Foi removida: o chat faz o mesmo melhor, com aprovação explícita e doutrina clínica bastante mais completa.)*
 
 ### 🛡️ Guardrails e Regras Formais de Resposta
 - **Validação de Âmbito (`on_topic`)**: Se a pergunta for alheia a desporto, nutrição ou app, devolve `on_topic: false` sem gerar resposta vaga.

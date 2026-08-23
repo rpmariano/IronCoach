@@ -27,7 +27,6 @@ const GEMINI_COST_EVENT_MODULE = {
   'coach-daily-summary': 'Coach',
   'enrich-race-event': 'Corrida',
   'estimate-shoe-lifespan': 'Equipamento',
-  'suggest-goals': 'Perfil',
   // Eventos legado
   meal_analysis: 'Nutrição',
   meal_reanalysis: 'Nutrição',
