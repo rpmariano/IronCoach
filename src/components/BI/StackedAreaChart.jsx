@@ -8,33 +8,39 @@ import MetricInfo from './MetricInfo';
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
   const chartRef = useRef(null);
 
+  const labels = (data.dates || []).map(d => {
+    try { return format(parseISO(d), 'dd MMM', { locale: pt }); }
+    catch { return d; }
+  });
+
   const chartData = {
-    labels: data.dates.map(d => {
-      try { return format(parseISO(d), 'dd MMM', { locale: pt }); }
-      catch { return d; }
-    }),
+    labels,
     datasets: [
       {
         label: 'Massa Magra',
-        data: data.leanMassKg,
+        data: data.leanMassKg || [],
         borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: data.dates.length > 20 ? 0 : 3,
-        pointHoverRadius: 5,
-        yAxisID: 'yLean',
+        backgroundColor: 'rgba(16, 185, 129, 0.5)',
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: 'origin',
+        tension: 0.2,
+        order: 2,
       },
       {
         label: 'Massa Gorda',
-        data: data.fatMassKg,
+        data: data.fatMassKg || [],
         borderColor: '#f43f5e',
-        backgroundColor: 'rgba(244, 63, 94, 0.15)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: data.dates.length > 20 ? 0 : 3,
-        pointHoverRadius: 5,
-        yAxisID: 'yFat',
+        backgroundColor: 'rgba(244, 63, 94, 0.5)',
+        pointBackgroundColor: '#f43f5e',
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: '-1',
+        tension: 0.2,
+        order: 1,
       }
     ]
   };
@@ -54,51 +60,34 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         bodyColor: '#f8fafc',
         borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
-        padding: 10,
+        padding: 12,
         mode: 'index',
         intersect: false,
         callbacks: {
           label: (context) => {
-            const val = context.parsed.y !== null ? Number(context.parsed.y).toFixed(1) : '—';
-            return ` ${context.dataset.label}: ${val} kg`;
+            const val = Number(context.raw || 0);
+            return ` ${context.dataset.label}: ${val.toFixed(1)} kg`;
+          },
+          footer: (tooltipItems) => {
+            const total = tooltipItems.reduce((sum, item) => sum + Number(item.raw || 0), 0);
+            return `Total (Peso): ${total.toFixed(1)} kg`;
           }
         }
       }
     },
     scales: {
-      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
-      yLean: {
-        type: 'linear',
-        position: 'left',
-        beginAtZero: false,
+      x: { 
+        grid: { display: false }, 
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' } 
+      },
+      y: {
+        stacked: true,
+        beginAtZero: true,
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
         ticks: { 
-          color: '#10b981',
-          callback: (v) => `${Number(v).toFixed(0)} kg`,
+          color: 'rgba(255, 255, 255, 0.6)',
+          callback: (v) => `${v} kg`,
           font: { size: 10 }
-        },
-        title: {
-          display: true,
-          text: 'Massa Magra',
-          color: '#10b981',
-          font: { size: 10, weight: 'bold' }
-        }
-      },
-      yFat: {
-        type: 'linear',
-        position: 'right',
-        beginAtZero: false,
-        grid: { drawOnChartArea: false },
-        ticks: { 
-          color: '#f43f5e',
-          callback: (v) => `${Number(v).toFixed(0)} kg`,
-          font: { size: 10 }
-        },
-        title: {
-          display: true,
-          text: 'Massa Gorda',
-          color: '#f43f5e',
-          font: { size: 10, weight: 'bold' }
         }
       }
     },
