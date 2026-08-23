@@ -181,29 +181,31 @@ export default function GymDashboard() {
 
           <div className="bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.05)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Progressão Específica</p>
-              {availableExercises.length > 0 && (
-                <div className="relative">
-                  <select
-                    value={selectedExerciseId}
-                    onChange={(e) => setSelectedExerciseId(e.target.value)}
-                    className="w-full sm:w-auto appearance-none bg-black/20 text-slate-200 text-xs font-semibold py-2 pl-4 pr-10 rounded-xl border border-white/10 outline-none focus:ring-1 focus:ring-[var(--mod-ginasio)] cursor-pointer"
-                  >
-                    <option value="">Escolher exercício...</option>
-                    {availableExercises.map(ex => (
-                      <option key={ex.id} value={ex.id} className="bg-slate-900 text-white">{ex.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-              )}
+              <div className="flex items-start">
+                <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Evolução do 1RM Estimado</p>
+                <MetricInfo text="A tua 1 Repetição Máxima (1RM). Uso as tuas melhores séries para estimar o peso máximo que levantarias numa só repetição usando a fórmula científica de Epley. O objetivo é ver a linha subir ao longo do tempo!" />
+              </div>
+              <select
+                value={selectedExercise}
+                onChange={e => setSelectedExercise(e.target.value)}
+                className="bg-black/20 text-slate-200 border border-white/10 rounded-xl px-3 py-1.5 text-[11px] font-medium outline-none focus:border-[#d97706] shadow-sm backdrop-blur w-full sm:w-auto min-w-[160px]"
+              >
+                <option value="">Escolhe um exercício…</option>
+                {trainedExercises.map(ex => (
+                  <option key={ex} value={ex} className="bg-slate-900">{ex}</option>
+                ))}
+              </select>
             </div>
-            {selectedExerciseId ? (
+            {selectedExercise && progression.length > 0 ? (
               <div className="h-64 relative">
-                <Line data={exLineChartData} options={{...exChartOptions, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }}} />
+                <Line data={exChartData} options={{...exChartOptions, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } }, x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } } }}} />
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500 py-8 text-center uppercase tracking-wider">Nenhum histórico no período.</p>
+              <div className="h-56 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-2xl">
+                <p className="text-[11px] text-slate-400 text-center px-4 uppercase tracking-wider">
+                  Escolhe um exercício acima para acompanhares a evolução.
+                </p>
+              </div>
             )}
           </div>
         </div>
