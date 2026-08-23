@@ -7,7 +7,7 @@ import { Activity, Flame, ShieldAlert, Info } from 'lucide-react';
 function getACWRAnalysis(acwrData) {
   if (!acwrData || acwrData.length === 0) return null;
   const last = acwrData[acwrData.length - 1];
-  const acwr = last.acwr;
+  const acwr = last.ratio || 0;
   
   if (acwr >= 0.8 && acwr <= 1.3) {
     return { title: 'Sweet Spot (Ideal)', desc: `O teu rácio é ${acwr.toFixed(2)}. A carga aguda (esta semana) está perfeitamente equilibrada com a carga crónica (últimas 4 semanas). O risco de lesão é mínimo!`, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' };
