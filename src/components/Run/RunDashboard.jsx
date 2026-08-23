@@ -89,11 +89,13 @@ function getBestPaceData(allRuns, targetKm) {
   });
 
   const best = entries[0];
+  const runCount = entries.filter(e => e.source === 'run').length;
   return {
     pace: best.pace,
     date: best.date,
     count: entries.length,
-    source: best.source, // 'split' | 'run'
+    runCount,
+    source: best.source,
   };
 }
 
@@ -253,7 +255,10 @@ export default function RunDashboard() {
         <div>
           <p className="text-xs text-slate-300 font-medium">{label}</p>
           <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
-            {formatDatePT(b.date)} · {b.count} entrada{b.count > 1 ? 's' : ''}
+            {formatDatePT(b.date)}
+            {b.runCount > 0 && (
+              <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
+            )}
             {b.source === 'split' && (
               <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold uppercase tracking-wide">split</span>
             )}
