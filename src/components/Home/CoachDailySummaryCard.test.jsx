@@ -12,9 +12,9 @@ describe('CoachDailySummaryCard', () => {
     useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary });
   });
 
-  it('pede o resumo ao montar, com reload — não force', () => {
+  it('pede o resumo ao montar, sem reload — não force', () => {
     render(<CoachDailySummaryCard />);
-    expect(loadDailySummary).toHaveBeenCalledWith({ reload: true });
+    expect(loadDailySummary).toHaveBeenCalledWith();
   });
 
   it('mostra o estado vazio quando não há resumo nem mensagens', () => {

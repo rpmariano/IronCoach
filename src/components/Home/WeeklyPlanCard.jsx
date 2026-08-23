@@ -450,22 +450,20 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
   const [allExpanded, setAllExpanded] = useState(false);
   const scrollRef = useRef(null);
 
-  useEffect(() => {
-    if (scrollRef.current && todayIdx > 0) {
-      const timer = setTimeout(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollLeft = todayIdx * scrollRef.current.offsetWidth;
-        }
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [todayIdx]);
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef,
     days.length,
     currentIndex,
     setCurrentIndex
   );
+
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (currentIndex >= 0) {
+      scrollTo(currentIndex, isInitialMount.current);
+      isInitialMount.current = false;
+    }
+  }, [currentIndex, scrollTo]);
 
   return (
     <div className="flex flex-col gap-3">
