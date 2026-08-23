@@ -91,20 +91,22 @@ export default function GymDashboard() {
     classSessions.forEach(s => {
       const duration = Number(s.duration_seconds || 0);
       totalClassSeconds += duration;
-      if (s.rpe) {
-        rpeSum += Number(s.rpe);
+      const exertionVal = s.exertion != null ? Number(s.exertion) : (s.rpe != null ? Number(s.rpe) : null);
+      if (exertionVal !== null && !isNaN(exertionVal)) {
+        rpeSum += exertionVal;
         rpeCount++;
       }
       
-      const cats = s.categories && s.categories.length > 0 ? s.categories : (s.name ? [s.name] : ['Aula de Grupo']);
-      cats.forEach(cat => {
+      const rawCats = s.categories && s.categories.length > 0 ? s.categories : (s.name ? [s.name] : ['Aula de Grupo']);
+      rawCats.forEach(rawCat => {
+        const cat = rawCat.trim();
         if (!classMap[cat]) {
           classMap[cat] = { name: cat, count: 0, totalSeconds: 0, rpeSum: 0, rpeCount: 0 };
         }
         classMap[cat].count++;
         classMap[cat].totalSeconds += duration;
-        if (s.rpe) {
-          classMap[cat].rpeSum += Number(s.rpe);
+        if (exertionVal !== null && !isNaN(exertionVal)) {
+          classMap[cat].rpeSum += exertionVal;
           classMap[cat].rpeCount++;
         }
       });
