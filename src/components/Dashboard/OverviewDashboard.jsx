@@ -12,10 +12,7 @@ import {
   calculateWeightTrend,
   filterByDateRange,
   acwrStatusLabel,
-  sessionVolumeKg,
 } from '../../utils/biEngine';
-import { mealNutrients } from '../../utils/nutrition';
-import { parseISO, subDays, format } from 'date-fns';
 
 export default function OverviewDashboard({ scrollToTab }) {
   const {
@@ -40,14 +37,9 @@ export default function OverviewDashboard({ scrollToTab }) {
     weekRuns.reduce((s, r) => s + Number(r.distance_km || 0), 0),
     [weekRuns]
   );
-  const runSparkData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = subDays(new Date(), 6 - i);
-      const dayStr = format(d, 'yyyy-MM-dd');
-      return (runs || []).filter(r => r.date === dayStr).reduce((s, r) => s + Number(r.distance_km || 0), 0);
-    });
-    return days;
-  }, [runs]);
+  const runSubtitle = weekRuns.length > 0
+    ? `${weekRuns.length} corrida${weekRuns.length !== 1 ? 's' : ''} esta semana`
+    : 'Sem corridas esta semana';
   // 'undertrained' (carga baixa) e sem dados não são a mesma coisa que
   // "sem dados" genérico — ver acwrStatusLabel. Antes disto qualquer rácio
   // abaixo de 0.8 (incl. carga baixa real, com dados) caía em "Sem dados".
@@ -60,23 +52,14 @@ export default function OverviewDashboard({ scrollToTab }) {
 
   // ── Ginásio ───────────────────────────────────────────
   const gymStats = useMemo(() => calculateVolumeLoad(gymSessions || [], 'semana'), [gymSessions]);
-  // Lia session.exercises[].sets[].weight_kg — um formato que as sessões
-  // reais nunca tiveram (o registo grava em workout_session_sets, ver
-  // GymRegistration.jsx). Devolvia sempre zeros, por isso o cartão Ginásio
-  // nunca mostrava o mini-gráfico. sessionVolumeKg é a mesma conta que o
-  // resto do biEngine agora usa (ver calculateVolumeLoad).
-  const gymSparkData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = subDays(new Date(), 6 - i);
-      const dayStr = format(d, 'yyyy-MM-dd');
-      return (gymSessions || []).filter(s => s.date === dayStr)
-        .reduce((sum, session) => sum + sessionVolumeKg(session), 0);
-    });
-    return days;
-  }, [gymSessions]);
   const weekSessions = useMemo(() =>
     filterByDateRange(gymSessions || [], 'semana').length, [gymSessions]
   );
+  const gymSubtitle = gymStats?.totalVolumeLoad > 0
+    ? `${Math.round(gymStats.totalVolumeLoad / weekSessions).toLocaleString('pt-PT')} kg/sessão em média`
+    : weekSessions > 0
+      ? 'Sem séries com peso registadas'
+      : 'Sem treinos esta semana';
 
   // ── Nutrição ──────────────────────────────────────────
   const adherence = useMemo(() =>
@@ -100,27 +83,12 @@ export default function OverviewDashboard({ scrollToTab }) {
   }, [calPct]);
   const eaAvg = eaData?.average ?? 0;
   const nutriSubtitle = eaAvg > 0 ? `EA: ${eaAvg} kcal/kg` : 'Regista refeições';
-  // Estava sempre a [] — o cartão Nutrição nunca tinha mini-gráfico, ao
-  // contrário dos outros 3 pilares (ver print do utilizador, 23/08).
-  const nutriSparkData = useMemo(() => {
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = subDays(new Date(), 6 - i);
-      const dayStr = format(d, 'yyyy-MM-dd');
-      return (meals || []).filter(m => m.date === dayStr)
-        .reduce((sum, m) => sum + mealNutrients(m).calories, 0);
-    });
-    return days;
-  }, [meals]);
 
   // ── Corpo ─────────────────────────────────────────────
   const weightTrend = useMemo(() => calculateWeightTrend(bodyAssessments || []), [bodyAssessments]);
   const currentWeight = weightTrend?.movingAverage?.length > 0
     ? weightTrend.movingAverage[weightTrend.movingAverage.length - 1].weight?.toFixed(1)
     : '—';
-  const bodySparkData = useMemo(() =>
-    (weightTrend?.rawPoints || []).slice(-8).map(p => p.weight || 0),
-    [weightTrend]
-  );
   const bodyDelta = weightTrend?.weeklyRate != null
     ? `${weightTrend.weeklyRate > 0 ? '+' : ''}${weightTrend.weeklyRate} kg/sem`
     : null;
@@ -130,6 +98,12 @@ export default function OverviewDashboard({ scrollToTab }) {
     if (weightTrend.trend === 'subindo') return { label: '📈 Em ganho', color: 'yellow' };
     return { label: '➡️ Estável', color: 'green' };
   }, [weightTrend]);
+  const weekBodyAssessments = useMemo(() =>
+    filterByDateRange(bodyAssessments || [], 'semana'), [bodyAssessments]
+  );
+  const bodySubtitle = weekBodyAssessments.length > 0
+    ? `${weekBodyAssessments.length} avaliação${weekBodyAssessments.length !== 1 ? 'ões' : ''} esta semana`
+    : 'Sem avaliações esta semana';
 
   return (
     <div className="space-y-4 fade-in pb-8 pt-2">
@@ -162,9 +136,7 @@ export default function OverviewDashboard({ scrollToTab }) {
           kpi={weekDist > 0 ? `${weekDist.toFixed(1)}` : '—'}
           kpiUnit={weekDist > 0 ? 'km esta sem.' : ''}
           badge={runBadge}
-          sparkData={runSparkData}
-          sparkType="bar"
-          sparkColor="#c026d3"
+          subtitle={runSubtitle}
           onClick={() => scrollToTab('corrida')}
         />
         <PillarSummaryCard
@@ -177,9 +149,7 @@ export default function OverviewDashboard({ scrollToTab }) {
             : '—'}
           kpiUnit={gymStats?.totalVolumeLoad > 0 ? 'kg vol.' : ''}
           badge={{ label: `${weekSessions} sessão${weekSessions !== 1 ? 'ões' : ''}`, color: weekSessions >= 2 ? 'green' : weekSessions === 1 ? 'yellow' : 'neutral' }}
-          sparkData={gymSparkData}
-          sparkType="bar"
-          sparkColor="#facc15"
+          subtitle={gymSubtitle}
           onClick={() => scrollToTab('ginasio')}
         />
         <PillarSummaryCard
@@ -189,9 +159,6 @@ export default function OverviewDashboard({ scrollToTab }) {
           kpiUnit={calPct > 0 ? 'calorias' : ''}
           badge={nutriBadge}
           subtitle={nutriSubtitle}
-          sparkData={nutriSparkData}
-          sparkType="bar"
-          sparkColor="#059669"
           onClick={() => scrollToTab('nutricao')}
         />
         <PillarSummaryCard
@@ -201,9 +168,7 @@ export default function OverviewDashboard({ scrollToTab }) {
           kpiUnit={currentWeight !== '—' ? 'kg' : ''}
           badge={bodyBadge}
           delta={bodyDelta}
-          sparkData={bodySparkData}
-          sparkType="line"
-          sparkColor="#e11d48"
+          subtitle={bodySubtitle}
           onClick={() => scrollToTab('corpo')}
         />
       </div>
