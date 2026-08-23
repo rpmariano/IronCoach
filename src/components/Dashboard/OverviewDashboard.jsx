@@ -25,6 +25,7 @@ export default function OverviewDashboard({ scrollToTab }) {
     coachPlanItems,
     profile,
     shoes,
+    setEditingRaceId,
   } = useAppStore();
 
   const data = { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes };
@@ -122,6 +123,7 @@ export default function OverviewDashboard({ scrollToTab }) {
         gymSessions={gymSessions}
         raceEvents={raceEvents}
         profile={profile}
+        onClickRace={(id) => setEditingRaceId(id)}
       />
 
       <SmartInsightsBanner data={data} profile={profile} maxItems={3} />

@@ -5,6 +5,8 @@
 import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
+import { assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { getRecommendedPrepWeeks } from './racePlanEngine';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -837,26 +839,57 @@ export function detectCoachInsights(data, profile) {
           });
         }
 
-        // 5b. Volume insuficiente para próxima prova
+        // 5b. Avaliação Tática Completa (Viabilidade + Ritmo)
         if (data.runs?.length > 0) {
-          const weeklyVol = calculateWeeklyVolume(data.runs);
-          const recent4 = weeklyVol.slice(-4);
-          const avgWeekly = recent4.length > 0 ? recent4.reduce((s, w) => s + w.distanceKm, 0) / recent4.length : 0;
-
-          // Verificar se o volume é adequado (usando limiares simplificados)
-          const minVolumes = { 5: 15, 10: 25, 21: 35, 42: 55, 50: 70 };
-          const closest = Object.entries(minVolumes).reduce((best, [d, vol]) => {
-            return Math.abs(Number(d) - dist) < Math.abs(Number(best[0]) - dist) ? [d, vol] : best;
+          const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
+          const expLevel = next.experience_level || profile?.experience_level || 'iniciante';
+          const totalWeeks = getRecommendedPrepWeeks(dist, expLevel);
+          const planStartDateObj = new Date(parseISO(next.date).getTime() - totalWeeks * 7 * 86400000);
+          const inProgress = planStartDateObj.getTime() <= now.getTime();
+          const prepWeeksForViability = inProgress ? totalWeeks : Math.floor(daysLeft / 7);
+          
+          const viability = assessRaceViability({
+            distanceKm: dist,
+            experienceLevel: expLevel,
+            weeksToRace: prepWeeksForViability,
+            weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+            racePriority: next.race_priority || 'a',
           });
-          const minVol = closest[1];
 
-          if (avgWeekly < minVol * 0.7) {
+          const prediction = predictRaceTime(data.runs, dist, profile?.experience_level || 'medio');
+          const targetPace = next.target_pace_seconds_per_km;
+
+          if (viability.flags.includes('ultra_para_iniciante')) {
+            insights.push({
+              id: 'race_tactic_ultra', severity: 'critical',
+              title: `Risco Elevado: Ultra-Trail`,
+              message: `Falta-te histórico de corrida de fundo (maratona) para suportar as cargas de uma Ultra. A recomendação da Carol é reduzir a distância para evitar sobrecargas articulares.`,
+              metric: 'Viabilidade', value: 0, threshold: 0, module: 'corrida'
+            });
+          } else if (viability.flags.includes('tempo_insuficiente')) {
+            insights.push({
+              id: 'race_tactic_time', severity: 'warning',
+              title: `Calendário Apertado: ${raceName}`,
+              message: `O tempo de preparação restante é demasiado curto para a distância de ${dist}km. A Carol sugere que foques os treinos apenas em adaptação e ajustes as tuas expectativas de tempo.`,
+              metric: 'Tempo', value: daysLeft, threshold: 0, module: 'corrida'
+            });
+          } else if (viability.flags.includes('volume_insuficiente')) {
             insights.push({
               id: 'race_volume', severity: 'warning',
-              title: `Volume insuficiente para ${raceName}`,
-              message: `O teu volume semanal médio é ${avgWeekly.toFixed(0)} km — abaixo do recomendado (~${minVol} km/semana) para uma prova de ${dist} km.`,
-              metric: 'Volume', value: avgWeekly, threshold: minVol, module: 'corrida'
+              title: `Volume de Treino Insuficiente: ${raceName}`,
+              message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. A Carol recomenda aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
+              metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida'
             });
+          } else if (targetPace && prediction.predictedPace > 0) {
+            const paceDiffPct = (prediction.predictedPace - targetPace) / targetPace;
+            if (paceDiffPct > 0.10) {
+              insights.push({
+                id: 'race_tactic_pace', severity: 'warning',
+                title: `Ritmo-Alvo Irrealista: ${raceName}`,
+                message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. A Carol avisa que manter esse Pace vai causar quebra a meio da prova. Recalcula o alvo!`,
+                metric: 'Pace', value: prediction.predictedPace, threshold: targetPace, module: 'corrida'
+              });
+            }
           }
         }
       }
@@ -910,7 +943,7 @@ export function detectCoachInsights(data, profile) {
  * @param {object} profile
  * @returns {{ score: number, pillars: Array<{label, score, desc}>, level: string }}
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null) {
   try {
     const pillars = [];
 
@@ -987,6 +1020,65 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       }
     }
     pillars.push({ key: 'vdot', label: 'Forma Aeróbica (VDOT)', score: vdotScore, desc: vdotDesc });
+
+    // --- Pilar 5: Viabilidade Tática (Opcional, se nextRace for fornecido) ---
+    if (nextRace) {
+      let tacticScore = 100;
+      let tacticDesc = 'Preparação alinhada com os objetivos da prova.';
+      
+      const distanceKm = parseFloat((nextRace.distance_km || '10').toString().replace(',', '.'));
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
+      const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
+      const weeklyVol = recentWeeklyVolume(runs || [], todayISO);
+      const expLevel = nextRace.experience_level || profile?.experience_level || 'iniciante';
+      
+      // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
+      // o macrociclo todo, e não apenas o tempo que falta, senão dispara sempre na reta final.
+      const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
+      const planStartDateObj = new Date(parseISO(nextRace.date).getTime() - totalWeeks * 7 * 86400000);
+      const inProgress = planStartDateObj.getTime() <= parseISO(todayISO).getTime();
+      const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
+
+      const viability = assessRaceViability({
+        distanceKm,
+        experienceLevel: expLevel,
+        weeksToRace: prepWeeksForViability,
+        weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+        racePriority: nextRace.race_priority || 'a',
+      });
+
+      const prediction = predictRaceTime(runs || [], distanceKm, profile?.experience_level || 'medio');
+      const targetPace = nextRace.target_pace_seconds_per_km;
+      
+      if (viability.flags.includes('ultra_para_iniciante')) {
+        tacticScore = 0;
+        tacticDesc = 'Distância (Ultra) desaconselhada para iniciantes.';
+      } else if (viability.flags.includes('tempo_insuficiente')) {
+        tacticScore = 30;
+        tacticDesc = 'Tempo de calendário insuficiente para preparar a prova.';
+      } else if (viability.flags.includes('volume_insuficiente')) {
+        tacticScore = 50;
+        tacticDesc = `Volume de treino (${weeklyVol}km/sem) insuficiente para a distância.`;
+      } else if (targetPace && prediction.predictedPace > 0) {
+        const paceDiffPct = (prediction.predictedPace - targetPace) / targetPace;
+        if (paceDiffPct > 0.10) {
+          tacticScore = 40;
+          tacticDesc = 'Ritmo-alvo demasiado otimista face às corridas recentes.';
+        } else if (paceDiffPct > 0.03) {
+          tacticScore = 70;
+          tacticDesc = 'Ritmo-alvo exigente, mas alcançável num bom dia.';
+        } else {
+          tacticScore = 100;
+          tacticDesc = 'O ritmo-alvo está alinhado com a tua capacidade aeróbica.';
+        }
+      } else {
+        tacticScore = 90;
+        tacticDesc = 'Volume e calendário de preparação adequados à distância.';
+      }
+
+      pillars.push({ key: 'tactic', label: 'Viabilidade Tática', score: tacticScore, desc: tacticDesc });
+    }
 
     const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
     const level = totalScore >= 75 ? 'high' : totalScore >= 50 ? 'medium' : 'low';

@@ -159,6 +159,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     experienceLevel,
     weeksToRace: prepWeeksForViability,
     weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    racePriority,
   });
 
   let readinessLevel = 'green';

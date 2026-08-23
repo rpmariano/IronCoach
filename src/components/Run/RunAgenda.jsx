@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -26,6 +26,7 @@ import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } f
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { useCarouselHaptics } from '../../utils/haptics';
 
 function todayISO() {
   const d = new Date();
@@ -64,8 +65,10 @@ const EMPTY_DRAFT = {
   notes: '',
 };
 
+const PAGE_KEYS = ['hub', 'details'];
+
 export default function RunAgenda({ onClose }) {
-  const { raceEvents, profile, runs, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
+  const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
   const editingEventId = editingRaceId;
@@ -76,6 +79,61 @@ export default function RunAgenda({ onClose }) {
   const [isDirty, setIsDirty] = useState(false);
   const [validationError, setValidationError] = useState(null);
   const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
+
+  const activePageIndex = PAGE_KEYS.indexOf(activePage);
+  const scrollRef = useRef(null);
+  const scrollToRef = useRef(() => {});
+  const pageRefs = useRef([]);
+
+  const handlePageIndexChange = useCallback((idx) => {
+    const next = PAGE_KEYS[idx];
+    if (next && next !== activePage) {
+      setActivePage(next);
+    }
+  }, [activePage]);
+
+  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
+    scrollRef,
+    PAGE_KEYS.length,
+    activePageIndex >= 0 ? activePageIndex : 0,
+    handlePageIndexChange
+  );
+  scrollToRef.current = scrollTo;
+
+  // Ajusta dinamicamente a altura do carrossel à página ativa sem cortar conteúdos
+  useEffect(() => {
+    const carousel = scrollRef.current;
+    if (!carousel) return;
+
+    carousel.style.transition = 'height 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
+    carousel.style.overflowY = 'hidden';
+
+    let activeEl = null;
+    let observer = null;
+
+    const updateHeight = () => {
+      const idx = PAGE_KEYS.indexOf(activePage);
+      activeEl = pageRefs.current[idx >= 0 ? idx : 0] || carousel.children[idx >= 0 ? idx : 0];
+      if (!activeEl) return;
+      const newHeight = activeEl.scrollHeight;
+      if (newHeight > 0) {
+        carousel.style.height = `${newHeight}px`;
+      }
+    };
+
+    updateHeight();
+
+    if (window.ResizeObserver && activeEl) {
+      observer = new ResizeObserver(() => {
+        updateHeight();
+      });
+      observer.observe(activeEl);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [activePage]);
 
   const activeTab = useAppStore(state => state.activeTab);
   const [initialTab] = useState(activeTab);
@@ -492,7 +550,7 @@ export default function RunAgenda({ onClose }) {
               className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
               style={{
                 width: 'calc((100% - 20px) / 2)',
-                transform: `translateX(calc(${activePage === 'hub' ? 0 : 1} * 100% + ${(activePage === 'hub' ? 0 : 1) * 8}px))`,
+                transform: `translateX(calc(${activePageIndex >= 0 ? activePageIndex : 0} * 100% + ${(activePageIndex >= 0 ? activePageIndex : 0) * 8}px))`,
                 background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
                 borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
                 boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
@@ -505,7 +563,10 @@ export default function RunAgenda({ onClose }) {
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setActivePage(t.key)}
+                onClick={() => {
+                  setActivePage(t.key);
+                  scrollTo(PAGE_KEYS.indexOf(t.key));
+                }}
                 style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
                 className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-colors duration-300 ${
                   activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
@@ -516,22 +577,37 @@ export default function RunAgenda({ onClose }) {
             ))}
           </div>
 
-          {/* ─── PÁGINA 1: TREINO E EVOLUÇÃO (AAA) ────────────────────────────── */}
-          {activePage === 'hub' && (
-            <div className="space-y-4 fade-in">
+          {/* Páginas lado a lado no carrossel deslizável */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            onTouchMove={handleTouchMove}
+            className="tab-swipe-carousel"
+          >
+            {/* ─── PÁGINA 1: TREINO E EVOLUÇÃO (AAA) ────────────────────────────── */}
+            <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
               <RaceHubView
                 race={draft}
                 runs={runs}
                 profile={profile}
+                meals={meals}
+                bodyAssessments={bodyAssessments}
+                gymSessions={gymSessions}
                 onFetchWebInfo={handleFetchWebInfo}
                 fetchingWebInfo={fetchingWebInfo}
-                onGoToEdit={() => setActivePage('details')}
+                onGoToEdit={() => {
+                  setActivePage('details');
+                  scrollTo(1);
+                }}
               />
 
               <div className="flex items-center gap-2 pt-2 pb-6">
                 <Button
                   variant="light"
-                  onClick={() => setActivePage('details')}
+                  onClick={() => {
+                    setActivePage('details');
+                    scrollTo(1);
+                  }}
                   className="flex-1 text-xs"
                   icon={<Sliders size={14} />}
                 >
@@ -549,11 +625,9 @@ export default function RunAgenda({ onClose }) {
                 </Button>
               </div>
             </div>
-          )}
 
-          {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
-          {activePage === 'details' && (
-            <div className="space-y-4 fade-in">
+            {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
+            <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
               {/* 1.1 Data · 1.2 Local */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -744,20 +818,28 @@ export default function RunAgenda({ onClose }) {
               )}
 
               <div className="grid grid-cols-2 gap-2 pt-1 pb-6">
-                <button onClick={attemptCloseForm} type="button" className="border border-slate-200 text-slate-600 text-xs font-semibold rounded-lg py-2 hover:bg-slate-50 transition">
+                <Button
+                  variant="light"
+                  onClick={attemptCloseForm}
+                  type="button"
+                  className="text-xs"
+                >
                   Cancelar
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="module"
+                  moduleColor="var(--mod-prova)"
                   onClick={handleSaveForm}
                   disabled={isSubmitting || !draft.name.trim()}
                   type="button"
-                  className="bg-[var(--mod-prova)] text-amber-950 text-xs font-bold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 transition"
+                  className="text-xs"
+                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                 >
-                  {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Guardar
-                </button>
+                  Guardar Prova
+                </Button>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

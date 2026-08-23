@@ -128,9 +128,7 @@ describe('detectCoachInsights', () => {
 
   describe('Volume para prova', () => {
     it('alerta quando o volume semanal médio é insuficiente para a próxima prova', () => {
-      // Gaps de 10 dias garantem 4 semanas ISO distintas, fora da janela de 28 dias
-      // do ACWR a partir da 4ª — mantém este teste isolado do alerta de carga.
-      const runs = [1, 11, 21, 31].map((daysAgo) => ({
+      const runs = [1, 8, 15, 22].map((daysAgo) => ({
         date: iso(daysAgo),
         distance_km: 10,
         duration_seconds: 3600,

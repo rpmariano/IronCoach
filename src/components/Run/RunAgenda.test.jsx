@@ -156,7 +156,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     renderAgenda();
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
@@ -178,7 +178,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     const dateInput = document.querySelector('input[type="date"]');
     const expectedDate = dateInput.value;
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
 
     await waitFor(() => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -192,7 +192,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBeNull();

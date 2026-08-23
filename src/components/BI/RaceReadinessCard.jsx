@@ -8,9 +8,10 @@ const PILLAR_ICONS = {
   ea: '⚡',
   calories: '🥗',
   vdot: '📈',
+  tactic: '🎯',
 };
 
-export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile }) {
+export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
   const today = new Date().toISOString().split('T')[0];
   const nextRace = useMemo(() => {
     if (!raceEvents?.length) return null;
@@ -20,8 +21,8 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   }, [raceEvents, today]);
 
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile),
-    [runs, meals, bodyAssessments, gymSessions, profile]
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace),
+    [runs, meals, bodyAssessments, gymSessions, profile, nextRace]
   );
 
   const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;
@@ -38,8 +39,16 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   const circumference = 2 * Math.PI * radius;
   const progress = circumference - (readiness.score / 100) * circumference;
 
+  const Component = nextRace && onClickRace ? 'button' : 'div';
+  const componentProps = Component === 'button' ? { 
+    onClick: () => onClickRace(nextRace.id),
+    className: "w-full text-left bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] active:scale-[0.98] transition-transform"
+  } : {
+    className: "w-full bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]"
+  };
+
   return (
-    <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+    <Component {...componentProps}>
       {/* Header */}
       <div className="flex items-start gap-4">
         {/* Ring */}
@@ -86,12 +95,17 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               <p className="text-[11px] text-slate-400 mt-0.5">Adiciona uma prova para ver a prontidão direcionada</p>
             </>
           )}
-          <div className="mt-2">
-            <span className={`text-[11px] font-bold ${cfg.textColor}`}>
-              Prontidão {cfg.label}
-            </span>
-            {nextRace && (
-              <span className="text-[11px] text-slate-400 font-medium"> — {nextRace.distance_km || '?'}km</span>
+          <div className="mt-2 flex items-center justify-between">
+            <div>
+              <span className={`text-[11px] font-bold ${cfg.textColor}`}>
+                Prontidão {cfg.label}
+              </span>
+              {nextRace && (
+                <span className="text-[11px] text-slate-400 font-medium"> — {nextRace.distance_km || '?'}km</span>
+              )}
+            </div>
+            {Component === 'button' && (
+              <ChevronRight className="w-4 h-4 text-slate-400" />
             )}
           </div>
         </div>
@@ -117,6 +131,6 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           );
         })}
       </div>
-    </div>
+    </Component>
   );
 }

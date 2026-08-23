@@ -23,6 +23,7 @@ import Button from '../shared/Button';
 import RunIcon from '../shared/RunIcon';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
+import { calculateReadinessIndex } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
@@ -31,6 +32,9 @@ export default function RaceHubView({
   race,
   runs = [],
   profile = {},
+  meals = [],
+  bodyAssessments = [],
+  gymSessions = [],
   onFetchWebInfo,
   fetchingWebInfo = false,
   onGoToEdit,
@@ -70,6 +74,12 @@ export default function RaceHubView({
   const distanceLabel = raceDistanceLabel(race?.distance_km || 10);
   const info = race?.web_info || null;
 
+  const readiness = useMemo(() =>
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race),
+  [runs, meals, bodyAssessments, gymSessions, profile, race]);
+
+  const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
+
   return (
     <div className="race-hub-container">
       {/* ─── 1. Hero Card AAA com Glow & Countdowns Duplos ─────────────────── */}
@@ -106,10 +116,10 @@ export default function RaceHubView({
           </div>
 
           {/* Semáforo de Prontidão Carol */}
-          <div className="rh-traffic-light" title={`Prontidão Carol: ${carolAnalysis.readinessLabel}`}>
-            <div className={`rh-light rh-light-red ${readinessLevel === 'red' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-yellow ${readinessLevel === 'yellow' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-green ${readinessLevel === 'green' ? 'on' : ''}`} />
+          <div className="rh-traffic-light" title={`Prontidão Global: ${readinessTitle} (${readiness.score}%)`}>
+            <div className={`rh-light rh-light-red ${readiness.level === 'low' ? 'on' : ''}`} />
+            <div className={`rh-light rh-light-yellow ${readiness.level === 'medium' ? 'on' : ''}`} />
+            <div className={`rh-light rh-light-green ${readiness.level === 'high' ? 'on' : ''}`} />
           </div>
         </div>
 
@@ -212,13 +222,13 @@ export default function RaceHubView({
             <span>Análise da Carol · Evolução & Prontidão</span>
           </div>
           <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
-            readinessLevel === 'green'
+            readiness.level === 'high'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-              : readinessLevel === 'yellow'
+              : readiness.level === 'medium'
               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
               : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
           }`}>
-            {carolAnalysis.readinessLabel}
+            Prontidão {readinessTitle} ({readiness.score}%)
           </span>
         </div>
 

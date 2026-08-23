@@ -78,19 +78,20 @@ export function recentWeeklyVolume(runs, todayISO, weeks = 4) {
 //   experienceLevel {string|null} — nível ('iniciante'|'basico'|'medio'|'avancado')
 //   weeksToRace    {number}       — semanas inteiras até à data da prova
 //   weeklyVolumeKm {number|null}  — média km/semana nas últimas 4 semanas
+//   racePriority   {string}       — 'a', 'b', 'c' (por defeito 'a')
 //
 // @returns {{ flags: string[], isViable: boolean }}
 //
 // flags pode conter:
 //   'ultra_para_iniciante'  — ultra bloqueado por nível (sempre desaconselhado)
-//   'tempo_insuficiente'    — semanas < mínimo para dist/nível
+//   'tempo_insuficiente'    — semanas < mínimo para dist/nível (ignorado se tiver base ou B/C race)
 //   'volume_insuficiente'   — volume médio < pré-requisito para dist/nível
 //
 // Regras de não aplicação (retorna isViable=true sem flags):
 //   - Prova já passou ou é hoje (weeksToRace <= 0)
 //   - Nível ou distância desconhecidos
 // ---------------------------------------------------------------------------
-export function assessRaceViability({ distanceKm, experienceLevel, weeksToRace, weeklyVolumeKm }) {
+export function assessRaceViability({ distanceKm, experienceLevel, weeksToRace, weeklyVolumeKm, racePriority = 'a' }) {
   const flags = [];
 
   // Não avaliar provas já passadas ou de hoje — sem tempo de preparar de qualquer forma.
@@ -107,17 +108,23 @@ export function assessRaceViability({ distanceKm, experienceLevel, weeksToRace, 
     flags.push('ultra_para_iniciante');
   }
 
-  // Tempo de preparação insuficiente (Bloco 1 #1).
   const minWeeks = MIN_PREP_WEEKS[level][cat];
-  if (minWeeks != null && weeksToRace < minWeeks) {
-    flags.push('tempo_insuficiente');
-  }
+  const minVol = MIN_VOLUME_KM[level][cat];
 
   // Volume semanal abaixo do pré-requisito (Bloco 1 #2).
-  // Só avalia se temos dados de corrida (weeklyVolumeKm não nulo).
-  const minVol = MIN_VOLUME_KM[level][cat];
-  if (minVol != null && weeklyVolumeKm != null && weeklyVolumeKm < minVol) {
-    flags.push('volume_insuficiente');
+  // Avalia primeiro para sabermos se o atleta tem base.
+  let hasBaseFitness = false;
+  if (minVol != null && weeklyVolumeKm != null) {
+    if (weeklyVolumeKm < minVol) {
+      flags.push('volume_insuficiente');
+    } else {
+      hasBaseFitness = true;
+    }
+  }
+
+  // Tempo de preparação insuficiente (Bloco 1 #1).
+  if (minWeeks != null && weeksToRace < minWeeks) {
+    flags.push('tempo_insuficiente');
   }
 
   return { flags, isViable: flags.length === 0 };

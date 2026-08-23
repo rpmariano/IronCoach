@@ -11,7 +11,7 @@ import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
 import { calculateRaceTrainingPlan, formatDatePTShort } from '../../utils/racePlanEngine';
-import { detectCoachInsights } from '../../utils/biEngine';
+import { detectCoachInsights, calculateReadinessIndex } from '../../utils/biEngine';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 
@@ -59,7 +59,7 @@ function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
 const VALID_READINESS_LEVELS = ['green', 'yellow', 'red'];
 
 // ─── Próxima Prova ───────────────────────────────────────────────────────────
-function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditRace }) {
+function NextRaceCard({ raceEvents = [], runs = [], meals = [], bodyAssessments = [], gymSessions = [], profile = {}, onNav, onEditRace }) {
   const { dailySummary } = useAppStore();
   const today = todayISO();
   const upcoming = raceEvents
@@ -68,7 +68,7 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
     .slice(0, 5);
   
   const weeklyVol = useMemo(() => recentWeeklyVolume(runs, today), [runs, today]);
-  
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
@@ -109,16 +109,15 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
             todayISO: today,
           });
 
+          // Calcula a Prontidão Global especificamente para esta prova (Pilar Tático)
+          const readinessGlobal = calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, next);
+
           const formattedDate = formatDatePTShort(plan.raceDate);
           const daysUntil = Math.max(0, plan.daysToRace);
 
-          // Preferir avaliação da Carol (mais rica) do dailySummary se disponível para esta prova concreta, senão usar o readinessLevel unificado do motor.
-          const rawCarolLevel = dailySummary?.race_readiness?.race_date === next.date
-            ? dailySummary.race_readiness.level
-            : null;
-          const carolReadiness = (rawCarolLevel === 'green' || rawCarolLevel === 'yellow' || rawCarolLevel === 'red') ? rawCarolLevel : null;
-          const carolReason = carolReadiness ? dailySummary.race_readiness.reason : (plan.carolAnalysis?.overviewText || null);
-          const readiness = carolReadiness || plan.readinessLevel || 'green';
+          // Usar a cor que vem da Prontidão Global (que mapeia high=green, medium=yellow, low=red)
+          const readinessColor = readinessGlobal.level === 'high' ? 'green' : readinessGlobal.level === 'medium' ? 'yellow' : 'red';
+          const readinessReason = `Score global de ${readinessGlobal.score}%. ${plan.carolAnalysis?.overviewText || ''}`;
 
           return (
             <div
@@ -136,8 +135,8 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   tag={next.race_type || 'Prova'}
                   daysRemaining={daysUntil}
                   progressPercentage={plan.progressPercentage}
-                  readiness={readiness}
-                  readinessReason={carolReason}
+                  readiness={readinessColor}
+                  readinessReason={readinessReason}
                 />
               </div>
             </div>
@@ -363,7 +362,16 @@ export default function Home() {
       <CoachDailySummaryCard />
 
       {/* Próxima Prova */}
-      <NextRaceCard raceEvents={raceEvents} runs={runs} profile={profile} onNav={handleNav} onEditRace={setEditingRaceId} />
+      <NextRaceCard 
+        raceEvents={raceEvents} 
+        runs={runs} 
+        meals={meals}
+        bodyAssessments={bodyAssessments}
+        gymSessions={gymSessions}
+        profile={profile} 
+        onNav={handleNav} 
+        onEditRace={setEditingRaceId} 
+      />
 
       {/* Nutrição & Água Carousel */}
       <NutritionWaterCarousel 
