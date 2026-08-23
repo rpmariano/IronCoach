@@ -182,7 +182,7 @@ export default function NutritionDashboard() {
         onChange={setActiveFilter} 
       />
       {/* 2x2 KPI Grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 px-1">
         <div 
           onClick={() => setSelectedMacro('calories')}
           className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-500/80' : ''}`}
