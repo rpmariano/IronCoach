@@ -11,7 +11,7 @@ import ACWRChart from '../BI/ACWRChart';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
-import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime, calculateACWRHistory } from '../../utils/biEngine';
+import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 
 function formatPace(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
@@ -89,6 +89,12 @@ export default function RunDashboard() {
   // BI - ACWR
   const acwrData = useMemo(() => calculateACWR(runs), [runs]);
   const acwrWeeklyData = useMemo(() => calculateACWRHistory(runs), [runs]);
+  // 'undertrained' (carga baixa) e 'unknown'/sem dados não são "Perigo" —
+  // ver auditoria de 23/08 (mostrava "Perigo" a um atleta com zero corridas).
+  const acwrStatus = useMemo(
+    () => acwrStatusLabel(acwrData?.status, acwrData?.hasEnoughData),
+    [acwrData]
+  );
 
   // BI - Distribution
   const distribution = useMemo(() => calculateTrainingDistribution(periodRuns), [periodRuns]);
@@ -263,12 +269,12 @@ export default function RunDashboard() {
           icon={Timer}
           moduleColor="var(--mod-corrida)"
         />
-        <KPICard 
-          label="ACWR Status" 
-          value={acwrData?.status === 'safe' ? 'Ideal' : acwrData?.status === 'caution' ? 'Alerta' : 'Perigo'} 
+        <KPICard
+          label="ACWR Status"
+          value={acwrStatus.label}
           icon={Zap}
           moduleColor="var(--mod-corrida)"
-          status={acwrData?.status || 'neutral'}
+          status={acwrStatus.tone}
         />
       </div>
 

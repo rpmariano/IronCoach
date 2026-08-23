@@ -2,6 +2,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
+import { acwrStatusLabel } from '../../utils/biEngine';
+
+const ACWR_TONE_COLOR = { danger: 'text-[#DC3545]', caution: 'text-[#FFC107]', safe: 'text-[#28A745]', neutral: 'text-slate-400' };
 
 export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' }) {
   const chartRef = useRef(null);
@@ -95,15 +98,17 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
           <h3 className="text-[12px] font-bold text-slate-200 leading-tight">Volume-Carga Semanal (kg)</h3>
           <MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />
         </div>
-        {acwr && (
-          <div className="text-right">
-            <span className="text-[10px] text-slate-500 block">ACWR</span>
-            <span className={`text-xs font-bold ${
-              acwr.status === 'danger' ? 'text-[#DC3545]' :
-              acwr.status === 'caution' ? 'text-[#FFC107]' : 'text-[#28A745]'
-            }`}>{acwr.ratio.toFixed(2)}</span>
-          </div>
-        )}
+        {acwr && (() => {
+          const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
+          return (
+            <div className="text-right">
+              <span className="text-[10px] text-slate-500 block">ACWR</span>
+              <span className={`text-xs font-bold ${ACWR_TONE_COLOR[tone]}`}>
+                {acwr.hasEnoughData ? acwr.ratio.toFixed(2) : label}
+              </span>
+            </div>
+          );
+        })()}
       </div>
       <div className="h-64 relative">
         <Bar ref={chartRef} data={data} options={options} plugins={[avgLinePlugin]} />

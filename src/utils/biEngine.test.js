@@ -1,10 +1,59 @@
 import { describe, it, expect } from 'vitest';
 import { subDays, format } from 'date-fns';
-import { detectCoachInsights } from './biEngine';
+import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel } from './biEngine';
 
 // Datas relativas a "agora" — daysAgo negativo devolve uma data futura
 // (útil para simular uma prova agendada).
 const iso = (daysAgo) => format(subDays(new Date(), daysAgo), 'yyyy-MM-dd');
+
+// Auditoria de 23/08: calculateVolumeLoad devolvia sempre acwr: 1.0 fixo
+// ("Simplificação"), que o GymDashboard mostrava como se fosse real.
+describe('calculateVolumeLoad — ACWR do ginásio', () => {
+  it('calcula um rácio real a partir do volume-carga, não um valor fixo', () => {
+    const gymSessions = [
+      { date: iso(3), volume_kg: 9000 },  // semana aguda
+      { date: iso(15), volume_kg: 3000 }, // base crónica
+    ];
+    const result = calculateVolumeLoad(gymSessions, 'mes');
+    // ratio = 9000 / ((9000+3000)/4) = 9000/3000 = 3.0
+    expect(result.acwr).toBeCloseTo(3.0, 1);
+    expect(result.acwrStatus).toBe('danger');
+    expect(result.acwrHasEnoughData).toBe(true);
+  });
+
+  it('sem sessões fora da última semana, sinaliza dados insuficientes em vez de "seguro"', () => {
+    const gymSessions = [{ date: iso(2), volume_kg: 5000 }];
+    const result = calculateVolumeLoad(gymSessions, 'mes');
+    expect(result.acwrHasEnoughData).toBe(false);
+  });
+
+  it('sem nenhuma sessão, não rebenta e devolve rácio zero', () => {
+    const result = calculateVolumeLoad([], 'mes');
+    expect(result.acwr).toBe(0);
+    expect(result.acwrHasEnoughData).toBe(false);
+  });
+});
+
+// Auditoria de 23/08: o RunDashboard traduzia o status do ACWR com um
+// ternário que só cobria 'safe'/'caution' — 'undertrained' (carga baixa,
+// estado seguro) e 'unknown'/sem dados caíam no "senão" e mostravam
+// "Perigo", incluindo a um atleta com zero corridas registadas.
+describe('acwrStatusLabel', () => {
+  it('carga baixa não é "Perigo"', () => {
+    expect(acwrStatusLabel('undertrained', true)).toEqual({ label: 'Carga baixa', tone: 'neutral' });
+  });
+
+  it('sem dados suficientes não é "Perigo"', () => {
+    expect(acwrStatusLabel('undertrained', false)).toEqual({ label: 'Sem dados', tone: 'neutral' });
+    expect(acwrStatusLabel('unknown', true)).toEqual({ label: 'Sem dados', tone: 'neutral' });
+  });
+
+  it('mantém os rótulos corretos para os estados normais', () => {
+    expect(acwrStatusLabel('safe', true)).toEqual({ label: 'Ideal', tone: 'safe' });
+    expect(acwrStatusLabel('caution', true)).toEqual({ label: 'Atenção', tone: 'caution' });
+    expect(acwrStatusLabel('danger', true)).toEqual({ label: 'Perigo', tone: 'danger' });
+  });
+});
 
 // detectCoachInsights() é o motor por trás da "memória proativa" da Carol:
 // corre em useMemo no Dashboard (ver Dashboard.jsx) sobre o estado global

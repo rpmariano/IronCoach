@@ -151,11 +151,14 @@ export default function NutritionDashboard() {
 
   const modColor = 'var(--mod-nutricao)';
 
-  // Determine status for KPICards
+  // Determine status for KPICards. 'caution' (não 'warning') porque é o
+  // vocabulário que o KPICard reconhece — 'warning' não tinha nenhum case
+  // no getStatusColor() dele e caía sempre no cinzento neutro, escondendo o
+  // aviso de excesso (ver auditoria de 23/08).
   const getComplianceStatus = (pct) => {
     if (!pct) return 'neutral';
     if (pct < 85) return 'danger';
-    if (pct > 115) return 'warning';
+    if (pct > 115) return 'caution';
     return 'safe';
   };
 

@@ -11,6 +11,7 @@ import {
   calculateEnergyAvailability,
   calculateWeightTrend,
   filterByDateRange,
+  acwrStatusLabel,
 } from '../../utils/biEngine';
 import { parseISO, subDays, format } from 'date-fns';
 
@@ -45,11 +46,14 @@ export default function OverviewDashboard({ scrollToTab }) {
     });
     return days;
   }, [runs]);
+  // 'undertrained' (carga baixa) e sem dados não são a mesma coisa que
+  // "sem dados" genérico — ver acwrStatusLabel. Antes disto qualquer rácio
+  // abaixo de 0.8 (incl. carga baixa real, com dados) caía em "Sem dados".
   const runBadge = useMemo(() => {
-    if (acwr.ratio >= 0.8 && acwr.ratio <= 1.3) return { label: '🟢 ACWR Ideal', color: 'green' };
-    if (acwr.ratio > 1.3 && acwr.ratio < 1.5) return { label: '🟡 ACWR Atenção', color: 'yellow' };
-    if (acwr.ratio >= 1.5) return { label: '🔴 ACWR Perigo', color: 'red' };
-    return { label: '⚪ Sem dados', color: 'neutral' };
+    const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
+    const EMOJI = { safe: '🟢', caution: '🟡', danger: '🔴', neutral: '⚪' };
+    const COLOR = { safe: 'green', caution: 'yellow', danger: 'red', neutral: 'neutral' };
+    return { label: `${EMOJI[tone]} ${label === 'Sem dados' ? label : `ACWR ${label}`}`, color: COLOR[tone] };
   }, [acwr]);
 
   // ── Ginásio ───────────────────────────────────────────
@@ -81,7 +85,11 @@ export default function OverviewDashboard({ scrollToTab }) {
     [meals, bodyAssessments, runs, gymSessions]
   );
   const calPct = adherence?.calories?.compliance_pct ?? 0;
+  // 115% é o mesmo teto usado no NutritionDashboard (getComplianceStatus) —
+  // antes disto o selo só olhava para o mínimo, e um atleta a comer 150% do
+  // alvo via na mesma "🟢 Calorias OK".
   const nutriBadge = useMemo(() => {
+    if (calPct > 115) return { label: '🟡 Acima do alvo', color: 'yellow' };
     if (calPct >= 90) return { label: '🟢 Calorias OK', color: 'green' };
     if (calPct >= 70) return { label: '🟡 Baixa ingestão', color: 'yellow' };
     if (calPct > 0) return { label: '🔴 Deficit crítico', color: 'red' };

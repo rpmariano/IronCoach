@@ -42,6 +42,39 @@ export function filterByDateRange(data, range, dateField = 'date') {
 }
 
 /**
+ * Classifica um rácio agudo:crónico nos 4 estados da doutrina (biConstants).
+ * Extraído para ser partilhado entre calculateACWR (corrida) e
+ * calculateVolumeLoad (ginásio) — antes o ginásio nem calculava um rácio
+ * real (ver histórico), e duplicar os limiares só abriria espaço para os
+ * dois um dia divergirem.
+ */
+function resolveAcwrStatus(ratio) {
+  if (ratio > Constants.ACWR_DANGER) return 'danger';
+  if (ratio > Constants.ACWR_CAUTION_MAX) return 'caution';
+  if (ratio < Constants.ACWR_UNDER_TRAINING) return 'undertrained';
+  return 'safe';
+}
+
+const ACWR_STATUS_COLOR = { safe: 'green', undertrained: 'yellow', caution: 'orange', danger: 'red', unknown: 'gray' };
+
+/**
+ * Traduz um estado de ACWR para algo que a UI possa mostrar sem inventar
+ * "Perigo" para quem não tem dados. Auditoria de 23/08: o RunDashboard
+ * mostrava "ACWR Status: Perigo" a um atleta com zero corridas, porque
+ * `undertrained` (carga baixa — estado seguro) e `unknown` (sem dados)
+ * caíam no "senão" de um ternário que só cobria safe/caution. `undertrained`
+ * é tratado à parte de `safe`: informar "carga baixa" é útil, mas não é o
+ * mesmo que dizer "estás no ponto ideal".
+ */
+export function acwrStatusLabel(status, hasEnoughData = true) {
+  if (!hasEnoughData || status === 'unknown') return { label: 'Sem dados', tone: 'neutral' };
+  if (status === 'undertrained') return { label: 'Carga baixa', tone: 'neutral' };
+  if (status === 'danger') return { label: 'Perigo', tone: 'danger' };
+  if (status === 'caution') return { label: 'Atenção', tone: 'caution' };
+  return { label: 'Ideal', tone: 'safe' };
+}
+
+/**
  * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) baseado na distância ou duração vezes RPE.
  */
 export function calculateACWR(runs) {
@@ -57,7 +90,7 @@ export function calculateACWR(runs) {
       const d = parseISO(run.date);
       if (!isValid(d)) return;
       const load = (run.duration_seconds / 60) * (run.effort_rpe || 5); // Exemplo de load = duração (min) * RPE
-      
+
       if (isAfter(d, chronicDate)) {
         chronicLoad += load;
         if (isAfter(d, acuteDate)) {
@@ -71,16 +104,8 @@ export function calculateACWR(runs) {
     const ratio = chronicAvg > 0 ? acuteAvg / chronicAvg : 0;
     const hasEnoughData = runs.some(r => !isAfter(parseISO(r.date), acuteDate));
 
-    let status = 'safe';
-    let color = 'green';
-    
-    if (ratio < Constants.ACWR_UNDER_TRAINING) {
-      status = 'undertrained'; color = 'yellow';
-    } else if (ratio > Constants.ACWR_DANGER) {
-      status = 'danger'; color = 'red';
-    } else if (ratio > Constants.ACWR_CAUTION_MAX) {
-      status = 'caution'; color = 'orange';
-    }
+    const status = resolveAcwrStatus(ratio);
+    const color = ACWR_STATUS_COLOR[status];
 
     return { acuteLoad, chronicLoad: chronicAvg, ratio, status, color, hasEnoughData };
   } catch (e) {
@@ -321,7 +346,7 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
     filtered.forEach(s => {
       const vl = s.volume_kg || 0;
       totalVolumeLoad += vl;
-      
+
       const d = parseISO(s.date);
       if (isValid(d)) {
         const weekStart = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -330,14 +355,40 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
       }
     });
 
+    // ACWR real do ginásio: mesma janela agudo (7 dias) / crónico (média de
+    // 4 semanas) do calculateACWR de corrida, com o volume-carga (kg) como
+    // "load" em vez de duração×RPE. Calculado sobre TODAS as sessões — não
+    // só as do `dateRange` do dashboard — porque o ACWR compara sempre as
+    // últimas 4 semanas, independentemente do período que o atleta esteja a
+    // ver no ecrã. Antes disto devolvia sempre 1.0 fixo ("Simplificação"),
+    // que o VolumeLoadChart mostrava como se fosse um valor real.
+    const now = new Date();
+    const acuteDate = subDays(now, 7);
+    const chronicDate = subDays(now, Constants.ACWR_MIN_HISTORY_DAYS);
+    let acuteLoad = 0;
+    let chronicLoad = 0;
+    (gymSessions || []).forEach(s => {
+      const d = parseISO(s.date);
+      if (!isValid(d)) return;
+      const vl = s.volume_kg || 0;
+      if (isAfter(d, chronicDate)) {
+        chronicLoad += vl;
+        if (isAfter(d, acuteDate)) acuteLoad += vl;
+      }
+    });
+    const chronicAvg = chronicLoad / 4;
+    const ratio = chronicAvg > 0 ? acuteLoad / chronicAvg : 0;
+    const hasEnoughData = (gymSessions || []).some(s => !isAfter(parseISO(s.date), acuteDate));
+
     return {
       totalVolumeLoad,
       weeklyBreakdown: Object.values(weeks).sort((a,b) => a.weekLabel.localeCompare(b.weekLabel)),
-      acwr: 1.0, // Simplificação
-      acwrStatus: 'safe'
+      acwr: ratio,
+      acwrStatus: resolveAcwrStatus(ratio),
+      acwrHasEnoughData: hasEnoughData,
     };
   } catch (e) {
-    return { totalVolumeLoad: 0, weeklyBreakdown: [], acwr: 0, acwrStatus: 'unknown' };
+    return { totalVolumeLoad: 0, weeklyBreakdown: [], acwr: 0, acwrStatus: 'unknown', acwrHasEnoughData: false };
   }
 }
 

@@ -22,6 +22,15 @@ export default function KPICard({
   const isPositive = delta > 0;
   const isNegative = delta < 0;
 
+  // Quando o chamador passa um `status` real (ex.: compliance de macros),
+  // a cor do delta segue esse estado em vez do sinal bruto — "comer 150%
+  // do alvo calórico" não é uma seta verde só porque o número é positivo.
+  // Sem `status` explícito (ex.: peso, BF%), mantém o critério antigo:
+  // sinal do delta é que decide a cor.
+  const deltaColorClass = status !== 'neutral'
+    ? (status === 'danger' ? 'text-[#DC3545]' : status === 'caution' ? 'text-[#FFC107]' : status === 'safe' ? 'text-[#28A745]' : 'text-slate-400')
+    : (isPositive ? 'text-[#28A745]' : isNegative ? 'text-[#DC3545]' : 'text-slate-400');
+
   return (
     <div 
       className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden ${className}`}
@@ -45,7 +54,7 @@ export default function KPICard({
       
       <div className="flex items-center justify-between mt-2">
         {delta !== undefined && (
-          <div className={`flex items-center text-[11px] font-medium ${isPositive ? 'text-[#28A745]' : isNegative ? 'text-[#DC3545]' : 'text-slate-400'}`}>
+          <div className={`flex items-center text-[11px] font-medium ${deltaColorClass}`}>
             {isPositive && '▲ '}
             {isNegative && '▼ '}
             {!isPositive && !isNegative && '- '}

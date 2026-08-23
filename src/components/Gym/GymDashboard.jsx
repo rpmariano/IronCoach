@@ -158,7 +158,7 @@ export default function GymDashboard() {
       ) : (
         <div className="space-y-4">
           {volumeData.weeklyBreakdown.length > 0 && (
-            <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus }} />
+            <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus, hasEnoughData: volumeData.acwrHasEnoughData }} />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
