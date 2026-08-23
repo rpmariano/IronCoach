@@ -228,19 +228,7 @@ export default function RunDashboard() {
         onChange={setActiveRange}
       />
 
-      {/* Header Evolução */}
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
-          style={{ background: 'linear-gradient(135deg, var(--mod-corrida), #2563eb)' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-white leading-none">Evolução e BI</h2>
-          <p className="text-[11px] text-slate-400 mt-1">{periodRuns.length} corrida(s) no período selecionado</p>
-        </div>
-      </div>
+
 
       {/* 2. KPICard row (2x2 grid) */}
       <div className="grid grid-cols-2 gap-3">
@@ -305,13 +293,19 @@ export default function RunDashboard() {
         </div>
       )}
 
-      {futureRaces.map((race, i) => (
+      {vdotTrend.length > 0 && (
         <RacePredictionChart
-          key={race.id ?? i}
           vdotTrend={vdotTrend}
-          prediction={predictRaceTime(runs, race.distance_km, experienceLevel)}
+          prediction={
+            futureRaces.length > 0
+              ? {
+                  ...predictRaceTime(runs, futureRaces[0].distance_km, experienceLevel),
+                  raceName: futureRaces[0].name || `${futureRaces[0].distance_km}km`
+                }
+              : null
+          }
         />
-      ))}
+      )}
 
       {/* 7. Daily Distance Bar Chart */}
       {periodRuns.length === 0 ? (
