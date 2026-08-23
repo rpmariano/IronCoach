@@ -27,32 +27,75 @@ function formatDatePT(dateStr) {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function getBestPaceData(allRuns, minKm) {
-  const qualifying = allRuns.filter(r => Number(r.distance_km || 0) >= minKm);
-  if (qualifying.length === 0) return null;
+// Tolerance ranges per target distance (km)
+const DISTANCE_RANGES = {
+  5:  { min: 4.0,  max: 6.5  },
+  10: { min: 8.5,  max: 12.0 },
+  21: { min: 19.0, max: 23.0 },
+};
 
-  const entries = qualifying
-    .map(r => {
+function getBestPaceData(allRuns, targetKm) {
+  const range = DISTANCE_RANGES[targetKm];
+  if (!range) return null;
+
+  const entries = [];
+
+  allRuns.forEach(r => {
+    const totalDist = Number(r.distance_km || 0);
+
+    // ── Priority 1: splits with distance ≈ targetKm ──────────────────────
+    // Splits store the cumulative time at a given distance mark.
+    // e.g. { distance_km: 5, time_seconds: 1380 } → pace = 1380/5 = 276 s/km
+    const splits = r.details?.splits || [];
+    splits.forEach(s => {
+      const splitDist = Number(s.distance_km || 0);
+      const splitTime = Number(s.time_seconds || 0);
+      if (splitDist >= range.min && splitDist <= range.max && splitTime > 0) {
+        entries.push({
+          pace: splitTime / splitDist,
+          date: r.date,
+          source: 'split',
+          count: 1,
+        });
+      }
+    });
+
+    // ── Priority 2: run whose total distance ≈ targetKm ───────────────────
+    // Only valid if the run itself IS a ~targetKm run (not a longer effort).
+    if (totalDist >= range.min && totalDist <= range.max) {
       let secPerKm = null;
-      if (r.duration_seconds && r.distance_km) {
-        secPerKm = Number(r.duration_seconds) / Number(r.distance_km);
+      if (r.duration_seconds && totalDist > 0) {
+        secPerKm = Number(r.duration_seconds) / totalDist;
       } else if (r.pace) {
         const parts = r.pace.replace('/km', '').split(':').map(Number);
         if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
           secPerKm = parts[0] * 60 + parts[1];
         }
       }
-      return { run: r, pace: secPerKm };
-    })
-    .filter(e => e.pace !== null && e.pace > 0)
-    .sort((a, b) => a.pace - b.pace);
+      if (secPerKm && secPerKm > 0) {
+        entries.push({ pace: secPerKm, date: r.date, source: 'run', count: 1 });
+      }
+    }
+  });
 
   if (entries.length === 0) return null;
 
+  // Best pace = fastest (lowest seconds/km); prefer splits over runs on tie
+  entries.sort((a, b) => {
+    if (Math.abs(a.pace - b.pace) > 0.1) return a.pace - b.pace;
+    if (a.source === 'split' && b.source !== 'split') return -1;
+    if (b.source === 'split' && a.source !== 'split') return 1;
+    return 0;
+  });
+
+  const best = entries[0];
+  const runCount = entries.filter(e => e.source === 'run').length;
   return {
-    pace: entries[0].pace,
-    date: entries[0].run.date,
-    count: entries.length
+    pace: best.pace,
+    date: best.date,
+    count: entries.length,
+    runCount,
+    source: best.source,
   };
 }
 
@@ -176,8 +219,8 @@ export default function RunDashboard() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-      x: { grid: { display: false } }
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
     }
   };
 
@@ -217,8 +260,14 @@ export default function RunDashboard() {
       <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
         <div>
           <p className="text-xs text-slate-300 font-medium">{label}</p>
-          <p className="text-[10px] text-slate-500 mt-0.5">
-            {formatDatePT(b.date)} · {b.count} corrida{b.count > 1 ? 's' : ''}
+          <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+            {formatDatePT(b.date)}
+            {b.source === 'run' && b.runCount > 0 && (
+              <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
+            )}
+            {b.source === 'split' && (
+              <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold uppercase tracking-wide">split</span>
+            )}
           </p>
         </div>
         <p className="text-base font-extrabold text-white">{formatPace(b.pace)}</p>
@@ -234,19 +283,7 @@ export default function RunDashboard() {
         onChange={setActiveRange}
       />
 
-      {/* Header Evolução */}
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
-          style={{ background: 'linear-gradient(135deg, var(--mod-corrida), #2563eb)' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-white leading-none">Evolução e BI</h2>
-          <p className="text-[11px] text-slate-400 mt-1">{periodRuns.length} corrida(s) no período selecionado</p>
-        </div>
-      </div>
+
 
       {/* 2. KPICard row (2x2 grid) */}
       <div className="grid grid-cols-2 gap-3">
@@ -311,13 +348,19 @@ export default function RunDashboard() {
         </div>
       )}
 
-      {futureRaces.map((race, i) => (
+      {vdotTrend.length > 0 && (
         <RacePredictionChart
-          key={race.id ?? i}
           vdotTrend={vdotTrend}
-          prediction={predictRaceTime(runs, race.distance_km, experienceLevel)}
+          prediction={
+            futureRaces.length > 0
+              ? {
+                  ...predictRaceTime(runs, futureRaces[0].distance_km, experienceLevel),
+                  raceName: futureRaces[0].name || `${futureRaces[0].distance_km}km`
+                }
+              : null
+          }
         />
-      ))}
+      )}
 
       {/* 7. Daily Distance Bar Chart */}
       {periodRuns.length === 0 ? (

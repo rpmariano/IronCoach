@@ -37,7 +37,7 @@ export default function CoachDailySummaryCard() {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    loadDailySummary({ reload: true });
+    loadDailySummary();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = todayISO();

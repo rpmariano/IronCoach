@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { addDaysISO, buildDailySummaryContext } from "./index.ts";
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {
@@ -73,14 +73,13 @@ Deno.test("separa os itens do plano em hoje/amanhã/depois de amanhã — chaves
       { planned_date: "2026-08-12", kind: "ginasio" },
       { planned_date: "2026-08-13", kind: "descanso" },  // depois de amanhã — vai para o seu próprio balde
     ],
-  }) as Record<string, unknown[]>;
+  }) as any;
   // As chaves incluem a data para que o modelo não confunda os dias
-  assertEquals(ctx["plano_treino_hoje_2026-08-11"].length, 1);
-  assertEquals(ctx["plano_treino_amanha_2026-08-12"].length, 1);
-  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"].length, 1);
-  assertEquals(ctx["plano_treino_hoje_2026-08-11"][0], { planned_date: "2026-08-11", kind: "corrida" });
-  assertEquals(ctx["plano_treino_amanha_2026-08-12"][0], { planned_date: "2026-08-12", kind: "ginasio" });
-  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"][0], { planned_date: "2026-08-13", kind: "descanso" });
+  assertEquals(ctx.plano_treino_hoje.itens.length, 1);
+  assertEquals(ctx.plano_treino_amanha.itens.length, 1);
+  assertEquals(ctx.plano_treino_depois_de_amanha.resumo, "Descanso");
+  assertEquals(ctx.plano_treino_hoje.itens[0], { planned_date: "2026-08-11", kind: "corrida" });
+  assertEquals(ctx.plano_treino_amanha.itens[0], { planned_date: "2026-08-12", kind: "ginasio" });
 });
 
 Deno.test("itens a partir de D+3 não entram em nenhum balde (fronteira da janela de 3 dias)", () => {
@@ -92,10 +91,10 @@ Deno.test("itens a partir de D+3 não entram em nenhum balde (fronteira da janel
       { planned_date: "2026-08-14", kind: "corrida" },  // D+3 — fora da janela
       { planned_date: "2026-08-20", kind: "ginasio" },   // bem fora da janela
     ],
-  }) as Record<string, unknown[]>;
-  assertEquals(ctx["plano_treino_hoje_2026-08-11"].length, 0);
-  assertEquals(ctx["plano_treino_amanha_2026-08-12"].length, 0);
-  assertEquals(ctx["plano_treino_depois_de_amanha_2026-08-13"].length, 0);
+  }) as any;
+  assertEquals(ctx.plano_treino_hoje.itens.length, 0);
+  assertEquals(ctx.plano_treino_amanha.itens.length, 0);
+  assertEquals(ctx.plano_treino_depois_de_amanha.resumo, "Descanso (sem treinos planeados)");
 });
 
 Deno.test("regressão: ginásio amanhã e corrida depois de amanhã ficam em baldes separados", () => {
@@ -115,19 +114,17 @@ Deno.test("regressão: ginásio amanhã e corrida depois de amanhã ficam em bal
       { planned_date: tomorrow, kind: "ginasio", categories: ["peito"] },
       { planned_date: dayAfter, kind: "corrida", training_type: "intervalos" },
     ],
-  }) as Record<string, unknown[]>;
+  }) as any;
   // Amanhã só tem ginásio
-  assertEquals(ctx[`plano_treino_amanha_${tomorrow}`].length, 1);
-  const amanha = ctx[`plano_treino_amanha_${tomorrow}`] as Array<{kind: string}>;
+  assertEquals(ctx.plano_treino_amanha.itens.length, 1);
+  const amanha = ctx.plano_treino_amanha.itens;
   assertEquals(amanha[0].kind, "ginasio");
   // Hoje continua vazio
-  assertEquals(ctx[`plano_treino_hoje_${today}`].length, 0);
-  // A corrida de D+2 aparece no SEU PRÓPRIO balde, não no de amanhã
-  assertEquals(ctx[`plano_treino_depois_de_amanha_${dayAfter}`].length, 1);
-  const depoisDeAmanha = ctx[`plano_treino_depois_de_amanha_${dayAfter}`] as Array<{kind: string}>;
-  assertEquals(depoisDeAmanha[0].kind, "corrida");
+  assertEquals(ctx.plano_treino_hoje.itens.length, 0);
+  // A corrida de D+2 aparece no SEU PRÓPRIO balde
+  assertStringIncludes(ctx.plano_treino_depois_de_amanha.resumo, "Corrida (intervalos");
   // Confirma que os dois baldes nunca se misturam
-  assertEquals(amanha.some((i) => i.kind === "corrida"), false);
+  assertEquals(amanha.some((i: any) => i.kind === "corrida"), false);
 });
 
 Deno.test("sem refeições nem água, os totais de hoje ficam a zero, não undefined", () => {

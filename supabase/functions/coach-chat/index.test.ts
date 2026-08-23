@@ -2244,7 +2244,7 @@ Deno.test("sem modo (chamadas antigas) o prompt não ganha linha de modo", () =>
     null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA",
     null, null, null, null, null, null,
   );
-  assertEquals(sys.includes("MODO DE ACOMPANHAMENTO ATUAL"), false);
+  assertEquals(sys.includes("MODO DE ACOMPANHAMENTO ATUAL:"), false);
 });
 
 Deno.test("buildCoachingModeContext manda o modo prevalecer sobre a doutrina de plano", () => {

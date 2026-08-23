@@ -69,8 +69,12 @@ export default function Dashboard({ activeModule }) {
   // activeModule também muda por fora do carrossel (ex.: FAB "Registar
   // refeição" chama setActiveTab diretamente) — sincroniza o scroll nesses
   // casos. scrollTo já não faz nada se a posição for a mesma.
+  const isInitialMount = useRef(true);
   useEffect(() => {
-    if (currentIndex >= 0) scrollTo(currentIndex);
+    if (currentIndex >= 0) {
+      scrollTo(currentIndex, isInitialMount.current);
+      isInitialMount.current = false;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex]);
 

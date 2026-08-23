@@ -56,8 +56,8 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         type: 'line',
         label: 'Rácio ACWR',
         data: weeklyData.map(d => d.ratio),
-        borderColor: '#334155', // slate-700
-        backgroundColor: '#334155',
+        borderColor: 'rgba(255, 255, 255, 0.7)',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
         yAxisID: 'ratio',
         tension: 0.4,
         pointRadius: 0,
@@ -95,13 +95,15 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     },
     scales: {
       x: {
-        grid: { display: false }
+        grid: { display: false },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       },
       load: {
         type: 'linear',
         display: true,
         position: 'left',
-        grid: { display: false }
+        grid: { display: false },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       },
       ratio: {
         type: 'linear',
@@ -110,7 +112,8 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         min: 0,
         grid: {
           color: 'rgba(255, 255, 255, 0.05)'
-        }
+        },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' }
       }
     }
   };
@@ -135,7 +138,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
           <div className="w-3 h-3 rounded-sm bg-blue-500"></div> Carga Aguda
         </span>
         <span className="flex items-center gap-1.5">
-          <div className="w-4 h-0.5 bg-slate-700"></div> Rácio ACWR
+          <div className="w-4 h-0.5 bg-white/70"></div> Rácio ACWR
         </span>
       </div>
     </div>

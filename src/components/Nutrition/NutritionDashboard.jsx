@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { MACROS, MICROS, rangeBounds, rangeTotals, mealNutrients } from '../../utils/nutrition';
+import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
 import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -15,7 +15,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { format, eachDayOfInterval, parseISO } from 'date-fns';
+import { format, eachDayOfInterval, subDays, subWeeks, subMonths, subYears } from 'date-fns';
 
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
@@ -51,7 +51,6 @@ export default function NutritionDashboard() {
     'ano': 'ano'
   };
 
-  // Map for nutrition functions (rangeBounds)
   const legacyRangeMap = {
     'dia': 'hoje',
     'semana': 'semana',
@@ -63,8 +62,6 @@ export default function NutritionDashboard() {
 
   const biRange = biRangeMap[activeFilter] || 'semana';
   const legacyRange = legacyRangeMap[activeFilter] || 'semana';
-
-  const { start, end, daysElapsed } = rangeBounds(legacyRange);
   const totals = rangeTotals(meals, legacyRange);
 
   // BI Engine Calculations
@@ -79,8 +76,22 @@ export default function NutritionDashboard() {
 
   // Chart Data preparation for selected macro trend
   const chartData = useMemo(() => {
-    const macroObj = MACROS.find(m => m.key === selectedMacro);
-    const dates = eachDayOfInterval({ start: parseISO(start), end: parseISO(end) });
+    const macroObj = MACROS.find(m => m.key === selectedMacro) || MACROS[0];
+    const now = new Date();
+    let startObj = now;
+    switch (activeFilter) {
+      case 'dia': startObj = subDays(now, 1); break;
+      case 'semana': startObj = subWeeks(now, 1); break;
+      case 'mes': startObj = subMonths(now, 1); break;
+      case 'trimestre': startObj = subMonths(now, 3); break;
+      case '6meses': startObj = subMonths(now, 6); break;
+      case 'ano': startObj = subYears(now, 1); break;
+      default: startObj = subWeeks(now, 1);
+    }
+    const endObj = now;
+    if (startObj > endObj) return null;
+
+    const dates = eachDayOfInterval({ start: startObj, end: endObj });
     const labels = dates.map(d => format(d, 'dd/MM'));
     
     const dailyData = dates.map(dateObj => {
@@ -89,9 +100,9 @@ export default function NutritionDashboard() {
       let val = 0;
       dayMeals.forEach(m => {
         const n = mealNutrients(m);
-        val += n[selectedMacro];
+        val += n[selectedMacro] || 0;
       });
-      return val;
+      return Math.round(val * 10) / 10;
     });
 
     return {
@@ -104,12 +115,12 @@ export default function NutritionDashboard() {
           backgroundColor: `${macroObj.color}20`,
           fill: true,
           tension: 0.4,
-          pointRadius: 4,
+          pointRadius: dailyData.length > 35 ? 0 : 4,
           pointBackgroundColor: macroObj.color,
         }
       ]
     };
-  }, [meals, start, end, selectedMacro]);
+  }, [meals, activeFilter, selectedMacro]);
 
   const chartOptions = {
     responsive: true,
@@ -117,23 +128,28 @@ export default function NutritionDashboard() {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#171717',
-        titleColor: '#a1a1aa',
-        bodyColor: '#fff',
-        borderColor: '#262626',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        titleColor: '#f8fafc',
+        bodyColor: '#f8fafc',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
-        padding: 12,
-        displayColors: false,
+        padding: 10,
+        callbacks: {
+          label: (context) => {
+            const macroObj = MACROS.find(m => m.key === selectedMacro);
+            return ` ${macroObj?.label || ''}: ${context.raw} ${macroObj?.unit || ''}`;
+          }
+        }
       }
     },
     scales: {
       x: {
-        grid: { display: false, drawBorder: false },
-        ticks: { color: '#71717a', font: { size: 10 } }
+        grid: { display: false },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 10 } }
       },
       y: {
-        grid: { color: '#262626', drawBorder: false },
-        ticks: { color: '#71717a', font: { size: 10 } },
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 10 } },
         beginAtZero: true
       }
     }
@@ -168,24 +184,11 @@ export default function NutritionDashboard() {
         activeRange={activeFilter} 
         onChange={setActiveFilter} 
       />
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
-          style={{ background: 'linear-gradient(135deg, var(--mod-nutricao), #10b981)' }}
-        >
-          <TrendingUp className="w-5 h-5" style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <h2 className="text-sm font-bold text-white leading-none">Evolução e BI</h2>
-          <p className="text-[11px] text-slate-400 mt-1">Cumprimento de metas no período</p>
-        </div>
-      </div>
-
       {/* 2x2 KPI Grid */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 px-1">
         <div 
           onClick={() => setSelectedMacro('calories')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Calorias"
@@ -200,7 +203,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('protein')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Proteína"
@@ -215,7 +218,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('carbs')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Hidratos"
@@ -230,7 +233,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('fat')}
-          className={`cursor-pointer transition rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-600 shadow-md scale-[1.02]' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-500/80' : ''}`}
         >
           <KPICard 
             label="Gordura"
@@ -245,6 +248,31 @@ export default function NutritionDashboard() {
         </div>
       </div>
 
+      {/* Macro Trend Line Chart — logo a seguir aos 4 cards */}
+      {chartData && (
+        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <div className="flex items-start mb-2 gap-2">
+            <h2 className="text-[11px] font-semibold text-slate-200 flex-1 flex items-center gap-1.5 uppercase tracking-wider">
+              {(() => {
+                const SelectedIcon = getMacroIcon(selectedMacro);
+                return <SelectedIcon size={14} style={{ color: MACROS.find(m => m.key === selectedMacro)?.color }} />;
+              })()}
+              {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
+            </h2>
+            <MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />
+          </div>
+          <div className="flex justify-center items-center gap-3 mb-4 text-[10px] text-slate-400 font-semibold">
+            <span className="flex items-center gap-1">
+              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 
+              {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})
+            </span>
+          </div>
+          <div className="h-48">
+            <Line data={chartData} options={chartOptions} />
+          </div>
+        </div>
+      )}
+
       {/* BI Charts */}
       {adherence?.dailyBreakdown && adherence.dailyBreakdown.length > 0 && (
         <MacroComplianceChart dailyData={adherence.dailyBreakdown} />
@@ -253,29 +281,6 @@ export default function NutritionDashboard() {
       {eaData && eaData.length > 0 && (
         <EnergyAvailabilityChart dailyData={eaData} />
       )}
-
-      {/* Macro Trend Line Chart */}
-      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <div className="flex items-start mb-2 gap-2">
-          <h2 className="text-[11px] font-semibold text-slate-200 flex-1 flex items-center gap-1.5 uppercase tracking-wider">
-            {(() => {
-              const SelectedIcon = getMacroIcon(selectedMacro);
-              return <SelectedIcon size={14} style={{ color: MACROS.find(m => m.key === selectedMacro)?.color }} />;
-            })()}
-            {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
-          </h2>
-          <MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />
-        </div>
-        <div className="flex justify-center items-center gap-3 mb-4 text-[10px] text-slate-400 font-semibold">
-          <span className="flex items-center gap-1">
-            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 
-            {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})
-          </span>
-        </div>
-        <div className="h-48">
-          <Line data={chartData} options={chartOptions} />
-        </div>
-      </div>
 
       {/* Micronutrients */}
       <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">

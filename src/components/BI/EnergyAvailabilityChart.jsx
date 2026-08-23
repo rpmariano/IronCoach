@@ -86,9 +86,10 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
       }
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
       y: { 
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' },
         min: Math.min(10, ...dailyData.map(d => d.ea))
       }
     }

@@ -76,10 +76,7 @@
 }
 
 html, body { 
-  /* IronHealth Premium Deep Slate & Teal Background */
-  background-color: #0f172a;
-  background-image: radial-gradient(circle at top right, rgba(45, 74, 87, 0.5) 0%, #0f172a 60%, #020617 100%);
-  background-attachment: fixed;
+  background-color: #0b1120;
   min-height: 100vh;
 }
 
@@ -159,6 +156,7 @@ body {
   width: 100%;
   min-width: 0;
   scroll-snap-align: start;
+  overflow: hidden;
 }
 
 /* ===== Animações ===== */

@@ -595,6 +595,10 @@ export const useAppStore = create((set, get) => ({
       }
 
       // 2. Fetch all app data concurrently
+      const today = new Date();
+      today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+      const todayStr = today.toISOString().slice(0, 10);
+
       const [
         { data: meals },
         { data: runs },
@@ -605,7 +609,8 @@ export const useAppStore = create((set, get) => ({
         { data: raceEvents },
         { data: coachPlans },
         { data: coachPlanItems },
-        { data: shoes }
+        { data: shoes },
+        { data: dailySummary }
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -616,7 +621,8 @@ export const useAppStore = create((set, get) => ({
         supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
         supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
         supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
-        supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+        supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle()
       ]);
 
       set({
@@ -629,7 +635,8 @@ export const useAppStore = create((set, get) => ({
         raceEvents: raceEvents || [],
         coachPlans: coachPlans || [],
         coachPlanItems: coachPlanItems || [],
-        shoes: shoes || []
+        shoes: shoes || [],
+        ...(dailySummary && { dailySummary })
       });
 
     } catch (err) {

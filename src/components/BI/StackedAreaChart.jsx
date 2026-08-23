@@ -7,50 +7,38 @@ import MetricInfo from './MetricInfo';
 
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
   const chartRef = useRef(null);
-  const [gradients, setGradients] = useState({ lean: null, fat: null });
 
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (chart) {
-      const ctx = chart.ctx;
-      
-      const leanGradient = ctx.createLinearGradient(0, 0, 0, 400);
-      leanGradient.addColorStop(0, 'rgba(5, 150, 105, 0.6)'); // --mod-nutricao
-      leanGradient.addColorStop(1, 'rgba(5, 150, 105, 0.1)');
-      
-      const fatGradient = ctx.createLinearGradient(0, 0, 0, 400);
-      fatGradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)'); // warm red
-      fatGradient.addColorStop(1, 'rgba(239, 68, 68, 0.1)');
-
-      setGradients({ lean: leanGradient, fat: fatGradient });
-    }
-  }, []);
+  const labels = (data.dates || []).map(d => {
+    try { return format(parseISO(d), 'dd MMM', { locale: pt }); }
+    catch { return d; }
+  });
 
   const chartData = {
-    labels: data.dates.map(d => {
-      try { return format(parseISO(d), 'dd MMM', { locale: pt }); }
-      catch { return d; }
-    }),
+    labels,
     datasets: [
       {
-        label: 'Massa Gorda',
-        data: data.fatMassKg,
-        borderColor: '#ef4444',
-        backgroundColor: gradients.fat || 'rgba(239, 68, 68, 0.5)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        label: 'Massa Magra',
+        data: data.leanMassKg || [],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: 'origin',
+        tension: 0.2,
       },
       {
-        label: 'Massa Magra',
-        data: data.leanMassKg,
-        borderColor: '#059669',
-        backgroundColor: gradients.lean || 'rgba(5, 150, 105, 0.5)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0,
-        pointHoverRadius: 4,
+        label: 'Massa Gorda',
+        data: data.fatMassKg || [],
+        borderColor: '#f43f5e',
+        backgroundColor: 'rgba(244, 63, 94, 0.15)',
+        pointBackgroundColor: '#f43f5e',
+        pointBorderColor: '#fff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: '-1',
+        tension: 0.2,
       }
     ]
   };
@@ -62,24 +50,43 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       legend: { 
         position: 'top',
         align: 'end',
-        labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' }
+        labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', color: 'rgba(255, 255, 255, 0.8)', font: { size: 11 } }
       },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
         titleColor: '#f8fafc',
         bodyColor: '#f8fafc',
         borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
-        padding: 10,
+        padding: 12,
         mode: 'index',
         intersect: false,
+        callbacks: {
+          label: (context) => {
+            const val = Number(context.raw || 0);
+            return ` ${context.dataset.label}: ${val.toFixed(1)} kg`;
+          },
+          footer: (tooltipItems) => {
+            const total = tooltipItems.reduce((sum, item) => sum + Number(item.raw || 0), 0);
+            return `Total (Peso): ${total.toFixed(1)} kg`;
+          }
+        }
       }
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { 
+        grid: { display: false }, 
+        ticks: { color: 'rgba(255, 255, 255, 0.5)' } 
+      },
       y: {
         stacked: true,
-        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        beginAtZero: true,
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { 
+          color: 'rgba(255, 255, 255, 0.6)',
+          callback: (v) => `${v} kg`,
+          font: { size: 10 }
+        }
       }
     },
     interaction: {

@@ -454,7 +454,7 @@ function totalsFromItems(items: any[]): MealTotals {
    "plano_ajustado" ou "atleta_ignorou"), por isso o botão vermelho sem plano
    nenhum não teria ação possível do outro lado. O aviso de risco continua a
    chegar ao atleta pelo texto da nota. */
-function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
   if (hasPlan) {
     return hasUpcomingRace
       ? ""

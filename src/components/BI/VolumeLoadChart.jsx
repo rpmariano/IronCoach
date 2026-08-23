@@ -48,9 +48,9 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       ctx.stroke();
       
       // Label
-      ctx.fillStyle = '#64748b'; // slate-500
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.font = '10px system-ui';
-      ctx.fillText('Média 4s', chartArea.right - 45, yPos - 5);
+      ctx.fillText('Média 4s', chartArea.right - 48, yPos - 5);
       ctx.restore();
     }
   };
@@ -61,11 +61,15 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       {
         label: 'Volume-Carga',
         data: weeklyData.map(d => d.volumeLoad),
-        backgroundColor: weeklyData.map((_, i) => {
-          // highlight current week (last item) if desired, or all gradient
-          if (i === weeklyData.length - 1) return '#d97706';
-          return gradient || 'rgba(217, 119, 6, 0.5)';
-        }),
+        backgroundColor: (context) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
+          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          return gradient;
+        },
         borderRadius: 6,
       }
     ]
@@ -86,8 +90,8 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       }
     },
     scales: {
-      x: { grid: { display: false } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true }
+      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true, ticks: { color: 'rgba(255, 255, 255, 0.5)' } }
     }
   };
 
