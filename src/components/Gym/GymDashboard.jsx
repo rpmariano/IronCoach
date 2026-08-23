@@ -164,7 +164,7 @@ export default function GymDashboard() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+            <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
               <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Volume Diário (kg)</p>
               <div className="h-52 relative">
                 <Bar data={volChartData} options={{ ...baseChartOptions, scales: darkScalesVertical }} />
@@ -172,7 +172,7 @@ export default function GymDashboard() {
             </div>
 
             {Object.keys(muscleVolume).length > 0 && (
-              <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+              <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
                 <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Séries por Músculo</p>
                 <div className="h-52 relative">
                   <Bar data={muscleChartData} options={{ ...baseChartOptions, indexAxis: 'y', scales: darkScalesHorizontal }} />
@@ -181,7 +181,7 @@ export default function GymDashboard() {
             )}
           </div>
 
-          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-3xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div className="flex items-start">
                 <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Evolução do 1RM Estimado</p>
