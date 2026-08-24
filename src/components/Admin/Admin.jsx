@@ -199,13 +199,16 @@ export default function Admin() {
         message: trimmed,
         notification_type: 'request_testing',
       });
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw new Error(error.message || 'Erro ao inserir notificação');
+      }
 
       alert('Notificação enviada com sucesso!');
       setBugNotificationMessage('');
     } catch (err) {
-      console.error('Error sending bug notification:', err);
-      alert('Falha ao enviar notificação.');
+      console.error('[BugNotification] Erro ao enviar:', err);
+      alert(`Falha ao enviar notificação: ${err.message || 'Erro desconhecido'}`);
     } finally {
       setBugNotificationSending(false);
     }
