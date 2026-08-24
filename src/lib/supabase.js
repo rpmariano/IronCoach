@@ -12,15 +12,21 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id || null;
-    await supabase.from('app_logs').insert({
+    console.debug(`[logAppEvent] Gravando evento '${event}' para user ${userId}`);
+    const { error } = await supabase.from('app_logs').insert({
       user_id: userId,
       level,
       event,
       message,
       meta,
     });
+    if (error) {
+      console.warn(`[logAppEvent] Falha ao gravar evento '${event}':`, error);
+    } else {
+      console.debug(`[logAppEvent] Evento '${event}' gravado com sucesso`);
+    }
   } catch (err) {
-    console.warn('[logAppEvent] Falha ao registar log:', err);
+    console.warn(`[logAppEvent] Exceção ao registar '${event}':`, err);
   }
 }
 
@@ -53,7 +59,11 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     }
 
     if (data?.usage) {
+      // Não aguarda — está em background, mas já com melhor error handling em logAppEvent
       logAppEvent('success', fnName, null, data.usage);
+    } else if (fnName === 'coach-chat') {
+      // Debug: se coach-chat não tem usage, algo está errado
+      console.warn(`[EdgeFunction:coach-chat] Resposta sem campo 'usage'. Campos disponíveis:`, Object.keys(data || {}));
     }
 
     return { data, error: null };
