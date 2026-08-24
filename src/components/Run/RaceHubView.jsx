@@ -298,14 +298,16 @@ export default function RaceHubView({
                     </div>
                   </div>
 
-                  {/* Linha 2: [Datas & Semanas] à esquerda | [Avaliação da Carol] à direita */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5 pl-8">
-                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400 truncate">
+                  {/* Linha 2: Datas & Semanas, com a pílula de avaliação por
+                      baixo — antes ficavam lado a lado e espremiam a data
+                      (truncava a meio da palavra, ex.: "14 a..."). */}
+                  <div className="flex flex-col gap-1 pt-0.5 pl-8">
+                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400">
                       {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
                     </p>
 
                     {evalData?.score != null && (
-                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap shrink-0`}>
+                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} self-start whitespace-nowrap`}>
                         {evalData.gradeLabel} · {evalData.score}%
                       </span>
                     )}
@@ -337,7 +339,7 @@ export default function RaceHubView({
                       </p>
 
                       {evalData?.metrics?.runsCount > 0 && (
-                        <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-400 flex-wrap">
+                        <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-slate-400 flex-wrap">
                           <span>Corridas: <strong className="text-slate-200">{evalData.metrics.runsCount}</strong></span>
                           <span>Volume: <strong className="text-slate-200">{evalData.metrics.totalKm} km</strong></span>
                           {evalData.metrics.polarizedZ1Z2Pct !== null && (
