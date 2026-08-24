@@ -5,6 +5,7 @@ import { publicUrl } from '../../lib/utils';
 import { Bot, LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
+import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 
 const TAB_MODULE_COLORS = {
   home: 'var(--green)',
@@ -137,6 +138,10 @@ export default function Layout({ children }) {
           porque vive aqui (Layout envolve tudo o que é renderizado depois
           do login, incluindo os ecrãs de registo — ver App.jsx). */}
       <ReportIssueButton />
+
+      {/* Handler de notificações de bugs — mostra badge e modal quando há
+          notificações não respondidas para o utilizador */}
+      <BugNotificationsHandler />
 
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
       {fabOpen && (

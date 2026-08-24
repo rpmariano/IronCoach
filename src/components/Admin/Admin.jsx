@@ -119,6 +119,8 @@ export default function Admin() {
   const [bugReportUpdating, setBugReportUpdating] = useState(false);
   const [bugNotificationMessage, setBugNotificationMessage] = useState('');
   const [bugNotificationSending, setBugNotificationSending] = useState(false);
+  const [bugNotifications, setBugNotifications] = useState([]);
+  const [bugNotificationsLoading, setBugNotificationsLoading] = useState(false);
 
   useEffect(() => {
     if (!profile?.is_admin) return;
@@ -155,6 +157,24 @@ export default function Admin() {
       setBugReports([]);
     } finally {
       setBugReportsLoading(false);
+    }
+  };
+
+  const loadBugNotifications = async (reportId) => {
+    setBugNotificationsLoading(true);
+    try {
+      const { data: notifications, error } = await supabase
+        .from('bug_notifications')
+        .select('*')
+        .eq('bug_report_id', reportId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setBugNotifications(notifications || []);
+    } catch (err) {
+      console.error('Error loading bug notifications:', err);
+      setBugNotifications([]);
+    } finally {
+      setBugNotificationsLoading(false);
     }
   };
 
@@ -507,7 +527,10 @@ export default function Admin() {
 
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setSelectedBugReport(item)}
+                        onClick={() => {
+                          setSelectedBugReport(item);
+                          loadBugNotifications(item.id);
+                        }}
                         className="flex-1 flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
                       >
                         <Eye size={14} /> Ver Detalhes
@@ -578,6 +601,41 @@ export default function Admin() {
                     <p className="text-[10px] text-emerald-400/80 text-center">
                       Resolvido a {new Date(selectedBugReport.resolved_at).toLocaleString('pt-PT')}
                     </p>
+                  )}
+
+                  {/* Notificações Enviadas e Respostas */}
+                  {bugNotifications.length > 0 && (
+                    <div className="space-y-2 border-t border-neutral-800 pt-4">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Histórico de Notificações e Respostas</label>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {bugNotifications.map(notif => (
+                          <div key={notif.id} className="bg-neutral-950 rounded-lg p-2.5 border border-neutral-800 space-y-1.5 text-[10px]">
+                            {/* Notificação Enviada */}
+                            <div className="space-y-1">
+                              <p className="text-slate-400 font-semibold">📤 Notificação Enviada:</p>
+                              <p className="text-slate-300 italic">{notif.message}</p>
+                              <p className="text-slate-500 text-[9px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
+                            </div>
+
+                            {/* Resposta do Utilizador */}
+                            {notif.response_status && (
+                              <div className="space-y-1 border-t border-neutral-700 pt-1.5">
+                                <p className={`font-semibold ${notif.response_status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {notif.response_status === 'ok' ? '✅ OK - Funciona' : '❌ Não Funciona'}
+                                </p>
+                                {notif.response_message && (
+                                  <p className="text-slate-300">{notif.response_message}</p>
+                                )}
+                                <p className="text-slate-500 text-[9px]">{new Date(notif.responded_at).toLocaleString('pt-PT')}</p>
+                              </div>
+                            )}
+                            {!notif.response_status && (
+                              <div className="text-slate-500 italic">⏳ À espera de resposta...</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   <div className="space-y-2 border-t border-neutral-800 pt-4">
