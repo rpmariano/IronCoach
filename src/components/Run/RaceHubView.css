@@ -91,6 +91,20 @@
   color: #cbd5e1;
 }
 
+/* Distância — mais estilizada que o texto simples de antes: badge em vidro
+   escuro, harmonizado com o mesmo trio de pílulas do NextRaceCard do Início
+   (piso preenchido + prioridade em contorno + distância em badge). */
+.rh-distance-badge {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.06);
+}
+
 /* Semáforo luminoso */
 .rh-traffic-light {
   display: flex;
@@ -181,6 +195,14 @@
   margin-top: 2px;
 }
 
+/* Nome da fase (ex.: "Construção Específica") em vez de um número — texto
+   maior que o normal, mas ainda assim precisa de caber sem estourar a
+   caixa, ao contrário de "Sem. 4" ou "20d". */
+.rh-cd-num-phase {
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
 .rh-cd-desc {
   font-size: 0.7rem;
   font-weight: 700;
@@ -253,6 +275,18 @@
   flex-direction: column;
 }
 
+/* Ocupa a grelha toda — usado no Objetivo e na Previsão (VDOT), cujo
+   valor "Total: ... | Pace: .../km" (e, na Previsão, o texto de ajuda)
+   precisam de mais espaço do que uma célula normal da grelha. Centrado
+   em vez de alinhado à esquerda como as outras células, para se
+   destacar como o par de valores a comparar. */
+.rh-spec-card-wide {
+  grid-column: 1 / -1;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
 .rh-spec-lbl {
   font-size: 0.6rem;
   font-weight: 800;
@@ -283,8 +317,11 @@
 
 .rh-carol-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  column-gap: 10px;
   margin-bottom: 12px;
 }
 
@@ -296,7 +333,22 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  line-height: 1.35;
   color: #fbbf24;
+  flex: 1 1 auto;
+  min-width: 170px;
+  white-space: nowrap;
+}
+
+/* Em telemóveis estreitos o texto completo não cabe numa linha só — como
+   o cartão tem overflow:hidden, forçar nowrap aqui cortava a palavra
+   final ("PRONTIDÃO") em vez de quebrar. A pílula de prontidão já fica
+   sempre na sua própria linha (rh-carol-readiness-pill), por isso o
+   título voltar a quebrar aqui não repõe o amontoado original. */
+@media (max-width: 420px) {
+  .rh-carol-badge {
+    white-space: normal;
+  }
 }
 
 .rh-carol-avatar {
@@ -309,6 +361,17 @@
   justify-content: center;
   color: #fff;
   box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  flex-shrink: 0;
+}
+
+/* Pílula de prontidão do cabeçalho — sempre na sua própria linha (basis
+   100%), centrada nela, em vez de ficar encostada à esquerda por baixo
+   do título quando não cabe ao lado dele. */
+.rh-carol-readiness-pill {
+  flex: 1 0 100%;
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .rh-carol-body {
@@ -470,11 +533,14 @@
   letter-spacing: 2px;
 }
 
+/* Mesma receita da pílula de prontidão do cartão "Evolução & Prontidão"
+   (rh-carol-readiness-pill, inline no JSX): pílula plena (rounded-full),
+   padding 4px/10px, fundo a 20% de opacidade e borda a 40%. */
 .rh-eval-badge {
   font-size: 0.65rem;
   font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
   white-space: nowrap;
   display: inline-flex;
   align-items: center;
@@ -483,10 +549,10 @@
   border: 1px solid transparent;
 }
 
-.rh-eval-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
-.rh-eval-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
-.rh-eval-rose { background: rgba(244, 63, 94, 0.15); color: #fb7185; border-color: rgba(244, 63, 94, 0.3); }
-.rh-eval-slate { background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.25); }
+.rh-eval-emerald { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.4); }
+.rh-eval-amber { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border-color: rgba(245, 158, 11, 0.4); }
+.rh-eval-rose { background: rgba(244, 63, 94, 0.2); color: #fda4af; border-color: rgba(244, 63, 94, 0.4); }
+.rh-eval-slate { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4); }
 
 .rh-eval-summary {
   font-size: 0.78rem;

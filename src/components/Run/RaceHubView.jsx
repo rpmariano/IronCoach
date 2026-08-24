@@ -21,10 +21,11 @@ import {
 } from 'lucide-react';
 import Button from '../shared/Button';
 import RunIcon from '../shared/RunIcon';
+import MetricInfo from '../BI/MetricInfo';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
-import { calculateReadinessIndex } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace } from '../../utils/run';
+import { calculateReadinessIndex, predictRaceTime } from '../../utils/biEngine';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -80,6 +81,14 @@ export default function RaceHubView({
 
   const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
 
+  // Previsão de tempo nesta prova pela fórmula de Riegel — mesmo cálculo do
+  // gráfico "Evolução VDOT & Previsão de Prova" (BI/RacePredictionChart),
+  // aqui isolado no valor pontual para comparar com o Tempo-Alvo.
+  const experienceLevel = race?.experience_level || profile?.experience_level || 'iniciante';
+  const prediction = useMemo(() =>
+    predictRaceTime(runs, race?.distance_km || 10, experienceLevel),
+  [runs, race?.distance_km, experienceLevel]);
+
   return (
     <div className="race-hub-container">
       {/* ─── 1. Hero Card AAA com Glow & Countdowns Duplos ─────────────────── */}
@@ -93,7 +102,7 @@ export default function RaceHubView({
               <span className={`rh-priority-pill rh-priority-${race?.race_priority || 'a'}`}>
                 {racePriorityLabel(race?.race_priority || 'a')}
               </span>
-              <span className="text-[10px] font-bold text-slate-400">
+              <span className="rh-distance-badge">
                 {distanceLabel}
               </span>
             </div>
@@ -136,16 +145,17 @@ export default function RaceHubView({
             </span>
           </div>
 
-          {/* Card 2: Início do Treino / Progresso em Semanas */}
+          {/* Card 2: Fase de Treino em curso — nome da fase em destaque
+              (era o contador "Sem. 4"), com "Sem. 4 de 6" como descrição. */}
           <div className="rh-countdown-box">
-            <span className="rh-cd-label">Status do Treino</span>
-            <div className="rh-cd-num">
+            <span className="rh-cd-label">Fase de Treino</span>
+            <div className={`rh-cd-num ${daysToStart > 0 || trainingStatus === 'completed' ? '' : 'rh-cd-num-phase'}`}>
               {daysToStart > 0 ? (
                 `${daysToStart}d`
               ) : trainingStatus === 'completed' ? (
                 '100%'
               ) : (
-                `Sem. ${currentWeek}`
+                currentPhase.name
               )}
             </div>
             <span className="rh-cd-desc">
@@ -153,7 +163,7 @@ export default function RaceHubView({
                 ? 'Para início do treino'
                 : trainingStatus === 'completed'
                 ? 'Preparação cumprida'
-                : `De ${totalWeeks} sem. (${currentPhase.name})`}
+                : `Sem. ${currentWeek} de ${totalWeeks}`}
             </span>
           </div>
         </div>
@@ -193,22 +203,42 @@ export default function RaceHubView({
               </span>
             </div>
           )}
-          {race?.target_time && (
-            <div className="rh-spec-card">
-              <span className="rh-spec-lbl">Tempo-Alvo</span>
-              <span className="rh-spec-val">{race.target_time}</span>
+          {(race?.target_time || race?.target_pace || race?.target_pace_seconds_per_km) && (
+            <div className="rh-spec-card rh-spec-card-wide">
+              <span className="rh-spec-lbl">Objetivo</span>
+              <span className="rh-spec-val">
+                {[
+                  race?.target_time ? `Total: ${race.target_time}` : null,
+                  // race é o rascunho em edição (RunAgenda), que só tem
+                  // target_pace (string "5.00" já formatada) — o
+                  // target_pace_seconds_per_km só existe depois de gravar,
+                  // por isso é o fallback, não a fonte principal.
+                  race?.target_pace
+                    ? `Pace: ${race.target_pace}/km`
+                    : race?.target_pace_seconds_per_km
+                    ? `Pace: ${formatPace(race.target_pace_seconds_per_km)}/km`
+                    : null,
+                ].filter(Boolean).join(' | ')}
+              </span>
             </div>
           )}
-          {race?.target_pace_seconds_per_km && (
-            <div className="rh-spec-card">
-              <span className="rh-spec-lbl">Ritmo-Alvo</span>
-              <span className="rh-spec-val">{formatPace(race.target_pace_seconds_per_km)} /km</span>
+          {prediction?.predictedSeconds > 0 && (
+            <div className="rh-spec-card rh-spec-card-wide">
+              {/* Título centrado sozinho — o ícone de ajuda fica à parte,
+                  ancorado ao canto direito do cartão (absolute), por isso
+                  não conta para essa centragem. left/right iguais ao padding
+                  do cartão dão-lhe a mesma largura útil do resto do
+                  conteúdo, para o texto de ajuda abrir com a largura certa
+                  em vez de espremido. */}
+              <span className="rh-spec-lbl block w-full text-center">Previsão (VDOT)</span>
+              <div className="absolute flex flex-wrap justify-end" style={{ top: 8, left: 12, right: 12 }}>
+                <MetricInfo text="Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
+              </div>
+              <span className="rh-spec-val">
+                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedPace))}/km
+              </span>
             </div>
           )}
-          <div className="rh-spec-card">
-            <span className="rh-spec-lbl">Duração Macrociclo</span>
-            <span className="rh-spec-val">{totalWeeks} Semanas</span>
-          </div>
         </div>
       </div>
 
@@ -219,9 +249,9 @@ export default function RaceHubView({
             <div className="rh-carol-avatar">
               <Sparkles size={15} />
             </div>
-            <span>Análise da Carol · Evolução & Prontidão</span>
+            <span>Evolução & Prontidão</span>
           </div>
-          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
+          <span className={`rh-carol-readiness-pill text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
             readiness.level === 'high'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
               : readiness.level === 'medium'
@@ -237,12 +267,12 @@ export default function RaceHubView({
         </p>
 
         {plan.viability.flags.length > 0 && (
-          <div className="mt-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle size={12} /> Alertas de Viabilidade
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+              <AlertTriangle size={12} className="shrink-0" /> Alertas de Viabilidade
             </span>
             {plan.viability.flags.map((flag) => (
-              <p key={flag} className="text-xs text-amber-200">
+              <p key={flag} className="text-xs text-amber-200 leading-relaxed">
                 {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
                 {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
                 {flag === 'volume_insuficiente' && `• O teu volume médio recente (${carolAnalysis.weeklyVolumeKm} km/sem) está abaixo do recomendado para esta distância.`}
@@ -276,8 +306,13 @@ export default function RaceHubView({
                   isActive ? 'active-phase' : isCompleted ? 'completed-phase' : ''
                 }`}
               >
-                <div className="flex flex-col gap-2">
-                  {/* Linha 1: [Ícone + Título] à esquerda | [Pílula de Estado + Chevron] à direita */}
+                <div className="flex flex-col gap-1.5">
+                  {/* Linha 1: [Ícone + Título] à esquerda | pílula de estado da
+                      fase + chevron à direita. Só esta pílula (curta: "Em
+                      Curso"/"Concluída"/"Planeada") partilha a linha com o
+                      título — a de avaliação (texto mais longo, ex.: "Ajuste
+                      Recomendado · 50%") ia a esta coluna e espremia o nome
+                      da fase até truncar (ex.: "Base Aerób..."). */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="rh-phase-num-badge shrink-0">
@@ -298,18 +333,21 @@ export default function RaceHubView({
                     </div>
                   </div>
 
-                  {/* Linha 2: [Datas & Semanas] à esquerda | [Avaliação da Carol] à direita */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5 pl-8">
-                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400 truncate">
-                      {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
-                    </p>
+                  {/* Linha 2: Datas & Semanas, alinhadas sob o título (pl-8). */}
+                  <p className="rh-phase-dates text-[11px] font-medium text-slate-400 pl-8">
+                    {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
+                  </p>
 
-                    {evalData?.score != null && (
-                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap shrink-0`}>
-                        {evalData.gradeLabel} · {evalData.score}%
-                      </span>
-                    )}
-                  </div>
+                  {/* Linha 3: pílula de avaliação — à largura total do
+                      cartão (sem o recuo pl-8 da linha acima), tal como o
+                      pill "Prontidão" do cartão Evolução & Prontidão. Com
+                      recuo ficava mais estreita e deslocada para a direita,
+                      não lendo como a mesma peça visual. */}
+                  {evalData?.score != null && (
+                    <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
+                      {evalData.gradeLabel} · {evalData.score}%
+                    </span>
+                  )}
                 </div>
 
                 {/* Conteúdo Expandido da Fase */}
@@ -337,7 +375,7 @@ export default function RaceHubView({
                       </p>
 
                       {evalData?.metrics?.runsCount > 0 && (
-                        <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-400 flex-wrap">
+                        <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-slate-400 flex-wrap">
                           <span>Corridas: <strong className="text-slate-200">{evalData.metrics.runsCount}</strong></span>
                           <span>Volume: <strong className="text-slate-200">{evalData.metrics.totalKm} km</strong></span>
                           {evalData.metrics.polarizedZ1Z2Pct !== null && (

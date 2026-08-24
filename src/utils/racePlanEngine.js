@@ -30,11 +30,20 @@ export function formatDatePTShort(dateStr) {
   }
 }
 
+// "Semana 6" quando a fase cobre uma só semana (start === end), em vez de
+// "Semanas 6-6" — o intervalo só faz sentido a apresentar quando há de
+// facto um intervalo.
+function weekRangeLabel(start, end) {
+  return start === end ? `Semana ${start}` : `Semanas ${start}-${end}`;
+}
+
 export function formatDateDayMonth(dateStr) {
   if (!dateStr) return '';
   try {
     const d = parseISO(dateStr);
-    return format(d, 'd MMM', { locale: pt });
+    // d/MM (ex.: "1/08"), não "d MMM" (ex.: "1 ago") — mais compacto nos
+    // intervalos de datas do RaceHubView (contagens, fases do macrociclo).
+    return format(d, 'd/MM');
   } catch {
     return dateStr;
   }
@@ -355,7 +364,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       number: 1,
       name: 'Base Aeróbica',
       subtitle: 'Adaptação Cardiovascular & Fortalecimento',
-      weeksLabel: `Semanas ${wBaseStart}-${wBaseEnd}`,
+      weeksLabel: weekRangeLabel(wBaseStart, wBaseEnd),
       weeksCount: baseDates.weeksCount,
       startDate: baseDates.startDate,
       endDate: baseDates.endDate,
@@ -368,7 +377,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       number: 2,
       name: 'Construção Específica',
       subtitle: 'Limiar Anaeróbico & Ritmo-Alvo',
-      weeksLabel: `Semanas ${wBuildStart}-${wBuildEnd}`,
+      weeksLabel: weekRangeLabel(wBuildStart, wBuildEnd),
       weeksCount: buildDates.weeksCount,
       startDate: buildDates.startDate,
       endDate: buildDates.endDate,
@@ -381,7 +390,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       number: 3,
       name: 'Pico de Carga',
       subtitle: 'Treinos Longos Chave & Simulação',
-      weeksLabel: `Semanas ${wPeakStart}-${wPeakEnd}`,
+      weeksLabel: weekRangeLabel(wPeakStart, wPeakEnd),
       weeksCount: peakDates.weeksCount,
       startDate: peakDates.startDate,
       endDate: peakDates.endDate,
@@ -394,7 +403,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       number: 4,
       name: 'Polimento (Taper)',
       subtitle: `Redução de Carga & Recarga Glicogénica (${racePriority === 'a' ? 'A-Race' : 'B/C-Race'})`,
-      weeksLabel: `Semanas ${wTaperStart}-${wTaperEnd}`,
+      weeksLabel: weekRangeLabel(wTaperStart, wTaperEnd),
       weeksCount: taperDates.weeksCount,
       startDate: taperDates.startDate,
       endDate: taperDates.endDate,
