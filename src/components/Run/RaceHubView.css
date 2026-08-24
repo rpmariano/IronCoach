@@ -275,10 +275,15 @@
   flex-direction: column;
 }
 
-/* Ocupa a grelha toda — usado na Previsão (VDOT), cujo texto de ajuda
-   precisa de mais espaço do que uma célula normal da grelha. */
+/* Ocupa a grelha toda — usado no Objetivo e na Previsão (VDOT), cujo
+   valor "Total: ... | Pace: .../km" (e, na Previsão, o texto de ajuda)
+   precisam de mais espaço do que uma célula normal da grelha. Centrado
+   em vez de alinhado à esquerda como as outras células, para se
+   destacar como o par de valores a comparar. */
 .rh-spec-card-wide {
   grid-column: 1 / -1;
+  align-items: center;
+  text-align: center;
 }
 
 .rh-spec-lbl {
