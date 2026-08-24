@@ -91,6 +91,7 @@ describe('ReportIssueButton', () => {
       description: 'O botão de guardar não responde.',
       page: 'Coach',
       user_agent: expect.any(String),
+      attachment_urls: null,
     });
     expect(payload).not.toHaveProperty('screenshot_path');
 
