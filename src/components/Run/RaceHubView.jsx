@@ -221,7 +221,7 @@ export default function RaceHubView({
             </div>
             <span>Análise da Carol · Evolução & Prontidão</span>
           </div>
-          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
+          <span className={`rh-carol-readiness-pill text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
             readiness.level === 'high'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
               : readiness.level === 'medium'
@@ -237,12 +237,12 @@ export default function RaceHubView({
         </p>
 
         {plan.viability.flags.length > 0 && (
-          <div className="mt-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle size={12} /> Alertas de Viabilidade
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+              <AlertTriangle size={12} className="shrink-0" /> Alertas de Viabilidade
             </span>
             {plan.viability.flags.map((flag) => (
-              <p key={flag} className="text-xs text-amber-200">
+              <p key={flag} className="text-xs text-amber-200 leading-relaxed">
                 {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
                 {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
                 {flag === 'volume_insuficiente' && `• O teu volume médio recente (${carolAnalysis.weeklyVolumeKm} km/sem) está abaixo do recomendado para esta distância.`}
