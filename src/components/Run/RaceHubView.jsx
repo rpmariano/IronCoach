@@ -303,18 +303,19 @@ export default function RaceHubView({
                     </div>
                   </div>
 
-                  {/* Linha 2: Datas & Semanas + pílula de avaliação — juntas
-                      por partilharem o mesmo assunto (o balanço desta fase),
-                      mas com wrap em vez de truncar/espremer: se não couberem
-                      lado a lado, a pílula desce para a linha seguinte. */}
-                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 pl-8">
-                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400 flex-1 min-w-[120px]">
+                  {/* Linha 2: Datas & Semanas, com a pílula de avaliação numa
+                      linha própria por baixo, centrada — em vez de disputar
+                      espaço ao lado (espremia/truncava a data). */}
+                  <div className="flex flex-col gap-1.5 pl-8">
+                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400">
                       {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
                     </p>
                     {evalData?.score != null && (
-                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap shrink-0`}>
-                        {evalData.gradeLabel} · {evalData.score}%
-                      </span>
+                      <div className="flex justify-center">
+                        <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap`}>
+                          {evalData.gradeLabel} · {evalData.score}%
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
