@@ -3572,12 +3572,6 @@ async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Debug: log detalhado do estado de totalUsage
-    console.log('[coach-chat] totalUsage:', JSON.stringify(totalUsage));
-    console.log('[coach-chat] totalUsage.input_tokens:', totalUsage.input_tokens, 'type:', typeof totalUsage.input_tokens);
-    console.log('[coach-chat] totalUsage.output_tokens:', totalUsage.output_tokens, 'type:', typeof totalUsage.output_tokens);
-    console.log('[coach-chat] totalUsage.cached_tokens:', totalUsage.cached_tokens, 'type:', typeof totalUsage.cached_tokens);
-
     return jsonResponse({
       user_message: userMsg,
       model_message: modelMsg,
