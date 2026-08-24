@@ -6,7 +6,7 @@ import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenc
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
-import { getRecommendedPrepWeeks } from './racePlanEngine';
+import { getRecommendedPrepWeeks, getEffectiveDistanceKm } from './racePlanEngine';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -919,20 +919,30 @@ export function detectCoachInsights(data, profile) {
         if (data.runs?.length > 0) {
           const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
           const expLevel = next.experience_level || profile?.experience_level || 'iniciante';
-          const totalWeeks = getRecommendedPrepWeeks(dist, expLevel);
+          // equivalentKm (distância + D+ convertido), não dist em bruto — uma
+          // prova de trail com D+ fica com o macrociclo/viabilidade de um
+          // piso plano da mesma distância nominal, ignorando o desnível.
+          const effectiveDist = getEffectiveDistanceKm(next);
+          const totalWeeks = getRecommendedPrepWeeks(effectiveDist, expLevel);
           const planStartDateObj = new Date(parseISO(next.date).getTime() - totalWeeks * 7 * 86400000);
           const inProgress = planStartDateObj.getTime() <= now.getTime();
           const prepWeeksForViability = inProgress ? totalWeeks : Math.floor(daysLeft / 7);
-          
+
           const viability = assessRaceViability({
-            distanceKm: dist,
+            distanceKm: effectiveDist,
             experienceLevel: expLevel,
             weeksToRace: prepWeeksForViability,
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
             racePriority: next.race_priority || 'a',
           });
 
-          const prediction = predictRaceTime(data.runs, dist, profile?.experience_level || 'medio');
+          // O tempo previsto usa a distância equivalente (mesma lógica do
+          // totalWeeks acima), mas o pace comparado com o alvo tem de ser
+          // sobre a distância REAL da prova — o atleta corre `dist` km, não
+          // o equivalente — senão o pace previsto vem "por km equivalente"
+          // e a comparação com targetPace (por km real) fica errada.
+          const prediction = predictRaceTime(data.runs, effectiveDist, profile?.experience_level || 'medio');
+          const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / dist : 0;
           const targetPace = next.target_pace_seconds_per_km;
 
           if (viability.flags.includes('ultra_para_iniciante')) {
@@ -956,14 +966,14 @@ export function detectCoachInsights(data, profile) {
               message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. A Carol recomenda aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
               metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida'
             });
-          } else if (targetPace && prediction.predictedPace > 0) {
-            const paceDiffPct = (prediction.predictedPace - targetPace) / targetPace;
+          } else if (targetPace && predictedPaceReal > 0) {
+            const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
             if (paceDiffPct > 0.10) {
               insights.push({
                 id: 'race_tactic_pace', severity: 'warning',
                 title: `Ritmo-Alvo Irrealista: ${raceName}`,
                 message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. A Carol avisa que manter esse Pace vai causar quebra a meio da prova. Recalcula o alvo!`,
-                metric: 'Pace', value: prediction.predictedPace, threshold: targetPace, module: 'corrida'
+                metric: 'Pace', value: predictedPaceReal, threshold: targetPace, module: 'corrida'
               });
             }
           }
@@ -1103,30 +1113,39 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       let tacticDesc = 'Preparação alinhada com os objetivos da prova.';
       
       const distanceKm = parseFloat((nextRace.distance_km || '10').toString().replace(',', '.'));
+      // equivalentKm (distância + D+ convertido) para o macrociclo/viabilidade
+      // e para o tempo previsto — senão uma prova de trail com D+ é avaliada
+      // como se fosse piso plano da mesma distância nominal.
+      const effectiveDist = getEffectiveDistanceKm(nextRace);
       const todayISO = new Date().toISOString().slice(0, 10);
       const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
       const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
       const weeklyVol = recentWeeklyVolume(runs || [], todayISO);
       const expLevel = nextRace.experience_level || profile?.experience_level || 'iniciante';
-      
+
       // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
       // o macrociclo todo, e não apenas o tempo que falta, senão dispara sempre na reta final.
-      const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
+      const totalWeeks = getRecommendedPrepWeeks(effectiveDist, expLevel);
       const planStartDateObj = new Date(parseISO(nextRace.date).getTime() - totalWeeks * 7 * 86400000);
       const inProgress = planStartDateObj.getTime() <= parseISO(todayISO).getTime();
       const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
 
       const viability = assessRaceViability({
-        distanceKm,
+        distanceKm: effectiveDist,
         experienceLevel: expLevel,
         weeksToRace: prepWeeksForViability,
         weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
         racePriority: nextRace.race_priority || 'a',
       });
 
-      const prediction = predictRaceTime(runs || [], distanceKm, profile?.experience_level || 'medio');
+      // O pace previsto para comparar com targetPace tem de ser sobre a
+      // distância REAL da prova (distanceKm), não o equivalente usado acima
+      // — o atleta corre distanceKm km, o equivalente só serve para estimar
+      // o esforço/tempo total, não para exprimir um ritmo por km real.
+      const prediction = predictRaceTime(runs || [], effectiveDist, profile?.experience_level || 'medio');
+      const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / distanceKm : 0;
       const targetPace = nextRace.target_pace_seconds_per_km;
-      
+
       if (viability.flags.includes('ultra_para_iniciante')) {
         tacticScore = 0;
         tacticDesc = 'Distância (Ultra) desaconselhada para iniciantes.';
@@ -1136,8 +1155,8 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       } else if (viability.flags.includes('volume_insuficiente')) {
         tacticScore = 50;
         tacticDesc = `Volume de treino (${weeklyVol}km/sem) insuficiente para a distância.`;
-      } else if (targetPace && prediction.predictedPace > 0) {
-        const paceDiffPct = (prediction.predictedPace - targetPace) / targetPace;
+      } else if (targetPace && predictedPaceReal > 0) {
+        const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
         if (paceDiffPct > 0.10) {
           tacticScore = 40;
           tacticDesc = 'Ritmo-alvo demasiado otimista face às corridas recentes.';
