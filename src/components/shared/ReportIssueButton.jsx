@@ -81,14 +81,23 @@ export default function ReportIssueButton() {
 
     setSubmitting(true);
     try {
-      let attachmentUrls = [];
+      // Guarda os CAMINHOS no storage, não URLs públicos — o bucket
+      // 'bug-report-photos' é privado de propósito (pode conter dados
+      // pessoais do atleta), por isso um getPublicUrl nunca serviria o
+      // ficheiro. Quem vai ver o anexo (Admin) gera uma signed URL a
+      // partir deste caminho no momento em que abre o report.
+      let attachmentPaths = [];
 
       // Upload ficheiros se existirem
       if (files.length > 0) {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${file.name}`;
-          const filePath = `bug-reports/${userId}/${fileName}`;
+          // A política de storage exige que a primeira pasta do caminho
+          // seja o id do utilizador (ver migração 20260822180000_bug_reports.sql,
+          // "authenticated insert own bug report photos") — um prefixo
+          // extra antes do userId faz o upload falhar por RLS.
+          const filePath = `${userId}/${fileName}`;
 
           const { error: uploadError } = await supabase.storage
             .from('bug-report-photos')
@@ -96,15 +105,7 @@ export default function ReportIssueButton() {
 
           if (uploadError) throw uploadError;
 
-          // Obter URL pública
-          const { data } = supabase.storage
-            .from('bug-report-photos')
-            .getPublicUrl(filePath);
-
-          if (data?.publicUrl) {
-            attachmentUrls.push(data.publicUrl);
-          }
-
+          attachmentPaths.push(filePath);
           setUploadProgress(Math.round(((i + 1) / files.length) * 100));
         }
       }
@@ -117,7 +118,7 @@ export default function ReportIssueButton() {
         description: trimmed,
         page: currentPageLabel({ activeTab, openCreationMode, editingRaceId }),
         user_agent: navigator.userAgent,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null,
+        attachment_urls: attachmentPaths.length > 0 ? attachmentPaths : null,
       });
       if (error) throw error;
 

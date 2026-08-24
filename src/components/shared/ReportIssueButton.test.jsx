@@ -12,7 +12,6 @@ vi.mock('../../store', () => ({
 
 const insertMock = vi.fn(() => Promise.resolve({ error: null }));
 const uploadMock = vi.fn(() => Promise.resolve({ error: null }));
-const getPublicUrlMock = vi.fn(() => ({ data: { publicUrl: 'https://example.com/file.jpg' } }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -20,7 +19,6 @@ vi.mock('../../lib/supabase', () => ({
     storage: {
       from: vi.fn(() => ({
         upload: uploadMock,
-        getPublicUrl: getPublicUrlMock,
       })),
     },
   },
@@ -168,7 +166,7 @@ describe('ReportIssueButton', () => {
     }
   });
 
-  it('submete título, descrição e URLs de ficheiros anexados', async () => {
+  it('submete título, descrição e o caminho do ficheiro anexado no storage', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
@@ -191,13 +189,17 @@ describe('ReportIssueButton', () => {
 
       await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
 
+      // O upload tem de acontecer com a primeira pasta a ser o id do
+      // utilizador (é o que a RLS do bucket exige) — sem prefixo extra.
+      expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^user-1\/.+test\.jpg$/), file);
+
       const payload = insertMock.mock.calls[0][0];
       expect(payload).toEqual(
         expect.objectContaining({
           user_id: 'user-1',
           title: 'Upload de ficheiro falha',
           description: 'Problema com upload.',
-          attachment_urls: ['https://example.com/file.jpg'],
+          attachment_urls: [expect.stringMatching(/^user-1\/.+test\.jpg$/)],
         }),
       );
     }

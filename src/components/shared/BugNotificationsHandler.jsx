@@ -35,7 +35,7 @@ export default function BugNotificationsHandler() {
     try {
       const { data, error } = await supabase
         .from('bug_notifications')
-        .select('*, bug_reports(id, title)')
+        .select('*, bug_reports(id, title, bug_number)')
         .eq('user_id', session.user.id)
         .is('response_status', null)
         .order('created_at', { ascending: false });
@@ -117,7 +117,7 @@ export default function BugNotificationsHandler() {
   if (notifications.length === 0) return null;
 
   const bugTitle = selectedNotification?.bug_reports?.title;
-  const bugId = selectedNotification?.bug_reports?.id;
+  const bugNumber = selectedNotification?.bug_reports?.bug_number;
 
   return (
     <>
@@ -177,7 +177,11 @@ export default function BugNotificationsHandler() {
                 sempre a mensagem, para não haver dúvida de qual bug se trata */}
             <div className="flex items-center gap-1.5 min-w-0">
               <p className="text-sm font-bold text-slate-100 truncate">{bugTitle || 'Bug sem título'}</p>
-              {bugId && <span className="shrink-0 text-[10px] font-mono text-slate-500">#{bugId.slice(0, 8)}</span>}
+              {bugNumber != null && (
+                <span className="shrink-0 text-[10px] font-mono text-slate-500">
+                  Bug-{String(bugNumber).padStart(3, '0')}
+                </span>
+              )}
             </div>
 
             {/* Mensagem da Equipa */}

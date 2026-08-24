@@ -77,6 +77,13 @@ function geminiCost(inputTokens, outputTokens) {
   return (inputTokens / 1e6) * GEMINI_PRICE_PER_M_INPUT + (outputTokens / 1e6) * GEMINI_PRICE_PER_M_OUTPUT;
 }
 
+// Identificador curto e legível do bug ("Bug-001"), a partir do número
+// sequencial atribuído pela BD (bug_reports.bug_number) — mais fácil de
+// comunicar do que o uuid completo ou um prefixo dele.
+function formatBugNumber(n) {
+  return `Bug-${String(n).padStart(3, '0')}`;
+}
+
 function rangeBounds(rangeStr) {
   const end = new Date().toISOString().slice(0, 10);
   let d = new Date();
@@ -121,6 +128,7 @@ export default function Admin() {
   const [bugNotificationSending, setBugNotificationSending] = useState(false);
   const [bugNotifications, setBugNotifications] = useState([]);
   const [bugNotificationsLoading, setBugNotificationsLoading] = useState(false);
+  const [bugAttachmentUrls, setBugAttachmentUrls] = useState([]);
 
   useEffect(() => {
     if (!profile?.is_admin) return;
@@ -178,6 +186,26 @@ export default function Admin() {
       setBugNotifications([]);
     } finally {
       setBugNotificationsLoading(false);
+    }
+  };
+
+  // O bucket 'bug-report-photos' é privado (pode conter dados pessoais do
+  // atleta) — attachment_urls guarda CAMINHOS no storage, não URLs
+  // acessíveis diretamente. Aqui geram-se URLs assinadas, válidas por 1h,
+  // só quando o admin/revisor abre o detalhe do report.
+  const loadBugAttachments = async (paths) => {
+    if (!paths || paths.length === 0) {
+      setBugAttachmentUrls([]);
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        paths.map(path => supabase.storage.from('bug-report-photos').createSignedUrl(path, 3600))
+      );
+      setBugAttachmentUrls(results.map(r => r.data?.signedUrl).filter(Boolean));
+    } catch (err) {
+      console.error('Error creating signed urls for bug attachments:', err);
+      setBugAttachmentUrls([]);
     }
   };
 
@@ -538,7 +566,7 @@ export default function Admin() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <p className="text-xs font-semibold text-slate-100 truncate">{item.title}</p>
-                          <span className="shrink-0 text-[9px] font-mono text-slate-500">#{item.id.slice(0, 8)}</span>
+                          <span className="shrink-0 text-[9px] font-mono text-slate-500">{formatBugNumber(item.bug_number)}</span>
                         </div>
                         <p className="text-[10px] text-slate-500 truncate">
                           {item.user_name || item.user_email || 'Utilizador desconhecido'} · {item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}
@@ -558,6 +586,7 @@ export default function Admin() {
                         onClick={() => {
                           setSelectedBugReport(item);
                           loadBugNotifications(item.id);
+                          loadBugAttachments(item.attachment_urls);
                         }}
                         className="flex-1 flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
                       >
@@ -584,9 +613,9 @@ export default function Admin() {
             {selectedBugReport && (
               <PremiumModal
                 isOpen={!!selectedBugReport}
-                onClose={() => setSelectedBugReport(null)}
+                onClose={() => { setSelectedBugReport(null); setBugAttachmentUrls([]); }}
                 title={selectedBugReport.title}
-                subtitle={`#${selectedBugReport.id.slice(0, 8)} · ${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
+                subtitle={`${formatBugNumber(selectedBugReport.bug_number)} · ${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
                 icon={Bug}
                 theme="warning"
                 variant="dialog"
@@ -610,17 +639,21 @@ export default function Admin() {
                     <div className="space-y-1">
                       <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Anexos ({selectedBugReport.attachment_urls.length})</label>
                       <div className="space-y-2">
-                        {selectedBugReport.attachment_urls.map((url, idx) => (
-                          <a
-                            key={idx}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[10px] text-blue-400 hover:text-blue-300 break-all truncate block"
-                          >
-                            Ver anexo {idx + 1}
-                          </a>
-                        ))}
+                        {bugAttachmentUrls.length === 0 ? (
+                          <p className="text-[10px] text-slate-500">A gerar links de acesso...</p>
+                        ) : (
+                          bugAttachmentUrls.map((url, idx) => (
+                            <a
+                              key={idx}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-blue-400 hover:text-blue-300 break-all truncate block"
+                            >
+                              Ver anexo {idx + 1}
+                            </a>
+                          ))
+                        )}
                       </div>
                     </div>
                   )}
