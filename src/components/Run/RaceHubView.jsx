@@ -145,16 +145,17 @@ export default function RaceHubView({
             </span>
           </div>
 
-          {/* Card 2: Início do Treino / Progresso em Semanas */}
+          {/* Card 2: Fase de Treino em curso — nome da fase em destaque
+              (era o contador "Sem. 4"), com "Sem. 4 de 6" como descrição. */}
           <div className="rh-countdown-box">
-            <span className="rh-cd-label">Status do Treino</span>
-            <div className="rh-cd-num">
+            <span className="rh-cd-label">Fase de Treino</span>
+            <div className={`rh-cd-num ${daysToStart > 0 || trainingStatus === 'completed' ? '' : 'rh-cd-num-phase'}`}>
               {daysToStart > 0 ? (
                 `${daysToStart}d`
               ) : trainingStatus === 'completed' ? (
                 '100%'
               ) : (
-                `Sem. ${currentWeek}`
+                currentPhase.name
               )}
             </div>
             <span className="rh-cd-desc">
@@ -162,7 +163,7 @@ export default function RaceHubView({
                 ? 'Para início do treino'
                 : trainingStatus === 'completed'
                 ? 'Preparação cumprida'
-                : `De ${totalWeeks} sem. (${currentPhase.name})`}
+                : `Sem. ${currentWeek} de ${totalWeeks}`}
             </span>
           </div>
         </div>
@@ -210,23 +211,25 @@ export default function RaceHubView({
           )}
           {race?.target_pace_seconds_per_km && (
             <div className="rh-spec-card">
-              <span className="rh-spec-lbl">Ritmo-Alvo</span>
+              <span className="rh-spec-lbl">Pace Objetivo</span>
               <span className="rh-spec-val">{formatPace(race.target_pace_seconds_per_km)} /km</span>
+            </div>
+          )}
+          {prediction?.predictedPace > 0 && (
+            <div className="rh-spec-card">
+              <span className="rh-spec-lbl">Pace Previsto (Riegel)</span>
+              <span className="rh-spec-val">{formatPace(Math.round(prediction.predictedPace))} /km</span>
             </div>
           )}
           {prediction?.predictedSeconds > 0 && (
             <div className="rh-spec-card rh-spec-card-wide">
               <div className="flex flex-wrap items-center gap-1">
                 <span className="rh-spec-lbl">Previsão (VDOT)</span>
-                <MetricInfo text="Estimativa do teu tempo nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Tempo-Alvo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
+                <MetricInfo text="Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Tempo-Alvo e o Pace Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
               </div>
               <span className="rh-spec-val">{formatDuration(Math.round(prediction.predictedSeconds))}</span>
             </div>
           )}
-          <div className="rh-spec-card">
-            <span className="rh-spec-lbl">Duração Macrociclo</span>
-            <span className="rh-spec-val">{totalWeeks} Semanas</span>
-          </div>
         </div>
       </div>
 

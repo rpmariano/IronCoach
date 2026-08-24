@@ -195,6 +195,14 @@
   margin-top: 2px;
 }
 
+/* Nome da fase (ex.: "Construção Específica") em vez de um número — texto
+   maior que o normal, mas ainda assim precisa de caber sem estourar a
+   caixa, ao contrário de "Sem. 4" ou "20d". */
+.rh-cd-num-phase {
+  font-size: 1.15rem;
+  line-height: 1.25;
+}
+
 .rh-cd-desc {
   font-size: 0.7rem;
   font-weight: 700;
