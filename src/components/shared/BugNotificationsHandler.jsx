@@ -126,11 +126,15 @@ export default function BugNotificationsHandler() {
         onClick={handleOpen}
         aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
         title="Notificações"
-        className="tap-44 relative w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition shadow-[0_2px_10px_rgba(220,38,38,0.4)]"
+        className="relative w-11 h-11 rounded-full flex items-center justify-center active:scale-95 transition shadow-[0_2px_10px_rgba(220,38,38,0.4)]"
         style={{ background: 'linear-gradient(135deg, #dc2626, #f97316)' }}
       >
-        <Mail size={16} className="text-white" strokeWidth={2.25} />
-        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-red-600 text-[10px] font-extrabold flex items-center justify-center border-2 border-[#0f172a] animate-pulse">
+        <Mail size={17} className="text-white" strokeWidth={2.25} />
+        {/* Contador ancorado DENTRO da caixa do botão (top-0/right-0, não
+            deslocamentos negativos): fora dela era cortado e via-se só a
+            borda. Sem animate-pulse, que o desvanecia para 50% de opacidade
+            e tornava o número ilegível. */}
+        <span className="absolute top-0 right-0 min-w-[20px] h-[20px] px-1 rounded-full bg-white text-red-600 text-[11px] font-extrabold leading-none flex items-center justify-center shadow-sm ring-2 ring-[#0f172a]">
           {notifications.length}
         </span>
       </button>

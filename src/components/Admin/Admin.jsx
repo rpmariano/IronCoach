@@ -620,14 +620,16 @@ export default function Admin() {
                 theme="warning"
                 variant="dialog"
                 maxWidth="max-w-lg"
+                headerRight={
+                  <span
+                    className="max-w-[130px] truncate text-[11px] font-semibold text-white/90 bg-black/15 rounded-full px-2.5 py-1"
+                    title={selectedBugReport.user_email || selectedBugReport.user_name || 'utilizador desconhecido'}
+                  >
+                    {selectedBugReport.user_email || selectedBugReport.user_name || 'desconhecido'}
+                  </span>
+                }
               >
                 <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Utilizador</label>
-                    <p className="text-xs text-slate-200">{selectedBugReport.user_name || '—'}</p>
-                    <p className="text-[10px] text-slate-500">{selectedBugReport.user_email || 'sem email registado'}</p>
-                  </div>
-
                   <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Descrição</label>
                     <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 text-xs text-slate-200 whitespace-pre-wrap break-words">
