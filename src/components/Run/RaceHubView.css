@@ -267,6 +267,12 @@
   flex-direction: column;
 }
 
+/* Ocupa a grelha toda — usado na Previsão (VDOT), cujo texto de ajuda
+   precisa de mais espaço do que uma célula normal da grelha. */
+.rh-spec-card-wide {
+  grid-column: 1 / -1;
+}
+
 .rh-spec-lbl {
   font-size: 0.6rem;
   font-weight: 800;

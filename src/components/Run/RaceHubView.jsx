@@ -21,10 +21,11 @@ import {
 } from 'lucide-react';
 import Button from '../shared/Button';
 import RunIcon from '../shared/RunIcon';
+import MetricInfo from '../BI/MetricInfo';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
-import { calculateReadinessIndex } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace } from '../../utils/run';
+import { calculateReadinessIndex, predictRaceTime } from '../../utils/biEngine';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -79,6 +80,14 @@ export default function RaceHubView({
   [runs, meals, bodyAssessments, gymSessions, profile, race]);
 
   const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
+
+  // Previsão de tempo nesta prova pela fórmula de Riegel — mesmo cálculo do
+  // gráfico "Evolução VDOT & Previsão de Prova" (BI/RacePredictionChart),
+  // aqui isolado no valor pontual para comparar com o Tempo-Alvo.
+  const experienceLevel = race?.experience_level || profile?.experience_level || 'iniciante';
+  const prediction = useMemo(() =>
+    predictRaceTime(runs, race?.distance_km || 10, experienceLevel),
+  [runs, race?.distance_km, experienceLevel]);
 
   return (
     <div className="race-hub-container">
@@ -203,6 +212,15 @@ export default function RaceHubView({
             <div className="rh-spec-card">
               <span className="rh-spec-lbl">Ritmo-Alvo</span>
               <span className="rh-spec-val">{formatPace(race.target_pace_seconds_per_km)} /km</span>
+            </div>
+          )}
+          {prediction?.predictedSeconds > 0 && (
+            <div className="rh-spec-card rh-spec-card-wide">
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="rh-spec-lbl">Previsão (VDOT)</span>
+                <MetricInfo text="Estimativa do teu tempo nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Tempo-Alvo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
+              </div>
+              <span className="rh-spec-val">{formatDuration(Math.round(prediction.predictedSeconds))}</span>
             </div>
           )}
           <div className="rh-spec-card">
