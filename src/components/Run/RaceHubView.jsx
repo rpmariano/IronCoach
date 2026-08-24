@@ -83,11 +83,15 @@ export default function RaceHubView({
 
   // Previsão de tempo nesta prova pela fórmula de Riegel — mesmo cálculo do
   // gráfico "Evolução VDOT & Previsão de Prova" (BI/RacePredictionChart),
-  // aqui isolado no valor pontual para comparar com o Tempo-Alvo.
+  // aqui isolado no valor pontual para comparar com o Objetivo. Usa
+  // equivalentKm (distância + desnível convertido, ver
+  // calculateEquivalentFlatKm), não a distância em bruto — senão uma prova
+  // de trail com D+ era prevista como se fosse um piso plano da mesma
+  // distância, dando um tempo/pace irrealisticamente rápido.
   const experienceLevel = race?.experience_level || profile?.experience_level || 'iniciante';
   const prediction = useMemo(() =>
-    predictRaceTime(runs, race?.distance_km || 10, experienceLevel),
-  [runs, race?.distance_km, experienceLevel]);
+    predictRaceTime(runs, equivalentKm || 10, experienceLevel),
+  [runs, equivalentKm, experienceLevel]);
 
   return (
     <div className="race-hub-container">
@@ -232,7 +236,7 @@ export default function RaceHubView({
                   em vez de espremido. */}
               <span className="rh-spec-lbl block w-full text-center">Previsão (VDOT)</span>
               <div className="absolute flex flex-wrap justify-end" style={{ top: 8, left: 12, right: 12 }}>
-                <MetricInfo text="Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
+                <MetricInfo text={`Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência${race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.`} />
               </div>
               <span className="rh-spec-val">
                 Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedPace))}/km
