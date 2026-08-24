@@ -11,13 +11,15 @@ import MealCard from '../Nutrition/MealCard';
 import BodyAssessmentCard from '../Body/BodyAssessmentCard';
 
 export default function CreatedRecordModal() {
-  const { 
-    newlyCreatedRecord, 
-    clearNewlyCreatedRecord, 
+  const {
+    newlyCreatedRecord,
+    clearNewlyCreatedRecord,
     profile,
     setProfile,
     setActiveTab,
-    setSelectedDate
+    setSelectedDate,
+    dismissedInterventions,
+    dismissIntervention,
   } = useAppStore();
 
   // Busca o coach_intervention_status diretamente do perfil na BD, porque a
