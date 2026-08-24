@@ -240,7 +240,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       // A resposta traz meal e items em separado — o store espera-os juntos,
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
-      const mealWithItems = { ...data.meal, meal_items: data.items };
+      const mealWithItems = { ...data.meal, meal_items: data.items || [] };
+      if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
+        console.warn('Aviso: análise retornou 0 itens', data);
+      }
       setMeals([...meals, mealWithItems]);
       showToast('Refeição registada');
       finishCreateAndGoToCalendar(mealWithItems);

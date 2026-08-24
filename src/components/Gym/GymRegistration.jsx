@@ -351,7 +351,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      const sessionWithSets = { ...data.session, workout_session_sets: data.sets };
+      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+        console.warn('Aviso: análise retornou 0 séries', data);
+      }
       setGymSessions([sessionWithSets, ...gymSessions]);
       showToast('Treino registado');
       finishCreateAndGoToCalendar(sessionWithSets);
@@ -392,7 +395,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      const sessionWithSets = { ...data.session, workout_session_sets: data.sets };
+      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+        console.warn('Aviso: análise retornou 0 séries', data);
+      }
       setGymSessions([sessionWithSets, ...gymSessions]);
 
       // Se esta sessão vem do plano, marca o item como concluído — a data
