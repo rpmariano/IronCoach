@@ -2949,7 +2949,7 @@ async function handler(req: Request): Promise<Response> {
     const message = typeof body.message === "string"
       ? body.message.slice(0, MAX_MSG_LEN).trim()
       : "";
-    if (!message && !body.is_intervention_start) return jsonResponse({ error: "Mensagem vazia" }, 400);
+    if (!message && !body.is_intervention_start && !body.is_plan_checkin) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
@@ -3261,12 +3261,20 @@ async function handler(req: Request): Promise<Response> {
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
     const { data: recentHistory } = await sb
       .from("coach_messages")
-      .select("role, content")
+      .select("role, content, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(MAX_HISTORY);
     // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
     const history = (recentHistory || []).slice().reverse();
+    // Só para o "Adaptar Plano" (is_plan_checkin) decidir entre cumprimentar
+    // de novo ou retomar a conversa — comparado em hora de Lisboa, não UTC,
+    // para bater certo com o "hoje" que o resto do prompt já usa (linha
+    // ~2022, `today`).
+    const lisbonDateStr = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Europe/Lisbon" });
+    const alreadyTalkedToday = (recentHistory || []).some(
+      (m: { role: string; created_at: string }) => m.role === "model" && lisbonDateStr(new Date(m.created_at)) === lisbonDateStr(new Date()),
+    );
 
     // ── Pré-filtro de âmbito (evita chamar a API para off-topic óbvio) ──
     // Verificação leve antes de guardar a mensagem ou construir o prompt.
@@ -3343,12 +3351,33 @@ async function handler(req: Request): Promise<Response> {
     );
 
     let finalSystemInstruction = systemInstruction;
-    if (Array.isArray(body.activeInsights) && body.activeInsights.length > 0) {
+    const hasActiveInsights = Array.isArray(body.activeInsights) && body.activeInsights.length > 0;
+    if (hasActiveInsights) {
       const insightsContext = body.activeInsights.map((i: any) =>
         `- [${i.state}] ${i.title} (${i.metric}: ${i.value}): ${i.message}`
       ).join("\n");
       finalSystemInstruction += "\n\n--- AVISOS ATIVOS (INSIGHTS BIOMETRICOS) ---\nO motor de regras gerou os seguintes alertas. Tem em conta que o utilizador os pode ter ignorado.\n" + insightsContext;
     }
+
+    // Texto injetado quando o atleta bateu à porta do "Adaptar Plano" (ver
+    // is_plan_checkin abaixo) — distinto do de is_intervention_start: ali o
+    // alerta surgiu sozinho da análise de um registo e a Carol tem de o
+    // confrontar já ao abrir a conversa; aqui foi o atleta que decidiu vir
+    // falar com ela, por isso ela atende como quem abre a porta, não como
+    // quem dispara um alarme.
+    const planCheckinPrompt =
+      `O atleta abriu propositadamente o chat ao clicar no botão "Adaptar Plano" — foi ele que veio ter ` +
+      `contigo, não surgiu nenhum alerta automático a chamar-te. ` +
+      (alreadyTalkedToday
+        ? `Já falaram hoje — NÃO voltes a cumprimentar como início de dia; retoma com naturalidade, ` +
+          `pergunta-lhe como podes ajudar de novo ou se se esqueceu de te dizer alguma coisa.`
+        : `Ainda não falaram hoje — cumprimenta-o normalmente pelo nome.`) +
+      ` Pergunta-lhe se quer mexer em alguma coisa do plano (treino ou alimentação). ` +
+      (hasActiveInsights
+        ? `Há avisos ativos nos dados (ver AVISOS ATIVOS acima) — podes trazer um deles à conversa como ` +
+          `uma possível razão de ele te ter procurado, e perguntar se é sobre isso, mas como hipótese entre ` +
+          `outras, nunca como confronto ou acusação: a iniciativa foi dele, não tua.`
+        : ``);
 
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
@@ -3361,7 +3390,9 @@ async function handler(req: Request): Promise<Response> {
         parts: [{
           text: message || (body.is_intervention_start
             ? `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.${body.intervention_details ? ` Detalhes da análise/motivo: "${body.intervention_details}".` : ''} INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`
-            : "")
+            : body.is_plan_checkin
+              ? planCheckinPrompt
+              : "")
         }]
       },
     ];

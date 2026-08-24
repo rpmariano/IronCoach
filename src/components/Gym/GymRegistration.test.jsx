@@ -96,16 +96,17 @@ describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
     expect(body.notes).toBe('treino pesado');
   });
 
-  it('acrescenta a sessão devolvida (já com coach_notes) ao store e fecha o formulário', async () => {
+  it('acrescenta a sessão devolvida (já com coach_notes e séries combinadas) ao store e fecha o formulário', async () => {
     const newSession = { id: 'sess-1', coach_notes: 'Volume consistente com o habitual.' };
-    mocks.invoke.mockResolvedValue({ data: { session: newSession }, error: null });
+    const sets = [{ id: 'set-1', exercise_name: 'Supino' }];
+    mocks.invoke.mockResolvedValue({ data: { session: newSession, sets }, error: null });
     render(<GymRegistration onClose={onClose} />);
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(useAppStore.getState().gymSessions).toEqual([newSession]);
+    expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
@@ -151,16 +152,17 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     expect(body.kind).toBe('forca');
   });
 
-  it('acrescenta a sessão devolvida (já com coach_notes) ao store e fecha o formulário', async () => {
+  it('acrescenta a sessão devolvida (já com coach_notes e séries combinadas) ao store e fecha o formulário', async () => {
     const newSession = { id: 'sess-2', coach_notes: 'Boa consistência de esforço.' };
-    mocks.invoke.mockResolvedValue({ data: { session: newSession }, error: null });
+    const sets = [{ id: 'set-2', exercise_name: 'Agachamento' }];
+    mocks.invoke.mockResolvedValue({ data: { session: newSession, sets }, error: null });
     render(<GymRegistration onClose={onClose} />);
     goManual();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(useAppStore.getState().gymSessions).toEqual([newSession]);
+    expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
