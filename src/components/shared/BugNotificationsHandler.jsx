@@ -132,10 +132,11 @@ export default function BugNotificationsHandler() {
         {/* Ícone e contador lado a lado, não sobrepostos: num botão redondo
             de 44px não há canto que chegue para um badge de 20px — ficava
             cortado pela borda e o anel escuro lia-se como um defeito.
-            Vermelho sólido em vez do gradiente vermelho→laranja: contra a
-            ponta laranja, a pastilha branca do contador quase não separava. */}
+            Vermelho sólido em vez do gradiente vermelho→laranja, e o
+            contador a branco simples (sem pastilha) — o mesmo branco do
+            ícone, que já se lê bem contra este vermelho. */}
         <Mail size={16} className="text-white shrink-0" strokeWidth={2.5} />
-        <span className="min-w-[20px] h-5 px-1 rounded-full bg-white text-[#b91c1c] text-xs font-extrabold leading-none flex items-center justify-center">
+        <span className="text-white text-sm font-extrabold leading-none">
           {notifications.length}
         </span>
       </button>
