@@ -333,11 +333,13 @@
   flex-shrink: 0;
 }
 
-/* Pílula de prontidão do cabeçalho — largura própria, sem espremer nem
-   partir a duas linhas junto ao título (era isso que dava a sensação de
-   tudo empilhado). */
+/* Pílula de prontidão do cabeçalho — sempre na sua própria linha (basis
+   100%), centrada nela, em vez de ficar encostada à esquerda por baixo
+   do título quando não cabe ao lado dele. */
 .rh-carol-readiness-pill {
-  flex-shrink: 0;
+  flex: 1 0 100%;
+  display: flex;
+  justify-content: center;
   white-space: nowrap;
 }
 
