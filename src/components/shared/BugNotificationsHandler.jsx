@@ -126,15 +126,16 @@ export default function BugNotificationsHandler() {
         onClick={handleOpen}
         aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
         title="Notificações"
-        className="h-9 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(220,38,38,0.4)]"
-        style={{ background: 'linear-gradient(135deg, #dc2626, #f97316)' }}
+        className="h-9 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(185,28,28,0.45)]"
+        style={{ background: '#b91c1c' }}
       >
         {/* Ícone e contador lado a lado, não sobrepostos: num botão redondo
             de 44px não há canto que chegue para um badge de 20px — ficava
-            cortado pela borda e o anel escuro lia-se como um defeito. Em
-            linha, o número tem sempre espaço e contraste garantidos. */}
+            cortado pela borda e o anel escuro lia-se como um defeito.
+            Vermelho sólido em vez do gradiente vermelho→laranja: contra a
+            ponta laranja, a pastilha branca do contador quase não separava. */}
         <Mail size={16} className="text-white shrink-0" strokeWidth={2.5} />
-        <span className="min-w-[20px] h-5 px-1 rounded-full bg-white text-red-600 text-[11px] font-extrabold leading-none flex items-center justify-center">
+        <span className="min-w-[20px] h-5 px-1 rounded-full bg-white text-[#b91c1c] text-xs font-extrabold leading-none flex items-center justify-center">
           {notifications.length}
         </span>
       </button>
