@@ -203,13 +203,21 @@ export default function RaceHubView({
               </span>
             </div>
           )}
-          {(race?.target_time || race?.target_pace_seconds_per_km) && (
+          {(race?.target_time || race?.target_pace || race?.target_pace_seconds_per_km) && (
             <div className="rh-spec-card rh-spec-card-wide">
               <span className="rh-spec-lbl">Objetivo</span>
               <span className="rh-spec-val">
                 {[
                   race?.target_time ? `Total: ${race.target_time}` : null,
-                  race?.target_pace_seconds_per_km ? `Pace: ${formatPace(race.target_pace_seconds_per_km)}/km` : null,
+                  // race é o rascunho em edição (RunAgenda), que só tem
+                  // target_pace (string "5.00" já formatada) — o
+                  // target_pace_seconds_per_km só existe depois de gravar,
+                  // por isso é o fallback, não a fonte principal.
+                  race?.target_pace
+                    ? `Pace: ${race.target_pace}/km`
+                    : race?.target_pace_seconds_per_km
+                    ? `Pace: ${formatPace(race.target_pace_seconds_per_km)}/km`
+                    : null,
                 ].filter(Boolean).join(' | ')}
               </span>
             </div>
