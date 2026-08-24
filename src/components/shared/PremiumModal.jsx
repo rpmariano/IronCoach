@@ -46,9 +46,6 @@ export default function PremiumModal({
   onClose,
   title,
   subtitle,
-  // Conteúdo opcional encostado à direita do cabeçalho, antes do X
-  // (ex.: identificar de quem é o registo sem gastar uma secção do corpo).
-  headerRight,
   icon: Icon,
   theme = 'neutral',
   variant = 'bottom-sheet', // 'bottom-sheet' or 'dialog'
@@ -230,16 +227,13 @@ export default function PremiumModal({
               {subtitle && <p className={`text-[12.5px] mt-0.5 leading-snug font-medium ${activeTheme.sub}`}>{subtitle}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {headerRight}
-            <button
-              onClick={handleDismiss}
-              className="w-8 h-8 shrink-0 rounded-full bg-black/15 flex items-center justify-center text-white active:scale-95 transition-transform hover:bg-black/25"
-              aria-label="Fechar"
-            >
-              <X size={18} strokeWidth={2.5} />
-            </button>
-          </div>
+          <button
+            onClick={handleDismiss}
+            className="w-8 h-8 shrink-0 rounded-full bg-black/15 flex items-center justify-center text-white active:scale-95 transition-transform hover:bg-black/25"
+            aria-label="Fechar"
+          >
+            <X size={18} strokeWidth={2.5} />
+          </button>
         </div>
 
         {/* Content */}

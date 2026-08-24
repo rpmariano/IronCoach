@@ -209,6 +209,13 @@ export default function Admin() {
     }
   };
 
+  const closeBugDetail = () => {
+    setSelectedBugReport(null);
+    setBugAttachmentUrls([]);
+    setBugNotifications([]);
+    setBugNotificationMessage('');
+  };
+
   const handleToggleBugReportStatus = async (report) => {
     const nextStatus = report.status === 'resolved' ? 'open' : 'resolved';
     setBugReportUpdating(true);
@@ -222,7 +229,18 @@ export default function Admin() {
       if (error) throw error;
 
       setBugReports(prev => prev.map(r => r.id === report.id ? { ...r, ...patch } : r));
-      setSelectedBugReport(prev => prev && prev.id === report.id ? { ...prev, ...patch } : prev);
+      // Ação concluída: o detalhe fecha-se e o novo estado fica visível no
+      // cartão da lista. Só fecha se o modal estiver aberto NESTE report —
+      // o mesmo handler serve os botões da lista, onde não há nada aberto.
+      setSelectedBugReport(prev => {
+        if (prev && prev.id === report.id) {
+          setBugAttachmentUrls([]);
+          setBugNotifications([]);
+          setBugNotificationMessage('');
+          return null;
+        }
+        return prev;
+      });
     } catch (err) {
       console.error('Error updating bug report:', err);
       alert('Falha ao atualizar o estado do report.');
@@ -256,7 +274,8 @@ export default function Admin() {
       }
 
       alert('Notificação enviada com sucesso!');
-      setBugNotificationMessage('');
+      // Mensagem enviada: o detalhe fecha-se, como no marcar-resolvido.
+      closeBugDetail();
     } catch (err) {
       console.error('[BugNotification] Erro ao enviar:', err);
       alert(`Falha ao enviar notificação: ${err.message || 'Erro desconhecido'}`);
@@ -613,21 +632,21 @@ export default function Admin() {
             {selectedBugReport && (
               <PremiumModal
                 isOpen={!!selectedBugReport}
-                onClose={() => { setSelectedBugReport(null); setBugAttachmentUrls([]); }}
+                onClose={closeBugDetail}
                 title={selectedBugReport.title}
-                subtitle={`${formatBugNumber(selectedBugReport.bug_number)} · ${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
+                subtitle={
+                  <>
+                    {formatBugNumber(selectedBugReport.bug_number)} · {selectedBugReport.page} ·{' '}
+                    {new Date(selectedBugReport.created_at).toLocaleString('pt-PT')} ·{' '}
+                    <strong className="font-bold">
+                      {selectedBugReport.user_email || selectedBugReport.user_name || 'desconhecido'}
+                    </strong>
+                  </>
+                }
                 icon={Bug}
                 theme="warning"
                 variant="dialog"
                 maxWidth="max-w-lg"
-                headerRight={
-                  <span
-                    className="max-w-[130px] truncate text-[11px] font-semibold text-white/90 bg-black/15 rounded-full px-2.5 py-1"
-                    title={selectedBugReport.user_email || selectedBugReport.user_name || 'utilizador desconhecido'}
-                  >
-                    {selectedBugReport.user_email || selectedBugReport.user_name || 'desconhecido'}
-                  </span>
-                }
               >
                 <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
                   <div className="space-y-1">
