@@ -303,21 +303,21 @@ export default function RaceHubView({
                     </div>
                   </div>
 
-                  {/* Linha 2: Datas & Semanas, com a pílula de avaliação numa
-                      linha própria por baixo, centrada — em vez de disputar
-                      espaço ao lado (espremia/truncava a data). */}
-                  <div className="flex flex-col gap-1.5 pl-8">
-                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400">
-                      {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
-                    </p>
-                    {evalData?.score != null && (
-                      <div className="flex">
-                        <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
-                          {evalData.gradeLabel} · {evalData.score}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  {/* Linha 2: Datas & Semanas, alinhadas sob o título (pl-8). */}
+                  <p className="rh-phase-dates text-[11px] font-medium text-slate-400 pl-8">
+                    {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
+                  </p>
+
+                  {/* Linha 3: pílula de avaliação — à largura total do
+                      cartão (sem o recuo pl-8 da linha acima), tal como o
+                      pill "Prontidão" do cartão Evolução & Prontidão. Com
+                      recuo ficava mais estreita e deslocada para a direita,
+                      não lendo como a mesma peça visual. */}
+                  {evalData?.score != null && (
+                    <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
+                      {evalData.gradeLabel} · {evalData.score}%
+                    </span>
+                  )}
                 </div>
 
                 {/* Conteúdo Expandido da Fase */}
