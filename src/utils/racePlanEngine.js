@@ -34,7 +34,9 @@ export function formatDateDayMonth(dateStr) {
   if (!dateStr) return '';
   try {
     const d = parseISO(dateStr);
-    return format(d, 'd MMM', { locale: pt });
+    // d/MM (ex.: "1/08"), não "d MMM" (ex.: "1 ago") — mais compacto nos
+    // intervalos de datas do RaceHubView (contagens, fases do macrociclo).
+    return format(d, 'd/MM');
   } catch {
     return dateStr;
   }

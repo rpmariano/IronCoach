@@ -207,7 +207,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
     // Começa em Treino e Evolução
     expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
-    expect(screen.getByText(/Análise da Carol · Evolução & Prontidão/i)).toBeInTheDocument();
+    expect(screen.getByText(/Evolução & Prontidão/i)).toBeInTheDocument();
     expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
     expect(screen.getByText(/Base Aeróbica/i)).toBeInTheDocument();
 

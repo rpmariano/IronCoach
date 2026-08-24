@@ -219,7 +219,7 @@ export default function RaceHubView({
             <div className="rh-carol-avatar">
               <Sparkles size={15} />
             </div>
-            <span>Análise da Carol · Evolução & Prontidão</span>
+            <span>Evolução & Prontidão</span>
           </div>
           <span className={`rh-carol-readiness-pill text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
             readiness.level === 'high'
