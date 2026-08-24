@@ -456,7 +456,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
-        savedSession = data?.session;
+        savedSession = data?.session ? { ...data.session, workout_session_sets: data.sets || [] } : null;
         useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
         const { error: sessionError } = await supabase
