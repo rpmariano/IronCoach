@@ -99,7 +99,7 @@ export default function NextRaceCard({
           </div>
           <div className="nrc-progress-labels">
             <span>Início do Plano</span>
-            <span style={{ color: '#d97706', fontWeight: 800 }}>{timelineStatus}</span>
+            <span className="nrc-status-pill">{timelineStatus}</span>
             <span>Meta</span>
           </div>
         </div>
