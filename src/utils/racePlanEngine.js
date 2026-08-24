@@ -101,6 +101,21 @@ export function calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType) 
   return Math.round((km + dPlus / 100) * 10) / 10;
 }
 
+// Extrai a distância equivalente de um registo de prova (race_events ou
+// rascunho do RunAgenda) — wrapper de calculateEquivalentFlatKm que poupa
+// cada chamador de repetir o parse de distance_km/elevation_gain_m. É esta
+// distância (não a bruta) que deve alimentar getRecommendedPrepWeeks,
+// getTaperWeeks, getRecoveryDaysAfterRace, assessRaceViability e
+// predictRaceTime — sem isto, uma prova de trail com D+ é tratada como se
+// fosse piso plano da mesma distância em todo o macrociclo e na previsão de
+// tempo (Corrida 2.3 #3/#4 da doutrina: Riegel "NÃO se aplica a trail com
+// desnível — aí usa-se" o equivalente ITRA).
+export function getEffectiveDistanceKm(race) {
+  const distanceKm = parseFloat((race?.distance_km ?? '10').toString().replace(',', '.')) || 10;
+  const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;
+  return calculateEquivalentFlatKm(distanceKm, elevationGainM, race?.race_type || 'estrada');
+}
+
 // ─── Cálculo Completo do Plano & Fases ──────────────────────────────────────────
 export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], todayISO = null }) {
   const today = todayISO || getTodayISO();
@@ -112,17 +127,21 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;
   const equivalentKm = calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType);
 
-  const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
-  const taperWeeks = Math.min(Math.max(1, getTaperWeeks(distanceKm, racePriority, experienceLevel)), Math.floor(totalWeeks / 3));
+  // equivalentKm, não distanceKm em bruto: uma prova de trail com D+ tem de
+  // ser classificada (10k/meia/maratona/ultra) pelo esforço equivalente, ou
+  // fica com a duração/taper/recuperação de um piso plano da mesma
+  // distância nominal, subestimando o desnível por completo.
+  const totalWeeks = getRecommendedPrepWeeks(equivalentKm, experienceLevel);
+  const taperWeeks = Math.min(Math.max(1, getTaperWeeks(equivalentKm, racePriority, experienceLevel)), Math.floor(totalWeeks / 3));
 
   // Datas de referência
   const raceDateObj = new Date(raceDate + 'T00:00:00');
   const todayDateObj = new Date(today + 'T00:00:00');
-  
+
   const planStartDateObj = new Date(raceDateObj.getTime() - totalWeeks * 7 * 86400000);
   const planStartDate = planStartDateObj.toISOString().slice(0, 10);
-  
-  const recoveryDays = getRecoveryDaysAfterRace(distanceKm, experienceLevel);
+
+  const recoveryDays = getRecoveryDaysAfterRace(equivalentKm, experienceLevel);
   const planEndDateObj = new Date(raceDateObj.getTime() + recoveryDays * 86400000);
   const planEndDate = planEndDateObj.toISOString().slice(0, 10);
 
@@ -164,7 +183,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     : weeksToRace;
 
   const viability = assessRaceViability({
-    distanceKm,
+    distanceKm: equivalentKm,
     experienceLevel,
     weeksToRace: prepWeeksForViability,
     weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
@@ -264,8 +283,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     const polarizedPct = runsCount > 0 ? Math.round((z1z2Count / runsCount) * 100) : 0;
     const avgPaceSec = totalPacedKm > 0 ? Math.round(totalSeconds / totalPacedKm) : null;
 
-    // Volume semanal alvo da prova baseado na tabela canónica MIN_VOLUME_KM
-    const distCategory = categorizeDistance(distanceKm) || '10k';
+    // Volume semanal alvo da prova baseado na tabela canónica MIN_VOLUME_KM —
+    // equivalentKm, pela mesma razão do totalWeeks/taper acima.
+    const distCategory = categorizeDistance(equivalentKm) || '10k';
     const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || 20;
     const expectedPhaseKm = targetWeeklyKm * Math.max(1, phaseWeeks);
     const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);

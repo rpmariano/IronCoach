@@ -238,8 +238,16 @@ export default function RaceHubView({
               <div className="absolute flex flex-wrap justify-end" style={{ top: 8, left: 12, right: 12 }}>
                 <MetricInfo text={`Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência${race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.`} />
               </div>
+              {/* prediction.predictedPace é o tempo previsto a dividir por
+                  equivalentKm (13 km numa prova de trail com D+, ver acima)
+                  — certo para o Total, errado para o Pace: o atleta
+                  percorre a distância REAL da prova (10 km), não o
+                  equivalente. Dividir aqui pela distância real em vez de
+                  usar prediction.predictedPace evita Total e Pace virem de
+                  bases diferentes (Pace × distância real deixava de bater
+                  com o Total). */}
               <span className="rh-spec-val">
-                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedPace))}/km
+                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedSeconds / (parseFloat(race?.distance_km) || 10)))}/km
               </span>
             </div>
           )}
