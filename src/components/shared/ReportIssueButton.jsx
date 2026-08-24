@@ -17,6 +17,7 @@ export default function ReportIssueButton() {
   const { showToast } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState([]);
@@ -27,6 +28,7 @@ export default function ReportIssueButton() {
   const handleClose = () => {
     if (submitting) return;
     setIsOpen(false);
+    setTitle('');
     setDescription('');
     setFiles([]);
     setUploadProgress(0);
@@ -61,7 +63,12 @@ export default function ReportIssueButton() {
   };
 
   const handleSubmit = async () => {
+    const trimmedTitle = title.trim();
     const trimmed = description.trim();
+    if (!trimmedTitle) {
+      showToast('Dá um título ao problema antes de enviar.', 'error');
+      return;
+    }
     if (!trimmed) {
       showToast('Descreve o problema antes de enviar.', 'error');
       return;
@@ -106,6 +113,7 @@ export default function ReportIssueButton() {
         user_id: userId,
         user_email: session?.user?.email || null,
         user_name: profile?.full_name || null,
+        title: trimmedTitle,
         description: trimmed,
         page: currentPageLabel({ activeTab, openCreationMode, editingRaceId }),
         user_agent: navigator.userAgent,
@@ -115,6 +123,7 @@ export default function ReportIssueButton() {
 
       showToast('Obrigado! O teu report foi enviado à equipa.', 'success');
       setIsOpen(false);
+      setTitle('');
       setDescription('');
       setFiles([]);
       setUploadProgress(0);
@@ -149,10 +158,23 @@ export default function ReportIssueButton() {
       >
         <div className="p-6 space-y-4 bg-neutral-900 text-slate-200">
           <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300">Título <span className="text-red-400">*</span></label>
+            <input
+              type="text"
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Resume o problema numa frase curta..."
+              maxLength={80}
+              className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-slate-200 outline-none"
+              disabled={submitting}
+            />
+          </div>
+
+          <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300">O que aconteceu?</label>
             <textarea
               rows={4}
-              autoFocus
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Descreve o problema — o que fizeste e o que esperavas que acontecesse..."

@@ -536,10 +536,13 @@ export default function Admin() {
                   <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-200 truncate">
-                          {item.user_name || item.user_email || 'Utilizador desconhecido'}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-xs font-semibold text-slate-100 truncate">{item.title}</p>
+                          <span className="shrink-0 text-[9px] font-mono text-slate-500">#{item.id.slice(0, 8)}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {item.user_name || item.user_email || 'Utilizador desconhecido'} · {item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}
                         </p>
-                        <p className="text-[10px] text-slate-500 truncate">{item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}</p>
                       </div>
                       <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border ${
                         item.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -582,8 +585,8 @@ export default function Admin() {
               <PremiumModal
                 isOpen={!!selectedBugReport}
                 onClose={() => setSelectedBugReport(null)}
-                title="Report de Erro"
-                subtitle={`${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
+                title={selectedBugReport.title}
+                subtitle={`#${selectedBugReport.id.slice(0, 8)} · ${selectedBugReport.page} · ${new Date(selectedBugReport.created_at).toLocaleString('pt-PT')}`}
                 icon={Bug}
                 theme="warning"
                 variant="dialog"

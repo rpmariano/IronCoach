@@ -34,6 +34,12 @@ function renderButton() {
   );
 }
 
+function fillTitle(value) {
+  fireEvent.change(screen.getByPlaceholderText(/Resume o problema/), {
+    target: { value },
+  });
+}
+
 describe('ReportIssueButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,24 +64,40 @@ describe('ReportIssueButton', () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
+    expect(screen.getByPlaceholderText(/Resume o problema/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Descreve o problema/)).toBeInTheDocument();
     expect(screen.queryByText(/screenshot/i)).not.toBeInTheDocument();
+  });
+
+  it('recusa submeter sem título e não chama o Supabase', async () => {
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
+      target: { value: 'O botão de guardar não responde.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+
+    expect(await screen.findByText('Dá um título ao problema antes de enviar.')).toBeInTheDocument();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
   it('recusa submeter sem descrição e não chama o Supabase', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
+    fillTitle('Botão não responde');
     fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
 
     expect(await screen.findByText('Descreve o problema antes de enviar.')).toBeInTheDocument();
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('submete a descrição e regista utilizador/página/data — sem qualquer screenshot', async () => {
+  it('submete título e descrição e regista utilizador/página/data — sem qualquer screenshot', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
+    fillTitle('Botão de guardar sem resposta');
     fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
       target: { value: 'O botão de guardar não responde.' },
     });
@@ -88,6 +110,7 @@ describe('ReportIssueButton', () => {
       user_id: 'user-1',
       user_email: 'atleta@ironcoach.app',
       user_name: 'Atleta Teste',
+      title: 'Botão de guardar sem resposta',
       description: 'O botão de guardar não responde.',
       page: 'Coach',
       user_agent: expect.any(String),
@@ -104,6 +127,7 @@ describe('ReportIssueButton', () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
+    fillTitle('Dashboard não carrega');
     fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
       target: { value: 'Falha ao carregar o dashboard.' },
     });
@@ -144,10 +168,11 @@ describe('ReportIssueButton', () => {
     }
   });
 
-  it('submete a descrição com URLs de ficheiros anexados', async () => {
+  it('submete título, descrição e URLs de ficheiros anexados', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
+    fillTitle('Upload de ficheiro falha');
     fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
       target: { value: 'Problema com upload.' },
     });
@@ -170,6 +195,7 @@ describe('ReportIssueButton', () => {
       expect(payload).toEqual(
         expect.objectContaining({
           user_id: 'user-1',
+          title: 'Upload de ficheiro falha',
           description: 'Problema com upload.',
           attachment_urls: ['https://example.com/file.jpg'],
         }),

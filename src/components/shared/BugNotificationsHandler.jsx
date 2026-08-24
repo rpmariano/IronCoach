@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { AlertCircle, Mail, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { AlertCircle, Mail, ThumbsUp, ThumbsDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import PremiumModal from './PremiumModal';
 import Button from './Button';
 
 /**
  * Gerencia notificações de bugs para utilizadores.
  * Mostra badge na homepage e modal com opção de responder (OK/Not OK).
+ *
+ * Cada notificação está sempre acompanhada do título + id do bug a que
+ * pertence (join com bug_reports) — com várias mensagens por ler, o
+ * utilizador precisa de saber de que bug se está a falar em cada uma.
+ * Quando há mais do que uma notificação por ler, o modal ganha setas para
+ * navegar entre elas sem ter de responder de imediato.
  */
 export default function BugNotificationsHandler() {
   const { session } = useAppStore();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
   const [responseStatus, setResponseStatus] = useState(null);
   const [responseMessage, setResponseMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +35,7 @@ export default function BugNotificationsHandler() {
     try {
       const { data, error } = await supabase
         .from('bug_notifications')
-        .select('*')
+        .select('*, bug_reports(id, title)')
         .eq('user_id', session.user.id)
         .is('response_status', null)
         .order('created_at', { ascending: false });
@@ -43,14 +49,22 @@ export default function BugNotificationsHandler() {
     }
   };
 
-  const handleOpenNotification = (notification) => {
-    setSelectedNotification(notification);
+  const selectedNotification = selectedIndex !== null ? notifications[selectedIndex] : null;
+  const hasPrev = selectedIndex !== null && selectedIndex > 0;
+  const hasNext = selectedIndex !== null && selectedIndex < notifications.length - 1;
+
+  const goToIndex = (index) => {
+    setSelectedIndex(index);
     setResponseStatus(null);
     setResponseMessage('');
   };
 
+  const handleOpen = () => goToIndex(0);
+  const handlePrev = () => hasPrev && goToIndex(selectedIndex - 1);
+  const handleNext = () => hasNext && goToIndex(selectedIndex + 1);
+
   const handleCloseNotification = () => {
-    setSelectedNotification(null);
+    setSelectedIndex(null);
     setResponseStatus(null);
     setResponseMessage('');
   };
@@ -81,9 +95,16 @@ export default function BugNotificationsHandler() {
 
       if (error) throw error;
 
-      // Remover da lista local
-      setNotifications(prev => prev.filter(n => n.id !== selectedNotification.id));
-      handleCloseNotification();
+      // Remover da lista local e ajustar a posição — se ainda houver
+      // notificações, fica a apontar para a que ocupou o lugar desta;
+      // se não houver mais nenhuma, fecha o modal.
+      const remaining = notifications.filter(n => n.id !== selectedNotification.id);
+      setNotifications(remaining);
+      if (remaining.length === 0) {
+        handleCloseNotification();
+      } else {
+        goToIndex(Math.min(selectedIndex, remaining.length - 1));
+      }
     } catch (err) {
       console.error('[BugNotifications] Erro ao responder:', err);
       alert('Falha ao responder à notificação.');
@@ -95,11 +116,14 @@ export default function BugNotificationsHandler() {
   // Não renderizar se não há notificações
   if (notifications.length === 0) return null;
 
+  const bugTitle = selectedNotification?.bug_reports?.title;
+  const bugId = selectedNotification?.bug_reports?.id;
+
   return (
     <>
       {/* Botão de carta com badge — cabeçalho, junto ao "Perfil" */}
       <button
-        onClick={() => handleOpenNotification(notifications[0])}
+        onClick={handleOpen}
         aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
         title="Notificações"
         className="tap-44 relative w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition shadow-[0_2px_10px_rgba(220,38,38,0.4)]"
@@ -124,6 +148,38 @@ export default function BugNotificationsHandler() {
           maxWidth="max-w-lg"
         >
           <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
+            {/* Navegação entre notificações — só aparece com mais do que uma */}
+            {notifications.length > 1 && (
+              <div className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-xl px-2 py-1.5">
+                <button
+                  onClick={handlePrev}
+                  disabled={!hasPrev || submitting}
+                  aria-label="Notificação anterior"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {selectedIndex + 1} de {notifications.length}
+                </span>
+                <button
+                  onClick={handleNext}
+                  disabled={!hasNext || submitting}
+                  aria-label="Notificação seguinte"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Bug a que a notificação se refere — título + id acompanham
+                sempre a mensagem, para não haver dúvida de qual bug se trata */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="text-sm font-bold text-slate-100 truncate">{bugTitle || 'Bug sem título'}</p>
+              {bugId && <span className="shrink-0 text-[10px] font-mono text-slate-500">#{bugId.slice(0, 8)}</span>}
+            </div>
+
             {/* Mensagem da Equipa */}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Mensagem</label>
