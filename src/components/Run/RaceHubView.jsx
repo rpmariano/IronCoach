@@ -224,13 +224,14 @@ export default function RaceHubView({
           )}
           {prediction?.predictedSeconds > 0 && (
             <div className="rh-spec-card rh-spec-card-wide">
-              {/* Título centrado sozinho — o ícone de ajuda não conta para
-                  essa centragem (partilhar a linha com ele desloca o centro
-                  visual do título, porque o grupo [título+ícone] é que fica
-                  centrado, não o título isolado). O ícone fica na sua
-                  própria linha logo a seguir. */}
+              {/* Título centrado sozinho — o ícone de ajuda fica à parte,
+                  ancorado ao canto direito do cartão (absolute), por isso
+                  não conta para essa centragem. left/right iguais ao padding
+                  do cartão dão-lhe a mesma largura útil do resto do
+                  conteúdo, para o texto de ajuda abrir com a largura certa
+                  em vez de espremido. */}
               <span className="rh-spec-lbl block w-full text-center">Previsão (VDOT)</span>
-              <div className="flex flex-wrap justify-center w-full">
+              <div className="absolute flex flex-wrap justify-end" style={{ top: 8, left: 12, right: 12 }}>
                 <MetricInfo text="Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa." />
               </div>
               <span className="rh-spec-val">
