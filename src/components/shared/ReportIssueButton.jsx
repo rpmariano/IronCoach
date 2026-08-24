@@ -86,9 +86,15 @@ export default function ReportIssueButton() {
       // pessoais do atleta), por isso um getPublicUrl nunca serviria o
       // ficheiro. Quem vai ver o anexo (Admin) gera uma signed URL a
       // partir deste caminho no momento em que abre o report.
-      let attachmentPaths = [];
+      const attachmentPaths = [];
+      let failedUploads = 0;
 
-      // Upload ficheiros se existirem
+      // Upload ficheiros se existirem.
+      //
+      // Uma falha a anexar NÃO cancela o report: quem está a reportar já
+      // tropeçou num problema e escreveu a descrição — perder tudo isso
+      // porque o anexo não subiu é o pior desfecho possível. Guarda-se o
+      // report na mesma e avisa-se que os anexos ficaram por enviar.
       if (files.length > 0) {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
@@ -103,9 +109,13 @@ export default function ReportIssueButton() {
             .from('bug-report-photos')
             .upload(filePath, file);
 
-          if (uploadError) throw uploadError;
+          if (uploadError) {
+            console.error(`[ReportIssueButton] Falha ao anexar ${file.name}:`, uploadError);
+            failedUploads++;
+          } else {
+            attachmentPaths.push(filePath);
+          }
 
-          attachmentPaths.push(filePath);
           setUploadProgress(Math.round(((i + 1) / files.length) * 100));
         }
       }
@@ -122,15 +132,24 @@ export default function ReportIssueButton() {
       });
       if (error) throw error;
 
-      showToast('Obrigado! O teu report foi enviado à equipa.', 'success');
+      showToast(
+        failedUploads > 0
+          ? `Report enviado, mas ${failedUploads} ficheiro(s) não foram anexados.`
+          : 'Obrigado! O teu report foi enviado à equipa.',
+        failedUploads > 0 ? 'info' : 'success',
+      );
       setIsOpen(false);
       setTitle('');
       setDescription('');
       setFiles([]);
       setUploadProgress(0);
     } catch (err) {
+      // Mostrar o motivo real em vez de um "tenta novamente" genérico: sem
+      // isto, uma falha de RLS/rede é indistinguível de qualquer outra e
+      // não há como reportar o que correu mal.
       console.error('[ReportIssueButton] Falha ao submeter report:', err);
-      showToast('Não foi possível enviar o report. Tenta novamente.', 'error');
+      const detail = err?.message || 'erro desconhecido';
+      showToast(`Não foi possível enviar o report: ${detail}`, 'error');
     } finally {
       setSubmitting(false);
     }

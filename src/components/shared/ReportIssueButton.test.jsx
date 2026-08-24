@@ -120,8 +120,8 @@ describe('ReportIssueButton', () => {
     await waitFor(() => expect(screen.queryByText('O que aconteceu?')).not.toBeInTheDocument());
   });
 
-  it('mostra erro e não fecha o modal quando o Supabase falha', async () => {
-    insertMock.mockResolvedValueOnce({ error: { message: 'boom' } });
+  it('mostra o motivo real do erro e não fecha o modal quando o Supabase falha', async () => {
+    insertMock.mockResolvedValueOnce({ error: { message: 'new row violates row-level security policy' } });
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
@@ -131,8 +131,45 @@ describe('ReportIssueButton', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
 
-    expect(await screen.findByText('Não foi possível enviar o report. Tenta novamente.')).toBeInTheDocument();
+    // O motivo concreto tem de chegar ao utilizador — um "tenta novamente"
+    // genérico esconde exatamente a informação necessária para diagnosticar.
+    expect(
+      await screen.findByText(/new row violates row-level security policy/),
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Descreve o problema/)).toBeInTheDocument();
+  });
+
+  it('guarda o report mesmo quando o upload do anexo falha, avisando o utilizador', async () => {
+    uploadMock.mockResolvedValueOnce({ error: { message: 'RLS: not allowed' } });
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+
+    fillTitle('Erro ao gravar treino');
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
+      target: { value: 'O treino não grava.' },
+    });
+
+    const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!fileInput) return;
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => {
+      expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+
+    // A descrição escrita pelo utilizador não se perde por causa do anexo.
+    await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
+    expect(insertMock.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        title: 'Erro ao gravar treino',
+        description: 'O treino não grava.',
+        attachment_urls: null,
+      }),
+    );
+    expect(await screen.findByText(/1 ficheiro\(s\) não foram anexados/)).toBeInTheDocument();
   });
 
   it('permite selecionar ficheiros (imagens/vídeos)', async () => {
