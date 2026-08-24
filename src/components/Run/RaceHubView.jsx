@@ -18,10 +18,10 @@ import {
   Award,
   Flame,
   Zap,
+  Info,
 } from 'lucide-react';
 import Button from '../shared/Button';
 import RunIcon from '../shared/RunIcon';
-import MetricInfo from '../BI/MetricInfo';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, predictRaceTime } from '../../utils/biEngine';
@@ -41,6 +41,7 @@ export default function RaceHubView({
   onGoToEdit,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
+  const [showVdotHelp, setShowVdotHelp] = useState(false);
 
   const plan = useMemo(() => {
     return calculateRaceTrainingPlan({
@@ -228,16 +229,23 @@ export default function RaceHubView({
           )}
           {prediction?.predictedSeconds > 0 && (
             <div className="rh-spec-card rh-spec-card-wide">
-              {/* Título centrado sozinho — o ícone de ajuda fica à parte,
-                  ancorado ao canto direito do cartão (absolute), por isso
-                  não conta para essa centragem. left/right iguais ao padding
-                  do cartão dão-lhe a mesma largura útil do resto do
-                  conteúdo, para o texto de ajuda abrir com a largura certa
-                  em vez de espremido. */}
-              <span className="rh-spec-lbl block w-full text-center">Previsão (VDOT)</span>
-              <div className="absolute flex flex-wrap justify-end" style={{ top: 8, left: 12, right: 12 }}>
-                <MetricInfo text={`Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência${race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.`} />
+              {/* Título centrado com ícone de ajuda ancorado à direita */}
+              <div className="w-full flex items-center justify-center relative">
+                <span className="rh-spec-lbl">Previsão (VDOT)</span>
+                <button
+                  type="button"
+                  onClick={() => setShowVdotHelp(prev => !prev)}
+                  className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1 transition-all ${
+                    showVdotHelp
+                      ? 'text-cyan-400 bg-cyan-500/20'
+                      : 'text-slate-400 hover:text-cyan-300 active:bg-white/10'
+                  }`}
+                  aria-label="Mais informações sobre Previsão VDOT"
+                >
+                  <Info size={14} />
+                </button>
               </div>
+
               {/* prediction.predictedPace é o tempo previsto a dividir por
                   equivalentKm (13 km numa prova de trail com D+, ver acima)
                   — certo para o Total, errado para o Pace: o atleta
@@ -249,6 +257,18 @@ export default function RaceHubView({
               <span className="rh-spec-val">
                 Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedSeconds / (parseFloat(race?.distance_km) || 10)))}/km
               </span>
+
+              {/* Texto explicativo in-flow: expande naturalmente o cartão sem ficar cortado */}
+              {showVdotHelp && (
+                <div className="w-full mt-2.5 pt-2.5 border-t border-white/10 text-left fade-in">
+                  <div className="bg-cyan-950/70 border border-cyan-500/30 text-cyan-100 text-[11px] leading-relaxed p-3 rounded-xl flex items-start gap-2.5 shadow-lg">
+                    <Info className="w-4 h-4 mt-0.5 shrink-0 text-cyan-400" />
+                    <p className="flex-1 font-medium">
+                      Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência{race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
