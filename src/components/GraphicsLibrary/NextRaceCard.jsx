@@ -14,11 +14,34 @@ export default function NextRaceCard({
   progressPercentage = 60,
   readiness = 'green',
   readinessReason = null,
+  daysToStart = null,
+  timelineStatusLabel = null,
 }) {
   const readinessLabel = readiness === 'green' ? 'Adequada' : readiness === 'yellow' ? 'Com Alertas' : 'Inadequada';
   const readinessTooltip = readinessReason
     ? `Preparação ${readinessLabel}: ${readinessReason}`
     : `Preparação do atleta: ${readinessLabel}`;
+
+  let timelineStatus = timelineStatusLabel;
+  if (!timelineStatus) {
+    if (daysRemaining < 0) {
+      timelineStatus = 'Concluída';
+    } else if (daysRemaining === 0) {
+      timelineStatus = 'É hoje! 🏁';
+    } else if (daysToStart != null) {
+      if (daysToStart > 0) {
+        timelineStatus = daysToStart === 1 ? 'Falta 1 dia' : `Faltam ${daysToStart} dias`;
+      } else if (daysToStart === 0) {
+        timelineStatus = 'Começa hoje';
+      } else {
+        const daysElapsed = Math.abs(daysToStart);
+        timelineStatus = daysElapsed === 1 ? 'Começou há 1 dia' : `Começou há ${daysElapsed} dias`;
+      }
+    } else {
+      timelineStatus = daysRemaining === 1 ? 'Falta 1 dia' : `Faltam ${daysRemaining} dias`;
+    }
+  }
+
   return (
     <div className="next-race-card">
       <div className="nrc-glow"></div>
@@ -76,7 +99,7 @@ export default function NextRaceCard({
           </div>
           <div className="nrc-progress-labels">
             <span>Início do Plano</span>
-            <span style={{ color: '#d97706', fontWeight: 800 }}>Faltam {daysRemaining} dias</span>
+            <span className="nrc-status-pill">{timelineStatus}</span>
             <span>Meta</span>
           </div>
         </div>
