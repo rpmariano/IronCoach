@@ -9,6 +9,7 @@ import CoachDailySummaryCard from './CoachDailySummaryCard';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
+import { raceDistanceLabel } from '../../utils/run';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -152,6 +153,8 @@ function NextRaceCard({ raceEvents = [], runs = [], profile = {}, onNav, onEditR
                   date={formattedDate}
                   location={next.location || 'Não definida'}
                   tag={next.race_type || 'Prova'}
+                  distance={raceDistanceLabel(next.distance_km)}
+                  priority={next.race_priority}
                   daysRemaining={daysUntil}
                   progressPercentage={progressPercentage}
                   readiness={readiness}

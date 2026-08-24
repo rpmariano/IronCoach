@@ -11,6 +11,7 @@ import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
   RACE_PRIORITIES,
+  raceTerrainLabel,
   raceDistanceLabel,
   racePriorityLabel,
   racePriorityDescription,
@@ -397,6 +398,65 @@ export default function RunAgenda({ onClose }) {
               <X size={16} />
             </button>
           </div>
+        </div>
+
+        {/* Cartão-resumo da prova — pré-visualização ao vivo do que está a
+            ser editado, com as mesmas 3 pílulas (piso, prioridade,
+            distância) do NextRaceCard do Início, para as duas telas lerem
+            como o mesmo objeto "prova". */}
+        <div className="rounded-2xl p-4 shadow-sm module-card-contrast">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-[11px] font-extrabold uppercase tracking-wide text-white px-3 py-1 rounded-full shrink-0"
+              style={{ background: 'linear-gradient(135deg, #d97706, #fbbf24)', boxShadow: '0 2px 10px rgba(251, 191, 36, 0.4)' }}
+            >
+              {raceTerrainLabel(draft.race_type)}
+            </span>
+            {draft.race_priority && (
+              <span
+                className="text-[11px] font-extrabold uppercase tracking-wide px-3 py-1 rounded-full border-[1.5px] shrink-0"
+                style={{ borderColor: '#f59e0b', color: '#b45309', background: 'rgba(251, 191, 36, 0.08)' }}
+              >
+                {racePriorityLabel(draft.race_priority)}
+              </span>
+            )}
+            {draft.distance_km && (
+              <span
+                className="text-[11px] font-extrabold px-2.5 py-1 rounded-lg border shrink-0"
+                style={{ background: 'rgba(15, 23, 42, 0.06)', borderColor: 'rgba(15, 23, 42, 0.12)', color: '#1e293b' }}
+              >
+                {raceDistanceLabel(parseFloat((draft.distance_km || '').toString().replace(',', '.')))}
+              </span>
+            )}
+            {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
+              <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-slate-100 border border-slate-200 ml-auto shrink-0">
+                {['red', 'yellow', 'green'].map(level => {
+                  const on = viability.flags.length === 0
+                    ? level === 'green'
+                    : (viability.flags.includes('ultra_para_iniciante') || viability.flags.includes('tempo_insuficiente'))
+                      ? level === 'red'
+                      : level === 'yellow';
+                  const dotColor = { red: '#ef4444', yellow: '#f59e0b', green: '#10b981' }[level];
+                  return (
+                    <span
+                      key={level}
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: dotColor, opacity: on ? 1 : 0.2, boxShadow: on ? `0 0 6px ${dotColor}` : 'none' }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <h3 className="text-lg font-black text-slate-800 mt-2 leading-tight truncate">
+            {draft.name.trim() || 'Nome da prova'}
+          </h3>
+          <p className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1.5 flex-wrap">
+            {draft.date && <span>{formatDatePT(draft.date)}</span>}
+            {draft.location.trim() && <span>· {draft.location.trim()}</span>}
+            {draft.experience_level && <span>· {experienceLevelLabel(draft.experience_level)}</span>}
+          </p>
         </div>
 
         {/* Corpo principal do formulário — mesmo vidro/glow do cabeçalho
