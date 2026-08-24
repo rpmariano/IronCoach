@@ -317,6 +317,7 @@
   color: #fbbf24;
   flex: 1 1 auto;
   min-width: 170px;
+  white-space: nowrap;
 }
 
 .rh-carol-avatar {
