@@ -311,8 +311,8 @@ export default function RaceHubView({
                       {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
                     </p>
                     {evalData?.score != null && (
-                      <div className="flex justify-center">
-                        <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap`}>
+                      <div className="flex">
+                        <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
                           {evalData.gradeLabel} · {evalData.score}%
                         </span>
                       </div>
