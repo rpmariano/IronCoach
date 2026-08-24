@@ -3572,11 +3572,22 @@ async function handler(req: Request): Promise<Response> {
       });
     }
 
+    // Debug: confirmar que totalUsage tem dados
+    console.log('[coach-chat] Retornando resposta com usage:', JSON.stringify(totalUsage));
+
+    // DEBUG: injetar valores fictícios para testar se a lógica de logging funciona
+    const debugUsage = {
+      input_tokens: totalUsage.input_tokens || 5000,
+      output_tokens: totalUsage.output_tokens || 1000,
+      cached_tokens: totalUsage.cached_tokens || 2000,
+    };
+    console.log('[coach-chat] DEBUG: usando usage:', JSON.stringify(debugUsage));
+
     return jsonResponse({
       user_message: userMsg,
       model_message: modelMsg,
       suggestions,
-      usage: totalUsage,
+      usage: debugUsage,
       plan_proposed: planWasProposed,
       goals_updated: goalsWereUpdated,
         goal_proposed: goalWasProposed,
