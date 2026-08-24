@@ -139,10 +139,11 @@ export default function Admin() {
 
   useEffect(() => {
     if ((!profile?.is_admin && !profile?.bug_reviewer)) return;
-    if (isBugReviewer || activeTab === 'bug_reports') {
+    const bugReviewerMode = (profile?.bug_reviewer === true) && !profile?.is_admin;
+    if (bugReviewerMode || activeTab === 'bug_reports') {
       loadBugReports();
     }
-  }, [activeTab, profile, isBugReviewer]);
+  }, [activeTab, profile]);
 
   const loadBugReports = async () => {
     setBugReportsLoading(true);
