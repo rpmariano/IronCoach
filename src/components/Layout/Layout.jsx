@@ -119,13 +119,18 @@ export default function Layout({ children }) {
               <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{todayLabel}</p>
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab('perfil')}
-            className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition shadow-[0_2px_10px_rgba(251,191,36,0.25)]"
-            style={{ background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: 'white', border: 'none' }}
-          >
-            <User size={14} /> Perfil
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Notificações de bug reports — só se renderiza a si própria
+                quando há mensagens por ler (ver BugNotificationsHandler) */}
+            <BugNotificationsHandler />
+            <button
+              onClick={() => setActiveTab('perfil')}
+              className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition shadow-[0_2px_10px_rgba(251,191,36,0.25)]"
+              style={{ background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: 'white', border: 'none' }}
+            >
+              <User size={14} /> Perfil
+            </button>
+          </div>
         </header>
       </div>
 
@@ -138,10 +143,6 @@ export default function Layout({ children }) {
           porque vive aqui (Layout envolve tudo o que é renderizado depois
           do login, incluindo os ecrãs de registo — ver App.jsx). */}
       <ReportIssueButton />
-
-      {/* Handler de notificações de bugs — mostra badge e modal quando há
-          notificações não respondidas para o utilizador */}
-      <BugNotificationsHandler />
 
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
       {fabOpen && (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { AlertCircle, X, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { AlertCircle, Mail, ThumbsUp, ThumbsDown } from 'lucide-react';
 import PremiumModal from './PremiumModal';
 import Button from './Button';
 
@@ -97,16 +97,19 @@ export default function BugNotificationsHandler() {
 
   return (
     <>
-      {/* Badge na Homepage */}
-      <div className="fixed top-4 right-4 z-50">
-        <button
-          onClick={() => handleOpenNotification(notifications[0])}
-          className="flex items-center gap-2 bg-red-500/20 border border-red-500/40 rounded-full px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/30 active:scale-95 transition animate-pulse"
-        >
-          <AlertCircle size={16} />
-          <span>{notifications.length} {notifications.length === 1 ? 'Notificação' : 'Notificações'}</span>
-        </button>
-      </div>
+      {/* Botão de carta com badge — cabeçalho, junto ao "Perfil" */}
+      <button
+        onClick={() => handleOpenNotification(notifications[0])}
+        aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
+        title="Notificações"
+        className="tap-44 relative w-9 h-9 rounded-full flex items-center justify-center active:scale-95 transition shadow-[0_2px_10px_rgba(220,38,38,0.4)]"
+        style={{ background: 'linear-gradient(135deg, #dc2626, #f97316)' }}
+      >
+        <Mail size={16} className="text-white" strokeWidth={2.25} />
+        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-white text-red-600 text-[10px] font-extrabold flex items-center justify-center border-2 border-[#0f172a] animate-pulse">
+          {notifications.length}
+        </span>
+      </button>
 
       {/* Modal de Notificação */}
       {selectedNotification && (
