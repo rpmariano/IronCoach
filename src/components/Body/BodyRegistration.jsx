@@ -271,7 +271,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
+      finishCreateAndGoToCalendar(data?.assessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -305,7 +305,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
+      finishCreateAndGoToCalendar(data?.assessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');

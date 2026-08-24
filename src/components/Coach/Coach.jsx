@@ -88,36 +88,16 @@ export default function Coach() {
     reloadCoachGoalProposals();
   }, []);
 
-  const handleProactiveIntervention = async (intentData) => {
+  // Motor partilhado das duas conversas que a própria Carol inicia sem o
+  // atleta escrever nada (handleProactiveIntervention e
+  // handleAdaptPlanCheckin, abaixo) — só o payload muda entre as duas.
+  const sendCoachInitiatedPayload = async (payload) => {
     if (coachLoading) return;
     setCoachLoading(true);
     setCoachSuggestions([]);
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const allInsights = detectCoachInsights(
-        { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile
-      );
-      const insightsContext = allInsights.map(i => ({
-        title: i.title,
-        message: i.message,
-        metric: i.metric,
-        value: i.value,
-        state: insightStates[i.id] === 'understood'
-          ? 'Entendido (resolvido pelo atleta)'
-          : insightStates[i.id] === 'ignored'
-            ? 'Ativo (ignorado temporariamente pelo atleta)'
-            : 'Ativo (pendente)'
-      }));
-
-      const payload = {
-        message: '',
-        is_intervention_start: true,
-        intervention_details: intentData?.reason ? `Motivo/Análise: "${intentData.reason}"` : null,
-        userData: profile || {},
-        activeInsights: insightsContext
-      };
-
       const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
@@ -161,11 +141,54 @@ export default function Coach() {
     }
   };
 
+  const activeInsightsPayload = () => {
+    const allInsights = detectCoachInsights(
+      { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile
+    );
+    return allInsights.map(i => ({
+      title: i.title,
+      message: i.message,
+      metric: i.metric,
+      value: i.value,
+      state: insightStates[i.id] === 'understood'
+        ? 'Entendido (resolvido pelo atleta)'
+        : insightStates[i.id] === 'ignored'
+          ? 'Ativo (ignorado temporariamente pelo atleta)'
+          : 'Ativo (pendente)'
+    }));
+  };
+
+  const handleProactiveIntervention = (intentData) => sendCoachInitiatedPayload({
+    message: '',
+    is_intervention_start: true,
+    intervention_details: intentData?.reason ? `Motivo/Análise: "${intentData.reason}"` : null,
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  });
+
+  // "Adaptar Plano" (WeeklyPlanCard): o atleta é que veio ter com a Carol —
+  // ao contrário da intervenção proativa acima (disparada por um alerta que
+  // surgiu sozinho na análise de um registo), aqui não há nada para
+  // "confrontar" à partida. is_plan_checkin diz ao servidor para a Carol
+  // atender como quem abre a porta: cumprimentar/retomar consoante já
+  // tenham falado hoje, perguntar como pode ajudar, e só trazer um alerta
+  // ativo à conversa como hipótese — nunca como acusação.
+  const handleAdaptPlanCheckin = () => sendCoachInitiatedPayload({
+    message: '',
+    is_plan_checkin: true,
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  });
+
   useEffect(() => {
-    if (coachIntent === 'adapt_plan' || (coachIntent && coachIntent.kind === 'proactive_intervention')) {
-      const intentData = typeof coachIntent === 'object' ? coachIntent : null;
+    if (coachIntent && coachIntent.kind === 'proactive_intervention') {
       setCoachIntent(null);
-      handleProactiveIntervention(intentData);
+      handleProactiveIntervention(coachIntent);
+      return;
+    }
+    if (coachIntent === 'adapt_plan') {
+      setCoachIntent(null);
+      handleAdaptPlanCheckin();
       return;
     }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
