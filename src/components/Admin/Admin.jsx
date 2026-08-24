@@ -138,9 +138,9 @@ export default function Admin() {
   }, [activeTab, profile]);
 
   useEffect(() => {
-    if (!profile?.is_admin || activeTab !== 'bug_reports') return;
+    if ((!profile?.is_admin && !profile?.bug_reviewer) || displayedTab !== 'bug_reports') return;
     loadBugReports();
-  }, [activeTab, profile]);
+  }, [displayedTab, profile]);
 
   const loadBugReports = async () => {
     setBugReportsLoading(true);
@@ -332,14 +332,21 @@ export default function Admin() {
     }
   };
 
-  if (!profile?.is_admin) {
+  // Verificar permissões: admin completo ou bug_reviewer
+  const isBugReviewer = profile?.bug_reviewer && !profile?.is_admin;
+  const canAccessAdmin = profile?.is_admin || profile?.bug_reviewer;
+
+  if (!canAccessAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-slate-500 mt-20 fade-in">
         <ShieldAlert size={48} className="text-red-500/50 mb-4" />
-        <p>Acesso negado. Esta área é reservada a administradores.</p>
+        <p>Acesso negado. Esta área é reservada a administradores e revisores.</p>
       </div>
     );
   }
+
+  // Se for bug_reviewer, forçar aba de bugs
+  const displayedTab = isBugReviewer ? 'bug_reports' : activeTab;
 
   if (loading) {
     return (
@@ -367,25 +374,40 @@ export default function Admin() {
   const errorsToday = logsToday.filter(l => l.level === 'error').length;
   const successToday = logsToday.filter(l => l.level === 'success').length;
 
+  // Filtrar abas: bug_reviewer só vê bugs
+  const visibleTabs = isBugReviewer
+    ? ADMIN_TABS.filter(t => t.key === 'bug_reports')
+    : ADMIN_TABS;
+
   return (
     <div className="space-y-4 fade-in pb-8">
+      {/* Banner para Bug Reviewer */}
+      {isBugReviewer && (
+        <div className="bg-blue-500/15 border border-blue-500/30 rounded-2xl p-3 text-center">
+          <p className="text-xs font-semibold text-blue-300">
+            👤 Modo Revisor de Bugs — Acesso limitado a relatórios de erros apenas
+          </p>
+        </div>
+      )}
+
       {/* Scrollable Tabs */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 px-1">
-        {ADMIN_TABS.map(t => (
+        {visibleTabs.map(t => (
           <button
             key={t.key}
-            onClick={() => setActiveTab(t.key)}
+            onClick={() => !isBugReviewer && setActiveTab(t.key)}
+            disabled={isBugReviewer}
             className={`shrink-0 flex items-center gap-1.5 border border-neutral-700 rounded-xl py-2 px-3 text-xs font-semibold transition ${
-              activeTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
-            }`}
-            style={activeTab === t.key ? { color: '#fff' } : undefined}
+              displayedTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
+            } ${isBugReviewer ? 'cursor-default' : ''}`}
+            style={displayedTab === t.key ? { color: '#fff' } : undefined}
           >
             <t.icon size={14} /> {t.label}
           </button>
         ))}
       </div>
 
-      {activeTab === 'overview' && (
+      {displayedTab === 'overview' && (
         <div className="space-y-3 fade-in">
           <div className="grid grid-cols-2 gap-3">
             <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
@@ -436,7 +458,7 @@ export default function Admin() {
         </div>
       )}
 
-      {activeTab === 'users' && (
+      {displayedTab === 'users' && (
         <div className="space-y-2 fade-in">
           {[...users].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).map(u => {
             const mealCount = meals.filter(m => m.user_id === u.id).length;
@@ -473,7 +495,7 @@ export default function Admin() {
         </div>
       )}
 
-      {activeTab === 'bug_reports' && (() => {
+      {displayedTab === 'bug_reports' && (() => {
         const filtered = bugReports.filter(item => bugReportsStatusFilter === 'todos' || item.status === bugReportsStatusFilter);
         const openCount = bugReports.filter(r => r.status !== 'resolved').length;
 
@@ -683,7 +705,7 @@ export default function Admin() {
         );
       })()}
 
-      {activeTab === 'unknown_apps' && (() => {
+      {displayedTab === 'unknown_apps' && (() => {
         const filtered = unknownLogs.filter(item => {
           if (unknownCategory !== 'todos' && item.category !== unknownCategory) return false;
           if (unknownStatus !== 'todos' && item.status !== unknownStatus) return false;
@@ -900,7 +922,7 @@ export default function Admin() {
         );
       })()}
 
-      {activeTab === 'metrics' && (() => {
+      {displayedTab === 'metrics' && (() => {
         const { start, end } = rangeBounds(metricsRange);
         const scopeMeals = meals.filter(m => m.date >= start && m.date <= end && (!selectedUserId || m.user_id === selectedUserId));
         const scopeMsgs = coachMsgs.filter(m => m.role === 'user' && (m.created_at || '').slice(0, 10) >= start && (m.created_at || '').slice(0, 10) <= end && (!selectedUserId || m.user_id === selectedUserId));
@@ -952,7 +974,7 @@ export default function Admin() {
         );
       })()}
 
-      {activeTab === 'costs' && (() => {
+      {displayedTab === 'costs' && (() => {
         const byModule = {};
         let totalIn = 0, totalOut = 0, totalCalls = 0;
         for (const l of costLogs) {
@@ -1105,7 +1127,7 @@ export default function Admin() {
         );
       })()}
 
-      {activeTab === 'logs' && (
+      {displayedTab === 'logs' && (
         <div className="space-y-2 fade-in">
           {logs.map(l => (
             <div key={l.id} className={`rounded-lg p-2.5 text-[10px] font-mono border ${
