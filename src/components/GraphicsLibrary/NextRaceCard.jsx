@@ -7,6 +7,7 @@ export default function NextRaceCard({
   date = "13 Set 2026",
   location = "Lisboa",
   tag = "estrada",
+  distance = null,
   daysRemaining = 40,
   progressPercentage = 60,
   readiness = 'green',
@@ -25,6 +26,7 @@ export default function NextRaceCard({
           <div className="nrc-header-row">
             <span className="nrc-lbl">Próxima Prova</span>
             <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
+            {distance && <span className="nrc-distance">{distance}</span>}
             {readiness && (
               <div className="nrc-traffic-light" title={readinessTooltip}>
                 <div className={`nrc-light nrc-light-red ${readiness === 'red' ? 'on' : ''}`}></div>
