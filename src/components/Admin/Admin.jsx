@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw } from 'lucide-react';
+import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw, Send } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
@@ -117,6 +117,8 @@ export default function Admin() {
   const [bugReportsStatusFilter, setBugReportsStatusFilter] = useState('open');
   const [selectedBugReport, setSelectedBugReport] = useState(null);
   const [bugReportUpdating, setBugReportUpdating] = useState(false);
+  const [bugNotificationMessage, setBugNotificationMessage] = useState('');
+  const [bugNotificationSending, setBugNotificationSending] = useState(false);
 
   useEffect(() => {
     if (!profile?.is_admin) return;
@@ -175,6 +177,37 @@ export default function Admin() {
       alert('Falha ao atualizar o estado do report.');
     } finally {
       setBugReportUpdating(false);
+    }
+  };
+
+  const handleSendBugNotification = async (report) => {
+    const trimmed = bugNotificationMessage.trim();
+    if (!trimmed) {
+      alert('Escreve uma mensagem antes de enviar.');
+      return;
+    }
+    if (!report.user_id) {
+      alert('Não é possível enviar notificação a um utilizador eliminado.');
+      return;
+    }
+
+    setBugNotificationSending(true);
+    try {
+      const { error } = await supabase.from('bug_notifications').insert({
+        bug_report_id: report.id,
+        user_id: report.user_id,
+        message: trimmed,
+        notification_type: 'request_testing',
+      });
+      if (error) throw error;
+
+      alert('Notificação enviada com sucesso!');
+      setBugNotificationMessage('');
+    } catch (err) {
+      console.error('Error sending bug notification:', err);
+      alert('Falha ao enviar notificação.');
+    } finally {
+      setBugNotificationSending(false);
     }
   };
 
@@ -519,24 +552,69 @@ export default function Admin() {
                     </div>
                   </div>
 
+                  {selectedBugReport.attachment_urls && selectedBugReport.attachment_urls.length > 0 && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Anexos ({selectedBugReport.attachment_urls.length})</label>
+                      <div className="space-y-2">
+                        {selectedBugReport.attachment_urls.map((url, idx) => (
+                          <a
+                            key={idx}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] text-blue-400 hover:text-blue-300 break-all truncate block"
+                          >
+                            Ver anexo {idx + 1}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {selectedBugReport.status === 'resolved' && selectedBugReport.resolved_at && (
                     <p className="text-[10px] text-emerald-400/80 text-center">
                       Resolvido a {new Date(selectedBugReport.resolved_at).toLocaleString('pt-PT')}
                     </p>
                   )}
 
-                  <Button
-                    variant={selectedBugReport.status === 'resolved' ? 'light' : 'module'}
-                    moduleColor="var(--mod-coach-to)"
-                    onClick={() => handleToggleBugReportStatus(selectedBugReport)}
-                    disabled={bugReportUpdating}
-                    className="w-full"
-                    icon={bugReportUpdating
-                      ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" />
-                      : (selectedBugReport.status === 'resolved' ? <RotateCcw size={16} /> : <Check size={16} />)}
-                  >
-                    {bugReportUpdating ? 'A atualizar...' : (selectedBugReport.status === 'resolved' ? 'Reabrir Report' : 'Marcar como Resolvido')}
-                  </Button>
+                  <div className="space-y-2 border-t border-neutral-800 pt-4">
+                    <label className="text-xs font-semibold text-slate-300">Notificar utilizador para testar novamente</label>
+                    <textarea
+                      rows={2}
+                      value={bugNotificationMessage}
+                      onChange={(e) => setBugNotificationMessage(e.target.value)}
+                      placeholder="Ex: Já corrigimos o problema. Podes testar novamente?"
+                      className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                      disabled={bugNotificationSending || !selectedBugReport.user_id}
+                    />
+                    {!selectedBugReport.user_id && (
+                      <p className="text-[10px] text-red-400">Utilizador eliminado — não é possível enviar notificação.</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant={selectedBugReport.status === 'resolved' ? 'light' : 'module'}
+                      moduleColor="var(--mod-coach-to)"
+                      onClick={() => handleToggleBugReportStatus(selectedBugReport)}
+                      disabled={bugReportUpdating}
+                      className="flex-1"
+                      icon={bugReportUpdating
+                        ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" />
+                        : (selectedBugReport.status === 'resolved' ? <RotateCcw size={16} /> : <Check size={16} />)}
+                    >
+                      {bugReportUpdating ? 'A atualizar...' : (selectedBugReport.status === 'resolved' ? 'Reabrir' : 'Resolvido')}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => handleSendBugNotification(selectedBugReport)}
+                      disabled={bugNotificationSending || !selectedBugReport.user_id || !bugNotificationMessage.trim()}
+                      className="flex-1"
+                      icon={bugNotificationSending ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : <Send size={16} />}
+                    >
+                      {bugNotificationSending ? 'A enviar...' : 'Notificar'}
+                    </Button>
+                  </div>
                 </div>
               </PremiumModal>
             )}

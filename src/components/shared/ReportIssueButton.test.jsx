@@ -11,10 +11,18 @@ vi.mock('../../store', () => ({
 }));
 
 const insertMock = vi.fn(() => Promise.resolve({ error: null }));
+const uploadMock = vi.fn(() => Promise.resolve({ error: null }));
+const getPublicUrlMock = vi.fn(() => ({ data: { publicUrl: 'https://example.com/file.jpg' } }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => ({ insert: insertMock })),
+    storage: {
+      from: vi.fn(() => ({
+        upload: uploadMock,
+        getPublicUrl: getPublicUrlMock,
+      })),
+    },
   },
 }));
 
@@ -102,5 +110,71 @@ describe('ReportIssueButton', () => {
 
     expect(await screen.findByText('Não foi possível enviar o report. Tenta novamente.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Descreve o problema/)).toBeInTheDocument();
+  });
+
+  it('permite selecionar e remover ficheiros (imagens/vídeos)', async () => {
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+
+    // Selecionar um ficheiro
+    const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+    const input = screen.getByRole('button', { name: /Clica para selecionar ficheiros/ }).parentElement.querySelector('input');
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument();
+      expect(screen.getByText('test.jpg')).toBeInTheDocument();
+    });
+
+    // Remover o ficheiro
+    fireEvent.click(screen.getByRole('button', { name: '' }).closest('button'));
+
+    await waitFor(() => {
+      expect(screen.queryByText('1 ficheiro(s) selecionado(s)')).not.toBeInTheDocument();
+    });
+  });
+
+  it('rejeita ficheiros com tipo não suportado', async () => {
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+
+    const file = new File(['test'], 'test.txt', { type: 'text/plain' });
+    const input = screen.getByRole('button', { name: /Clica para selecionar ficheiros/ }).parentElement.querySelector('input');
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(await screen.findByText(/Tipo de ficheiro não suportado/)).toBeInTheDocument();
+  });
+
+  it('submete a descrição com URLs de ficheiros anexados', async () => {
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), {
+      target: { value: 'Problema com upload.' },
+    });
+
+    const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+    const input = screen.getByRole('button', { name: /Clica para selecionar ficheiros/ }).parentElement.querySelector('input');
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+
+    await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
+
+    const payload = insertMock.mock.calls[0][0];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        user_id: 'user-1',
+        description: 'Problema com upload.',
+        attachment_urls: ['https://example.com/file.jpg'],
+      }),
+    );
   });
 });
