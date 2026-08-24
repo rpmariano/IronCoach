@@ -1,5 +1,6 @@
 import React from 'react';
 import RunIcon from '../shared/RunIcon';
+import { racePriorityLabel } from '../../utils/run';
 import './NextRaceCard.css';
 
 export default function NextRaceCard({
@@ -8,6 +9,7 @@ export default function NextRaceCard({
   location = "Lisboa",
   tag = "estrada",
   distance = null,
+  priority = null,
   daysRemaining = 40,
   progressPercentage = 60,
   readiness = 'green',
@@ -20,12 +22,16 @@ export default function NextRaceCard({
   return (
     <div className="next-race-card">
       <div className="nrc-glow"></div>
-      
+
       <div className="nrc-top">
         <div className="nrc-top-left">
+          {/* Sem o rótulo "Próxima Prova" — o espaço serve agora para as
+              pílulas respirarem (ver nrc-header-row no CSS). */}
           <div className="nrc-header-row">
-            <span className="nrc-lbl">Próxima Prova</span>
             <span className="nrc-tag" style={{ textTransform: 'uppercase' }}>{tag}</span>
+            {priority && (
+              <span className="nrc-priority-pill">{racePriorityLabel(priority)}</span>
+            )}
             {distance && <span className="nrc-distance">{distance}</span>}
             {readiness && (
               <div className="nrc-traffic-light" title={readinessTooltip}>

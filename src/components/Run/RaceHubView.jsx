@@ -93,7 +93,7 @@ export default function RaceHubView({
               <span className={`rh-priority-pill rh-priority-${race?.race_priority || 'a'}`}>
                 {racePriorityLabel(race?.race_priority || 'a')}
               </span>
-              <span className="text-[10px] font-bold text-slate-400">
+              <span className="rh-distance-badge">
                 {distanceLabel}
               </span>
             </div>

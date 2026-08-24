@@ -91,6 +91,20 @@
   color: #cbd5e1;
 }
 
+/* Distância — mais estilizada que o texto simples de antes: badge em vidro
+   escuro, harmonizado com o mesmo trio de pílulas do NextRaceCard do Início
+   (piso preenchido + prioridade em contorno + distância em badge). */
+.rh-distance-badge {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.06);
+}
+
 /* Semáforo luminoso */
 .rh-traffic-light {
   display: flex;
