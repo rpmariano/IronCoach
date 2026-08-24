@@ -276,13 +276,15 @@ export default function RaceHubView({
                   isActive ? 'active-phase' : isCompleted ? 'completed-phase' : ''
                 }`}
               >
-                <div className="flex flex-col gap-1">
-                  {/* Linha 1: [Ícone + Título] à esquerda | as duas pílulas de
-                      estado (fase + avaliação) empilhadas à direita, junto ao
-                      chevron — antes a de avaliação ficava solta numa linha à
-                      parte, desalinhada de tudo o resto. */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1 pt-0.5">
+                <div className="flex flex-col gap-1.5">
+                  {/* Linha 1: [Ícone + Título] à esquerda | pílula de estado da
+                      fase + chevron à direita. Só esta pílula (curta: "Em
+                      Curso"/"Concluída"/"Planeada") partilha a linha com o
+                      título — a de avaliação (texto mais longo, ex.: "Ajuste
+                      Recomendado · 50%") ia a esta coluna e espremia o nome
+                      da fase até truncar (ex.: "Base Aerób..."). */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="rh-phase-num-badge shrink-0">
                         {isCompleted ? <CheckCircle2 size={13} /> : phase.number}
                       </div>
@@ -291,28 +293,30 @@ export default function RaceHubView({
                       </span>
                     </div>
 
-                    <div className="flex items-start gap-2 shrink-0">
-                      <div className="flex flex-col items-end gap-1.5">
-                        <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
-                          {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : 'Planeada'}
-                        </span>
-                        {evalData?.score != null && (
-                          <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap`}>
-                            {evalData.gradeLabel} · {evalData.score}%
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-slate-400 pl-0.5 pt-0.5">
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
+                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : 'Planeada'}
+                      </span>
+                      <div className="text-slate-400 pl-0.5">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </div>
                     </div>
                   </div>
 
-                  {/* Linha 2: Datas & Semanas — sozinhas, alinhadas sob o
-                      título, sem nada a competir por espaço com o texto. */}
-                  <p className="rh-phase-dates text-[11px] font-medium text-slate-400 pl-8">
-                    {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
-                  </p>
+                  {/* Linha 2: Datas & Semanas + pílula de avaliação — juntas
+                      por partilharem o mesmo assunto (o balanço desta fase),
+                      mas com wrap em vez de truncar/espremer: se não couberem
+                      lado a lado, a pílula desce para a linha seguinte. */}
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 pl-8">
+                    <p className="rh-phase-dates text-[11px] font-medium text-slate-400 flex-1 min-w-[120px]">
+                      {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
+                    </p>
+                    {evalData?.score != null && (
+                      <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap shrink-0`}>
+                        {evalData.gradeLabel} · {evalData.score}%
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Conteúdo Expandido da Fase */}

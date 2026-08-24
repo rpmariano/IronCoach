@@ -320,6 +320,17 @@
   white-space: nowrap;
 }
 
+/* Em telemóveis estreitos o texto completo não cabe numa linha só — como
+   o cartão tem overflow:hidden, forçar nowrap aqui cortava a palavra
+   final ("PRONTIDÃO") em vez de quebrar. A pílula de prontidão já fica
+   sempre na sua própria linha (rh-carol-readiness-pill), por isso o
+   título voltar a quebrar aqui não repõe o amontoado original. */
+@media (max-width: 420px) {
+  .rh-carol-badge {
+    white-space: normal;
+  }
+}
+
 .rh-carol-avatar {
   width: 28px;
   height: 28px;
