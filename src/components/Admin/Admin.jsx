@@ -333,8 +333,8 @@ export default function Admin() {
   };
 
   // Verificar permissões: admin completo ou bug_reviewer
-  const isBugReviewer = profile?.bug_reviewer && !profile?.is_admin;
-  const canAccessAdmin = profile?.is_admin || profile?.bug_reviewer;
+  const isBugReviewer = (profile?.bug_reviewer === true) && !profile?.is_admin;
+  const canAccessAdmin = (profile?.is_admin === true) || (profile?.bug_reviewer === true);
 
   if (!canAccessAdmin) {
     return (
