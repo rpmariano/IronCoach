@@ -3572,22 +3572,17 @@ async function handler(req: Request): Promise<Response> {
       });
     }
 
-    // Debug: confirmar que totalUsage tem dados
-    console.log('[coach-chat] Retornando resposta com usage:', JSON.stringify(totalUsage));
-
-    // DEBUG: injetar valores fictícios para testar se a lógica de logging funciona
-    const debugUsage = {
-      input_tokens: totalUsage.input_tokens || 5000,
-      output_tokens: totalUsage.output_tokens || 1000,
-      cached_tokens: totalUsage.cached_tokens || 2000,
-    };
-    console.log('[coach-chat] DEBUG: usando usage:', JSON.stringify(debugUsage));
+    // Debug: log detalhado do estado de totalUsage
+    console.log('[coach-chat] totalUsage:', JSON.stringify(totalUsage));
+    console.log('[coach-chat] totalUsage.input_tokens:', totalUsage.input_tokens, 'type:', typeof totalUsage.input_tokens);
+    console.log('[coach-chat] totalUsage.output_tokens:', totalUsage.output_tokens, 'type:', typeof totalUsage.output_tokens);
+    console.log('[coach-chat] totalUsage.cached_tokens:', totalUsage.cached_tokens, 'type:', typeof totalUsage.cached_tokens);
 
     return jsonResponse({
       user_message: userMsg,
       model_message: modelMsg,
       suggestions,
-      usage: debugUsage,
+      usage: totalUsage,
       plan_proposed: planWasProposed,
       goals_updated: goalsWereUpdated,
         goal_proposed: goalWasProposed,
