@@ -6,7 +6,7 @@ import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenc
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
-import { getRecommendedPrepWeeks, getEffectiveDistanceKm } from './racePlanEngine';
+import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -279,6 +279,32 @@ export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio
   } catch (e) {
     return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
   }
+}
+
+/**
+ * Previsão de tempo/pace para UMA prova (race_events ou rascunho do
+ * RunAgenda) — ponto único que resolve nível de experiência e distância
+ * equivalente ITRA antes de chamar predictRaceTime, para todos os
+ * consumidores (RaceHubView, RunDashboard, insights do Dashboard, semáforo
+ * de prontidão) lerem sempre o mesmo número. Antes disto, cada um repetia
+ * essa resolução à sua maneira e divergia sem ninguém reparar — foi assim
+ * que o gráfico de Evolução VDOT do Dashboard e a "Previsão (VDOT)" do
+ * RaceHubView chegaram a mostrar tempos diferentes para a mesma prova.
+ */
+export function getRacePrediction(race, profile, runs) {
+  const experienceLevel = resolveExperienceLevel(race, profile);
+  const effectiveDistanceKm = getEffectiveDistanceKm(race);
+  const realDistanceKm = parseFloat((race?.distance_km ?? '10').toString().replace(',', '.')) || 10;
+  const raw = predictRaceTime(runs || [], effectiveDistanceKm, experienceLevel);
+  return {
+    ...raw,
+    // Pace sobre a distância REAL da prova — o atleta corre realDistanceKm,
+    // não o equivalente; ver getEffectiveDistanceKm em racePlanEngine.js.
+    predictedPaceReal: raw.predictedSeconds > 0 ? raw.predictedSeconds / realDistanceKm : 0,
+    effectiveDistanceKm,
+    realDistanceKm,
+    experienceLevel,
+  };
 }
 
 /**
@@ -918,7 +944,7 @@ export function detectCoachInsights(data, profile) {
         // 5b. Avaliação Tática Completa (Viabilidade + Ritmo)
         if (data.runs?.length > 0) {
           const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
-          const expLevel = next.experience_level || profile?.experience_level || 'iniciante';
+          const expLevel = resolveExperienceLevel(next, profile);
           // dist em bruto para semanas de preparação e viabilidade — as
           // tabelas MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria de trail
           // própria, e usar o equivalente ITRA cria um "penhasco" de
@@ -936,14 +962,12 @@ export function detectCoachInsights(data, profile) {
             racePriority: next.race_priority || 'a',
           });
 
-          // O tempo previsto usa a distância equivalente ITRA (getEffectiveDistanceKm)
-          // — aqui sim documentado (Riegel "NÃO se aplica a trail com desnível");
-          // mas o pace comparado com o alvo tem de ser sobre a distância REAL
-          // da prova, senão o pace previsto vem "por km equivalente" e a
-          // comparação com targetPace (por km real) fica errada.
-          const effectiveDist = getEffectiveDistanceKm(next);
-          const prediction = predictRaceTime(data.runs, effectiveDist, profile?.experience_level || 'medio');
-          const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / dist : 0;
+          // getRacePrediction já resolve nível (prioriza next.experience_level,
+          // não só o do perfil) e distância equivalente ITRA — ponto único,
+          // mesmo usado em RaceHubView/RunDashboard, para não voltar a
+          // divergir por cada chamador repetir a lógica à sua maneira.
+          const prediction = getRacePrediction(next, profile, data.runs);
+          const predictedPaceReal = prediction.predictedPaceReal;
           const targetPace = next.target_pace_seconds_per_km;
 
           if (viability.flags.includes('ultra_para_iniciante')) {
@@ -1118,7 +1142,7 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
       const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
       const weeklyVol = recentWeeklyVolume(runs || [], todayISO);
-      const expLevel = nextRace.experience_level || profile?.experience_level || 'iniciante';
+      const expLevel = resolveExperienceLevel(nextRace, profile);
 
       // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
       // o macrociclo todo, e não apenas o tempo que falta, senão dispara sempre na reta final.
@@ -1138,13 +1162,10 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
         racePriority: nextRace.race_priority || 'a',
       });
 
-      // O tempo previsto usa a distância equivalente ITRA — aqui sim
-      // documentado (Riegel "NÃO se aplica a trail com desnível"); mas o
-      // pace comparado com targetPace tem de ser sobre a distância REAL
-      // da prova (distanceKm), senão vem "por km equivalente".
-      const effectiveDist = getEffectiveDistanceKm(nextRace);
-      const prediction = predictRaceTime(runs || [], effectiveDist, profile?.experience_level || 'medio');
-      const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / distanceKm : 0;
+      // getRacePrediction já resolve nível e distância equivalente ITRA —
+      // ponto único, mesmo usado em RaceHubView/RunDashboard.
+      const prediction = getRacePrediction(nextRace, profile, runs);
+      const predictedPaceReal = prediction.predictedPaceReal;
       const targetPace = nextRace.target_pace_seconds_per_km;
 
       if (viability.flags.includes('ultra_para_iniciante')) {

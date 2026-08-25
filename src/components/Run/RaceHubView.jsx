@@ -24,7 +24,7 @@ import Button from '../shared/Button';
 import RunIcon from '../shared/RunIcon';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
-import { calculateReadinessIndex, predictRaceTime } from '../../utils/biEngine';
+import { calculateReadinessIndex, getRacePrediction } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
@@ -82,17 +82,14 @@ export default function RaceHubView({
 
   const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
 
-  // Previsão de tempo nesta prova pela fórmula de Riegel — mesmo cálculo do
-  // gráfico "Evolução VDOT & Previsão de Prova" (BI/RacePredictionChart),
-  // aqui isolado no valor pontual para comparar com o Objetivo. Usa
-  // equivalentKm (distância + desnível convertido, ver
-  // calculateEquivalentFlatKm), não a distância em bruto — senão uma prova
-  // de trail com D+ era prevista como se fosse um piso plano da mesma
-  // distância, dando um tempo/pace irrealisticamente rápido.
-  const experienceLevel = race?.experience_level || profile?.experience_level || 'iniciante';
+  // Previsão de tempo/pace nesta prova — mesmo cálculo do gráfico "Evolução
+  // VDOT & Previsão de Prova" (BI/RacePredictionChart) e dos insights do
+  // Dashboard: getRacePrediction é o ponto único que resolve nível de
+  // experiência e distância equivalente ITRA, para não voltar a divergir
+  // entre ecrãs (ver nota em utils/biEngine.js).
   const prediction = useMemo(() =>
-    predictRaceTime(runs, equivalentKm || 10, experienceLevel),
-  [runs, equivalentKm, experienceLevel]);
+    getRacePrediction(race, profile, runs),
+  [race, profile, runs]);
 
   return (
     <div className="race-hub-container">
@@ -246,16 +243,13 @@ export default function RaceHubView({
                 </button>
               </div>
 
-              {/* prediction.predictedPace é o tempo previsto a dividir por
-                  equivalentKm (13 km numa prova de trail com D+, ver acima)
-                  — certo para o Total, errado para o Pace: o atleta
-                  percorre a distância REAL da prova (10 km), não o
-                  equivalente. Dividir aqui pela distância real em vez de
-                  usar prediction.predictedPace evita Total e Pace virem de
-                  bases diferentes (Pace × distância real deixava de bater
-                  com o Total). */}
+              {/* predictedPaceReal (não predictedPace) — este é o tempo
+                  previsto a dividir pela distância REAL da prova, não pela
+                  equivalente ITRA usada para o Total (ver getRacePrediction
+                  em utils/biEngine.js). Usar predictedPace aqui fazia Total
+                  e Pace virem de bases diferentes e não baterem certo. */}
               <span className="rh-spec-val">
-                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedSeconds / (parseFloat(race?.distance_km) || 10)))}/km
+                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedPaceReal))}/km
               </span>
 
               {/* Texto explicativo in-flow: expande naturalmente o cartão sem ficar cortado */}

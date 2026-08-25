@@ -111,16 +111,29 @@ export function calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType) 
 // Extrai a distância equivalente de um registo de prova (race_events ou
 // rascunho do RunAgenda) — wrapper de calculateEquivalentFlatKm que poupa
 // cada chamador de repetir o parse de distance_km/elevation_gain_m. É esta
-// distância (não a bruta) que deve alimentar getRecommendedPrepWeeks,
-// getTaperWeeks, getRecoveryDaysAfterRace, assessRaceViability e
-// predictRaceTime — sem isto, uma prova de trail com D+ é tratada como se
-// fosse piso plano da mesma distância em todo o macrociclo e na previsão de
-// tempo (Corrida 2.3 #3/#4 da doutrina: Riegel "NÃO se aplica a trail com
-// desnível — aí usa-se" o equivalente ITRA).
+// distância (não a bruta) que alimenta predictRaceTime (Previsão VDOT) e
+// getTaperWeeks — Riegel "NÃO se aplica a trail com desnível" e o taper de
+// Trail é categoria própria da doutrina (Corrida 2.3 #1/#3/#4). As outras
+// contas do macrociclo (semanas de preparação, recuperação, volume mínimo)
+// usam a distância em bruto — as tabelas de doutrina não têm categoria de
+// trail própria aí, e usar o equivalente criava um "penhasco" de categoria
+// por poucos km de D+ convertido.
 export function getEffectiveDistanceKm(race) {
   const distanceKm = parseFloat((race?.distance_km ?? '10').toString().replace(',', '.')) || 10;
   const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;
   return calculateEquivalentFlatKm(distanceKm, elevationGainM, race?.race_type || 'estrada');
+}
+
+// Nível de experiência a usar para esta prova — o autodeclarado na própria
+// prova (RunAgenda) tem sempre prioridade sobre o geral do Perfil, porque
+// existe precisamente para poder diferir dele (ex.: avançado em estrada,
+// iniciante na primeira prova de trail). Único ponto que resolve isto —
+// antes cada chamador repetia `race?.experience_level || profile?.experience_level
+// || 'iniciante'` à sua maneira, e um deles (RunDashboard) tinha o fallback
+// errado ('beginner', inglês, que nunca bate com as chaves reais da
+// doutrina) sem ninguém reparar, porque não havia um só sítio a corrigir.
+export function resolveExperienceLevel(race, profile) {
+  return race?.experience_level || profile?.experience_level || 'iniciante';
 }
 
 // ─── Cálculo Completo do Plano & Fases ──────────────────────────────────────────
@@ -128,7 +141,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const today = todayISO || getTodayISO();
   const raceDate = race?.date || today;
   const distanceKm = parseFloat((race?.distance_km || '10').toString().replace(',', '.')) || 10;
-  const experienceLevel = race?.experience_level || profile?.experience_level || 'iniciante';
+  const experienceLevel = resolveExperienceLevel(race, profile);
   const racePriority = race?.race_priority || 'a';
   const raceType = race?.race_type || 'estrada';
   const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;

@@ -11,8 +11,7 @@ import ACWRChart from '../BI/ACWRChart';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
-import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, predictRaceTime, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
-import { getEffectiveDistanceKm } from '../../utils/racePlanEngine';
+import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 
 function formatPace(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
@@ -103,12 +102,6 @@ function getBestPaceData(allRuns, targetKm) {
 export default function RunDashboard() {
   const { runs, profile, raceEvents = [] } = useAppStore();
   const [activeRange, setActiveRange] = useState('mes');
-
-  // Fallback só entra quando não há nível nenhum declarado — nunca 'beginner'
-  // (chave inglesa que não bate com RIEGEL_FACTOR/MIN_PREP_WEEKS, sempre
-  // 'iniciante'/'basico'/'medio'/'avancado'; caía sempre no fator por
-  // omissão da fórmula de Riegel em vez do fator certo para iniciante/básico).
-  const experienceLevel = profile?.experience_level || 'iniciante';
 
   // BI Data processing
   const periodRuns = useMemo(() => 
@@ -359,17 +352,11 @@ export default function RunDashboard() {
           prediction={
             futureRaces.length > 0
               ? {
-                  // Nível DESTA prova primeiro (autodeclarado em RunAgenda,
-                  // pode diferir do nível geral do perfil — ex.: avançado em
-                  // estrada, iniciante na primeira prova de trail) e o
-                  // equivalente ITRA (distância + D+ convertido) em vez da
-                  // distância em bruto — mesmo critério do "Previsão (VDOT)"
-                  // em RaceHubView, para os dois lerem o mesmo número.
-                  ...predictRaceTime(
-                    runs,
-                    getEffectiveDistanceKm(futureRaces[0]),
-                    futureRaces[0].experience_level || experienceLevel
-                  ),
+                  // getRacePrediction resolve nível (prioriza o desta prova)
+                  // e distância equivalente ITRA — ponto único, mesmo usado
+                  // no "Previsão (VDOT)" do RaceHubView, para os dois lerem
+                  // sempre o mesmo número.
+                  ...getRacePrediction(futureRaces[0], profile, runs),
                   raceName: futureRaces[0].name || `${futureRaces[0].distance_km}km`
                 }
               : null
