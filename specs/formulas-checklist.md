@@ -532,6 +532,53 @@ diagnóstico de ontem estava incompleto.
 
 ---
 
+### E1 — Agregações de corrida
+
+Quatro módulos T1.5 novos, o padrão de `weeklyVolume.ts` estendido a
+indicadores que antes só existiam no ecrã:
+
+- [x] `trainingDistribution.ts` — polarização 80/20 (Seiler), alvo por nível.
+  Corrige em definitivo o P0-8 original: só há um sítio a decidir o alvo por
+  nível agora; `RunDashboard.jsx` já não pode voltar a chamar sem o 2.º
+  argumento porque deixou de existir uma versão sem ele.
+- [x] `vdotTrend.ts` — seleção de "time trial" + série de VDOT (usa
+  `calculateVDOT` de `racePrediction.ts`, já partilhado desde a Fase C).
+- [x] `bestPace.ts` — recordes por escalão 5/10/21 km, split-first. O
+  fallback `r.pace` (string) do original em `RunDashboard.jsx` não foi
+  portado — confirmado por leitura do schema (`select('*')` em `runs`) que
+  essa coluna nunca existiu; era código morto.
+- [x] `runWatchMetrics.ts` — desnível/calorias/cadência média. **Bug de
+  paridade encontrado ao migrar**: o original em `RunDashboard.jsx` lia
+  `r.elevation_gain_m`/`r.calories_kcal`/`r.avg_cadence_spm` como colunas de
+  TOPO; a tabela real só tem `details` (jsonb), e a chave certa é
+  `cadence_spm` (não `avg_cadence_spm`, que nunca existiu). O cartão "Watch
+  metrics" do RunDashboard mostrava sempre 0 km / 0 kcal / cadência "—",
+  mesmo com dados gravados. Corrigido ao migrar — mesma classe de bug do
+  E0, desta vez no frontend.
+- [x] `biEngine.js` (`calculateTrainingDistribution`, `getVDOTTrend`) e
+  `RunDashboard.jsx` (`getBestPaceData`, `watchMetrics`) migrados para
+  importar os módulos partilhados; implementações locais eliminadas.
+- [x] `biConstants.js`: `TARGET_LOW_INTENSITY_PCT` removida (duplicava
+  `trainingDistribution.ts` depois da migração); `TARGET_HIGH_INTENSITY_PCT`
+  fica — já era código morto antes desta fase, sem relação com o E1.
+- [x] `coach-chat/index.ts`: novo bloco **"PAINEL DE CORRIDA"** no prompt —
+  polarização 80/20, VDOT atual + tendência, melhores paces 5/10/21k
+  (rotulado "não é recorde histórico" porque usa a janela de 30 dias, não
+  all-time como a UI), e desnível/calorias/cadência. Regra de ouro do gate
+  estendida para o citar como fonte pré-calculada.
+- [x] `npx vitest run` verde — 559/559 (544 + 15 novos). `npm run build`
+  verde. Saída dos 4 módulos verificada manualmente com dados realistas
+  (script descartável, não commitado).
+
+**Decisão do utilizador (2026-08-25): `oneRepMax.ts` retirado do âmbito.**
+A app deixou de ter registo de exercícios específicos, só categorias/grupos
+musculares — `calculate1RMProgression` (`biEngine.js`) já não tem consumidor
+em `src/components/`. `epley.ts` fica no repositório mas não ganha módulo de
+agregação nem linha no painel. Limpeza futura (fora desta fase): remover
+`calculate1RMProgression` quando se mexer em `biEngine.js` por outro motivo.
+
+---
+
 **Gap identificado, fora do âmbito desta fase — Fase E (auditoria de
 cobertura):** o Índice de Prontidão (`calculateReadinessIndex`, T2,
 `biEngine.js`) e os seus pilares NÃO chegam ao prompt da Carol — se o

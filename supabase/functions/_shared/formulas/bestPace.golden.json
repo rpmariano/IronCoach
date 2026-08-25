@@ -1,0 +1,41 @@
+[
+  {
+    "name": "split bate corrida inteira mesmo com pace pior — split vence em empate por prioridade",
+    "input": {
+      "targetKm": 10,
+      "runs": [
+        { "date": "2026-08-01", "distance_km": 21.1, "duration_seconds": 6300, "details": { "splits": [{ "distance_km": 10, "time_seconds": 2700 }] } },
+        { "date": "2026-08-10", "distance_km": 10.2, "duration_seconds": 2760, "details": null }
+      ]
+    },
+    "expect": { "pace": 270, "date": "2026-08-01", "count": 2, "runCount": 1, "source": "split" }
+  },
+  {
+    "name": "só corrida inteira qualifica (sem splits) — usa a mais rápida dentro da tolerância",
+    "input": {
+      "targetKm": 5,
+      "runs": [
+        { "date": "2026-08-01", "distance_km": 5.0, "duration_seconds": 1500, "details": null },
+        { "date": "2026-08-05", "distance_km": 5.2, "duration_seconds": 1508, "details": null },
+        { "date": "2026-08-08", "distance_km": 3.0, "duration_seconds": 600, "details": null }
+      ]
+    },
+    "expect": { "pace": 290, "date": "2026-08-05", "count": 2, "runCount": 2, "source": "run" }
+  },
+  {
+    "name": "nenhuma corrida no escalão 21 km — null",
+    "input": {
+      "targetKm": 21,
+      "runs": [{ "date": "2026-08-01", "distance_km": 10, "duration_seconds": 2700, "details": null }]
+    },
+    "expect": null
+  },
+  {
+    "name": "escalão inválido (não é 5/10/21) — null",
+    "input": {
+      "targetKm": 42,
+      "runs": [{ "date": "2026-08-01", "distance_km": 42.2, "duration_seconds": 12600, "details": null }]
+    },
+    "expect": null
+  }
+]

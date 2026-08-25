@@ -33,13 +33,9 @@ export const EA_CRITICAL_DURATION_DAYS = 5;
 export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
 
 // Training Distribution (80/20)
-export const TARGET_LOW_INTENSITY_PCT = {
-  iniciante: 95,
-  basico: 87.5,
-  medio: 80,
-  avancado: 77.5
-};
-
+// TARGET_LOW_INTENSITY_PCT mudou-se para @formulas/trainingDistribution.ts
+// (Fase E) — biEngine.js já não a usa daqui. TARGET_HIGH_INTENSITY_PCT fica
+// (já era código morto antes desta migração, ver formulaGuards.test.js).
 export const TARGET_HIGH_INTENSITY_PCT = {
   iniciante: 5,
   basico: 12.5,

@@ -14,6 +14,10 @@ import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, 
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
+import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
+import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
+import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
+import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -946,6 +950,63 @@ function buildWeeklyRunningContext(runs: any[], todayISO: string): string {
     `- Semana passada (${fmtRange(previousWeek.startISO, previousWeek.endISO)}): ${previousWeek.km} km em ${previousWeek.count} corrida(s)\n` +
     `Nota: estes totais são diferentes do "ACWR" abaixo — o ACWR usa uma janela ROLANTE dos últimos 7 dias a contar de hoje, não a semana de calendário.`
   );
+}
+
+// ─── Painel de indicadores de corrida (Fase E — omnisciência) ──────────────
+// Antes desta fase, estes quatro números só existiam no ecrã (RunDashboard,
+// biEngine.js) e nunca chegavam à Carol: se o atleta perguntasse "qual é o
+// meu VDOT?" ou "qual é o meu recorde dos 10km?" ela não tinha como saber.
+// Delegam nos mesmos módulos de _shared/formulas/ que src/utils/biEngine.js
+// e RunDashboard.jsx passaram a usar (specs/formulas-checklist.md Fase E) —
+// mesmo código, mesmo número dos dois lados.
+// deno-lint-ignore no-explicit-any
+function buildRunAnalyticsPanel(runs: any[], experienceLevel: string | null, windowDays: number): string | null {
+  if (!runs || runs.length === 0) return null;
+
+  const lines: string[] = [];
+
+  const dist = computeTrainingDistribution(runs, experienceLevel || "medio");
+  if (dist.z1Minutes + dist.z2Minutes + dist.z3Minutes + dist.z4Minutes + dist.z5Minutes > 0) {
+    lines.push(
+      `- Polarização 80/20 (${windowDays}d): ${dist.lowIntensityPct}% baixa intensidade / ${dist.highIntensityPct}% alta ` +
+        `(alvo ${dist.targetLowPct}% baixa) — ${dist.isCompliant ? "conforme" : "NÃO conforme"}`,
+    );
+  }
+
+  const vdot = computeVdotTrend(runs);
+  if (vdot.length > 0) {
+    const last = vdot[vdot.length - 1];
+    const prevAvg = vdot.length > 1
+      ? vdot.slice(0, -1).reduce((s, p) => s + p.vdot, 0) / (vdot.length - 1)
+      : null;
+    const trendLabel = prevAvg === null
+      ? "sem histórico anterior para comparar"
+      : last.vdot > prevAvg ? "a subir" : last.vdot < prevAvg ? "a descer" : "estável";
+    lines.push(`- VDOT (${windowDays}d, ${last.date}): ${last.vdot} — ${trendLabel}`);
+  }
+
+  const buckets: BestPaceBucket[] = [5, 10, 21];
+  const paceParts: string[] = [];
+  for (const km of buckets) {
+    const best = computeBestPace(runs, km);
+    if (best) paceParts.push(`${km}k ${formatPaceMinKm(best.pace)} (${best.date})`);
+  }
+  if (paceParts.length > 0) {
+    lines.push(`- Melhores paces (${windowDays}d, não é recorde histórico — para all-time usa get_running_history): ${paceParts.join(" · ")}`);
+  }
+
+  const watch = computeRunWatchMetrics(runs);
+  if (watch.totalElevation > 0 || watch.totalCalories > 0 || watch.avgCadence !== null) {
+    const watchParts = [
+      watch.totalElevation > 0 ? `${Math.round(watch.totalElevation)} m D+` : null,
+      watch.totalCalories > 0 ? `${Math.round(watch.totalCalories)} kcal` : null,
+      watch.avgCadence !== null ? `cadência média ${watch.avgCadence} spm` : null,
+    ].filter(Boolean);
+    if (watchParts.length > 0) lines.push(`- Relógio/GPS (${windowDays}d): ${watchParts.join(" · ")}`);
+  }
+
+  if (lines.length === 0) return null;
+  return `PAINEL DE CORRIDA (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
@@ -2095,6 +2156,10 @@ export function buildSystemInstruction(
   // testes antigos chamam sem este argumento; sem ele o comportamento é o
   // de antes (só a lista bruta de corridas, sem totais de calendário).
   weeklyRunningContext: string | null = null,
+  // Idem — painel de indicadores de corrida (Fase E). Sem ele, a Carol
+  // continua a funcionar como antes (só a lista bruta + ACWR + volume
+  // semanal), apenas sem VDOT/polarização/recordes/relógio.
+  runAnalyticsPanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2471,7 +2536,8 @@ export function buildSystemInstruction(
     `65 km estarem registados). Segue esta ordem:\n` +
     `1. Se já existe no contexto um total pré-calculado para o que foi pedido (ex.: "VOLUME ` +
     `SEMANAL (calendário)" para "esta semana"/"semana passada" de corrida, "ACWR" para carga ` +
-    `aguda/crónica, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
+    `aguda/crónica, "PAINEL DE CORRIDA" para VDOT/polarização 80-20/melhores paces/desnível-` +
+    `calorias-cadência, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
     `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
     `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
     `partir da lista bruta apenas se for uma soma simples e curta — caso contrário chama a ` +
@@ -2960,6 +3026,7 @@ export function buildSystemInstruction(
   if (runningSummary) sys += `\n\n${runningSummary}`;
   if (weeklyRunningContext) sys += `\n\n${weeklyRunningContext}`;
   if (acwrLine) sys += `\n${acwrLine}`;
+  if (runAnalyticsPanel) sys += `\n\n${runAnalyticsPanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3171,6 +3238,11 @@ async function handler(req: Request): Promise<Response> {
     // 30 dias cobre sempre a semana atual + a semana passada inteiras
     // (pior caso: hoje é segunda, precisa de 8 dias) — não precisa de query extra.
     const weeklyRunningContext = buildWeeklyRunningContext(recentRuns || [], todayISO);
+    const runAnalyticsPanel = buildRunAnalyticsPanel(
+      recentRuns || [],
+      (profile?.experience_level as string | null) ?? null,
+      RUNNING_WINDOW_DAYS,
+    );
 
     // ACWR — calculado sobre os mesmos recentRuns (30 dias cobre as 28 noites
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
@@ -3459,7 +3531,8 @@ async function handler(req: Request): Promise<Response> {
       profile?.coach_intervention_reason ?? null,
       shoesContext,
       coachingMode,
-      weeklyRunningContext
+      weeklyRunningContext,
+      runAnalyticsPanel
     );
 
     let finalSystemInstruction = systemInstruction;

@@ -19,6 +19,8 @@ import { predictRaceTime as sharedPredictRaceTime, calculateVDOT as sharedCalcul
 import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 import { estimate1RM } from '@formulas/epley.ts';
+import { computeTrainingDistribution } from '@formulas/trainingDistribution.ts';
+import { computeVdotTrend } from '@formulas/vdotTrend.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -187,31 +189,11 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
 /**
  * Calcula a distribuição de treino em zonas de intensidade.
  */
+// Delega em @formulas/trainingDistribution.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateTrainingDistribution(runs, level = 'medio') {
   try {
-    let z1 = 0, z2 = 0, z3 = 0, z4 = 0, z5 = 0;
-    
-    runs.forEach(run => {
-      const zones = run.details?.hr_zones || [];
-      zones.forEach(z => {
-        if (z.zone === 1) z1 += z.minutes;
-        if (z.zone === 2) z2 += z.minutes;
-        if (z.zone === 3) z3 += z.minutes;
-        if (z.zone === 4) z4 += z.minutes;
-        if (z.zone === 5) z5 += z.minutes;
-      });
-    });
-
-    const lowIntensity = z1 + z2;
-    const highIntensity = z3 + z4 + z5;
-    const total = lowIntensity + highIntensity;
-    
-    const lowIntensityPct = total > 0 ? Math.round((lowIntensity / total) * 100) : 0;
-    const highIntensityPct = total > 0 ? Math.round((highIntensity / total) * 100) : 0;
-    const targetLowPct = Constants.TARGET_LOW_INTENSITY_PCT[level] || 80;
-    const isCompliant = lowIntensityPct >= targetLowPct - 5 && lowIntensityPct <= targetLowPct + 5;
-
-    return { lowIntensityPct, highIntensityPct, z1Minutes: z1, z2Minutes: z2, z3Minutes: z3, z4Minutes: z4, z5Minutes: z5, isCompliant, targetLowPct };
+    return computeTrainingDistribution(runs, level);
   } catch (e) {
     return { lowIntensityPct: 0, highIntensityPct: 0, z1Minutes: 0, z2Minutes: 0, z3Minutes: 0, z4Minutes: 0, z5Minutes: 0, isCompliant: false, targetLowPct: 80 };
   }
@@ -319,19 +301,11 @@ export function calculateVDOT(distanceKm, timeSeconds) {
  * Calcula a tendência de VDOT ao longo do tempo.
  * Filtra apenas corridas que qualificam como "time trials" (competição ou treinos de qualidade >= 3km).
  */
+// Delega em @formulas/vdotTrend.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E).
 export function getVDOTTrend(runs) {
   try {
-    return runs
-      .filter(r => r.distance_km >= 3 && r.duration_seconds > 0 &&
-                   (r.kind === 'competicao' || r.training_type === 'tempo' ||
-                    r.training_type === 'intervalos' || r.effort_rpe >= 7))
-      .map(r => ({
-        date: r.date,
-        vdot: calculateVDOT(r.distance_km, r.duration_seconds),
-        label: r.name || r.kind
-      }))
-      .filter(r => r.vdot > 0)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    return computeVdotTrend(runs);
   } catch (e) {
     return [];
   }

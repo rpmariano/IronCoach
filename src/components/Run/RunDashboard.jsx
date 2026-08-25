@@ -13,6 +13,8 @@ import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
+import { computeBestPace } from '@formulas/bestPace.ts';
+import { computeRunWatchMetrics } from '@formulas/runWatchMetrics.ts';
 
 // Antes deste ecrã tinha o seu próprio formatPace, com um formato visível
 // diferente do resto da app ("5:20/km" em vez de "5.20") — unificado por
@@ -31,76 +33,12 @@ function formatDatePT(dateStr) {
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// Tolerance ranges per target distance (km)
-const DISTANCE_RANGES = {
-  5:  { min: 4.0,  max: 6.5  },
-  10: { min: 8.5,  max: 12.0 },
-  21: { min: 19.0, max: 23.0 },
-};
-
+// Delega em @formulas/bestPace.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E). O fallback `r.pace`
+// (string "m:ss/km") do original nunca disparava: `runs` não tem essa
+// coluna (select('*') confirmado contra o schema real) — não foi portado.
 function getBestPaceData(allRuns, targetKm) {
-  const range = DISTANCE_RANGES[targetKm];
-  if (!range) return null;
-
-  const entries = [];
-
-  allRuns.forEach(r => {
-    const totalDist = Number(r.distance_km || 0);
-
-    // ── Priority 1: splits with distance ≈ targetKm ──────────────────────
-    // Splits store the cumulative time at a given distance mark.
-    // e.g. { distance_km: 5, time_seconds: 1380 } → pace = 1380/5 = 276 s/km
-    const splits = r.details?.splits || [];
-    splits.forEach(s => {
-      const splitDist = Number(s.distance_km || 0);
-      const splitTime = Number(s.time_seconds || 0);
-      if (splitDist >= range.min && splitDist <= range.max && splitTime > 0) {
-        entries.push({
-          pace: splitTime / splitDist,
-          date: r.date,
-          source: 'split',
-          count: 1,
-        });
-      }
-    });
-
-    // ── Priority 2: run whose total distance ≈ targetKm ───────────────────
-    // Only valid if the run itself IS a ~targetKm run (not a longer effort).
-    if (totalDist >= range.min && totalDist <= range.max) {
-      let secPerKm = null;
-      if (r.duration_seconds && totalDist > 0) {
-        secPerKm = Number(r.duration_seconds) / totalDist;
-      } else if (r.pace) {
-        const parts = r.pace.replace('/km', '').split(':').map(Number);
-        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-          secPerKm = parts[0] * 60 + parts[1];
-        }
-      }
-      if (secPerKm && secPerKm > 0) {
-        entries.push({ pace: secPerKm, date: r.date, source: 'run', count: 1 });
-      }
-    }
-  });
-
-  if (entries.length === 0) return null;
-
-  // Best pace = fastest (lowest seconds/km); prefer splits over runs on tie
-  entries.sort((a, b) => {
-    if (Math.abs(a.pace - b.pace) > 0.1) return a.pace - b.pace;
-    if (a.source === 'split' && b.source !== 'split') return -1;
-    if (b.source === 'split' && a.source !== 'split') return 1;
-    return 0;
-  });
-
-  const best = entries[0];
-  const runCount = entries.filter(e => e.source === 'run').length;
-  return {
-    pace: best.pace,
-    date: best.date,
-    count: entries.length,
-    runCount,
-    source: best.source,
-  };
+  return computeBestPace(allRuns, targetKm);
 }
 
 export default function RunDashboard() {
@@ -232,28 +170,14 @@ export default function RunDashboard() {
     }
   };
 
-  // Watch metrics
-  const watchMetrics = useMemo(() => {
-    let elevation = 0;
-    let calories = 0;
-    let cadenceSum = 0;
-    let cadenceCount = 0;
-
-    periodRuns.forEach(r => {
-      if (r.elevation_gain_m) elevation += Number(r.elevation_gain_m);
-      if (r.calories_kcal) calories += Number(r.calories_kcal);
-      if (r.avg_cadence_spm) {
-        cadenceSum += Number(r.avg_cadence_spm);
-        cadenceCount++;
-      }
-    });
-
-    return {
-      totalElevation: elevation,
-      totalCalories: calories,
-      avgCadence: cadenceCount > 0 ? Math.round(cadenceSum / cadenceCount) : null
-    };
-  }, [periodRuns]);
+  // Watch metrics — delega em @formulas/runWatchMetrics.ts (T1.5). BUG DE
+  // PARIDADE corrigido ao migrar (2026-08-25, Fase E): lia
+  // r.elevation_gain_m/r.calories_kcal/r.avg_cadence_spm como colunas de
+  // TOPO de `runs`, mas esses valores vivem em `details` (e a chave certa é
+  // `cadence_spm`, não `avg_cadence_spm` — essa nunca existiu). Este cartão
+  // mostrava sempre 0 km de desnível, 0 kcal e cadência "—", mesmo com dados
+  // gravados — ver comentário em runWatchMetrics.ts.
+  const watchMetrics = useMemo(() => computeRunWatchMetrics(periodRuns), [periodRuns]);
 
   const renderBucket = (label, b) => {
     if (!b) {
