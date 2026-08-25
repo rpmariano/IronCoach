@@ -8,7 +8,7 @@ import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
-import { formatDuration } from '../../utils/run';
+import { formatDuration, formatPace } from '../../utils/run';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -24,13 +24,6 @@ function RunIcon({ className = "w-5 h-5" }) {
 function paceSecPerKm(run) {
   if (!run.distance_km || !run.duration_seconds) return null;
   return run.duration_seconds / run.distance_km;
-}
-
-function formatPace(secPerKm) {
-  if (!secPerKm) return '';
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
-  return `${m}'${s.toString().padStart(2, '0')}"/km`;
 }
 
 function runKindLabel(run) {
@@ -137,7 +130,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
   const distStr = run.distance_km ? `${Number(run.distance_km).toFixed(2)} km` : '';
   const durStr = run.duration_seconds ? formatDuration(run.duration_seconds) : '';
   const paceVal = paceSecPerKm(run);
-  const paceStr = paceVal ? formatPace(paceVal) : '';
+  const paceStr = paceVal ? `${formatPace(paceVal)}/km` : '';
 
   const kindLabel = runKindLabel(run);
   const coachCommentary = run.coach_notes || run.ai_analysis || run.coach_analysis;
@@ -291,7 +284,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
                       <span className="font-bold text-slate-500 w-6 shrink-0">{i + 1}.</span>
                       <span className="flex-1">{s.distance_km ? `${Number(s.distance_km).toFixed(2)} km` : '—'}</span>
                       <span className="flex-1 text-center">{s.time_seconds ? formatDuration(s.time_seconds) : '—'}</span>
-                      <span className="flex-1 text-right text-slate-400">{splitPace ? formatPace(splitPace) : ''}</span>
+                      <span className="flex-1 text-right text-slate-400">{splitPace ? `${formatPace(splitPace)}/km` : ''}</span>
                     </div>
                   );
                 })}

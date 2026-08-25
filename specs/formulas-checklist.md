@@ -381,12 +381,37 @@ Menor risco, pode correr em paralelo com C. Por cada componente na lista de
 "cópias locais" do relatório de auditoria (`todayISO`, `formatPace`,
 `formatDuration`, `BODY_METRICS`, arrays de meses PT, etc.):
 
-- [ ] Import local removido, substituído por import do util canónico.
-- [ ] Nenhuma mudança de comportamento visível não intencional (ex.: migrar
-  `RunCard.jsx` de `"5'20\"/km"` para `"5.20"` é uma mudança de UI real —
-  confirmar com quem pediu antes de aplicar em componentes visíveis ao
-  utilizador, não só nos internos).
-- [ ] `npx vitest run` verde a cada lote de componentes migrados.
+- [x] Import local removido, substituído por import do util canónico —
+  `todayISO` (9 componentes → `lib/utils.js`; `NutritionOptionA.jsx` foi à
+  parte, para `lisbonTodayISO()`, por já forçar Europe/Lisbon — ver nota
+  abaixo), `formatDuration` (`RunCard.jsx`, `GymSessionCard.jsx` → `run.js`,
+  cópias byte-idênticas), `formatPace` (`RunDashboard.jsx`, `RunCard.jsx`,
+  `ScatterTrendChart.jsx` → `run.js`).
+- [x] Nenhuma mudança de comportamento visível não intencional — `todayISO`
+  e `formatDuration` foram migrações "de casa" puras (mesmo resultado,
+  confirmado ficheiro a ficheiro). `formatPace` **teve** mudança de UI real
+  (3 formatos diferentes — `"5:20/km"`, `"5'20\"/km"`, `"5:20"` — passam
+  todos a `"5.20"` + sufixo onde já existia): perguntei antes de aplicar,
+  como o checklist pedia, e o utilizador confirmou a unificação.
+- [x] `npx vitest run` verde a cada lote de componentes migrados — 499/499
+  no lote final.
+
+**Nota — `NutritionOptionA.jsx`:** o único dos 10 `todayISO` locais que não
+media "hoje" da mesma forma que o canónico. A cópia local já forçava
+Europe/Lisbon (não o fuso do dispositivo); migrar para `todayISO()`
+(hoje local do browser) teria sido uma mudança de comportamento real para
+quem usa a app fora de Portugal. Foi para `lisbonTodayISO()` (já existia em
+`lib/utils.js`, usada nos lembretes) — mesmo resultado, zero cópia.
+
+**Verificação de saída da Fase D:**
+- [x] `npx vitest run` verde — 499/499.
+- [x] `npm run build` verde.
+- [x] Grep de confirmação: nenhuma definição local de `todayISO`,
+  `formatPace` ou `formatDuration` fora dos ficheiros canónicos
+  (`lib/utils.js`, `utils/run.js`).
+- [x] Guardas de regressão (`formulaGuards.test.js`) atualizadas — as 3
+  allowlists ficaram vazias (só o ficheiro canónico); qualquer cópia nova
+  de qualquer um dos três volta a falhar a suite.
 
 ---
 

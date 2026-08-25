@@ -42,20 +42,15 @@ function relPath(absPath) {
 // corrigido nesta ronda — fora da allowlist de propósito).
 //
 // Fase D (specs/formulas-checklist.md) migrou todas as cópias locais de
-// todayISO e formatDuration para importar do canónico — as allowlists
-// abaixo ficaram vazias (só o próprio ficheiro canónico). formatPace
-// continua com cópias: os 3 formatos visíveis ("5.20" / "5'20\"/km" /
-// "5:20/km") são divergência de UI real, não só duplicação de código — só
-// mudam com uma decisão explícita sobre o formato a mostrar ao atleta.
+// todayISO, formatDuration e (com decisão explícita do utilizador sobre o
+// formato visível a unificar) formatPace para importar do canónico — as
+// 3 allowlists abaixo ficaram vazias (só o próprio ficheiro canónico).
 const TODAY_ISO_ALLOWLIST = new Set([
   'lib/utils.js', // canónico
 ]);
 
 const FORMAT_PACE_ALLOWLIST = new Set([
   'utils/run.js', // canónico
-  'components/Run/RunDashboard.jsx',
-  'components/Run/RunCard.jsx',
-  'components/BI/ScatterTrendChart.jsx',
 ]);
 
 const FORMAT_DURATION_ALLOWLIST = new Set([

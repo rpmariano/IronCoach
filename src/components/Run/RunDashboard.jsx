@@ -12,12 +12,16 @@ import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, calculateWeeklyVolume, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
+import { formatPace } from '../../utils/run';
 
-function formatPace(secPerKm) {
+// Antes deste ecrã tinha o seu próprio formatPace, com um formato visível
+// diferente do resto da app ("5:20/km" em vez de "5.20") — unificado por
+// pedido explícito (specs/formulas-checklist.md Fase D). paceLabel() só
+// acrescenta o "—" para dados em falta e o "/km", que aqui fazem parte do
+// texto (o formatPace canónico devolve só o número).
+function paceLabel(secPerKm) {
   if (!isFinite(secPerKm) || secPerKm <= 0) return '—';
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
-  return `${m}:${String(s).padStart(2, '0')}/km`;
+  return `${formatPace(secPerKm)}/km`;
 }
 
 function formatDatePT(dateStr) {
@@ -274,7 +278,7 @@ export default function RunDashboard() {
             )}
           </p>
         </div>
-        <p className="text-base font-extrabold text-white">{formatPace(b.pace)}</p>
+        <p className="text-base font-extrabold text-white">{paceLabel(b.pace)}</p>
       </div>
     );
   };
@@ -306,7 +310,7 @@ export default function RunDashboard() {
         />
         <KPICard 
           label="Pace Médio" 
-          value={formatPace(avgPaceSec)} 
+          value={paceLabel(avgPaceSec)}
           icon={Timer}
           moduleColor="var(--mod-corrida)"
         />
