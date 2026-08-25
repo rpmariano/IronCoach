@@ -251,10 +251,13 @@ describe('detectCoachInsights', () => {
     });
 
     it('alerta sobre a fase de polimento (tapering)', () => {
+      // Fase C: o limiar vem de @formulas/taper.ts — iniciante numa meia
+      // maratona (A-race, omissão) tem taper de 10 dias (doutrina: 7-10
+      // dias, limite superior). 9 dias antes cai dentro dessa janela.
       const raceEvents = [{
         id: 'ev-2',
         status: 'agendada',
-        date: iso(-12), // daqui a 12 dias para meia maratona
+        date: iso(-9), // daqui a 9 dias para meia maratona
         distance_km: 21,
         name: 'Meia Maratona',
       }];

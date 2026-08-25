@@ -185,50 +185,94 @@ Por cada fórmula movida, esta sub-checklist (repetir por linha do inventário e
 
 - [x] Fórmula extraída para `supabase/functions/_shared/formulas/<nome>.ts`,
   pura (sem date-fns, sem I/O), com `@doutrina` a apontar para o bloco de
-  origem. — feito para `acwr.ts`, `bodyComposition.ts`, `weightTrend.ts`.
+  origem. — feito para `acwr.ts`, `bodyComposition.ts`, `weightTrend.ts`,
+  `taper.ts`, `energyAvailability.ts`.
 - [x] Vetor dourado (`<nome>.golden.json`) escrito, cobrindo pelo menos: caso
   central, as duas fronteiras de cada zona/limiar, e um caso de dados em falta
   (`null`/`0`). — `acwr.golden.json`, `bodyComposition.golden.json`,
-  `weightTrend.golden.json`.
+  `weightTrend.golden.json`, `taper.golden.json`, `energyAvailability.golden.json`.
 - [x] Teste Vitest a percorrer o vetor dourado, verde — `acwr.spec.js`,
-  `bodyComposition.spec.js`, `weightTrend.spec.js` (20 casos, todos verdes).
-- [x] Teste Deno a percorrer o **mesmo** vetor dourado — escrito
-  (`acwr.test.ts`, `bodyComposition.test.ts`, `weightTrend.test.ts`); não
-  corrido neste ambiente (sem `deno` instalado) — a confirmar no primeiro
-  `deno test` local ou no deploy.
+  `bodyComposition.spec.js`, `weightTrend.spec.js`, `taper.spec.js`,
+  `energyAvailability.spec.js` (41 casos, todos verdes).
+- [x] Teste Deno a percorrer o **mesmo** vetor dourado — escrito para as 5
+  fórmulas; não corrido neste ambiente (sem `deno` instalado) — a confirmar
+  no primeiro `deno test` local ou no deploy.
 - [x] Todos os consumidores anteriores migrados para importar a fórmula —
   ACWR (`biEngine.js`, `coach-chat`, `coach-daily-summary`), gordura
   visceral (`biEngine.js`, `coach-chat`), tendência de peso (`biEngine.js`,
-  `coach-chat`, `coach-daily-summary`).
+  `coach-chat`, `coach-daily-summary`), taper (`racePlanEngine.js`,
+  `biEngine.js` insight de tapering, `coach-chat`, `coach-daily-summary`),
+  EA (`biEngine.js` — único consumidor, sem cópias a eliminar).
 - [x] Cópia antiga apagada — `VISCERAL_FAT_HEALTHY_MAX`/`VISCERAL_FAT_ALERT_MAX`
   removidas de `biConstants.js`; `ACWR_DANGER`/`ACWR_SAFE_MAX`/
-  `ACWR_UNDER_TRAINING` viram reexport de `acwr.ts` em vez de definição
-  local.
+  `ACWR_UNDER_TRAINING`/`EA_OPTIMAL`/`EA_CRITICAL` viram reexport dos
+  módulos T1 em vez de definição local; `getTaperWeeks` (racePlanEngine.js)
+  e os dois `getRacePhase`/limiar de tapering das Edge Functions e do
+  `biEngine.js` deixaram de ter lógica própria.
 
-**Decisões tomadas nesta ronda (Fase C, 1.ª leva):**
+**Decisões tomadas e implementadas nesta ronda (Fase C, 1.ª e 2.ª leva):**
 - ACWR: grandeza única em **km** (não sRPE) — `biEngine.js` deixou de usar
   duração×RPE; `calculateACWR`/`calculateACWRHistory` migradas, janela 7d/28d
   igual às Edge Functions. Rótulos "(sRPE)"/"(baseado em km)" da Fase A
   (P0-3) removidos — já não há grandezas distintas para desambiguar.
-- Taper: **adiado** — tabela doutrina nível×distância×prioridade escolhida,
-  mas a migração das 4 implementações incompatíveis fica para a próxima
-  ronda (é a maior peça ainda por fazer nesta fase).
+- Taper: **tabela doutrina nível×distância×prioridade** (Bloco 2.3 #1),
+  limite superior de cada gama (mais conservador). Substituiu 4
+  implementações: `racePlanEngine.js` (`experienceLevel` recebido e nunca
+  usado), `coach-chat`/`coach-daily-summary` (`daysUntil<=14` fixo,
+  ignorava nível/distância/prioridade) e `biEngine.js` (limiares km 35/15
+  que não batiam com `categorizeDistance`). Muda comportamento real: um
+  iniciante numa maratona A-race passa a ter 2 semanas de taper (14 dias,
+  doutrina 10-14) em vez de 3 fixas; médio/avançado numa 10k passam de 1
+  para 2 semanas (doutrina 7-10 dias, antes só se olhava para o "7").
 - Tendência de peso: **EWMA α≈0,25** (a já usada em `biEngine.js`) — migradas
   `coach-chat` (média simples 7d) e `coach-daily-summary` (regressão 2
   pontos).
-- EA (denominador `lean_body_mass_kg`): **mantido por agora**, registado como
-  ponto a melhorar na doutrina (não implementado nesta ronda — decisão
-  explícita do utilizador).
+- EA: **implementada** — `energyAvailability.ts` extrai a fórmula pura
+  (única implementação no projeto, sem cópias a eliminar) com a limitação
+  de doutrina mantida como comentário permanente no código-fonte (não só
+  aqui): `lean_body_mass_kg` continua a vir de BIA, que a doutrina
+  (`04-nutricao-seguranca.md:40`) já desaconselha como denominador de
+  precisão — "o numerador é bom, o denominador é fraco" — e o próprio
+  documento diz que o EA isolado "não deve gerar um alarme automático
+  sozinho". Nenhuma fonte melhor de massa magra está implementada na app
+  hoje; fica registada como melhoria de doutrina pendente, não como bug.
 - Gordura visceral (não era uma das 4 perguntas, mas P0 do inventário):
   corrigida de raiz — `biEngine.js` só verificava `>= 14`, saltando a faixa
   de alerta 10-13.
+
+### Necessidade de fontes/investigação adicional — avaliação desta leva
+
+Pedido do utilizador: identificar, por fórmula tocada, se é preciso ir
+buscar mais informação a fontes fidedignas antes de fechar.
+
+- **Taper (Bloco 2.3 #1)**: **não é preciso** — doutrina com confiança ALTA,
+  3 fontes concordantes (Mujika & Padilla 2003, Pfitzinger 2019, Daniels
+  2021), sem conflito assinalado no documento-fonte. A única escolha de
+  implementação (limite superior da gama, não inferior/médio) é minha, não
+  uma lacuna de fonte — documentada no código, reversível se preferires
+  outro critério.
+- **EA / RED-S (Bloco 4.2 #1)**: **não é preciso** — a limitação já está
+  identificada e documentada na própria doutrina (IOC Consensus 2018/2023,
+  Loucks 2004, ACSM 2016, confiança ALTA); o problema é de disponibilidade
+  de dados na app (só BIA para massa magra), não de literatura por
+  consultar.
+- **Achado por leitura, fora do que foi pedido nesta ronda**: Bloco 2.3 #2
+  (dias de recuperação pós-esforço máximo, ficheiro
+  `src/coach-knowledge/02-corrida-prova.md`) tem um **conflito de fontes
+  não resolvido**, já assinalado no próprio documento — avançado+maratona:
+  10-14 dias (Pfitzinger/Canova) vs. 26 dias, regra "1 dia por milha em
+  esforço máximo" (Daniels/Galloway). O documento propõe adotar 26 dias
+  (mais conservador) "mas fica por confirmar contigo antes de ir para
+  doutrina" — nunca chegou a ser confirmado. Não é bloqueador desta ronda
+  (recuperação pós-prova não estava nas 4 decisões pedidas), mas é uma
+  decisão tua pendente, não uma correção de código.
+- Avaliação completa (todas as fórmulas ainda por migrar) fica para o fecho
+  da Fase C — ver checklist "Ainda por fazer" abaixo.
 
 ### Ainda por fazer nesta fase (T1 restantes)
 
 Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
 
-- [ ] **Taper** — 4 implementações incompatíveis, decisão já tomada (tabela
-  doutrina), migração ainda não feita.
 - [ ] VDOT (Daniels-Gilbert), Riegel, equivalente ITRA — já são sítio único
   no frontend (`biEngine.js`/`racePlanEngine.js`); só falta mudar de casa
   para `_shared/formulas/` com vetor dourado, sem mudança de comportamento.
@@ -244,6 +288,9 @@ Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
   (esse já resolvido nesta ronda).
 - [ ] Compliance nutricional — 3 escalas diferentes (85/115 · 90/70/115 ·
   75/90/110).
+- [ ] Recuperação pós-prova — não fazia parte das 4 decisões desta ronda;
+  tem uma decisão pendente do utilizador (ver "Necessidade de fontes"
+  acima), não só uma migração de casa.
 
 ### Paridade frontend↔backend a confirmar nesta fase
 
@@ -254,8 +301,8 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   golden vector comum, 9 casos.
 - [x] `categorizeDistance`: mesma categoria nas fronteiras exatas (5.5, 11.0,
   22.5, 50.0 km) — Fase B, `vocabulary.ts`.
-- [ ] Taper: mesmas semanas para a mesma combinação nível×distância×prioridade
-  — pendente (ver acima).
+- [x] Taper: mesmas semanas para a mesma combinação nível×distância×prioridade
+  — golden vector comum, 14 casos.
 - [ ] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil —
   pendente (P0-4 continua em aberto).
 - [ ] Riegel: mesma previsão de tempo/pace, incluindo o caso trail (equivalente
@@ -263,15 +310,18 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   migrado para `_shared/formulas/`.
 - [x] Gordura visceral: mesmos 3 escalões (1-9/10-14/≥15) nos dois lados —
   golden vector comum, 7 casos.
+- [x] EA: mesma classificação (ótima/subclínica/crítica) para o mesmo
+  intake/exercise/leanMass — golden vector comum, 7 casos.
 
-**Verificação de saída da Fase C (parcial — 3 de ~9 fórmulas T1 migradas):**
-- [x] `npx vitest run` verde — 450/450 (20 testes novos: 3 vetores dourados +
-  migração de fixtures existentes).
+**Verificação de saída da Fase C (parcial — 5 de ~9 fórmulas T1 migradas):**
+- [x] `npx vitest run` verde — 471/471 (41 testes novos desde o início da
+  Fase C: 5 vetores dourados + migração de fixtures existentes).
 - [ ] `deno test` (toda a suite de edge functions) verde — não corrido
-  (sem `deno` neste ambiente).
+  (sem `deno` neste ambiente); sintaxe verificada com `esbuild` em todos os
+  `.ts` novos/alterados.
 - [x] `npm run build` verde.
-- [x] Grep de confirmação: ACWR, gordura visceral e tendência de peso não têm
-  segunda definição fora de `_shared/formulas/`.
+- [x] Grep de confirmação: ACWR, gordura visceral, tendência de peso, taper
+  e EA não têm segunda definição fora de `_shared/formulas/`.
 
 ---
 

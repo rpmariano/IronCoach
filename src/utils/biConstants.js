@@ -23,10 +23,12 @@ export const MAX_WEEKLY_INCREASE_PCT = {
 export const GYM_VOLUME_ELEVATED_RISK_PCT = 15;
 export const GYM_VOLUME_HIGH_RISK_PCT = 20;
 
-// RED-S / Energy Availability (EA)
-export const EA_OPTIMAL = 45; // >= 45 kcal/kg FFM/day
+// RED-S / Energy Availability (EA) — EA_OPTIMAL/EA_CRITICAL vivem em
+// @formulas/energyAvailability.ts (T1); reexportados aqui pelo mesmo motivo
+// do ACWR acima (specs/formulas-checklist.md Fase C).
+import { EA_OPTIMAL, EA_CRITICAL } from '@formulas/energyAvailability.ts';
+export { EA_OPTIMAL, EA_CRITICAL };
 export const EA_SUBCLINICAL_MIN = 30; // 30-45
-export const EA_CRITICAL = 30; // < 30
 export const EA_CRITICAL_DURATION_DAYS = 5;
 export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
 

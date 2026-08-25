@@ -1,0 +1,9 @@
+[
+  { "name": "acima do ótimo", "input": { "intake": 2500, "exercise": 400, "leanMass": 50 }, "expect": { "ea": 42, "status": "subclinical" } },
+  { "name": "exatamente no limite ótimo (45)", "input": { "intake": 2650, "exercise": 400, "leanMass": 50 }, "expect": { "ea": 45, "status": "optimal" } },
+  { "name": "subclínica, meio da faixa", "input": { "intake": 2000, "exercise": 400, "leanMass": 50 }, "expect": { "ea": 32, "status": "subclinical" } },
+  { "name": "exatamente no limite crítico (30) — ainda subclínica", "input": { "intake": 1900, "exercise": 400, "leanMass": 50 }, "expect": { "ea": 30, "status": "subclinical" } },
+  { "name": "abaixo do limiar crítico", "input": { "intake": 1400, "exercise": 400, "leanMass": 50 }, "expect": { "ea": 20, "status": "critical" } },
+  { "name": "défice grande, EA negativa", "input": { "intake": 1000, "exercise": 800, "leanMass": 40 }, "expect": { "ea": 5, "status": "critical" } },
+  { "name": "sem massa magra válida — null", "input": { "intake": 2000, "exercise": 400, "leanMass": 0 }, "expect": null }
+]

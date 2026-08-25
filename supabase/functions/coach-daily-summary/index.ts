@@ -16,6 +16,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
+import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,7 +156,17 @@ function formatPlanItemsSummary(items: any[]): string {
 const VIAB_MIN_WEEKS = SHARED_MIN_PREP_WEEKS;
 const viabCatDist = sharedCategorizeDistance;
 
-function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
+// O corte do Polimento/Taper delega em ../_shared/formulas/taper.ts (T1) —
+// era um `daysUntil <= 14` fixo, igual para qualquer nível/distância/
+// prioridade (mesma correção de coach-chat/index.ts — ver
+// specs/formulas-checklist.md Fase C).
+function getRacePhase(
+  daysUntil: number,
+  distanceKm: number | null,
+  level: string | null,
+  racePriority: string | null,
+  raceType: string | null,
+): string {
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
   const cat = viabCatDist(distanceKm);
   let minWeeks = 12; // defeito
@@ -163,11 +174,12 @@ function getRacePhase(daysUntil: number, distanceKm: number | null, level: strin
     minWeeks = VIAB_MIN_WEEKS[level][cat] as number;
   }
   const maxDays = minWeeks * 7;
+  const taperDays = sharedGetTaperDays(distanceKm, racePriority ?? "a", level ?? "iniciante", raceType ?? "estrada");
 
   if (daysUntil > maxDays + 14) return `Não iniciado (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
   if (daysUntil > maxDays) return `A iniciar em breve (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
   if (daysUntil === maxDays) return `Início do plano (arranca hoje o bloco de ${minWeeks} semanas)`;
-  if (daysUntil <= 14) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias)`;
+  if (daysUntil <= taperDays) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias, taper de ${taperDays} dias para este nível/distância/prioridade)`;
   return `Em curso / Carga (a meio da preparação, plano de ${minWeeks} semanas)`;
 }
 
@@ -288,7 +300,9 @@ export function buildDailySummaryContext(params: {
       fase_do_plano: getRacePhase(
         Math.round((new Date(nextRace.date + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86400000),
         nextRace.distance_km ?? null,
-        nextRace.experience_level || profile?.experience_level || 'iniciante'
+        nextRace.experience_level || profile?.experience_level || 'iniciante',
+        nextRace.race_priority ?? null,
+        nextRace.race_type ?? null,
       )
     } : null,
   };

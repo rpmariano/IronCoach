@@ -13,6 +13,8 @@ import { normalizeGender } from '@formulas/vocabulary.ts';
 import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
 import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
+import { getTaperDays } from '@formulas/taper.ts';
+import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -613,6 +615,13 @@ export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRan
  * EA = (Kcal Ingeridas - Kcal Gasto Exercício) / Massa Magra (kg)
  * Limiar crítico: < 30 kcal/kg FFM/dia
  */
+// EA diária delega em @formulas/energyAvailability.ts (T1) — único cálculo
+// no projeto (sem cópias a eliminar), mas com uma limitação de doutrina
+// que a Fase C NÃO resolve (decisão explícita do utilizador): o
+// denominador `lean_body_mass_kg` vem sempre de BIA, que a própria
+// doutrina (04-nutricao-seguranca.md:40) considera fraca para isto — ver
+// o comentário completo em energyAvailability.ts. Fica registado como
+// ponto a melhorar na doutrina, não como bug a corrigir agora.
 export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSessions, dateRange) {
   try {
     const filteredMeals = filterByDateRange(meals, dateRange);
@@ -651,10 +660,9 @@ export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSes
 
     // Calcular EA diária
     const daily = Object.entries(days).map(([date, d]) => {
-      const ea = leanMass > 0 ? (d.intake - d.exercise) / leanMass : 0;
-      let status = 'optimal';
-      if (ea < Constants.EA_CRITICAL) status = 'critical';
-      else if (ea < Constants.EA_OPTIMAL) status = 'subclinical';
+      const result = computeEnergyAvailability(d.intake, d.exercise, leanMass);
+      const ea = result?.ea ?? 0;
+      const status = result?.status ?? 'optimal';
       return { date, ea: Math.round(ea * 10) / 10, status, intake: Math.round(d.intake), exercise: Math.round(d.exercise) };
     }).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -892,6 +900,10 @@ export function detectCoachInsights(data, profile) {
         const daysLeft = Math.max(0, differenceInDays(raceDate, now));
         const dist = Number(next.distance_km) || 10;
         const raceName = next.name || 'a prova';
+        // Usado no ramo de Tapering abaixo — calculado aqui para não
+        // repetir a chamada (resolveExperienceLevel/getTaperDays são
+        // baratas, mas uma só chamada é mais claro que duas).
+        const taperDaysForNext = getTaperDays(dist, next.race_priority || 'a', resolveExperienceLevel(next, profile), next.race_type || 'estrada');
 
         // 5a. Marcos Temporais da Preparação (Timeline da Prova)
         if (daysLeft === 0) {
@@ -910,13 +922,18 @@ export function detectCoachInsights(data, profile) {
             message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km)! Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
             metric: 'Prova', value: daysLeft, threshold: 7, module: 'corrida'
           });
-        } else if ((dist >= 35 && daysLeft >= 8 && daysLeft <= 21) || (dist >= 15 && dist < 35 && daysLeft >= 8 && daysLeft <= 14) || (dist < 15 && daysLeft >= 4 && daysLeft <= 7)) {
+        } else if (daysLeft >= 8 && daysLeft <= taperDaysForNext) {
+          // Limiar delega em @formulas/taper.ts (T1) — eram 3 limiares fixos
+          // em km (35/15) que nem batiam com categorizeDistance e ignoravam
+          // nível/prioridade por completo (ver specs/formulas-checklist.md
+          // Fase C). daysLeft 1-7 fica coberto pelo ramo "Reta Final" acima,
+          // por isso o limiar inferior aqui mantém-se em 8.
           insights.push({
             id: `race_tapering_${next.id || 'next'}`,
             severity: 'info',
             title: `Fase de Polimento (Tapering): ${raceName}`,
             message: `Fase de carga máxima terminada para ${raceName}! Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
-            metric: 'Tapering', value: daysLeft, threshold: dist >= 35 ? 21 : 14, module: 'corrida'
+            metric: 'Tapering', value: daysLeft, threshold: taperDaysForNext, module: 'corrida'
           });
         } else if ((dist >= 35 && daysLeft >= 90 && daysLeft <= 126) || (dist >= 15 && dist < 35 && daysLeft >= 56 && daysLeft <= 84) || (dist < 15 && daysLeft >= 35 && daysLeft <= 56)) {
           insights.push({

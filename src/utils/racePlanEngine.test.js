@@ -27,13 +27,19 @@ describe('racePlanEngine — Duração recomendada & conversões', () => {
     expect(getRecoveryDaysAfterRace(42.2, 'avancado')).toBe(21);
   });
 
-  it('calcula o taper de acordo com a prioridade A/B/C', () => {
-    // A-race: taper longo
+  it('calcula o taper de acordo com a prioridade A/B/C, por inteiro sensível ao nível (Fase C)', () => {
+    // A-race: taper longo, e agora sensível ao nível — Fase C passou a usar
+    // a tabela completa da doutrina (Bloco 2.3 #1) em vez de um valor flat
+    // por distância. Iniciante numa maratona: 10-14 dias (limite superior
+    // 14 → 2 semanas), mais curto que básico/médio/avançado (14-21 dias →
+    // 3 semanas) — antes disto a app dava sempre 3 semanas a toda a gente.
     expect(getTaperWeeks(10, 'a', 'iniciante')).toBe(1);
     expect(getTaperWeeks(21.1, 'a', 'iniciante')).toBe(2);
-    expect(getTaperWeeks(42.2, 'a', 'iniciante')).toBe(3);
+    expect(getTaperWeeks(42.2, 'a', 'iniciante')).toBe(2);
+    expect(getTaperWeeks(42.2, 'a', 'basico')).toBe(3);
+    expect(getTaperWeeks(42.2, 'a', 'avancado')).toBe(3);
 
-    // B-race / C-race: taper curto (1 semana)
+    // B-race / C-race: taper curto (1 semana), independente do nível
     expect(getTaperWeeks(42.2, 'b', 'iniciante')).toBe(1);
     expect(getTaperWeeks(42.2, 'c', 'iniciante')).toBe(1);
   });

@@ -13,6 +13,7 @@ import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM, assessRaceViability,
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace, racePriorityLabel } from './run';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
+import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -83,21 +84,13 @@ export function getRecoveryDaysAfterRace(distanceKm, experienceLevel = 'iniciant
 }
 
 // ─── Dias de Polimento / Taper por Prioridade e Distância (Bloco 2.3 #1) ────────
+// Delega em @formulas/taper.ts (T1) — a tabela completa da doutrina
+// (nível×distância×prioridade), decidida na Fase C como fonte única. Esta
+// função aqui já recebia `experienceLevel` mas nunca o usava (era flat por
+// distância/prioridade, ignorando o nível por completo) — ver
+// specs/formulas-centralizacao.md §5.2, specs/formulas-checklist.md Fase C.
 export function getTaperWeeks(distanceKm, racePriority = 'a', experienceLevel = 'iniciante', raceType = 'estrada') {
-  if (racePriority === 'b' || racePriority === 'c') {
-    return 1; // Provas secundárias ou de treino levam 2-4 dias de taper (~1 semana de descarga)
-  }
-  // Doutrina (Corrida 2.3 #1): "Ultra/Trail" é categoria própria na tabela
-  // de taper, com o mesmo taper de Maratona (14-21 dias, ~3 semanas) em
-  // quase todos os níveis — INDEPENDENTE da distância nominal. É o risco de
-  // dano muscular excêntrico (descidas) e terreno técnico que justifica o
-  // taper longo, não "ser uma distância equivalente maior" — ao contrário
-  // da previsão de tempo (Riegel), aqui não se usa o km equivalente ITRA.
-  if (raceType === 'trail') return 3;
-  const cat = categorizeDistance(distanceKm) || '10k';
-  if (cat === '5k' || cat === '10k') return 1;
-  if (cat === 'meia') return 2;
-  return 3; // Maratona e Ultra em A-Race levam 3 semanas (21 dias com redução exponencial)
+  return sharedGetTaperWeeks(distanceKm, racePriority, experienceLevel, raceType);
 }
 
 // ─── Conversão de Trail (ITRA / Naismith) ──────────────────────────────────────
