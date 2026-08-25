@@ -21,6 +21,9 @@ import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 import { estimate1RM } from '@formulas/epley.ts';
 import { computeTrainingDistribution } from '@formulas/trainingDistribution.ts';
 import { computeVdotTrend } from '@formulas/vdotTrend.ts';
+import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
+import { computeGymVolumeLoad } from '@formulas/volumeLoad.ts';
+import { computeMuscleGroupVolume as sharedComputeMuscleGroupVolume } from '@formulas/muscleGroupVolume.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -323,64 +326,20 @@ export function getVDOTTrend(runs) {
  * de uma migração de backfill — `volume_kg` fica só como atalho, caso
  * algum dia passe a ser escrito.
  */
+// Delega em @formulas/sessionVolumeKg.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function sessionVolumeKg(session) {
-  if (typeof session?.volume_kg === 'number' && session.volume_kg > 0) return session.volume_kg;
-  return (session?.workout_session_sets || []).reduce(
-    (sum, s) => sum + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0
-  );
+  return computeSessionVolumeKg(session);
 }
 
 /** Gym Analytics */
+// Delega em @formulas/volumeLoad.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E). `todayISO()` (fuso
+// local) substitui o `new Date()` impuro do original — ver o comentário em
+// relativeDateRange.ts sobre a simplificação para granularidade de dia.
 export function calculateVolumeLoad(gymSessions, dateRange) {
   try {
-    const filtered = filterByDateRange(gymSessions, dateRange);
-    let totalVolumeLoad = 0;
-    const weeks = {};
-
-    filtered.forEach(s => {
-      const vl = sessionVolumeKg(s);
-      totalVolumeLoad += vl;
-
-      const d = parseISO(s.date);
-      if (isValid(d)) {
-        const weekStart = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-        if (!weeks[weekStart]) weeks[weekStart] = { weekLabel: weekStart, volumeLoad: 0 };
-        weeks[weekStart].volumeLoad += vl;
-      }
-    });
-
-    // ACWR real do ginásio: mesma janela agudo (7 dias) / crónico (média de
-    // 4 semanas) do calculateACWR de corrida, com o volume-carga (kg) como
-    // "load" em vez de duração×RPE. Calculado sobre TODAS as sessões — não
-    // só as do `dateRange` do dashboard — porque o ACWR compara sempre as
-    // últimas 4 semanas, independentemente do período que o atleta esteja a
-    // ver no ecrã. Antes disto devolvia sempre 1.0 fixo ("Simplificação"),
-    // que o VolumeLoadChart mostrava como se fosse um valor real.
-    const now = new Date();
-    const acuteDate = subDays(now, 7);
-    const chronicDate = subDays(now, Constants.ACWR_MIN_HISTORY_DAYS);
-    let acuteLoad = 0;
-    let chronicLoad = 0;
-    (gymSessions || []).forEach(s => {
-      const d = parseISO(s.date);
-      if (!isValid(d)) return;
-      const vl = sessionVolumeKg(s);
-      if (isAfter(d, chronicDate)) {
-        chronicLoad += vl;
-        if (isAfter(d, acuteDate)) acuteLoad += vl;
-      }
-    });
-    const chronicAvg = chronicLoad / 4;
-    const ratio = chronicAvg > 0 ? acuteLoad / chronicAvg : 0;
-    const hasEnoughData = (gymSessions || []).some(s => !isAfter(parseISO(s.date), acuteDate));
-
-    return {
-      totalVolumeLoad,
-      weeklyBreakdown: Object.values(weeks).sort((a,b) => a.weekLabel.localeCompare(b.weekLabel)),
-      acwr: ratio,
-      acwrStatus: resolveAcwrStatus(ratio),
-      acwrHasEnoughData: hasEnoughData,
-    };
+    return computeGymVolumeLoad(gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return { totalVolumeLoad: 0, weeklyBreakdown: [], acwr: 0, acwrStatus: 'unknown', acwrHasEnoughData: false };
   }
@@ -416,20 +375,11 @@ export function calculate1RMProgression(gymSessions, exerciseName) {
   }
 }
 
+// Delega em @formulas/muscleGroupVolume.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateMuscleGroupVolume(gymSessions, dateRange) {
   try {
-    const filtered = filterByDateRange(gymSessions, dateRange);
-    const groups = {};
-    
-    filtered.forEach(s => {
-      const cats = s.categories || [];
-      cats.forEach(cat => {
-        if (!groups[cat]) groups[cat] = { sets: 0, volumeLoad: 0 };
-        groups[cat].sets += (s.workout_session_sets?.length || 0);
-        groups[cat].volumeLoad += sessionVolumeKg(s);
-      });
-    });
-    return groups;
+    return sharedComputeMuscleGroupVolume(gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return {};
   }

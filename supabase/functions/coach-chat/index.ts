@@ -18,6 +18,9 @@ import { computeTrainingDistribution } from "../_shared/formulas/trainingDistrib
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
+import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
+import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
+import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1007,6 +1010,48 @@ function buildRunAnalyticsPanel(runs: any[], experienceLevel: string | null, win
 
   if (lines.length === 0) return null;
   return `PAINEL DE CORRIDA (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
+}
+
+// ─── Painel de indicadores de ginásio (Fase E — omnisciência) ──────────────
+// Mesmo racional do buildRunAnalyticsPanel: volume-carga, ACWR de ginásio,
+// grupos musculares e analytics de aulas só existiam no ecrã (GymDashboard,
+// biEngine.js) antes desta fase. Delega nos mesmos módulos de
+// _shared/formulas/ que o GymDashboard.jsx passou a usar — mesmo código,
+// mesmo número dos dois lados. Passa "todos" como range (não é uma das 6
+// chaves de relativeDateRange.ts) para NÃO filtrar de novo: `sessions` já
+// vem pré-filtrado pela query de 30 dias do handler — filtrar outra vez por
+// "mes" poderia cortar 1-2 dias a mais em meses de 31 dias, por engano.
+// deno-lint-ignore no-explicit-any
+function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: number): string | null {
+  if (!sessions || sessions.length === 0) return null;
+
+  const lines: string[] = [];
+  const RANGE = "todos";
+
+  const vol = computeGymVolumeLoad(sessions, todayISO, RANGE);
+  if (vol.totalVolumeLoad > 0) {
+    lines.push(
+      `- Volume-carga (${windowDays}d): ${Math.round(vol.totalVolumeLoad)} kg — ACWR ginásio ${vol.acwrHasEnoughData ? vol.acwr.toFixed(2) : "sem histórico suficiente"} (zona: ${vol.acwrStatus})`,
+    );
+  }
+
+  const groups = computeMuscleGroupVolume(sessions, todayISO, RANGE);
+  const groupEntries = Object.entries(groups).sort((a, b) => b[1].volumeLoad - a[1].volumeLoad);
+  if (groupEntries.length > 0) {
+    const top = groupEntries.slice(0, 5).map(([name, g]) => `${name} ${Math.round(g.volumeLoad)}kg/${g.sets}séries`);
+    lines.push(`- Grupos musculares (${windowDays}d): ${top.join(" · ")}`);
+  }
+
+  const classes = computeClassAnalytics(sessions, todayISO, RANGE);
+  if (classes.totalClasses > 0) {
+    const topClasses = classes.classList.slice(0, 3).map((c) => `${c.name} ×${c.count}${c.avgRpe ? ` (RPE ${c.avgRpe})` : ""}`);
+    lines.push(
+      `- Aulas (${windowDays}d): ${classes.totalClasses} aula(s), ${Math.round(classes.totalClassSeconds / 60)} min totais${classes.avgRpe ? `, RPE médio ${classes.avgRpe}` : ""} — ${topClasses.join(" · ")}`,
+    );
+  }
+
+  if (lines.length === 0) return null;
+  return `PAINEL DE GINÁSIO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
@@ -2160,6 +2205,9 @@ export function buildSystemInstruction(
   // continua a funcionar como antes (só a lista bruta + ACWR + volume
   // semanal), apenas sem VDOT/polarização/recordes/relógio.
   runAnalyticsPanel: string | null = null,
+  // Idem — painel de indicadores de ginásio (Fase E): volume-carga, ACWR de
+  // ginásio, grupos musculares, analytics de aulas.
+  gymAnalyticsPanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2537,7 +2585,8 @@ export function buildSystemInstruction(
     `1. Se já existe no contexto um total pré-calculado para o que foi pedido (ex.: "VOLUME ` +
     `SEMANAL (calendário)" para "esta semana"/"semana passada" de corrida, "ACWR" para carga ` +
     `aguda/crónica, "PAINEL DE CORRIDA" para VDOT/polarização 80-20/melhores paces/desnível-` +
-    `calorias-cadência, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
+    `calorias-cadência, "PAINEL DE GINÁSIO" para volume-carga/ACWR de ginásio/grupos ` +
+    `musculares/aulas, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
     `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
     `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
     `partir da lista bruta apenas se for uma soma simples e curta — caso contrário chama a ` +
@@ -3027,6 +3076,7 @@ export function buildSystemInstruction(
   if (weeklyRunningContext) sys += `\n\n${weeklyRunningContext}`;
   if (acwrLine) sys += `\n${acwrLine}`;
   if (runAnalyticsPanel) sys += `\n\n${runAnalyticsPanel}`;
+  if (gymAnalyticsPanel) sys += `\n\n${gymAnalyticsPanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3221,6 +3271,7 @@ async function handler(req: Request): Promise<Response> {
     const gymSummary = buildGymSummary(gymSessions || [], GYM_WINDOW_DAYS);
     const gymRows = summariseSessions(gymSessions || []);
     const gymMetricsLine = computeGymMetrics(gymRows, todayISO);
+    const gymAnalyticsPanel = buildGymAnalyticsPanel(gymSessions || [], todayISO, GYM_WINDOW_DAYS);
 
     // ── Corridas dos últimos 30 dias ──────────────────────────────────────
     const RUNNING_WINDOW_DAYS = 30;
@@ -3532,7 +3583,8 @@ async function handler(req: Request): Promise<Response> {
       shoesContext,
       coachingMode,
       weeklyRunningContext,
-      runAnalyticsPanel
+      runAnalyticsPanel,
+      gymAnalyticsPanel
     );
 
     let finalSystemInstruction = systemInstruction;

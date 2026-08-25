@@ -1,0 +1,66 @@
+[
+  {
+    "name": "duas aulas de tipos diferentes + um treino de força (ignorado) — conta, tempo e RPE médio",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "sessions": [
+        { "date": "2026-08-24", "kind": "aula", "name": "HIIT", "categories": [], "duration_seconds": 1800, "exertion": 8 },
+        { "date": "2026-08-22", "kind": "aula", "name": "Pilates", "categories": [], "duration_seconds": 3000, "exertion": 4 },
+        { "date": "2026-08-23", "kind": "aula", "name": "HIIT", "categories": [], "duration_seconds": 1500, "exertion": 6 },
+        { "date": "2026-08-21", "kind": "forca", "name": "Pernas", "categories": ["Pernas"], "duration_seconds": 2400, "exertion": 9 }
+      ]
+    },
+    "expect": {
+      "totalClasses": 3,
+      "totalClassSeconds": 6300,
+      "avgRpe": "6.0",
+      "classList": [
+        { "name": "HIIT", "count": 2, "totalSeconds": 3300, "avgRpe": "7.0" },
+        { "name": "Pilates", "count": 1, "totalSeconds": 3000, "avgRpe": "4.0" }
+      ]
+    }
+  },
+  {
+    "name": "categorias no lugar do nome quando presentes; sem categorias nem nome cai em 'Aula de Grupo'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-08-20", "kind": "aula", "name": "Spin", "categories": ["RPM", "Cardio"], "duration_seconds": 2700, "exertion": null }
+      ]
+    },
+    "expect": {
+      "totalClasses": 1,
+      "totalClassSeconds": 2700,
+      "avgRpe": null,
+      "classList": [
+        { "name": "RPM", "count": 1, "totalSeconds": 2700, "avgRpe": null },
+        { "name": "Cardio", "count": 1, "totalSeconds": 2700, "avgRpe": null }
+      ]
+    }
+  },
+  {
+    "name": "fallback para rpe quando exertion é null",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "sessions": [
+        { "date": "2026-08-24", "kind": "aula", "name": null, "categories": [], "duration_seconds": 1800, "exertion": null, "rpe": 5 }
+      ]
+    },
+    "expect": {
+      "totalClasses": 1,
+      "totalClassSeconds": 1800,
+      "avgRpe": "5.0",
+      "classList": [
+        { "name": "Aula de Grupo", "count": 1, "totalSeconds": 1800, "avgRpe": "5.0" }
+      ]
+    }
+  },
+  {
+    "name": "sem aulas no período — zeros/vazio",
+    "input": { "todayISO": "2026-08-25", "range": "semana", "sessions": [] },
+    "expect": { "totalClasses": 0, "totalClassSeconds": 0, "avgRpe": null, "classList": [] }
+  }
+]

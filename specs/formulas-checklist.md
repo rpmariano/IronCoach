@@ -579,6 +579,68 @@ agregação nem linha no painel. Limpeza futura (fora desta fase): remover
 
 ---
 
+### E2 — Agregações de ginásio
+
+Cinco módulos T1.5 novos:
+
+- [x] `sessionVolumeKg.ts` — Σ peso×reps de uma sessão (fórmula de base para
+  os outros três).
+- [x] `relativeDateRange.ts` — filtro "período relativo" (dia/semana/mês/
+  trimestre/6meses/ano) usado pelos seletores de intervalo dos dashboards.
+  Extraído de `filterByDateRange` (impuro, `new Date()` + date-fns) para uma
+  versão pura com `todayISO` explícito e cálculo de mês/ano em UTC — clamp de
+  fim de mês replicado manualmente (31 Jan − 1 mês = 31 Dez; 31 Mar − 1 mês
+  = 28/29 Fev, testado nos dois casos) para não mudar o que os dashboards
+  mostram. Simplifica a granularidade de hora do original (que dependia da
+  hora exata do render) para granularidade de dia — inofensivo porque todas
+  as tabelas consumidas guardam `date`, não timestamp; documentado no módulo.
+- [x] `volumeLoad.ts` — volume-carga total, quebra semanal e ACWR de
+  ginásio. **Bug de porte apanhado antes de commitar** (não chegou a ir para
+  produção): a primeira versão tinha a semântica de `acwrHasEnoughData`
+  invertida — o original verifica se existe HISTÓRICO ANTERIOR à janela
+  aguda (`!isAfter(d, acuteDate)`, ou seja "alguma sessão com 7+ dias"), não
+  se há sessões agudas; corrigido e coberto por um caso de vetor dourado
+  dedicado (sessão única e recente → `acwrHasEnoughData: false` apesar de o
+  rácio ser calculável).
+- [x] `muscleGroupVolume.ts` — séries e volume por grupo muscular.
+- [x] `classAnalytics.ts` — contagem/tempo/RPE médio por aula, no geral e
+  por modalidade. `avgRpe` mantido como STRING (`toFixed(1)`) para não
+  mudar o que já está no ecrã — o original já formatava assim antes de
+  guardar no estado.
+- [x] `biEngine.js` (`sessionVolumeKg`, `calculateVolumeLoad`,
+  `calculateMuscleGroupVolume`) e `GymDashboard.jsx` (`classAnalytics`)
+  migrados para importar os módulos partilhados; implementações locais
+  eliminadas. `calculateVolumeLoad`/`calculateMuscleGroupVolume` passam a
+  receber `todayISO()` (fuso local, já existia no import de `lib/utils.js`)
+  em vez do `new Date()` impuro.
+- [x] `coach-chat/index.ts`: novo bloco **"PAINEL DE GINÁSIO"** no prompt —
+  volume-carga + ACWR de ginásio, top-5 grupos musculares, top-3 aulas com
+  RPE médio. Usa os `workout_sessions` de 30 dias já carregados (sem query
+  nova) com um range sentinela ("todos", fora das 6 chaves reconhecidas)
+  para não voltar a filtrar um array que a query já limitou por data — evitar
+  um corte adicional nos meses de 31 dias. Regra de ouro do gate estendida.
+- [x] `npx vitest run` verde — 585/585 (559 + 26 novos). `npm run build`
+  verde. Saída dos 3 módulos verificada manualmente com dados realistas.
+
+**Decisão do utilizador (2026-08-25): `oneRepMax.ts` retirado do âmbito.**
+A app deixou de ter registo de exercícios específicos, só categorias/grupos
+musculares — `calculate1RMProgression` (`biEngine.js`) já não tem consumidor
+em `src/components/`. `epley.ts` fica no repositório mas não ganha módulo de
+agregação nem linha no painel. Limpeza futura (fora desta fase): remover
+`calculate1RMProgression` quando se mexer em `biEngine.js` por outro motivo.
+
+**Duplicação relacionada identificada, fora do âmbito desta fase:**
+`summariseSessions` (`coach-chat/index.ts:684`) reimplementa a mesma soma
+peso×reps de `sessionVolumeKg`, só que por linha bruta em vez de delegar —
+os totais batem por coincidência (ambos tratam série incompleta como 0), mas
+é a mesma classe de duplicação que a Fase E veio eliminar. Não migrado agora
+porque o objetivo de `summariseSessions` é montar a listagem linha-a-linha
+para o prompt (Bloco 3 #10, contagem de séries ≥15 reps), não um agregado —
+mudar isso é um passo maior do que esta fase pedia. Fica anotado para uma
+futura limpeza.
+
+---
+
 **Gap identificado, fora do âmbito desta fase — Fase E (auditoria de
 cobertura):** o Índice de Prontidão (`calculateReadinessIndex`, T2,
 `biEngine.js`) e os seus pilares NÃO chegam ao prompt da Carol — se o
