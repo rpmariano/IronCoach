@@ -183,39 +183,95 @@ default do Deno variar por versão.
 Por cada fórmula movida, esta sub-checklist (repetir por linha do inventário em
 `formulas-centralizacao.md` §4 marcada 🔴 ou 🟠):
 
-- [ ] Fórmula extraída para `supabase/functions/_shared/formulas/<nome>.ts`,
+- [x] Fórmula extraída para `supabase/functions/_shared/formulas/<nome>.ts`,
   pura (sem date-fns, sem I/O), com `@doutrina` a apontar para o bloco de
-  origem.
-- [ ] Vetor dourado (`<nome>.golden.json`) escrito, cobrindo pelo menos: caso
+  origem. — feito para `acwr.ts`, `bodyComposition.ts`, `weightTrend.ts`.
+- [x] Vetor dourado (`<nome>.golden.json`) escrito, cobrindo pelo menos: caso
   central, as duas fronteiras de cada zona/limiar, e um caso de dados em falta
-  (`null`/`0`).
-- [ ] Teste Vitest a percorrer o vetor dourado, verde.
-- [ ] Teste Deno a percorrer o **mesmo** vetor dourado, verde.
-- [ ] Todos os consumidores anteriores (listados na coluna "Cópias hoje" do
-  inventário) migrados para importar a fórmula — zero reimplementações
-  restantes (confirmar por grep).
-- [ ] Cópia antiga apagada (não comentada, não deixada "por garantia").
+  (`null`/`0`). — `acwr.golden.json`, `bodyComposition.golden.json`,
+  `weightTrend.golden.json`.
+- [x] Teste Vitest a percorrer o vetor dourado, verde — `acwr.spec.js`,
+  `bodyComposition.spec.js`, `weightTrend.spec.js` (20 casos, todos verdes).
+- [x] Teste Deno a percorrer o **mesmo** vetor dourado — escrito
+  (`acwr.test.ts`, `bodyComposition.test.ts`, `weightTrend.test.ts`); não
+  corrido neste ambiente (sem `deno` instalado) — a confirmar no primeiro
+  `deno test` local ou no deploy.
+- [x] Todos os consumidores anteriores migrados para importar a fórmula —
+  ACWR (`biEngine.js`, `coach-chat`, `coach-daily-summary`), gordura
+  visceral (`biEngine.js`, `coach-chat`), tendência de peso (`biEngine.js`,
+  `coach-chat`, `coach-daily-summary`).
+- [x] Cópia antiga apagada — `VISCERAL_FAT_HEALTHY_MAX`/`VISCERAL_FAT_ALERT_MAX`
+  removidas de `biConstants.js`; `ACWR_DANGER`/`ACWR_SAFE_MAX`/
+  `ACWR_UNDER_TRAINING` viram reexport de `acwr.ts` em vez de definição
+  local.
+
+**Decisões tomadas nesta ronda (Fase C, 1.ª leva):**
+- ACWR: grandeza única em **km** (não sRPE) — `biEngine.js` deixou de usar
+  duração×RPE; `calculateACWR`/`calculateACWRHistory` migradas, janela 7d/28d
+  igual às Edge Functions. Rótulos "(sRPE)"/"(baseado em km)" da Fase A
+  (P0-3) removidos — já não há grandezas distintas para desambiguar.
+- Taper: **adiado** — tabela doutrina nível×distância×prioridade escolhida,
+  mas a migração das 4 implementações incompatíveis fica para a próxima
+  ronda (é a maior peça ainda por fazer nesta fase).
+- Tendência de peso: **EWMA α≈0,25** (a já usada em `biEngine.js`) — migradas
+  `coach-chat` (média simples 7d) e `coach-daily-summary` (regressão 2
+  pontos).
+- EA (denominador `lean_body_mass_kg`): **mantido por agora**, registado como
+  ponto a melhorar na doutrina (não implementado nesta ronda — decisão
+  explícita do utilizador).
+- Gordura visceral (não era uma das 4 perguntas, mas P0 do inventário):
+  corrigida de raiz — `biEngine.js` só verificava `>= 14`, saltando a faixa
+  de alerta 10-13.
+
+### Ainda por fazer nesta fase (T1 restantes)
+
+Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
+
+- [ ] **Taper** — 4 implementações incompatíveis, decisão já tomada (tabela
+  doutrina), migração ainda não feita.
+- [ ] VDOT (Daniels-Gilbert), Riegel, equivalente ITRA — já são sítio único
+  no frontend (`biEngine.js`/`racePlanEngine.js`); só falta mudar de casa
+  para `_shared/formulas/` com vetor dourado, sem mudança de comportamento.
+- [ ] Mifflin-St Jeor/TDEE — P0-4 continua deliberadamente por resolver
+  (decisão do utilizador, Fase A).
+- [ ] Tanaka/Karvonen, Epley (1RM) — sítio único, só mudar de casa.
+- [ ] `sessionVolumeKg` — já existe e é usada dentro de `biEngine.js`, mas
+  `GymDashboard.jsx`/`GymSessionCard.jsx` continuam a reimplementá-la.
+- [ ] Sapatilhas (desgaste) — 3 implementações, uma delas sem os limiares de
+  aviso.
+- [ ] Limiar de perda de peso rápida — 3 valores incoerentes (0,7%/sem ·
+  0,9 kg/sem · 1,5%/72h) nas 3 runtimes; distinto da tendência de peso
+  (esse já resolvido nesta ronda).
+- [ ] Compliance nutricional — 3 escalas diferentes (85/115 · 90/70/115 ·
+  75/90/110).
 
 ### Paridade frontend↔backend a confirmar nesta fase
 
 Lista dos valores que, depois da migração, têm de bater byte-a-byte nas duas
 runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
 
-- [ ] ACWR: mesmo ratio e mesma zona para o mesmo histórico de corridas.
-- [ ] `categorizeDistance`: mesma categoria nas fronteiras exatas (5.5, 11.0,
-  22.5, 50.0 km).
-- [ ] Taper: mesmas semanas para a mesma combinação nível×distância×prioridade.
-- [ ] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil.
+- [x] ACWR: mesmo ratio e mesma zona para o mesmo histórico de corridas —
+  golden vector comum, 9 casos.
+- [x] `categorizeDistance`: mesma categoria nas fronteiras exatas (5.5, 11.0,
+  22.5, 50.0 km) — Fase B, `vocabulary.ts`.
+- [ ] Taper: mesmas semanas para a mesma combinação nível×distância×prioridade
+  — pendente (ver acima).
+- [ ] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil —
+  pendente (P0-4 continua em aberto).
 - [ ] Riegel: mesma previsão de tempo/pace, incluindo o caso trail (equivalente
-  ITRA) — este é o bug original desta sessão; não regredir.
-- [ ] Gordura visceral: mesmos 3 escalões (1-9/10-14/≥15) nos dois lados.
+  ITRA) — este é o bug original desta sessão; não regredir. Ainda não
+  migrado para `_shared/formulas/`.
+- [x] Gordura visceral: mesmos 3 escalões (1-9/10-14/≥15) nos dois lados —
+  golden vector comum, 7 casos.
 
-**Verificação de saída da Fase C:**
-- [ ] `npx vitest run` verde.
-- [ ] `deno test` (toda a suite de edge functions) verde.
-- [ ] `npm run build` verde.
-- [ ] Grep de confirmação: nenhuma das fórmulas migradas tem uma segunda
-  definição fora de `_shared/formulas/`.
+**Verificação de saída da Fase C (parcial — 3 de ~9 fórmulas T1 migradas):**
+- [x] `npx vitest run` verde — 450/450 (20 testes novos: 3 vetores dourados +
+  migração de fixtures existentes).
+- [ ] `deno test` (toda a suite de edge functions) verde — não corrido
+  (sem `deno` neste ambiente).
+- [x] `npm run build` verde.
+- [x] Grep de confirmação: ACWR, gordura visceral e tendência de peso não têm
+  segunda definição fora de `_shared/formulas/`.
 
 ---
 

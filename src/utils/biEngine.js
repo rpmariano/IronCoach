@@ -7,9 +7,12 @@ import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
-import { todayISO } from '../lib/utils';
+import { todayISO, addDaysISO } from '../lib/utils';
 import { mealNutrients } from './nutrition';
 import { normalizeGender } from '@formulas/vocabulary.ts';
+import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
+import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
+import { computeWeightTrend } from '@formulas/weightTrend.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -45,22 +48,16 @@ export function filterByDateRange(data, range, dateField = 'date') {
 }
 
 /**
- * Classifica um rácio agudo:crónico nos 4 estados da doutrina (biConstants).
- * Extraído para ser partilhado entre calculateACWR (corrida) e
- * calculateVolumeLoad (ginásio) — antes o ginásio nem calculava um rácio
- * real (ver histórico), e duplicar os limiares só abriria espaço para os
- * dois um dia divergirem.
+ * Classifica um rácio agudo:crónico nos 4 estados da doutrina — usada tanto
+ * pelo ACWR de corrida (km) como por calculateVolumeLoad (ginásio, kg): a
+ * classificação por zona é a mesma fórmula independentemente da grandeza
+ * de carga, só o rácio de entrada muda. Delega em
+ * @formulas/acwr.ts (T1), a mesma fórmula que as Edge Functions usam — ver
+ * specs/formulas-checklist.md Fase C (P0-2 já estava corrigido aqui na
+ * Fase A; esta migração só move a fórmula de casa).
  */
 function resolveAcwrStatus(ratio) {
-  if (ratio > Constants.ACWR_DANGER) return 'danger';
-  // Era ACWR_CAUTION_MAX (1.49) aqui — colapsava toda a banda de cautela da
-  // doutrina (1.31-1.49) em "safe", porque só ratios entre 1.49 e 1.50 caíam
-  // em caution. ACWR_SAFE_MAX (1.30) é o limiar certo: acima dele já é
-  // cautela; ACWR_SAFE_MAX estava definido em biConstants.js e nunca era
-  // lido em lado nenhum (ver specs/formulas-checklist.md P0-2).
-  if (ratio > Constants.ACWR_SAFE_MAX) return 'caution';
-  if (ratio < Constants.ACWR_UNDER_TRAINING) return 'undertrained';
-  return 'safe';
+  return classifyAcwrZone(ratio);
 }
 
 const ACWR_STATUS_COLOR = { safe: 'green', undertrained: 'yellow', caution: 'orange', danger: 'red', unknown: 'gray' };
@@ -83,47 +80,45 @@ export function acwrStatusLabel(status, hasEnoughData = true) {
 }
 
 /**
- * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) baseado na distância ou duração vezes RPE.
+ * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) em km —
+ * agudo: total dos últimos 7 dias (hoje incluído); crónico: média semanal
+ * dos últimos 28 dias. Era sRPE (duração×RPE) até à Fase C — grandeza
+ * diferente da usada pelas Edge Functions e da doutrina, que enquadra o
+ * ACWR em volume (ver specs/formulas-centralizacao.md §5.1,
+ * specs/formulas-checklist.md P0-3/Fase C). `today` usa todayISO() local
+ * por omissão, não UTC (mesma razão do P0-5).
  */
-export function calculateACWR(runs) {
+export function calculateACWR(runs, today = todayISO()) {
   try {
-    const now = new Date();
-    const acuteDate = subDays(now, 7);
-    const chronicDate = subDays(now, Constants.ACWR_MIN_HISTORY_DAYS);
+    const acuteStart = addDaysISO(today, -6);   // últimos 7 dias, hoje incluído
+    const chronicStart = addDaysISO(today, -(Constants.ACWR_MIN_HISTORY_DAYS - 1)); // últimos 28 dias, hoje incluído
 
-    let acuteLoad = 0;
-    let chronicLoad = 0;
+    let acuteKm = 0;
+    let chronicKm = 0;
 
-    runs.forEach(run => {
-      const d = parseISO(run.date);
-      if (!isValid(d)) return;
-      const load = (run.duration_seconds / 60) * (run.effort_rpe || 5); // Exemplo de load = duração (min) * RPE
-
-      if (isAfter(d, chronicDate)) {
-        chronicLoad += load;
-        if (isAfter(d, acuteDate)) {
-          acuteLoad += load;
-        }
-      }
+    (runs || []).forEach(run => {
+      if (!run.date || run.date > today || run.date < chronicStart) return;
+      const km = Number(run.distance_km) || 0;
+      chronicKm += km;
+      if (run.date >= acuteStart) acuteKm += km;
     });
 
-    const acuteAvg = acuteLoad;
-    const chronicAvg = chronicLoad / 4; // média de 4 semanas
-    const ratio = chronicAvg > 0 ? acuteAvg / chronicAvg : 0;
-    const hasEnoughData = runs.some(r => !isAfter(parseISO(r.date), acuteDate));
+    const chronicWeeklyKm = chronicKm / 4;
+    const { ratio, zone } = computeAcwr(acuteKm, chronicWeeklyKm);
+    const hasEnoughData = (runs || []).some(r => r.date && r.date < acuteStart);
+    const status = zone;
+    const color = ACWR_STATUS_COLOR[status] || ACWR_STATUS_COLOR.unknown;
 
-    const status = resolveAcwrStatus(ratio);
-    const color = ACWR_STATUS_COLOR[status];
-
-    return { acuteLoad, chronicLoad: chronicAvg, ratio, status, color, hasEnoughData };
+    return { acuteKm, chronicWeeklyKm, ratio: ratio ?? 0, status, color, hasEnoughData };
   } catch (e) {
-    return { acuteLoad: 0, chronicLoad: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false };
+    return { acuteKm: 0, chronicWeeklyKm: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false };
   }
 }
 
 /**
- * Calcula o histórico de ACWR (para as últimas 12 semanas) para apresentar no gráfico.
- * Carga = Duração (minutos) * RPE.
+ * Calcula o histórico de ACWR (para as últimas 12 semanas) para apresentar
+ * no gráfico. Carga = distância (km) — era duração×RPE até à Fase C, mesma
+ * migração de calculateACWR acima (specs/formulas-checklist.md Fase C).
  */
 export function calculateACWRHistory(runs, weeksCount = 12) {
   try {
@@ -148,10 +143,8 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
     runs.forEach(run => {
       const d = parseISO(run.date);
       if (!isValid(d)) return;
-      
-      const rpe = run.effort_rpe || 5;
-      const durationMin = (run.duration_seconds || 0) / 60;
-      const load = durationMin * rpe;
+
+      const load = Number(run.distance_km) || 0;
 
       const wStart = startOfWeek(d, { weekStartsOn: 1 }).getTime();
       const targetWeek = allWeeks.find(w => w.start.getTime() === wStart);
@@ -167,15 +160,15 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
       const w2 = allWeeks[i-1].load;
       const w3 = allWeeks[i-2].load;
       const w4 = allWeeks[i-3].load;
-      
+
       const chronicLoad = (w1 + w2 + w3 + w4) / 4;
-      const ratio = chronicLoad > 0 ? Number((acuteLoad / chronicLoad).toFixed(2)) : 0;
-      
+      const { ratio } = computeAcwr(acuteLoad, chronicLoad);
+
       result.push({
         weekLabel: allWeeks[i].label,
-        acuteLoad: Math.round(acuteLoad),
-        chronicLoad: Math.round(chronicLoad),
-        ratio
+        acuteLoad: Math.round(acuteLoad * 10) / 10,
+        chronicLoad: Math.round(chronicLoad * 10) / 10,
+        ratio: ratio !== null ? Math.round(ratio * 100) / 100 : 0
       });
     }
 
@@ -500,6 +493,14 @@ export function calculateMuscleGroupVolume(gymSessions, dateRange) {
  * @param {Array} bodyAssessments - Avaliações corporais do store.
  * @returns {{ rawPoints, movingAverage, trend, weeklyRate }}
  */
+// Delega em @formulas/weightTrend.ts (T1) — a mesma fórmula EWMA α≈0,25
+// que a Fase C escolheu como única (era a já usada aqui; coach-chat usava
+// média simples de 7 dias e coach-daily-summary regressão de 2 pontos —
+// ver specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md
+// Fase C). Esta função só prepara os pontos (filtra/ordena, que é leitura
+// de dados, não fórmula) e devolve `rawPoints` a par do resultado — os
+// consumidores existentes (gráfico de peso) precisam dos pontos brutos,
+// não só da série suavizada.
 export function calculateWeightTrend(bodyAssessments) {
   try {
     if (!bodyAssessments || bodyAssessments.length === 0) return null;
@@ -509,49 +510,10 @@ export function calculateWeightTrend(bodyAssessments) {
     if (sorted.length === 0) return null;
 
     const rawPoints = sorted.map(a => ({ date: a.date, weight: a.weight_kg }));
+    const result = computeWeightTrend(rawPoints);
+    if (!result) return null;
 
-    const alpha = 2 / (7 + 1); // ~0.25
-    const movingAverage = [];
-    const isEWMASmoothing = rawPoints.length >= 5;
-
-    if (isEWMASmoothing) {
-      let ewma = rawPoints[0].weight;
-      for (const pt of rawPoints) {
-        ewma = alpha * pt.weight + (1 - alpha) * ewma;
-        movingAverage.push({ date: pt.date, weight: Math.round(ewma * 100) / 100 });
-      }
-    } else {
-      for (const pt of rawPoints) {
-        movingAverage.push({ date: pt.date, weight: pt.weight });
-      }
-    }
-
-    // Calcular tendência e taxa semanal
-    let trend = 'estavel';
-    let weeklyRate = 0;
-    if (movingAverage.length >= 2) {
-      const recent = movingAverage[movingAverage.length - 1];
-      // Encontrar ponto de ~7 dias atrás
-      const oneWeekAgo = subDays(parseISO(recent.date), 7);
-      const weekAgoPoint = movingAverage.find(p => {
-        const d = parseISO(p.date);
-        return isValid(d) && isAfter(d, subDays(oneWeekAgo, 3));
-      });
-
-      if (weekAgoPoint) {
-        const diff = recent.weight - weekAgoPoint.weight;
-        weeklyRate = Math.round(diff * 100) / 100;
-        if (diff < -0.3) trend = 'descendo';
-        else if (diff > 0.3) trend = 'subindo';
-      } else {
-        // Fallback: comparar primeiro e último
-        const diff = movingAverage[movingAverage.length - 1].weight - movingAverage[0].weight;
-        if (diff < -0.5) trend = 'descendo';
-        else if (diff > 0.5) trend = 'subindo';
-      }
-    }
-
-    return { rawPoints, movingAverage, trend, weeklyRate, isEWMASmoothing };
+    return { rawPoints, ...result };
   } catch (e) {
     return null;
   }
@@ -814,19 +776,20 @@ export function detectCoachInsights(data, profile) {
         insights.push({
           id: 'acwr_danger', severity: 'critical',
           title: 'Carga de treino perigosa',
-          // "(sRPE)" é deliberado: este ACWR usa carga sRPE (min × RPE), uma
-          // grandeza diferente do ACWR em km que o backend calcula (ver
-          // coach-chat/index.ts acwrLine e specs/formulas-checklist.md P0-3).
-          // Sem o rótulo, os dois valores chegavam ao mesmo prompt da Carol
-          // sob o mesmo nome "ACWR", sem ela saber que medem coisas distintas.
-          message: `O teu ACWR (sRPE) está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
+          // Até à Fase C isto dizia "ACWR (sRPE)" — o ACWR do frontend usava
+          // carga sRPE (min × RPE), grandeza diferente do ACWR em km do
+          // backend, e o rótulo evitava que os dois se confundissem no
+          // prompt da Carol (P0-3, Fase A). A Fase C unificou os dois em km
+          // (specs/formulas-centralizacao.md §5.1) — já não há grandezas
+          // distintas para rotular.
+          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_DANGER, module: 'corrida'
         });
       } else if (acwr.hasEnoughData && acwr.status === 'caution') {
         insights.push({
           id: 'acwr_caution', severity: 'warning',
           title: 'Carga de treino elevada',
-          message: `O teu ACWR (sRPE) está em ${acwr.ratio.toFixed(2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
+          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_CAUTION_MAX, module: 'corrida'
         });
       }
@@ -857,13 +820,25 @@ export function detectCoachInsights(data, profile) {
         });
       }
 
-      // Gordura visceral elevada
-      if (latest.visceral_fat && latest.visceral_fat >= Constants.VISCERAL_FAT_ALERT_MAX) {
+      // Gordura visceral elevada. Delega em @formulas/bodyComposition.ts
+      // (T1) — antes só verificava `>= 14` (VISCERAL_FAT_ALERT_MAX), saltando
+      // a faixa de alerta 10-13 por completo e sem distinguir "risco
+      // elevado" (≥15) do simples "alerta" (10-14) que coach-chat já tinha
+      // certo (ver specs/formulas-checklist.md Fase C).
+      const visceralZone = classifyVisceralFat(latest.visceral_fat);
+      if (visceralZone === 'high_risk') {
         insights.push({
-          id: 'visceral_high', severity: 'warning',
-          title: 'Gordura visceral elevada',
-          message: `A tua gordura visceral está em ${latest.visceral_fat} — acima do limiar de alerta (${Constants.VISCERAL_FAT_ALERT_MAX}). Risco cardiovascular aumentado.`,
-          metric: 'Visceral', value: latest.visceral_fat, threshold: Constants.VISCERAL_FAT_ALERT_MAX, module: 'corpo'
+          id: 'visceral_high', severity: 'critical',
+          title: 'Gordura visceral em risco elevado',
+          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
+          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_HIGH_RISK_MIN, module: 'corpo'
+        });
+      } else if (visceralZone === 'alert') {
+        insights.push({
+          id: 'visceral_alert', severity: 'warning',
+          title: 'Gordura visceral em alerta',
+          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
+          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_ALERT_MIN, module: 'corpo'
         });
       }
 

@@ -20,6 +20,25 @@ Deno.test("computeBodyMetrics: limiar RED-S é 8% para 'M', não sempre 16%", ()
   assertEquals(female.hasRedSRisk, true); // 10% < 16% (limiar feminino) — risco
 });
 
+// Fase C (specs/formulas-checklist.md): weeklyWeightChange passou a delegar
+// em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) em vez de uma
+// regressão entre só o ponto mais recente e o mais antigo.
+Deno.test("computeBodyMetrics: weeklyWeightChange usa a EWMA partilhada (weightTrend.ts)", () => {
+  // bodyAssessments vem DESC da BD (mais recente primeiro).
+  const bodyAssessments = [
+    { date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 },
+    { date: "2026-08-04", body_fat_pct: 20, weight_kg: 80 },
+  ];
+  const result = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(result.weeklyWeightChange, -1);
+});
+
+Deno.test("computeBodyMetrics: com uma só medição, weeklyWeightChange fica null (não 0)", () => {
+  const bodyAssessments = [{ date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 }];
+  const result = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(result.weeklyWeightChange, null);
+});
+
 Deno.test("computeTDEE: BMR usa +5 para 'M' e -161 para 'F' (Mifflin-St Jeor)", () => {
   const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11" }; // idade = 30
   const bmrMale = 10 * 75 + 6.25 * 175 - 5 * 30 + 5;

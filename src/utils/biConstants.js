@@ -3,12 +3,14 @@
  * Todas as constantes quantitativas e limiares da doutrina de treinadores para o IronHealth.
  */
 
-// ACWR Thresholds
-export const ACWR_UNDER_TRAINING = 0.80; // (Yellow) < 0.80
+// ACWR Thresholds — ACWR_UNDER_TRAINING/ACWR_SAFE_MAX/ACWR_DANGER vivem em
+// supabase/functions/_shared/formulas/acwr.ts (T1), a mesma fórmula que as
+// Edge Functions usam. Reexportados aqui para não quebrar os consumidores
+// existentes (ver specs/formulas-checklist.md Fase C).
+import { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER } from '@formulas/acwr.ts';
+export { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER };
 export const ACWR_SAFE_MIN = 0.80;
-export const ACWR_SAFE_MAX = 1.30; // (Green) 0.80 - 1.30
-export const ACWR_CAUTION_MAX = 1.49; // (Orange) 1.31 - 1.49
-export const ACWR_DANGER = 1.50; // (Red) >= 1.50
+export const ACWR_CAUTION_MAX = 1.49; // (Orange) 1.31 - 1.49 — só usado como valor de referência num insight, não na classificação
 export const ACWR_MIN_HISTORY_DAYS = 28;
 
 // Volume Progression
@@ -48,8 +50,10 @@ export const BF_FLOOR_MEN = 6;
 export const BF_FLOOR_WOMEN = 14;
 export const BF_ALARM_MEN = 8;
 export const BF_ALARM_WOMEN = 16;
-export const VISCERAL_FAT_HEALTHY_MAX = 9;
-export const VISCERAL_FAT_ALERT_MAX = 14;
+// VISCERAL_FAT_HEALTHY_MAX/VISCERAL_FAT_ALERT_MAX viviam aqui — migradas
+// para @formulas/bodyComposition.ts (T1) na Fase C, que corrige o limiar
+// (o único consumidor comparava `>= 14`, saltando a faixa de alerta 10-13
+// da doutrina). Ver specs/formulas-checklist.md Fase C.
 
 // Riegel Race Prediction
 export const RIEGEL_FACTOR = {

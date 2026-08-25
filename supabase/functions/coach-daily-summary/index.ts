@@ -14,6 +14,8 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
+import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
+import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -379,6 +381,9 @@ function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | null {
 // Aguda = média diária dos últimos 7 dias; Crónica = média diária dos últimos 28.
 // ACWR > 1,5 indica risco elevado de lesão por sobrecarga (Foster 1998, Gabbett 2016).
 // Usa distância de corrida como proxy de carga (simplificação conservadora).
+// O ratio delega em ../_shared/formulas/acwr.ts (T1) — a mesma fórmula que
+// coach-chat e biEngine.js usam desde a Fase C (specs/formulas-checklist.md).
+// A agregação por data fica aqui (impura, específica desta runtime).
 function computeACWR(runs: any[], today: string): { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null } {
   const day7  = addDaysISO(today, -6);   // início da janela aguda (7 dias)
   const day28 = addDaysISO(today, -27);  // início da janela crónica (28 dias)
@@ -388,11 +393,13 @@ function computeACWR(runs: any[], today: string): { acute_km_per_day: number; ch
     .reduce((s: number, r: any) => s + (Number(r.distance_km) || 0), 0);
   const acutePerDay   = acuteKm / 7;
   const chronicPerDay = chronicKm / 28;
-  const ratio = chronicPerDay === 0 ? null : Math.round((acutePerDay / chronicPerDay) * 100) / 100;
+  // computeAcwr espera a média SEMANAL crónica (chronicPerDay × 7), não a
+  // diária — só o formato de entrada muda, o rácio resultante é o mesmo.
+  const { ratio } = sharedComputeAcwr(acuteKm, chronicPerDay * 7);
   return {
     acute_km_per_day:   Math.round(acutePerDay   * 10) / 10,
     chronic_km_per_day: Math.round(chronicPerDay * 10) / 10,
-    ratio,
+    ratio:              ratio !== null ? Math.round(ratio * 100) / 100 : null,
   };
 }
 
@@ -410,6 +417,11 @@ export function isFemale(gender: string | null | undefined): boolean {
 // Métricas de composição corporal — RED-S e tendência de peso.
 // Limiares RED-S: < 8 % homem, < 16 % mulher (ACSM Position Stand 2007).
 // Perda rápida: > 0,9 kg/semana sugere défice excessivo para atleta em treino.
+// weeklyWeightChange delega em ../_shared/formulas/weightTrend.ts (T1,
+// EWMA α≈0,25) — antes usava uma regressão só entre o ponto mais recente e
+// o mais antigo, ignorando todos os intermédios (Fase C escolheu a EWMA,
+// já usada em src/utils/biEngine.js, como fórmula única — ver
+// specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md Fase C).
 export function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
   latestBodyFat: number | null;
   latestWeight: number | null;
@@ -424,17 +436,16 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
   const latestWeight  = latest.weight_kg      != null ? Math.round(Number(latest.weight_kg)      * 10) / 10 : null;
   const redSThreshold = isFemale(gender) ? 16 : 8;
   const hasRedSRisk   = latestBodyFat !== null && latestBodyFat < redSThreshold;
-  let weeklyWeightChange: number | null = null;
-  if (bodyAssessments.length >= 2 && latestWeight !== null) {
-    const oldest      = bodyAssessments[bodyAssessments.length - 1];
-    const oldestWeight = oldest.weight_kg != null ? Number(oldest.weight_kg) : null;
-    if (oldestWeight !== null) {
-      const daysDiff = Math.max(1, Math.round(
-        (new Date(latest.date + "T00:00:00Z").getTime() - new Date(oldest.date + "T00:00:00Z").getTime()) / 86400000
-      ));
-      weeklyWeightChange = Math.round(((latestWeight - oldestWeight) / daysDiff * 7) * 10) / 10;
-    }
-  }
+
+  // computeWeightTrend espera ordem ascendente (mais antigo primeiro) —
+  // bodyAssessments vem DESC da query.
+  const rawPoints = [...bodyAssessments]
+    .filter((a) => a.weight_kg != null && Number(a.weight_kg) > 0 && a.date)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map((a) => ({ date: String(a.date), weight: Number(a.weight_kg) }));
+  const trend = rawPoints.length >= 2 ? computeWeightTrend(rawPoints) : null;
+  const weeklyWeightChange = trend ? Math.round(trend.weeklyRate * 10) / 10 : null;
+
   return { latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange };
 }
 

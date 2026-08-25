@@ -6,6 +6,9 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
+import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
+import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
+import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -906,8 +909,16 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
 // Acute = km nas últimas 7 noites · Chronic = média de 4 semanas (28 dias).
-// Faixas: seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50.
-// Fonte: Gabbett 2016 — The training-injury prevention paradox.
+// A classificação por zona (ratio → zone) delega em
+// ../_shared/formulas/acwr.ts (T1) — a mesma fórmula que src/utils/biEngine.js
+// usa desde a Fase C (specs/formulas-checklist.md), com os limiares exatos
+// da doutrina: (0,80, 1,30] seguro · (1,30, 1,50] risco_acrescido · >1,50
+// perigo · <0,80 possível destreino. Antes desta migração esta função usava
+// `>=` nas fronteiras (1,50 e 1,31 caíam do lado mais grave); a fórmula
+// partilhada usa `>` — 1,50 e 1,30 caem do lado mais seguro (ver P0-2).
+// A agregação por data fica aqui (impura, específica desta runtime) —
+// a classificação pura vem da biblioteca. Fonte: Gabbett 2016 — The
+// training-injury prevention paradox.
 // deno-lint-ignore no-explicit-any
 export function computeACWR(
   runs: any[],
@@ -926,16 +937,18 @@ export function computeACWR(
   const chronicWeeklyKm = chronicTotal / 4;
   // Com menos de 1 km/semana de média crónica o rácio é matematicamente inútil.
   if (chronicWeeklyKm < 1) return null;
-  const ratio = acuteKm / chronicWeeklyKm;
-  const zone = ratio >= 1.50 ? "PERIGO(≥1,50)"
-    : ratio >= 1.31 ? "risco_acrescido(1,31-1,49)"
-    : ratio < 0.80  ? "possível_destreino(<0,80)"
-    : "seguro(0,80-1,30)";
+  const { ratio, zone: zoneKey } = sharedComputeAcwr(acuteKm, chronicWeeklyKm);
+  const ZONE_LABELS: Record<string, string> = {
+    danger: "PERIGO(>1,50)",
+    caution: "risco_acrescido(1,31-1,50]",
+    undertrained: "possível_destreino(<0,80)",
+    safe: "seguro(0,80-1,30]",
+  };
   return {
     acuteKm:          Math.round(acuteKm          * 10) / 10,
     chronicWeeklyKm:  Math.round(chronicWeeklyKm  * 10) / 10,
-    ratio:            Math.round(ratio             * 100) / 100,
-    zone,
+    ratio:            Math.round((ratio ?? 0)      * 100) / 100,
+    zone:             ZONE_LABELS[zoneKey] ?? "desconhecido",
   };
 }
 
@@ -1795,14 +1808,24 @@ export function computeBodyMetrics(
   const sorted = [...rows].sort((a, b) => b.assessed_at.localeCompare(a.assessed_at));
   const latest = sorted[0];
 
-  // ── Tendência de peso (7-day moving average) ──────────────────────────────
-  const todayMs = new Date(todayISO + "T00:00:00Z").getTime();
-  const w7 = sorted.filter(
-    (r) => r.weight_kg && (todayMs - new Date(r.assessed_at).getTime()) <= 7 * 86400000,
-  );
-  if (w7.length >= 2) {
-    const avg7 = w7.reduce((s, r) => s + (r.weight_kg ?? 0), 0) / w7.length;
-    lines.push(`Média de peso (${w7.length} medições, 7 dias): ${avg7.toFixed(1)} kg`);
+  // ── Tendência de peso — delega em ../_shared/formulas/weightTrend.ts (T1,
+  // EWMA α≈0,25), a mesma fórmula que src/utils/biEngine.js usa desde a
+  // Fase C. Antes usava uma média simples dos últimos 7 dias, uma 3.ª
+  // fórmula diferente da de biEngine.js e da de coach-daily-summary (ver
+  // specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md
+  // Fase C).
+  const weightPoints = [...sorted]
+    .filter((r) => r.weight_kg != null && r.weight_kg > 0)
+    .reverse() // sorted é DESC; a fórmula partilhada espera ASC
+    .map((r) => ({ date: r.assessed_at.slice(0, 10), weight: r.weight_kg as number }));
+  const weightTrend = weightPoints.length >= 2 ? sharedComputeWeightTrend(weightPoints) : null;
+  if (weightTrend) {
+    const latestSmoothed = weightTrend.movingAverage[weightTrend.movingAverage.length - 1];
+    const rateStr = weightTrend.weeklyRate > 0 ? `+${weightTrend.weeklyRate}` : `${weightTrend.weeklyRate}`;
+    lines.push(
+      `Peso (média suavizada): ${latestSmoothed.weight.toFixed(1)} kg — tendência ${weightTrend.trend} ` +
+      `(${rateStr} kg/semana, ${weightPoints.length} medições)`,
+    );
   } else if (latest.weight_kg) {
     lines.push(`Peso mais recente: ${latest.weight_kg} kg (${sorted[0].assessed_at.slice(0, 10)})`);
   }
@@ -1844,11 +1867,16 @@ export function computeBodyMetrics(
   }
 
   // ── Gordura visceral: flag se ≥10 ou ≥15 (Bloco 5 #8) ───────────────────
+  // Classificação delega em ../_shared/formulas/bodyComposition.ts (T1) —
+  // a mesma fórmula que src/utils/biEngine.js usa desde a Fase C (era o
+  // único sítio certo antes disso; biEngine.js só verificava `>= 14`, ver
+  // specs/formulas-checklist.md Fase C).
   if (latest.visceral_fat !== null) {
     const vf = latest.visceral_fat;
-    if (vf >= 15) {
+    const zone = sharedClassifyVisceralFat(vf);
+    if (zone === "high_risk") {
       lines.push(`⚠ CORPO #8 — gordura visceral: ${vf} (escala Renpho) — RISCO ELEVADO (≥15 = >130 cm²)`);
-    } else if (vf >= 10) {
+    } else if (zone === "alert") {
       lines.push(`⚠ CORPO #8 — gordura visceral: ${vf} (escala Renpho) — alerta (10-14 = 100-130 cm²)`);
     }
   }
@@ -3050,15 +3078,14 @@ async function handler(req: Request): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
-    // Rótulo "(baseado em km)" é deliberado: o contexto do atleta (ver
-    // buildDailySummaryContext/detectCoachInsights no frontend) pode incluir
-    // outro ACWR calculado sobre sRPE (min × RPE), uma grandeza diferente
-    // com o mesmo nome. Sem os rótulos distintos, a Carol recebia dois
-    // valores de "ACWR" no mesmo prompt sem saber que medem coisas
-    // diferentes (ver specs/formulas-checklist.md P0-3 — unificação de
-    // grandeza fica para a Fase C).
+    // Até à Fase C isto dizia "ACWR atual (baseado em km)" — o insight de
+    // ACWR do frontend (detectCoachInsights, biEngine.js) usava carga sRPE
+    // até essa altura, uma grandeza diferente com o mesmo nome, e o rótulo
+    // evitava confundi-las no mesmo prompt (P0-3, Fase A). A Fase C unificou
+    // os dois em km (specs/formulas-centralizacao.md §5.1) — já não há
+    // ambiguidade a desfazer.
     const acwrLine = acwr
-      ? `ACWR atual (baseado em km): ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
+      ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
       : null;
 
     // ── Armário de sapatilhas ────────────────────────────────────────────

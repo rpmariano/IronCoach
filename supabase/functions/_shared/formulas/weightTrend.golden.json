@@ -1,0 +1,81 @@
+[
+  {
+    "name": "5+ pontos ativa EWMA, perda constante → descendo",
+    "input": {
+      "rawPoints": [
+        { "date": "2026-01-01", "weight": 80 },
+        { "date": "2026-01-03", "weight": 79.5 },
+        { "date": "2026-01-05", "weight": 79 },
+        { "date": "2026-01-07", "weight": 78.5 },
+        { "date": "2026-01-09", "weight": 78 }
+      ]
+    },
+    "expect": {
+      "movingAverage": [
+        { "date": "2026-01-01", "weight": 80 },
+        { "date": "2026-01-03", "weight": 79.88 },
+        { "date": "2026-01-05", "weight": 79.66 },
+        { "date": "2026-01-07", "weight": 79.37 },
+        { "date": "2026-01-09", "weight": 79.03 }
+      ],
+      "trend": "descendo",
+      "weeklyRate": -0.97,
+      "isEWMASmoothing": true
+    }
+  },
+  {
+    "name": "menos de 5 pontos não suaviza, ganho → subindo",
+    "input": {
+      "rawPoints": [
+        { "date": "2026-02-01", "weight": 70 },
+        { "date": "2026-02-04", "weight": 70.6 }
+      ]
+    },
+    "expect": {
+      "movingAverage": [
+        { "date": "2026-02-01", "weight": 70 },
+        { "date": "2026-02-04", "weight": 70.6 }
+      ],
+      "trend": "subindo",
+      "weeklyRate": 0.6,
+      "isEWMASmoothing": false
+    }
+  },
+  {
+    "name": "um único ponto — sem taxa, tendência estável",
+    "input": {
+      "rawPoints": [{ "date": "2026-03-01", "weight": 65 }]
+    },
+    "expect": {
+      "movingAverage": [{ "date": "2026-03-01", "weight": 65 }],
+      "trend": "estavel",
+      "weeklyRate": 0,
+      "isEWMASmoothing": false
+    }
+  },
+  {
+    "name": "sem pontos — null",
+    "input": { "rawPoints": [] },
+    "expect": null
+  },
+  {
+    "name": "variação pequena (dentro da banda ±0,3) — estável",
+    "input": {
+      "rawPoints": [
+        { "date": "2026-04-01", "weight": 75 },
+        { "date": "2026-04-04", "weight": 75.1 },
+        { "date": "2026-04-07", "weight": 75.2 }
+      ]
+    },
+    "expect": {
+      "movingAverage": [
+        { "date": "2026-04-01", "weight": 75 },
+        { "date": "2026-04-04", "weight": 75.1 },
+        { "date": "2026-04-07", "weight": 75.2 }
+      ],
+      "trend": "estavel",
+      "weeklyRate": 0.2,
+      "isEWMASmoothing": false
+    }
+  }
+]

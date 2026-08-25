@@ -123,7 +123,6 @@ describe('guardas de regressão — biConstants.js sem código morto novo (Fase 
     'TARGET_HIGH_INTENSITY_PCT',
     'BF_FLOOR_MEN',
     'BF_FLOOR_WOMEN',
-    'VISCERAL_FAT_HEALTHY_MAX',
     'PROTEIN_TARGETS',
     'PROTEIN_VOLUME_BONUS_PER_20KM',
     'PROTEIN_VOLUME_BONUS_FROM_KM',
