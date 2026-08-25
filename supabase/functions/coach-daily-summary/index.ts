@@ -13,6 +13,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,21 +147,11 @@ function formatPlanItemsSummary(items: any[]): string {
   }).join(" + ");
 }
 
-const VIAB_MIN_WEEKS: Record<string, Record<string, number | null>> = {
-  iniciante: { "5k":  6, "10k": 10, "meia": 16, "maratona": 24, "ultra": null },
-  basico:    { "5k":  6, "10k":  8, "meia": 12, "maratona": 18, "ultra":   24 },
-  medio:     { "5k":  4, "10k":  6, "meia": 10, "maratona": 14, "ultra":   18 },
-  avancado:  { "5k":  4, "10k":  4, "meia":  8, "maratona": 12, "ultra":   14 },
-};
-
-function viabCatDist(km: number | null): string | null {
-  if (!km) return null;
-  if (km <=  5.5) return "5k";
-  if (km <= 11.0) return "10k";
-  if (km <= 22.5) return "meia";
-  if (km <= 50.0) return "maratona";
-  return "ultra";
-}
+// Cópia local de src/utils/raceViability.js — agora reexporta a tabela de
+// ../_shared/formulas/vocabulary.ts (T0), a mesma que o frontend e
+// coach-chat usam. Deixou de ser cópia (specs/formulas-checklist.md Fase B).
+const VIAB_MIN_WEEKS = SHARED_MIN_PREP_WEEKS;
+const viabCatDist = sharedCategorizeDistance;
 
 function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
@@ -408,9 +399,12 @@ function computeACWR(runs: any[], today: string): { acute_km_per_day: number; ch
 // profiles.gender só grava 'M'/'F' (ver Perfil.jsx) — antes esta função
 // comparava com "masculino"/"feminino", que nunca batiam certo, e o TMB
 // caía sempre no ramo feminino (ver specs/formulas-checklist.md P0-1).
-// Aceita também os valores por extenso por defensividade, como coach-chat.
+// normalizeGender() (../_shared/formulas/vocabulary.ts, T0) já aceita os
+// valores por extenso por defensividade — Fase B substitui a comparação
+// manual daqui pelo vocabulário partilhado (specs/formulas-checklist.md
+// Fase B).
 export function isFemale(gender: string | null | undefined): boolean {
-  return gender === "F" || gender === "f" || gender === "feminino";
+  return normalizeGender(gender) === "F";
 }
 
 // Métricas de composição corporal — RED-S e tendência de peso.

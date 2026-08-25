@@ -9,6 +9,7 @@ import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
 import { todayISO } from '../lib/utils';
 import { mealNutrients } from './nutrition';
+import { normalizeGender } from '@formulas/vocabulary.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -774,7 +775,7 @@ export function detectCoachInsights(data, profile) {
   try {
     const insights = [];
     const level = profile?.experience_level || 'medio';
-    const gender = profile?.gender || 'M';
+    const gender = normalizeGender(profile?.gender) || 'M';
 
     // 0. Adesão ao Plano (Treinos em atraso)
     if (data.coachPlanItems?.length > 0 && data.coachPlans?.length > 0) {

@@ -1,0 +1,6 @@
+{
+  "// ": "Fixa explicitamente que 'deno test' só recolhe *.test.ts — sem isto, o glob por omissão do Deno varia por versão e podia apanhar testes Vitest-only (*.spec.ts) em supabase/functions/_shared/formulas/, que importam de 'vitest' e não compilam em Deno. Ver specs/formulas-checklist.md Fase B.",
+  "test": {
+    "include": ["**/*.test.ts"]
+  }
+}

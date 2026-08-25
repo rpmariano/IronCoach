@@ -7,51 +7,13 @@
 // Programs (2021); Training Essentials for Ultrarunning 2nd Ed (Koop, 2021).
 // Confiança: ALTA (ver doutrina §1).
 //
-// ─── Duplicado parcialmente em supabase/functions/coach-chat/index.ts ───────
-// As Edge Functions Deno não acedem a src/. Qualquer alteração aqui deve ser
-// espelhada na função VIABILITY_TABLES em coach-chat/index.ts. Os testes
-// aqui cobrem a lógica canónica — os testes Deno verificam a versão do servidor.
-
-// ---------------------------------------------------------------------------
-// Constantes — Bloco 1 #1: semanas mínimas de preparação por nível × distância
-//
-// Valor MÍNIMO da faixa de cada nível: "menos do que isto é definitivamente
-// insuficiente". O limite superior da faixa serve de objetivo ideal mas não
-// é usado para a flag (seria demasiado conservador).
-//
-// Iniciante × ultra: null = desaconselhado pela doutrina (#1: "não recomendado");
-// os números de volume da #2 só medem a distância ao patamar, não o habilitam.
-// ---------------------------------------------------------------------------
-export const MIN_PREP_WEEKS = {
-  iniciante: { '5k':  6, '10k': 10, 'meia': 16, 'maratona': 24, 'ultra': null },
-  basico:    { '5k':  6, '10k':  8, 'meia': 12, 'maratona': 18, 'ultra':   24 },
-  medio:     { '5k':  4, '10k':  6, 'meia': 10, 'maratona': 14, 'ultra':   18 },
-  avancado:  { '5k':  4, '10k':  4, 'meia':  8, 'maratona': 12, 'ultra':   14 },
-};
-
-// ---------------------------------------------------------------------------
-// Constantes — Bloco 1 #2: volume semanal pré-requisito por nível × distância
-//
-// Valor MÍNIMO da faixa em km/semana, pressupondo ≥80% em Z1/Z2.
-// ---------------------------------------------------------------------------
-export const MIN_VOLUME_KM = {
-  iniciante: { '5k': 10, '10k': 15, 'meia': 25, 'maratona': 35, 'ultra': 45 },
-  basico:    { '5k': 15, '10k': 25, 'meia': 35, 'maratona': 45, 'ultra': 55 },
-  medio:     { '5k': 25, '10k': 35, 'meia': 45, 'maratona': 60, 'ultra': 70 },
-  avancado:  { '5k': 35, '10k': 45, 'meia': 60, 'maratona': 75, 'ultra': 90 },
-};
-
-// ---------------------------------------------------------------------------
-// categorizeDistance — mapeia distância em km para categoria normativa
-// ---------------------------------------------------------------------------
-export function categorizeDistance(km) {
-  if (km == null || isNaN(km)) return null;
-  if (km <=  5.5) return '5k';
-  if (km <= 11.0) return '10k';
-  if (km <= 22.5) return 'meia';
-  if (km <= 50.0) return 'maratona';
-  return 'ultra';
-}
+// MIN_PREP_WEEKS, MIN_VOLUME_KM e categorizeDistance vivem em
+// supabase/functions/_shared/formulas/vocabulary.ts (T0) — reexportados
+// aqui para não quebrar os importadores existentes. Deixaram de ser cópia:
+// as Edge Functions importam o mesmo ficheiro por caminho relativo (ver
+// specs/formulas-centralizacao.md §3.1, specs/formulas-checklist.md Fase B).
+import { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance } from '@formulas/vocabulary.ts';
+export { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance };
 
 // ---------------------------------------------------------------------------
 // recentWeeklyVolume — volume médio semanal das últimas `weeks` semanas

@@ -5,6 +5,7 @@
 // na tabela coach_messages para persistência entre sessões.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1498,34 +1499,15 @@ const RACE_PRIORITY_LABELS: Record<string, string> = {
 };
 
 // ─── Bloco 1 — Objetivo e viabilidade ───────────────────────────────────────
-// Espelha src/utils/raceViability.js (duplicado por necessidade: as Edge
-// Functions não têm acesso a src/). Alterações aqui devem ser espelhadas lá.
-// Fontes: Daniels' Running Formula 4th Ed (2021), Pfitzinger, Higdon, Koop.
-
-// Semanas mínimas de preparação por nível × distância (limite INFERIOR da faixa).
-const VIAB_MIN_WEEKS: Record<string, Record<string, number | null>> = {
-  iniciante: { "5k":  6, "10k": 10, "meia": 16, "maratona": 24, "ultra": null },
-  basico:    { "5k":  6, "10k":  8, "meia": 12, "maratona": 18, "ultra":   24 },
-  medio:     { "5k":  4, "10k":  6, "meia": 10, "maratona": 14, "ultra":   18 },
-  avancado:  { "5k":  4, "10k":  4, "meia":  8, "maratona": 12, "ultra":   14 },
-};
-
-// Volume semanal pré-requisito por nível × distância (km/semana, limite inferior).
-const VIAB_MIN_VOL: Record<string, Record<string, number>> = {
-  iniciante: { "5k": 10, "10k": 15, "meia": 25, "maratona": 35, "ultra": 45 },
-  basico:    { "5k": 15, "10k": 25, "meia": 35, "maratona": 45, "ultra": 55 },
-  medio:     { "5k": 25, "10k": 35, "meia": 45, "maratona": 60, "ultra": 70 },
-  avancado:  { "5k": 35, "10k": 45, "meia": 60, "maratona": 75, "ultra": 90 },
-};
-
-function viabCatDist(km: number | null): string | null {
-  if (!km) return null;
-  if (km <=  5.5) return "5k";
-  if (km <= 11.0) return "10k";
-  if (km <= 22.5) return "meia";
-  if (km <= 50.0) return "maratona";
-  return "ultra";
-}
+// VIAB_MIN_WEEKS/VIAB_MIN_VOL/viabCatDist eram cópias locais de
+// src/utils/raceViability.js — agora reexportam as tabelas de
+// ../_shared/formulas/vocabulary.ts (T0), a mesma fonte que o frontend usa
+// via alias @formulas. Deixaram de ser cópia (ver
+// specs/formulas-checklist.md Fase B). Fontes: Daniels' Running Formula 4th
+// Ed (2021), Pfitzinger, Higdon, Koop.
+const VIAB_MIN_WEEKS = SHARED_MIN_PREP_WEEKS;
+const VIAB_MIN_VOL = SHARED_MIN_VOLUME_KM;
+const viabCatDist = sharedCategorizeDistance;
 
 function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
@@ -1846,7 +1828,7 @@ export function computeBodyMetrics(
   // ── Gordura corporal: última leitura + flag RED-S (Bloco 5 #6) ───────────
   if (latest.body_fat_pct !== null) {
     const bf = latest.body_fat_pct;
-    const isFem = gender === "feminino" || gender === "F" || gender === "f";
+    const isFem = normalizeGender(gender) === "F";
     const lowerFloor = isFem ? 14 : 6;
     // Alarme dispara no valor mais conservador da faixa (regra do valor mais alto,
     // alinhado com BF_ALARM_MEN/BF_ALARM_WOMEN em src/utils/biConstants.js — o
@@ -1899,7 +1881,7 @@ export function buildNutritionTargets(opts: {
 
   // TMB (Mifflin-St Jeor) + GETD estimado (Bloco 4.1 #4)
   if (weightKg && heightCm && age && gender) {
-    const tmb = (gender === "feminino" || gender === "F" || gender === "f")
+    const tmb = normalizeGender(gender) === "F"
       ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161
       : (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
     const tmbR = Math.round(tmb);
@@ -2729,7 +2711,7 @@ export function buildSystemInstruction(
     // essa prova; este é o que vale para tudo o resto.
     bio.push(`Nível geral como corredor: ${EXPERIENCE_LEVEL_LABELS[biometrics.experience_level] || biometrics.experience_level}`);
   }
-  if (biometrics.gender) bio.push(`Género: ${biometrics.gender === "F" ? "feminino" : "masculino"}`);
+  if (biometrics.gender) bio.push(`Género: ${normalizeGender(biometrics.gender) === "F" ? "feminino" : "masculino"}`);
   // Idade derivada da data de nascimento — o modelo recebe o número já feito
   // para não ter de o calcular (e enganar-se) a partir da data.
   const idade = ageFromBirthDate(biometrics.birth_date);

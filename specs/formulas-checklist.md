@@ -115,36 +115,66 @@ da biblioteca — são correções pontuais no sítio onde já estão.
 
 ## Fase B — T0 (vocabulário e constantes) + guardas
 
-- [ ] `supabase/functions/_shared/formulas/vocabulary.ts` criado, com
-  `normalizeGender`, tipos de nível de experiência, prioridade de prova.
-- [ ] `vite.config.mjs`: `test.include` estendido para cobrir
-  `supabase/functions/_shared/**`.
-- [ ] `vite.config.mjs`: alias `@formulas` → `supabase/functions/_shared/formulas`
-  configurado e a funcionar (`import { normalizeGender } from '@formulas/vocabulary'`
-  compila).
-- [ ] Todos os consumidores de género (§Fase A P0-1 incluído) migrados para
-  `normalizeGender()` em vez de comparação de string direta.
-- [ ] Tabelas `MIN_PREP_WEEKS`/`MIN_VOLUME_KM` movidas para T0, com as 3 cópias
+- [x] `supabase/functions/_shared/formulas/vocabulary.ts` criado, com
+  `normalizeGender`, tipos de nível de experiência, prioridade de prova,
+  `categorizeDistance`, `MIN_PREP_WEEKS`, `MIN_VOLUME_KM`.
+- [x] `vite.config.mjs`: `test.include` estendido para cobrir
+  `supabase/functions/_shared/**/*.spec.{js,jsx,ts,tsx}` (só `.spec.` —
+  `.test.ts` nesse caminho é reservado aos testes Deno-nativos, ver nota
+  abaixo).
+- [x] `vite.config.mjs`: alias `@formulas` → `supabase/functions/_shared/formulas`
+  configurado e a funcionar (`import { normalizeGender } from '@formulas/vocabulary.ts'`
+  compila e passa em teste — `src/utils/sharedVocabulary.test.js`).
+- [x] Todos os consumidores de género (§Fase A P0-1 incluído) migrados para
+  `normalizeGender()` em vez de comparação de string direta —
+  `biEngine.js`, `coach-chat/index.ts` (3 sítios), `coach-daily-summary/index.ts`
+  (via `isFemale()`, agora um wrapper fino sobre `normalizeGender`).
+- [x] Tabelas `MIN_PREP_WEEKS`/`MIN_VOLUME_KM` movidas para T0, com as 3 cópias
   (`raceViability.js`, `coach-chat`, `coach-daily-summary`) substituídas por
-  import — não cópia.
+  import — não cópia. `raceViability.js` reexporta para não quebrar
+  `racePlanEngine.js`, que continua a importar dali.
+
+**Nota de implementação — colisão Vitest/Deno em `_shared/formulas/`:**
+o glob por omissão do `deno test` reconhece `*.test.ts` (a mesma convenção já
+usada em `coach-daily-summary/index.test.ts`). Um ficheiro Vitest-only nesse
+caminho com esse sufixo seria apanhado por `deno test` e partia a suite (importa
+`vitest`, que o Deno não resolve). Por isso: testes Deno-nativos ficam
+`*.test.ts` dentro de `_shared/formulas/`; testes Vitest-only do mesmo módulo
+ficam em `src/utils/*.test.js` (importando via `@formulas`), nunca `.test.ts`
+dentro de `_shared/`. `supabase/functions/deno.json` fixa
+`test.include: ["**/*.test.ts"]` explicitamente, para não depender do
+default do Deno variar por versão.
 
 ### Guardas de regressão (o projeto não tem linter — isto tem de ser teste)
 
-- [ ] Teste que falha se aparecer uma definição de função chamada `todayISO`
-  fora de `src/lib/utils.js` (grep programático sobre `src/**/*.{js,jsx}`,
-  correndo como parte da suite Vitest).
-- [ ] Teste equivalente para `formatPace` e `formatDuration` — só podem estar
-  definidas em `src/utils/run.js`.
-- [ ] Teste que falha se `biConstants.js` ganhar uma constante exportada sem
-  nenhum import fora do próprio ficheiro (evita repetir o caso de
-  `PROTEIN_TARGETS`: 17 das 31 constantes atuais são código morto).
-- [ ] Teste (ou processo documentado) que compara os literais de doutrina no
-  código com os valores em `src/coach-knowledge/*.md` — mesmo que manual no
-  início (checklist de revisão de PR), documentar como decisão explícita.
+- [x] Teste que falha se aparecer uma definição de função chamada `todayISO`
+  fora de `src/lib/utils.js` — `src/utils/formulaGuards.test.js`. É uma
+  ALLOWLIST, não proibição total: as ~10 cópias locais já existentes
+  (`RunAgenda.jsx`, `Perfil.jsx`, etc.) ficam registadas explicitamente; o
+  teste falha se aparecer uma cópia NOVA fora da lista, ou se remover uma
+  entrada quando o ficheiro for migrado (Fase D).
+- [x] Teste equivalente para `formatPace` e `formatDuration` — mesma allowlist,
+  mesmo ficheiro.
+- [x] Teste que falha se `biConstants.js` ganhar uma constante exportada sem
+  nenhum import fora do próprio ficheiro — mesmo ficheiro, mesma allowlist
+  (16 das 31 constantes atuais são código morto conhecido; o guard falha só
+  para uma constante NOVA sem consumidor, fora da lista).
+- [x] Processo documentado (não teste automático) para os literais de doutrina:
+  qualquer PR que altere um número em `src/coach-knowledge/*.md` ou
+  `specs/coach-investigacao.md` tem de listar, na descrição do PR, os
+  ficheiros de código (`_shared/formulas/`, `src/utils/`, `supabase/functions/`)
+  onde esse número está hardcoded, e confirmar que foram atualizados juntos.
+  Decisão explícita (Fase B, specs/formulas-checklist.md): fica manual até
+  haver massa crítica de constantes movidas para T0 com `@doutrina` a
+  apontar para o bloco de origem (§3.5 de formulas-centralizacao.md) — nessa
+  altura um teste programático pode comparar os dois lados automaticamente.
 
 **Verificação de saída da Fase B:**
-- [ ] `npx vitest run` — inclui os testes-guarda novos, todos verdes.
-- [ ] `deno test` nas edge functions que passaram a importar de `_shared/`.
+- [x] `npx vitest run` — inclui os testes-guarda novos, todos verdes (423/423
+  nesta ronda).
+- [ ] `deno test` nas edge functions que passaram a importar de `_shared/`
+  (sem `deno` instalado neste ambiente de execução — a confirmar no
+  primeiro `deno test` local ou no deploy).
 
 ---
 
