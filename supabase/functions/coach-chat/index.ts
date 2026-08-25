@@ -13,6 +13,7 @@ import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
+import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -908,7 +909,38 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
   if (runs.length === 0) {
     return `Corridas (últimos ${windowDays} dias): sem corridas registadas.`;
   }
-  return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)):\n${summariseRuns(runs).join("\n")}`;
+  // "DETALHE, NÃO SOMES" — este aviso existe por causa de um bug real
+  // (2026-08-25): o atleta perguntou "quantos km fiz a semana passada" e a
+  // Carol tentou somar esta lista linha a linha de cabeça e errou. Os totais
+  // corretos por semana de calendário já vêm pré-calculados em
+  // "VOLUME SEMANAL (calendário)" — usa sempre essa linha, nunca esta lista,
+  // para responder a perguntas de total/soma.
+  return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)) — DETALHE, NÃO SOMES: para totais usa "VOLUME SEMANAL (calendário)" abaixo ou get_running_history:\n${summariseRuns(runs).join("\n")}`;
+}
+
+// ─── Volume semanal por calendário (segunda a domingo) ──────────────────────
+// Delibera em ../_shared/formulas/weeklyVolume.ts (T1) — ver o comentário
+// nesse ficheiro para o bug que motivou este bloco. Ao contrário do ACWR
+// (janela ROLANTE de 7 dias, "últimos 7 dias a contar de hoje"), isto responde
+// à forma como o atleta realmente fala: "esta semana" e "semana passada" são
+// semanas de CALENDÁRIO. Os dois números não são o mesmo e não devem ser
+// confundidos — por isso aparecem em linhas separadas e nomeadas.
+// deno-lint-ignore no-explicit-any
+function buildWeeklyRunningContext(runs: any[], todayISO: string): string {
+  const { currentWeek, previousWeek } = computeCalendarWeeklyVolume(runs, todayISO);
+  const fmtRange = (startISO: string, endISO: string) => {
+    const toPt = (iso: string) => iso.split("-").reverse().join("/");
+    return `${toPt(startISO)} a ${toPt(endISO)}`;
+  };
+  const currentStatus = currentWeek.endISO >= todayISO && currentWeek.startISO <= todayISO
+    ? " (ainda a decorrer)"
+    : "";
+  return (
+    `VOLUME SEMANAL (calendário, segunda a domingo) — usa SEMPRE estes números para "esta semana"/"semana passada", nunca a soma manual da lista de corridas:\n` +
+    `- Esta semana (${fmtRange(currentWeek.startISO, currentWeek.endISO)})${currentStatus}: ${currentWeek.km} km em ${currentWeek.count} corrida(s)\n` +
+    `- Semana passada (${fmtRange(previousWeek.startISO, previousWeek.endISO)}): ${previousWeek.km} km em ${previousWeek.count} corrida(s)\n` +
+    `Nota: estes totais são diferentes do "ACWR" abaixo — o ACWR usa uma janela ROLANTE dos últimos 7 dias a contar de hoje, não a semana de calendário.`
+  );
 }
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
@@ -2039,6 +2071,10 @@ export function buildSystemInstruction(
   // antes (doutrina que pressupõe plano e prova) — mas o handler passa-o
   // sempre, por isso na prática está sempre presente.
   coachingMode: CoachingMode | null = null,
+  // Opcional pela mesma razão dos anteriores (Fase Carol-omnisciência): os
+  // testes antigos chamam sem este argumento; sem ele o comportamento é o
+  // de antes (só a lista bruta de corridas, sem totais de calendário).
+  weeklyRunningContext: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2408,10 +2444,27 @@ export function buildSystemInstruction(
     `Qualquer dos tipos pode trazer esforço percebido de 1 a 10, útil para perceber se a carga ` +
     `de treino está adequada.\n\n` +
     `O contexto abaixo tem os dados de nutrição dos últimos 7 dias, os treinos de ginásio e as ` +
-    `corridas dos últimos 30 dias. Se a pergunta do utilizador precisar de dados fora dessas ` +
-    `janelas (um mês específico, uma data no passado, "desde o início do ano", etc.), usa a ` +
-    `função get_nutrition_history (nutrição), get_gym_history (ginásio) ou get_running_history ` +
-    `(corrida) com o intervalo de datas necessário antes de responder.\n\n` +
+    `corridas dos últimos 30 dias.\n` +
+    `REGRA DE OURO PARA QUALQUER TOTAL/SOMA (km, refeições, sessões, séries, kcal, etc.): ` +
+    `nunca somes tu mesma linhas da lista bruta de corridas/refeições/treinos — é aí que já ` +
+    `erraste antes (ex.: "quantos km corri a semana passada" respondida como zero apesar de ` +
+    `65 km estarem registados). Segue esta ordem:\n` +
+    `1. Se já existe no contexto um total pré-calculado para o que foi pedido (ex.: "VOLUME ` +
+    `SEMANAL (calendário)" para "esta semana"/"semana passada" de corrida, "ACWR" para carga ` +
+    `aguda/crónica, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
+    `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
+    `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
+    `partir da lista bruta apenas se for uma soma simples e curta — caso contrário chama a ` +
+    `função relevante para obter o total certo em vez de arriscar.\n` +
+    `3. Se a pergunta precisar de dados FORA dessas janelas (um mês específico, uma data no ` +
+    `passado, "desde o início do ano", etc.), usa sempre a função get_nutrition_history ` +
+    `(nutrição), get_gym_history (ginásio) ou get_running_history (corrida) com o intervalo de ` +
+    `datas necessário antes de responder — nunca digas "não tenho esse dado" ou "zero" sem ` +
+    `teres chamado a função.\n` +
+    `Nunca respondas com um número que não veio do contexto, de uma soma simples e verificável, ` +
+    `ou de uma chamada de função. Na dúvida sobre se um valor existe, chama a função — não ` +
+    `adivinhes, e não inventes uma justificação (ex.: dizer que o atleta apagou um registo) para ` +
+    `explicar uma resposta errada.\n\n` +
     // ── Doutrina Bloco 4.1 — Nutrição base diária ───────────────────────────
     `NUTRIÇÃO — BASE DIÁRIA (Bloco 4.1 — ACSM/AND 2016, ISSN, Burke 2021):\n` +
     `PROTEÍNA (g/kg/dia) por nível e objetivo:\n` +
@@ -2885,6 +2938,7 @@ export function buildSystemInstruction(
   if (gymSummary) sys += `\n\n${gymSummary}`;
   if (gymMetricsLine) sys += `\n${gymMetricsLine}`;
   if (runningSummary) sys += `\n\n${runningSummary}`;
+  if (weeklyRunningContext) sys += `\n\n${weeklyRunningContext}`;
   if (acwrLine) sys += `\n${acwrLine}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
@@ -3094,6 +3148,9 @@ async function handler(req: Request): Promise<Response> {
       .lte("date", todayISO)
       .order("date", { ascending: false });
     const runningSummary = buildRunningSummary(recentRuns || [], RUNNING_WINDOW_DAYS);
+    // 30 dias cobre sempre a semana atual + a semana passada inteiras
+    // (pior caso: hoje é segunda, precisa de 8 dias) — não precisa de query extra.
+    const weeklyRunningContext = buildWeeklyRunningContext(recentRuns || [], todayISO);
 
     // ACWR — calculado sobre os mesmos recentRuns (30 dias cobre as 28 noites
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
@@ -3370,7 +3427,8 @@ async function handler(req: Request): Promise<Response> {
       profile?.coach_intervention_status ?? null,
       profile?.coach_intervention_reason ?? null,
       shoesContext,
-      coachingMode
+      coachingMode,
+      weeklyRunningContext
     );
 
     let finalSystemInstruction = systemInstruction;

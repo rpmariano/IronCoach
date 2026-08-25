@@ -456,3 +456,49 @@ quem usa a app fora de Portugal. Foi para `lisbonTodayISO()` (já existia em
 - [ ] Se o diff toca doutrina (`src/coach-knowledge/` ou `specs/`): confirmar
   que os números novos foram propagados às constantes/fórmulas correspondentes,
   não só ao texto.
+
+---
+
+## Fase Carol — fiabilidade e omnisciência do chat
+
+Motivada por um bug real (2026-08-25): o atleta perguntou "quantos km fiz de
+corrida a semana passada" e a Carol respondeu "zero", apesar de 65 km em 3
+corridas em 2026-08-21 estarem na base de dados; quando confrontada,
+inventou uma justificação em vez de recalcular. Diagnóstico: não era falta
+de dados (o ACWR, janela ROLANTE, já continha o número certo) — era (a) a
+instrução do prompt a proibir chamadas de ferramenta dentro da janela de 30
+dias, (b) ausência de um agregado em formato de SEMANA DE CALENDÁRIO
+(a pergunta do atleta), e (c) nenhuma regra a impedir a Carol de inventar
+uma explicação em vez de recalcular.
+
+- [x] `_shared/formulas/weeklyVolume.ts` (T1) — `computeCalendarWeeklyVolume`,
+  agrega corridas em semana atual/semana passada (segunda-domingo),
+  distinto do ACWR (janela rolante). Golden vector + `weeklyVolume.spec.js`
+  + `weeklyVolume.test.ts`.
+- [x] `coach-chat/index.ts`: novo bloco "VOLUME SEMANAL (calendário)" no
+  prompt, ao lado do ACWR, com datas explícitas e nota a distingui-lo do
+  ACWR.
+- [x] Lista bruta de corridas (`buildRunningSummary`) marcada
+  "DETALHE, NÃO SOMES" — aponta para o bloco de totais.
+- [x] Gate de function-calling reescrito: já não proíbe chamar
+  `get_running_history`/`get_nutrition_history`/`get_gym_history` dentro das
+  janelas pré-carregadas — só evita chamadas desnecessárias quando já existe
+  um total pré-calculado.
+- [x] Regra explícita anti-alucinação junto ao gate: nunca responder com um
+  número que não veio do contexto, de uma soma simples verificável, ou de
+  uma chamada de função; nunca inventar uma justificação para uma resposta.
+- [x] Insights ativos (`activeInsights`) — confirmado que já iam para o
+  prompt com estado de resolução (`Coach.jsx` → `coach-chat/index.ts:~3412`);
+  não foi preciso alterar.
+- [x] `npx vitest run` verde — 544/544 (539 + 5 novos).
+- [x] `npm run build` verde.
+
+**Gap identificado, fora do âmbito desta fase — Fase E (auditoria de
+cobertura):** o Índice de Prontidão (`calculateReadinessIndex`, T2,
+`biEngine.js`) e os seus pilares NÃO chegam ao prompt da Carol — se o
+atleta perguntar "porque é que o meu índice está a 62?" ela não tem o
+número nem os componentes. Falta um inventário ecrã-a-ecrã (Corpo, Ginásio
+holístico, distribuição de treino, etc.) a confirmar, para cada gráfico/
+métrica, se já está em texto no prompt, atrás de uma tool call, ou em falta.
+Qualquer cálculo novo que essa auditoria exigir deve nascer diretamente em
+`_shared/formulas/`, nunca duplicado.
