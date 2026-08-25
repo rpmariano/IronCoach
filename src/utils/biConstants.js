@@ -29,8 +29,9 @@ export const GYM_VOLUME_HIGH_RISK_PCT = 20;
 import { EA_OPTIMAL, EA_CRITICAL } from '@formulas/energyAvailability.ts';
 export { EA_OPTIMAL, EA_CRITICAL };
 export const EA_SUBCLINICAL_MIN = 30; // 30-45
-export const EA_CRITICAL_DURATION_DAYS = 5;
-export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
+// EA_CRITICAL_DURATION_DAYS e RUNNING_COST_KCAL_PER_KG_KM mudaram-se para
+// @formulas/energyAvailabilityWindow.ts e @formulas/tdee.ts respetivamente
+// (Fase E) — biEngine.js já não as usa daqui.
 
 // Training Distribution (80/20)
 // TARGET_LOW_INTENSITY_PCT mudou-se para @formulas/trainingDistribution.ts

@@ -68,7 +68,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
   - Critério de aceitação: `calculateReadinessIndex` importa e usa
     `todayISO()` de `lib/utils.js`, sem redefinição local.
 
-- [ ] **P0-6 — Nutrientes sem fallback em `calculateMacroAdherence`/`calculateEnergyAvailability`.**
+- [x] **P0-6 — Nutrientes sem fallback em `calculateMacroAdherence`/`calculateEnergyAvailability`. RESOLVIDO** (confirmado durante a Fase E — a caixa não tinha sido atualizada; o código já usava `mealNutrients()`).
   `biEngine.js:594-600` e `:665-668` leem só `item.calories_per_100g` etc.;
   `nutrition.js:40` (`itemNutrients`) tem 3 níveis de fallback
   (`*_per_100g` → `food_item.*` → `*_100g`) mais macros diretos no item.
@@ -638,6 +638,65 @@ porque o objetivo de `summariseSessions` é montar a listagem linha-a-linha
 para o prompt (Bloco 3 #10, contagem de séries ≥15 reps), não um agregado —
 mudar isso é um passo maior do que esta fase pedia. Fica anotado para uma
 futura limpeza.
+
+---
+
+### E3 — Agregações de nutrição e corpo
+
+Cinco módulos T1.5 novos:
+
+- [x] `mealNutrients.ts` — nutrientes de um item/refeição com o fallback de
+  3 níveis (P0-6 original). **Bug real corrigido durante a migração,
+  confirmado com o utilizador antes de aplicar** (mudança visível no
+  ecrã): `itemNutrients`/`mealNutrients` (`nutrition.js`) nunca calculavam
+  ferro/cálcio/vitamina C/potássio — só `calories/protein/carbs/fat/fiber/
+  sugar/sodium` — apesar de `rangeTotals` já tentar somar
+  `n.iron_mg`/`n.calcium_mg`/`n.vitamin_c_mg`/`n.potassium_mg` do resultado
+  (sempre `undefined`, mascarado por `|| 0`). Os totais destes 4
+  micronutrientes no `NutritionDashboard` mostravam sempre 0, apesar de as
+  colunas `meal_items.iron_mg_per_100g` etc. existirem e serem gravadas.
+  Corrigido, com o mesmo padrão de fallback dos outros micronutrientes.
+- [x] `macroAdherence.ts` — cumprimento % por macro sobre uma janela
+  (usa `mealNutrients.ts` + `relativeDateRange.ts`).
+- [x] `energyAvailabilityWindow.ts` — EA diária/média/`isAtRisk`/
+  `daysAtRisk` (usa `mealNutrients.ts` + `energyAvailability.ts`, já
+  partilhado desde a Fase C, + `relativeDateRange.ts`). `RUNNING_COST_KCAL_PER_KG_KM`
+  extraída de `tdee.ts` como constante exportada (antes só inline), para
+  as duas fórmulas partilharem o número em vez de cada uma hardcodar o seu
+  próprio "1.0".
+- [x] `compositionTrend.ts` — massa gorda vs. massa magra ao longo do
+  tempo. Já era puro no original — só mudou de casa.
+- [x] `micronutrientTotals.ts` — totais de macros+micros sobre um período
+  de CALENDÁRIO ("hoje"/"esta semana desde segunda"/"este mês desde dia 1")
+  — **vocabulário de período genuinamente diferente** do `relativeDateRange.ts`
+  (janela rolante de N dias), documentado no módulo para não serem
+  confundidos ou unificados por engano.
+- [x] `biEngine.js` (`calculateMacroAdherence`, `calculateEnergyAvailability`,
+  `calculateCompositionTrend`) e `nutrition.js` (`itemNutrients`,
+  `mealNutrients`, `rangeTotals`) migrados para importar os módulos
+  partilhados; implementações locais eliminadas. `rangeBounds()` (nutrition.js)
+  removida — ficou sem consumidor fora de `rangeTotals`; o import de
+  `date-fns` nesse ficheiro foi com ela.
+- [x] `biConstants.js`: `EA_CRITICAL_DURATION_DAYS` e
+  `RUNNING_COST_KCAL_PER_KG_KM` removidas (duplicavam as versões agora em
+  `energyAvailabilityWindow.ts`/`tdee.ts`).
+- [x] `coach-chat/index.ts`: `weekMeals` (7 dias) alargado para trazer as
+  colunas `*_per_100g` de fibra/açúcar/sódio/ferro/cálcio/vit.C/potássio
+  (antes só calorias/proteína/hidratos/gordura) — sem isto os novos módulos
+  ficariam sem dados para os micronutrientes. Mesmo alargamento aplicado à
+  ferramenta `get_running_history`/`get_nutrition_history` por consistência
+  (usa `aggregateMealsByDate`, que ignora as colunas que não lê — inofensivo).
+  Novo bloco **"PAINEL DE NUTRIÇÃO/CORPO"** no prompt — cumprimento
+  calórico/macros, Disponibilidade Energética com aviso de RED-S,
+  composição corporal mais recente, micronutrientes de hoje. Regra de ouro
+  do gate estendida.
+- [x] `npx vitest run` verde — 605/605 (585 + 20 novos). `npm run build`
+  verde. Saída dos módulos verificada manualmente com dados realistas.
+
+**Nota de bookkeeping:** o comentário em `biEngine.js` já citava P0-6 como
+resolvido antes desta fase (`mealNutrients()` já tinha o fallback de 3
+níveis) — só a caixa `[ ]` da Fase A não tinha sido atualizada. Corrigido
+abaixo.
 
 ---
 

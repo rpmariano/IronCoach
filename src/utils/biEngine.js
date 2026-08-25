@@ -8,7 +8,8 @@ import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
 import { todayISO, addDaysISO } from '../lib/utils';
-import { mealNutrients } from './nutrition';
+// mealNutrients removido daqui — as duas únicas chamadas migraram para
+// @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
 import { normalizeGender } from '@formulas/vocabulary.ts';
 import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
 import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
@@ -24,6 +25,9 @@ import { computeVdotTrend } from '@formulas/vdotTrend.ts';
 import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
 import { computeGymVolumeLoad } from '@formulas/volumeLoad.ts';
 import { computeMuscleGroupVolume as sharedComputeMuscleGroupVolume } from '@formulas/muscleGroupVolume.ts';
+import { computeMacroAdherence as sharedComputeMacroAdherence } from '@formulas/macroAdherence.ts';
+import { computeEnergyAvailabilityWindow } from '@formulas/energyAvailabilityWindow.ts';
+import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -419,21 +423,11 @@ export function calculateWeightTrend(bodyAssessments) {
   }
 }
 
+// Delega em @formulas/compositionTrend.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateCompositionTrend(bodyAssessments) {
   try {
-    const sorted = [...bodyAssessments].sort((a,b) => a.date.localeCompare(b.date));
-    const dates = [];
-    const fatMassKg = [];
-    const leanMassKg = [];
-
-    sorted.forEach(a => {
-      dates.push(a.date);
-      const fat = a.weight_kg * (a.body_fat_pct / 100);
-      fatMassKg.push(fat);
-      leanMassKg.push(a.lean_body_mass_kg || (a.weight_kg - fat));
-    });
-
-    return { dates, fatMassKg, leanMassKg };
+    return computeCompositionTrend(bodyAssessments);
   } catch(e) {
     return { dates: [], fatMassKg: [], leanMassKg: [] };
   }
@@ -443,66 +437,13 @@ export function calculateCompositionTrend(bodyAssessments) {
 
 /**
  * Calcula a aderência real às macros usando os dados de refeições.
- * Retorna valores em g/kg de peso corporal e compliance face aos objetivos.
+ * Delega em @formulas/macroAdherence.ts (T1.5) — única implementação,
+ * partilhada com a Carol (specs/formulas-checklist.md Fase E, resolve o
+ * P0-6 original de uma vez por todas).
  */
 export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRange) {
   try {
-    const filtered = filterByDateRange(meals, dateRange);
-    if (filtered.length === 0) return null;
-
-    // Usar peso mais recente das avaliações corporais, ou do perfil
-    const sortedBody = bodyAssessments?.length
-      ? [...bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))
-      : [];
-    const weight = sortedBody[0]?.weight_kg || profile?.weight_kg || 70;
-
-    // Agrupar por dia e calcular totais. Usa mealNutrients() em vez de somar
-    // *_per_100g diretamente: sem os 3 níveis de fallback (macros diretos →
-    // *_per_100g → food_item.* → *_100g), uma refeição gravada via
-    // food_item.calories contava 0 kcal (ver specs/formulas-checklist.md P0-6).
-    const dailyTotals = {};
-    filtered.forEach(meal => {
-      const day = meal.date;
-      if (!dailyTotals[day]) dailyTotals[day] = { cal: 0, prot: 0, carbs: 0, fat: 0 };
-      const n = mealNutrients(meal);
-      dailyTotals[day].cal += n.calories;
-      dailyTotals[day].prot += n.protein;
-      dailyTotals[day].carbs += n.carbs;
-      dailyTotals[day].fat += n.fat;
-    });
-
-    const days = Object.values(dailyTotals);
-    const numDays = days.length || 1;
-    const avgCal = days.reduce((s, d) => s + d.cal, 0) / numDays;
-    const avgProt = days.reduce((s, d) => s + d.prot, 0) / numDays;
-    const avgCarbs = days.reduce((s, d) => s + d.carbs, 0) / numDays;
-    const avgFat = days.reduce((s, d) => s + d.fat, 0) / numDays;
-
-    const protPerKg = Math.round((avgProt / weight) * 10) / 10;
-    const carbsPerKg = Math.round((avgCarbs / weight) * 10) / 10;
-    const fatPerKg = Math.round((avgFat / weight) * 10) / 10;
-
-    const calTarget = profile?.calorie_goal || 2000;
-    const protTarget = profile?.protein_goal || 150;
-    const carbsTarget = profile?.carbs_goal || 200;
-    const fatTarget = profile?.fat_goal || 70;
-
-    return {
-      protein: { actual_g_per_kg: protPerKg, actual_g: Math.round(avgProt), target: protTarget, compliance_pct: Math.round((avgProt / protTarget) * 100) },
-      carbs: { actual_g_per_kg: carbsPerKg, actual_g: Math.round(avgCarbs), target: carbsTarget, compliance_pct: Math.round((avgCarbs / carbsTarget) * 100) },
-      fat: { actual_g_per_kg: fatPerKg, actual_g: Math.round(avgFat), target: fatTarget, compliance_pct: Math.round((avgFat / fatTarget) * 100) },
-      calories: { actual: Math.round(avgCal), target: calTarget, compliance_pct: Math.round((avgCal / calTarget) * 100) },
-      weight,
-      dailyBreakdown: Object.entries(dailyTotals).map(([date, totals]) => ({
-        date,
-        protein: Math.round((totals.prot / weight) * 10) / 10,
-        carbs: Math.round((totals.carbs / weight) * 10) / 10,
-        fat: Math.round((totals.fat / weight) * 10) / 10,
-        proteinTarget: protTarget / weight,
-        carbsTarget: carbsTarget / weight,
-        fatTarget: fatTarget / weight
-      })).sort((a, b) => a.date.localeCompare(b.date))
-    };
+    return sharedComputeMacroAdherence(meals, profile, bodyAssessments || [], todayISO(), dateRange);
   } catch (e) {
     return null;
   }
@@ -512,63 +453,16 @@ export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRan
  * Calcula a Disponibilidade Energética (EA) para deteção de RED-S.
  * EA = (Kcal Ingeridas - Kcal Gasto Exercício) / Massa Magra (kg)
  * Limiar crítico: < 30 kcal/kg FFM/dia
+ *
+ * Delega em @formulas/energyAvailabilityWindow.ts (T1.5) — única
+ * implementação, partilhada com a Carol (specs/formulas-checklist.md Fase
+ * E). A limitação de doutrina do denominador (massa magra por BIA) já
+ * estava documentada em @formulas/energyAvailability.ts desde a Fase C e
+ * continua a aplicar-se — não é resolvida por esta migração de casa.
  */
-// EA diária delega em @formulas/energyAvailability.ts (T1) — único cálculo
-// no projeto (sem cópias a eliminar), mas com uma limitação de doutrina
-// que a Fase C NÃO resolve (decisão explícita do utilizador): o
-// denominador `lean_body_mass_kg` vem sempre de BIA, que a própria
-// doutrina (04-nutricao-seguranca.md:40) considera fraca para isto — ver
-// o comentário completo em energyAvailability.ts. Fica registado como
-// ponto a melhorar na doutrina, não como bug a corrigir agora.
 export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSessions, dateRange) {
   try {
-    const filteredMeals = filterByDateRange(meals, dateRange);
-    const filteredRuns = filterByDateRange(runs, dateRange);
-    const filteredGym = filterByDateRange(gymSessions, dateRange);
-
-    // Massa magra mais recente
-    const sortedBody = bodyAssessments?.length
-      ? [...bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))
-      : [];
-    const leanMass = sortedBody[0]?.lean_body_mass_kg || (sortedBody[0]?.weight_kg * (1 - (sortedBody[0]?.body_fat_pct || 20) / 100)) || 55;
-    const weight = sortedBody[0]?.weight_kg || 70;
-
-    // Agrupar por dia
-    const days = {};
-    const addDay = (date) => { if (!days[date]) days[date] = { intake: 0, exercise: 0 }; };
-
-    // Ingestão calórica por dia — mealNutrients() aplica o mesmo fallback de
-    // 3 níveis que calculateMacroAdherence (ver P0-6 acima).
-    filteredMeals.forEach(meal => {
-      addDay(meal.date);
-      days[meal.date].intake += mealNutrients(meal).calories;
-    });
-
-    // Gasto de exercício por dia — Corrida: ~1 kcal/kg/km
-    filteredRuns.forEach(run => {
-      addDay(run.date);
-      days[run.date].exercise += (run.distance_km || 0) * weight * Constants.RUNNING_COST_KCAL_PER_KG_KM;
-    });
-
-    // Gasto de exercício — Ginásio: usar calories_kcal se disponível
-    filteredGym.forEach(session => {
-      addDay(session.date);
-      days[session.date].exercise += session.calories_kcal || 200; // fallback 200 kcal
-    });
-
-    // Calcular EA diária
-    const daily = Object.entries(days).map(([date, d]) => {
-      const result = computeEnergyAvailability(d.intake, d.exercise, leanMass);
-      const ea = result?.ea ?? 0;
-      const status = result?.status ?? 'optimal';
-      return { date, ea: Math.round(ea * 10) / 10, status, intake: Math.round(d.intake), exercise: Math.round(d.exercise) };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    const average = daily.length > 0 ? Math.round(daily.reduce((s, d) => s + d.ea, 0) / daily.length * 10) / 10 : 0;
-    const daysAtRisk = daily.filter(d => d.status === 'critical').length;
-    const isAtRisk = daysAtRisk >= Constants.EA_CRITICAL_DURATION_DAYS;
-
-    return { daily, average, isAtRisk, daysAtRisk, leanMass };
+    return computeEnergyAvailabilityWindow(meals, bodyAssessments || [], runs || [], gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return { daily: [], average: 0, isAtRisk: false, daysAtRisk: 0, leanMass: 0 };
   }

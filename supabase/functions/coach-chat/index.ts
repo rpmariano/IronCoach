@@ -21,6 +21,11 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
+import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
+import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
+import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
+import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
+import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -601,7 +606,11 @@ export async function runGetNutritionHistory(sb: any, userId: string, args: { st
 
   const { data: meals, error } = await sb
     .from("meals")
-    .select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+    .select(
+        "date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+          "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
+          "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
+      )
     .eq("user_id", userId)
     .gte("date", start_date)
     .lte("date", end_date);
@@ -1052,6 +1061,75 @@ function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: n
 
   if (lines.length === 0) return null;
   return `PAINEL DE GINÁSIO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
+}
+
+// ─── Painel de indicadores de nutrição/corpo (Fase E — omnisciência) ───────
+// Mesmo racional dos painéis de corrida/ginásio: cumprimento de macros,
+// Disponibilidade Energética e composição corporal só existiam no ecrã
+// (NutritionDashboard, BodyDashboard, biEngine.js). Delega nos mesmos
+// módulos de _shared/formulas/ que passaram a alimentar esses ecrãs — mesmo
+// código, mesmo número dos dois lados. `meals` já vem limitado aos últimos
+// `windowDays` pela query do handler, por isso usa "todos" como range
+// (não filtra outra vez) — mesmo padrão do painel de ginásio.
+// deno-lint-ignore no-explicit-any
+function buildNutritionAnalyticsPanel(
+  meals: any[],
+  bodyAssessments: any[],
+  runs: any[],
+  gymSessions: any[],
+  profile: { weight_kg?: number | null; calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null } | null,
+  todayISO: string,
+  windowDays: number,
+): string | null {
+  if (!meals || meals.length === 0) return null;
+
+  const lines: string[] = [];
+  const RANGE = "todos";
+  // computeMacroAdherence/computeEnergyAvailabilityWindow esperam `date` nas
+  // avaliações corporais; a query deste handler já vem com o alias
+  // `assessed_at:date` (ver BodyAssessmentRow acima) — normaliza aqui.
+  const bodyForShared = (bodyAssessments || []).map((a) => ({ ...a, date: a.assessed_at }));
+
+  const adherence = computeMacroAdherence(meals, profile, bodyForShared, todayISO, RANGE);
+  if (adherence) {
+    const complianceLabel: Record<string, string> = {
+      no_data: "sem dados", critical: "crítico", low: "baixo", ok: "ok", over: "acima",
+    };
+    const zone = classifyCalorieCompliance(adherence.calories.compliance_pct);
+    lines.push(
+      `- Cumprimento calórico (${windowDays}d): ${adherence.calories.compliance_pct}% (${complianceLabel[zone]}) · ` +
+        `Proteína ${adherence.protein.actual_g_per_kg} g/kg (alvo ${(adherence.protein.target / adherence.weight).toFixed(1)}) · ` +
+        `Hidratos ${adherence.carbs.actual_g_per_kg} g/kg · Gordura ${adherence.fat.actual_g_per_kg} g/kg`,
+    );
+  }
+
+  const ea = computeEnergyAvailabilityWindow(meals, bodyForShared, runs || [], gymSessions || [], todayISO, RANGE);
+  if (ea.daily.length > 0) {
+    const eaStatusLabel: Record<string, string> = { critical: "crítica (RED-S)", subclinical: "subclínica", optimal: "ótima" };
+    lines.push(
+      `- Disponibilidade Energética (${windowDays}d): ${ea.average} kcal/kg MMG — ${eaStatusLabel[ea.daily[ea.daily.length - 1].status] ?? ea.daily[ea.daily.length - 1].status}` +
+        (ea.isAtRisk ? " ⚠ risco de RED-S sustentado" : ""),
+    );
+  }
+
+  if (bodyForShared.length > 0) {
+    const comp = computeCompositionTrend(bodyForShared);
+    if (comp.dates.length > 0) {
+      const i = comp.dates.length - 1;
+      lines.push(`- Composição corporal (${comp.dates[i]}): massa gorda ${comp.fatMassKg[i].toFixed(1)} kg · massa magra ${comp.leanMassKg[i].toFixed(1)} kg`);
+    }
+  }
+
+  const micros = computeNutrientRangeTotals(meals, todayISO, "hoje");
+  if (micros.calories > 0) {
+    lines.push(
+      `- Micronutrientes hoje: ferro ${Math.round(micros.iron_mg)} mg · cálcio ${Math.round(micros.calcium_mg)} mg · ` +
+        `vit. C ${Math.round(micros.vitamin_c_mg)} mg · potássio ${Math.round(micros.potassium_mg)} mg · fibra ${Math.round(micros.fiber)} g`,
+    );
+  }
+
+  if (lines.length === 0) return null;
+  return `PAINEL DE NUTRIÇÃO/CORPO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
@@ -2208,6 +2286,9 @@ export function buildSystemInstruction(
   // Idem — painel de indicadores de ginásio (Fase E): volume-carga, ACWR de
   // ginásio, grupos musculares, analytics de aulas.
   gymAnalyticsPanel: string | null = null,
+  // Idem — painel de indicadores de nutrição/corpo (Fase E): cumprimento de
+  // macros, Disponibilidade Energética, composição corporal, micronutrientes.
+  nutritionAnalyticsPanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2586,7 +2667,9 @@ export function buildSystemInstruction(
     `SEMANAL (calendário)" para "esta semana"/"semana passada" de corrida, "ACWR" para carga ` +
     `aguda/crónica, "PAINEL DE CORRIDA" para VDOT/polarização 80-20/melhores paces/desnível-` +
     `calorias-cadência, "PAINEL DE GINÁSIO" para volume-carga/ACWR de ginásio/grupos ` +
-    `musculares/aulas, os targets nutricionais, o resumo de água), usa esse número diretamente.\n` +
+    `musculares/aulas, "PAINEL DE NUTRIÇÃO/CORPO" para cumprimento de macros/Disponibilidade ` +
+    `Energética/composição corporal/micronutrientes, os targets nutricionais, o resumo de ` +
+    `água), usa esse número diretamente.\n` +
     `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
     `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
     `partir da lista bruta apenas se for uma soma simples e curta — caso contrário chama a ` +
@@ -3077,6 +3160,7 @@ export function buildSystemInstruction(
   if (acwrLine) sys += `\n${acwrLine}`;
   if (runAnalyticsPanel) sys += `\n\n${runAnalyticsPanel}`;
   if (gymAnalyticsPanel) sys += `\n\n${gymAnalyticsPanel}`;
+  if (nutritionAnalyticsPanel) sys += `\n\n${nutritionAnalyticsPanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3192,7 +3276,11 @@ async function handler(req: Request): Promise<Response> {
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
-      .select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+      .select(
+        "date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+          "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
+          "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
+      )
       .eq("user_id", userId)
       .gte("date", startISO)
       .lte("date", todayISO);
@@ -3405,6 +3493,15 @@ async function handler(req: Request): Promise<Response> {
       (profile?.gender as string | null) ?? null,
       todayISO,
     );
+    const nutritionAnalyticsPanel = buildNutritionAnalyticsPanel(
+      weekMeals || [],
+      bodyAssessments || [],
+      recentRuns || [],
+      gymSessions || [],
+      profile,
+      todayISO,
+      NUTRITION_WINDOW_DAYS,
+    );
 
     // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
     const ageFromBirth = profile?.birth_date
@@ -3584,7 +3681,8 @@ async function handler(req: Request): Promise<Response> {
       coachingMode,
       weeklyRunningContext,
       runAnalyticsPanel,
-      gymAnalyticsPanel
+      gymAnalyticsPanel,
+      nutritionAnalyticsPanel
     );
 
     let finalSystemInstruction = systemInstruction;

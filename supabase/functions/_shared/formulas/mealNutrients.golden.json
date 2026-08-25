@@ -1,0 +1,63 @@
+[
+  {
+    "name": "computeItemNutrients: macros diretos no item (ignora *_per_100g mesmo presente)",
+    "fn": "item",
+    "input": { "item": { "calories": 250, "protein": 20, "carbs": 10, "fat": 5, "calories_per_100g": 999 } },
+    "expect": { "calories": 250, "protein": 20, "carbs": 10, "fat": 5, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  },
+  {
+    "name": "computeItemNutrients: per_100g escalado por quantity_grams, incluindo os 4 micros corrigidos",
+    "fn": "item",
+    "input": {
+      "item": {
+        "quantity_grams": 150,
+        "calories_per_100g": 200, "protein_per_100g": 10, "carbs_per_100g": 20, "fat_per_100g": 5,
+        "fiber_per_100g": 2, "sugar_per_100g": 8, "sodium_per_100g": 100,
+        "iron_mg_per_100g": 4, "calcium_mg_per_100g": 60, "vitamin_c_mg_per_100g": 12, "potassium_mg_per_100g": 300
+      }
+    },
+    "expect": { "calories": 300, "protein": 15, "carbs": 30, "fat": 7.5, "fiber": 3, "sugar": 12, "sodium": 150, "iron_mg": 6, "calcium_mg": 90, "vitamin_c_mg": 18, "potassium_mg": 450 }
+  },
+  {
+    "name": "computeItemNutrients: fallback food_item.* quando não há *_per_100g",
+    "fn": "item",
+    "input": {
+      "item": {
+        "quantity_grams": 100,
+        "food_item": { "calories": 150, "protein": 5, "carbs": 25, "fat": 3, "iron_mg": 2, "calcium_mg": 40, "vitamin_c_mg": 6, "potassium_mg": 200 }
+      }
+    },
+    "expect": { "calories": 150, "protein": 5, "carbs": 25, "fat": 3, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 2, "calcium_mg": 40, "vitamin_c_mg": 6, "potassium_mg": 200 }
+  },
+  {
+    "name": "computeItemNutrients: sem quantidade explícita assume 100g",
+    "fn": "item",
+    "input": { "item": { "calories_per_100g": 80, "protein_per_100g": 4 } },
+    "expect": { "calories": 80, "protein": 4, "carbs": 0, "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  },
+  {
+    "name": "computeItemNutrients: item nulo — zeros",
+    "fn": "item",
+    "input": { "item": null },
+    "expect": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  },
+  {
+    "name": "computeMealNutrients: soma dois itens",
+    "fn": "meal",
+    "input": {
+      "meal": {
+        "meal_items": [
+          { "calories": 100, "protein": 10, "carbs": 5, "fat": 2 },
+          { "quantity_grams": 50, "calories_per_100g": 200, "protein_per_100g": 10 }
+        ]
+      }
+    },
+    "expect": { "calories": 200, "protein": 15, "carbs": 5, "fat": 2, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  },
+  {
+    "name": "computeMealNutrients: sem meal_items — usa macros diretos na refeição",
+    "fn": "meal",
+    "input": { "meal": { "calories": 400, "protein": 30, "carbs": 40, "fat": 10 } },
+    "expect": { "calories": 400, "protein": 30, "carbs": 40, "fat": 10, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  }
+]

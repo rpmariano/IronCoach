@@ -1,0 +1,58 @@
+[
+  {
+    "name": "duas refeições dentro da janela 'semana', uma fora — média diária e cumprimento",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [
+        { "date": "2026-08-24", "calories": 500, "protein": 40, "carbs": 50, "fat": 15 },
+        { "date": "2026-08-23", "meal_items": [{ "quantity_grams": 200, "calories_per_100g": 150, "protein_per_100g": 10, "carbs_per_100g": 20, "fat_per_100g": 5 }] },
+        { "date": "2026-08-01", "calories": 9999, "protein": 999, "carbs": 999, "fat": 999 }
+      ],
+      "profile": { "weight_kg": null, "calorie_goal": 2200, "protein_goal": 160, "carbs_goal": 220, "fat_goal": 70 },
+      "bodyAssessments": [{ "date": "2026-08-20", "weight_kg": 70 }]
+    },
+    "expect": {
+      "protein": { "actual_g_per_kg": 0.4, "actual_g": 30, "target": 160, "compliance_pct": 19 },
+      "carbs": { "actual_g_per_kg": 0.6, "actual_g": 45, "target": 220, "compliance_pct": 20 },
+      "fat": { "actual_g_per_kg": 0.2, "actual_g": 13, "target": 70, "compliance_pct": 18 },
+      "calories": { "actual": 400, "target": 2200, "compliance_pct": 18 },
+      "weight": 70,
+      "dailyBreakdown": [
+        { "date": "2026-08-23", "protein": 0.3, "carbs": 0.6, "fat": 0.1, "proteinTarget": 2.2857142857142856, "carbsTarget": 3.142857142857143, "fatTarget": 1 },
+        { "date": "2026-08-24", "protein": 0.6, "carbs": 0.7, "fat": 0.2, "proteinTarget": 2.2857142857142856, "carbsTarget": 3.142857142857143, "fatTarget": 1 }
+      ]
+    }
+  },
+  {
+    "name": "sem refeições na janela — null",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [{ "date": "2026-08-01", "calories": 500, "protein": 40, "carbs": 50, "fat": 15 }],
+      "profile": { "calorie_goal": 2000, "protein_goal": 150, "carbs_goal": 200, "fat_goal": 70 },
+      "bodyAssessments": []
+    },
+    "expect": null
+  },
+  {
+    "name": "sem peso em nenhum lado — usa o default 70kg",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "dia",
+      "meals": [{ "date": "2026-08-25", "calories": 700, "protein": 70, "carbs": 70, "fat": 21 }],
+      "profile": {},
+      "bodyAssessments": []
+    },
+    "expect": {
+      "protein": { "actual_g_per_kg": 1, "actual_g": 70, "target": 150, "compliance_pct": 47 },
+      "carbs": { "actual_g_per_kg": 1, "actual_g": 70, "target": 200, "compliance_pct": 35 },
+      "fat": { "actual_g_per_kg": 0.3, "actual_g": 21, "target": 70, "compliance_pct": 30 },
+      "calories": { "actual": 700, "target": 2000, "compliance_pct": 35 },
+      "weight": 70,
+      "dailyBreakdown": [
+        { "date": "2026-08-25", "protein": 1, "carbs": 1, "fat": 0.3, "proteinTarget": 2.142857142857143, "carbsTarget": 2.857142857142857, "fatTarget": 1 }
+      ]
+    }
+  }
+]

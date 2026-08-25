@@ -25,6 +25,12 @@ export function computeBMR(
 
 export const TDEE_ACTIVITY_FACTOR = 1.3;
 
+// Custo energético da corrida (≈1,0 kcal/kg/km) — mesma constante que
+// energyAvailabilityWindow.ts usa para o gasto de exercício da EA. Exportada
+// (não só inline) para as duas fórmulas partilharem o número, em vez de
+// cada uma hardcodar o seu "1.0" (Fase E).
+export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
+
 // weeklyVolumeKm: km corridos nos últimos 7 dias — o custo do treino é a
 // média diária desse volume (≈1 kcal/kg/km), somado à TMB×fator. Sem
 // volume ou sem peso, o custo fica 0 (não inventa treino que não houve).
@@ -33,6 +39,8 @@ export function computeTDEE(
   weeklyVolumeKm: number | null | undefined,
   weightKg: number | null | undefined,
 ): number {
-  const runCost = (weeklyVolumeKm && weightKg) ? Math.round((weeklyVolumeKm * weightKg) / 7) : 0;
+  const runCost = (weeklyVolumeKm && weightKg)
+    ? Math.round((weeklyVolumeKm * weightKg * RUNNING_COST_KCAL_PER_KG_KM) / 7)
+    : 0;
   return Math.round(bmr * TDEE_ACTIVITY_FACTOR) + runCost;
 }
