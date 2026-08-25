@@ -20,11 +20,19 @@ describe('racePlanEngine — Duração recomendada & conversões', () => {
     expect(getRecommendedPrepWeeks(42.2, 'avancado')).toBe(12);
   });
 
-  it('calcula os dias de recuperação pós-prova de acordo com Bloco 2.3 #2', () => {
+  it('calcula os dias de recuperação pós-prova de acordo com Bloco 2.3 #2, por inteiro sensível ao nível (Fase C)', () => {
+    // Fase C passou a usar a tabela completa da doutrina (4 níveis, limite
+    // superior de cada gama) em vez de só distinguir "avançado" do resto —
+    // iniciante numa meia/maratona precisa de bem mais dias do que médio,
+    // por exemplo, e a simplificação anterior tratava os dois na mesma.
     expect(getRecoveryDaysAfterRace(10, 'iniciante')).toBe(7);
-    expect(getRecoveryDaysAfterRace(21.1, 'iniciante')).toBe(14);
-    expect(getRecoveryDaysAfterRace(42.2, 'iniciante')).toBe(28);
-    expect(getRecoveryDaysAfterRace(42.2, 'avancado')).toBe(21);
+    expect(getRecoveryDaysAfterRace(21.1, 'iniciante')).toBe(21);
+    expect(getRecoveryDaysAfterRace(42.2, 'iniciante')).toBe(35);
+    expect(getRecoveryDaysAfterRace(42.2, 'medio')).toBe(21);
+    // Avançado + Maratona: conflito na doutrina (10-14 dias Pfitzinger/
+    // Canova vs. 26 dias Daniels/Galloway) — decisão do utilizador: 26,
+    // o mais conservador.
+    expect(getRecoveryDaysAfterRace(42.2, 'avancado')).toBe(26);
   });
 
   it('calcula o taper de acordo com a prioridade A/B/C, por inteiro sensível ao nível (Fase C)', () => {

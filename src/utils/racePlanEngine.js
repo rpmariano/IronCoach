@@ -15,6 +15,7 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
+import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@formulas/recovery.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -72,16 +73,13 @@ export function getRecommendedPrepWeeks(distanceKm, experienceLevel = 'iniciante
 }
 
 // ─── Cálculo dos Dias de Recuperação Pós-Prova (Bloco 2.3 #2) ───────────────────
+// Delega em @formulas/recovery.ts (T1) — a tabela completa da doutrina
+// (nível×distância, os 4 níveis, não só "avançado" vs. "resto"), decidida
+// na Fase C como fonte única, incluindo a resolução do conflito
+// avançado+maratona (26 dias, decisão do utilizador). Ver
+// specs/formulas-centralizacao.md §4, specs/formulas-checklist.md Fase C.
 export function getRecoveryDaysAfterRace(distanceKm, experienceLevel = 'iniciante') {
-  const cat = categorizeDistance(distanceKm) || '10k';
-  switch (cat) {
-    case '5k': return experienceLevel === 'avancado' ? 3 : 6;
-    case '10k': return experienceLevel === 'avancado' ? 3 : 7;
-    case 'meia': return experienceLevel === 'avancado' ? 7 : 14;
-    case 'maratona': return experienceLevel === 'avancado' ? 21 : 28;
-    case 'ultra': return experienceLevel === 'avancado' ? 21 : 35;
-    default: return 7;
-  }
+  return sharedGetRecoveryDaysAfterRace(distanceKm, experienceLevel);
 }
 
 // ─── Dias de Polimento / Taper por Prioridade e Distância (Bloco 2.3 #1) ────────

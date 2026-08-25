@@ -12,6 +12,7 @@ import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formu
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
+import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -2776,22 +2777,25 @@ export function buildSystemInstruction(
     bio.push(`FC em repouso: ${biometrics.resting_hr_bpm} bpm`);
   }
   if (idade !== null) {
-    const fcMax = Math.round(208 - 0.7 * idade);
+    // Delega em ../_shared/formulas/heartRateZones.ts (T1) — já era sítio
+    // único, movido por consistência arquitetural (specs/formulas-checklist.md
+    // Fase C/E), não por bug.
+    const fcMax = computeMaxHR(idade);
     if (biometrics.resting_hr_bpm) {
-      const reserva = fcMax - biometrics.resting_hr_bpm;
-      const z = (pct: number) => Math.round(biometrics.resting_hr_bpm! + pct * reserva);
+      const zones = computeKarvonenZones(fcMax, biometrics.resting_hr_bpm);
       bio.push(
         `Zonas de FC (Karvonen, FCmáx estimada ${fcMax} bpm por Tanaka): ` +
-        `Z1 ${z(0.50)}-${z(0.60)} · Z2 ${z(0.60)}-${z(0.70)} · Z3 ${z(0.70)}-${z(0.80)} · ` +
-        `Z4 ${z(0.80)}-${z(0.90)} · Z5 ${z(0.90)}-${fcMax} bpm`,
+        `Z1 ${zones.z1[0]}-${zones.z1[1]} · Z2 ${zones.z2[0]}-${zones.z2[1]} · Z3 ${zones.z3[0]}-${zones.z3[1]} · ` +
+        `Z4 ${zones.z4[0]}-${zones.z4[1]} · Z5 ${zones.z5[0]}-${zones.z5[1]} bpm`,
       );
     } else {
+      const zones = computePctMaxZones(fcMax);
       bio.push(
         `Zonas de FC (%FCmáx, FCmáx estimada ${fcMax} bpm por Tanaka — menos ` +
-        `precisas por falta de FC em repouso no perfil): Z1 ${Math.round(fcMax * 0.50)}-` +
-        `${Math.round(fcMax * 0.60)} · Z2 ${Math.round(fcMax * 0.60)}-${Math.round(fcMax * 0.70)} · ` +
-        `Z3 ${Math.round(fcMax * 0.70)}-${Math.round(fcMax * 0.80)} · Z4 ${Math.round(fcMax * 0.80)}-` +
-        `${Math.round(fcMax * 0.90)} · Z5 ${Math.round(fcMax * 0.90)}-${fcMax} bpm`,
+        `precisas por falta de FC em repouso no perfil): Z1 ${zones.z1[0]}-` +
+        `${zones.z1[1]} · Z2 ${zones.z2[0]}-${zones.z2[1]} · ` +
+        `Z3 ${zones.z3[0]}-${zones.z3[1]} · Z4 ${zones.z4[0]}-` +
+        `${zones.z4[1]} · Z5 ${zones.z5[0]}-${zones.z5[1]} bpm`,
       );
     }
   }

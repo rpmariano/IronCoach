@@ -284,10 +284,10 @@ Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
   confirma os mesmos valores de antes da migração).
 - [x] Mifflin-St Jeor/TDEE — P0-4 **resolvido**: fator único ×1,3 + custo do
   treino, `@formulas/tdee.ts`, migradas as duas edge functions.
-- [ ] Tanaka/Karvonen, Epley (1RM) — sítio único, sem cópias a eliminar;
-  não migrados nesta ronda (zero risco de duplicação, valor arquitetural
-  baixo face ao esforço — ficam para uma limpeza futura, não bloqueiam
-  nada).
+- [x] Tanaka/Karvonen, Epley (1RM) — migrados para `heartRateZones.ts` e
+  `epley.ts` respetivamente. Eram sítio único, sem cópias a eliminar — a
+  migração é higiene arquitetural (consistência com o resto de
+  `_shared/formulas/`), não correção de bug.
 - [x] `sessionVolumeKg` — `GymDashboard.jsx`/`GymSessionCard.jsx` deixaram
   de reimplementar a soma peso×reps e passaram a importar de `biEngine.js`
   (fica no frontend — não há cópia nas Edge Functions para justificar T1).
@@ -308,9 +308,15 @@ Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
   todo o lado — `@formulas/nutritionCompliance.ts` (T1), migrados os 3
   consumidores. A pontuação do Pilar de Prontidão (100/65/20) mantém-se
   como composição própria do pilar; só a fronteira das zonas ficou única.
-- [ ] Recuperação pós-prova — não fazia parte das 4 decisões desta ronda;
-  tem uma decisão pendente do utilizador (ver "Necessidade de fontes"
-  acima), não só uma migração de casa.
+- [x] Recuperação pós-prova — **resolvido**. `getRecoveryDaysAfterRace`
+  só distinguia "avançado" de "toda a gente" (2 grupos); a doutrina tem 4
+  níveis com valores bem diferentes entre si — a simplificação dava dias
+  a menos para iniciante/básico e a mais para médio, em quase todas as
+  distâncias. Migrada para `recovery.ts` com a tabela completa (limite
+  superior de cada gama, mesma convenção do taper). Conflito
+  avançado+maratona (10-14 dias Pfitzinger/Canova vs. 26 dias Daniels/
+  Galloway): decisão do utilizador — 26 dias, o mais conservador, a mesma
+  regra que o documento de investigação já propunha.
 
 ### Paridade frontend↔backend a confirmar nesta fase
 
@@ -341,17 +347,22 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   edge functions — golden vector comum, 7 casos.
 - [x] Compliance calórica: mesma zona (crítico/baixo/ok/acima) nos 3 ecrãs
   — golden vector comum, 10 casos.
+- [x] Recuperação pós-prova: mesmos dias para a mesma combinação
+  nível×distância — golden vector comum, 15 casos.
+- [x] Tanaka/Karvonen: mesma FCmáx e as mesmas 5 zonas para a mesma
+  idade/FC repouso — golden vector comum.
+- [x] Epley: mesmo 1RM estimado para o mesmo peso×reps — golden vector
+  comum.
 
-**Verificação de saída da Fase C (10 de ~10 fórmulas T1 migradas; só
-Tanaka/Karvonen/Epley ficam de fora, deliberadamente — sítio único, zero
-risco, sem valor em mudar de casa agora):**
-- [x] `npx vitest run` verde — 516/516 (93 testes novos desde o início da
-  Fase C: 10 vetores dourados + migração de fixtures existentes).
+**Verificação de saída da Fase C — completa. Todas as fórmulas do
+inventário (`formulas-centralizacao.md` §4) estão em `_shared/formulas/`:**
+- [x] `npx vitest run` verde — 539/539 (116 testes novos desde o início da
+  Fase C: 13 vetores dourados + migração de fixtures existentes).
 - [ ] `deno test` (toda a suite de edge functions) verde — não corrido
   (sem `deno` neste ambiente); sintaxe verificada com `esbuild` em todos os
   `.ts` novos/alterados.
 - [x] `npm run build` verde.
-- [x] Grep de confirmação: nenhuma das 10 fórmulas migradas tem segunda
+- [x] Grep de confirmação: nenhuma das 13 fórmulas migradas tem segunda
   definição fora de `_shared/formulas/`.
 
 ### Necessidade de fontes/investigação adicional — avaliação final da Fase C
@@ -377,10 +388,17 @@ investigação em fontes fidedignas antes de dar a fase por concluída.
   ×1,55) — decisão do utilizador: ×1,3 + custo do treino (o valor que já
   batia com a doutrina, 1,2-1,4 + custo à parte). **Resolvido nesta
   ronda.**
+- **Tanaka/Karvonen, Epley**: **não aplicável** — mesma razão do
+  VDOT/Riegel acima, são fórmulas estabelecidas (Tanaka 2001, Epley 1985),
+  não afirmações de doutrina por verificar.
+- **Recuperação pós-prova**: tinha um conflito real de fontes na doutrina
+  (Pfitzinger/Canova 10-14 dias vs. Daniels/Galloway 26 dias, só para
+  avançado+maratona) — decisão do utilizador: 26 dias, o mais
+  conservador. **Resolvido nesta ronda.**
 
-Com estas duas decisões, a Fase C fica sem nenhum item por resolver — as
-únicas peças ainda fora de `_shared/formulas/` (Tanaka/Karvonen, Epley,
-recuperação pós-prova) são deliberadamente fora de âmbito, não bloqueios.
+Com isto, a Fase C fica completa — todas as fórmulas do inventário
+(`formulas-centralizacao.md` §4) vivem em `_shared/formulas/`, sem
+nenhuma decisão por tomar.
 
 ---
 

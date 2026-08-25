@@ -18,6 +18,7 @@ import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
 import { predictRaceTime as sharedPredictRaceTime, calculateVDOT as sharedCalculateVDOT } from '@formulas/racePrediction.ts';
 import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
+import { estimate1RM } from '@formulas/epley.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -411,6 +412,8 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
   }
 }
 
+// Delega em @formulas/epley.ts (T1) — única implementação, sem cópias a
+// eliminar (specs/formulas-checklist.md Fase C/E).
 export function calculate1RMProgression(gymSessions, exerciseName) {
   try {
     const progression = [];
@@ -420,9 +423,9 @@ export function calculate1RMProgression(gymSessions, exerciseName) {
         let max1RM = 0;
         let maxWeight = 0;
         let bestReps = 0;
-        
+
         sets.forEach(set => {
-          const epley1RM = set.weight * (1 + set.reps / 30);
+          const epley1RM = estimate1RM(set.weight, set.reps);
           if (epley1RM > max1RM) {
             max1RM = epley1RM;
             maxWeight = set.weight;
