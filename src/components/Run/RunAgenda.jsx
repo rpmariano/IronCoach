@@ -28,12 +28,7 @@ import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 import { getRecommendedPrepWeeks } from '../../utils/racePlanEngine';
 import { useCarouselHaptics } from '../../utils/haptics';
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
+import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';

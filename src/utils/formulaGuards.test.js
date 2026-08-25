@@ -40,18 +40,15 @@ function relPath(absPath) {
 // Ficheiros que já redefinem cada função, hoje — capturado por leitura
 // direta do código nesta sessão (Fase B). Ver P0-5 (biEngine.js já
 // corrigido nesta ronda — fora da allowlist de propósito).
+//
+// Fase D (specs/formulas-checklist.md) migrou todas as cópias locais de
+// todayISO e formatDuration para importar do canónico — as allowlists
+// abaixo ficaram vazias (só o próprio ficheiro canónico). formatPace
+// continua com cópias: os 3 formatos visíveis ("5.20" / "5'20\"/km" /
+// "5:20/km") são divergência de UI real, não só duplicação de código — só
+// mudam com uma decisão explícita sobre o formato a mostrar ao atleta.
 const TODAY_ISO_ALLOWLIST = new Set([
   'lib/utils.js', // canónico
-  'components/Body/BodyRegistration.jsx',
-  'components/GraphicsLibrary/NutritionOptionA.jsx',
-  'components/Gym/GymRegistration.jsx',
-  'components/Home/Home.jsx',
-  'components/Home/WeeklyPlanCard.jsx',
-  'components/Perfil/Perfil.jsx',
-  'components/Run/RaceCard.jsx',
-  'components/Run/RunAgenda.jsx',
-  'components/Run/RunCalendar.jsx',
-  'components/Run/RunRegistration.jsx',
 ]);
 
 const FORMAT_PACE_ALLOWLIST = new Set([
@@ -63,8 +60,6 @@ const FORMAT_PACE_ALLOWLIST = new Set([
 
 const FORMAT_DURATION_ALLOWLIST = new Set([
   'utils/run.js', // canónico
-  'components/Run/RunCard.jsx',
-  'components/Gym/GymSessionCard.jsx',
 ]);
 
 function findDefiners(files, name) {

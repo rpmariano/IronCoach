@@ -1,19 +1,16 @@
 import React, { useMemo } from 'react';
 import { Utensils, Info, Flame } from 'lucide-react';
 import { mealNutrients } from '../../utils/nutrition';
+// Não é todayISO() (hoje local do browser) — este cálculo já forçava
+// Europe/Lisbon independentemente do fuso do dispositivo, o que é
+// exatamente o que lisbonTodayISO() (lib/utils.js) já faz. Trocar para
+// todayISO() aqui seria uma mudança de comportamento real para quem usa a
+// app fora de Portugal (specs/formulas-checklist.md Fase D).
+import { lisbonTodayISO } from '../../lib/utils';
 import './NutritionOptionA.css';
 
-function todayISO() {
-  const d = new Date();
-  const tzDate = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Lisbon' }));
-  const yyyy = tzDate.getFullYear();
-  const mm = String(tzDate.getMonth() + 1).padStart(2, '0');
-  const dd = String(tzDate.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 export default function NutritionOptionA({ meals = [], profile = {}, onNav }) {
-  const today = todayISO();
+  const today = lisbonTodayISO();
   const calGoal = Number(profile?.calorie_goal) || 0;
   const proteinGoal = Number(profile?.protein_goal) || 0;
   

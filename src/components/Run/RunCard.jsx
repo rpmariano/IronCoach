@@ -8,6 +8,7 @@ import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
+import { formatDuration } from '../../utils/run';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -18,17 +19,6 @@ function RunIcon({ className = "w-5 h-5" }) {
       <path d="M2 11c0 1.7 1.3 3 3 3h7"/>
     </svg>
   );
-}
-
-function formatDuration(totalSeconds) {
-  if (!totalSeconds) return '';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function paceSecPerKm(run) {

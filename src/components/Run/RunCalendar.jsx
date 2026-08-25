@@ -6,7 +6,7 @@ import RunCard from './RunCard';
 import RunRegistration from './RunRegistration';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
-import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
+import { CALENDAR_NO_DATA_DOT, todayISO } from '../../lib/utils';
 
 const SneakerIcon = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -22,11 +22,6 @@ const PT_MONTHS = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
 ];
 
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 export default function RunCalendar({ onNewRun }) {
   const { runs, setRuns } = useAppStore();

@@ -15,13 +15,7 @@ import { raceDistanceLabel } from '../../utils/run';
 import { detectCoachInsights, calculateReadinessIndex } from '../../utils/biEngine';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
+import { todayISO } from '../../lib/utils';
 
 function statCardBg(color) {
   return {

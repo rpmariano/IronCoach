@@ -10,6 +10,7 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import { todayISO } from '../../lib/utils';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -23,11 +24,6 @@ const GYM_CATEGORIES = {
 const GYM_CATEGORIES_VISIBLE = 6;
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 function parseDurationInput(val) {
   val = val.trim().toLowerCase();

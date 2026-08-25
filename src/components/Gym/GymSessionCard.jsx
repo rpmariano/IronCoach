@@ -9,17 +9,7 @@ import { mapCategoriesToMuscles } from '../../utils/gym';
 import { sessionVolumeKg } from '../../utils/biEngine';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
-
-function formatDuration(totalSeconds) {
-  if (!totalSeconds) return '';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+import { formatDuration } from '../../utils/run';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
