@@ -83,10 +83,17 @@ export function getRecoveryDaysAfterRace(distanceKm, experienceLevel = 'iniciant
 }
 
 // ─── Dias de Polimento / Taper por Prioridade e Distância (Bloco 2.3 #1) ────────
-export function getTaperWeeks(distanceKm, racePriority = 'a', experienceLevel = 'iniciante') {
+export function getTaperWeeks(distanceKm, racePriority = 'a', experienceLevel = 'iniciante', raceType = 'estrada') {
   if (racePriority === 'b' || racePriority === 'c') {
     return 1; // Provas secundárias ou de treino levam 2-4 dias de taper (~1 semana de descarga)
   }
+  // Doutrina (Corrida 2.3 #1): "Ultra/Trail" é categoria própria na tabela
+  // de taper, com o mesmo taper de Maratona (14-21 dias, ~3 semanas) em
+  // quase todos os níveis — INDEPENDENTE da distância nominal. É o risco de
+  // dano muscular excêntrico (descidas) e terreno técnico que justifica o
+  // taper longo, não "ser uma distância equivalente maior" — ao contrário
+  // da previsão de tempo (Riegel), aqui não se usa o km equivalente ITRA.
+  if (raceType === 'trail') return 3;
   const cat = categorizeDistance(distanceKm) || '10k';
   if (cat === '5k' || cat === '10k') return 1;
   if (cat === 'meia') return 2;
@@ -127,12 +134,16 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;
   const equivalentKm = calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType);
 
-  // equivalentKm, não distanceKm em bruto: uma prova de trail com D+ tem de
-  // ser classificada (10k/meia/maratona/ultra) pelo esforço equivalente, ou
-  // fica com a duração/taper/recuperação de um piso plano da mesma
-  // distância nominal, subestimando o desnível por completo.
-  const totalWeeks = getRecommendedPrepWeeks(equivalentKm, experienceLevel);
-  const taperWeeks = Math.min(Math.max(1, getTaperWeeks(equivalentKm, racePriority, experienceLevel)), Math.floor(totalWeeks / 3));
+  // distanceKm em bruto para semanas de preparação e recuperação — as
+  // tabelas de doutrina (MIN_PREP_WEEKS, Corrida 2.3 #2) não têm categoria
+  // própria de trail, e usar o equivalente ITRA criava um "penhasco": 2km
+  // de D+ convertido bastavam para saltar de categoria inteira (10k→meia),
+  // duplicando as semanas de preparação por uma diferença de desnível
+  // pequena. O taper É a exceção documentada (ver getTaperWeeks acima,
+  // "Ultra/Trail" como categoria própria da doutrina); o equivalente
+  // continua a valer para a Previsão de tempo/pace (predictRaceTime).
+  const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
+  const taperWeeks = Math.min(Math.max(1, getTaperWeeks(distanceKm, racePriority, experienceLevel, raceType)), Math.floor(totalWeeks / 3));
 
   // Datas de referência
   const raceDateObj = new Date(raceDate + 'T00:00:00');
@@ -141,7 +152,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const planStartDateObj = new Date(raceDateObj.getTime() - totalWeeks * 7 * 86400000);
   const planStartDate = planStartDateObj.toISOString().slice(0, 10);
 
-  const recoveryDays = getRecoveryDaysAfterRace(equivalentKm, experienceLevel);
+  const recoveryDays = getRecoveryDaysAfterRace(distanceKm, experienceLevel);
   const planEndDateObj = new Date(raceDateObj.getTime() + recoveryDays * 86400000);
   const planEndDate = planEndDateObj.toISOString().slice(0, 10);
 
@@ -183,7 +194,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     : weeksToRace;
 
   const viability = assessRaceViability({
-    distanceKm: equivalentKm,
+    // distanceKm em bruto, pela mesma razão do totalWeeks acima — MIN_VOLUME_KM
+    // também não tem categoria de trail própria na doutrina.
+    distanceKm,
     experienceLevel,
     weeksToRace: prepWeeksForViability,
     weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
@@ -284,8 +297,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     const avgPaceSec = totalPacedKm > 0 ? Math.round(totalSeconds / totalPacedKm) : null;
 
     // Volume semanal alvo da prova baseado na tabela canónica MIN_VOLUME_KM —
-    // equivalentKm, pela mesma razão do totalWeeks/taper acima.
-    const distCategory = categorizeDistance(equivalentKm) || '10k';
+    // distanceKm em bruto, pela mesma razão do totalWeeks acima (sem
+    // categoria de trail própria nesta tabela).
+    const distCategory = categorizeDistance(distanceKm) || '10k';
     const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || 20;
     const expectedPhaseKm = targetWeeklyKm * Math.max(1, phaseWeeks);
     const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);

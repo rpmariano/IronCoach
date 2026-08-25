@@ -919,28 +919,29 @@ export function detectCoachInsights(data, profile) {
         if (data.runs?.length > 0) {
           const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
           const expLevel = next.experience_level || profile?.experience_level || 'iniciante';
-          // equivalentKm (distância + D+ convertido), não dist em bruto — uma
-          // prova de trail com D+ fica com o macrociclo/viabilidade de um
-          // piso plano da mesma distância nominal, ignorando o desnível.
-          const effectiveDist = getEffectiveDistanceKm(next);
-          const totalWeeks = getRecommendedPrepWeeks(effectiveDist, expLevel);
+          // dist em bruto para semanas de preparação e viabilidade — as
+          // tabelas MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria de trail
+          // própria, e usar o equivalente ITRA cria um "penhasco" de
+          // categoria por poucos km de D+ convertido (ver racePlanEngine.js).
+          const totalWeeks = getRecommendedPrepWeeks(dist, expLevel);
           const planStartDateObj = new Date(parseISO(next.date).getTime() - totalWeeks * 7 * 86400000);
           const inProgress = planStartDateObj.getTime() <= now.getTime();
           const prepWeeksForViability = inProgress ? totalWeeks : Math.floor(daysLeft / 7);
 
           const viability = assessRaceViability({
-            distanceKm: effectiveDist,
+            distanceKm: dist,
             experienceLevel: expLevel,
             weeksToRace: prepWeeksForViability,
             weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
             racePriority: next.race_priority || 'a',
           });
 
-          // O tempo previsto usa a distância equivalente (mesma lógica do
-          // totalWeeks acima), mas o pace comparado com o alvo tem de ser
-          // sobre a distância REAL da prova — o atleta corre `dist` km, não
-          // o equivalente — senão o pace previsto vem "por km equivalente"
-          // e a comparação com targetPace (por km real) fica errada.
+          // O tempo previsto usa a distância equivalente ITRA (getEffectiveDistanceKm)
+          // — aqui sim documentado (Riegel "NÃO se aplica a trail com desnível");
+          // mas o pace comparado com o alvo tem de ser sobre a distância REAL
+          // da prova, senão o pace previsto vem "por km equivalente" e a
+          // comparação com targetPace (por km real) fica errada.
+          const effectiveDist = getEffectiveDistanceKm(next);
           const prediction = predictRaceTime(data.runs, effectiveDist, profile?.experience_level || 'medio');
           const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / dist : 0;
           const targetPace = next.target_pace_seconds_per_km;
@@ -1113,10 +1114,6 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       let tacticDesc = 'Preparação alinhada com os objetivos da prova.';
       
       const distanceKm = parseFloat((nextRace.distance_km || '10').toString().replace(',', '.'));
-      // equivalentKm (distância + D+ convertido) para o macrociclo/viabilidade
-      // e para o tempo previsto — senão uma prova de trail com D+ é avaliada
-      // como se fosse piso plano da mesma distância nominal.
-      const effectiveDist = getEffectiveDistanceKm(nextRace);
       const todayISO = new Date().toISOString().slice(0, 10);
       const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
       const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
@@ -1125,23 +1122,27 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
 
       // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
       // o macrociclo todo, e não apenas o tempo que falta, senão dispara sempre na reta final.
-      const totalWeeks = getRecommendedPrepWeeks(effectiveDist, expLevel);
+      // distanceKm em bruto — MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria
+      // de trail própria, e o equivalente ITRA criava um "penhasco" de
+      // categoria por poucos km de D+ convertido (ver racePlanEngine.js).
+      const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
       const planStartDateObj = new Date(parseISO(nextRace.date).getTime() - totalWeeks * 7 * 86400000);
       const inProgress = planStartDateObj.getTime() <= parseISO(todayISO).getTime();
       const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
 
       const viability = assessRaceViability({
-        distanceKm: effectiveDist,
+        distanceKm,
         experienceLevel: expLevel,
         weeksToRace: prepWeeksForViability,
         weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
         racePriority: nextRace.race_priority || 'a',
       });
 
-      // O pace previsto para comparar com targetPace tem de ser sobre a
-      // distância REAL da prova (distanceKm), não o equivalente usado acima
-      // — o atleta corre distanceKm km, o equivalente só serve para estimar
-      // o esforço/tempo total, não para exprimir um ritmo por km real.
+      // O tempo previsto usa a distância equivalente ITRA — aqui sim
+      // documentado (Riegel "NÃO se aplica a trail com desnível"); mas o
+      // pace comparado com targetPace tem de ser sobre a distância REAL
+      // da prova (distanceKm), senão vem "por km equivalente".
+      const effectiveDist = getEffectiveDistanceKm(nextRace);
       const prediction = predictRaceTime(runs || [], effectiveDist, profile?.experience_level || 'medio');
       const predictedPaceReal = prediction.predictedSeconds > 0 ? prediction.predictedSeconds / distanceKm : 0;
       const targetPace = nextRace.target_pace_seconds_per_km;

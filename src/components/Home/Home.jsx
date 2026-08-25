@@ -137,6 +137,7 @@ function NextRaceCard({ raceEvents = [], runs = [], meals = [], bodyAssessments 
                   distance={raceDistanceLabel(next.distance_km)}
                   priority={next.race_priority}
                   daysRemaining={daysUntil}
+                  daysToStart={plan.daysToStart}
                   progressPercentage={plan.progressPercentage}
                   readiness={readinessColor}
                   readinessReason={readinessReason}
