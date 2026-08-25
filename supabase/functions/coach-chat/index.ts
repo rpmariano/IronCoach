@@ -11,6 +11,7 @@ import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/for
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
+import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1923,17 +1924,17 @@ export function buildNutritionTargets(opts: {
           waterGoalMl, proteinGoal, calorieGoal, weeklyVolumeKm } = opts;
   const lines: string[] = [];
 
-  // TMB (Mifflin-St Jeor) + GETD estimado (Bloco 4.1 #4)
+  // TMB (Mifflin-St Jeor) + GETD estimado (Bloco 4.1 #4) — delega em
+  // ../_shared/formulas/tdee.ts (T1), fator único ×1,3 escolhido na Fase C
+  // (specs/formulas-checklist.md P0-4) para acabar com a divergência face a
+  // coach-daily-summary, que usava ×1,55 sem custo de treino nenhum.
   if (weightKg && heightCm && age && gender) {
-    const tmb = normalizeGender(gender) === "F"
-      ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161
-      : (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
+    const tmb = sharedComputeBMR(weightKg, heightCm, age, normalizeGender(gender) === "F");
     const tmbR = Math.round(tmb);
-    // Custo de corrida: 1 kcal/kg/km; GETD = TMB × 1,3 (atividade leve não-treino)
     const runCost = weeklyVolumeKm ? Math.round((weeklyVolumeKm * weightKg) / 7) : 0;
-    const getd    = Math.round(tmb * 1.3) + runCost;
+    const getd    = sharedComputeTDEE(tmb, weeklyVolumeKm, weightKg);
     lines.push(`TMB estimada (Mifflin-St Jeor): ${tmbR} kcal/dia`);
-    lines.push(`GETD estimado: ${getd} kcal/dia (TMB×1,3 + ${runCost} kcal custo de corrida/dia)`);
+    lines.push(`GETD estimado: ${getd} kcal/dia (TMB×${String(TDEE_ACTIVITY_FACTOR).replace(".", ",")} + ${runCost} kcal custo de corrida/dia)`);
     if (calorieGoal) {
       const diff = calorieGoal - getd;
       if (diff < -500) {

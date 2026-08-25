@@ -23,6 +23,7 @@ import MacroComplianceChart from '../BI/MacroComplianceChart';
 import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
 import MetricInfo from '../BI/MetricInfo';
 import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
+import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 
 ChartJS.register(
   CategoryScale,
@@ -171,10 +172,17 @@ export default function NutritionDashboard() {
   // vocabulário que o KPICard reconhece — 'warning' não tinha nenhum case
   // no getStatusColor() dele e caía sempre no cinzento neutro, escondendo o
   // aviso de excesso (ver auditoria de 23/08).
+  //
+  // A classificação de zona delega em @formulas/nutritionCompliance.ts
+  // (T1) — antes tinha um limiar próprio (85/115), diferente dos outros 2
+  // ecrãs que mostram a mesma pergunta; unificado por decisão do
+  // utilizador (specs/formulas-checklist.md). 'critical' e 'low' mapeiam
+  // ambos para 'danger' — o KPICard só tem 3 tons + neutro, não 4.
   const getComplianceStatus = (pct) => {
-    if (!pct) return 'neutral';
-    if (pct < 85) return 'danger';
-    if (pct > 115) return 'caution';
+    const zone = classifyCalorieCompliance(pct);
+    if (zone === 'no_data') return 'neutral';
+    if (zone === 'critical' || zone === 'low') return 'danger';
+    if (zone === 'over') return 'caution';
     return 'safe';
   };
 

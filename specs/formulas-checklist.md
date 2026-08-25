@@ -45,15 +45,18 @@ da biblioteca — são correções pontuais no sítio onde já estão.
   - Critério de aceitação: um só ACWR chega ao prompt, ou os dois chegam
     claramente rotulados como medindo coisas diferentes.
 
-- [ ] **P0-4 — TDEE: dois fatores de atividade.**
-  `coach-chat/index.ts:1908` usa `TMB × 1.3 + custo_corrida`;
-  `coach-daily-summary/index.ts:449` usa `TMB × 1.55`, sem custo de corrida.
-  - Teste: perfil de 70kg/175cm/30 anos/M, TMB≈1723. `coach-chat` com 0 km/sem
-    dá GETD 2240; `coach-daily-summary` dá TDEE 2671 — 431 kcal de diferença
-    para o mesmo atleta, no mesmo dia.
-  - Corrigir para o fator único decidido em `formulas-centralizacao.md` §5.4.
-  - Critério de aceitação: as duas edge functions dão o mesmo valor (±1 kcal de
-    arredondamento) para o mesmo perfil e mesmo volume semanal.
+- [x] **P0-4 — TDEE: dois fatores de atividade. RESOLVIDO.**
+  `coach-chat/index.ts:1908` usava `TMB × 1.3 + custo_corrida`;
+  `coach-daily-summary/index.ts:449` usava `TMB × 1.55`, sem custo de corrida.
+  - Decisão do utilizador: fator único ×1,3 (o que o coach-chat já usava,
+    dentro da gama 1,2-1,4 da doutrina) + custo do treino somado à parte.
+  - `@formulas/tdee.ts` (T1) criado com `computeBMR`/`computeTDEE`; as duas
+    edge functions passam a delegar nele. `coach-daily-summary` ganhou um
+    2.º argumento (`weeklyVolumeKm`, derivado de `acwr.acute_km_per_day×7`)
+    para poder somar o custo do treino, que antes ignorava por completo.
+  - Critério de aceitação: as duas edge functions dão o mesmo valor (±1 kcal
+    de arredondamento) para o mesmo perfil e mesmo volume semanal —
+    confirmado por vetor dourado comum (`tdee.golden.json`, 7 casos).
 
 - [ ] **P0-5 — `todayISO` em UTC no pilar Tático.**
   `src/utils/biEngine.js:1141`, dentro de `calculateReadinessIndex`, usa
@@ -279,8 +282,8 @@ Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
 - [x] VDOT (Daniels-Gilbert), Riegel, equivalente ITRA — migrados para
   `racePrediction.ts`, sem mudança de comportamento (vetor dourado
   confirma os mesmos valores de antes da migração).
-- [ ] Mifflin-St Jeor/TDEE — P0-4 continua deliberadamente por resolver
-  (decisão do utilizador, Fase A).
+- [x] Mifflin-St Jeor/TDEE — P0-4 **resolvido**: fator único ×1,3 + custo do
+  treino, `@formulas/tdee.ts`, migradas as duas edge functions.
 - [ ] Tanaka/Karvonen, Epley (1RM) — sítio único, sem cópias a eliminar;
   não migrados nesta ronda (zero risco de duplicação, valor arquitetural
   baixo face ao esforço — ficam para uma limpeza futura, não bloqueiam
@@ -298,14 +301,13 @@ Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
   "1,5%/72h" do `coach-chat` **não é cópia deste** — é um sinal agudo
   distinto (Bloco 5 #11, queda súbita por desidratação/doença), deixado
   intacto.
-- [ ] Compliance nutricional — 3 escalas diferentes (85/115 ·
-  90/70/115 · 75/90/110, em `NutritionDashboard.jsx`, `OverviewDashboard.jsx`,
-  `biEngine.js`). **Não migrado nesta ronda**: ao contrário de tudo o resto
-  desta fase, não encontrei doutrina nenhuma a definir estas bandas — são
-  uma escolha de UX/produto (que cor/selo mostrar), não um limiar de
-  segurança com fonte. Unificar isto muda o que 3 ecrãs mostram sem haver
-  uma "resposta certa" a consultar; fica para quando quiseres decidir os
-  números, não é uma correção de bug.
+- [x] Compliance nutricional — **resolvido**: era uma decisão de UX/produto
+  sem doutrina a consultar (3 escalas: `NutritionDashboard.jsx` 85/115,
+  `OverviewDashboard.jsx` 90/70/115, `biEngine.js` 75/90/110). Decisão do
+  utilizador: escala do `OverviewDashboard` (mais granular, 4 zonas) em
+  todo o lado — `@formulas/nutritionCompliance.ts` (T1), migrados os 3
+  consumidores. A pontuação do Pilar de Prontidão (100/65/20) mantém-se
+  como composição própria do pilar; só a fronteira das zonas ficou única.
 - [ ] Recuperação pós-prova — não fazia parte das 4 decisões desta ronda;
   tem uma decisão pendente do utilizador (ver "Necessidade de fontes"
   acima), não só uma migração de casa.
@@ -321,8 +323,8 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   22.5, 50.0 km) — Fase B, `vocabulary.ts`.
 - [x] Taper: mesmas semanas para a mesma combinação nível×distância×prioridade
   — golden vector comum, 14 casos.
-- [ ] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil —
-  pendente (P0-4 continua em aberto).
+- [x] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil —
+  golden vector comum (`tdee.golden.json`, 7 casos).
 - [x] Riegel: mesma previsão de tempo/pace — golden vector comum, migrado
   para `racePrediction.ts`. O caso trail (equivalente ITRA) está coberto
   pelo mesmo módulo (`calculateEquivalentFlatKm`, 3 casos no vetor).
@@ -335,17 +337,21 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   10 casos.
 - [x] Limiar de perda de peso: mesma classificação (%/semana × limiar do
   nível) nos dois lados — golden vector comum, 7 casos.
+- [x] TDEE: mesmo TMB e mesmo GETD (fator ×1,3 + custo do treino) nas duas
+  edge functions — golden vector comum, 7 casos.
+- [x] Compliance calórica: mesma zona (crítico/baixo/ok/acima) nos 3 ecrãs
+  — golden vector comum, 10 casos.
 
-**Verificação de saída da Fase C (parcial — 8 de ~9 fórmulas T1 migradas; só
-compliance nutricional e Tanaka/Karvonen/Epley ficam de fora, por razões
-diferentes — ver acima):**
-- [x] `npx vitest run` verde — 499/499 (69 testes novos desde o início da
-  Fase C: 8 vetores dourados + migração de fixtures existentes).
+**Verificação de saída da Fase C (10 de ~10 fórmulas T1 migradas; só
+Tanaka/Karvonen/Epley ficam de fora, deliberadamente — sítio único, zero
+risco, sem valor em mudar de casa agora):**
+- [x] `npx vitest run` verde — 516/516 (93 testes novos desde o início da
+  Fase C: 10 vetores dourados + migração de fixtures existentes).
 - [ ] `deno test` (toda a suite de edge functions) verde — não corrido
   (sem `deno` neste ambiente); sintaxe verificada com `esbuild` em todos os
   `.ts` novos/alterados.
 - [x] `npm run build` verde.
-- [x] Grep de confirmação: nenhuma das 8 fórmulas migradas tem segunda
+- [x] Grep de confirmação: nenhuma das 10 fórmulas migradas tem segunda
   definição fora de `_shared/formulas/`.
 
 ### Necessidade de fontes/investigação adicional — avaliação final da Fase C
@@ -361,17 +367,20 @@ investigação em fontes fidedignas antes de dar a fase por concluída.
   matemáticas/físicas estabelecidas (Daniels-Gilbert 1979, Riegel,
   Naismith) ou lógica de agregação de dados. Não há "fonte" nova a
   consultar, só correção de implementação.
-- **Compliance nutricional**: like o taper/EA, **não precisa de mais
-  fontes** — mas pela razão oposta: não encontrei doutrina nenhuma a
-  cobrir isto (é UX, não fisiologia). Nenhuma pesquisa vai produzir uma
-  resposta "certa"; é uma decisão de produto tua quando quiseres.
-- **TDEE (P0-4)** continua a ser o único item desta fase com um conflito
-  real de fontes por resolver (coach-chat ×1,3+custo vs. coach-daily-summary
-  ×1,55) — mas isso já estava identificado desde a Fase A, não é achado
-  novo.
-- [x] `npm run build` verde.
-- [x] Grep de confirmação: ACWR, gordura visceral, tendência de peso, taper
-  e EA não têm segunda definição fora de `_shared/formulas/`.
+- **Compliance nutricional**: como o taper/EA, **não precisava de mais
+  fontes** — pela razão oposta: não há doutrina nenhuma a cobrir isto (é
+  UX, não fisiologia). Não havia pesquisa que produzisse uma resposta
+  "certa" — foi decisão de produto do utilizador (escala do
+  `OverviewDashboard`, 70/90/115). **Resolvido nesta ronda.**
+- **TDEE (P0-4)**: era o único item desta fase com um conflito real de
+  fontes por resolver (coach-chat ×1,3+custo vs. coach-daily-summary
+  ×1,55) — decisão do utilizador: ×1,3 + custo do treino (o valor que já
+  batia com a doutrina, 1,2-1,4 + custo à parte). **Resolvido nesta
+  ronda.**
+
+Com estas duas decisões, a Fase C fica sem nenhum item por resolver — as
+únicas peças ainda fora de `_shared/formulas/` (Tanaka/Karvonen, Epley,
+recuperação pós-prova) são deliberadamente fora de âmbito, não bloqueios.
 
 ---
 

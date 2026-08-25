@@ -17,6 +17,7 @@ import { getTaperDays } from '@formulas/taper.ts';
 import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
 import { predictRaceTime as sharedPredictRaceTime, calculateVDOT as sharedCalculateVDOT } from '@formulas/racePrediction.ts';
 import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
+import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -1073,17 +1074,25 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
     pillars.push({ key: 'ea', label: 'Disponibilidade Energética', score: eaScore, desc: eaDesc });
 
     // --- Pilar 3: Compliance Calórica ---
+    // Classificação de zona delega em @formulas/nutritionCompliance.ts (T1)
+    // — este pilar tinha o seu próprio limiar (75/90/110), um 3.º diferente
+    // dos outros 2 ecrãs (NutritionDashboard 85/115, OverviewDashboard
+    // 70/90/115); unificado por decisão do utilizador
+    // (specs/formulas-checklist.md). A pontuação em si (100/65/20) é
+    // composição deste pilar, não da fórmula partilhada — só a fronteira
+    // das zonas é que agora é uma só em toda a app.
     const macros = calculateMacroAdherence(meals || [], profile, bodyAssessments || [], 'semana');
     const calPct = macros?.calories?.compliance_pct ?? 0;
+    const calZone = classifyCalorieCompliance(calPct);
     let calScore = 0;
     let calDesc = 'Sem dados de nutrição suficientes.';
-    if (calPct >= 90 && calPct <= 110) {
+    if (calZone === 'ok') {
       calScore = 100;
       calDesc = `${calPct}% do alvo calórico. Nutrição alinhada com o esforço.`;
-    } else if (calPct >= 75) {
+    } else if (calZone === 'low' || calZone === 'over') {
       calScore = 65;
       calDesc = `${calPct}% do alvo calórico. Podes melhorar a consistência nutricional.`;
-    } else if (calPct > 0) {
+    } else if (calZone === 'critical') {
       calScore = 20;
       calDesc = `${calPct}% do alvo calórico. Ingestão muito baixa para o volume de treino.`;
     }

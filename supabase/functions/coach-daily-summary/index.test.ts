@@ -63,13 +63,23 @@ Deno.test("computeTDEE: BMR usa +5 para 'M' e -161 para 'F' (Mifflin-St Jeor)", 
   const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11" }; // idade = 30
   const bmrMale = 10 * 75 + 6.25 * 175 - 5 * 30 + 5;
   const bmrFemale = 10 * 75 + 6.25 * 175 - 5 * 30 - 161;
-  assertEquals(computeTDEE({ ...base, gender: "M" }), Math.round(bmrMale * 1.55));
-  assertEquals(computeTDEE({ ...base, gender: "F" }), Math.round(bmrFemale * 1.55));
+  // Fase C (P0-4, specs/formulas-checklist.md): fator único ×1,3 (era
+  // ×1,55, sem custo de treino) — ver ../_shared/formulas/tdee.ts.
+  assertEquals(computeTDEE({ ...base, gender: "M" }), Math.round(bmrMale * 1.3));
+  assertEquals(computeTDEE({ ...base, gender: "F" }), Math.round(bmrFemale * 1.3));
   // As duas fórmulas têm de dar valores diferentes — se um dia colapsarem
   // ao mesmo número, o bug do P0-1 voltou.
   const tdeeM = computeTDEE({ ...base, gender: "M" })!;
   const tdeeF = computeTDEE({ ...base, gender: "F" })!;
   assertEquals(tdeeM > tdeeF, true);
+});
+
+Deno.test("computeTDEE: soma o custo do treino quando weeklyVolumeKm > 0 (P0-4)", () => {
+  // 75kg, 40km/semana → custo = round(40×75/7) = round(428,57) = 429 kcal
+  const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11", gender: "M" };
+  const withoutRuns = computeTDEE(base, 0)!;
+  const withRuns = computeTDEE(base, 40)!;
+  assertEquals(withRuns - withoutRuns, 429);
 });
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {

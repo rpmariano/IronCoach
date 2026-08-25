@@ -18,6 +18,7 @@ import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -481,17 +482,20 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
   };
 }
 
-// TDEE estimado via Mifflin-St Jeor × fator atividade moderada (1,55 — 3-5x/semana).
-// Usado no contexto do Gemini para que a sugestão alimentar tenha base calórica real.
-export function computeTDEE(profile: any): number | null {
+// TDEE (GETD) estimado via Mifflin-St Jeor — delega em
+// ../_shared/formulas/tdee.ts (T1), fator único ×1,3 + custo do treino
+// (Bloco 4.1 #4). Era ×1,55 sem custo de treino nenhum — divergia ~400+
+// kcal do coach-chat para o mesmo perfil no mesmo dia (P0-4,
+// specs/formulas-checklist.md, resolvido na Fase C).
+// weeklyVolumeKm: km corridos nos últimos 7 dias, para somar o custo do
+// treino em vez de o ignorar.
+export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null): number | null {
   const { weight_kg, height_cm, gender, birth_date } = profile || {};
   if (!weight_kg || !height_cm || !gender || !birth_date) return null;
   const ageMs = new Date().getTime() - new Date(birth_date + "T00:00:00Z").getTime();
   const age   = Math.floor(ageMs / (365.25 * 86400 * 1000));
-  const bmr   = isFemale(gender)
-    ? 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age - 161
-    : 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age + 5;
-  return Math.round(bmr * 1.55);
+  const bmr   = sharedComputeBMR(Number(weight_kg), Number(height_cm), age, isFemale(gender));
+  return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
 const RESPONSE_SCHEMA = {
@@ -699,7 +703,9 @@ Deno.serve(async (req) => {
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
     const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
-    const tdee        = computeTDEE(profile);
+    // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
+    // custo do treino (ver computeTDEE acima).
+    const tdee        = computeTDEE(profile, acwr.acute_km_per_day * 7);
 
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],

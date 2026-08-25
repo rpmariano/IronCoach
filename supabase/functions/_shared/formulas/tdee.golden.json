@@ -1,0 +1,13 @@
+{
+  "bmr": [
+    { "name": "homem, 75kg/175cm/30 anos", "input": { "weightKg": 75, "heightCm": 175, "age": 30, "isFemale": false }, "expect": 1698.75 },
+    { "name": "mulher, 60kg/165cm/28 anos", "input": { "weightKg": 60, "heightCm": 165, "age": 28, "isFemale": true }, "expect": 1330.25 }
+  ],
+  "tdee": [
+    { "name": "homem sem treino esta semana", "input": { "bmr": 1698.75, "weeklyVolumeKm": 0, "weightKg": 75 }, "expect": 2208 },
+    { "name": "homem com 40km/semana", "input": { "bmr": 1698.75, "weeklyVolumeKm": 40, "weightKg": 75 }, "expect": 2637 },
+    { "name": "mulher sem treino esta semana", "input": { "bmr": 1330.25, "weeklyVolumeKm": 0, "weightKg": 60 }, "expect": 1729 },
+    { "name": "sem volume conhecido (null) — sem custo de treino", "input": { "bmr": 1698.75, "weeklyVolumeKm": null, "weightKg": 75 }, "expect": 2208 },
+    { "name": "sem peso conhecido — sem custo de treino, mesmo com volume", "input": { "bmr": 1698.75, "weeklyVolumeKm": 40, "weightKg": null }, "expect": 2208 }
+  ]
+}
