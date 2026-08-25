@@ -2179,9 +2179,13 @@ function makeRunSummary(overrides: Record<string, unknown> = {}): unknown {
     training_type: "rodagem",
     distance_km: 10,
     duration_seconds: 3600,
-    cadence_spm: null,
-    avg_heart_rate_bpm: null,
-    ...overrides,
+    // Cadência/FC vivem em runs.details (jsonb), não em colunas de topo —
+    // ver o comentário em summariseRuns. Os overrides continuam a ser
+    // passados com os nomes simples, e são reagrupados aqui.
+    details: {
+      cadence_spm: (overrides as Record<string, unknown>).cadence_spm ?? null,
+      avg_heart_rate_bpm: (overrides as Record<string, unknown>).avg_heart_rate_bpm ?? null,
+    },
   };
 }
 

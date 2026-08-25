@@ -661,9 +661,9 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).eq("date", today),
       sb.from("water_logs").select("amount_ml").eq("user_id", userId).eq("date", today),
       // Janela alargada a 30 dias para calcular ACWR (precisa de 28 dias de histórico crónico)
-      sb.from("runs").select("date, training_type, distance_km, duration_seconds, avg_heart_rate_bpm, cadence_spm, kind")
+      sb.from("runs").select("date, training_type, distance_km, duration_seconds, effort_rpe, details, kind")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
-      sb.from("workout_sessions").select("date, categories, duration_seconds, avg_heart_rate_bpm, exertion")
+      sb.from("workout_sessions").select("date, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
         .select("id, period_start, period_end, created_at")
@@ -671,7 +671,7 @@ Deno.serve(async (req) => {
         .eq("status", "aceite")
         .order("created_at", { ascending: false }),
       // 3 próximas provas com prioridade e distância para alertas de taper corretos
-      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_pace")
+      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_pace_seconds_per_km")
         .eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(3),
       // Composição corporal: 30 dias para RED-S e tendência de peso

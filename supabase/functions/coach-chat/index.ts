@@ -887,17 +887,22 @@ export function summariseRuns(runs: any[]): string[] {
     const distance = r.distance_km != null ? `${Number(r.distance_km).toFixed(2)} km` : null;
     const duration = r.duration_seconds != null ? formatDuration(r.duration_seconds) : null;
     const pace = formatPace(r.distance_km, r.duration_seconds);
+    // Cadência e FC vivem em runs.details (jsonb) — a tabela NAO tem colunas
+    // de topo com estes nomes. Ate 2026-08-25 o select pedia-as como colunas
+    // de topo, o que fazia o PostgREST devolver 400 e (por o erro ser
+    // descartado no destructuring) deixava a Carol sem NENHUMA corrida.
+    const details = (r.details || {}) as Record<string, any>;
     // Cadência — só mostra quando registada; assinala sobrepassada (<155 spm) per 2.4 #1.
-    const cadStr = r.cadence_spm != null
-      ? `${Math.round(r.cadence_spm)} spm${r.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
+    const cadStr = details.cadence_spm != null
+      ? `${Math.round(details.cadence_spm)} spm${details.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
       : null;
     // FC média — sinal de deriva/fadiga (Bloco 2.4 #2): FC alta para o pace
     // indica sobretreino, calor ou fadiga acumulada. Sem FC de reserva por run
     // usamos o limiar simples de 90% FCmáx (Tanaka: 208−0,7×idade) como proxy.
     // A idade não está disponível aqui (só no biometrics do buildSystemInstruction),
     // por isso mostramos o valor absoluto e deixamos o modelo aplicar o limiar.
-    const hrStr = r.avg_heart_rate_bpm != null
-      ? `FC média ${Math.round(r.avg_heart_rate_bpm)} bpm`
+    const hrStr = details.avg_heart_rate_bpm != null
+      ? `FC média ${Math.round(details.avg_heart_rate_bpm)} bpm`
       : null;
     const parts = [distance, duration, pace, cadStr, hrStr].filter(Boolean);
     return `- ${r.date}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
@@ -1003,7 +1008,7 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
 
   const { data, error } = await sb
     .from("runs")
-    .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm, avg_heart_rate_bpm")
+    .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
     .eq("user_id", userId)
     .gte("date", start_date)
     .lte("date", end_date)
@@ -2023,6 +2028,21 @@ export function firstNameOf(displayName: string | null | undefined): string | nu
   const trimmed = displayName.trim();
   if (!trimmed) return null;
   return trimmed.split(/\s+/)[0];
+}
+
+// Guarda contra a classe de bug encontrada a 2026-08-25: varios `select`
+// pediam colunas que NAO existem (runs.cadence_spm / runs.avg_heart_rate_bpm,
+// body_assessments.assessed_at, workout_sessions.avg_heart_rate_bpm,
+// race_events.target_pace). O PostgREST devolve 400, mas como o handler so
+// desestruturava `data` e fazia `|| []`, o erro desaparecia sem rasto: a Carol
+// ficava sem NENHUMA corrida nem NENHUMA avaliacao corporal e respondia "zero"
+// de boa fe. Registar o erro nao corrige a query, mas torna a proxima
+// impossivel de esconder.
+// deno-lint-ignore no-explicit-any
+function warnIfQueryFailed(label: string, error: any): void {
+  if (error) {
+    console.error(`[coach-chat] query "${label}" falhou: ${error.message ?? error}`);
+  }
 }
 
 export function buildSystemInstruction(
@@ -3053,7 +3073,7 @@ async function handler(req: Request): Promise<Response> {
     startDate.setUTCDate(startDate.getUTCDate() - (NUTRITION_WINDOW_DAYS - 1));
     const startISO = startDate.toISOString().slice(0, 10);
 
-    const { data: weekMeals } = await sb
+    const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
       .select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
       .eq("user_id", userId)
@@ -3104,7 +3124,7 @@ async function handler(req: Request): Promise<Response> {
       historyLines.join("\n");
 
     // ── Água de hoje ──────────────────────────────────────────────────────
-    const { data: waterLogs } = await sb
+    const { data: waterLogs, error: err_waterLogs } = await sb
       .from("water_logs")
       .select("amount_ml")
       .eq("user_id", userId)
@@ -3120,7 +3140,7 @@ async function handler(req: Request): Promise<Response> {
     const gymStartD = new Date();
     gymStartD.setUTCDate(gymStartD.getUTCDate() - (GYM_WINDOW_DAYS - 1));
     const gymStartISO = gymStartD.toISOString().slice(0, 10);
-    const { data: gymSessions } = await sb
+    const { data: gymSessions, error: err_gymSessions } = await sb
       .from("workout_sessions")
       .select(
         "date, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
@@ -3140,9 +3160,9 @@ async function handler(req: Request): Promise<Response> {
     const runStartD = new Date();
     runStartD.setUTCDate(runStartD.getUTCDate() - (RUNNING_WINDOW_DAYS - 1));
     const runStartISO = runStartD.toISOString().slice(0, 10);
-    const { data: recentRuns } = await sb
+    const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, cadence_spm, avg_heart_rate_bpm")
+      .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -3173,7 +3193,7 @@ async function handler(req: Request): Promise<Response> {
     // o fator de peso à mão mas SEM o limiar "atenção" (75% da vida útil,
     // a meio caminho) — só tinha a regra fixa de "trocar" a 90%, ver
     // specs/formulas-checklist.md Fase C.
-    const { data: shoeRows } = await sb
+    const { data: shoeRows, error: err_shoeRows } = await sb
       .from("shoes")
       .select("id, brand, model, initial_km, lifespan_km, shoe_category, status")
       .eq("user_id", userId)
@@ -3181,11 +3201,12 @@ async function handler(req: Request): Promise<Response> {
 
     let shoesContext: string | null = null;
     if (shoeRows && shoeRows.length > 0) {
-      const { data: shoeRuns } = await sb
+      const { data: shoeRuns, error: err_shoeRuns } = await sb
         .from("runs")
         .select("shoe_id, distance_km")
         .eq("user_id", userId)
         .not("shoe_id", "is", null);
+      warnIfQueryFailed("runs(shoes)", err_shoeRuns);
 
       const weight = Number(profile?.weight_kg);
 
@@ -3212,7 +3233,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackD = new Date();
     raceLookbackD.setUTCDate(raceLookbackD.getUTCDate() - 1);
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
-    const { data: upcomingRaces } = await sb
+    const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
       .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, experience_level, race_priority")
       .eq("user_id", userId)
@@ -3239,13 +3260,23 @@ async function handler(req: Request): Promise<Response> {
     const bodyStartD = new Date();
     bodyStartD.setUTCDate(bodyStartD.getUTCDate() - (BODY_WINDOW_DAYS - 1));
     const bodyStartISO = bodyStartD.toISOString().slice(0, 10);
-    const { data: bodyAssessments } = await sb
+    const { data: bodyAssessments, error: err_bodyAssessments } = await sb
       .from("body_assessments")
-      .select("assessed_at, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg")
+      .select("assessed_at:date, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg")
       .eq("user_id", userId)
-      .gte("assessed_at", bodyStartISO)
-      .order("assessed_at", { ascending: false })
+      .gte("date", bodyStartISO)
+      .order("date", { ascending: false })
       .limit(30);
+    // Todas as queries de contexto acima falham "em silencio" se pedirem uma
+    // coluna inexistente — ver warnIfQueryFailed. Isto poe o erro nos logs.
+    warnIfQueryFailed("meals(7d)", err_weekMeals);
+    warnIfQueryFailed("water_logs", err_waterLogs);
+    warnIfQueryFailed("workout_sessions(30d)", err_gymSessions);
+    warnIfQueryFailed("runs(30d)", err_recentRuns);
+    warnIfQueryFailed("shoes", err_shoeRows);
+    warnIfQueryFailed("race_events", err_upcomingRaces);
+    warnIfQueryFailed("body_assessments", err_bodyAssessments);
+
     const bodyMetricsLine = computeBodyMetrics(
       (bodyAssessments || []) as BodyAssessmentRow[],
       (profile?.gender as string | null) ?? null,

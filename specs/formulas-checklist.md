@@ -493,6 +493,45 @@ uma explicação em vez de recalcular.
 - [x] `npx vitest run` verde — 544/544 (539 + 5 novos).
 - [x] `npm run build` verde.
 
+### E0 — Queries partidas (a verdadeira causa do bug do "zero km")
+
+Ao arrancar a Fase E, a verificação do esquema real contra a base de dados
+(via MCP Supabase) revelou que **seis `select` pediam colunas que não
+existem**. O PostgREST devolve 400, mas o handler só desestruturava `data` e
+fazia `|| []` — o erro desaparecia sem rasto.
+
+| Ficheiro | Query | Coluna pedida | Coluna real |
+|---|---|---|---|
+| `coach-chat` | `runs` (contexto 30d) | `cadence_spm`, `avg_heart_rate_bpm` | dentro de `details` (jsonb) |
+| `coach-chat` | `runs` (ferramenta `get_running_history`) | idem | idem |
+| `coach-chat` | `body_assessments` | `assessed_at` | `date` |
+| `coach-daily-summary` | `runs` | `avg_heart_rate_bpm`, `cadence_spm` | dentro de `details` |
+| `coach-daily-summary` | `workout_sessions` | `avg_heart_rate_bpm` | `avg_hr` |
+| `coach-daily-summary` | `race_events` | `target_pace` | `target_pace_seconds_per_km` |
+
+Consequência real, confirmada com os dados do atleta (25+20+20 km a
+2026-08-21 existem na tabela): a Carol recebia **zero corridas** e **zero
+avaliações corporais**. Quando respondeu "zero km a semana passada" estava a
+relatar fielmente um contexto vazio — não era alucinação de soma. O resumo
+diário perdia corridas, ginásio e provas pela mesma razão.
+
+- [x] As seis queries corrigidas (`runs` passa a trazer `details` e
+  `effort_rpe`; `body_assessments` usa alias `assessed_at:date` para não
+  quebrar o contrato de `computeBodyMetrics`).
+- [x] `summariseRuns` passa a ler cadência/FC de `details`; o helper de teste
+  correspondente deixou de alimentar uma forma impossível.
+- [x] `warnIfQueryFailed` — os erros das 8 queries de contexto passam a ir
+  para os logs em vez de desaparecerem. É a guarda contra a classe de bug.
+- [x] `npx vitest run` verde (544/544); `npm run build` verde; as seis formas
+  de query validadas contra a base de dados real.
+
+**Nota sobre a fase anterior:** o bloco "VOLUME SEMANAL (calendário)", a marca
+"DETALHE, NÃO SOMES" e as regras anti-alucinação continuam corretos e úteis,
+mas **não podiam ter corrigido este bug** — operavam sobre uma lista vazia. O
+diagnóstico de ontem estava incompleto.
+
+---
+
 **Gap identificado, fora do âmbito desta fase — Fase E (auditoria de
 cobertura):** o Índice de Prontidão (`calculateReadinessIndex`, T2,
 `biEngine.js`) e os seus pilares NÃO chegam ao prompt da Carol — se o
