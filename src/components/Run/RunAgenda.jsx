@@ -26,7 +26,6 @@ import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } f
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
-import { getEffectiveDistanceKm } from '../../utils/racePlanEngine';
 import { useCarouselHaptics } from '../../utils/haptics';
 
 function todayISO() {
@@ -157,15 +156,15 @@ export default function RunAgenda({ onClose }) {
       (new Date(draft.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
     );
     return assessRaceViability({
-      // equivalentKm, não a distância em bruto — uma prova de trail com D+
-      // fica com o volume mínimo exigido de um piso plano da mesma
-      // distância nominal, subestimando o desnível (ver getEffectiveDistanceKm).
-      distanceKm: getEffectiveDistanceKm(draft),
+      // Distância em bruto — MIN_VOLUME_KM não tem categoria de trail
+      // própria na doutrina; usar o equivalente ITRA criava um "penhasco"
+      // de categoria por poucos km de D+ convertido (ver racePlanEngine.js).
+      distanceKm: parseFloat((draft.distance_km || '').toString().replace(',', '.')),
       experienceLevel: draft.experience_level || profile?.experience_level,
       weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
       weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
     });
-  }, [draft.distance_km, draft.date, draft.experience_level, draft.race_type, draft.elevation_gain_m, profile?.experience_level, todayIso, weeklyVol]);
+  }, [draft.distance_km, draft.date, draft.experience_level, profile?.experience_level, todayIso, weeklyVol]);
 
   const FLAG_LABELS = {
     ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
