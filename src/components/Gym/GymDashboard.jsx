@@ -9,7 +9,7 @@ import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
-import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume } from '../../utils/biEngine';
+import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume, sessionVolumeKg } from '../../utils/biEngine';
 
 function formatDurationMinutes(seconds) {
   if (!seconds) return '0 min';
@@ -33,19 +33,15 @@ export default function GymDashboard() {
 
   const { volumeByDay } = useMemo(() => {
     const byDay = {};
-    
+
+    // sessionVolumeKg() (biEngine.js) — antes este componente reimplementava
+    // a soma peso×reps sem o atalho `volume_kg`, que sessionVolumeKg já
+    // trata (specs/formulas-checklist.md Fase C).
     sessionsInRange.forEach(session => {
       const dateStr = session.date;
-      let sessionVol = 0;
-      const sets = session.workout_session_sets || session.logs || [];
-      sets.forEach(set => {
-        if (set.reps != null && set.weight != null) {
-          sessionVol += set.weight * set.reps;
-        }
-      });
-      byDay[dateStr] = (byDay[dateStr] || 0) + sessionVol;
+      byDay[dateStr] = (byDay[dateStr] || 0) + sessionVolumeKg(session);
     });
-    
+
     return {
       volumeByDay: byDay
     };

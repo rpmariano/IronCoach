@@ -17,6 +17,7 @@ import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PR
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
+import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -329,7 +330,7 @@ function buildWarningsMessage(
   todayPlanItems: any[],
   waterTotal: number,
   waterGoal: number | null,
-  bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null },
+  bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null; weightLossTooFast?: boolean; weightLossPct?: number | null },
   acwr?: { ratio: number | null },
 ): string | null {
   const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso");
@@ -356,9 +357,12 @@ function buildWarningsMessage(
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
 
-  // Alerta de perda de peso rápida (> 0,9 kg/semana indica défice excessivo)
-  if (bodyMetrics?.weeklyWeightChange !== null && bodyMetrics?.weeklyWeightChange !== undefined && bodyMetrics.weeklyWeightChange < -0.9) {
-    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange)} kg/semana). Certifica-te que estás a comer o suficiente para suportar o treino.`;
+  // Alerta de perda de peso rápida — limiar por nível, delega em
+  // ../_shared/formulas/weightLossRate.ts (T1). Era um valor absoluto fixo
+  // (0,9 kg/semana para toda a gente); a doutrina é sempre relativa à
+  // massa corporal e ao nível (ver specs/formulas-checklist.md Fase C).
+  if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
+    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Certifica-te que estás a comer o suficiente para suportar o treino.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
@@ -430,20 +434,26 @@ export function isFemale(gender: string | null | undefined): boolean {
 
 // Métricas de composição corporal — RED-S e tendência de peso.
 // Limiares RED-S: < 8 % homem, < 16 % mulher (ACSM Position Stand 2007).
-// Perda rápida: > 0,9 kg/semana sugere défice excessivo para atleta em treino.
+// Perda rápida: ritmo sustentado > limiar por nível (Bloco 4.1 #5/4.2 #3 —
+// ver ../_shared/formulas/weightLossRate.ts). Era um valor absoluto fixo
+// (0,9 kg/semana, igual para toda a gente) — a doutrina é sempre relativa
+// à massa corporal e ao nível do atleta, nunca um kg/semana fixo (Fase C,
+// specs/formulas-checklist.md).
 // weeklyWeightChange delega em ../_shared/formulas/weightTrend.ts (T1,
 // EWMA α≈0,25) — antes usava uma regressão só entre o ponto mais recente e
 // o mais antigo, ignorando todos os intermédios (Fase C escolheu a EWMA,
 // já usada em src/utils/biEngine.js, como fórmula única — ver
 // specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md Fase C).
-export function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
+export function computeBodyMetrics(bodyAssessments: any[], gender: string | null, experienceLevel?: string | null): {
   latestBodyFat: number | null;
   latestWeight: number | null;
   hasRedSRisk: boolean;
   weeklyWeightChange: number | null;
+  weightLossTooFast: boolean;
+  weightLossPct: number | null;
 } {
   if (!bodyAssessments || bodyAssessments.length === 0) {
-    return { latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null };
+    return { latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null, weightLossTooFast: false, weightLossPct: null };
   }
   const latest = bodyAssessments[0]; // mais recente (ORDER BY date DESC)
   const latestBodyFat = latest.body_fat_pct != null ? Math.round(Number(latest.body_fat_pct) * 10) / 10 : null;
@@ -460,7 +470,15 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
   const trend = rawPoints.length >= 2 ? computeWeightTrend(rawPoints) : null;
   const weeklyWeightChange = trend ? Math.round(trend.weeklyRate * 10) / 10 : null;
 
-  return { latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange };
+  const lossRate = (trend && latestWeight)
+    ? sharedAssessWeightLossRate(trend.weeklyRate, latestWeight, experienceLevel ?? null)
+    : null;
+
+  return {
+    latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange,
+    weightLossTooFast: lossRate?.isTooFast ?? false,
+    weightLossPct: lossRate ? Math.round(lossRate.lossPct * 10) / 10 : null,
+  };
 }
 
 // TDEE estimado via Mifflin-St Jeor × fator atividade moderada (1,55 — 3-5x/semana).
@@ -680,7 +698,7 @@ Deno.serve(async (req) => {
 
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
-    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null);
+    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
     const tdee        = computeTDEE(profile);
 
     const ctx = buildDailySummaryContext({

@@ -14,6 +14,7 @@ import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace,
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
+import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -94,11 +95,10 @@ export function getTaperWeeks(distanceKm, racePriority = 'a', experienceLevel = 
 }
 
 // ─── Conversão de Trail (ITRA / Naismith) ──────────────────────────────────────
+// Delega em @formulas/racePrediction.ts (T1) — única implementação, sem
+// cópias a eliminar (specs/formulas-checklist.md Fase C).
 export function calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType) {
-  const km = parseFloat(distanceKm) || 0;
-  if (raceType !== 'trail' || !elevationGainM) return km;
-  const dPlus = parseFloat(elevationGainM) || 0;
-  return Math.round((km + dPlus / 100) * 10) / 10;
+  return sharedCalculateEquivalentFlatKm(parseFloat(distanceKm) || 0, elevationGainM, raceType);
 }
 
 // Extrai a distância equivalente de um registo de prova (race_events ou

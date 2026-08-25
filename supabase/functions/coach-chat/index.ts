@@ -10,6 +10,7 @@ import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
+import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -3104,11 +3105,12 @@ async function handler(req: Request): Promise<Response> {
       : null;
 
     // ── Armário de sapatilhas ────────────────────────────────────────────
-    // O acumulado de cada par é derivado (km iniciais + corridas com este
-    // shoe_id), não uma coluna — mesma regra do cliente, ver
-    // src/utils/shoes.js. A vida útil guardada é a de referência (70 kg) e é
-    // aqui ajustada ao peso real, para a Carol falar em números que batem
-    // certo com o que o atleta vê no armário.
+    // O acumulado e o desgaste de cada par delegam em ../_shared/formulas/
+    // shoes.ts (T1) — a mesma fórmula que src/utils/shoes.js usa no
+    // armário do atleta. Antes desta migração, esta função reimplementava
+    // o fator de peso à mão mas SEM o limiar "atenção" (75% da vida útil,
+    // a meio caminho) — só tinha a regra fixa de "trocar" a 90%, ver
+    // specs/formulas-checklist.md Fase C.
     const { data: shoeRows } = await sb
       .from("shoes")
       .select("id, brand, model, initial_km, lifespan_km, shoe_category, status")
@@ -3123,37 +3125,22 @@ async function handler(req: Request): Promise<Response> {
         .eq("user_id", userId)
         .not("shoe_id", "is", null);
 
-      const kmByShoe = new Map<string, number>();
-      for (const r of (shoeRuns || []) as Array<{ shoe_id: string; distance_km: number | null }>) {
-        const d = Number(r.distance_km);
-        if (!Number.isFinite(d) || d <= 0) continue;
-        kmByShoe.set(r.shoe_id, (kmByShoe.get(r.shoe_id) ?? 0) + d);
-      }
-
       const weight = Number(profile?.weight_kg);
-      // Igual a weightFactor() em src/utils/shoes.js — se um mudar, o outro
-      // tem de mudar também, senão a Carol e o armário dizem números
-      // diferentes para o mesmo par.
-      const factor = Number.isFinite(weight) && weight > 0
-        ? Math.min(1.15, Math.max(0.70, 70 / weight))
-        : 1;
 
       const lines = shoeRows.map((sh: any) => {
-        const km = Math.round(((Number(sh.initial_km) || 0) + (kmByShoe.get(sh.id as string) ?? 0)) * 10) / 10;
-        const baseline = Number(sh.lifespan_km);
+        const wear = sharedWearStatus(sh, shoeRuns || [], Number.isFinite(weight) && weight > 0 ? weight : null);
         const name = [sh.brand, sh.model].filter(Boolean).join(" ") || "Sapatilhas sem nome";
         const cat = sh.shoe_category ? ` (${sh.shoe_category})` : "";
-        if (!Number.isFinite(baseline) || baseline <= 0) {
-          return `- ${name}${cat}: ${km} km acumulados — sem vida útil estimada`;
+        if (wear.lifespanKm === null) {
+          return `- ${name}${cat}: ${wear.km} km acumulados — sem vida útil estimada`;
         }
-        const lifespan = Math.round(baseline * factor);
-        const pct = Math.round((km / lifespan) * 100);
-        return `- ${name}${cat}: ${km} de ~${lifespan} km (${pct}% da vida útil ajustada ao peso)`;
+        return `- ${name}${cat}: ${wear.km} de ~${wear.lifespanKm} km (${wear.pct}% da vida útil ajustada ao peso, ${WEAR_LEVEL_LABELS[wear.level]})`;
       });
 
       shoesContext =
         `SAPATILHAS EM USO (armário do atleta):\n${lines.join("\n")}\n` +
-        `Regra: acima de 90% da vida útil a entressola já não absorve como devia e o risco de lesão sobe — nessa altura recomenda trocar de par. ` +
+        `Regra: a partir de ${WEAR_ATTENTION_PCT}% ("${WEAR_LEVEL_LABELS.atencao}") já vale a pena falar em substituição breve; ` +
+        `acima de ${WEAR_REPLACE_PCT}% ("${WEAR_LEVEL_LABELS.substituir}") a entressola já não absorve como devia e o risco de lesão sobe — recomenda trocar de par. ` +
         `Se o atleta perguntar pelos km de um par, responde com estes números. Não inventes pares que não estejam nesta lista.`;
     }
 

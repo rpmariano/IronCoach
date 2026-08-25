@@ -15,6 +15,8 @@ import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
 import { getTaperDays } from '@formulas/taper.ts';
 import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
+import { predictRaceTime as sharedPredictRaceTime, calculateVDOT as sharedCalculateVDOT } from '@formulas/racePrediction.ts';
+import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -255,30 +257,14 @@ export function calculateWeeklyVolume(runs) {
 }
 
 /**
- * Race Prediction via fórmula de Riegel.
+ * Race Prediction via fórmula de Riegel. Delega em
+ * @formulas/racePrediction.ts (T1) — única implementação, sem cópias a
+ * eliminar; esta migração só muda de casa (specs/formulas-checklist.md
+ * Fase C).
  */
 export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio') {
   try {
-    const recentBest = runs.filter(r => r.distance_km > 0).sort((a, b) => {
-      const paceA = a.duration_seconds / a.distance_km;
-      const paceB = b.duration_seconds / b.distance_km;
-      return paceA - paceB; // Pega as corridas mais rápidas
-    })[0];
-
-    if (!recentBest) return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
-
-    const t1 = recentBest.duration_seconds;
-    const d1 = recentBest.distance_km;
-    const factor = Constants.RIEGEL_FACTOR[experienceLevel] || 1.06;
-    
-    const t2 = t1 * Math.pow((targetDistanceKm / d1), factor);
-
-    return {
-      predictedSeconds: t2,
-      predictedPace: t2 / targetDistanceKm,
-      confidence: (d1 / targetDistanceKm) > 0.5 ? 0.8 : 0.4,
-      basedOn: { distance: d1, time: t1, date: recentBest.date }
-    };
+    return sharedPredictRaceTime(runs, targetDistanceKm, experienceLevel);
   } catch (e) {
     return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
   }
@@ -317,27 +303,11 @@ export function getRacePrediction(race, profile, runs) {
  * @param {number} timeSeconds - Tempo em segundos.
  * @returns {number} Estimativa de VDOT.
  */
+// Delega em @formulas/racePrediction.ts (T1) — única implementação, sem
+// cópias a eliminar (specs/formulas-checklist.md Fase C).
 export function calculateVDOT(distanceKm, timeSeconds) {
   try {
-    if (!distanceKm || distanceKm <= 0 || !timeSeconds || timeSeconds <= 0) return 0;
-    const distanceMeters = distanceKm * 1000;
-    const timeMinutes = timeSeconds / 60;
-    const velocityMPerMin = distanceMeters / timeMinutes;
-
-    // VO2 da corrida (ml/kg/min) — Equação de Daniels:
-    // VO2 = -4.60 + 0.182258 * v + 0.000104 * v^2
-    // Onde v = velocidade em m/min
-    const vo2Run = -4.60 + 0.182258 * velocityMPerMin + 0.000104 * Math.pow(velocityMPerMin, 2);
-
-    // Fração de VO2max utilizada (% VO2max) — função do tempo:
-    // %VO2max = 0.8 + 0.1894393 * e^(-0.012778*t) + 0.2989558 * e^(-0.1932605*t)
-    // Onde t = tempo em minutos
-    const pctVO2max = 0.8 + 0.1894393 * Math.exp(-0.012778 * timeMinutes)
-                         + 0.2989558 * Math.exp(-0.1932605 * timeMinutes);
-
-    // VDOT = VO2 da corrida / fração de VO2max
-    const vdot = pctVO2max > 0 ? vo2Run / pctVO2max : 0;
-    return Math.max(0, Math.round(vdot * 10) / 10);
+    return sharedCalculateVDOT(distanceKm, timeSeconds);
   } catch (e) {
     return 0;
   }
@@ -850,18 +820,21 @@ export function detectCoachInsights(data, profile) {
         });
       }
 
-      // Perda de peso rápida demais
+      // Perda de peso rápida demais — delega em @formulas/weightLossRate.ts
+      // (T1), já correta aqui (só mudou de casa, specs/formulas-checklist.md
+      // Fase C). Distinto de propósito do "Sinal #1" do coach-chat (queda
+      // súbita >1,5-2% em 48-72h, Bloco 5 #11) — este é o ritmo sustentado
+      // de défice calórico (Bloco 4.2 #3), não um sinal agudo.
       const weightTrend = calculateWeightTrend(data.bodyAssessments);
-      if (weightTrend && weightTrend.weeklyRate < 0) {
-        const maxLoss = Constants.MAX_WEIGHT_LOSS_PCT_WEEK[level] || 0.7;
+      if (weightTrend) {
         const currentWeight = weightTrend.rawPoints[weightTrend.rawPoints.length - 1]?.weight || 70;
-        const lossPct = Math.abs(weightTrend.weeklyRate / currentWeight) * 100;
-        if (lossPct > maxLoss) {
+        const rate = assessWeightLossRate(weightTrend.weeklyRate, currentWeight, level);
+        if (rate && rate.isTooFast) {
           insights.push({
             id: 'weight_loss_fast', severity: 'warning',
             title: 'Perda de peso demasiado rápida',
-            message: `Estás a perder ~${Math.abs(weightTrend.weeklyRate).toFixed(1)} kg/semana (${lossPct.toFixed(1)}% do peso). O máximo seguro para o teu nível é ${maxLoss}%.`,
-            metric: 'Peso', value: lossPct, threshold: maxLoss, module: 'corpo'
+            message: `Estás a perder ~${Math.abs(weightTrend.weeklyRate).toFixed(1)} kg/semana (${rate.lossPct.toFixed(1)}% do peso). O máximo seguro para o teu nível é ${rate.maxPct}%.`,
+            metric: 'Peso', value: rate.lossPct, threshold: rate.maxPct, module: 'corpo'
           });
         }
       }

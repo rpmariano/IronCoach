@@ -186,15 +186,14 @@ Por cada fórmula movida, esta sub-checklist (repetir por linha do inventário e
 - [x] Fórmula extraída para `supabase/functions/_shared/formulas/<nome>.ts`,
   pura (sem date-fns, sem I/O), com `@doutrina` a apontar para o bloco de
   origem. — feito para `acwr.ts`, `bodyComposition.ts`, `weightTrend.ts`,
-  `taper.ts`, `energyAvailability.ts`.
+  `taper.ts`, `energyAvailability.ts`, `racePrediction.ts`, `shoes.ts`,
+  `weightLossRate.ts`.
 - [x] Vetor dourado (`<nome>.golden.json`) escrito, cobrindo pelo menos: caso
   central, as duas fronteiras de cada zona/limiar, e um caso de dados em falta
-  (`null`/`0`). — `acwr.golden.json`, `bodyComposition.golden.json`,
-  `weightTrend.golden.json`, `taper.golden.json`, `energyAvailability.golden.json`.
-- [x] Teste Vitest a percorrer o vetor dourado, verde — `acwr.spec.js`,
-  `bodyComposition.spec.js`, `weightTrend.spec.js`, `taper.spec.js`,
-  `energyAvailability.spec.js` (41 casos, todos verdes).
-- [x] Teste Deno a percorrer o **mesmo** vetor dourado — escrito para as 5
+  (`null`/`0`). — um `.golden.json` por módulo acima, 8 no total.
+- [x] Teste Vitest a percorrer o vetor dourado, verde — um `.spec.js` por
+  módulo acima (69 casos, todos verdes).
+- [x] Teste Deno a percorrer o **mesmo** vetor dourado — escrito para as 8
   fórmulas; não corrido neste ambiente (sem `deno` instalado) — a confirmar
   no primeiro `deno test` local ou no deploy.
 - [x] Todos os consumidores anteriores migrados para importar a fórmula —
@@ -202,7 +201,11 @@ Por cada fórmula movida, esta sub-checklist (repetir por linha do inventário e
   visceral (`biEngine.js`, `coach-chat`), tendência de peso (`biEngine.js`,
   `coach-chat`, `coach-daily-summary`), taper (`racePlanEngine.js`,
   `biEngine.js` insight de tapering, `coach-chat`, `coach-daily-summary`),
-  EA (`biEngine.js` — único consumidor, sem cópias a eliminar).
+  EA (`biEngine.js` — único consumidor, sem cópias a eliminar), VDOT/Riegel/
+  ITRA (`biEngine.js`, `racePlanEngine.js`), sapatilhas (`shoes.js`,
+  `coach-chat`, `estimate-shoe-lifespan`), sessionVolumeKg (`GymDashboard.jsx`,
+  `GymSessionCard.jsx`), limiar de perda de peso (`biEngine.js`,
+  `coach-daily-summary`).
 - [x] Cópia antiga apagada — `VISCERAL_FAT_HEALTHY_MAX`/`VISCERAL_FAT_ALERT_MAX`
   removidas de `biConstants.js`; `ACWR_DANGER`/`ACWR_SAFE_MAX`/
   `ACWR_UNDER_TRAINING`/`EA_OPTIMAL`/`EA_CRITICAL` viram reexport dos
@@ -273,21 +276,36 @@ buscar mais informação a fontes fidedignas antes de fechar.
 
 Da tabela de inventário (`formulas-centralizacao.md` §4), por ordem de risco:
 
-- [ ] VDOT (Daniels-Gilbert), Riegel, equivalente ITRA — já são sítio único
-  no frontend (`biEngine.js`/`racePlanEngine.js`); só falta mudar de casa
-  para `_shared/formulas/` com vetor dourado, sem mudança de comportamento.
+- [x] VDOT (Daniels-Gilbert), Riegel, equivalente ITRA — migrados para
+  `racePrediction.ts`, sem mudança de comportamento (vetor dourado
+  confirma os mesmos valores de antes da migração).
 - [ ] Mifflin-St Jeor/TDEE — P0-4 continua deliberadamente por resolver
   (decisão do utilizador, Fase A).
-- [ ] Tanaka/Karvonen, Epley (1RM) — sítio único, só mudar de casa.
-- [ ] `sessionVolumeKg` — já existe e é usada dentro de `biEngine.js`, mas
-  `GymDashboard.jsx`/`GymSessionCard.jsx` continuam a reimplementá-la.
-- [ ] Sapatilhas (desgaste) — 3 implementações, uma delas sem os limiares de
-  aviso.
-- [ ] Limiar de perda de peso rápida — 3 valores incoerentes (0,7%/sem ·
-  0,9 kg/sem · 1,5%/72h) nas 3 runtimes; distinto da tendência de peso
-  (esse já resolvido nesta ronda).
-- [ ] Compliance nutricional — 3 escalas diferentes (85/115 · 90/70/115 ·
-  75/90/110).
+- [ ] Tanaka/Karvonen, Epley (1RM) — sítio único, sem cópias a eliminar;
+  não migrados nesta ronda (zero risco de duplicação, valor arquitetural
+  baixo face ao esforço — ficam para uma limpeza futura, não bloqueiam
+  nada).
+- [x] `sessionVolumeKg` — `GymDashboard.jsx`/`GymSessionCard.jsx` deixaram
+  de reimplementar a soma peso×reps e passaram a importar de `biEngine.js`
+  (fica no frontend — não há cópia nas Edge Functions para justificar T1).
+- [x] Sapatilhas (desgaste) — migradas para `shoes.ts`; corrige o
+  `coach-chat`, que reimplementava o fator de peso mas sem o limiar
+  "atenção" a 75% (só tinha a regra fixa de "trocar" a 90%).
+- [x] Limiar de perda de peso rápida — `weightLossRate.ts`, doutrina com
+  confiança ALTA e convergência tripla independente (Bloco 1 #6, 4.1 #5,
+  4.2 #3). Corrige `coach-daily-summary`, que usava um limiar absoluto
+  fixo (0,9 kg/semana para toda a gente) em vez de %/semana por nível. O
+  "1,5%/72h" do `coach-chat` **não é cópia deste** — é um sinal agudo
+  distinto (Bloco 5 #11, queda súbita por desidratação/doença), deixado
+  intacto.
+- [ ] Compliance nutricional — 3 escalas diferentes (85/115 ·
+  90/70/115 · 75/90/110, em `NutritionDashboard.jsx`, `OverviewDashboard.jsx`,
+  `biEngine.js`). **Não migrado nesta ronda**: ao contrário de tudo o resto
+  desta fase, não encontrei doutrina nenhuma a definir estas bandas — são
+  uma escolha de UX/produto (que cor/selo mostrar), não um limiar de
+  segurança com fonte. Unificar isto muda o que 3 ecrãs mostram sem haver
+  uma "resposta certa" a consultar; fica para quando quiseres decidir os
+  números, não é uma correção de bug.
 - [ ] Recuperação pós-prova — não fazia parte das 4 decisões desta ronda;
   tem uma decisão pendente do utilizador (ver "Necessidade de fontes"
   acima), não só uma migração de casa.
@@ -305,20 +323,52 @@ runtimes para o mesmo input — cada linha vira um caso no vetor dourado:
   — golden vector comum, 14 casos.
 - [ ] Mifflin-St Jeor/GETD: mesmo TMB e mesmo GETD para o mesmo perfil —
   pendente (P0-4 continua em aberto).
-- [ ] Riegel: mesma previsão de tempo/pace, incluindo o caso trail (equivalente
-  ITRA) — este é o bug original desta sessão; não regredir. Ainda não
-  migrado para `_shared/formulas/`.
+- [x] Riegel: mesma previsão de tempo/pace — golden vector comum, migrado
+  para `racePrediction.ts`. O caso trail (equivalente ITRA) está coberto
+  pelo mesmo módulo (`calculateEquivalentFlatKm`, 3 casos no vetor).
 - [x] Gordura visceral: mesmos 3 escalões (1-9/10-14/≥15) nos dois lados —
   golden vector comum, 7 casos.
 - [x] EA: mesma classificação (ótima/subclínica/crítica) para o mesmo
   intake/exercise/leanMass — golden vector comum, 7 casos.
+- [x] Sapatilhas: mesmo fator de peso e o mesmo nível de desgaste
+  (ok/atenção/substituir/excedida) nos dois lados — golden vector comum,
+  10 casos.
+- [x] Limiar de perda de peso: mesma classificação (%/semana × limiar do
+  nível) nos dois lados — golden vector comum, 7 casos.
 
-**Verificação de saída da Fase C (parcial — 5 de ~9 fórmulas T1 migradas):**
-- [x] `npx vitest run` verde — 471/471 (41 testes novos desde o início da
-  Fase C: 5 vetores dourados + migração de fixtures existentes).
+**Verificação de saída da Fase C (parcial — 8 de ~9 fórmulas T1 migradas; só
+compliance nutricional e Tanaka/Karvonen/Epley ficam de fora, por razões
+diferentes — ver acima):**
+- [x] `npx vitest run` verde — 499/499 (69 testes novos desde o início da
+  Fase C: 8 vetores dourados + migração de fixtures existentes).
 - [ ] `deno test` (toda a suite de edge functions) verde — não corrido
   (sem `deno` neste ambiente); sintaxe verificada com `esbuild` em todos os
   `.ts` novos/alterados.
+- [x] `npm run build` verde.
+- [x] Grep de confirmação: nenhuma das 8 fórmulas migradas tem segunda
+  definição fora de `_shared/formulas/`.
+
+### Necessidade de fontes/investigação adicional — avaliação final da Fase C
+
+Pedido do utilizador (repetido no fecho desta leva): confirmar se falta
+investigação em fontes fidedignas antes de dar a fase por concluída.
+
+- **Limiar de perda de peso rápida**: **não é preciso** — confiança ALTA,
+  convergência tripla independente já documentada na doutrina (não é
+  achado desta sessão, já estava lá).
+- **VDOT/Riegel/ITRA, sapatilhas, `sessionVolumeKg`**: **não aplicável** —
+  não são afirmações de doutrina científica, são fórmulas
+  matemáticas/físicas estabelecidas (Daniels-Gilbert 1979, Riegel,
+  Naismith) ou lógica de agregação de dados. Não há "fonte" nova a
+  consultar, só correção de implementação.
+- **Compliance nutricional**: like o taper/EA, **não precisa de mais
+  fontes** — mas pela razão oposta: não encontrei doutrina nenhuma a
+  cobrir isto (é UX, não fisiologia). Nenhuma pesquisa vai produzir uma
+  resposta "certa"; é uma decisão de produto tua quando quiseres.
+- **TDEE (P0-4)** continua a ser o único item desta fase com um conflito
+  real de fontes por resolver (coach-chat ×1,3+custo vs. coach-daily-summary
+  ×1,55) — mas isso já estava identificado desde a Fase A, não é achado
+  novo.
 - [x] `npm run build` verde.
 - [x] Grep de confirmação: ACWR, gordura visceral, tendência de peso, taper
   e EA não têm segunda definição fora de `_shared/formulas/`.

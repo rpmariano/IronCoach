@@ -33,6 +33,26 @@ Deno.test("computeBodyMetrics: weeklyWeightChange usa a EWMA partilhada (weightT
   assertEquals(result.weeklyWeightChange, -1);
 });
 
+// Fase C (specs/formulas-checklist.md): o alerta de perda de peso rápida
+// passou a delegar em ../_shared/formulas/weightLossRate.ts — era um
+// limiar absoluto fixo (0,9 kg/semana para toda a gente); agora é %/semana
+// por nível (doutrina Bloco 4.1 #5 / 4.2 #3), igual ao já correto em
+// src/utils/biEngine.js.
+Deno.test("computeBodyMetrics: limiar de perda de peso é por nível, não um kg/semana fixo", () => {
+  // 80kg → 79,6kg numa semana = -0,4 kg/semana = 0,5% do peso (79,6kg).
+  const bodyAssessments = [
+    { date: "2026-08-11", weight_kg: 79.6 },
+    { date: "2026-08-04", weight_kg: 80 },
+  ];
+  // Iniciante: limiar 0,7% — 0,5% está dentro, não dispara.
+  const iniciante = computeBodyMetrics(bodyAssessments, "M", "iniciante");
+  assertEquals(iniciante.weightLossTooFast, false);
+  // Avançado: limiar 0,4% — 0,5% já dispara. O antigo limiar fixo de
+  // 0,9 kg/semana nunca teria disparado aqui para ninguém.
+  const avancado = computeBodyMetrics(bodyAssessments, "M", "avancado");
+  assertEquals(avancado.weightLossTooFast, true);
+});
+
 Deno.test("computeBodyMetrics: com uma só medição, weeklyWeightChange fica null (não 0)", () => {
   const bodyAssessments = [{ date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 }];
   const result = computeBodyMetrics(bodyAssessments, "M");

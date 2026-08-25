@@ -1,0 +1,40 @@
+{
+  "weightFactor": [
+    { "name": "peso de referência (70kg) → fator 1", "input": 70, "expect": 1 },
+    { "name": "atleta mais pesado → fator abaixo de 1", "input": 100, "expect": 0.7 },
+    { "name": "atleta muito leve → fator travado em 1.15", "input": 40, "expect": 1.15 },
+    { "name": "sem peso conhecido → fator 1 (nunca inventa)", "input": null, "expect": 1 }
+  ],
+  "wearStatus": [
+    {
+      "name": "par novo, bem dentro da vida útil",
+      "input": { "shoe": { "id": "s1", "initial_km": 0, "lifespan_km": 700 }, "runs": [{ "shoe_id": "s1", "distance_km": 100 }], "weightKg": 70 },
+      "expect": { "km": 100, "lifespanKm": 700, "pct": 14, "level": "ok", "remainingKm": 600 }
+    },
+    {
+      "name": "faixa de atenção (75-89%) — antes desta migração o coach-chat não tinha este nível",
+      "input": { "shoe": { "id": "s2", "initial_km": 0, "lifespan_km": 700 }, "runs": [{ "shoe_id": "s2", "distance_km": 560 }], "weightKg": 70 },
+      "expect": { "km": 560, "lifespanKm": 700, "pct": 80, "level": "atencao", "remainingKm": 140 }
+    },
+    {
+      "name": "faixa de substituir (90-99%)",
+      "input": { "shoe": { "id": "s3", "initial_km": 0, "lifespan_km": 700 }, "runs": [{ "shoe_id": "s3", "distance_km": 650 }], "weightKg": 70 },
+      "expect": { "km": 650, "lifespanKm": 700, "pct": 93, "level": "substituir", "remainingKm": 50 }
+    },
+    {
+      "name": "vida útil excedida (>=100%)",
+      "input": { "shoe": { "id": "s4", "initial_km": 0, "lifespan_km": 700 }, "runs": [{ "shoe_id": "s4", "distance_km": 750 }], "weightKg": 70 },
+      "expect": { "km": 750, "lifespanKm": 700, "pct": 107, "level": "excedida", "remainingKm": -50 }
+    },
+    {
+      "name": "sem lifespan_km — sem_estimativa",
+      "input": { "shoe": { "id": "s5", "initial_km": 0, "lifespan_km": null }, "runs": [{ "shoe_id": "s5", "distance_km": 300 }], "weightKg": 70 },
+      "expect": { "km": 300, "lifespanKm": null, "pct": null, "level": "sem_estimativa", "remainingKm": null }
+    },
+    {
+      "name": "atleta mais pesado ajusta a vida útil para baixo",
+      "input": { "shoe": { "id": "s6", "initial_km": 0, "lifespan_km": 700 }, "runs": [{ "shoe_id": "s6", "distance_km": 400 }], "weightKg": 100 },
+      "expect": { "km": 400, "lifespanKm": 490, "pct": 82, "level": "atencao", "remainingKm": 90 }
+    }
+  ]
+}

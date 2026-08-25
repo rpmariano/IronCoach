@@ -57,13 +57,9 @@ export const BF_ALARM_WOMEN = 16;
 // (o único consumidor comparava `>= 14`, saltando a faixa de alerta 10-13
 // da doutrina). Ver specs/formulas-checklist.md Fase C.
 
-// Riegel Race Prediction
-export const RIEGEL_FACTOR = {
-  iniciante: 1.085,
-  basico: 1.085,
-  medio: 1.06,
-  avancado: 1.06
-};
+// RIEGEL_FACTOR vivia aqui — migrada para @formulas/racePrediction.ts (T1)
+// na Fase C junto com predictRaceTime, que já a era o único consumidor.
+// Ver specs/formulas-checklist.md Fase C.
 
 // Nutrition Targets (g/kg/dia) — Bloco 4.1 #1 da doutrina do Coach, ver
 // src/coach-knowledge/04-nutricao-base-diaria.md e a tabela PROTEIN_MAINT em
@@ -94,21 +90,9 @@ export const CARB_TARGETS = {
   avancado:  { descanso: [5.0, 6.0], treino: [8.0, 10.0] }
 };
 
-// Weight Loss Limits (% da massa corporal por semana)
-// Bloco 5 #4 da doutrina: o teto seguro é 0,7%/semana. Três rondas da
-// investigação (Bloco 1 #6, Nutrição 4.1 #5, Nutrição 4.2 #3) convergiram
-// em 0,5-0,7%; uma quarta (Bloco 5 #4, Garthe 2011) deu 0,5-1,0%. Vale a
-// regra do valor mais conservador — 0,7% como teto, nunca 1,0%.
-//
-// Médio e Avançado apertam mais, por o défice máximo da doutrina ser dado
-// em kg/semana (Bloco 4.1 #5): médio ≤0,25-0,40 kg/sem e avançado
-// ≤0,20-0,30 kg/sem, que para um atleta de 70 kg dão ~0,5% e ~0,4%.
-export const MAX_WEIGHT_LOSS_PCT_WEEK = {
-  iniciante: 0.7,
-  basico: 0.7,
-  medio: 0.5,
-  avancado: 0.4
-};
+// Weight Loss Limits (% da massa corporal por semana) — migrada para
+// @formulas/weightLossRate.ts (T1) na Fase C, já correta aqui (só mudou de
+// casa). Ver specs/formulas-checklist.md Fase C.
 
 // Recovery & Fatigue
 export const RHR_FATIGUE_THRESHOLD_BPM = 5;
