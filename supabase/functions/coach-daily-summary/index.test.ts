@@ -1,5 +1,37 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE } from "./index.ts";
+
+// P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
+// Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
+// "masculino"/"feminino", que nunca batiam certo — o TMB caía sempre no
+// ramo feminino e o limiar RED-S ficava sempre em 8%.
+Deno.test("isFemale reconhece 'F' (o valor real gravado em profiles.gender)", () => {
+  assertEquals(isFemale("F"), true);
+  assertEquals(isFemale("M"), false);
+  assertEquals(isFemale(null), false);
+  assertEquals(isFemale(undefined), false);
+});
+
+Deno.test("computeBodyMetrics: limiar RED-S é 8% para 'M', não sempre 16%", () => {
+  const bodyAssessments = [{ date: "2026-08-11", body_fat_pct: 10, weight_kg: 75 }];
+  const male = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(male.hasRedSRisk, false); // 10% > 8% (limiar masculino) — sem risco
+  const female = computeBodyMetrics(bodyAssessments, "F");
+  assertEquals(female.hasRedSRisk, true); // 10% < 16% (limiar feminino) — risco
+});
+
+Deno.test("computeTDEE: BMR usa +5 para 'M' e -161 para 'F' (Mifflin-St Jeor)", () => {
+  const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11" }; // idade = 30
+  const bmrMale = 10 * 75 + 6.25 * 175 - 5 * 30 + 5;
+  const bmrFemale = 10 * 75 + 6.25 * 175 - 5 * 30 - 161;
+  assertEquals(computeTDEE({ ...base, gender: "M" }), Math.round(bmrMale * 1.55));
+  assertEquals(computeTDEE({ ...base, gender: "F" }), Math.round(bmrFemale * 1.55));
+  // As duas fórmulas têm de dar valores diferentes — se um dia colapsarem
+  // ao mesmo número, o bug do P0-1 voltou.
+  const tdeeM = computeTDEE({ ...base, gender: "M" })!;
+  const tdeeF = computeTDEE({ ...base, gender: "F" })!;
+  assertEquals(tdeeM > tdeeF, true);
+});
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {
   assertEquals(addDaysISO("2026-08-11", 1), "2026-08-12");

@@ -344,7 +344,7 @@ function buildWarningsMessage(
 
   // Alerta RED-S: gordura corporal abaixo do limiar de segurança (ACSM)
   if (bodyMetrics?.hasRedSRisk && bodyMetrics.latestBodyFat !== null) {
-    const threshold = bodyMetrics.gender === "feminino" ? "16%" : "8%";
+    const threshold = isFemale(bodyMetrics.gender) ? "16%" : "8%";
     const redSMsg = ` ⚠️ Percentagem de gordura corporal (${bodyMetrics.latestBodyFat}%) abaixo do limiar de segurança (${threshold}). Risco RED-S — consulta um profissional de saúde.`;
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
@@ -405,10 +405,18 @@ function computeACWR(runs: any[], today: string): { acute_km_per_day: number; ch
   };
 }
 
+// profiles.gender só grava 'M'/'F' (ver Perfil.jsx) — antes esta função
+// comparava com "masculino"/"feminino", que nunca batiam certo, e o TMB
+// caía sempre no ramo feminino (ver specs/formulas-checklist.md P0-1).
+// Aceita também os valores por extenso por defensividade, como coach-chat.
+export function isFemale(gender: string | null | undefined): boolean {
+  return gender === "F" || gender === "f" || gender === "feminino";
+}
+
 // Métricas de composição corporal — RED-S e tendência de peso.
 // Limiares RED-S: < 8 % homem, < 16 % mulher (ACSM Position Stand 2007).
 // Perda rápida: > 0,9 kg/semana sugere défice excessivo para atleta em treino.
-function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
+export function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
   latestBodyFat: number | null;
   latestWeight: number | null;
   hasRedSRisk: boolean;
@@ -420,7 +428,7 @@ function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
   const latest = bodyAssessments[0]; // mais recente (ORDER BY date DESC)
   const latestBodyFat = latest.body_fat_pct != null ? Math.round(Number(latest.body_fat_pct) * 10) / 10 : null;
   const latestWeight  = latest.weight_kg      != null ? Math.round(Number(latest.weight_kg)      * 10) / 10 : null;
-  const redSThreshold = gender === "feminino" ? 16 : 8;
+  const redSThreshold = isFemale(gender) ? 16 : 8;
   const hasRedSRisk   = latestBodyFat !== null && latestBodyFat < redSThreshold;
   let weeklyWeightChange: number | null = null;
   if (bodyAssessments.length >= 2 && latestWeight !== null) {
@@ -438,14 +446,14 @@ function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
 
 // TDEE estimado via Mifflin-St Jeor × fator atividade moderada (1,55 — 3-5x/semana).
 // Usado no contexto do Gemini para que a sugestão alimentar tenha base calórica real.
-function computeTDEE(profile: any): number | null {
+export function computeTDEE(profile: any): number | null {
   const { weight_kg, height_cm, gender, birth_date } = profile || {};
   if (!weight_kg || !height_cm || !gender || !birth_date) return null;
   const ageMs = new Date().getTime() - new Date(birth_date + "T00:00:00Z").getTime();
   const age   = Math.floor(ageMs / (365.25 * 86400 * 1000));
-  const bmr   = gender === "masculino"
-    ? 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age + 5
-    : 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age - 161;
+  const bmr   = isFemale(gender)
+    ? 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age - 161
+    : 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age + 5;
   return Math.round(bmr * 1.55);
 }
 

@@ -137,8 +137,14 @@ export default function RunDashboard() {
     [acwrData]
   );
 
-  // BI - Distribution
-  const distribution = useMemo(() => calculateTrainingDistribution(periodRuns), [periodRuns]);
+  // BI - Distribution. Sem o nível de experiência, caía sempre no default
+  // 'medio' (alvo 80/20) — um iniciante (alvo 95%) via "não conforme" no
+  // donut mesmo dentro da meta da sua doutrina (ver
+  // specs/formulas-checklist.md P0-8).
+  const distribution = useMemo(
+    () => calculateTrainingDistribution(periodRuns, profile?.experience_level || 'iniciante'),
+    [periodRuns, profile?.experience_level]
+  );
 
   // BI - Scatter
   const scatterData = useMemo(() => calculatePaceVsHR(periodRuns), [periodRuns]);

@@ -7,6 +7,8 @@ import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
+import { todayISO } from '../lib/utils';
+import { mealNutrients } from './nutrition';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -50,7 +52,12 @@ export function filterByDateRange(data, range, dateField = 'date') {
  */
 function resolveAcwrStatus(ratio) {
   if (ratio > Constants.ACWR_DANGER) return 'danger';
-  if (ratio > Constants.ACWR_CAUTION_MAX) return 'caution';
+  // Era ACWR_CAUTION_MAX (1.49) aqui — colapsava toda a banda de cautela da
+  // doutrina (1.31-1.49) em "safe", porque só ratios entre 1.49 e 1.50 caíam
+  // em caution. ACWR_SAFE_MAX (1.30) é o limiar certo: acima dele já é
+  // cautela; ACWR_SAFE_MAX estava definido em biConstants.js e nunca era
+  // lido em lado nenhum (ver specs/formulas-checklist.md P0-2).
+  if (ratio > Constants.ACWR_SAFE_MAX) return 'caution';
   if (ratio < Constants.ACWR_UNDER_TRAINING) return 'undertrained';
   return 'safe';
 }
@@ -586,18 +593,19 @@ export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRan
       : [];
     const weight = sortedBody[0]?.weight_kg || profile?.weight_kg || 70;
 
-    // Agrupar por dia e calcular totais
+    // Agrupar por dia e calcular totais. Usa mealNutrients() em vez de somar
+    // *_per_100g diretamente: sem os 3 níveis de fallback (macros diretos →
+    // *_per_100g → food_item.* → *_100g), uma refeição gravada via
+    // food_item.calories contava 0 kcal (ver specs/formulas-checklist.md P0-6).
     const dailyTotals = {};
     filtered.forEach(meal => {
       const day = meal.date;
       if (!dailyTotals[day]) dailyTotals[day] = { cal: 0, prot: 0, carbs: 0, fat: 0 };
-      (meal.meal_items || []).forEach(item => {
-        const qty = (item.quantity_grams || 0) / 100;
-        dailyTotals[day].cal += (item.calories_per_100g || 0) * qty;
-        dailyTotals[day].prot += (item.protein_per_100g || 0) * qty;
-        dailyTotals[day].carbs += (item.carbs_per_100g || 0) * qty;
-        dailyTotals[day].fat += (item.fat_per_100g || 0) * qty;
-      });
+      const n = mealNutrients(meal);
+      dailyTotals[day].cal += n.calories;
+      dailyTotals[day].prot += n.protein;
+      dailyTotals[day].carbs += n.carbs;
+      dailyTotals[day].fat += n.fat;
     });
 
     const days = Object.values(dailyTotals);
@@ -659,13 +667,11 @@ export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSes
     const days = {};
     const addDay = (date) => { if (!days[date]) days[date] = { intake: 0, exercise: 0 }; };
 
-    // Ingestão calórica por dia
+    // Ingestão calórica por dia — mealNutrients() aplica o mesmo fallback de
+    // 3 níveis que calculateMacroAdherence (ver P0-6 acima).
     filteredMeals.forEach(meal => {
       addDay(meal.date);
-      (meal.meal_items || []).forEach(item => {
-        const qty = (item.quantity_grams || 0) / 100;
-        days[meal.date].intake += (item.calories_per_100g || 0) * qty;
-      });
+      days[meal.date].intake += mealNutrients(meal).calories;
     });
 
     // Gasto de exercício por dia — Corrida: ~1 kcal/kg/km
@@ -807,14 +813,19 @@ export function detectCoachInsights(data, profile) {
         insights.push({
           id: 'acwr_danger', severity: 'critical',
           title: 'Carga de treino perigosa',
-          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
+          // "(sRPE)" é deliberado: este ACWR usa carga sRPE (min × RPE), uma
+          // grandeza diferente do ACWR em km que o backend calcula (ver
+          // coach-chat/index.ts acwrLine e specs/formulas-checklist.md P0-3).
+          // Sem o rótulo, os dois valores chegavam ao mesmo prompt da Carol
+          // sob o mesmo nome "ACWR", sem ela saber que medem coisas distintas.
+          message: `O teu ACWR (sRPE) está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_DANGER, module: 'corrida'
         });
       } else if (acwr.hasEnoughData && acwr.status === 'caution') {
         insights.push({
           id: 'acwr_caution', severity: 'warning',
           title: 'Carga de treino elevada',
-          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
+          message: `O teu ACWR (sRPE) está em ${acwr.ratio.toFixed(2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_CAUTION_MAX, module: 'corrida'
         });
       }
@@ -1138,10 +1149,14 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       let tacticDesc = 'Preparação alinhada com os objetivos da prova.';
       
       const distanceKm = parseFloat((nextRace.distance_km || '10').toString().replace(',', '.'));
-      const todayISO = new Date().toISOString().slice(0, 10);
-      const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
+      // todayISO() local, não UTC — em horário de verão de Lisboa, entre
+      // 00:00-01:00, new Date().toISOString() ainda dá o dia anterior,
+      // desalinhando weeksToRace face ao resto da app (ver
+      // specs/formulas-checklist.md P0-5).
+      const todayIso = todayISO();
+      const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayIso));
       const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
-      const weeklyVol = recentWeeklyVolume(runs || [], todayISO);
+      const weeklyVol = recentWeeklyVolume(runs || [], todayIso);
       const expLevel = resolveExperienceLevel(nextRace, profile);
 
       // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
@@ -1151,7 +1166,7 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
       // categoria por poucos km de D+ convertido (ver racePlanEngine.js).
       const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
       const planStartDateObj = new Date(parseISO(nextRace.date).getTime() - totalWeeks * 7 * 86400000);
-      const inProgress = planStartDateObj.getTime() <= parseISO(todayISO).getTime();
+      const inProgress = planStartDateObj.getTime() <= parseISO(todayIso).getTime();
       const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
 
       const viability = assessRaceViability({

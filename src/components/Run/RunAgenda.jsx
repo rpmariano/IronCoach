@@ -26,6 +26,7 @@ import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } f
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { getRecommendedPrepWeeks } from '../../utils/racePlanEngine';
 import { useCarouselHaptics } from '../../utils/haptics';
 
 function todayISO() {
@@ -152,19 +153,29 @@ export default function RunAgenda({ onClose }) {
 
   const viability = useMemo(() => {
     if (!draft.distance_km || !draft.date) return { flags: [], isViable: true };
+    const distanceKm = parseFloat((draft.distance_km || '').toString().replace(',', '.'));
+    const experienceLevel = draft.experience_level || profile?.experience_level;
     const weeksToRace = Math.floor(
       (new Date(draft.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
     );
+    // Se o ciclo de preparação recomendado já começou (a prova está a menos
+    // de totalWeeks de distância), avalia contra o ciclo total, não contra o
+    // que resta — senão o formulário marca 'tempo_insuficiente' a meio de
+    // uma preparação em curso que a Home/racePlanEngine já consideram normal
+    // (ver specs/formulas-checklist.md P0-7).
+    const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
+    const prepWeeksForViability = weeksToRace < totalWeeks ? totalWeeks : weeksToRace;
     return assessRaceViability({
       // Distância em bruto — MIN_VOLUME_KM não tem categoria de trail
       // própria na doutrina; usar o equivalente ITRA criava um "penhasco"
       // de categoria por poucos km de D+ convertido (ver racePlanEngine.js).
-      distanceKm: parseFloat((draft.distance_km || '').toString().replace(',', '.')),
-      experienceLevel: draft.experience_level || profile?.experience_level,
-      weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
+      distanceKm,
+      experienceLevel,
+      weeksToRace: prepWeeksForViability >= 0 ? prepWeeksForViability : 0,
       weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      racePriority: draft.race_priority,
     });
-  }, [draft.distance_km, draft.date, draft.experience_level, profile?.experience_level, todayIso, weeklyVol]);
+  }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, profile?.experience_level, todayIso, weeklyVol]);
 
   const FLAG_LABELS = {
     ultra_para_iniciante: 'Ultra desaconselhado para iniciante',

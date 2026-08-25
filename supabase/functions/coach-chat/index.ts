@@ -3068,8 +3068,15 @@ async function handler(req: Request): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
+    // Rótulo "(baseado em km)" é deliberado: o contexto do atleta (ver
+    // buildDailySummaryContext/detectCoachInsights no frontend) pode incluir
+    // outro ACWR calculado sobre sRPE (min × RPE), uma grandeza diferente
+    // com o mesmo nome. Sem os rótulos distintos, a Carol recebia dois
+    // valores de "ACWR" no mesmo prompt sem saber que medem coisas
+    // diferentes (ver specs/formulas-checklist.md P0-3 — unificação de
+    // grandeza fica para a Fase C).
     const acwrLine = acwr
-      ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
+      ? `ACWR atual (baseado em km): ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
       : null;
 
     // ── Armário de sapatilhas ────────────────────────────────────────────
