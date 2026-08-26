@@ -444,15 +444,33 @@ quem usa a app fora de Portugal. Foi para `lisbonTodayISO()` (já existia em
 
 ## Checklist de release (todas as fases)
 
-- [ ] `npx vitest run` — suite completa verde (415 testes é a baseline
+- [x] `npx vitest run` — suite completa verde: **658** (baseline inicial 415).
+- [ ] ~~(linha antiga)~~ (415 testes é a baseline
   registada no início desta auditoria; deve só crescer).
 - [ ] `deno test` — suite completa das edge functions verde.
-- [ ] `npm run build` verde, sem novos avisos de import não resolvido.
-- [ ] Diff revisto para confirmar que nenhuma fórmula foi "corrigida" em dois
+- [x] `npm run build` verde, sem novos avisos de import não resolvido.
+- [x] Diff revisto — garantido estruturalmente: cada fórmula tem um só módulo
+  em `_shared/formulas/` com vetor dourado partilhado pelos dois runtimes, e
+  `formulaGuards.test.js` falha se reaparecer uma cópia local. Diff revisto para confirmar que nenhuma fórmula foi "corrigida" em dois
   sítios com valores diferentes por engano (o erro exato desta auditoria).
+- [x] **Backend PUBLICADO e confirmado**: as 8 execuções de `Deploy Supabase
+  Edge Functions` em `dev` (de `c296c63` a `b3df1f4`) terminaram todas com
+  `success` — verificado via API do GitHub a 2026-08-26. O workflow corre em
+  `dev` E `master` porque não há BD de desenvolvimento separada: `dev` já é
+  produção para o backend. **A Carol está a correr com tudo isto.**
 - [ ] Se o diff toca `supabase/functions/**`: confirmar no GitHub Actions que
   `Deploy Supabase Edge Functions` disparou e terminou com sucesso, nos dois
   ramos (`dev` e `master`, conforme o workflow).
+- [ ] **FRONTEND POR PUBLICAR** — `deploy-pages.yml` só dispara a partir de
+  `master`, e o `dev` está 18 commits à frente com 64 ficheiros de `src/`
+  alterados. Tudo o que é visível no ECRÃ do atleta continua a correr o
+  código antigo: a correção da classificação Z1/Z2 (notas das fases sobem),
+  os micronutrientes que mostravam sempre 0, o cartão "Watch metrics" que
+  mostrava sempre 0/"—", e a unificação da janela do ACWR. **Requer merge
+  para `master`, que carece de ordem expressa do utilizador** (restrição
+  permanente desta sessão). Esta é a assimetria a reter: o backend
+  publica-se sozinho a partir de `dev`, o frontend não.
+
 - [ ] Se o diff toca doutrina (`src/coach-knowledge/` ou `specs/`): confirmar
   que os números novos foram propagados às constantes/fórmulas correspondentes,
   não só ao texto.
