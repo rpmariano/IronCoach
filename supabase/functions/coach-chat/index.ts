@@ -8,7 +8,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
-import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
+import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
@@ -28,6 +28,13 @@ import { classifyCalorieCompliance } from "../_shared/formulas/nutritionComplian
 import { computeRunAcwr } from "../_shared/formulas/runAcwr.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
+import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
+import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
+import { getRecommendedPrepWeeks } from "../_shared/formulas/racePlanning.ts";
+import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
+import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
+import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -882,12 +889,13 @@ const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   intervalos: "Intervalos", sprints: "Sprints",
 };
 
+// Delega em @formulas/paceFormat.ts (T1.5). ATE 2026-08-26 devolvia o
+// formato ANTIGO com dois pontos ("5:20/km") na lista de corridas que a
+// Carol le, enquanto a Fase D ja tinha unificado toda a UI no formato de
+// PONTO ("5.20") — residuo por fechar dessa fase. Agora os dois lados
+// mostram o mesmo (specs/formulas-checklist.md Fase F).
 function formatPace(distanceKm: number | null, durationSeconds: number | null): string | null {
-  if (!distanceKm || !durationSeconds || distanceKm <= 0) return null;
-  const secPerKm = durationSeconds / distanceKm;
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
-  return `${m}:${String(s).padStart(2, "0")}/km`;
+  return formatPaceFromDistance(distanceKm, durationSeconds);
 }
 function formatDuration(totalSeconds: number): string {
   const h = Math.floor(totalSeconds / 3600);
@@ -1172,6 +1180,87 @@ function buildReadinessPanel(
   }
 
   return `ÍNDICE DE PRONTIDÃO (calculado, igual ao que o atleta vê na Home):\n${lines.join("\n")}`;
+}
+
+// ─── Fases do macrociclo, com nota por fase (Fase F) ───────────────────────
+// A Carol já sabia em que fase o atleta está (getRacePhase, um rótulo), mas
+// não como CORREU cada fase — a nota/estrelas/comentário que o RaceHubView
+// mostra. Delega nos mesmos módulos que o frontend passou a usar:
+// racePhases.ts (fronteiras) + racePhaseEvaluation.ts (avaliação).
+// deno-lint-ignore no-explicit-any
+function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, todayISO: string): string | null {
+  if (!race?.date) return null;
+
+  const distanceKm = parseFloat((race.distance_km ?? "10").toString().replace(",", ".")) || 10;
+  const level = (race.experience_level as string | null) || (profile?.experience_level as string | null) || "iniciante";
+  const totalWeeks = getRecommendedPrepWeeks(distanceKm, level);
+  const taperWeeks = sharedGetTaperWeeks(distanceKm, race.race_priority ?? "a", level, race.race_type ?? "estrada");
+
+  const planStartISO = (() => {
+    const d = new Date(race.date + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - totalWeeks * 7);
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const msPerDay = 86400000;
+  const daysToRace = Math.round((new Date(race.date + "T00:00:00Z").getTime() - new Date(todayISO + "T00:00:00Z").getTime()) / msPerDay);
+  const daysToStart = Math.round((new Date(planStartISO + "T00:00:00Z").getTime() - new Date(todayISO + "T00:00:00Z").getTime()) / msPerDay);
+  const trainingStatus: TrainingStatus =
+    daysToRace < 0 ? "completed" : daysToRace === 0 ? "race_day" : daysToStart > 0 ? "not_started" : "in_progress";
+
+  // O plano ainda nem começou — as 4 fases estariam todas "Planeada", sem
+  // informação nenhuma. Não vale um bloco no prompt.
+  if (trainingStatus === "not_started") return null;
+
+  const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
+  const viability = sharedAssessRaceViability({
+    distanceKm,
+    experienceLevel: level,
+    weeksToRace: totalWeeks,
+    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    racePriority: race.race_priority ?? "a",
+  });
+
+  const PHASE_LABELS: Record<string, string> = {
+    base: "Base Aeróbica", build: "Construção Específica", peak: "Pico de Carga", taper: "Polimento (Taper)",
+  };
+  const STATE_LABELS: Record<string, string> = { completed: "concluída", active: "A DECORRER", upcoming: "por começar" };
+
+  const lines: string[] = [];
+  for (const w of computePhaseWindows(totalWeeks, taperWeeks, planStartISO)) {
+    const state = resolvePhaseState(trainingStatus, todayISO, w.startDate, w.endDate);
+    if (state === "upcoming") continue; // sem dados ainda — nada a dizer
+    const ev = computePhaseEvaluation({
+      phaseId: w.id,
+      startDateStr: w.startDate,
+      endDateStr: w.endDate,
+      phaseState: state,
+      phaseWeeks: w.weeksCount,
+      runs: runs || [],
+      distanceKm,
+      experienceLevel: level,
+      viabilityFlags: viability.flags,
+    });
+    lines.push(
+      `- ${PHASE_LABELS[w.id] ?? w.id} (semanas ${w.startWeek}-${w.endWeek}, ${w.startDate} a ${w.endDate}) — ${STATE_LABELS[state]}: ` +
+        `${ev.score ?? "—"}/100 (${ev.gradeLabel}, ${ev.stars}★) · ${ev.metrics.totalKm} km em ${ev.metrics.runsCount} corrida(s)` +
+        `${ev.metrics.polarizedZ1Z2Pct !== null ? ` · ${ev.metrics.polarizedZ1Z2Pct}% Z1/Z2` : ""}` +
+        `${ev.metrics.avgPace ? ` · ritmo médio ${ev.metrics.avgPace}/km` : ""}\n  · ${ev.summary}`,
+    );
+  }
+
+  // 5.ª fase do ecrã (Prova & Recuperação) — não é avaliável como as
+  // outras, mas os dias de recuperação são doutrina que a Carol não tinha
+  // (lacuna encontrada no inventário da Fase F: `recovery.ts` era o único
+  // módulo partilhado que o frontend usava e a coach-chat nunca importava).
+  const recoveryDays = getRecoveryDaysAfterRace(distanceKm, level);
+  lines.push(
+    `- Prova & Recuperação: após a prova, ${recoveryDays} dias sem treinos de alta intensidade (Z4/Z5) ` +
+      `— doutrina por nível×distância, não um número genérico.`,
+  );
+
+  if (lines.length === 0) return null;
+  return `FASES DO MACROCICLO (calculado, igual ao que o atleta vê no Hub de Provas — plano de ${totalWeeks} semanas para ${race.name ?? "a próxima prova"}):\n${lines.join("\n")}`;
 }
 
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
@@ -1874,10 +1963,10 @@ const MEAL_DOCTRINE =
 
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
 // "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
+// Delega em @formulas/paceFormat.ts (T1.5) — era byte-equivalente ao
+// formatPace de src/utils/run.js (specs/formulas-checklist.md Fase F).
 function formatPaceMinKm(secondsPerKm: number): string {
-  const m = Math.floor(secondsPerKm / 60);
-  const s = Math.round(secondsPerKm % 60);
-  return `${m}.${s.toString().padStart(2, "0")}`;
+  return sharedFormatPaceMinKm(secondsPerKm);
 }
 
 function formatHms(totalSeconds: number): string {
@@ -2079,6 +2168,10 @@ export function computeBodyMetrics(
   rows: BodyAssessmentRow[],
   gender: string | null,
   todayISO: string,
+  // Opcional para não quebrar os testes que já chamam com 3 argumentos;
+  // sem ele, a avaliação do ritmo de perda de peso cai no limiar por
+  // omissão de @formulas/weightLossRate.ts (Fase F).
+  experienceLevel: string | null = null,
 ): string | null {
   if (rows.length === 0) return null;
 
@@ -2105,6 +2198,17 @@ export function computeBodyMetrics(
       `Peso (média suavizada): ${latestSmoothed.weight.toFixed(1)} kg — tendência ${weightTrend.trend} ` +
       `(${rateStr} kg/semana, ${weightPoints.length} medições)`,
     );
+    // Taxa de perda SUSTENTADA (%/semana por nível) — distinta do sinal #1
+    // abaixo, que é a queda AGUDA em 48-72h. O frontend e a coach-daily-
+    // summary já usavam esta avaliação; a coach-chat era a única das três
+    // sem ela (lacuna encontrada no inventário da Fase F).
+    const lossRate = assessWeightLossRate(weightTrend.weeklyRate, latestSmoothed.weight, experienceLevel);
+    if (lossRate) {
+      lines.push(
+        `Ritmo de perda de peso: ${lossRate.lossPct.toFixed(2)}%/semana (limite saudável para o nível: ${lossRate.maxPct}%)` +
+        (lossRate.isTooFast ? " ⚠ ACIMA do limite — risco de perda de massa magra e de disponibilidade energética" : ""),
+      );
+    }
   } else if (latest.weight_kg) {
     lines.push(`Peso mais recente: ${latest.weight_kg} kg (${sorted[0].assessed_at.slice(0, 10)})`);
   }
@@ -2332,6 +2436,8 @@ export function buildSystemInstruction(
   // Idem — Índice de Prontidão + ACWR combinado (Fase E): o composto que
   // reúne os outros painéis num único score, com o "porquê" de cada pilar.
   readinessPanel: string | null = null,
+  // Idem — nota por fase do macrociclo (Fase F).
+  racePhasesPanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2712,7 +2818,8 @@ export function buildSystemInstruction(
     `calorias-cadência, "PAINEL DE GINÁSIO" para volume-carga/ACWR de ginásio/grupos ` +
     `musculares/aulas, "PAINEL DE NUTRIÇÃO/CORPO" para cumprimento de macros/Disponibilidade ` +
     `Energética/composição corporal/micronutrientes, "ÍNDICE DE PRONTIDÃO" para o score ` +
-    `0-100 e o porquê de cada pilar (é o mesmo número que a Home mostra), os targets ` +
+    `0-100 e o porquê de cada pilar (é o mesmo número que a Home mostra), "FASES DO ` +
+    `MACROCICLO" para a nota/estrelas de cada fase da preparação, os targets ` +
     `nutricionais, o resumo de água), usa esse número diretamente.\n` +
     `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
     `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
@@ -3206,6 +3313,7 @@ export function buildSystemInstruction(
   if (gymAnalyticsPanel) sys += `\n\n${gymAnalyticsPanel}`;
   if (nutritionAnalyticsPanel) sys += `\n\n${nutritionAnalyticsPanel}`;
   if (readinessPanel) sys += `\n\n${readinessPanel}`;
+  if (racePhasesPanel) sys += `\n\n${racePhasesPanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3537,6 +3645,7 @@ async function handler(req: Request): Promise<Response> {
       (bodyAssessments || []) as BodyAssessmentRow[],
       (profile?.gender as string | null) ?? null,
       todayISO,
+      (profile?.experience_level as string | null) ?? null,
     );
     const nutritionAnalyticsPanel = buildNutritionAnalyticsPanel(
       weekMeals || [],
@@ -3560,6 +3669,7 @@ async function handler(req: Request): Promise<Response> {
       todayISO,
       nextUpcomingRace,
     );
+    const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 
     // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
     const ageFromBirth = profile?.birth_date
@@ -3741,7 +3851,8 @@ async function handler(req: Request): Promise<Response> {
       runAnalyticsPanel,
       gymAnalyticsPanel,
       nutritionAnalyticsPanel,
-      readinessPanel
+      readinessPanel,
+      racePhasesPanel
     );
 
     let finalSystemInstruction = systemInstruction;

@@ -762,6 +762,106 @@ Prontidão**, o gap original que motivou toda a Fase E.
 
 ---
 
+## Fase F — `racePhaseEvaluation` + inventário de cobertura
+
+Fecha os dois itens que a Fase E deixou documentados como fora de âmbito.
+
+### Módulos novos
+
+- [x] **`paceFormat.ts`** — formatação de ritmo. A Fase D unificou os três
+  formatos do FRONTEND mas deixou duas cópias por fechar no backend:
+  `coach-chat:formatPaceMinKm` (byte-equivalente ao `formatPace` de
+  `run.js`) e `coach-chat:formatPace` (2 argumentos, ainda no formato ANTIGO
+  com dois pontos, `"5:20/km"`, na lista de corridas que a Carol lê).
+  **Decisão do utilizador**: tratar no mesmo lote. As três passam a delegar
+  aqui e o backend passa a mostrar o formato de PONTO que o atleta vê.
+- [x] **`racePhases.ts`** — fronteiras das 4 fases de treino (45%/20% do
+  bloco pré-taper) e estado temporal de cada uma. Era o que faltava para o
+  `racePhaseEvaluation` servir para alguma coisa: a Carol sabia avaliar uma
+  fase, mas não sabia onde cada fase começa e acaba. O clamp do taper a 1/3
+  do macrociclo passou do chamador para dentro do módulo, e o `endWeek` do
+  taper ganhou um piso — sem isso, um `totalWeeks` pequeno produzia uma
+  janela degenerada (0 semanas, fim antes do início). Varrimento de 3-30
+  semanas × 1-8 de taper: zero janelas degeneradas, todas contíguas.
+- [x] **`racePhaseEvaluation.ts`** — nota/estrelas/rótulo/comentário por
+  fase. Era uma closure dentro de `calculateRaceTrainingPlan` a capturar
+  4 variáveis do escopo exterior (era isso que a tornava impossível de
+  partilhar, e o motivo de ter ficado para depois na Fase E); passam a ser
+  parâmetros explícitos.
+
+### Bug corrigido (confirmado com o utilizador — muda o ecrã)
+
+- [x] **Classificação Z1/Z2 das fases estava efetivamente morta.** Procurava
+  `training_type === 'regenerativo'` e `'facil'` — dois valores que NUNCA
+  existiram (confirmado contra a base de dados: os valores reais são
+  `continuo`, `longo`, `recuperacao`, `intervalos`, `fartlek`, `trail`) — e
+  lia `r.rpe`, quando a coluna é `effort_rpe`. **Só `longo` alguma vez
+  contou como baixa intensidade**; as corridas de RECUPERAÇÃO, o treino mais
+  Z1 que existe, eram contadas como alta intensidade. Nos dados reais do
+  atleta: 18 de 78 corridas classificadas como Z1/Z2, quando deviam ser 38.
+  Corrigido para `recuperacao` + `longo` + fallback `effort_rpe <= 4`.
+  `'facil'` removido (sem equivalente real); `continuo` deliberadamente NÃO
+  acrescentado — um contínuo pode ser Z2 ou Z3, e classificá-lo por omissão
+  seria mudar doutrina em vez de corrigir um bug; o fallback por RPE já
+  apanha os contínuos feitos em esforço fácil. **As notas das fases no
+  RaceHubView sobem.** É a 3.ª instância da mesma classe de bug (ler um
+  campo com o nome errado) depois de E0 e E1.
+- [x] **O teste estava a codificar o bug.** `racePlanEngine.test.js` usava
+  `'facil'`/`'regenerativo'` nas fixtures — passava por exercitar o mesmo
+  vocabulário fantasma que o código procurava, dando confiança falsa. Mesmo
+  padrão do helper de `summariseRuns` corrigido na E0. Fixtures migradas
+  para vocabulário real.
+
+### Inventário de cobertura (a pergunta de omnisciência que abriu a Fase E)
+
+Feito de forma verificável, módulo a módulo, em vez de por leitura de ecrãs:
+para cada módulo de `_shared/formulas/`, comparar quem o importa no frontend
+com quem o importa na `coach-chat` (direta ou transitivamente).
+
+**Duas lacunas reais encontradas e fechadas:**
+- [x] `recovery.ts` — a Carol não tinha NENHUMA informação sobre dias de
+  recuperação pós-prova. Era o único módulo partilhado que o frontend usava
+  e a `coach-chat` nunca importava. Agora no painel de fases.
+- [x] `weightLossRate.ts` — a Carol tinha o sinal AGUDO (queda >1,5% em
+  48-72h) mas não a avaliação da taxa SUSTENTADA (%/semana por nível), que o
+  frontend e a `coach-daily-summary` já usavam. Era a única das três sem
+  ela. Agora em `computeBodyMetrics`.
+
+**Resultado:** todos os módulos partilhados chegam à Carol, direta ou
+transitivamente. A única exceção é `epley.ts`, retirado do âmbito por decisão
+do utilizador (a app deixou de registar exercícios específicos).
+
+### Sétimo painel
+
+- [x] `coach-chat/index.ts`: novo bloco **"FASES DO MACROCICLO"** — por cada
+  fase já iniciada, semanas/datas, estado, nota/estrelas, km, % Z1/Z2, ritmo
+  médio e o comentário da fase; mais os dias de recuperação pós-prova. As
+  fases ainda por começar são omitidas (seriam só "Planeada", sem
+  informação), e o bloco inteiro desaparece se o plano ainda não arrancou.
+  Regra de ouro do gate estendida.
+
+### Verificação
+
+- [x] `npx vitest run` verde — 658/658 (635 + 23 novos). `npm run build`
+  verde. `esbuild` limpo em todos os `.ts` novos/alterados.
+- [x] Comportamento das janelas de fase verificado por varrimento exaustivo;
+  painel testado ponta-a-ponta com um macrociclo realista.
+
+### Achados documentados, não corrigidos
+
+- **`paceFormat`: arredondamento a 60s.** Com segundos fracionários ≥ 59,5 o
+  resultado é `"4.60"` em vez de `"5.00"`. As duas implementações originais
+  tinham exatamente o mesmo comportamento — portado tal como estava e fixado
+  em vetor dourado, para a correção ser uma decisão consciente e não um
+  efeito secundário desta consolidação.
+- **`determinePhaseState` e `evaluatePhasePerformance` tinham parâmetros
+  mortos** (`startW`/`endW` e `phaseName`, passados em todas as chamadas e
+  nunca usados) — removidos ao migrar.
+- **`gradeLabel = 'Abaixo do Alvo'`** era inicializado mas sobrescrito por
+  todos os ramos — nunca chegava a ser devolvido. Não portado.
+
+---
+
 ## Fecho da Fase E
 
 Com a E4 concluída, a Carol tem acesso a todos os indicadores calculados

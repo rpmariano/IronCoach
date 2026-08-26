@@ -98,9 +98,9 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
       race: { ...sampleRace, date: '2026-10-10' },
       profile: { experience_level: 'medio' },
       runs: [
-        { date: '2026-09-01', distance_km: 8, duration_seconds: 2400, training_type: 'facil' },
+        { date: '2026-09-01', distance_km: 8, duration_seconds: 2400, training_type: 'continuo', effort_rpe: 3 },
         { date: '2026-09-05', distance_km: 10, duration_seconds: 3000, training_type: 'longo' },
-        { date: '2026-09-10', distance_km: 6, duration_seconds: 1800, training_type: 'regenerativo' },
+        { date: '2026-09-10', distance_km: 6, duration_seconds: 1800, training_type: 'recuperacao' },
       ],
       todayISO: today,
     });
@@ -118,11 +118,17 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     // Fase Base (2 semanas): 3 de Novembro a 16 de Novembro (alvo: 35 km/sem * 2 = 70 km)
     // Atleta com 65 km realizados e 80% em Z1/Z2
     const today = '2026-11-20';
+    // Vocabulário REAL de training_type (continuo/longo/recuperacao/
+    // intervalos/fartlek/trail). Até 2026-08-26 esta fixture usava 'facil' e
+    // 'regenerativo', valores que nunca existiram na base de dados — o teste
+    // passava porque exercitava o mesmo vocabulário fantasma que o bug de
+    // classificação Z1/Z2 procurava (specs/formulas-checklist.md Fase F).
+    // 4 de 5 corridas em Z1/Z2 = 80%, como o comentário acima já dizia.
     const runs = [
-      { date: '2026-11-04', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-04', distance_km: 10, duration_seconds: 3000, training_type: 'recuperacao' },
       { date: '2026-11-06', distance_km: 15, duration_seconds: 4500, training_type: 'longo' },
-      { date: '2026-11-09', distance_km: 10, duration_seconds: 3000, training_type: 'regenerativo' },
-      { date: '2026-11-11', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-09', distance_km: 10, duration_seconds: 3000, training_type: 'continuo', effort_rpe: 3 },
+      { date: '2026-11-11', distance_km: 10, duration_seconds: 3000, training_type: 'intervalos', effort_rpe: 8 },
       { date: '2026-11-14', distance_km: 20, duration_seconds: 6000, training_type: 'longo' },
     ];
 
@@ -146,7 +152,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     // Prova a 2 semanas da data atual com volume insuficiente
     const today = '2026-09-20';
     const runs = [
-      { date: '2026-09-02', distance_km: 5, duration_seconds: 1500, training_type: 'facil' },
+      { date: '2026-09-02', distance_km: 5, duration_seconds: 1500, training_type: 'continuo', effort_rpe: 3 },
     ];
 
     const plan = calculateRaceTrainingPlan({

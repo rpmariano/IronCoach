@@ -9,7 +9,7 @@
 // - Gabbett (2016) — ACWR & Training-Injury Prevention
 // - Minetti / ITRA / Naismith (Conversão D+)
 
-import { categorizeDistance, MIN_VOLUME_KM, assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace, racePriorityLabel } from './run';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -17,6 +17,8 @@ import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
 import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@formulas/recovery.ts';
 import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel } from '@formulas/racePlanning.ts';
+import { computePhaseEvaluation } from '@formulas/racePhaseEvaluation.ts';
+import { computePhaseWindows, resolvePhaseState } from '@formulas/racePhases.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -205,185 +207,54 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   }
 
   // ─── Divisão das 5 Fases do Treino ──────────────────────────────────────────
-  // Semanas disponíveis antes do taper
-  const preTaperWeeks = Math.max(2, totalWeeks - taperWeeks);
-  const baseWeeks = Math.max(1, Math.round(preTaperWeeks * 0.45));
-  const peakWeeks = Math.max(1, Math.round(preTaperWeeks * 0.20));
-  const buildWeeks = Math.max(1, preTaperWeeks - baseWeeks - peakWeeks);
+  // Delega em @formulas/racePhases.ts (T1.5) — única implementação,
+  // partilhada com a Carol (specs/formulas-checklist.md Fase F). O clamp do
+  // taper a 1/3 do macrociclo passou para dentro desse módulo; mantém-se
+  // aqui o `taperWeeks` já clampado por compatibilidade com o resto desta
+  // função (é usado no texto do `focus` da fase de taper).
+  const phaseWindows = computePhaseWindows(totalWeeks, taperWeeks, planStartDate);
+  const windowById = Object.fromEntries(phaseWindows.map(w => [w.id, w]));
+  const baseDates = windowById.base;
+  const buildDates = windowById.build;
+  const peakDates = windowById.peak;
+  const taperDates = windowById.taper;
 
-  // Cálculo dos intervalos de semanas
-  const wBaseStart = 1;
-  const wBaseEnd = baseWeeks;
-
-  const wBuildStart = wBaseEnd + 1;
-  const wBuildEnd = wBaseEnd + buildWeeks;
-
-  const wPeakStart = wBuildEnd + 1;
-  const wPeakEnd = wBuildEnd + peakWeeks;
-
-  const wTaperStart = wPeakEnd + 1;
-  const wTaperEnd = totalWeeks;
-
-  // Helpers de data para cada fase
-  const getPhaseDates = (startWeek, endWeek) => {
-    const sDate = new Date(planStartDateObj.getTime() + (startWeek - 1) * 7 * 86400000);
-    const eDate = new Date(planStartDateObj.getTime() + (endWeek * 7 - 1) * 86400000);
-    return {
-      startDate: sDate.toISOString().slice(0, 10),
-      endDate: eDate.toISOString().slice(0, 10),
-      weeksCount: endWeek - startWeek + 1,
-    };
-  };
-
-  const baseDates = getPhaseDates(wBaseStart, wBaseEnd);
-  const buildDates = getPhaseDates(wBuildStart, wBuildEnd);
-  const peakDates = getPhaseDates(wPeakStart, wPeakEnd);
-  const taperDates = getPhaseDates(wTaperStart, wTaperEnd);
+  const wBaseStart = baseDates.startWeek;
+  const wBaseEnd = baseDates.endWeek;
+  const wBuildStart = buildDates.startWeek;
+  const wBuildEnd = buildDates.endWeek;
+  const wPeakStart = peakDates.startWeek;
+  const wPeakEnd = peakDates.endWeek;
+  const wTaperStart = taperDates.startWeek;
+  const wTaperEnd = taperDates.endWeek;
 
   // ─── Determinação do Status de Cada Fase ────────────────────────────────────
-  const determinePhaseState = (startW, endW, startDateStr, endDateStr) => {
-    if (trainingStatus === 'completed') return 'completed';
-    if (trainingStatus === 'not_started') return 'upcoming';
-    if (today > endDateStr) return 'completed';
-    if (today >= startDateStr && today <= endDateStr) return 'active';
-    return 'upcoming';
-  };
+  // Delega em @formulas/racePhases.ts (T1.5). O original recebia
+  // `(startW, endW, startDateStr, endDateStr)` mas nunca usava os dois
+  // primeiros — deixaram de existir.
+  const determinePhaseState = (startDateStr, endDateStr) =>
+    resolvePhaseState(trainingStatus, today, startDateStr, endDateStr);
 
   // ─── Avaliação de Desempenho do Atleta pela Carol por Fase ──────────────────
-  const evaluatePhasePerformance = (phaseId, phaseName, startDateStr, endDateStr, phaseState, phaseWeeks) => {
-    // Filtrar corridas dentro da janela desta fase
-    const phaseRuns = runs.filter(r => r.date && r.date >= startDateStr && r.date <= endDateStr);
-    
-    // Se não há corridas registadas nesta fase
-    if (phaseState === 'upcoming') {
-      return {
-        score: null,
-        stars: 0,
-        gradeLabel: 'Planeada',
-        statusColor: 'slate',
-        summary: 'Aguardar início da fase para cálculo de métricas em tempo real.',
-        metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: null, avgPace: null },
-      };
-    }
-
-    const totalKm = phaseRuns.reduce((sum, r) => sum + (parseFloat(r.distance_km) || 0), 0);
-    const runsCount = phaseRuns.length;
-    
-    // Cálculo de polarização (Z1/Z2 vs total)
-    let z1z2Count = 0;
-    let totalSeconds = 0;
-    let totalPacedKm = 0;
-
-    phaseRuns.forEach(r => {
-      const isZ1Z2 = r.training_type === 'regenerativo' || 
-                     r.training_type === 'facil' || 
-                     r.training_type === 'longo' ||
-                     (r.rpe && Number(r.rpe) <= 4);
-      if (isZ1Z2) z1z2Count++;
-
-      if (r.duration_seconds && r.distance_km) {
-        totalSeconds += Number(r.duration_seconds);
-        totalPacedKm += Number(r.distance_km);
-      }
+  // Delega em @formulas/racePhaseEvaluation.ts (T1.5) — única implementação,
+  // partilhada com a Carol (specs/formulas-checklist.md Fase F). Era uma
+  // closure a capturar runs/distanceKm/experienceLevel/viability do escopo
+  // exterior, o que a tornava impossível de partilhar; essas quatro passam
+  // agora como parâmetros explícitos. O 2.º argumento do original
+  // (`phaseName`) era passado nas 4 chamadas mas nunca usado lá dentro —
+  // deixou de existir.
+  const evaluatePhasePerformance = (phaseId, startDateStr, endDateStr, phaseState, phaseWeeks) =>
+    computePhaseEvaluation({
+      phaseId,
+      startDateStr,
+      endDateStr,
+      phaseState,
+      phaseWeeks,
+      runs,
+      distanceKm,
+      experienceLevel,
+      viabilityFlags: viability.flags,
     });
-
-    const polarizedPct = runsCount > 0 ? Math.round((z1z2Count / runsCount) * 100) : 0;
-    const avgPaceSec = totalPacedKm > 0 ? Math.round(totalSeconds / totalPacedKm) : null;
-
-    // Volume semanal alvo da prova baseado na tabela canónica MIN_VOLUME_KM —
-    // distanceKm em bruto, pela mesma razão do totalWeeks acima (sem
-    // categoria de trail própria nesta tabela).
-    const distCategory = categorizeDistance(distanceKm) || '10k';
-    const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || 20;
-    const expectedPhaseKm = targetWeeklyKm * Math.max(1, phaseWeeks);
-    const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);
-
-    if (runsCount === 0) {
-      return {
-        score: 40,
-        stars: 1,
-        gradeLabel: 'Sem Registos',
-        statusColor: 'rose',
-        summary: `Sem treinos registados nesta fase. Mantém a consistência de pelo menos 3 sessões semanais para garantir a adaptação.`,
-        metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: 0, avgPace: null },
-      };
-    }
-
-    // Cálculo proporcional rigoroso (Volume: 50%, Polarização: 30%, Consistência/Frequência: 20%)
-    const expectedRunsCount = Math.max(1, phaseWeeks * 3);
-    const frequencyRatio = Math.min(1.0, runsCount / expectedRunsCount);
-    const polFactor = polarizedPct >= 75 ? 1.0 : Math.max(0.4, polarizedPct / 75);
-
-    let rawScore = (volumeRatio * 50) + (polFactor * 30) + (frequencyRatio * 20);
-
-    // Ajuste de realismo: se o ciclo global tem tempo insuficiente, a fase reflete a compressão
-    if (viability.flags.includes('tempo_insuficiente')) {
-      rawScore = rawScore * 0.85;
-    }
-    if (viability.flags.includes('volume_insuficiente') && volumeRatio < 0.7) {
-      rawScore = rawScore * 0.9;
-    }
-
-    const score = Math.min(98, Math.max(35, Math.round(rawScore)));
-
-    let stars = 2;
-    let gradeLabel = 'Abaixo do Alvo';
-    let statusColor = 'rose';
-
-    if (score >= 90) {
-      stars = 5;
-      gradeLabel = 'Excelente';
-      statusColor = 'emerald';
-    } else if (score >= 80) {
-      stars = 4;
-      gradeLabel = 'Muito Bom';
-      statusColor = 'emerald';
-    } else if (score >= 68) {
-      stars = 3;
-      gradeLabel = 'Sólido';
-      statusColor = 'amber';
-    } else {
-      stars = 2;
-      gradeLabel = 'Ajuste Recomendado';
-      statusColor = 'rose';
-    }
-
-    let commentary = '';
-    switch (phaseId) {
-      case 'base':
-        commentary = volumeRatio < 0.6
-          ? `Volume realizado (${Math.round(totalKm)} km) abaixo do alvo da fase (${Math.round(expectedPhaseKm)} km). Prioriza aumentar a quilometragem fácil em Z1/Z2.`
-          : `Base aeróbica com ${runsCount} corridas (${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km alvo). ${polarizedPct >= 75 ? 'Excelente disciplina nas zonas de baixa intensidade (Z1/Z2).' : 'Atenção: reduz o ritmo nos treinos fáceis para proteger a base aeróbica.'}`;
-        break;
-      case 'build':
-        commentary = volumeRatio < 0.6
-          ? `Volume de construção (${Math.round(totalKm)} km) abaixo do previsto para suportar o ritmo de prova. Reforça treinos de limiar e rodagem contínua.`
-          : `Fase de construção em bom ritmo (${runsCount} sessões, ${Math.round(totalKm)} km). Foco na tolerância ao limiar e manutenção da progressão semanal.`;
-        break;
-      case 'peak':
-        commentary = `Pico de carga com simulação de ritmo de prova (${Math.round(totalKm)} km). Volume específico atingido com treinos longos chave concluídos.`;
-        break;
-      case 'taper':
-        commentary = `Polimento pré-prova. Redução controlada de volume para recarga total de glicogénio sem perda de sensações de ritmo.`;
-        break;
-      default:
-        commentary = `Execução consistente e registo regular de esforço.`;
-    }
-
-    return {
-      score,
-      stars,
-      gradeLabel,
-      statusColor,
-      summary: commentary,
-      metrics: {
-        totalKm: Math.round(totalKm * 10) / 10,
-        runsCount,
-        polarizedZ1Z2Pct: polarizedPct,
-        avgPace: avgPaceSec ? formatPace(avgPaceSec) : null,
-      },
-    };
-  };
 
   // ─── Construção dos Objetos das 5 Fases ──────────────────────────────────────
   const phases = [
@@ -396,9 +267,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       weeksCount: baseDates.weeksCount,
       startDate: baseDates.startDate,
       endDate: baseDates.endDate,
-      state: determinePhaseState(wBaseStart, wBaseEnd, baseDates.startDate, baseDates.endDate),
+      state: determinePhaseState(baseDates.startDate, baseDates.endDate),
       focus: 'Volume predominante em Z1/Z2 (≥80% polarizado), reforço muscular e adaptação tendinosa.',
-      evaluation: evaluatePhasePerformance('base', 'Base Aeróbica', baseDates.startDate, baseDates.endDate, determinePhaseState(wBaseStart, wBaseEnd, baseDates.startDate, baseDates.endDate), baseDates.weeksCount),
+      evaluation: evaluatePhasePerformance('base', baseDates.startDate, baseDates.endDate, determinePhaseState(baseDates.startDate, baseDates.endDate), baseDates.weeksCount),
     },
     {
       id: 'build',
@@ -409,9 +280,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       weeksCount: buildDates.weeksCount,
       startDate: buildDates.startDate,
       endDate: buildDates.endDate,
-      state: determinePhaseState(wBuildStart, wBuildEnd, buildDates.startDate, buildDates.endDate),
+      state: determinePhaseState(buildDates.startDate, buildDates.endDate),
       focus: 'Sessões de limiar (Z3/Z4), intervalos de ritmo de prova e treinos com desnível/subidas.',
-      evaluation: evaluatePhasePerformance('build', 'Construção Específica', buildDates.startDate, buildDates.endDate, determinePhaseState(wBuildStart, wBuildEnd, buildDates.startDate, buildDates.endDate), buildDates.weeksCount),
+      evaluation: evaluatePhasePerformance('build', buildDates.startDate, buildDates.endDate, determinePhaseState(buildDates.startDate, buildDates.endDate), buildDates.weeksCount),
     },
     {
       id: 'peak',
@@ -422,9 +293,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       weeksCount: peakDates.weeksCount,
       startDate: peakDates.startDate,
       endDate: peakDates.endDate,
-      state: determinePhaseState(wPeakStart, wPeakEnd, peakDates.startDate, peakDates.endDate),
+      state: determinePhaseState(peakDates.startDate, peakDates.endDate),
       focus: 'Treino longo mais longo do ciclo, testes de nutrição/hidratação em prova e volume máximo.',
-      evaluation: evaluatePhasePerformance('peak', 'Pico de Carga', peakDates.startDate, peakDates.endDate, determinePhaseState(wPeakStart, wPeakEnd, peakDates.startDate, peakDates.endDate), peakDates.weeksCount),
+      evaluation: evaluatePhasePerformance('peak', peakDates.startDate, peakDates.endDate, determinePhaseState(peakDates.startDate, peakDates.endDate), peakDates.weeksCount),
     },
     {
       id: 'taper',
@@ -435,11 +306,11 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       weeksCount: taperDates.weeksCount,
       startDate: taperDates.startDate,
       endDate: taperDates.endDate,
-      state: determinePhaseState(wTaperStart, wTaperEnd, taperDates.startDate, taperDates.endDate),
+      state: determinePhaseState(taperDates.startDate, taperDates.endDate),
       focus: racePriority === 'a'
         ? `Taper progressivo de ${taperWeeks} semana(s) (-30% a -50% de volume mantendo a intensidade-alvo).`
         : 'Taper curto de 2-4 dias com corte de 20-30% para prova secundária.',
-      evaluation: evaluatePhasePerformance('taper', 'Polimento (Taper)', taperDates.startDate, taperDates.endDate, determinePhaseState(wTaperStart, wTaperEnd, taperDates.startDate, taperDates.endDate), taperDates.weeksCount),
+      evaluation: evaluatePhasePerformance('taper', taperDates.startDate, taperDates.endDate, determinePhaseState(taperDates.startDate, taperDates.endDate), taperDates.weeksCount),
     },
     {
       id: 'race_recovery',

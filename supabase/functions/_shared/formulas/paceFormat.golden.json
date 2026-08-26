@@ -1,0 +1,17 @@
+[
+  { "fn": "formatPaceMinKm", "name": "5min20s por km — formato de ponto", "input": { "secondsPerKm": 320 }, "expect": "5.20" },
+  { "fn": "formatPaceMinKm", "name": "segundos com zero à esquerda", "input": { "secondsPerKm": 302 }, "expect": "5.02" },
+  { "fn": "formatPaceMinKm", "name": "minuto exato", "input": { "secondsPerKm": 300 }, "expect": "5.00" },
+  { "fn": "formatPaceMinKm", "name": "fracionário arredonda ao segundo", "input": { "secondsPerKm": 320.4 }, "expect": "5.20" },
+  { "fn": "formatPaceMinKm", "name": "zero devolve string vazia", "input": { "secondsPerKm": 0 }, "expect": "" },
+  { "fn": "formatPaceMinKm", "name": "null devolve string vazia", "input": { "secondsPerKm": null }, "expect": "" },
+  {
+    "fn": "formatPaceMinKm",
+    "name": "LIMITAÇÃO CONHECIDA — 59,5s+ produz '.60' em vez de somar um minuto (comportamento original preservado)",
+    "input": { "secondsPerKm": 299.7 },
+    "expect": "4.60"
+  },
+  { "fn": "formatPaceFromDistance", "name": "10 km em 50 min — 5.00/km", "input": { "distanceKm": 10, "durationSeconds": 3000 }, "expect": "5.00/km" },
+  { "fn": "formatPaceFromDistance", "name": "distância zero — null", "input": { "distanceKm": 0, "durationSeconds": 3000 }, "expect": null },
+  { "fn": "formatPaceFromDistance", "name": "duração em falta — null", "input": { "distanceKm": 10, "durationSeconds": null }, "expect": null }
+]

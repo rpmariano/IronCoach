@@ -1,3 +1,4 @@
+import { formatPaceMinKm as sharedFormatPaceMinKm } from '@formulas/paceFormat.ts';
 // Conversões de tempo e ritmo da Corrida, e os tipos de prova.
 //
 // Vive aqui (e não dentro de um componente) porque o registo de corrida e a
@@ -125,9 +126,9 @@ export function parsePaceToSeconds(paceStr) {
   return mins * 60 + secs;
 }
 
+// Delega em @formulas/paceFormat.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase F). O formato de PONTO
+// ("5.20") é o canónico da app desde a Fase D.
 export function formatPace(secondsPerKm) {
-  if (!secondsPerKm) return '';
-  const m = Math.floor(secondsPerKm / 60);
-  const s = Math.round(secondsPerKm % 60);
-  return `${m}.${s.toString().padStart(2, '0')}`;
+  return sharedFormatPaceMinKm(secondsPerKm);
 }
