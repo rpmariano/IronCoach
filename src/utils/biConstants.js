@@ -11,7 +11,8 @@ import { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER } from '@formulas/acwr.
 export { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER };
 export const ACWR_SAFE_MIN = 0.80;
 export const ACWR_CAUTION_MAX = 1.49; // (Orange) 1.31 - 1.49 — só usado como valor de referência num insight, não na classificação
-export const ACWR_MIN_HISTORY_DAYS = 28;
+// ACWR_MIN_HISTORY_DAYS removida (Fase E) — a janela crónica de 28 dias
+// passou a viver só em @formulas/runAcwr.ts, sem consumidor aqui.
 
 // Volume Progression
 export const MAX_WEEKLY_INCREASE_PCT = {

@@ -14,6 +14,7 @@
 // specs/formulas-centralizacao.md §3.1, specs/formulas-checklist.md Fase B).
 import { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance } from '@formulas/vocabulary.ts';
 export { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance };
+import { computeRecentWeeklyVolume, assessRaceViability as sharedAssessRaceViability } from '@formulas/raceViability.ts';
 
 // ---------------------------------------------------------------------------
 // recentWeeklyVolume — volume médio semanal das últimas `weeks` semanas
@@ -23,13 +24,10 @@ export { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance };
 // @param {number} weeks    — janela temporal (padrão: 4 semanas)
 // @returns {number} média em km/semana (0 se sem dados)
 // ---------------------------------------------------------------------------
+// Delega em @formulas/raceViability.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function recentWeeklyVolume(runs, todayISO, weeks = 4) {
-  if (!Array.isArray(runs) || runs.length === 0) return 0;
-  const cutoffMs = new Date(todayISO + 'T00:00:00').getTime() - weeks * 7 * 86400000;
-  const total = runs
-    .filter(r => r.date && new Date(r.date + 'T00:00:00').getTime() >= cutoffMs)
-    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
-  return Math.round((total / weeks) * 10) / 10;
+  return computeRecentWeeklyVolume(runs, todayISO, weeks);
 }
 
 // ---------------------------------------------------------------------------
@@ -53,41 +51,10 @@ export function recentWeeklyVolume(runs, todayISO, weeks = 4) {
 //   - Prova já passou ou é hoje (weeksToRace <= 0)
 //   - Nível ou distância desconhecidos
 // ---------------------------------------------------------------------------
-export function assessRaceViability({ distanceKm, experienceLevel, weeksToRace, weeklyVolumeKm, racePriority = 'a' }) {
-  const flags = [];
-
-  // Não avaliar provas já passadas ou de hoje — sem tempo de preparar de qualquer forma.
-  if (weeksToRace <= 0) return { flags, isViable: true };
-
-  const cat = categorizeDistance(distanceKm);
-  const level = experienceLevel;
-
-  // Sem dados suficientes para avaliar.
-  if (!cat || !level || !MIN_PREP_WEEKS[level]) return { flags, isViable: true };
-
-  // Regra especial: ultra + iniciante → sempre desaconselhado.
-  if (cat === 'ultra' && level === 'iniciante') {
-    flags.push('ultra_para_iniciante');
-  }
-
-  const minWeeks = MIN_PREP_WEEKS[level][cat];
-  const minVol = MIN_VOLUME_KM[level][cat];
-
-  // Volume semanal abaixo do pré-requisito (Bloco 1 #2).
-  // Avalia primeiro para sabermos se o atleta tem base.
-  let hasBaseFitness = false;
-  if (minVol != null && weeklyVolumeKm != null) {
-    if (weeklyVolumeKm < minVol) {
-      flags.push('volume_insuficiente');
-    } else {
-      hasBaseFitness = true;
-    }
-  }
-
-  // Tempo de preparação insuficiente (Bloco 1 #1).
-  if (minWeeks != null && weeksToRace < minWeeks) {
-    flags.push('tempo_insuficiente');
-  }
-
-  return { flags, isViable: flags.length === 0 };
+// Delega em @formulas/raceViability.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E). Ver o
+// comentário nesse módulo sobre `racePriority` não ter efeito — divergência
+// doutrina↔código pré-existente, replicada fielmente, não introduzida aqui.
+export function assessRaceViability(opts) {
+  return sharedAssessRaceViability(opts);
 }

@@ -700,6 +700,94 @@ abaixo.
 
 ---
 
+### E4 — Indicadores compostos (fecha a Fase E)
+
+Sete módulos T1.5 novos, o maior lote da fase — inclui o **Índice de
+Prontidão**, o gap original que motivou toda a Fase E.
+
+- [x] **`runAcwr.ts`** — ACWR de corrida (7/28 dias). **Resolve o P0-3
+  original, ficado por resolver desde a Fase A**: `biEngine.js:calculateACWR`
+  usava janela de 7/28 dias exatos; `coach-chat:computeACWR` usava `>=`
+  num limite pensado para `>`, dando 8/29 dias — dois números diferentes
+  para "ACWR atual". **Confirmado com o utilizador** antes de unificar
+  (muda o número que a Carol já diz e o do ecrã, por ~1 dia de dados):
+  unificado na janela do `biEngine.js` (a que a UI já mostra). `biConstants.js`
+  perde `ACWR_MIN_HISTORY_DAYS` (duplicava a janela, sem consumidor).
+- [x] **`crossMetrics.ts`** — peso vs. pace, volume de ginásio vs. RPE de
+  corrida, e `combinedACWR = max(corrida, ginásio)` — antes invisível para
+  a Carol, que só via o ACWR de corrida.
+- [x] **`raceViability.ts`** — `assessRaceViability`/`recentWeeklyVolume`,
+  migrados de `src/utils/raceViability.js`. Nota de auditoria: o parâmetro
+  `racePriority` e a variável local `hasBaseFitness` nunca tiveram efeito
+  na flag `tempo_insuficiente`, apesar do comentário original descrever
+  "(ignorado se tiver base ou B/C race)" — divergência doutrina↔código
+  pré-existente, portada fielmente (não é um bug óbvio tipo "sempre zero";
+  decidir a intenção correta é uma revisão de doutrina à parte, documentada
+  aqui, não corrigida silenciosamente).
+- [x] **`racePlanning.ts`** — `getRecommendedPrepWeeks`, `getEffectiveDistanceKm`,
+  `resolveExperienceLevel`, `getRacePrediction`, migrados de
+  `racePlanEngine.js`/`biEngine.js` (já eram puros, só não partilhados).
+- [x] **`readinessIndex.ts`** — o composto: score 0-100 + pilares (carga/
+  ACWR, Disponibilidade Energética, nutrição, VDOT, e Viabilidade Tática
+  quando há prova agendada). Compõe os seis módulos acima e os das Fases
+  C/E anteriores — mesmo código que a Home/RaceHubView usam, não uma
+  reconstrução.
+- [x] `biEngine.js` (`calculateACWR`, `calculateCrossMetrics`,
+  `calculateReadinessIndex`, `getRacePrediction`) e `racePlanEngine.js`/
+  `raceViability.js` (`getRecommendedPrepWeeks`, `getEffectiveDistanceKm`,
+  `resolveExperienceLevel`, `assessRaceViability`, `recentWeeklyVolume`)
+  migrados para importar os módulos partilhados; implementações locais
+  eliminadas, incluindo `addDaysISO`/`sharedComputeAcwr` que ficaram sem
+  consumidor no processo.
+- [x] `coach-chat/index.ts`: novo bloco **"ÍNDICE DE PRONTIDÃO"** no
+  prompt — score, um "porquê" por pilar (não só o número, para a Carol
+  poder explicar a pontuação), e o ACWR combinado. `nextRace` é a primeira
+  prova de `race_events` com `date >= hoje` (a query já inclui "ontem" para
+  o follow-up pós-prova, que não conta como "próxima"). Regra de ouro do
+  gate estendida.
+- [x] `npx vitest run` verde — 635/635 (605 + 30 novos). `npm run build`
+  verde. Saída verificada manualmente com dados combinados realistas.
+
+**Achados de auditoria fora do âmbito desta fase, documentados:**
+- `predictRaceTime` (export de `biEngine.js`) ficou sem consumidor depois
+  de `getRacePrediction` passar a delegar diretamente em `racePlanning.ts`
+  — código morto de baixo risco, não removido agora (é uma função exportada,
+  não uma constante rastreada pelo `formulaGuards.test.js`).
+- `weeklyVolumeKm` em `coach-chat/index.ts` (média de 4 semanas, usada por
+  `buildRaceEventsContext` e pelo bónus de proteína em `buildNutritionTargets`)
+  continua a ser um loop inline, a mesma conta que `raceViability.ts:
+  computeRecentWeeklyVolume` já faz de forma partilhada — não migrado agora
+  por tocar em dois sítios visíveis ao atleta (targets nutricionais e
+  contexto de provas) que pedem confirmação própria, não de passagem aqui.
+
+---
+
+## Fecho da Fase E
+
+Com a E4 concluída, a Carol tem acesso a todos os indicadores calculados
+que motivaram esta fase — Índice de Prontidão, VDOT, previsão de prova,
+ACWR (corrida, ginásio e combinado), cumprimento de macros, Disponibilidade
+Energética, composição corporal, micronutrientes, volume-carga, grupos
+musculares, analytics de aulas — através de seis painéis sempre presentes
+no prompt (VOLUME SEMANAL, PAINEL DE CORRIDA, PAINEL DE GINÁSIO, PAINEL DE
+NUTRIÇÃO/CORPO, ÍNDICE DE PRONTIDÃO, mais o ACWR e os targets nutricionais
+já existentes), com as 3 read-tools existentes para o que fica fora das
+janelas pré-carregadas. Todos delegam nos mesmos módulos de
+`_shared/formulas/` que o frontend usa — mesmo código, mesmo número dos
+dois lados, o objetivo original desta auditoria.
+
+**Gap ainda aberto, fora do âmbito desta fase** (ver a resposta à pergunta
+de omnisciência que abriu a Fase E): um inventário ecrã-a-ecrã completo
+(recordes históricos all-time, analytics de relógio detalhados por corrida,
+notas/estrelas das 5 fases do macrociclo — `racePhaseEvaluation.ts`, nunca
+chegou a ser feito por depender de `evaluatePhasePerformance`, uma função
+grande e fortemente acoplada ao resto de `calculateRaceTrainingPlan`) ainda
+não foi feito. O que existe agora cobre as perguntas em linguagem natural
+mais prováveis; o resto fica para quando/se justificar o esforço de uma
+Fase F dedicada.
+
+---
+
 **Gap identificado, fora do âmbito desta fase — Fase E (auditoria de
 cobertura):** o Índice de Prontidão (`calculateReadinessIndex`, T2,
 `biEngine.js`) e os seus pilares NÃO chegam ao prompt da Carol — se o

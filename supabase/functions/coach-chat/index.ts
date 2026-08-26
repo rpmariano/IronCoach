@@ -6,7 +6,6 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
-import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
@@ -26,6 +25,9 @@ import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvail
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
 import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
+import { computeRunAcwr } from "../_shared/formulas/runAcwr.ts";
+import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
+import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1132,6 +1134,46 @@ function buildNutritionAnalyticsPanel(
   return `PAINEL DE NUTRIÇÃO/CORPO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
+// ─── Índice de Prontidão + métricas cruzadas (Fase E — omnisciência) ───────
+// O gap original que motivou toda a Fase E: antes desta migração, este
+// número (score 0-100 + pilares) só existia no ecrã (Home, RaceHubView) — a
+// Carol não tinha acesso nem a ele nem aos componentes. Delega em
+// readinessIndex.ts/crossMetrics.ts (T1.5), que compõem tudo o resto já
+// partilhado (ACWR, EA, macros, VDOT, viabilidade de prova).
+// deno-lint-ignore no-explicit-any
+function buildReadinessPanel(
+  runs: any[],
+  meals: any[],
+  bodyAssessments: any[],
+  gymSessions: any[],
+  profile: any,
+  todayISO: string,
+  nextRace: any | null,
+): string | null {
+  const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
+
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace);
+  const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
+
+  if (readiness.pillars.length === 0) return null;
+
+  const levelLabel: Record<string, string> = { high: "alta", medium: "média", low: "baixa" };
+  const pillarLine = readiness.pillars.map((p) => `${p.label} ${p.score}`).join(" · ");
+  const lines: string[] = [
+    `- Índice de Prontidão: ${readiness.score}/100 (${levelLabel[readiness.level] ?? readiness.level}) — pilares: ${pillarLine}`,
+  ];
+  // Um "porquê" por pilar, não só o número — é o que permite à Carol explicar
+  // a pontuação em vez de só a repetir.
+  for (const p of readiness.pillars) {
+    lines.push(`  · ${p.label}: ${p.desc}`);
+  }
+  if (cross.combinedACWR > 0) {
+    lines.push(`- ACWR combinado (corrida+ginásio, o maior dos dois): ${cross.combinedACWR.toFixed(2)}`);
+  }
+
+  return `ÍNDICE DE PRONTIDÃO (calculado, igual ao que o atleta vê na Home):\n${lines.join("\n")}`;
+}
+
 // ─── Bloco 2.1 — ACWR (rácio aguda:crónica) ─────────────────────────────────
 // Acute = km nas últimas 7 noites · Chronic = média de 4 semanas (28 dias).
 // A classificação por zona (ratio → zone) delega em
@@ -1145,24 +1187,22 @@ function buildNutritionAnalyticsPanel(
 // a classificação pura vem da biblioteca. Fonte: Gabbett 2016 — The
 // training-injury prevention paradox.
 // deno-lint-ignore no-explicit-any
+// Delega em @formulas/runAcwr.ts (T1.5) — única implementação, partilhada
+// com src/utils/biEngine.js (specs/formulas-checklist.md Fase E). ATÉ
+// 2026-08-25 esta função tinha uma janela de 8/29 dias (usava `>=` num
+// limite pensado para `>`), diferente da janela de 7/28 dias que a UI
+// (RunDashboard, Home) sempre mostrou — P0-3 da auditoria original,
+// finalmente resolvido: unificado na janela do biEngine.js (decisão do
+// utilizador). O ACWR que a Carol diz passa a ser LITERALMENTE o mesmo
+// número que o atleta vê no ecrã, não uma aproximação de ±1 dia.
 export function computeACWR(
   runs: any[],
   todayISO: string,
 ): { acuteKm: number; chronicWeeklyKm: number; ratio: number; zone: string } | null {
   if (!runs || runs.length === 0) return null;
-  const todayMs = new Date(todayISO + "T00:00:00Z").getTime();
-  const acuteCutMs   = todayMs - 7  * 86400000; // últimos 7 dias
-  const chronicCutMs = todayMs - 28 * 86400000; // últimas 4 semanas
-  const acuteKm = runs
-    .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= acuteCutMs)
-    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
-  const chronicTotal = runs
-    .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= chronicCutMs)
-    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
-  const chronicWeeklyKm = chronicTotal / 4;
+  const { acuteKm, chronicWeeklyKm, ratio, status: zoneKey } = computeRunAcwr(runs, todayISO);
   // Com menos de 1 km/semana de média crónica o rácio é matematicamente inútil.
   if (chronicWeeklyKm < 1) return null;
-  const { ratio, zone: zoneKey } = sharedComputeAcwr(acuteKm, chronicWeeklyKm);
   const ZONE_LABELS: Record<string, string> = {
     danger: "PERIGO(>1,50)",
     caution: "risco_acrescido(1,31-1,50]",
@@ -2289,6 +2329,9 @@ export function buildSystemInstruction(
   // Idem — painel de indicadores de nutrição/corpo (Fase E): cumprimento de
   // macros, Disponibilidade Energética, composição corporal, micronutrientes.
   nutritionAnalyticsPanel: string | null = null,
+  // Idem — Índice de Prontidão + ACWR combinado (Fase E): o composto que
+  // reúne os outros painéis num único score, com o "porquê" de cada pilar.
+  readinessPanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -2668,8 +2711,9 @@ export function buildSystemInstruction(
     `aguda/crónica, "PAINEL DE CORRIDA" para VDOT/polarização 80-20/melhores paces/desnível-` +
     `calorias-cadência, "PAINEL DE GINÁSIO" para volume-carga/ACWR de ginásio/grupos ` +
     `musculares/aulas, "PAINEL DE NUTRIÇÃO/CORPO" para cumprimento de macros/Disponibilidade ` +
-    `Energética/composição corporal/micronutrientes, os targets nutricionais, o resumo de ` +
-    `água), usa esse número diretamente.\n` +
+    `Energética/composição corporal/micronutrientes, "ÍNDICE DE PRONTIDÃO" para o score ` +
+    `0-100 e o porquê de cada pilar (é o mesmo número que a Home mostra), os targets ` +
+    `nutricionais, o resumo de água), usa esse número diretamente.\n` +
     `2. Se o período pedido está dentro das janelas acima mas NÃO existe um total pré-calculado ` +
     `para ele (um dia específico, um subconjunto por tipo de treino, etc.), soma tu mesma a ` +
     `partir da lista bruta apenas se for uma soma simples e curta — caso contrário chama a ` +
@@ -3161,6 +3205,7 @@ export function buildSystemInstruction(
   if (runAnalyticsPanel) sys += `\n\n${runAnalyticsPanel}`;
   if (gymAnalyticsPanel) sys += `\n\n${gymAnalyticsPanel}`;
   if (nutritionAnalyticsPanel) sys += `\n\n${nutritionAnalyticsPanel}`;
+  if (readinessPanel) sys += `\n\n${readinessPanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3503,6 +3548,19 @@ async function handler(req: Request): Promise<Response> {
       NUTRITION_WINDOW_DAYS,
     );
 
+    // Só provas que ainda vão acontecer (upcomingRaces inclui "ontem" para
+    // o Coach poder perguntar "como correu?" — essa não conta como "próxima").
+    const nextUpcomingRace = (upcomingRaces || []).find((r: any) => r.date >= todayISO) ?? null;
+    const readinessPanel = buildReadinessPanel(
+      recentRuns || [],
+      weekMeals || [],
+      bodyAssessments || [],
+      gymSessions || [],
+      profile,
+      todayISO,
+      nextUpcomingRace,
+    );
+
     // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
     const ageFromBirth = profile?.birth_date
       ? Math.floor((Date.now() - new Date(profile.birth_date as string).getTime()) / (365.25 * 24 * 3600 * 1000))
@@ -3682,7 +3740,8 @@ async function handler(req: Request): Promise<Response> {
       weeklyRunningContext,
       runAnalyticsPanel,
       gymAnalyticsPanel,
-      nutritionAnalyticsPanel
+      nutritionAnalyticsPanel,
+      readinessPanel
     );
 
     let finalSystemInstruction = systemInstruction;

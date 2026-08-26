@@ -9,13 +9,14 @@
 // - Gabbett (2016) — ACWR & Training-Injury Prevention
 // - Minetti / ITRA / Naismith (Conversão D+)
 
-import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM, assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { categorizeDistance, MIN_VOLUME_KM, assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace, racePriorityLabel } from './run';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
 import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@formulas/recovery.ts';
+import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel } from '@formulas/racePlanning.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -53,23 +54,10 @@ export function formatDateDayMonth(dateStr) {
 }
 
 // ─── Duração Total do Plano em Semanas ──────────────────────────────────────────
+// Delega em @formulas/racePlanning.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function getRecommendedPrepWeeks(distanceKm, experienceLevel = 'iniciante') {
-  const cat = categorizeDistance(distanceKm) || '10k';
-  const level = experienceLevel || 'iniciante';
-  
-  if (MIN_PREP_WEEKS[level] && MIN_PREP_WEEKS[level][cat] !== null && MIN_PREP_WEEKS[level][cat] !== undefined) {
-    return MIN_PREP_WEEKS[level][cat];
-  }
-  
-  // Fallbacks seguros por categoria
-  switch (cat) {
-    case '5k': return 6;
-    case '10k': return 8;
-    case 'meia': return 12;
-    case 'maratona': return 18;
-    case 'ultra': return 24;
-    default: return 12;
-  }
+  return sharedGetRecommendedPrepWeeks(distanceKm, experienceLevel);
 }
 
 // ─── Cálculo dos Dias de Recuperação Pós-Prova (Bloco 2.3 #2) ───────────────────
@@ -109,10 +97,10 @@ export function calculateEquivalentFlatKm(distanceKm, elevationGainM, raceType) 
 // usam a distância em bruto — as tabelas de doutrina não têm categoria de
 // trail própria aí, e usar o equivalente criava um "penhasco" de categoria
 // por poucos km de D+ convertido.
+// Delega em @formulas/racePlanning.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function getEffectiveDistanceKm(race) {
-  const distanceKm = parseFloat((race?.distance_km ?? '10').toString().replace(',', '.')) || 10;
-  const elevationGainM = race?.elevation_gain_m ? parseFloat(race.elevation_gain_m) : null;
-  return calculateEquivalentFlatKm(distanceKm, elevationGainM, race?.race_type || 'estrada');
+  return sharedGetEffectiveDistanceKm(race);
 }
 
 // Nível de experiência a usar para esta prova — o autodeclarado na própria
@@ -123,8 +111,10 @@ export function getEffectiveDistanceKm(race) {
 // || 'iniciante'` à sua maneira, e um deles (RunDashboard) tinha o fallback
 // errado ('beginner', inglês, que nunca bate com as chaves reais da
 // doutrina) sem ninguém reparar, porque não havia um só sítio a corrigir.
+// Delega em @formulas/racePlanning.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function resolveExperienceLevel(race, profile) {
-  return race?.experience_level || profile?.experience_level || 'iniciante';
+  return sharedResolveExperienceLevel(race, profile);
 }
 
 // ─── Cálculo Completo do Plano & Fases ──────────────────────────────────────────

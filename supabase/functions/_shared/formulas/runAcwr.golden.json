@@ -1,0 +1,33 @@
+[
+  {
+    "name": "caso real do bug 2026-08-25 — 65 km há 4 dias + 10 km ontem, dentro da janela aguda de 7 dias",
+    "input": {
+      "todayISO": "2026-08-25",
+      "runs": [
+        { "date": "2026-08-21", "distance_km": 25 },
+        { "date": "2026-08-21", "distance_km": 20 },
+        { "date": "2026-08-21", "distance_km": 20 },
+        { "date": "2026-08-24", "distance_km": 10 }
+      ]
+    },
+    "expect": { "acuteKm": 75, "chronicWeeklyKm": 18.75, "ratio": 4, "status": "danger", "hasEnoughData": false }
+  },
+  {
+    "name": "só corrida fora da janela crónica (28 dias) — ratio 0, zona 'unknown', mas conta para hasEnoughData",
+    "input": { "todayISO": "2026-08-25", "runs": [{ "date": "2026-06-01", "distance_km": 50 }] },
+    "expect": { "acuteKm": 0, "chronicWeeklyKm": 0, "ratio": 0, "status": "unknown", "hasEnoughData": true }
+  },
+  {
+    "name": "sem corridas",
+    "input": { "todayISO": "2026-08-25", "runs": [] },
+    "expect": { "acuteKm": 0, "chronicWeeklyKm": 0, "ratio": 0, "status": "unknown", "hasEnoughData": false }
+  },
+  {
+    "name": "carga aguda igual à crónica — zona 'safe', ratio 1",
+    "input": {
+      "todayISO": "2026-08-25",
+      "runs": [{ "date": "2026-08-10", "distance_km": 30 }, { "date": "2026-08-24", "distance_km": 10 }]
+    },
+    "expect": { "acuteKm": 10, "chronicWeeklyKm": 10, "ratio": 1, "status": "safe", "hasEnoughData": true }
+  }
+]

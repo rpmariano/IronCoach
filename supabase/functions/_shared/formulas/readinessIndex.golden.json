@@ -1,0 +1,446 @@
+[
+  {
+    "name": "sem prova agendada — 4 pilares, tudo em risco (cenário sintético)",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-10",
+          "distance_km": 8,
+          "duration_seconds": 2400,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 8,
+          "duration_seconds": 2280,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 500,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 140,
+        "carbs_goal": 250,
+        "fat_goal": 65
+      }
+    },
+    "expect": {
+      "score": 33,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 0,
+          "desc": "Carga de risco (2.00). Risco de lesão aumentado."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 10,
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 20,
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 100,
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+        }
+      ],
+      "level": "low"
+    }
+  },
+  {
+    "name": "mesmo atleta, agora com prova agendada — ganha o 5º pilar (tático)",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": {
+        "date": "2026-09-15",
+        "distance_km": "21.1",
+        "race_type": "estrada",
+        "target_pace_seconds_per_km": 300,
+        "race_priority": "a"
+      },
+      "runs": [
+        {
+          "date": "2026-08-10",
+          "distance_km": 8,
+          "duration_seconds": 2400,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 8,
+          "duration_seconds": 2280,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 500,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 140,
+        "carbs_goal": 250,
+        "fat_goal": 65
+      }
+    },
+    "expect": {
+      "score": 36,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 0,
+          "desc": "Carga de risco (2.00). Risco de lesão aumentado."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 10,
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 20,
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 100,
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+        },
+        {
+          "key": "tactic",
+          "label": "Viabilidade Tática",
+          "score": 50,
+          "desc": "Volume de treino (4km/sem) insuficiente para a distância."
+        }
+      ],
+      "level": "low"
+    }
+  },
+  {
+    "name": "sem dados nenhuns — score 0, cada pilar com a mensagem de 'sem dados'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [],
+      "meals": [],
+      "bodyAssessments": [],
+      "gymSessions": [],
+      "profile": {}
+    },
+    "expect": {
+      "score": 0,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 0,
+          "desc": "Sem dados de corrida suficientes."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 0,
+          "desc": "Sem dados nutricionais suficientes."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 0,
+          "desc": "Sem dados de nutrição suficientes."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 0,
+          "desc": "Sem corridas qualificadas para calcular VDOT."
+        }
+      ],
+      "level": "low"
+    }
+  },
+  {
+    "name": "atleta consistente e bem alimentado — score médio, VDOT estável, ACWR ainda de risco (3 corridas fortes seguidas)",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-20",
+          "distance_km": 10,
+          "duration_seconds": 3600,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-10",
+          "distance_km": 10,
+          "duration_seconds": 3000,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 10,
+          "duration_seconds": 3010,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-25",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-20",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_items": [
+            {
+              "quantity_grams": 1000,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 160,
+        "carbs_goal": 250,
+        "fat_goal": 70
+      }
+    },
+    "expect": {
+      "score": 58,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 0,
+          "desc": "Carga de risco (2.67). Risco de lesão aumentado."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 60,
+          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 100,
+          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 70,
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade."
+        }
+      ],
+      "level": "medium"
+    }
+  },
+  {
+    "name": "ultra para iniciante — pilar tático em 0, mesmo sem mais nenhum dado",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": {
+        "date": "2026-12-01",
+        "distance_km": "80",
+        "race_type": "trail",
+        "target_pace_seconds_per_km": null,
+        "race_priority": "a",
+        "experience_level": "iniciante"
+      },
+      "runs": [],
+      "meals": [],
+      "bodyAssessments": [],
+      "gymSessions": [],
+      "profile": {}
+    },
+    "expect": {
+      "score": 0,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 0,
+          "desc": "Sem dados de corrida suficientes."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 0,
+          "desc": "Sem dados nutricionais suficientes."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 0,
+          "desc": "Sem dados de nutrição suficientes."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 0,
+          "desc": "Sem corridas qualificadas para calcular VDOT."
+        },
+        {
+          "key": "tactic",
+          "label": "Viabilidade Tática",
+          "score": 0,
+          "desc": "Distância (Ultra) desaconselhada para iniciantes."
+        }
+      ],
+      "level": "low"
+    }
+  }
+]

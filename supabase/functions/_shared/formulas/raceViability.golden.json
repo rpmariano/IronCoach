@@ -1,0 +1,52 @@
+[
+  {
+    "fn": "recentWeeklyVolume",
+    "name": "duas corridas dentro de 4 semanas, uma fora — média das 4 semanas",
+    "input": {
+      "todayISO": "2026-08-25",
+      "weeks": 4,
+      "runs": [
+        { "date": "2026-08-20", "distance_km": 20 },
+        { "date": "2026-08-01", "distance_km": 20 },
+        { "date": "2026-06-01", "distance_km": 100 }
+      ]
+    },
+    "expect": 10
+  },
+  {
+    "fn": "recentWeeklyVolume",
+    "name": "sem corridas — 0",
+    "input": { "todayISO": "2026-08-25", "weeks": 4, "runs": [] },
+    "expect": 0
+  },
+  {
+    "fn": "assessRaceViability",
+    "name": "ultra + iniciante — sempre desaconselhado, mesmo com tempo/volume suficientes",
+    "input": { "distanceKm": 80, "experienceLevel": "iniciante", "weeksToRace": 30, "weeklyVolumeKm": 60 },
+    "expect": { "flags": ["ultra_para_iniciante"], "isViable": false }
+  },
+  {
+    "fn": "assessRaceViability",
+    "name": "meia-maratona, iniciante, tempo e volume insuficientes — as duas flags",
+    "input": { "distanceKm": 21.1, "experienceLevel": "iniciante", "weeksToRace": 4, "weeklyVolumeKm": 10 },
+    "expect": { "flags": ["volume_insuficiente", "tempo_insuficiente"], "isViable": false }
+  },
+  {
+    "fn": "assessRaceViability",
+    "name": "prova já passada (weeksToRace<=0) — sem flags, viável por omissão",
+    "input": { "distanceKm": 42.2, "experienceLevel": "iniciante", "weeksToRace": 0, "weeklyVolumeKm": 5 },
+    "expect": { "flags": [], "isViable": true }
+  },
+  {
+    "fn": "assessRaceViability",
+    "name": "avançado com tempo e volume de sobra — viável, sem flags",
+    "input": { "distanceKm": 10, "experienceLevel": "avancado", "weeksToRace": 12, "weeklyVolumeKm": 60 },
+    "expect": { "flags": [], "isViable": true }
+  },
+  {
+    "fn": "assessRaceViability",
+    "name": "nível desconhecido — sem dados para avaliar, viável por omissão",
+    "input": { "distanceKm": 10, "experienceLevel": null, "weeksToRace": 4, "weeklyVolumeKm": 5 },
+    "expect": { "flags": [], "isViable": true }
+  }
+]
