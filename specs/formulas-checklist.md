@@ -12,7 +12,7 @@
 Cada um: ficheiro:linha, o que corrigir, como provar antes/depois. Nenhum depende
 da biblioteca — são correções pontuais no sítio onde já estão.
 
-- [ ] **P0-1 — Género no `coach-daily-summary`.**
+- [x] **P0-1 — Género no `coach-daily-summary`. RESOLVIDO** (Fase B — `isFemale()`/`normalizeGender()`; a caixa não tinha sido atualizada).
   `supabase/functions/coach-daily-summary/index.ts:347,423,446` comparam
   `gender === "masculino"` / `"feminino"`; `profiles.gender` só grava `'M'`/`'F'`
   (`src/components/Perfil/Perfil.jsx:452-453`).
@@ -24,7 +24,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
   - Critério de aceitação: `gender: 'M'` usa `+5`, `gender: 'F'` usa `-161`;
     limiar RED-S 8% para `'M'`, 16% para `'F'`.
 
-- [ ] **P0-2 — Banda de cautela do ACWR morta.**
+- [x] **P0-2 — Banda de cautela do ACWR morta. RESOLVIDO** (Fase C — `resolveAcwrStatus` delega em `classifyAcwrZone`; caixa não atualizada).
   `src/utils/biEngine.js:53` usa `ratio > Constants.ACWR_CAUTION_MAX` (1.49) na
   condição de `'caution'`; devia ser `ratio > Constants.ACWR_SAFE_MAX` (1.30).
   - Teste antes: `resolveAcwrStatus(1.35)` hoje devolve `'safe'`; deve devolver
@@ -33,7 +33,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
     `> 1.50 → danger`, `< 0.80 → undertrained` — testar as 4 fronteiras exatas
     (0.80, 1.30, 1.50).
 
-- [ ] **P0-3 — Três ACWR incompatíveis no mesmo prompt.**
+- [x] **P0-3 — Três ACWR incompatíveis no mesmo prompt. RESOLVIDO** (Fase C unificou km vs sRPE; Fase E unificou a janela 7/28 vs 8/29 — ver secção E4).
   `biEngine.js:92` (sRPE) vs `coach-chat:911-918` (km, janela 8d/29d) vs
   `coach-daily-summary:391-400` (km, janela 7d/28d). `Coach.jsx:380` envia os
   insights do frontend (sRPE) para o mesmo prompt que já tem o ACWR do backend
@@ -58,7 +58,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
     de arredondamento) para o mesmo perfil e mesmo volume semanal —
     confirmado por vetor dourado comum (`tdee.golden.json`, 7 casos).
 
-- [ ] **P0-5 — `todayISO` em UTC no pilar Tático.**
+- [x] **P0-5 — `todayISO` em UTC no pilar Tático. RESOLVIDO** (o pilar tático em `readinessIndex.ts`, Fase E, recebe `todayISO` explícito do chamador — nunca calcula a sua própria data).
   `src/utils/biEngine.js:1141`, dentro de `calculateReadinessIndex`, usa
   `new Date().toISOString().slice(0, 10)` em vez do `todayISO()` local de
   `src/lib/utils.js:3`.
@@ -79,7 +79,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
   - Critério de aceitação: os dois cálculos dão o mesmo total para a mesma
     refeição, incluindo os 3 formatos de origem do dado.
 
-- [ ] **P0-7 — Viabilidade do `RunAgenda` sem correção "plano em curso".**
+- [x] **P0-7 — Viabilidade do `RunAgenda` sem correção "plano em curso". RESOLVIDO** (`RunAgenda.jsx` já tem a correção e passa `racePriority`; caixa não atualizada).
   `src/components/Run/RunAgenda.jsx:155-166` calcula `weeksToRace` cru
   (`Math.floor((raceDate−hoje)/7d)`), sem a correção que
   `racePlanEngine.js:202-207`, `biEngine.js:952-955` e `biEngine.js:1152-1155`
@@ -92,7 +92,7 @@ da biblioteca — são correções pontuais no sítio onde já estão.
   - Critério de aceitação: os 4 sítios dão a mesma flag de viabilidade para a
     mesma prova/runs/data.
 
-- [ ] **P0-8 — `calculateTrainingDistribution` sem nível.**
+- [x] **P0-8 — `calculateTrainingDistribution` sem nível. RESOLVIDO** (`RunDashboard.jsx` já passa `profile.experience_level`; caixa não atualizada).
   `src/components/Run/RunDashboard.jsx:141` chama
   `calculateTrainingDistribution(periodRuns)` sem o 2.º argumento
   (`experienceLevel`), caindo no default `'medio'` (alvo 80/20).
