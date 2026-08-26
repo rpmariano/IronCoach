@@ -9,6 +9,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import { todayISO } from '../../lib/utils';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -27,12 +28,6 @@ const BODY_METRICS = [
 ];
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-body
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();

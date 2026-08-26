@@ -8,6 +8,7 @@ import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { todayISO, addDaysISO } from '../../lib/utils';
 import './WeeklyPlanCard.css';
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -20,19 +21,6 @@ import './WeeklyPlanCard.css';
    real do(s) plano(s) aceite(s), não um horizonte fixo de 7 dias. */
 
 export const PLAN_HORIZON_DAYS = 7;
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
-
-function addDaysISO(iso, n) {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 export function diffDaysISO(aISO, bISO) {
   return Math.round((new Date(bISO + 'T00:00:00') - new Date(aISO + 'T00:00:00')) / 86400000);

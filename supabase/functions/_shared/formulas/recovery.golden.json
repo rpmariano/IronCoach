@@ -1,0 +1,17 @@
+[
+  { "name": "iniciante 10k", "input": { "distanceKm": 10, "experienceLevel": "iniciante" }, "expect": 7 },
+  { "name": "iniciante meia", "input": { "distanceKm": 21, "experienceLevel": "iniciante" }, "expect": 21 },
+  { "name": "iniciante maratona", "input": { "distanceKm": 42, "experienceLevel": "iniciante" }, "expect": 35 },
+  { "name": "iniciante ultra", "input": { "distanceKm": 80, "experienceLevel": "iniciante" }, "expect": 42 },
+  { "name": "basico 10k", "input": { "distanceKm": 10, "experienceLevel": "basico" }, "expect": 6 },
+  { "name": "basico meia", "input": { "distanceKm": 21, "experienceLevel": "basico" }, "expect": 14 },
+  { "name": "basico maratona", "input": { "distanceKm": 42, "experienceLevel": "basico" }, "expect": 28 },
+  { "name": "medio 5k", "input": { "distanceKm": 5, "experienceLevel": "medio" }, "expect": 5 },
+  { "name": "medio meia", "input": { "distanceKm": 21, "experienceLevel": "medio" }, "expect": 10 },
+  { "name": "medio maratona", "input": { "distanceKm": 42, "experienceLevel": "medio" }, "expect": 21 },
+  { "name": "avancado 5k", "input": { "distanceKm": 5, "experienceLevel": "avancado" }, "expect": 3 },
+  { "name": "avancado meia", "input": { "distanceKm": 21, "experienceLevel": "avancado" }, "expect": 7 },
+  { "name": "avancado maratona — decisão do utilizador, lado mais conservador do conflito", "input": { "distanceKm": 42, "experienceLevel": "avancado" }, "expect": 26 },
+  { "name": "avancado ultra", "input": { "distanceKm": 80, "experienceLevel": "avancado" }, "expect": 21 },
+  { "name": "nível desconhecido cai para iniciante", "input": { "distanceKm": 10, "experienceLevel": "desconhecido" }, "expect": 7 }
+]

@@ -2,15 +2,13 @@ import React from 'react';
 import { Scatter } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
+import { formatPace } from '../../utils/run';
 
 export default function ScatterTrendChart({ data = [], className = '' }) {
   // data: array of {date, paceSecondsPerKm, avgHR, label}
-  
-  const formatPace = (seconds) => {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
+  // Antes tinha o seu próprio formatPace ("5:20", arredondamento diferente
+  // do canónico) — unificado por pedido explícito
+  // (specs/formulas-checklist.md Fase D).
 
   // Sort by date to calculate recency color fading if needed, or simply assign shades
   // We'll use alpha channel based on index

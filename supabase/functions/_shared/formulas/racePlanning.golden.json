@@ -1,0 +1,30 @@
+[
+  { "fn": "getRecommendedPrepWeeks", "name": "iniciante 10k — tabela MIN_PREP_WEEKS", "input": { "distanceKm": 10, "experienceLevel": "iniciante" }, "expect": 10 },
+  { "fn": "getRecommendedPrepWeeks", "name": "avançado maratona — tabela", "input": { "distanceKm": 42.2, "experienceLevel": "avancado" }, "expect": 12 },
+  { "fn": "getRecommendedPrepWeeks", "name": "básico ultra — tabela", "input": { "distanceKm": 80, "experienceLevel": "basico" }, "expect": 24 },
+  { "fn": "getEffectiveDistanceKm", "name": "estrada — sem conversão", "input": { "race": { "distance_km": "10", "race_type": "estrada" } }, "expect": 10 },
+  { "fn": "getEffectiveDistanceKm", "name": "trail com desnível — equivalente ITRA (Naismith)", "input": { "race": { "distance_km": "20", "elevation_gain_m": "1000", "race_type": "trail" } }, "expect": 30 },
+  { "fn": "getEffectiveDistanceKm", "name": "sem prova — default 10 km", "input": { "race": null }, "expect": 10 },
+  { "fn": "resolveExperienceLevel", "name": "nível da prova tem prioridade sobre o do perfil", "input": { "race": { "experience_level": "avancado" }, "profile": { "experience_level": "iniciante" } }, "expect": "avancado" },
+  { "fn": "resolveExperienceLevel", "name": "sem nível na prova — usa o do perfil", "input": { "race": {}, "profile": { "experience_level": "medio" } }, "expect": "medio" },
+  { "fn": "resolveExperienceLevel", "name": "sem nenhum — default iniciante", "input": { "race": {}, "profile": {} }, "expect": "iniciante" },
+  {
+    "fn": "getRacePrediction",
+    "name": "meia-maratona, nível médio, uma corrida de base — previsão real (não equivalente, pois é estrada)",
+    "input": {
+      "race": { "distance_km": "21.1", "race_type": "estrada" },
+      "profile": { "experience_level": "medio" },
+      "runs": [{ "distance_km": 10, "duration_seconds": 2400, "date": "2026-08-20" }]
+    },
+    "expect": {
+      "predictedSeconds": 5296.03253372687,
+      "predictedPace": 250.99680254629712,
+      "confidence": 0.4,
+      "basedOn": { "distance": 10, "time": 2400, "date": "2026-08-20" },
+      "predictedPaceReal": 250.99680254629712,
+      "effectiveDistanceKm": 21.1,
+      "realDistanceKm": 21.1,
+      "experienceLevel": "medio"
+    }
+  }
+]

@@ -1929,14 +1929,21 @@ Deno.test("computeBodyMetrics: peso mais recente aparece quando há só 1 mediç
   assertStringIncludes(out!, "72.5 kg");
 });
 
-Deno.test("computeBodyMetrics: média de 7 dias quando há ≥2 medições recentes", () => {
+// Fase C (specs/formulas-checklist.md): a tendência de peso passou a
+// delegar em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) — a mesma
+// fórmula que src/utils/biEngine.js usa — em vez de uma média simples dos
+// últimos 7 dias.
+Deno.test("computeBodyMetrics: tendência de peso (EWMA partilhada) quando há ≥2 medições", () => {
   const rows = [
     makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
     makeBA("2026-08-09T07:00:00Z", { weight_kg: 73.0 }),
   ];
   const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
-  // média = (71+73)/2 = 72.0
-  assertStringIncludes(out!, "72.0 kg");
+  // <5 pontos → sem suavização EWMA; peso mais recente = 71.0, tendência
+  // descendo (71-73 = -2 kg/semana).
+  assertStringIncludes(out!, "71.0 kg");
+  assertStringIncludes(out!, "tendência descendo");
+  assertStringIncludes(out!, "-2 kg/semana");
   assertStringIncludes(out!, "2 medições");
 });
 
@@ -2172,9 +2179,13 @@ function makeRunSummary(overrides: Record<string, unknown> = {}): unknown {
     training_type: "rodagem",
     distance_km: 10,
     duration_seconds: 3600,
-    cadence_spm: null,
-    avg_heart_rate_bpm: null,
-    ...overrides,
+    // Cadência/FC vivem em runs.details (jsonb), não em colunas de topo —
+    // ver o comentário em summariseRuns. Os overrides continuam a ser
+    // passados com os nomes simples, e são reagrupados aqui.
+    details: {
+      cadence_spm: (overrides as Record<string, unknown>).cadence_spm ?? null,
+      avg_heart_rate_bpm: (overrides as Record<string, unknown>).avg_heart_rate_bpm ?? null,
+    },
   };
 }
 

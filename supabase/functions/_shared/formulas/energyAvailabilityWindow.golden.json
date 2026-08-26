@@ -1,0 +1,65 @@
+[
+  {
+    "name": "duas fontes de gasto (corrida + ginásio sem calories_kcal, usa fallback 200) — dois dias críticos, isAtRisk false",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [{ "date": "2026-08-24", "calories": 1800 }, { "date": "2026-08-23", "calories": 1200 }],
+      "runs": [{ "date": "2026-08-24", "distance_km": 10 }],
+      "gymSessions": [{ "date": "2026-08-23", "calories_kcal": null }],
+      "bodyAssessments": [{ "date": "2026-08-20", "weight_kg": 65, "lean_body_mass_kg": 50 }]
+    },
+    "expect": {
+      "daily": [
+        { "date": "2026-08-23", "ea": 20, "status": "critical", "intake": 1200, "exercise": 200 },
+        { "date": "2026-08-24", "ea": 23, "status": "critical", "intake": 1800, "exercise": 650 }
+      ],
+      "average": 21.5,
+      "isAtRisk": false,
+      "daysAtRisk": 2,
+      "leanMass": 50
+    }
+  },
+  {
+    "name": "5 dias críticos seguidos — isAtRisk vira true no limiar exato",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "meals": [
+        { "date": "2026-08-11", "calories": 500 },
+        { "date": "2026-08-12", "calories": 500 },
+        { "date": "2026-08-13", "calories": 500 },
+        { "date": "2026-08-14", "calories": 500 },
+        { "date": "2026-08-15", "calories": 500 }
+      ],
+      "runs": [],
+      "gymSessions": [],
+      "bodyAssessments": [{ "date": "2026-08-10", "weight_kg": 60, "lean_body_mass_kg": 50 }]
+    },
+    "expect": {
+      "daily": [
+        { "date": "2026-08-11", "ea": 10, "status": "critical", "intake": 500, "exercise": 0 },
+        { "date": "2026-08-12", "ea": 10, "status": "critical", "intake": 500, "exercise": 0 },
+        { "date": "2026-08-13", "ea": 10, "status": "critical", "intake": 500, "exercise": 0 },
+        { "date": "2026-08-14", "ea": 10, "status": "critical", "intake": 500, "exercise": 0 },
+        { "date": "2026-08-15", "ea": 10, "status": "critical", "intake": 500, "exercise": 0 }
+      ],
+      "average": 10,
+      "isAtRisk": true,
+      "daysAtRisk": 5,
+      "leanMass": 50
+    }
+  },
+  {
+    "name": "sem dados nenhuns — leanMass cai no default 55, tudo a zero",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [],
+      "runs": [],
+      "gymSessions": [],
+      "bodyAssessments": []
+    },
+    "expect": { "daily": [], "average": 0, "isAtRisk": false, "daysAtRisk": 0, "leanMass": 55 }
+  }
+]

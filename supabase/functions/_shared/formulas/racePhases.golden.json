@@ -1,0 +1,40 @@
+[
+  {
+    "fn": "computePhaseWindows",
+    "name": "macrociclo típico de meia-maratona (16 semanas, taper de 2) — 45%/20% do bloco pré-taper",
+    "input": { "totalWeeks": 16, "taperWeeks": 2, "planStartISO": "2026-07-01" },
+    "expect": [
+      { "id": "base",  "startWeek": 1,  "endWeek": 6,  "weeksCount": 6, "startDate": "2026-07-01", "endDate": "2026-08-11" },
+      { "id": "build", "startWeek": 7,  "endWeek": 11, "weeksCount": 5, "startDate": "2026-08-12", "endDate": "2026-09-15" },
+      { "id": "peak",  "startWeek": 12, "endWeek": 14, "weeksCount": 3, "startDate": "2026-09-16", "endDate": "2026-10-06" },
+      { "id": "taper", "startWeek": 15, "endWeek": 16, "weeksCount": 2, "startDate": "2026-10-07", "endDate": "2026-10-20" }
+    ]
+  },
+  {
+    "fn": "computePhaseWindows",
+    "name": "plano curto (6 semanas, taper de 1) — mínimos de 1 semana por fase respeitados",
+    "input": { "totalWeeks": 6, "taperWeeks": 1, "planStartISO": "2026-07-01" },
+    "expect": [
+      { "id": "base",  "startWeek": 1, "endWeek": 2, "weeksCount": 2, "startDate": "2026-07-01", "endDate": "2026-07-14" },
+      { "id": "build", "startWeek": 3, "endWeek": 4, "weeksCount": 2, "startDate": "2026-07-15", "endDate": "2026-07-28" },
+      { "id": "peak",  "startWeek": 5, "endWeek": 5, "weeksCount": 1, "startDate": "2026-07-29", "endDate": "2026-08-04" },
+      { "id": "taper", "startWeek": 6, "endWeek": 6, "weeksCount": 1, "startDate": "2026-08-05", "endDate": "2026-08-11" }
+    ]
+  },
+  {
+    "fn": "computePhaseWindows",
+    "name": "taper pedido acima de 1/3 do plano é clampado (12 semanas, pedido 8 → 4)",
+    "input": { "totalWeeks": 12, "taperWeeks": 8, "planStartISO": "2026-07-01" },
+    "expect": [
+      { "id": "base",  "startWeek": 1, "endWeek": 4,  "weeksCount": 4, "startDate": "2026-07-01", "endDate": "2026-07-28" },
+      { "id": "build", "startWeek": 5, "endWeek": 6,  "weeksCount": 2, "startDate": "2026-07-29", "endDate": "2026-08-11" },
+      { "id": "peak",  "startWeek": 7, "endWeek": 8,  "weeksCount": 2, "startDate": "2026-08-12", "endDate": "2026-08-25" },
+      { "id": "taper", "startWeek": 9, "endWeek": 12, "weeksCount": 4, "startDate": "2026-08-26", "endDate": "2026-09-22" }
+    ]
+  },
+  { "fn": "resolvePhaseState", "name": "hoje dentro da janela — ativa", "input": { "trainingStatus": "in_progress", "todayISO": "2026-07-10", "startDateStr": "2026-07-01", "endDateStr": "2026-07-28" }, "expect": "active" },
+  { "fn": "resolvePhaseState", "name": "hoje depois do fim — concluída", "input": { "trainingStatus": "in_progress", "todayISO": "2026-08-10", "startDateStr": "2026-07-01", "endDateStr": "2026-07-28" }, "expect": "completed" },
+  { "fn": "resolvePhaseState", "name": "hoje antes do início — por começar", "input": { "trainingStatus": "in_progress", "todayISO": "2026-06-10", "startDateStr": "2026-07-01", "endDateStr": "2026-07-28" }, "expect": "upcoming" },
+  { "fn": "resolvePhaseState", "name": "macrociclo já concluído domina o estado da fase", "input": { "trainingStatus": "completed", "todayISO": "2026-07-10", "startDateStr": "2026-07-01", "endDateStr": "2026-07-28" }, "expect": "completed" },
+  { "fn": "resolvePhaseState", "name": "macrociclo por começar domina o estado da fase", "input": { "trainingStatus": "not_started", "todayISO": "2026-07-10", "startDateStr": "2026-07-01", "endDateStr": "2026-07-28" }, "expect": "upcoming" }
+]

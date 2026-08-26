@@ -7,6 +7,7 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
+import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
@@ -60,11 +61,6 @@ const COMPLETED_RACE_TYPES = [
   { key: 'outro', label: 'Outro' },
 ];
 
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 // Convert "43m" or "37:57" or "1:11:26" to seconds
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run

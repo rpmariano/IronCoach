@@ -1,0 +1,52 @@
+[
+  {
+    "name": "3 sessões em janelas distintas — ACWR danger com base crónica, filtro 'mes' exclui a mais antiga",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-08-24", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-08-10", "workout_session_sets": [{ "reps": 5, "weight": 100 }] },
+        { "date": "2026-07-01", "workout_session_sets": [{ "reps": 20, "weight": 100 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 1500,
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-08-10", "volumeLoad": 500 },
+        { "weekLabel": "2026-08-24", "volumeLoad": 1000 }
+      ],
+      "acwr": 2.6666666666666665,
+      "acwrStatus": "danger",
+      "acwrHasEnoughData": true
+    }
+  },
+  {
+    "name": "só uma sessão recente, sem histórico anterior — hasEnoughData false apesar de ratio calculável",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-08-24", "workout_session_sets": [{ "reps": 10, "weight": 50 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 500,
+      "weeklyBreakdown": [{ "weekLabel": "2026-08-24", "volumeLoad": 500 }],
+      "acwr": 4,
+      "acwrStatus": "danger",
+      "acwrHasEnoughData": false
+    }
+  },
+  {
+    "name": "sem sessões — tudo a zero",
+    "input": { "todayISO": "2026-08-25", "range": "mes", "sessions": [] },
+    "expect": {
+      "totalVolumeLoad": 0,
+      "weeklyBreakdown": [],
+      "acwr": 0,
+      "acwrStatus": "undertrained",
+      "acwrHasEnoughData": false
+    }
+  }
+]

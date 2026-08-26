@@ -1,0 +1,28 @@
+[
+  {
+    "name": "duas avaliações fora de ordem — ordena por data, calcula massa gorda/magra",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-08-20", "weight_kg": 70, "body_fat_pct": 20, "lean_body_mass_kg": null },
+        { "date": "2026-08-01", "weight_kg": 72, "body_fat_pct": 22, "lean_body_mass_kg": 56 }
+      ]
+    },
+    "expect": {
+      "dates": ["2026-08-01", "2026-08-20"],
+      "fatMassKg": [15.84, 14],
+      "leanMassKg": [56, 56]
+    }
+  },
+  {
+    "name": "sem lean_body_mass_kg — deriva peso menos massa gorda",
+    "input": {
+      "bodyAssessments": [{ "date": "2026-08-25", "weight_kg": 80, "body_fat_pct": 15, "lean_body_mass_kg": null }]
+    },
+    "expect": { "dates": ["2026-08-25"], "fatMassKg": [12], "leanMassKg": [68] }
+  },
+  {
+    "name": "sem avaliações — arrays vazios",
+    "input": { "bodyAssessments": [] },
+    "expect": { "dates": [], "fatMassKg": [], "leanMassKg": [] }
+  }
+]

@@ -2,11 +2,34 @@
  * biEngine.js
  * Todas as funções de cálculo para os dashboards de BI do IronHealth.
  */
-import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
-import { getRecommendedPrepWeeks, getEffectiveDistanceKm, resolveExperienceLevel } from './racePlanEngine';
+import { getRecommendedPrepWeeks, resolveExperienceLevel } from './racePlanEngine';
+import { getRacePrediction as sharedGetRacePrediction } from '@formulas/racePlanning.ts';
+import { todayISO } from '../lib/utils';
+// mealNutrients removido daqui — as duas únicas chamadas migraram para
+// @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
+import { normalizeGender } from '@formulas/vocabulary.ts';
+import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
+import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
+import { computeWeightTrend } from '@formulas/weightTrend.ts';
+import { getTaperDays } from '@formulas/taper.ts';
+import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
+import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
+import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
+import { computeTrainingDistribution } from '@formulas/trainingDistribution.ts';
+import { computeVdotTrend } from '@formulas/vdotTrend.ts';
+import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
+import { computeGymVolumeLoad } from '@formulas/volumeLoad.ts';
+import { computeMuscleGroupVolume as sharedComputeMuscleGroupVolume } from '@formulas/muscleGroupVolume.ts';
+import { computeMacroAdherence as sharedComputeMacroAdherence } from '@formulas/macroAdherence.ts';
+import { computeEnergyAvailabilityWindow } from '@formulas/energyAvailabilityWindow.ts';
+import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
+import { computeRunAcwr } from '@formulas/runAcwr.ts';
+import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
+import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -42,17 +65,16 @@ export function filterByDateRange(data, range, dateField = 'date') {
 }
 
 /**
- * Classifica um rácio agudo:crónico nos 4 estados da doutrina (biConstants).
- * Extraído para ser partilhado entre calculateACWR (corrida) e
- * calculateVolumeLoad (ginásio) — antes o ginásio nem calculava um rácio
- * real (ver histórico), e duplicar os limiares só abriria espaço para os
- * dois um dia divergirem.
+ * Classifica um rácio agudo:crónico nos 4 estados da doutrina — usada tanto
+ * pelo ACWR de corrida (km) como por calculateVolumeLoad (ginásio, kg): a
+ * classificação por zona é a mesma fórmula independentemente da grandeza
+ * de carga, só o rácio de entrada muda. Delega em
+ * @formulas/acwr.ts (T1), a mesma fórmula que as Edge Functions usam — ver
+ * specs/formulas-checklist.md Fase C (P0-2 já estava corrigido aqui na
+ * Fase A; esta migração só move a fórmula de casa).
  */
 function resolveAcwrStatus(ratio) {
-  if (ratio > Constants.ACWR_DANGER) return 'danger';
-  if (ratio > Constants.ACWR_CAUTION_MAX) return 'caution';
-  if (ratio < Constants.ACWR_UNDER_TRAINING) return 'undertrained';
-  return 'safe';
+  return classifyAcwrZone(ratio);
 }
 
 const ACWR_STATUS_COLOR = { safe: 'green', undertrained: 'yellow', caution: 'orange', danger: 'red', unknown: 'gray' };
@@ -75,47 +97,32 @@ export function acwrStatusLabel(status, hasEnoughData = true) {
 }
 
 /**
- * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) baseado na distância ou duração vezes RPE.
+ * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) em km —
+ * agudo: total dos últimos 7 dias (hoje incluído); crónico: média semanal
+ * dos últimos 28 dias. Era sRPE (duração×RPE) até à Fase C — grandeza
+ * diferente da usada pelas Edge Functions e da doutrina, que enquadra o
+ * ACWR em volume (ver specs/formulas-centralizacao.md §5.1,
+ * specs/formulas-checklist.md P0-3/Fase C). `today` usa todayISO() local
+ * por omissão, não UTC (mesma razão do P0-5).
  */
-export function calculateACWR(runs) {
+// Delega em @formulas/runAcwr.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E, P0-3 finalmente
+// resolvido: o coach-chat tinha uma janela 8/29 dias diferente desta,
+// unificadas nesta migração na janela exata de 7/28 dias que já era esta).
+export function calculateACWR(runs, today = todayISO()) {
   try {
-    const now = new Date();
-    const acuteDate = subDays(now, 7);
-    const chronicDate = subDays(now, Constants.ACWR_MIN_HISTORY_DAYS);
-
-    let acuteLoad = 0;
-    let chronicLoad = 0;
-
-    runs.forEach(run => {
-      const d = parseISO(run.date);
-      if (!isValid(d)) return;
-      const load = (run.duration_seconds / 60) * (run.effort_rpe || 5); // Exemplo de load = duração (min) * RPE
-
-      if (isAfter(d, chronicDate)) {
-        chronicLoad += load;
-        if (isAfter(d, acuteDate)) {
-          acuteLoad += load;
-        }
-      }
-    });
-
-    const acuteAvg = acuteLoad;
-    const chronicAvg = chronicLoad / 4; // média de 4 semanas
-    const ratio = chronicAvg > 0 ? acuteAvg / chronicAvg : 0;
-    const hasEnoughData = runs.some(r => !isAfter(parseISO(r.date), acuteDate));
-
-    const status = resolveAcwrStatus(ratio);
-    const color = ACWR_STATUS_COLOR[status];
-
-    return { acuteLoad, chronicLoad: chronicAvg, ratio, status, color, hasEnoughData };
+    const { acuteKm, chronicWeeklyKm, ratio, status, hasEnoughData } = computeRunAcwr(runs, today);
+    const color = ACWR_STATUS_COLOR[status] || ACWR_STATUS_COLOR.unknown;
+    return { acuteKm, chronicWeeklyKm, ratio, status, color, hasEnoughData };
   } catch (e) {
-    return { acuteLoad: 0, chronicLoad: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false };
+    return { acuteKm: 0, chronicWeeklyKm: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false };
   }
 }
 
 /**
- * Calcula o histórico de ACWR (para as últimas 12 semanas) para apresentar no gráfico.
- * Carga = Duração (minutos) * RPE.
+ * Calcula o histórico de ACWR (para as últimas 12 semanas) para apresentar
+ * no gráfico. Carga = distância (km) — era duração×RPE até à Fase C, mesma
+ * migração de calculateACWR acima (specs/formulas-checklist.md Fase C).
  */
 export function calculateACWRHistory(runs, weeksCount = 12) {
   try {
@@ -140,10 +147,8 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
     runs.forEach(run => {
       const d = parseISO(run.date);
       if (!isValid(d)) return;
-      
-      const rpe = run.effort_rpe || 5;
-      const durationMin = (run.duration_seconds || 0) / 60;
-      const load = durationMin * rpe;
+
+      const load = Number(run.distance_km) || 0;
 
       const wStart = startOfWeek(d, { weekStartsOn: 1 }).getTime();
       const targetWeek = allWeeks.find(w => w.start.getTime() === wStart);
@@ -159,15 +164,15 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
       const w2 = allWeeks[i-1].load;
       const w3 = allWeeks[i-2].load;
       const w4 = allWeeks[i-3].load;
-      
+
       const chronicLoad = (w1 + w2 + w3 + w4) / 4;
-      const ratio = chronicLoad > 0 ? Number((acuteLoad / chronicLoad).toFixed(2)) : 0;
-      
+      const { ratio } = computeAcwr(acuteLoad, chronicLoad);
+
       result.push({
         weekLabel: allWeeks[i].label,
-        acuteLoad: Math.round(acuteLoad),
-        chronicLoad: Math.round(chronicLoad),
-        ratio
+        acuteLoad: Math.round(acuteLoad * 10) / 10,
+        chronicLoad: Math.round(chronicLoad * 10) / 10,
+        ratio: ratio !== null ? Math.round(ratio * 100) / 100 : 0
       });
     }
 
@@ -180,31 +185,11 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
 /**
  * Calcula a distribuição de treino em zonas de intensidade.
  */
+// Delega em @formulas/trainingDistribution.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateTrainingDistribution(runs, level = 'medio') {
   try {
-    let z1 = 0, z2 = 0, z3 = 0, z4 = 0, z5 = 0;
-    
-    runs.forEach(run => {
-      const zones = run.details?.hr_zones || [];
-      zones.forEach(z => {
-        if (z.zone === 1) z1 += z.minutes;
-        if (z.zone === 2) z2 += z.minutes;
-        if (z.zone === 3) z3 += z.minutes;
-        if (z.zone === 4) z4 += z.minutes;
-        if (z.zone === 5) z5 += z.minutes;
-      });
-    });
-
-    const lowIntensity = z1 + z2;
-    const highIntensity = z3 + z4 + z5;
-    const total = lowIntensity + highIntensity;
-    
-    const lowIntensityPct = total > 0 ? Math.round((lowIntensity / total) * 100) : 0;
-    const highIntensityPct = total > 0 ? Math.round((highIntensity / total) * 100) : 0;
-    const targetLowPct = Constants.TARGET_LOW_INTENSITY_PCT[level] || 80;
-    const isCompliant = lowIntensityPct >= targetLowPct - 5 && lowIntensityPct <= targetLowPct + 5;
-
-    return { lowIntensityPct, highIntensityPct, z1Minutes: z1, z2Minutes: z2, z3Minutes: z3, z4Minutes: z4, z5Minutes: z5, isCompliant, targetLowPct };
+    return computeTrainingDistribution(runs, level);
   } catch (e) {
     return { lowIntensityPct: 0, highIntensityPct: 0, z1Minutes: 0, z2Minutes: 0, z3Minutes: 0, z4Minutes: 0, z5Minutes: 0, isCompliant: false, targetLowPct: 80 };
   }
@@ -228,60 +213,6 @@ export function calculatePaceVsHR(runs) {
 }
 
 /**
- * Agrupa o volume semanal.
- */
-export function calculateWeeklyVolume(runs) {
-  try {
-    const weeks = {};
-    runs.forEach(r => {
-      const d = parseISO(r.date);
-      if (!isValid(d)) return;
-      const weekStart = startOfWeek(d, { weekStartsOn: 1 }); // Segunda-feira
-      const label = format(weekStart, 'yyyy-MM-dd');
-      
-      if (!weeks[label]) weeks[label] = { weekLabel: label, distanceKm: 0, durationMinutes: 0, sessions: 0 };
-      weeks[label].distanceKm += (r.distance_km || 0);
-      weeks[label].durationMinutes += (r.duration_seconds || 0) / 60;
-      weeks[label].sessions += 1;
-    });
-
-    return Object.values(weeks).sort((a, b) => a.weekLabel.localeCompare(b.weekLabel));
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * Race Prediction via fórmula de Riegel.
- */
-export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio') {
-  try {
-    const recentBest = runs.filter(r => r.distance_km > 0).sort((a, b) => {
-      const paceA = a.duration_seconds / a.distance_km;
-      const paceB = b.duration_seconds / b.distance_km;
-      return paceA - paceB; // Pega as corridas mais rápidas
-    })[0];
-
-    if (!recentBest) return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
-
-    const t1 = recentBest.duration_seconds;
-    const d1 = recentBest.distance_km;
-    const factor = Constants.RIEGEL_FACTOR[experienceLevel] || 1.06;
-    
-    const t2 = t1 * Math.pow((targetDistanceKm / d1), factor);
-
-    return {
-      predictedSeconds: t2,
-      predictedPace: t2 / targetDistanceKm,
-      confidence: (d1 / targetDistanceKm) > 0.5 ? 0.8 : 0.4,
-      basedOn: { distance: d1, time: t1, date: recentBest.date }
-    };
-  } catch (e) {
-    return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
-  }
-}
-
-/**
  * Previsão de tempo/pace para UMA prova (race_events ou rascunho do
  * RunAgenda) — ponto único que resolve nível de experiência e distância
  * equivalente ITRA antes de chamar predictRaceTime, para todos os
@@ -291,72 +222,21 @@ export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio
  * que o gráfico de Evolução VDOT do Dashboard e a "Previsão (VDOT)" do
  * RaceHubView chegaram a mostrar tempos diferentes para a mesma prova.
  */
+// Delega em @formulas/racePlanning.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function getRacePrediction(race, profile, runs) {
-  const experienceLevel = resolveExperienceLevel(race, profile);
-  const effectiveDistanceKm = getEffectiveDistanceKm(race);
-  const realDistanceKm = parseFloat((race?.distance_km ?? '10').toString().replace(',', '.')) || 10;
-  const raw = predictRaceTime(runs || [], effectiveDistanceKm, experienceLevel);
-  return {
-    ...raw,
-    // Pace sobre a distância REAL da prova — o atleta corre realDistanceKm,
-    // não o equivalente; ver getEffectiveDistanceKm em racePlanEngine.js.
-    predictedPaceReal: raw.predictedSeconds > 0 ? raw.predictedSeconds / realDistanceKm : 0,
-    effectiveDistanceKm,
-    realDistanceKm,
-    experienceLevel,
-  };
-}
-
-/**
- * Calcula VDOT (aproximação de Daniels) a partir de distância e tempo.
- * Usa a equação de regressão de Daniels & Gilbert (1979).
- * @param {number} distanceKm - Distância em km.
- * @param {number} timeSeconds - Tempo em segundos.
- * @returns {number} Estimativa de VDOT.
- */
-export function calculateVDOT(distanceKm, timeSeconds) {
-  try {
-    if (!distanceKm || distanceKm <= 0 || !timeSeconds || timeSeconds <= 0) return 0;
-    const distanceMeters = distanceKm * 1000;
-    const timeMinutes = timeSeconds / 60;
-    const velocityMPerMin = distanceMeters / timeMinutes;
-
-    // VO2 da corrida (ml/kg/min) — Equação de Daniels:
-    // VO2 = -4.60 + 0.182258 * v + 0.000104 * v^2
-    // Onde v = velocidade em m/min
-    const vo2Run = -4.60 + 0.182258 * velocityMPerMin + 0.000104 * Math.pow(velocityMPerMin, 2);
-
-    // Fração de VO2max utilizada (% VO2max) — função do tempo:
-    // %VO2max = 0.8 + 0.1894393 * e^(-0.012778*t) + 0.2989558 * e^(-0.1932605*t)
-    // Onde t = tempo em minutos
-    const pctVO2max = 0.8 + 0.1894393 * Math.exp(-0.012778 * timeMinutes)
-                         + 0.2989558 * Math.exp(-0.1932605 * timeMinutes);
-
-    // VDOT = VO2 da corrida / fração de VO2max
-    const vdot = pctVO2max > 0 ? vo2Run / pctVO2max : 0;
-    return Math.max(0, Math.round(vdot * 10) / 10);
-  } catch (e) {
-    return 0;
-  }
+  return sharedGetRacePrediction(race, profile, runs || []);
 }
 
 /**
  * Calcula a tendência de VDOT ao longo do tempo.
  * Filtra apenas corridas que qualificam como "time trials" (competição ou treinos de qualidade >= 3km).
  */
+// Delega em @formulas/vdotTrend.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E).
 export function getVDOTTrend(runs) {
   try {
-    return runs
-      .filter(r => r.distance_km >= 3 && r.duration_seconds > 0 &&
-                   (r.kind === 'competicao' || r.training_type === 'tempo' ||
-                    r.training_type === 'intervalos' || r.effort_rpe >= 7))
-      .map(r => ({
-        date: r.date,
-        vdot: calculateVDOT(r.distance_km, r.duration_seconds),
-        label: r.name || r.kind
-      }))
-      .filter(r => r.vdot > 0)
-      .sort((a, b) => a.date.localeCompare(b.date));
+    return computeVdotTrend(runs);
   } catch (e) {
     return [];
   }
@@ -374,111 +254,29 @@ export function getVDOTTrend(runs) {
  * de uma migração de backfill — `volume_kg` fica só como atalho, caso
  * algum dia passe a ser escrito.
  */
+// Delega em @formulas/sessionVolumeKg.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function sessionVolumeKg(session) {
-  if (typeof session?.volume_kg === 'number' && session.volume_kg > 0) return session.volume_kg;
-  return (session?.workout_session_sets || []).reduce(
-    (sum, s) => sum + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0
-  );
+  return computeSessionVolumeKg(session);
 }
 
 /** Gym Analytics */
+// Delega em @formulas/volumeLoad.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase E). `todayISO()` (fuso
+// local) substitui o `new Date()` impuro do original — ver o comentário em
+// relativeDateRange.ts sobre a simplificação para granularidade de dia.
 export function calculateVolumeLoad(gymSessions, dateRange) {
   try {
-    const filtered = filterByDateRange(gymSessions, dateRange);
-    let totalVolumeLoad = 0;
-    const weeks = {};
-
-    filtered.forEach(s => {
-      const vl = sessionVolumeKg(s);
-      totalVolumeLoad += vl;
-
-      const d = parseISO(s.date);
-      if (isValid(d)) {
-        const weekStart = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-        if (!weeks[weekStart]) weeks[weekStart] = { weekLabel: weekStart, volumeLoad: 0 };
-        weeks[weekStart].volumeLoad += vl;
-      }
-    });
-
-    // ACWR real do ginásio: mesma janela agudo (7 dias) / crónico (média de
-    // 4 semanas) do calculateACWR de corrida, com o volume-carga (kg) como
-    // "load" em vez de duração×RPE. Calculado sobre TODAS as sessões — não
-    // só as do `dateRange` do dashboard — porque o ACWR compara sempre as
-    // últimas 4 semanas, independentemente do período que o atleta esteja a
-    // ver no ecrã. Antes disto devolvia sempre 1.0 fixo ("Simplificação"),
-    // que o VolumeLoadChart mostrava como se fosse um valor real.
-    const now = new Date();
-    const acuteDate = subDays(now, 7);
-    const chronicDate = subDays(now, Constants.ACWR_MIN_HISTORY_DAYS);
-    let acuteLoad = 0;
-    let chronicLoad = 0;
-    (gymSessions || []).forEach(s => {
-      const d = parseISO(s.date);
-      if (!isValid(d)) return;
-      const vl = sessionVolumeKg(s);
-      if (isAfter(d, chronicDate)) {
-        chronicLoad += vl;
-        if (isAfter(d, acuteDate)) acuteLoad += vl;
-      }
-    });
-    const chronicAvg = chronicLoad / 4;
-    const ratio = chronicAvg > 0 ? acuteLoad / chronicAvg : 0;
-    const hasEnoughData = (gymSessions || []).some(s => !isAfter(parseISO(s.date), acuteDate));
-
-    return {
-      totalVolumeLoad,
-      weeklyBreakdown: Object.values(weeks).sort((a,b) => a.weekLabel.localeCompare(b.weekLabel)),
-      acwr: ratio,
-      acwrStatus: resolveAcwrStatus(ratio),
-      acwrHasEnoughData: hasEnoughData,
-    };
+    return computeGymVolumeLoad(gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return { totalVolumeLoad: 0, weeklyBreakdown: [], acwr: 0, acwrStatus: 'unknown', acwrHasEnoughData: false };
   }
 }
 
-export function calculate1RMProgression(gymSessions, exerciseName) {
-  try {
-    const progression = [];
-    gymSessions.forEach(session => {
-      const sets = session.workout_session_sets?.filter(s => s.exercise_name.toLowerCase() === exerciseName.toLowerCase()) || [];
-      if (sets.length > 0) {
-        let max1RM = 0;
-        let maxWeight = 0;
-        let bestReps = 0;
-        
-        sets.forEach(set => {
-          const epley1RM = set.weight * (1 + set.reps / 30);
-          if (epley1RM > max1RM) {
-            max1RM = epley1RM;
-            maxWeight = set.weight;
-            bestReps = set.reps;
-          }
-        });
-
-        progression.push({ date: session.date, estimated1RM: max1RM, maxWeight, bestSetReps: bestReps });
-      }
-    });
-    return progression.sort((a,b) => a.date.localeCompare(b.date));
-  } catch (e) {
-    return [];
-  }
-}
-
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateMuscleGroupVolume(gymSessions, dateRange) {
   try {
-    const filtered = filterByDateRange(gymSessions, dateRange);
-    const groups = {};
-    
-    filtered.forEach(s => {
-      const cats = s.categories || [];
-      cats.forEach(cat => {
-        if (!groups[cat]) groups[cat] = { sets: 0, volumeLoad: 0 };
-        groups[cat].sets += (s.workout_session_sets?.length || 0);
-        groups[cat].volumeLoad += sessionVolumeKg(s);
-      });
-    });
-    return groups;
+    return sharedComputeMuscleGroupVolume(gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return {};
   }
@@ -492,6 +290,14 @@ export function calculateMuscleGroupVolume(gymSessions, dateRange) {
  * @param {Array} bodyAssessments - Avaliações corporais do store.
  * @returns {{ rawPoints, movingAverage, trend, weeklyRate }}
  */
+// Delega em @formulas/weightTrend.ts (T1) — a mesma fórmula EWMA α≈0,25
+// que a Fase C escolheu como única (era a já usada aqui; coach-chat usava
+// média simples de 7 dias e coach-daily-summary regressão de 2 pontos —
+// ver specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md
+// Fase C). Esta função só prepara os pontos (filtra/ordena, que é leitura
+// de dados, não fórmula) e devolve `rawPoints` a par do resultado — os
+// consumidores existentes (gráfico de peso) precisam dos pontos brutos,
+// não só da série suavizada.
 export function calculateWeightTrend(bodyAssessments) {
   try {
     if (!bodyAssessments || bodyAssessments.length === 0) return null;
@@ -501,69 +307,20 @@ export function calculateWeightTrend(bodyAssessments) {
     if (sorted.length === 0) return null;
 
     const rawPoints = sorted.map(a => ({ date: a.date, weight: a.weight_kg }));
+    const result = computeWeightTrend(rawPoints);
+    if (!result) return null;
 
-    const alpha = 2 / (7 + 1); // ~0.25
-    const movingAverage = [];
-    const isEWMASmoothing = rawPoints.length >= 5;
-
-    if (isEWMASmoothing) {
-      let ewma = rawPoints[0].weight;
-      for (const pt of rawPoints) {
-        ewma = alpha * pt.weight + (1 - alpha) * ewma;
-        movingAverage.push({ date: pt.date, weight: Math.round(ewma * 100) / 100 });
-      }
-    } else {
-      for (const pt of rawPoints) {
-        movingAverage.push({ date: pt.date, weight: pt.weight });
-      }
-    }
-
-    // Calcular tendência e taxa semanal
-    let trend = 'estavel';
-    let weeklyRate = 0;
-    if (movingAverage.length >= 2) {
-      const recent = movingAverage[movingAverage.length - 1];
-      // Encontrar ponto de ~7 dias atrás
-      const oneWeekAgo = subDays(parseISO(recent.date), 7);
-      const weekAgoPoint = movingAverage.find(p => {
-        const d = parseISO(p.date);
-        return isValid(d) && isAfter(d, subDays(oneWeekAgo, 3));
-      });
-
-      if (weekAgoPoint) {
-        const diff = recent.weight - weekAgoPoint.weight;
-        weeklyRate = Math.round(diff * 100) / 100;
-        if (diff < -0.3) trend = 'descendo';
-        else if (diff > 0.3) trend = 'subindo';
-      } else {
-        // Fallback: comparar primeiro e último
-        const diff = movingAverage[movingAverage.length - 1].weight - movingAverage[0].weight;
-        if (diff < -0.5) trend = 'descendo';
-        else if (diff > 0.5) trend = 'subindo';
-      }
-    }
-
-    return { rawPoints, movingAverage, trend, weeklyRate, isEWMASmoothing };
+    return { rawPoints, ...result };
   } catch (e) {
     return null;
   }
 }
 
+// Delega em @formulas/compositionTrend.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateCompositionTrend(bodyAssessments) {
   try {
-    const sorted = [...bodyAssessments].sort((a,b) => a.date.localeCompare(b.date));
-    const dates = [];
-    const fatMassKg = [];
-    const leanMassKg = [];
-
-    sorted.forEach(a => {
-      dates.push(a.date);
-      const fat = a.weight_kg * (a.body_fat_pct / 100);
-      fatMassKg.push(fat);
-      leanMassKg.push(a.lean_body_mass_kg || (a.weight_kg - fat));
-    });
-
-    return { dates, fatMassKg, leanMassKg };
+    return computeCompositionTrend(bodyAssessments);
   } catch(e) {
     return { dates: [], fatMassKg: [], leanMassKg: [] };
   }
@@ -573,65 +330,13 @@ export function calculateCompositionTrend(bodyAssessments) {
 
 /**
  * Calcula a aderência real às macros usando os dados de refeições.
- * Retorna valores em g/kg de peso corporal e compliance face aos objetivos.
+ * Delega em @formulas/macroAdherence.ts (T1.5) — única implementação,
+ * partilhada com a Carol (specs/formulas-checklist.md Fase E, resolve o
+ * P0-6 original de uma vez por todas).
  */
 export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRange) {
   try {
-    const filtered = filterByDateRange(meals, dateRange);
-    if (filtered.length === 0) return null;
-
-    // Usar peso mais recente das avaliações corporais, ou do perfil
-    const sortedBody = bodyAssessments?.length
-      ? [...bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))
-      : [];
-    const weight = sortedBody[0]?.weight_kg || profile?.weight_kg || 70;
-
-    // Agrupar por dia e calcular totais
-    const dailyTotals = {};
-    filtered.forEach(meal => {
-      const day = meal.date;
-      if (!dailyTotals[day]) dailyTotals[day] = { cal: 0, prot: 0, carbs: 0, fat: 0 };
-      (meal.meal_items || []).forEach(item => {
-        const qty = (item.quantity_grams || 0) / 100;
-        dailyTotals[day].cal += (item.calories_per_100g || 0) * qty;
-        dailyTotals[day].prot += (item.protein_per_100g || 0) * qty;
-        dailyTotals[day].carbs += (item.carbs_per_100g || 0) * qty;
-        dailyTotals[day].fat += (item.fat_per_100g || 0) * qty;
-      });
-    });
-
-    const days = Object.values(dailyTotals);
-    const numDays = days.length || 1;
-    const avgCal = days.reduce((s, d) => s + d.cal, 0) / numDays;
-    const avgProt = days.reduce((s, d) => s + d.prot, 0) / numDays;
-    const avgCarbs = days.reduce((s, d) => s + d.carbs, 0) / numDays;
-    const avgFat = days.reduce((s, d) => s + d.fat, 0) / numDays;
-
-    const protPerKg = Math.round((avgProt / weight) * 10) / 10;
-    const carbsPerKg = Math.round((avgCarbs / weight) * 10) / 10;
-    const fatPerKg = Math.round((avgFat / weight) * 10) / 10;
-
-    const calTarget = profile?.calorie_goal || 2000;
-    const protTarget = profile?.protein_goal || 150;
-    const carbsTarget = profile?.carbs_goal || 200;
-    const fatTarget = profile?.fat_goal || 70;
-
-    return {
-      protein: { actual_g_per_kg: protPerKg, actual_g: Math.round(avgProt), target: protTarget, compliance_pct: Math.round((avgProt / protTarget) * 100) },
-      carbs: { actual_g_per_kg: carbsPerKg, actual_g: Math.round(avgCarbs), target: carbsTarget, compliance_pct: Math.round((avgCarbs / carbsTarget) * 100) },
-      fat: { actual_g_per_kg: fatPerKg, actual_g: Math.round(avgFat), target: fatTarget, compliance_pct: Math.round((avgFat / fatTarget) * 100) },
-      calories: { actual: Math.round(avgCal), target: calTarget, compliance_pct: Math.round((avgCal / calTarget) * 100) },
-      weight,
-      dailyBreakdown: Object.entries(dailyTotals).map(([date, totals]) => ({
-        date,
-        protein: Math.round((totals.prot / weight) * 10) / 10,
-        carbs: Math.round((totals.carbs / weight) * 10) / 10,
-        fat: Math.round((totals.fat / weight) * 10) / 10,
-        proteinTarget: protTarget / weight,
-        carbsTarget: carbsTarget / weight,
-        fatTarget: fatTarget / weight
-      })).sort((a, b) => a.date.localeCompare(b.date))
-    };
+    return sharedComputeMacroAdherence(meals, profile, bodyAssessments || [], todayISO(), dateRange);
   } catch (e) {
     return null;
   }
@@ -641,59 +346,16 @@ export function calculateMacroAdherence(meals, profile, bodyAssessments, dateRan
  * Calcula a Disponibilidade Energética (EA) para deteção de RED-S.
  * EA = (Kcal Ingeridas - Kcal Gasto Exercício) / Massa Magra (kg)
  * Limiar crítico: < 30 kcal/kg FFM/dia
+ *
+ * Delega em @formulas/energyAvailabilityWindow.ts (T1.5) — única
+ * implementação, partilhada com a Carol (specs/formulas-checklist.md Fase
+ * E). A limitação de doutrina do denominador (massa magra por BIA) já
+ * estava documentada em @formulas/energyAvailability.ts desde a Fase C e
+ * continua a aplicar-se — não é resolvida por esta migração de casa.
  */
 export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSessions, dateRange) {
   try {
-    const filteredMeals = filterByDateRange(meals, dateRange);
-    const filteredRuns = filterByDateRange(runs, dateRange);
-    const filteredGym = filterByDateRange(gymSessions, dateRange);
-
-    // Massa magra mais recente
-    const sortedBody = bodyAssessments?.length
-      ? [...bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))
-      : [];
-    const leanMass = sortedBody[0]?.lean_body_mass_kg || (sortedBody[0]?.weight_kg * (1 - (sortedBody[0]?.body_fat_pct || 20) / 100)) || 55;
-    const weight = sortedBody[0]?.weight_kg || 70;
-
-    // Agrupar por dia
-    const days = {};
-    const addDay = (date) => { if (!days[date]) days[date] = { intake: 0, exercise: 0 }; };
-
-    // Ingestão calórica por dia
-    filteredMeals.forEach(meal => {
-      addDay(meal.date);
-      (meal.meal_items || []).forEach(item => {
-        const qty = (item.quantity_grams || 0) / 100;
-        days[meal.date].intake += (item.calories_per_100g || 0) * qty;
-      });
-    });
-
-    // Gasto de exercício por dia — Corrida: ~1 kcal/kg/km
-    filteredRuns.forEach(run => {
-      addDay(run.date);
-      days[run.date].exercise += (run.distance_km || 0) * weight * Constants.RUNNING_COST_KCAL_PER_KG_KM;
-    });
-
-    // Gasto de exercício — Ginásio: usar calories_kcal se disponível
-    filteredGym.forEach(session => {
-      addDay(session.date);
-      days[session.date].exercise += session.calories_kcal || 200; // fallback 200 kcal
-    });
-
-    // Calcular EA diária
-    const daily = Object.entries(days).map(([date, d]) => {
-      const ea = leanMass > 0 ? (d.intake - d.exercise) / leanMass : 0;
-      let status = 'optimal';
-      if (ea < Constants.EA_CRITICAL) status = 'critical';
-      else if (ea < Constants.EA_OPTIMAL) status = 'subclinical';
-      return { date, ea: Math.round(ea * 10) / 10, status, intake: Math.round(d.intake), exercise: Math.round(d.exercise) };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    const average = daily.length > 0 ? Math.round(daily.reduce((s, d) => s + d.ea, 0) / daily.length * 10) / 10 : 0;
-    const daysAtRisk = daily.filter(d => d.status === 'critical').length;
-    const isAtRisk = daysAtRisk >= Constants.EA_CRITICAL_DURATION_DAYS;
-
-    return { daily, average, isAtRisk, daysAtRisk, leanMass };
+    return computeEnergyAvailabilityWindow(meals, bodyAssessments || [], runs || [], gymSessions || [], todayISO(), dateRange);
   } catch (e) {
     return { daily: [], average: 0, isAtRisk: false, daysAtRisk: 0, leanMass: 0 };
   }
@@ -701,57 +363,14 @@ export function calculateEnergyAvailability(meals, bodyAssessments, runs, gymSes
 
 /**
  * Calcula métricas cruzadas entre módulos para a vista holística.
+ * Delega em @formulas/crossMetrics.ts (T1.5) — única implementação,
+ * partilhada com a Carol (specs/formulas-checklist.md Fase E). `meals` não
+ * é usado por este cálculo (nunca foi — mantido no parâmetro só para não
+ * quebrar os chamadores existentes).
  */
 export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments, dateRange) {
   try {
-    const filteredRuns = filterByDateRange(runs, dateRange);
-    const filteredBody = filterByDateRange(bodyAssessments, dateRange);
-
-    // Peso vs Pace — encontrar pares temporais
-    const weightVsPace = [];
-    filteredRuns.forEach(run => {
-      if (!run.distance_km || !run.duration_seconds) return;
-      const pace = run.duration_seconds / run.distance_km;
-      // Encontrar avaliação corporal mais próxima
-      const closest = filteredBody.reduce((best, ba) => {
-        const diff = Math.abs(parseISO(ba.date) - parseISO(run.date));
-        return (!best || diff < best.diff) ? { weight: ba.weight_kg, diff } : best;
-      }, null);
-      if (closest) {
-        weightVsPace.push({ date: run.date, weight: closest.weight, pace: Math.round(pace) });
-      }
-    });
-
-    // Carga de ginásio vs RPE de corrida (por semana)
-    const gymLoadVsRunRPE = [];
-    const weeklyGym = {};
-    const weeklyRunRPE = {};
-    filterByDateRange(gymSessions, dateRange).forEach(s => {
-      const d = parseISO(s.date);
-      if (!isValid(d)) return;
-      const wk = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      weeklyGym[wk] = (weeklyGym[wk] || 0) + sessionVolumeKg(s);
-    });
-    filteredRuns.forEach(r => {
-      const d = parseISO(r.date);
-      if (!isValid(d)) return;
-      const wk = format(startOfWeek(d, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      if (!weeklyRunRPE[wk]) weeklyRunRPE[wk] = { total: 0, count: 0 };
-      weeklyRunRPE[wk].total += (r.effort_rpe || 5);
-      weeklyRunRPE[wk].count += 1;
-    });
-    Object.keys({ ...weeklyGym, ...weeklyRunRPE }).forEach(wk => {
-      const rpe = weeklyRunRPE[wk] ? weeklyRunRPE[wk].total / weeklyRunRPE[wk].count : 0;
-      gymLoadVsRunRPE.push({ date: wk, gymVolume: weeklyGym[wk] || 0, runRPE: Math.round(rpe * 10) / 10 });
-    });
-    gymLoadVsRunRPE.sort((a, b) => a.date.localeCompare(b.date));
-
-    // ACWR combinado (corrida + ginásio)
-    const runACWR = calculateACWR(runs);
-    const gymVL = calculateVolumeLoad(gymSessions, 'mes');
-    const combinedACWR = Math.max(runACWR.ratio, gymVL.acwr || 0);
-
-    return { weightVsPace, gymLoadVsRunRPE, combinedACWR };
+    return computeCrossMetrics(runs, gymSessions, bodyAssessments, todayISO(), dateRange);
   } catch (e) {
     return { weightVsPace: [], gymLoadVsRunRPE: [], combinedACWR: 0 };
   }
@@ -768,7 +387,7 @@ export function detectCoachInsights(data, profile) {
   try {
     const insights = [];
     const level = profile?.experience_level || 'medio';
-    const gender = profile?.gender || 'M';
+    const gender = normalizeGender(profile?.gender) || 'M';
 
     // 0. Adesão ao Plano (Treinos em atraso)
     if (data.coachPlanItems?.length > 0 && data.coachPlans?.length > 0) {
@@ -807,6 +426,12 @@ export function detectCoachInsights(data, profile) {
         insights.push({
           id: 'acwr_danger', severity: 'critical',
           title: 'Carga de treino perigosa',
+          // Até à Fase C isto dizia "ACWR (sRPE)" — o ACWR do frontend usava
+          // carga sRPE (min × RPE), grandeza diferente do ACWR em km do
+          // backend, e o rótulo evitava que os dois se confundissem no
+          // prompt da Carol (P0-3, Fase A). A Fase C unificou os dois em km
+          // (specs/formulas-centralizacao.md §5.1) — já não há grandezas
+          // distintas para rotular.
           message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_DANGER, module: 'corrida'
         });
@@ -845,28 +470,43 @@ export function detectCoachInsights(data, profile) {
         });
       }
 
-      // Gordura visceral elevada
-      if (latest.visceral_fat && latest.visceral_fat >= Constants.VISCERAL_FAT_ALERT_MAX) {
+      // Gordura visceral elevada. Delega em @formulas/bodyComposition.ts
+      // (T1) — antes só verificava `>= 14` (VISCERAL_FAT_ALERT_MAX), saltando
+      // a faixa de alerta 10-13 por completo e sem distinguir "risco
+      // elevado" (≥15) do simples "alerta" (10-14) que coach-chat já tinha
+      // certo (ver specs/formulas-checklist.md Fase C).
+      const visceralZone = classifyVisceralFat(latest.visceral_fat);
+      if (visceralZone === 'high_risk') {
         insights.push({
-          id: 'visceral_high', severity: 'warning',
-          title: 'Gordura visceral elevada',
-          message: `A tua gordura visceral está em ${latest.visceral_fat} — acima do limiar de alerta (${Constants.VISCERAL_FAT_ALERT_MAX}). Risco cardiovascular aumentado.`,
-          metric: 'Visceral', value: latest.visceral_fat, threshold: Constants.VISCERAL_FAT_ALERT_MAX, module: 'corpo'
+          id: 'visceral_high', severity: 'critical',
+          title: 'Gordura visceral em risco elevado',
+          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
+          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_HIGH_RISK_MIN, module: 'corpo'
+        });
+      } else if (visceralZone === 'alert') {
+        insights.push({
+          id: 'visceral_alert', severity: 'warning',
+          title: 'Gordura visceral em alerta',
+          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
+          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_ALERT_MIN, module: 'corpo'
         });
       }
 
-      // Perda de peso rápida demais
+      // Perda de peso rápida demais — delega em @formulas/weightLossRate.ts
+      // (T1), já correta aqui (só mudou de casa, specs/formulas-checklist.md
+      // Fase C). Distinto de propósito do "Sinal #1" do coach-chat (queda
+      // súbita >1,5-2% em 48-72h, Bloco 5 #11) — este é o ritmo sustentado
+      // de défice calórico (Bloco 4.2 #3), não um sinal agudo.
       const weightTrend = calculateWeightTrend(data.bodyAssessments);
-      if (weightTrend && weightTrend.weeklyRate < 0) {
-        const maxLoss = Constants.MAX_WEIGHT_LOSS_PCT_WEEK[level] || 0.7;
+      if (weightTrend) {
         const currentWeight = weightTrend.rawPoints[weightTrend.rawPoints.length - 1]?.weight || 70;
-        const lossPct = Math.abs(weightTrend.weeklyRate / currentWeight) * 100;
-        if (lossPct > maxLoss) {
+        const rate = assessWeightLossRate(weightTrend.weeklyRate, currentWeight, level);
+        if (rate && rate.isTooFast) {
           insights.push({
             id: 'weight_loss_fast', severity: 'warning',
             title: 'Perda de peso demasiado rápida',
-            message: `Estás a perder ~${Math.abs(weightTrend.weeklyRate).toFixed(1)} kg/semana (${lossPct.toFixed(1)}% do peso). O máximo seguro para o teu nível é ${maxLoss}%.`,
-            metric: 'Peso', value: lossPct, threshold: maxLoss, module: 'corpo'
+            message: `Estás a perder ~${Math.abs(weightTrend.weeklyRate).toFixed(1)} kg/semana (${rate.lossPct.toFixed(1)}% do peso). O máximo seguro para o teu nível é ${rate.maxPct}%.`,
+            metric: 'Peso', value: rate.lossPct, threshold: rate.maxPct, module: 'corpo'
           });
         }
       }
@@ -905,6 +545,10 @@ export function detectCoachInsights(data, profile) {
         const daysLeft = Math.max(0, differenceInDays(raceDate, now));
         const dist = Number(next.distance_km) || 10;
         const raceName = next.name || 'a prova';
+        // Usado no ramo de Tapering abaixo — calculado aqui para não
+        // repetir a chamada (resolveExperienceLevel/getTaperDays são
+        // baratas, mas uma só chamada é mais claro que duas).
+        const taperDaysForNext = getTaperDays(dist, next.race_priority || 'a', resolveExperienceLevel(next, profile), next.race_type || 'estrada');
 
         // 5a. Marcos Temporais da Preparação (Timeline da Prova)
         if (daysLeft === 0) {
@@ -923,13 +567,18 @@ export function detectCoachInsights(data, profile) {
             message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km)! Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
             metric: 'Prova', value: daysLeft, threshold: 7, module: 'corrida'
           });
-        } else if ((dist >= 35 && daysLeft >= 8 && daysLeft <= 21) || (dist >= 15 && dist < 35 && daysLeft >= 8 && daysLeft <= 14) || (dist < 15 && daysLeft >= 4 && daysLeft <= 7)) {
+        } else if (daysLeft >= 8 && daysLeft <= taperDaysForNext) {
+          // Limiar delega em @formulas/taper.ts (T1) — eram 3 limiares fixos
+          // em km (35/15) que nem batiam com categorizeDistance e ignoravam
+          // nível/prioridade por completo (ver specs/formulas-checklist.md
+          // Fase C). daysLeft 1-7 fica coberto pelo ramo "Reta Final" acima,
+          // por isso o limiar inferior aqui mantém-se em 8.
           insights.push({
             id: `race_tapering_${next.id || 'next'}`,
             severity: 'info',
             title: `Fase de Polimento (Tapering): ${raceName}`,
             message: `Fase de carga máxima terminada para ${raceName}! Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
-            metric: 'Tapering', value: daysLeft, threshold: dist >= 35 ? 21 : 14, module: 'corrida'
+            metric: 'Tapering', value: daysLeft, threshold: taperDaysForNext, module: 'corrida'
           });
         } else if ((dist >= 35 && daysLeft >= 90 && daysLeft <= 126) || (dist >= 15 && dist < 35 && daysLeft >= 56 && daysLeft <= 84) || (dist < 15 && daysLeft >= 35 && daysLeft <= 56)) {
           insights.push({
@@ -1040,167 +689,14 @@ export function detectCoachInsights(data, profile) {
 }
 
 /**
- * Calcula o Índice de Prontidão do Atleta (0-100%) face à próxima prova.
- * Composto por 4 pilares com peso igual (25% cada):
- *  1. ACWR no sweet-spot (0.8–1.3) → carga de treino equilibrada
- *  2. Disponibilidade Energética adequada (EA ≥ 45 kcal/kg FFM)
- *  3. Compliance calórica ≥ 80% do alvo
- *  4. Tendência VDOT ascendente (última corrida > média das 4 anteriores)
- *
- * @param {Array} runs
- * @param {Array} meals
- * @param {Array} bodyAssessments
- * @param {Array} gymSessions
- * @param {object} profile
- * @returns {{ score: number, pillars: Array<{label, score, desc}>, level: string }}
+ * Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático (só
+ * com prova agendada). Delega em @formulas/readinessIndex.ts (T1.5) —
+ * única implementação, partilhada com a Carol (specs/formulas-checklist.md
+ * Fase E, o gap original que motivou toda a fase).
  */
 export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null) {
   try {
-    const pillars = [];
-
-    // --- Pilar 1: ACWR ---
-    const acwr = calculateACWR(runs || []);
-    const acwrRatio = acwr.ratio || 0;
-    let acwrScore = 0;
-    let acwrDesc = 'Sem dados de corrida suficientes.';
-    if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
-      acwrScore = 100;
-      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
-    } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
-      acwrScore = 50;
-      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
-    } else if (acwrRatio > 1.5) {
-      acwrScore = 0;
-      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
-    } else if (acwrRatio > 0 && acwrRatio < 0.8) {
-      acwrScore = 60;
-      acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
-    }
-    pillars.push({ key: 'acwr', label: 'Carga de Treino', score: acwrScore, desc: acwrDesc });
-
-    // --- Pilar 2: Disponibilidade Energética ---
-    const ea = calculateEnergyAvailability(meals || [], bodyAssessments || [], runs || [], gymSessions || [], 'semana');
-    const eaAvg = ea?.average ?? 0;
-    let eaScore = 0;
-    let eaDesc = 'Sem dados nutricionais suficientes.';
-    if (eaAvg >= 45) {
-      eaScore = 100;
-      eaDesc = `EA de ${eaAvg} kcal/kg. Energia adequada para o treino.`;
-    } else if (eaAvg >= 30) {
-      eaScore = 60;
-      eaDesc = `EA de ${eaAvg} kcal/kg. Subótima — come mais para sustentar o volume.`;
-    } else if (eaAvg > 0) {
-      eaScore = 10;
-      eaDesc = `EA de ${eaAvg} kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.`;
-    }
-    pillars.push({ key: 'ea', label: 'Disponibilidade Energética', score: eaScore, desc: eaDesc });
-
-    // --- Pilar 3: Compliance Calórica ---
-    const macros = calculateMacroAdherence(meals || [], profile, bodyAssessments || [], 'semana');
-    const calPct = macros?.calories?.compliance_pct ?? 0;
-    let calScore = 0;
-    let calDesc = 'Sem dados de nutrição suficientes.';
-    if (calPct >= 90 && calPct <= 110) {
-      calScore = 100;
-      calDesc = `${calPct}% do alvo calórico. Nutrição alinhada com o esforço.`;
-    } else if (calPct >= 75) {
-      calScore = 65;
-      calDesc = `${calPct}% do alvo calórico. Podes melhorar a consistência nutricional.`;
-    } else if (calPct > 0) {
-      calScore = 20;
-      calDesc = `${calPct}% do alvo calórico. Ingestão muito baixa para o volume de treino.`;
-    }
-    pillars.push({ key: 'calories', label: 'Nutrição', score: calScore, desc: calDesc });
-
-    // --- Pilar 4: Tendência VDOT ---
-    const vdotTrend = getVDOTTrend(runs || []);
-    let vdotScore = 0;
-    let vdotDesc = 'Sem corridas qualificadas para calcular VDOT.';
-    if (vdotTrend.length >= 2) {
-      const last = vdotTrend[vdotTrend.length - 1].vdot;
-      const prev = vdotTrend.slice(0, -1).reduce((s, d) => s + d.vdot, 0) / (vdotTrend.length - 1);
-      if (last > prev) {
-        vdotScore = 100;
-        vdotDesc = `VDOT ${last.toFixed(1)} (↑ melhoria). A tua capacidade aeróbica está a crescer.`;
-      } else if (last >= prev * 0.97) {
-        vdotScore = 70;
-        vdotDesc = `VDOT ${last.toFixed(1)} (→ estável). A manter a forma — adiciona um treino de qualidade.`;
-      } else {
-        vdotScore = 30;
-        vdotDesc = `VDOT ${last.toFixed(1)} (↓ queda). A forma aeróbica desceu ligeiramente.`;
-      }
-    }
-    pillars.push({ key: 'vdot', label: 'Forma Aeróbica (VDOT)', score: vdotScore, desc: vdotDesc });
-
-    // --- Pilar 5: Viabilidade Tática (Opcional, se nextRace for fornecido) ---
-    if (nextRace) {
-      let tacticScore = 100;
-      let tacticDesc = 'Preparação alinhada com os objetivos da prova.';
-      
-      const distanceKm = parseFloat((nextRace.distance_km || '10').toString().replace(',', '.'));
-      const todayISO = new Date().toISOString().slice(0, 10);
-      const daysToRace = differenceInDays(parseISO(nextRace.date), parseISO(todayISO));
-      const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
-      const weeklyVol = recentWeeklyVolume(runs || [], todayISO);
-      const expLevel = resolveExperienceLevel(nextRace, profile);
-
-      // Se o plano já começou, a viabilidade de "tempo insuficiente" tem de avaliar
-      // o macrociclo todo, e não apenas o tempo que falta, senão dispara sempre na reta final.
-      // distanceKm em bruto — MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria
-      // de trail própria, e o equivalente ITRA criava um "penhasco" de
-      // categoria por poucos km de D+ convertido (ver racePlanEngine.js).
-      const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
-      const planStartDateObj = new Date(parseISO(nextRace.date).getTime() - totalWeeks * 7 * 86400000);
-      const inProgress = planStartDateObj.getTime() <= parseISO(todayISO).getTime();
-      const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
-
-      const viability = assessRaceViability({
-        distanceKm,
-        experienceLevel: expLevel,
-        weeksToRace: prepWeeksForViability,
-        weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
-        racePriority: nextRace.race_priority || 'a',
-      });
-
-      // getRacePrediction já resolve nível e distância equivalente ITRA —
-      // ponto único, mesmo usado em RaceHubView/RunDashboard.
-      const prediction = getRacePrediction(nextRace, profile, runs);
-      const predictedPaceReal = prediction.predictedPaceReal;
-      const targetPace = nextRace.target_pace_seconds_per_km;
-
-      if (viability.flags.includes('ultra_para_iniciante')) {
-        tacticScore = 0;
-        tacticDesc = 'Distância (Ultra) desaconselhada para iniciantes.';
-      } else if (viability.flags.includes('tempo_insuficiente')) {
-        tacticScore = 30;
-        tacticDesc = 'Tempo de calendário insuficiente para preparar a prova.';
-      } else if (viability.flags.includes('volume_insuficiente')) {
-        tacticScore = 50;
-        tacticDesc = `Volume de treino (${weeklyVol}km/sem) insuficiente para a distância.`;
-      } else if (targetPace && predictedPaceReal > 0) {
-        const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
-        if (paceDiffPct > 0.10) {
-          tacticScore = 40;
-          tacticDesc = 'Ritmo-alvo demasiado otimista face às corridas recentes.';
-        } else if (paceDiffPct > 0.03) {
-          tacticScore = 70;
-          tacticDesc = 'Ritmo-alvo exigente, mas alcançável num bom dia.';
-        } else {
-          tacticScore = 100;
-          tacticDesc = 'O ritmo-alvo está alinhado com a tua capacidade aeróbica.';
-        }
-      } else {
-        tacticScore = 90;
-        tacticDesc = 'Volume e calendário de preparação adequados à distância.';
-      }
-
-      pillars.push({ key: 'tactic', label: 'Viabilidade Tática', score: tacticScore, desc: tacticDesc });
-    }
-
-    const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
-    const level = totalScore >= 75 ? 'high' : totalScore >= 50 ? 'medium' : 'low';
-
-    return { score: totalScore, pillars, level };
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, todayISO(), nextRace);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low' };
   }

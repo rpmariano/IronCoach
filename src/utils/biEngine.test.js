@@ -98,11 +98,14 @@ describe('detectCoachInsights', () => {
   });
 
   describe('ACWR — carga de treino', () => {
+    // A partir da Fase C o ACWR usa km (distância), não sRPE (duração×RPE) —
+    // ver specs/formulas-checklist.md Fase C / formulas-centralizacao.md §5.1.
     it('alerta crítico quando a carga aguda triplica a crónica', () => {
       const runs = [
-        { date: iso(3), duration_seconds: 6000, effort_rpe: 9 },  // 100min×9 = 900 (semana aguda)
-        { date: iso(15), duration_seconds: 3600, effort_rpe: 5 }, // 60min×5 = 300 (base crónica)
+        { date: iso(3), distance_km: 30 },  // semana aguda (últimos 7 dias)
+        { date: iso(15), distance_km: 10 }, // só base crónica (8-28 dias)
       ];
+      // acuteKm=30; chronicWeeklyKm=(30+10)/4=10; ratio=30/10=3.0 → danger
       const insights = detectCoachInsights({ runs }, { experience_level: 'medio' });
       const acwr = insights.find((i) => i.id === 'acwr_danger');
       expect(acwr).toBeTruthy();
@@ -111,12 +114,12 @@ describe('detectCoachInsights', () => {
       expect(acwr.value).toBeCloseTo(3.0, 1);
     });
 
-    it('alerta de cautela quando o rácio fica mesmo acima do limiar de perigo', () => {
+    it('alerta de cautela quando o rácio fica dentro da banda 1,31-1,50', () => {
       const runs = [
-        { date: iso(3), duration_seconds: 3588, effort_rpe: 10 },  // 59.8min×10 = 598 (aguda)
-        { date: iso(15), duration_seconds: 10020, effort_rpe: 6 }, // 167min×6 = 1002 (base)
+        { date: iso(3), distance_km: 42 },  // semana aguda
+        { date: iso(15), distance_km: 78 }, // só base crónica
       ];
-      // ratio = 598 / ((598+1002)/4) = 598/400 = 1.495 — dentro da janela estreita de cautela
+      // acuteKm=42; chronicWeeklyKm=(42+78)/4=30; ratio=42/30=1.4 → caution
       const insights = detectCoachInsights({ runs }, {});
       const acwr = insights.find((i) => i.id === 'acwr_caution');
       expect(acwr).toBeTruthy();
@@ -125,8 +128,8 @@ describe('detectCoachInsights', () => {
 
     it('não alerta sem histórico suficiente (todas as corridas na última semana)', () => {
       const runs = [
-        { date: iso(1), duration_seconds: 6000, effort_rpe: 9 },
-        { date: iso(3), duration_seconds: 6000, effort_rpe: 9 },
+        { date: iso(1), distance_km: 20 },
+        { date: iso(3), distance_km: 20 },
       ];
       const insights = detectCoachInsights({ runs }, {});
       expect(insights.find((i) => i.id === 'acwr_danger' || i.id === 'acwr_caution')).toBeUndefined();
@@ -149,10 +152,19 @@ describe('detectCoachInsights', () => {
       expect(detectCoachInsights({ bodyAssessments }, { gender: 'F' }).find((i) => i.id === 'bf_low')).toBeTruthy();
     });
 
-    it('alerta de aviso quando a gordura visceral está acima do limiar', () => {
+    it('alerta crítico quando a gordura visceral está em risco elevado (≥15)', () => {
       const bodyAssessments = [{ date: iso(0), weight_kg: 70, body_fat_pct: 20, visceral_fat: 15 }];
       const insights = detectCoachInsights({ bodyAssessments }, { gender: 'M' });
       const visceral = insights.find((i) => i.id === 'visceral_high');
+      expect(visceral).toBeTruthy();
+      expect(visceral.severity).toBe('critical');
+    });
+
+    it('alerta de aviso (não crítico) quando a gordura visceral está na faixa de alerta (10-14)', () => {
+      // Antes da Fase C isto não disparava nada (o código só verificava >= 14).
+      const bodyAssessments = [{ date: iso(0), weight_kg: 70, body_fat_pct: 20, visceral_fat: 12 }];
+      const insights = detectCoachInsights({ bodyAssessments }, { gender: 'M' });
+      const visceral = insights.find((i) => i.id === 'visceral_alert');
       expect(visceral).toBeTruthy();
       expect(visceral.severity).toBe('warning');
     });
@@ -239,10 +251,13 @@ describe('detectCoachInsights', () => {
     });
 
     it('alerta sobre a fase de polimento (tapering)', () => {
+      // Fase C: o limiar vem de @formulas/taper.ts — iniciante numa meia
+      // maratona (A-race, omissão) tem taper de 10 dias (doutrina: 7-10
+      // dias, limite superior). 9 dias antes cai dentro dessa janela.
       const raceEvents = [{
         id: 'ev-2',
         status: 'agendada',
-        date: iso(-12), // daqui a 12 dias para meia maratona
+        date: iso(-9), // daqui a 9 dias para meia maratona
         distance_km: 21,
         name: 'Meia Maratona',
       }];
@@ -328,8 +343,8 @@ describe('detectCoachInsights', () => {
 
   it('ordena os insights por severidade: critical > warning > info', () => {
     const runs = [
-      { date: iso(3), duration_seconds: 6000, effort_rpe: 9 },
-      { date: iso(15), duration_seconds: 3600, effort_rpe: 5 },
+      { date: iso(3), distance_km: 30 },
+      { date: iso(15), distance_km: 10 },
     ];
     const bodyAssessments = [{ date: iso(0), weight_kg: 70, body_fat_pct: 20, visceral_fat: 15 }];
     const insights = detectCoachInsights({ runs, bodyAssessments }, { gender: 'M' });

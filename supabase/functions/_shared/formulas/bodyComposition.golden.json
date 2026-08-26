@@ -1,0 +1,9 @@
+[
+  { "input": { "vf": 1 }, "expect": "healthy" },
+  { "input": { "vf": 9 }, "expect": "healthy" },
+  { "input": { "vf": 10 }, "expect": "alert" },
+  { "input": { "vf": 14 }, "expect": "alert" },
+  { "input": { "vf": 15 }, "expect": "high_risk" },
+  { "input": { "vf": 25 }, "expect": "high_risk" },
+  { "input": { "vf": null }, "expect": null }
+]

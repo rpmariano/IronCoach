@@ -1,5 +1,86 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE } from "./index.ts";
+
+// P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
+// Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
+// "masculino"/"feminino", que nunca batiam certo — o TMB caía sempre no
+// ramo feminino e o limiar RED-S ficava sempre em 8%.
+Deno.test("isFemale reconhece 'F' (o valor real gravado em profiles.gender)", () => {
+  assertEquals(isFemale("F"), true);
+  assertEquals(isFemale("M"), false);
+  assertEquals(isFemale(null), false);
+  assertEquals(isFemale(undefined), false);
+});
+
+Deno.test("computeBodyMetrics: limiar RED-S é 8% para 'M', não sempre 16%", () => {
+  const bodyAssessments = [{ date: "2026-08-11", body_fat_pct: 10, weight_kg: 75 }];
+  const male = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(male.hasRedSRisk, false); // 10% > 8% (limiar masculino) — sem risco
+  const female = computeBodyMetrics(bodyAssessments, "F");
+  assertEquals(female.hasRedSRisk, true); // 10% < 16% (limiar feminino) — risco
+});
+
+// Fase C (specs/formulas-checklist.md): weeklyWeightChange passou a delegar
+// em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) em vez de uma
+// regressão entre só o ponto mais recente e o mais antigo.
+Deno.test("computeBodyMetrics: weeklyWeightChange usa a EWMA partilhada (weightTrend.ts)", () => {
+  // bodyAssessments vem DESC da BD (mais recente primeiro).
+  const bodyAssessments = [
+    { date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 },
+    { date: "2026-08-04", body_fat_pct: 20, weight_kg: 80 },
+  ];
+  const result = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(result.weeklyWeightChange, -1);
+});
+
+// Fase C (specs/formulas-checklist.md): o alerta de perda de peso rápida
+// passou a delegar em ../_shared/formulas/weightLossRate.ts — era um
+// limiar absoluto fixo (0,9 kg/semana para toda a gente); agora é %/semana
+// por nível (doutrina Bloco 4.1 #5 / 4.2 #3), igual ao já correto em
+// src/utils/biEngine.js.
+Deno.test("computeBodyMetrics: limiar de perda de peso é por nível, não um kg/semana fixo", () => {
+  // 80kg → 79,6kg numa semana = -0,4 kg/semana = 0,5% do peso (79,6kg).
+  const bodyAssessments = [
+    { date: "2026-08-11", weight_kg: 79.6 },
+    { date: "2026-08-04", weight_kg: 80 },
+  ];
+  // Iniciante: limiar 0,7% — 0,5% está dentro, não dispara.
+  const iniciante = computeBodyMetrics(bodyAssessments, "M", "iniciante");
+  assertEquals(iniciante.weightLossTooFast, false);
+  // Avançado: limiar 0,4% — 0,5% já dispara. O antigo limiar fixo de
+  // 0,9 kg/semana nunca teria disparado aqui para ninguém.
+  const avancado = computeBodyMetrics(bodyAssessments, "M", "avancado");
+  assertEquals(avancado.weightLossTooFast, true);
+});
+
+Deno.test("computeBodyMetrics: com uma só medição, weeklyWeightChange fica null (não 0)", () => {
+  const bodyAssessments = [{ date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 }];
+  const result = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(result.weeklyWeightChange, null);
+});
+
+Deno.test("computeTDEE: BMR usa +5 para 'M' e -161 para 'F' (Mifflin-St Jeor)", () => {
+  const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11" }; // idade = 30
+  const bmrMale = 10 * 75 + 6.25 * 175 - 5 * 30 + 5;
+  const bmrFemale = 10 * 75 + 6.25 * 175 - 5 * 30 - 161;
+  // Fase C (P0-4, specs/formulas-checklist.md): fator único ×1,3 (era
+  // ×1,55, sem custo de treino) — ver ../_shared/formulas/tdee.ts.
+  assertEquals(computeTDEE({ ...base, gender: "M" }), Math.round(bmrMale * 1.3));
+  assertEquals(computeTDEE({ ...base, gender: "F" }), Math.round(bmrFemale * 1.3));
+  // As duas fórmulas têm de dar valores diferentes — se um dia colapsarem
+  // ao mesmo número, o bug do P0-1 voltou.
+  const tdeeM = computeTDEE({ ...base, gender: "M" })!;
+  const tdeeF = computeTDEE({ ...base, gender: "F" })!;
+  assertEquals(tdeeM > tdeeF, true);
+});
+
+Deno.test("computeTDEE: soma o custo do treino quando weeklyVolumeKm > 0 (P0-4)", () => {
+  // 75kg, 40km/semana → custo = round(40×75/7) = round(428,57) = 429 kcal
+  const base = { weight_kg: 75, height_cm: 175, birth_date: "1996-08-11", gender: "M" };
+  const withoutRuns = computeTDEE(base, 0)!;
+  const withRuns = computeTDEE(base, 40)!;
+  assertEquals(withRuns - withoutRuns, 429);
+});
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {
   assertEquals(addDaysISO("2026-08-11", 1), "2026-08-12");

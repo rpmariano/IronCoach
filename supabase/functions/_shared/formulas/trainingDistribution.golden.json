@@ -1,0 +1,77 @@
+[
+  {
+    "name": "iniciante conforme — 96% baixa intensidade, alvo 95±5",
+    "input": {
+      "level": "iniciante",
+      "runs": [
+        { "details": { "hr_zones": [{ "zone": 1, "minutes": 40 }, { "zone": 2, "minutes": 20 }, { "zone": 4, "minutes": 2 }] } },
+        { "details": { "hr_zones": [{ "zone": 2, "minutes": 30 }] } }
+      ]
+    },
+    "expect": {
+      "lowIntensityPct": 98,
+      "highIntensityPct": 2,
+      "z1Minutes": 40, "z2Minutes": 50, "z3Minutes": 0, "z4Minutes": 2, "z5Minutes": 0,
+      "isCompliant": true,
+      "targetLowPct": 95
+    }
+  },
+  {
+    "name": "medio não conforme — muita intensidade alta, alvo 80±5",
+    "input": {
+      "level": "medio",
+      "runs": [
+        { "details": { "hr_zones": [{ "zone": 1, "minutes": 20 }, { "zone": 3, "minutes": 15 }, { "zone": 4, "minutes": 15 }] } }
+      ]
+    },
+    "expect": {
+      "lowIntensityPct": 40,
+      "highIntensityPct": 60,
+      "z1Minutes": 20, "z2Minutes": 0, "z3Minutes": 15, "z4Minutes": 15, "z5Minutes": 0,
+      "isCompliant": false,
+      "targetLowPct": 80
+    }
+  },
+  {
+    "name": "avancado — alvo 77.5, sem hr_zones em nenhuma corrida",
+    "input": {
+      "level": "avancado",
+      "runs": [{ "details": null }, { "details": {} }]
+    },
+    "expect": {
+      "lowIntensityPct": 0,
+      "highIntensityPct": 0,
+      "z1Minutes": 0, "z2Minutes": 0, "z3Minutes": 0, "z4Minutes": 0, "z5Minutes": 0,
+      "isCompliant": false,
+      "targetLowPct": 77.5
+    }
+  },
+  {
+    "name": "nível desconhecido cai no alvo por omissão (80%) — mesmo comportamento do biEngine.js original",
+    "input": {
+      "level": "nivel_que_nao_existe",
+      "runs": [{ "details": { "hr_zones": [{ "zone": 1, "minutes": 80 }, { "zone": 4, "minutes": 20 }] } }]
+    },
+    "expect": {
+      "lowIntensityPct": 80,
+      "highIntensityPct": 20,
+      "z1Minutes": 80, "z2Minutes": 0, "z3Minutes": 0, "z4Minutes": 20, "z5Minutes": 0,
+      "isCompliant": true,
+      "targetLowPct": 80
+    }
+  },
+  {
+    "name": "básico no limite superior da tolerância (87.5+5=92.5, arredondado a 93 fica não conforme)",
+    "input": {
+      "level": "basico",
+      "runs": [{ "details": { "hr_zones": [{ "zone": 1, "minutes": 93 }, { "zone": 4, "minutes": 7 }] } }]
+    },
+    "expect": {
+      "lowIntensityPct": 93,
+      "highIntensityPct": 7,
+      "z1Minutes": 93, "z2Minutes": 0, "z3Minutes": 0, "z4Minutes": 7, "z5Minutes": 0,
+      "isCompliant": false,
+      "targetLowPct": 87.5
+    }
+  }
+]

@@ -20,20 +20,34 @@ describe('racePlanEngine — Duração recomendada & conversões', () => {
     expect(getRecommendedPrepWeeks(42.2, 'avancado')).toBe(12);
   });
 
-  it('calcula os dias de recuperação pós-prova de acordo com Bloco 2.3 #2', () => {
+  it('calcula os dias de recuperação pós-prova de acordo com Bloco 2.3 #2, por inteiro sensível ao nível (Fase C)', () => {
+    // Fase C passou a usar a tabela completa da doutrina (4 níveis, limite
+    // superior de cada gama) em vez de só distinguir "avançado" do resto —
+    // iniciante numa meia/maratona precisa de bem mais dias do que médio,
+    // por exemplo, e a simplificação anterior tratava os dois na mesma.
     expect(getRecoveryDaysAfterRace(10, 'iniciante')).toBe(7);
-    expect(getRecoveryDaysAfterRace(21.1, 'iniciante')).toBe(14);
-    expect(getRecoveryDaysAfterRace(42.2, 'iniciante')).toBe(28);
-    expect(getRecoveryDaysAfterRace(42.2, 'avancado')).toBe(21);
+    expect(getRecoveryDaysAfterRace(21.1, 'iniciante')).toBe(21);
+    expect(getRecoveryDaysAfterRace(42.2, 'iniciante')).toBe(35);
+    expect(getRecoveryDaysAfterRace(42.2, 'medio')).toBe(21);
+    // Avançado + Maratona: conflito na doutrina (10-14 dias Pfitzinger/
+    // Canova vs. 26 dias Daniels/Galloway) — decisão do utilizador: 26,
+    // o mais conservador.
+    expect(getRecoveryDaysAfterRace(42.2, 'avancado')).toBe(26);
   });
 
-  it('calcula o taper de acordo com a prioridade A/B/C', () => {
-    // A-race: taper longo
+  it('calcula o taper de acordo com a prioridade A/B/C, por inteiro sensível ao nível (Fase C)', () => {
+    // A-race: taper longo, e agora sensível ao nível — Fase C passou a usar
+    // a tabela completa da doutrina (Bloco 2.3 #1) em vez de um valor flat
+    // por distância. Iniciante numa maratona: 10-14 dias (limite superior
+    // 14 → 2 semanas), mais curto que básico/médio/avançado (14-21 dias →
+    // 3 semanas) — antes disto a app dava sempre 3 semanas a toda a gente.
     expect(getTaperWeeks(10, 'a', 'iniciante')).toBe(1);
     expect(getTaperWeeks(21.1, 'a', 'iniciante')).toBe(2);
-    expect(getTaperWeeks(42.2, 'a', 'iniciante')).toBe(3);
+    expect(getTaperWeeks(42.2, 'a', 'iniciante')).toBe(2);
+    expect(getTaperWeeks(42.2, 'a', 'basico')).toBe(3);
+    expect(getTaperWeeks(42.2, 'a', 'avancado')).toBe(3);
 
-    // B-race / C-race: taper curto (1 semana)
+    // B-race / C-race: taper curto (1 semana), independente do nível
     expect(getTaperWeeks(42.2, 'b', 'iniciante')).toBe(1);
     expect(getTaperWeeks(42.2, 'c', 'iniciante')).toBe(1);
   });
@@ -84,9 +98,9 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
       race: { ...sampleRace, date: '2026-10-10' },
       profile: { experience_level: 'medio' },
       runs: [
-        { date: '2026-09-01', distance_km: 8, duration_seconds: 2400, training_type: 'facil' },
+        { date: '2026-09-01', distance_km: 8, duration_seconds: 2400, training_type: 'continuo', effort_rpe: 3 },
         { date: '2026-09-05', distance_km: 10, duration_seconds: 3000, training_type: 'longo' },
-        { date: '2026-09-10', distance_km: 6, duration_seconds: 1800, training_type: 'regenerativo' },
+        { date: '2026-09-10', distance_km: 6, duration_seconds: 1800, training_type: 'recuperacao' },
       ],
       todayISO: today,
     });
@@ -104,11 +118,17 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     // Fase Base (2 semanas): 3 de Novembro a 16 de Novembro (alvo: 35 km/sem * 2 = 70 km)
     // Atleta com 65 km realizados e 80% em Z1/Z2
     const today = '2026-11-20';
+    // Vocabulário REAL de training_type (continuo/longo/recuperacao/
+    // intervalos/fartlek/trail). Até 2026-08-26 esta fixture usava 'facil' e
+    // 'regenerativo', valores que nunca existiram na base de dados — o teste
+    // passava porque exercitava o mesmo vocabulário fantasma que o bug de
+    // classificação Z1/Z2 procurava (specs/formulas-checklist.md Fase F).
+    // 4 de 5 corridas em Z1/Z2 = 80%, como o comentário acima já dizia.
     const runs = [
-      { date: '2026-11-04', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-04', distance_km: 10, duration_seconds: 3000, training_type: 'recuperacao' },
       { date: '2026-11-06', distance_km: 15, duration_seconds: 4500, training_type: 'longo' },
-      { date: '2026-11-09', distance_km: 10, duration_seconds: 3000, training_type: 'regenerativo' },
-      { date: '2026-11-11', distance_km: 10, duration_seconds: 3000, training_type: 'facil' },
+      { date: '2026-11-09', distance_km: 10, duration_seconds: 3000, training_type: 'continuo', effort_rpe: 3 },
+      { date: '2026-11-11', distance_km: 10, duration_seconds: 3000, training_type: 'intervalos', effort_rpe: 8 },
       { date: '2026-11-14', distance_km: 20, duration_seconds: 6000, training_type: 'longo' },
     ];
 
@@ -132,7 +152,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     // Prova a 2 semanas da data atual com volume insuficiente
     const today = '2026-09-20';
     const runs = [
-      { date: '2026-09-02', distance_km: 5, duration_seconds: 1500, training_type: 'facil' },
+      { date: '2026-09-02', distance_km: 5, duration_seconds: 1500, training_type: 'continuo', effort_rpe: 3 },
     ];
 
     const plan = calculateRaceTrainingPlan({

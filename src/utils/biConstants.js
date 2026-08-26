@@ -3,13 +3,16 @@
  * Todas as constantes quantitativas e limiares da doutrina de treinadores para o IronHealth.
  */
 
-// ACWR Thresholds
-export const ACWR_UNDER_TRAINING = 0.80; // (Yellow) < 0.80
+// ACWR Thresholds — ACWR_UNDER_TRAINING/ACWR_SAFE_MAX/ACWR_DANGER vivem em
+// supabase/functions/_shared/formulas/acwr.ts (T1), a mesma fórmula que as
+// Edge Functions usam. Reexportados aqui para não quebrar os consumidores
+// existentes (ver specs/formulas-checklist.md Fase C).
+import { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER } from '@formulas/acwr.ts';
+export { ACWR_UNDER_TRAINING, ACWR_SAFE_MAX, ACWR_DANGER };
 export const ACWR_SAFE_MIN = 0.80;
-export const ACWR_SAFE_MAX = 1.30; // (Green) 0.80 - 1.30
-export const ACWR_CAUTION_MAX = 1.49; // (Orange) 1.31 - 1.49
-export const ACWR_DANGER = 1.50; // (Red) >= 1.50
-export const ACWR_MIN_HISTORY_DAYS = 28;
+export const ACWR_CAUTION_MAX = 1.49; // (Orange) 1.31 - 1.49 — só usado como valor de referência num insight, não na classificação
+// ACWR_MIN_HISTORY_DAYS removida (Fase E) — a janela crónica de 28 dias
+// passou a viver só em @formulas/runAcwr.ts, sem consumidor aqui.
 
 // Volume Progression
 export const MAX_WEEKLY_INCREASE_PCT = {
@@ -21,21 +24,20 @@ export const MAX_WEEKLY_INCREASE_PCT = {
 export const GYM_VOLUME_ELEVATED_RISK_PCT = 15;
 export const GYM_VOLUME_HIGH_RISK_PCT = 20;
 
-// RED-S / Energy Availability (EA)
-export const EA_OPTIMAL = 45; // >= 45 kcal/kg FFM/day
+// RED-S / Energy Availability (EA) — EA_OPTIMAL/EA_CRITICAL vivem em
+// @formulas/energyAvailability.ts (T1); reexportados aqui pelo mesmo motivo
+// do ACWR acima (specs/formulas-checklist.md Fase C).
+import { EA_OPTIMAL, EA_CRITICAL } from '@formulas/energyAvailability.ts';
+export { EA_OPTIMAL, EA_CRITICAL };
 export const EA_SUBCLINICAL_MIN = 30; // 30-45
-export const EA_CRITICAL = 30; // < 30
-export const EA_CRITICAL_DURATION_DAYS = 5;
-export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
+// EA_CRITICAL_DURATION_DAYS e RUNNING_COST_KCAL_PER_KG_KM mudaram-se para
+// @formulas/energyAvailabilityWindow.ts e @formulas/tdee.ts respetivamente
+// (Fase E) — biEngine.js já não as usa daqui.
 
 // Training Distribution (80/20)
-export const TARGET_LOW_INTENSITY_PCT = {
-  iniciante: 95,
-  basico: 87.5,
-  medio: 80,
-  avancado: 77.5
-};
-
+// TARGET_LOW_INTENSITY_PCT mudou-se para @formulas/trainingDistribution.ts
+// (Fase E) — biEngine.js já não a usa daqui. TARGET_HIGH_INTENSITY_PCT fica
+// (já era código morto antes desta migração, ver formulaGuards.test.js).
 export const TARGET_HIGH_INTENSITY_PCT = {
   iniciante: 5,
   basico: 12.5,
@@ -48,16 +50,14 @@ export const BF_FLOOR_MEN = 6;
 export const BF_FLOOR_WOMEN = 14;
 export const BF_ALARM_MEN = 8;
 export const BF_ALARM_WOMEN = 16;
-export const VISCERAL_FAT_HEALTHY_MAX = 9;
-export const VISCERAL_FAT_ALERT_MAX = 14;
+// VISCERAL_FAT_HEALTHY_MAX/VISCERAL_FAT_ALERT_MAX viviam aqui — migradas
+// para @formulas/bodyComposition.ts (T1) na Fase C, que corrige o limiar
+// (o único consumidor comparava `>= 14`, saltando a faixa de alerta 10-13
+// da doutrina). Ver specs/formulas-checklist.md Fase C.
 
-// Riegel Race Prediction
-export const RIEGEL_FACTOR = {
-  iniciante: 1.085,
-  basico: 1.085,
-  medio: 1.06,
-  avancado: 1.06
-};
+// RIEGEL_FACTOR vivia aqui — migrada para @formulas/racePrediction.ts (T1)
+// na Fase C junto com predictRaceTime, que já a era o único consumidor.
+// Ver specs/formulas-checklist.md Fase C.
 
 // Nutrition Targets (g/kg/dia) — Bloco 4.1 #1 da doutrina do Coach, ver
 // src/coach-knowledge/04-nutricao-base-diaria.md e a tabela PROTEIN_MAINT em
@@ -88,21 +88,9 @@ export const CARB_TARGETS = {
   avancado:  { descanso: [5.0, 6.0], treino: [8.0, 10.0] }
 };
 
-// Weight Loss Limits (% da massa corporal por semana)
-// Bloco 5 #4 da doutrina: o teto seguro é 0,7%/semana. Três rondas da
-// investigação (Bloco 1 #6, Nutrição 4.1 #5, Nutrição 4.2 #3) convergiram
-// em 0,5-0,7%; uma quarta (Bloco 5 #4, Garthe 2011) deu 0,5-1,0%. Vale a
-// regra do valor mais conservador — 0,7% como teto, nunca 1,0%.
-//
-// Médio e Avançado apertam mais, por o défice máximo da doutrina ser dado
-// em kg/semana (Bloco 4.1 #5): médio ≤0,25-0,40 kg/sem e avançado
-// ≤0,20-0,30 kg/sem, que para um atleta de 70 kg dão ~0,5% e ~0,4%.
-export const MAX_WEIGHT_LOSS_PCT_WEEK = {
-  iniciante: 0.7,
-  basico: 0.7,
-  medio: 0.5,
-  avancado: 0.4
-};
+// Weight Loss Limits (% da massa corporal por semana) — migrada para
+// @formulas/weightLossRate.ts (T1) na Fase C, já correta aqui (só mudou de
+// casa). Ver specs/formulas-checklist.md Fase C.
 
 // Recovery & Fatigue
 export const RHR_FATIGUE_THRESHOLD_BPM = 5;

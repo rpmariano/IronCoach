@@ -1,0 +1,11 @@
+[
+  { "input": { "acuteKm": 45, "chronicWeeklyKm": 40 }, "expect": { "ratio": 1.125, "zone": "safe" } },
+  { "input": { "acuteKm": 52, "chronicWeeklyKm": 40 }, "expect": { "ratio": 1.30, "zone": "safe" } },
+  { "input": { "acuteKm": 52.4, "chronicWeeklyKm": 40 }, "expect": { "ratio": 1.31, "zone": "caution" } },
+  { "input": { "acuteKm": 60, "chronicWeeklyKm": 40 }, "expect": { "ratio": 1.50, "zone": "caution" } },
+  { "input": { "acuteKm": 61, "chronicWeeklyKm": 40 }, "expect": { "ratio": 1.525, "zone": "danger" } },
+  { "input": { "acuteKm": 30, "chronicWeeklyKm": 40 }, "expect": { "ratio": 0.75, "zone": "undertrained" } },
+  { "input": { "acuteKm": 32, "chronicWeeklyKm": 40 }, "expect": { "ratio": 0.80, "zone": "safe" } },
+  { "input": { "acuteKm": 0, "chronicWeeklyKm": 0 }, "expect": { "ratio": null, "zone": "unknown" } },
+  { "input": { "acuteKm": 20, "chronicWeeklyKm": 0 }, "expect": { "ratio": null, "zone": "unknown" } }
+]

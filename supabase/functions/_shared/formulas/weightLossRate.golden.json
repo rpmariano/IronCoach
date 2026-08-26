@@ -1,0 +1,9 @@
+[
+  { "name": "iniciante dentro do limiar (0,5%)", "input": { "weeklyRateKg": -0.4, "currentWeightKg": 80, "experienceLevel": "iniciante" }, "expect": { "lossPct": 0.5, "maxPct": 0.7, "isTooFast": false } },
+  { "name": "iniciante acima do limiar (1,0%)", "input": { "weeklyRateKg": -0.8, "currentWeightKg": 80, "experienceLevel": "iniciante" }, "expect": { "lossPct": 1.0, "maxPct": 0.7, "isTooFast": true } },
+  { "name": "médio mais sensível (limiar 0,5%)", "input": { "weeklyRateKg": -0.5, "currentWeightKg": 80, "experienceLevel": "medio" }, "expect": { "lossPct": 0.625, "maxPct": 0.5, "isTooFast": true } },
+  { "name": "avançado ainda mais sensível (limiar 0,4%)", "input": { "weeklyRateKg": -0.3, "currentWeightKg": 75, "experienceLevel": "avancado" }, "expect": { "lossPct": 0.4, "maxPct": 0.4, "isTooFast": false } },
+  { "name": "nível desconhecido cai no limiar por omissão (0,7%)", "input": { "weeklyRateKg": -0.5, "currentWeightKg": 70, "experienceLevel": "desconhecido" }, "expect": { "lossPct": 0.7142857142857143, "maxPct": 0.7, "isTooFast": true } },
+  { "name": "a ganhar peso — null (não se aplica)", "input": { "weeklyRateKg": 0.3, "currentWeightKg": 70, "experienceLevel": "iniciante" }, "expect": null },
+  { "name": "peso atual em falta — null", "input": { "weeklyRateKg": -0.5, "currentWeightKg": 0, "experienceLevel": "iniciante" }, "expect": null }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "name": "soma peso×reps de várias séries",
+    "input": { "session": { "workout_session_sets": [{ "reps": 10, "weight": 60 }, { "reps": 8, "weight": 80 }] } },
+    "expect": 1240
+  },
+  {
+    "name": "série com reps ou peso em falta contribui 0",
+    "input": { "session": { "workout_session_sets": [{ "reps": null, "weight": 60 }, { "reps": 10, "weight": null }] } },
+    "expect": 0
+  },
+  {
+    "name": "sem sets — 0",
+    "input": { "session": { "workout_session_sets": [] } },
+    "expect": 0
+  },
+  {
+    "name": "volume_kg pré-calculado e positivo tem prioridade sobre as séries",
+    "input": { "session": { "volume_kg": 500, "workout_session_sets": [{ "reps": 10, "weight": 60 }] } },
+    "expect": 500
+  },
+  {
+    "name": "volume_kg zero é ignorado (cai para o cálculo pelas séries)",
+    "input": { "session": { "volume_kg": 0, "workout_session_sets": [{ "reps": 10, "weight": 60 }] } },
+    "expect": 600
+  },
+  {
+    "name": "sessão sem workout_session_sets (aula) — 0",
+    "input": { "session": { "workout_session_sets": null } },
+    "expect": 0
+  }
+]

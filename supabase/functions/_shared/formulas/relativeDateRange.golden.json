@@ -1,0 +1,12 @@
+[
+  { "name": "dia — corte 1 dia antes", "input": { "todayISO": "2026-08-25", "range": "dia" }, "expect": "2026-08-24" },
+  { "name": "semana — corte 7 dias antes", "input": { "todayISO": "2026-08-25", "range": "semana" }, "expect": "2026-08-18" },
+  { "name": "mes — corte 1 mês antes", "input": { "todayISO": "2026-08-25", "range": "mes" }, "expect": "2026-07-25" },
+  { "name": "trimestre — corte 3 meses antes", "input": { "todayISO": "2026-08-25", "range": "trimestre" }, "expect": "2026-05-25" },
+  { "name": "6meses — corte 6 meses antes", "input": { "todayISO": "2026-08-25", "range": "6meses" }, "expect": "2026-02-25" },
+  { "name": "ano — corte 12 meses antes", "input": { "todayISO": "2026-08-25", "range": "ano" }, "expect": "2025-08-25" },
+  { "name": "mes — clamp de fim de mês (31 Jan − 1 mês = 31 Dez)", "input": { "todayISO": "2026-01-31", "range": "mes" }, "expect": "2025-12-31" },
+  { "name": "mes — clamp de fim de mês em ano não bissexto (31 Mar − 1 mês = 28 Fev)", "input": { "todayISO": "2026-03-31", "range": "mes" }, "expect": "2026-02-28" },
+  { "name": "mes — clamp de fim de mês em ano bissexto (31 Mar − 1 mês = 29 Fev)", "input": { "todayISO": "2028-03-31", "range": "mes" }, "expect": "2028-02-29" },
+  { "name": "chave desconhecida — null (sem filtro)", "input": { "todayISO": "2026-08-25", "range": "desconhecido" }, "expect": null }
+]

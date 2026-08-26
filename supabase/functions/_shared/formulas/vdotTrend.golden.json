@@ -1,0 +1,105 @@
+[
+  {
+    "name": "mistura de qualificáveis e não-qualificáveis — ordenado por data",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-08-10",
+          "distance_km": 10,
+          "duration_seconds": 2400,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": null,
+          "name": "10k da cidade"
+        },
+        {
+          "date": "2026-08-01",
+          "distance_km": 5,
+          "duration_seconds": 1200,
+          "kind": "treino",
+          "training_type": "tempo",
+          "effort_rpe": 6,
+          "name": null
+        },
+        {
+          "date": "2026-08-15",
+          "distance_km": 2,
+          "duration_seconds": 500,
+          "kind": "treino",
+          "training_type": "tempo",
+          "effort_rpe": null,
+          "name": "curta demais, não qualifica"
+        },
+        {
+          "date": "2026-08-05",
+          "distance_km": 6,
+          "duration_seconds": 1800,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 4,
+          "name": "rodagem, não qualifica"
+        },
+        {
+          "date": "2026-08-20",
+          "distance_km": 8,
+          "duration_seconds": 2000,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 8,
+          "name": "rodagem forte, RPE>=7 qualifica"
+        }
+      ]
+    },
+    "expect": [
+      {
+        "date": "2026-08-01",
+        "vdot": 49.8,
+        "label": "treino"
+      },
+      {
+        "date": "2026-08-10",
+        "vdot": 51.9,
+        "label": "10k da cidade"
+      },
+      {
+        "date": "2026-08-20",
+        "vdot": 48.8,
+        "label": "rodagem forte, RPE>=7 qualifica"
+      }
+    ]
+  },
+  {
+    "name": "sem corridas qualificáveis — array vazio",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-08-01",
+          "distance_km": 4,
+          "duration_seconds": 1500,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 5,
+          "name": null
+        }
+      ]
+    },
+    "expect": []
+  },
+  {
+    "name": "duration_seconds zero é descartado mesmo sendo competição",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-08-01",
+          "distance_km": 10,
+          "duration_seconds": 0,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": null,
+          "name": "sem tempo registado"
+        }
+      ]
+    },
+    "expect": []
+  }
+]

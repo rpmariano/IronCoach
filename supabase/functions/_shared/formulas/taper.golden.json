@@ -1,0 +1,16 @@
+[
+  { "name": "iniciante 10k A-race", "input": { "distanceKm": 10, "racePriority": "a", "experienceLevel": "iniciante", "raceType": "estrada" }, "expect": { "days": 7, "weeks": 1 } },
+  { "name": "iniciante meia A-race", "input": { "distanceKm": 21, "racePriority": "a", "experienceLevel": "iniciante", "raceType": "estrada" }, "expect": { "days": 10, "weeks": 2 } },
+  { "name": "iniciante maratona A-race", "input": { "distanceKm": 42, "racePriority": "a", "experienceLevel": "iniciante", "raceType": "estrada" }, "expect": { "days": 14, "weeks": 2 } },
+  { "name": "iniciante trail (qualquer distância) A-race", "input": { "distanceKm": 15, "racePriority": "a", "experienceLevel": "iniciante", "raceType": "trail" }, "expect": { "days": 14, "weeks": 2 } },
+  { "name": "basico meia A-race", "input": { "distanceKm": 21, "racePriority": "a", "experienceLevel": "basico", "raceType": "estrada" }, "expect": { "days": 12, "weeks": 2 } },
+  { "name": "basico maratona A-race", "input": { "distanceKm": 42, "racePriority": "a", "experienceLevel": "basico", "raceType": "estrada" }, "expect": { "days": 21, "weeks": 3 } },
+  { "name": "medio 10k A-race", "input": { "distanceKm": 10, "racePriority": "a", "experienceLevel": "medio", "raceType": "estrada" }, "expect": { "days": 10, "weeks": 2 } },
+  { "name": "avancado 10k A-race", "input": { "distanceKm": 10, "racePriority": "a", "experienceLevel": "avancado", "raceType": "estrada" }, "expect": { "days": 10, "weeks": 2 } },
+  { "name": "avancado maratona A-race", "input": { "distanceKm": 42, "racePriority": "a", "experienceLevel": "avancado", "raceType": "estrada" }, "expect": { "days": 21, "weeks": 3 } },
+  { "name": "avancado ultra de estrada A-race (sem trail)", "input": { "distanceKm": 80, "racePriority": "a", "experienceLevel": "avancado", "raceType": "estrada" }, "expect": { "days": 21, "weeks": 3 } },
+  { "name": "B-race ignora nível/distância", "input": { "distanceKm": 42, "racePriority": "b", "experienceLevel": "avancado", "raceType": "estrada" }, "expect": { "days": 4, "weeks": 1 } },
+  { "name": "C-race ignora nível/distância", "input": { "distanceKm": 5, "racePriority": "c", "experienceLevel": "iniciante", "raceType": "estrada" }, "expect": { "days": 4, "weeks": 1 } },
+  { "name": "nível desconhecido cai para iniciante", "input": { "distanceKm": 10, "racePriority": "a", "experienceLevel": "desconhecido", "raceType": "estrada" }, "expect": { "days": 7, "weeks": 1 } },
+  { "name": "5k usa a mesma gama que 10k", "input": { "distanceKm": 5, "racePriority": "a", "experienceLevel": "medio", "raceType": "estrada" }, "expect": { "days": 10, "weeks": 2 } }
+]

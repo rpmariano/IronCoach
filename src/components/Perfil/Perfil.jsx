@@ -13,16 +13,9 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
 import ShoeCabinet from './ShoeCabinet';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { todayISO } from '../../lib/utils';
 
 const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
-
-// Hoje em ISO local (não UTC) — trava a data de nascimento no futuro.
-// Ver 5.3 do PRD sobre escalas de data.
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 // Apenas os 4 objetivos corporais com intervenção direta via treino + nutrição.
 // Os restantes (IMC, BMR, água corporal, etc.) são métricas derivadas — foram

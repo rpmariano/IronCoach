@@ -1,0 +1,28 @@
+[
+  {
+    "name": "duas corridas com dados completos de relógio — soma desnível/calorias, média de cadência",
+    "input": {
+      "runs": [
+        { "details": { "elevation_gain_m": 104, "calories_kcal": 1180, "cadence_spm": 157 } },
+        { "details": { "elevation_gain_m": 38, "calories_kcal": 530, "cadence_spm": 173 } }
+      ]
+    },
+    "expect": { "totalElevation": 142, "totalCalories": 1710, "avgCadence": 165 }
+  },
+  {
+    "name": "campos parcialmente em falta — só soma/inclui o que existe",
+    "input": {
+      "runs": [
+        { "details": { "elevation_gain_m": 50, "calories_kcal": null, "cadence_spm": null } },
+        { "details": { "elevation_gain_m": null, "calories_kcal": 300, "cadence_spm": 160 } },
+        { "details": null }
+      ]
+    },
+    "expect": { "totalElevation": 50, "totalCalories": 300, "avgCadence": 160 }
+  },
+  {
+    "name": "sem nenhuma corrida — zeros e cadência nula (não zero)",
+    "input": { "runs": [] },
+    "expect": { "totalElevation": 0, "totalCalories": 0, "avgCadence": null }
+  }
+]

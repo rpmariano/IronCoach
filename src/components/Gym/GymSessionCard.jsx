@@ -6,19 +6,10 @@ import { useToast } from '../shared/ToastProvider';
 import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
 import CoachText from '../shared/CoachText';
 import { mapCategoriesToMuscles } from '../../utils/gym';
+import { sessionVolumeKg } from '../../utils/biEngine';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
-
-function formatDuration(totalSeconds) {
-  if (!totalSeconds) return '';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+import { formatDuration } from '../../utils/run';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
@@ -49,7 +40,10 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
   }, {});
 
   const totalSets = sets.length;
-  const volume = sets.reduce((sum, set) => sum + ((set.reps || 0) * (set.weight || 0)), 0);
+  // sessionVolumeKg() (biEngine.js) — antes este cartão reimplementava a
+  // soma peso×reps sem o atalho `volume_kg` (specs/formulas-checklist.md
+  // Fase C).
+  const volume = sessionVolumeKg(session);
 
   const headlineValue = isAula 
     ? (session.duration_seconds ? formatDuration(session.duration_seconds) : '')
