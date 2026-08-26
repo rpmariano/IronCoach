@@ -1,25 +1,25 @@
 {
   "$schema": "https://code.claude.com/schemas/settings.schema.json",
-  "description": "Configuração Claude Code para o projeto IronCoach",
+  "description": "Configuração Claude Code para o projeto IronCoach - Deploy Trigger para Quality Orchestrator",
   "hooks": {
     "post_git_push": {
-      "description": "Invoca o agente orquestrador após push para avaliar se está pronto para deploy",
+      "description": "Invoca o agente orquestrador após push em branches de desenvolvimento (dev-antigravity, dev-claude) para avaliar se está pronto para integração",
       "actions": [
         {
           "type": "invoke_agent",
           "agent": "quality_orchestrator",
-          "condition": "branch_is_dev_or_dev_antigravity",
-          "prompt": "O código foi enviado para a branch dev/dev-antigravity. Faz uma review completa do estado atual do projeto para verificar se está pronto para integração/produção. Modo: review completo."
+          "condition": "branch_matches: (dev-antigravity|dev-claude|dev)",
+          "prompt": "O código foi enviado para uma branch de desenvolvimento. Faz uma review completa do estado atual para verificar se está pronto para integração com outras branches ou para merge para master. Modo: review completo."
         }
       ]
     },
     "pre_git_merge_to_master": {
-      "description": "Invoca o agente orquestrador antes de merge para master",
+      "description": "Invoca o agente orquestrador antes de qualquer merge para master (pré-produção)",
       "actions": [
         {
           "type": "invoke_agent",
           "agent": "quality_orchestrator",
-          "prompt": "Antes de fazer merge para master, executa uma review completa em modo pré-deploy. Verifica testes, segurança, PWA, acessibilidade, documentação e qualidade geral do código."
+          "prompt": "Antes de fazer merge para master (PRODUÇÃO), executa uma review completa em modo pré-deploy com todos os 6 agentes: test_engineer, supabase_guardian, pwa_auditor, a11y_checker, docs_keeper e pre_deploy_reviewer. Verifica testes, segurança, PWA, acessibilidade, documentação e qualidade geral do código."
         }
       ]
     }
@@ -32,7 +32,8 @@
       "push",
       "pronto",
       "acabei",
-      "podes rever"
+      "podes rever",
+      "integração"
     ]
   }
 }

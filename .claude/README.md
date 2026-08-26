@@ -9,8 +9,8 @@ Este diretório contém a configuração que integra os agentes de qualidade com
 Quando trabalhas com o projeto, o assistente Claude automaticamente:
 
 1. **Invoca o `quality_orchestrator`** quando:
-   - Fazes push da tua branch (`dev-antigravity`, `dev`, etc.)
-   - Mencionas "deploy", "produção", "master", "push", "pronto", etc.
+   - Fazes push de qualquer branch de desenvolvimento (`dev-antigravity`, `dev-claude`, `dev`)
+   - Mencionas "deploy", "produção", "master", "push", "pronto", "integração", etc.
    - Estás prestes a fazer merge para `master`
 
 2. **Executa uma review completa** que coordena:
@@ -35,19 +35,21 @@ Quando trabalhas com o projeto, o assistente Claude automaticamente:
 ### 🔧 Fluxo de Trabalho
 
 ```
-Desenvolvimento (branch dev-antigravity)
-         ↓
+dev-antigravity  ou  dev-claude          (branches paralelas de desenvolvimento)
+         ↓                    ↓
     Código pronto?
          ↓
    git push (hook: post_git_push)
          ↓
 Quality Orchestrator ← Invocado automaticamente
          ↓
-   [Review Completa]
+   [Review Completa - 6 agentes]
          ↓
-Merge para dev (automático se aprovado)
+Merge para dev (integração de ambas)
          ↓
 Merge para master (com autorização)
+         ↓
+Quality Orchestrator (pré-deploy)
          ↓
 Deploy em produção
 ```
