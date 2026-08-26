@@ -847,6 +847,50 @@ do utilizador (a app deixou de registar exercícios específicos).
 - [x] Comportamento das janelas de fase verificado por varrimento exaustivo;
   painel testado ponta-a-ponta com um macrociclo realista.
 
+### Limpeza de dívida (pontos 2, 3 e 5 do balanço pós-Fase E)
+
+**Duplicações fechadas** — ambas verificadas como no-ops de comportamento
+antes de mexer, por isso sem necessidade de decisão:
+- [x] `summariseSessions` (`coach-chat`) reimplementava a soma peso×reps.
+  Passa a delegar em `sessionVolumeKg.ts`; a contagem de séries e de séries
+  ≥15 reps fica no laço (são grandezas que só existem ali, Bloco 3 #10).
+  A versão local ignorava o atalho `volume_kg` que a partilhada honra —
+  confirmado na base de dados que essa coluna está NULL nas 11 sessões, logo
+  zero diferença hoje, mas fecha uma divergência latente. Paridade provada
+  contra a fixture exata do teste Deno (volume 1080, 2 séries).
+- [x] `weeklyVolumeKm` (`coach-chat`) era um laço inline idêntico a
+  `computeRecentWeeklyVolume`. Passa a delegar, **preservando de propósito o
+  `null` do caso "sem corridas nenhumas"**: a partilhada devolve 0, e 0 faria
+  disparar `volume_insuficiente` em `assessViability`, enquanto `null`
+  significa "sem dados para julgar".
+
+**Decisão de doutrina resolvida — o código estava certo, o comentário errado:**
+- [x] `assessRaceViability` tinha um comentário a prometer que
+  `tempo_insuficiente` era "ignorado se tiver base ou B/C race", sem o código
+  o implementar. Fui à doutrina em vez de assumir, e ela contradiz o
+  comentário nos dois pontos: (1) `01-objetivo-viabilidade.md` Bloco 1 #1
+  diz que semanas e volume **"somam-se, não se substituem"** — ter base não
+  dispensa as semanas; (2) a prioridade da prova só tem papel doutrinário no
+  taper (`02-corrida-prova.md` Bloco 2.3 #1), e as tabelas
+  MIN_PREP_WEEKS/MIN_VOLUME_KM não têm sequer dimensão de prioridade.
+  **Nenhuma alteração de comportamento** — só os dois comentários (partilhado
+  e wrapper do frontend) corrigidos, com a citação da doutrina.
+
+**Código morto removido de `biEngine.js`** (1018 → 703 linhas ao longo das
+Fases E+F). O varrimento de exports encontrou 4, não os 2 que estavam
+anotados:
+- [x] `predictRaceTime` — sem consumidor (os 3 "hits" eram comentários).
+- [x] `calculateVDOT` — sem consumidor.
+- [x] `calculate1RMProgression` — sem consumidor (limpeza prevista na E2).
+- [x] `calculateWeeklyVolume` — **importada pelo `RunDashboard.jsx` mas nunca
+  chamada**; só o varrimento sistemático a apanhou.
+- [x] Imports que ficaram órfãos em cascata: `sharedPredictRaceTime`,
+  `sharedCalculateVDOT`, `estimate1RM`, `differenceInSeconds` (date-fns), e o
+  import morto no `RunDashboard.jsx`. `epley.ts` mantém-se no repositório por
+  decisão do utilizador, agora sem consumidores.
+
+---
+
 ### Achados documentados, não corrigidos
 
 - **`paceFormat`: arredondamento a 60s.** Com segundos fracionários ≥ 59,5 o

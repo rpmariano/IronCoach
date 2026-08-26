@@ -9,15 +9,28 @@
 // Fase E). `MIN_PREP_WEEKS`/`MIN_VOLUME_KM`/`categorizeDistance` já viviam em
 // vocabulary.ts (T0) desde a Fase B — usados diretamente daqui.
 //
-// NOTA — parâmetro `racePriority` sem efeito, replicado fielmente: a
-// assinatura e o comentário original de `assessRaceViability` descreviam
-// "'tempo_insuficiente' ... (ignorado se tiver base ou B/C race)", mas o
-// corpo da função nunca usa `racePriority` nem a variável local
-// `hasBaseFitness` para suprimir essa flag — só a calcula. Isto é uma
-// divergência doutrina↔código pré-existente (comentário descreve um
-// comportamento que o código não implementa), não introduzida por esta
-// migração. Portado como está; decidir a intenção correta fica para uma
-// revisão à parte, não silenciosa dentro de uma migração de casa.
+// NOTA — `racePriority` não tem efeito aqui, e ISSO ESTÁ CERTO. O
+// comentário original de `assessRaceViability` prometia que
+// 'tempo_insuficiente' era "ignorado se tiver base ou B/C race", mas o
+// código nunca implementou nenhuma das duas supressões. Ao migrar (Fase F)
+// fui à doutrina decidir qual dos dois estava errado, e a resposta é
+// inequívoca em ambos os casos — o comentário é que estava mal:
+//
+//   1. "ignorado se tiver base" — 01-objetivo-viabilidade.md Bloco 1 #1,
+//      Condições: "Pressupõe o volume semanal pré-requisito (#2) já
+//      cumprido ANTES da primeira semana deste bloco — OS DOIS NÚMEROS
+//      SOMAM-SE, NÃO SE SUBSTITUEM." Ter base NÃO dispensa as semanas de
+//      preparação; são requisitos independentes e cumulativos.
+//   2. "ignorado se B/C race" — a prioridade da prova só tem papel
+//      doutrinário no TAPER (02-corrida-prova.md Bloco 2.3 #1: A-race leva
+//      taper completo, B/C-race 2-4 dias). Não há nenhuma regra que a faça
+//      alterar as semanas mínimas de preparação, e as tabelas
+//      MIN_PREP_WEEKS/MIN_VOLUME_KM não têm dimensão de prioridade.
+//
+// `racePriority` fica na assinatura porque todos os chamadores já o passam
+// e removê-lo obrigaria a tocar em cinco sítios sem ganho nenhum — mas não
+// é usado, de propósito. A variável local `hasBaseFitness` do original, que
+// era calculada e nunca lida, deixou de existir.
 
 import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
 

@@ -44,7 +44,12 @@ export function recentWeeklyVolume(runs, todayISO, weeks = 4) {
 //
 // flags pode conter:
 //   'ultra_para_iniciante'  — ultra bloqueado por nível (sempre desaconselhado)
-//   'tempo_insuficiente'    — semanas < mínimo para dist/nível (ignorado se tiver base ou B/C race)
+//   'tempo_insuficiente'    — semanas < mínimo para dist/nível. NÃO é
+//                             suprimido por ter base nem por ser B/C-race:
+//                             a doutrina diz que semanas e volume 'somam-se,
+//                             não se substituem' (Bloco 1 #1), e a prioridade
+//                             só afeta o taper (Bloco 2.3 #1). Ver a nota
+//                             completa em @formulas/raceViability.ts.
 //   'volume_insuficiente'   — volume médio < pré-requisito para dist/nível
 //
 // Regras de não aplicação (retorna isViable=true sem flags):

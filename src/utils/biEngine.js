@@ -2,7 +2,7 @@
  * biEngine.js
  * Todas as funções de cálculo para os dashboards de BI do IronHealth.
  */
-import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInSeconds, parseISO, isValid, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
@@ -17,10 +17,8 @@ import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
 import { getTaperDays } from '@formulas/taper.ts';
 import { computeEnergyAvailability } from '@formulas/energyAvailability.ts';
-import { predictRaceTime as sharedPredictRaceTime, calculateVDOT as sharedCalculateVDOT } from '@formulas/racePrediction.ts';
 import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
-import { estimate1RM } from '@formulas/epley.ts';
 import { computeTrainingDistribution } from '@formulas/trainingDistribution.ts';
 import { computeVdotTrend } from '@formulas/vdotTrend.ts';
 import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
@@ -215,44 +213,6 @@ export function calculatePaceVsHR(runs) {
 }
 
 /**
- * Agrupa o volume semanal.
- */
-export function calculateWeeklyVolume(runs) {
-  try {
-    const weeks = {};
-    runs.forEach(r => {
-      const d = parseISO(r.date);
-      if (!isValid(d)) return;
-      const weekStart = startOfWeek(d, { weekStartsOn: 1 }); // Segunda-feira
-      const label = format(weekStart, 'yyyy-MM-dd');
-      
-      if (!weeks[label]) weeks[label] = { weekLabel: label, distanceKm: 0, durationMinutes: 0, sessions: 0 };
-      weeks[label].distanceKm += (r.distance_km || 0);
-      weeks[label].durationMinutes += (r.duration_seconds || 0) / 60;
-      weeks[label].sessions += 1;
-    });
-
-    return Object.values(weeks).sort((a, b) => a.weekLabel.localeCompare(b.weekLabel));
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * Race Prediction via fórmula de Riegel. Delega em
- * @formulas/racePrediction.ts (T1) — única implementação, sem cópias a
- * eliminar; esta migração só muda de casa (specs/formulas-checklist.md
- * Fase C).
- */
-export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio') {
-  try {
-    return sharedPredictRaceTime(runs, targetDistanceKm, experienceLevel);
-  } catch (e) {
-    return { predictedSeconds: 0, predictedPace: 0, confidence: 0, basedOn: null };
-  }
-}
-
-/**
  * Previsão de tempo/pace para UMA prova (race_events ou rascunho do
  * RunAgenda) — ponto único que resolve nível de experiência e distância
  * equivalente ITRA antes de chamar predictRaceTime, para todos os
@@ -266,23 +226,6 @@ export function predictRaceTime(runs, targetDistanceKm, experienceLevel = 'medio
 // partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function getRacePrediction(race, profile, runs) {
   return sharedGetRacePrediction(race, profile, runs || []);
-}
-
-/**
- * Calcula VDOT (aproximação de Daniels) a partir de distância e tempo.
- * Usa a equação de regressão de Daniels & Gilbert (1979).
- * @param {number} distanceKm - Distância em km.
- * @param {number} timeSeconds - Tempo em segundos.
- * @returns {number} Estimativa de VDOT.
- */
-// Delega em @formulas/racePrediction.ts (T1) — única implementação, sem
-// cópias a eliminar (specs/formulas-checklist.md Fase C).
-export function calculateVDOT(distanceKm, timeSeconds) {
-  try {
-    return sharedCalculateVDOT(distanceKm, timeSeconds);
-  } catch (e) {
-    return 0;
-  }
 }
 
 /**
@@ -330,37 +273,6 @@ export function calculateVolumeLoad(gymSessions, dateRange) {
   }
 }
 
-// Delega em @formulas/epley.ts (T1) — única implementação, sem cópias a
-// eliminar (specs/formulas-checklist.md Fase C/E).
-export function calculate1RMProgression(gymSessions, exerciseName) {
-  try {
-    const progression = [];
-    gymSessions.forEach(session => {
-      const sets = session.workout_session_sets?.filter(s => s.exercise_name.toLowerCase() === exerciseName.toLowerCase()) || [];
-      if (sets.length > 0) {
-        let max1RM = 0;
-        let maxWeight = 0;
-        let bestReps = 0;
-
-        sets.forEach(set => {
-          const epley1RM = estimate1RM(set.weight, set.reps);
-          if (epley1RM > max1RM) {
-            max1RM = epley1RM;
-            maxWeight = set.weight;
-            bestReps = set.reps;
-          }
-        });
-
-        progression.push({ date: session.date, estimated1RM: max1RM, maxWeight, bestSetReps: bestReps });
-      }
-    });
-    return progression.sort((a,b) => a.date.localeCompare(b.date));
-  } catch (e) {
-    return [];
-  }
-}
-
-// Delega em @formulas/muscleGroupVolume.ts (T1.5) — única implementação,
 // partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function calculateMuscleGroupVolume(gymSessions, dateRange) {
   try {

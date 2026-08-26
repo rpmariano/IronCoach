@@ -34,6 +34,7 @@ import { getRecommendedPrepWeeks } from "../_shared/formulas/racePlanning.ts";
 import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
@@ -705,12 +706,20 @@ export type GymSessionSummary = {
 // deno-lint-ignore no-explicit-any
 export function summariseSessions(sessions: any[]): GymSessionSummary[] {
   return sessions.map((s) => {
-    let volume = 0;
+    // O volume delega em @formulas/sessionVolumeKg.ts (T1.5) — a mesma
+    // função que o GymDashboard usa (specs/formulas-checklist.md Fase F).
+    // Antes era uma soma peso×reps reimplementada aqui: os totais batiam
+    // certo por coincidência, mas esta versão ignorava o atalho `volume_kg`
+    // que a partilhada honra — se essa coluna alguma vez passar a ser
+    // escrita (hoje está NULL em todas as sessões, confirmado na base de
+    // dados), os dois lados divergiriam sem ninguém dar por isso.
+    // A contagem de séries e de séries longas continua no laço: são
+    // grandezas que só existem aqui (Bloco 3 #10), não no volume.
+    const volume = computeSessionVolumeKg(s);
     let sets = 0;
     let highRepSets = 0;
     for (const st of (s.workout_session_sets || [])) {
       if (st.reps != null && st.weight != null) {
-        volume += st.reps * st.weight;
         sets += 1;
         if (st.reps >= 15) highRepSets += 1; // Bloco 3 #10 — faixa desaconselhada para corredor
       }
@@ -3606,12 +3615,13 @@ async function handler(req: Request): Promise<Response> {
       .limit(5);
     // Volume médio semanal das últimas 4 semanas — usado pelo Bloco 1 para
     // avaliar a viabilidade do objetivo (flag volume_insuficiente).
+    // Delega em @formulas/raceViability.ts (T1.5) — a mesma média de 4
+    // semanas que o frontend usa (specs/formulas-checklist.md Fase F). O
+    // `null` do caso "sem corridas nenhumas" é preservado de propósito: a
+    // partilhada devolve 0, e 0 faria disparar a flag `volume_insuficiente`
+    // em assessViability, enquanto `null` significa "sem dados para julgar".
     const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
-    const cutoff4wMs = new Date(todayISO + "T00:00:00Z").getTime() - 4 * 7 * 86400000;
-    const vol4w = runs4w
-      .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= cutoff4wMs)
-      .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
-    const weeklyVolumeKm = runs4w.length > 0 ? Math.round((vol4w / 4) * 10) / 10 : null;
+    const weeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
