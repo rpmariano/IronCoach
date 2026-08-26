@@ -1,0 +1,38 @@
+{
+  "$schema": "https://code.claude.com/schemas/settings.schema.json",
+  "description": "Configuração Claude Code para o projeto IronCoach",
+  "hooks": {
+    "post_git_push": {
+      "description": "Invoca o agente orquestrador após push para avaliar se está pronto para deploy",
+      "actions": [
+        {
+          "type": "invoke_agent",
+          "agent": "quality_orchestrator",
+          "condition": "branch_is_dev_or_dev_antigravity",
+          "prompt": "O código foi enviado para a branch dev/dev-antigravity. Faz uma review completa do estado atual do projeto para verificar se está pronto para integração/produção. Modo: review completo."
+        }
+      ]
+    },
+    "pre_git_merge_to_master": {
+      "description": "Invoca o agente orquestrador antes de merge para master",
+      "actions": [
+        {
+          "type": "invoke_agent",
+          "agent": "quality_orchestrator",
+          "prompt": "Antes de fazer merge para master, executa uma review completa em modo pré-deploy. Verifica testes, segurança, PWA, acessibilidade, documentação e qualidade geral do código."
+        }
+      ]
+    }
+  },
+  "user_prompts": {
+    "orchestrator_triggers": [
+      "deploy",
+      "produção",
+      "master",
+      "push",
+      "pronto",
+      "acabei",
+      "podes rever"
+    ]
+  }
+}
