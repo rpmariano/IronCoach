@@ -76,7 +76,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
   });
 
   it('em falha, mostra aviso de demora (sem erro definitivo) e mantém o campo bloqueado', async () => {
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
       return profilesChain({ data: null, error: null });
@@ -103,7 +106,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
   });
 
   it('encontra a resposta por sondagem: substitui o aviso pela resposta real e destrava o campo', async () => {
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     let pollCount = 0;
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') {
@@ -151,7 +157,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
   });
 
   it('esgota a sondagem sem resposta: mostra erro final e destrava o campo', async () => {
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
       return profilesChain({ data: null, error: null });
@@ -195,7 +204,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
   it('trata o atleta pelo primeiro nome no aviso de demora, quando o perfil o tem', async () => {
     useAppStore.setState({ profile: { id: 'user-1', display_name: 'Patrícia Martins' } });
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
       return profilesChain({ data: null, error: null });
@@ -218,7 +230,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
   it('sem nome no perfil, recua para "atleta" no aviso de demora', async () => {
     useAppStore.setState({ profile: { id: 'user-1', display_name: null } });
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
       return profilesChain({ data: null, error: null });
@@ -242,7 +257,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     // agachamentos. Força cada extração de Math.random a devolver um índice
     // diferente do array WAITING_MESSAGES e confirma que o texto muda.
     useAppStore.setState({ profile: { id: 'user-1', display_name: null } });
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function' });
+    // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
+    // pedido pode legitimamente ainda estar em processamento no servidor —
+    // é o único caso em que a UI deve mostrar o aviso de demora e sondar.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
       return profilesChain({ data: null, error: null });
@@ -268,5 +286,63 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     randomSpy.mockRestore();
     expect(seenTexts.size).toBeGreaterThan(1);
+  });
+});
+
+// Regressão do bug reportado (bug-015-adjacent): o cliente mostrava o aviso
+// de "demora" (e sondava coach_messages durante até 3 minutos) mesmo quando
+// o pedido nunca chegou a sair — ex.: "Failed to send a request to the Edge
+// Function", uma falha de rede imediata, não um timeout. Ver isTimeout em
+// invokeEdgeFunctionWithTimeout (src/lib/supabase.js).
+describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    useAppStore.setState({
+      profile: { id: 'user-1' },
+      coachMessages: [],
+      coachLoading: false,
+      coachSuggestions: [],
+      coachPlans: [],
+      coachPlanItems: [],
+      coachGoalProposals: [],
+      coachIntent: null,
+      session: { user: { id: 'user-1' } },
+      setCoachIntent: (intent) => useAppStore.setState({ coachIntent: intent }),
+      reloadCoachPlans: vi.fn().mockResolvedValue([]),
+      reloadCoachGoalProposals: vi.fn().mockResolvedValue([]),
+      respondToPlan: vi.fn().mockResolvedValue(true),
+      respondToGoalProposal: vi.fn().mockResolvedValue(true),
+    });
+  });
+
+  it('mostra erro imediato (não o aviso de demora) e destrava logo o campo, sem sondar', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null,
+      error: 'Failed to send a request to the Edge Function',
+      isTimeout: false,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+
+    await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
+    // Não é o aviso de demora (não faz sentido esperar por algo que nunca
+    // vai chegar — o pedido nunca saiu).
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
+    // Campo destravado de imediato — sem os 45s+sondagem do outro caminho.
+    // O botão só fica ativo com texto por enviar (ver o mesmo padrão no
+    // teste de sondagem acima) — testa o destravar do coachLoading
+    // escrevendo de novo, não o estado "sem texto".
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
+    expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).not.toBeDisabled();
+    // Sem sondagem: nenhuma leitura a coach_messages foi despoletada.
+    expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
 });
