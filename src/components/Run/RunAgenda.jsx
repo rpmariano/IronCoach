@@ -248,11 +248,16 @@ export default function RunAgenda({ onClose }) {
             : null
         );
         setIsDirty(false);
+        setActivePage('hub');
       }
     } else {
       setDraft(EMPTY_DRAFT);
       setExperienceLevelCategoryKey(null);
       setIsDirty(false);
+      setActivePage('details');
+      setTimeout(() => {
+        scrollToRef.current(1, true);
+      }, 0);
     }
   }, [editingEventId, raceEvents]);
 
