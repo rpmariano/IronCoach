@@ -158,9 +158,18 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
    Deno e Vite) + regra de invalidação em `RunAgenda.jsx`: muda em silêncio a
    criar (`applyExperienceLevelInvalidation`), destaca para reconfirmação a
    editar (`experienceLevelStale`) — nunca apaga uma resposta já gravada.
-2. Motor de triagem (dois eixos + `min`) como fórmula partilhada em
-   `supabase/functions/_shared/formulas/`, com golden tests
-3. Proposta de nível na UI, com evidência à vista
+2. ✅ **Feito** (2026-08-27) — `assessRaceLevelTriage` em
+   `supabase/functions/_shared/formulas/raceLevelTriage.ts`: os dois eixos
+   (`bandTimeOnFeet`, `bandElevation`), a leitura de pico
+   (`secondHighestOfLast4Weeks`, 2.ª semana mais alta das últimas 4) e a
+   composição por `minLevel`. Vetor dourado (`raceLevelTriage.golden.json`)
+   com os cenários-chave, incluindo o caso motivador do bloco (motor
+   cardiovascular alto + D+ semanal quase nulo → `sub_iniciante`) e a
+   exclusão de rajada isolada. **Ainda não está ligado a nada** — puro,
+   sem consumidor no coach-chat nem na UI (é o próximo passo, #3).
+3. Proposta de nível na UI, com evidência à vista — consumir
+   `assessRaceLevelTriage` a partir de `getRacePrediction` (tempo previsto)
+   e das corridas/prova reais
 4. Tabela do help por categoria em `ExperienceLevelHelp.jsx` (`context`
    `'geral'`/`'prova'`, ver README do coach-knowledge)
 5. Campo de passadeira no registo de corrida (fecha a limitação 1)
