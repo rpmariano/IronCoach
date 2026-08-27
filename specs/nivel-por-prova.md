@@ -200,5 +200,36 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
    (2026-08-27): não corrige limitação nenhuma, ver "Passadeira — não é
    uma limitação deste sistema" acima. `runs` não tem, nem deve ganhar,
    opção de piso "passadeira" — treinos de passadeira são de ginásio.
-6. Ligar o motor ao `coach-chat` — a Carol também ver a proposta medida,
-   não só o formulário (RunAgenda)
+6. ✅ **Feito** (2026-08-27) — `buildRaceEventsContext` (`coach-chat/index.ts`)
+   calcula o NÍVEL MEDIDO por prova (mesmo `assessRaceLevelTriage`, com
+   `getRacePrediction` para o tempo previsto, sobre a janela de 30 dias que
+   `recentRuns` já carrega — cobre as 4 semanas rolantes do motor sem query
+   extra). Só entra no contexto quando avaliável; três frases fixas —
+   "bate certo com o declarado", "diverge do declarado (X)" com ⚠, ou "o
+   atleta ainda não declarou nível" — nunca o resultado bruto do motor.
+   Doutrina nova, "## Nível Medido pelo Histórico de Treino": não interromper
+   por confirmação, trazer a divergência quando fizer sentido no fluxo,
+   tratar `sub_iniciante` com o mesmo peso de ACWR em perigo, e nunca
+   "corrigir" o nível sozinha — só o atleta muda esse campo.
+
+   Bug apanhado ANTES de fechar (não em produção): a primeira versão do
+   `flattenedRuns` não incluía `distance_km`, que `getRacePrediction`
+   precisa para achar a corrida mais rápida — sem isso a previsão falhava
+   sempre (`predictedSeconds=0`) e a linha nunca aparecia. Só se detetou a
+   correr o código real antes de escrever os testes; nenhum valor foi
+   calculado à mão.
+
+   Nota honesta de divergência: `RaceLevelSuggestion.jsx` (formulário) usa o
+   histórico COMPLETO de corridas para a previsão de tempo (já carregado no
+   store); aqui usa-se só a janela de 30 dias que o resto do contexto já
+   carrega, para não acrescentar uma query pesada a TODAS as invocações do
+   `coach-chat`. Num atleta com o recorde relevante fora dessa janela, os
+   dois números podem divergir — aceite conscientemente, documentado, não
+   escondido.
+
+   Sem testes Vitest (é ficheiro Deno, fora do `include` de `vite.config.mjs`
+   de propósito — `jsr:` e `Deno.test` não compilam sob Vitest). 8 testes
+   Deno novos em `index.test.ts`, com os valores confirmados a correr
+   `getRacePrediction`/`assessRaceLevelTriage` reais antes de fixar — não
+   corridos neste ambiente (sem Deno instalado), mesma limitação já
+   registada nos commits anteriores desta sessão.
