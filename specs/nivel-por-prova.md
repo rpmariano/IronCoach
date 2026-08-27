@@ -114,30 +114,40 @@ Mudanças dentro da mesma categoria não invalidam (10 → 10,5 km não muda
 nada). Na criação, limpar o campo; **na edição, destacar para reconfirmação**
 em vez de limpar em silêncio.
 
+## Passadeira — não é uma limitação deste sistema
+
+As fontes (BLOCO 8, "Sugestão de otimização") propunham penalizar a 50% o D+
+obtido em passadeira, por eliminar a componente de descida (logo o dano
+excêntrico). **Decisão (2026-08-27, esclarecida pelo utilizador): não se
+aplica, por desenho do produto, não por limitação de dados.**
+
+`runs` é exclusivamente para corridas reais — `RunRegistration.jsx` só
+oferece piso `estrada` ou `trail` (nunca `passadeira`); é daí que
+`runs.details.elevation_gain_m` vem sempre. Um treino de passadeira, quando
+existe, é registado como treino de GINÁSIO (`workout_sessions`, via
+`GymRegistration.jsx`) — ex.: "treinei pernas, 20 min de passadeira a
+inclinação X" no campo `notes` (texto livre, nunca estruturado). Esse
+`notes` nunca alimenta `elevation_gain_m` nem entra no cálculo do motor de
+triagem, que só lê `runs`.
+
+Ou seja: `elevation_gain_m` de uma corrida É SEMPRE D+ real, por construção
+— não porque o validemos, mas porque não existe caminho no produto para lá
+chegar de outra forma. Não há campo a acrescentar nem penalização a
+implementar; a limitação não existe.
+
 ## Limitações conhecidas
 
-Documentadas, não resolvidas. Todas erram para o lado seguro exceto a
-primeira.
+Documentadas, não resolvidas. Erram para o lado seguro.
 
-**1. Passadeira não é detetável.** A doutrina pede que D+ obtido em passadeira
-conte a 50% (elimina a descida, logo o dano excêntrico). Não há campo em
-`runs.details` que o identifique — as chaves existentes são
-`avg_heart_rate_bpm`, `cadence_spm`, `calories_kcal`, `elevation_gain_m`,
-`race_type`, `recovery_seconds`, `splits`, `total_steps`, `vo2_max`,
-`warmup_minutes`. Sem esse campo, D+ de passadeira conta a 100%, o que
-**inflaciona o ICE e enfraquece o aviso** — falha na direção perigosa.
-Resolução: acrescentar um campo no registo de corrida. Até lá, a penalização
-não está ativa e isto tem de ser dito, não pressuposto.
-
-**2. D− não é guardado.** A simetria D+ ≈ D− não é simplificação escolhida, é
+**1. D− não é guardado.** A simetria D+ ≈ D− não é simplificação escolhida, é
 imposta pelos dados. Provas ponto-a-ponto predominantemente descendentes ficam
 sub-avaliadas — o pior caso para dano excêntrico.
 
-**3. Desacoplamento aeróbico (doutrina #6, Avançado)** exige FC e splits da
+**2. Desacoplamento aeróbico (doutrina #6, Avançado)** exige FC e splits da
 última prova. Existem em `details` (`avg_heart_rate_bpm` 60/62, `splits`
 11/62) mas só com importação de relógio. Tem de degradar com elegância.
 
-**4. Cap de ultra em gama.** A doutrina dá 10-14 h/semana para >50 km. O
+**3. Cap de ultra em gama.** A doutrina dá 10-14 h/semana para >50 km. O
 projeto usa o limite superior por convenção (`taper.ts`), mas aqui o superior
 é o **menos** conservador. Recomendado: 10 h.
 
@@ -186,4 +196,9 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
    `raceLevelTriage.ts`) em trail — com a banda de terreno da própria
    prova (`categorizeElevationRatio`) mostrada como contexto. Nunca uma
    cópia que possa divergir do que o motor de triagem realmente usa.
-5. Campo de passadeira no registo de corrida (fecha a limitação 1)
+5. ~~Campo de passadeira no registo de corrida~~ — **descartado**
+   (2026-08-27): não corrige limitação nenhuma, ver "Passadeira — não é
+   uma limitação deste sistema" acima. `runs` não tem, nem deve ganhar,
+   opção de piso "passadeira" — treinos de passadeira são de ginásio.
+6. Ligar o motor ao `coach-chat` — a Carol também ver a proposta medida,
+   não só o formulário (RunAgenda)

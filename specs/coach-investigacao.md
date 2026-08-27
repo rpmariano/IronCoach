@@ -2964,9 +2964,13 @@ o sistema impede a importação do perfil "Avançado" e trata-o como Iniciante
 de trail, bloqueando pacing agressivo e prescrevendo power hiking.
 
 **Penalização de passadeira** (proposta pelas fontes): D+ obtido em passadeira
-inclinada deve contar a 50%, porque elimina a componente de descida — prepara
-os pulmões e deixa os quadríceps vulneráveis. **Não implementável hoje**: ver
-limitações em [specs/nivel-por-prova.md](nivel-por-prova.md).
+inclinada deveria contar a 50%, porque elimina a componente de descida —
+prepara os pulmões e deixa os quadríceps vulneráveis. **Não se aplica a este
+produto** (esclarecido pelo utilizador, 2026-08-27): `runs` só regista piso
+estrada/trail — nunca passadeira; um treino de passadeira é registado como
+treino de GINÁSIO, em texto livre, e nunca alimenta `elevation_gain_m`. O
+D+ de uma corrida é sempre D+ real, por construção. Ver "Passadeira — não é
+uma limitação deste sistema" em [specs/nivel-por-prova.md](nivel-por-prova.md).
 
 ## Decisões tomadas sobre as respostas (2026-08-27)
 
