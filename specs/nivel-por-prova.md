@@ -167,9 +167,16 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
    cardiovascular alto + D+ semanal quase nulo → `sub_iniciante`) e a
    exclusão de rajada isolada. **Ainda não está ligado a nada** — puro,
    sem consumidor no coach-chat nem na UI (é o próximo passo, #3).
-3. Proposta de nível na UI, com evidência à vista — consumir
-   `assessRaceLevelTriage` a partir de `getRacePrediction` (tempo previsto)
-   e das corridas/prova reais
+3. ✅ **Feito** (2026-08-27) — `RaceLevelSuggestion.jsx`, ligado ao campo
+   de nível em `RunAgenda.jsx`. Consome `getRacePrediction` (mesma
+   resolução de nível que RaceHubView/RunDashboard já usam, para não
+   voltar a divergir entre ecrãs) e `assessRaceLevelTriage`, e mostra a
+   evidência antes do veredicto: "pelos teus últimos treinos (longo de
+   1h40, 620 m D+/semana), classificas-te como Médio". Três estados —
+   propõe com botão "Usar nível" quando diverge do declarado, confirma sem
+   ação quando bate certo, avisa com firmeza (sem oferecer um nível de um
+   clique) quando `sub_iniciante`. Continua proposta, nunca substituição —
+   a auto-declaração decide sempre.
 4. Tabela do help por categoria em `ExperienceLevelHelp.jsx` (`context`
    `'geral'`/`'prova'`, ver README do coach-knowledge)
 5. Campo de passadeira no registo de corrida (fecha a limitação 1)

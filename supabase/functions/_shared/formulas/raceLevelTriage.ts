@@ -167,6 +167,11 @@ export interface RaceLevelTriageInput {
 }
 
 export interface RaceLevelTriageResult {
+  /** Leitura de pico (ver secondHighestOfLast4Weeks) — null se não avaliável. */
+  peakTimeOnFeetSeconds: number | null;
+  /** Idem, em D+. Calculado independentemente de a prova ter D+ ou não — é
+   * só o pico do ATLETA; bandElevation é que decide se se aplica. */
+  peakElevationM: number | null;
   timeOnFeetBand: LevelBand | null;
   elevationBand: LevelBand | null;
   /** min(timeOnFeetBand, elevationBand) — null se nenhum eixo for avaliável. */
@@ -194,5 +199,12 @@ export function assessRaceLevelTriage(input: RaceLevelTriageInput): RaceLevelTri
   const bands = [timeOnFeetBand, elevationBand].filter((b): b is LevelBand => b != null);
   const level = bands.length > 0 ? bands.reduce(minLevel) : null;
 
-  return { timeOnFeetBand, elevationBand, level, weeksWithData };
+  return {
+    peakTimeOnFeetSeconds: peakTimeOnFeet,
+    peakElevationM: peakElevation,
+    timeOnFeetBand,
+    elevationBand,
+    level,
+    weeksWithData,
+  };
 }

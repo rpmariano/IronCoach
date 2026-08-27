@@ -2,55 +2,82 @@
   {
     "fn": "bandTimeOnFeet",
     "name": "90% exato do tempo previsto — piso de Básico (fechado em baixo)",
-    "input": { "weeklySeconds": 3240, "raceTimeSecondsPrevisto": 3600 },
+    "input": {
+      "weeklySeconds": 3240,
+      "raceTimeSecondsPrevisto": 3600
+    },
     "expect": "basico"
   },
   {
     "fn": "bandTimeOnFeet",
     "name": "pouco abaixo de 70% — ainda sub_iniciante",
-    "input": { "weeklySeconds": 2519, "raceTimeSecondsPrevisto": 3600 },
+    "input": {
+      "weeklySeconds": 2519,
+      "raceTimeSecondsPrevisto": 3600
+    },
     "expect": "sub_iniciante"
   },
   {
     "fn": "bandTimeOnFeet",
     "name": "140% exato — piso de Avançado",
-    "input": { "weeklySeconds": 5040, "raceTimeSecondsPrevisto": 3600 },
+    "input": {
+      "weeklySeconds": 5040,
+      "raceTimeSecondsPrevisto": 3600
+    },
     "expect": "avancado"
   },
   {
     "fn": "bandTimeOnFeet",
     "name": "sem leitura de pico (não avaliável) — null",
-    "input": { "weeklySeconds": null, "raceTimeSecondsPrevisto": 3600 },
+    "input": {
+      "weeklySeconds": null,
+      "raceTimeSecondsPrevisto": 3600
+    },
     "expect": null
   },
   {
     "fn": "bandTimeOnFeet",
     "name": "sem previsão de tempo da prova — null",
-    "input": { "weeklySeconds": 1000, "raceTimeSecondsPrevisto": 0 },
+    "input": {
+      "weeklySeconds": 1000,
+      "raceTimeSecondsPrevisto": 0
+    },
     "expect": null
   },
   {
     "fn": "bandElevation",
     "name": "30% exato do D+ da prova — piso de Iniciante",
-    "input": { "weeklyElevationM": 300, "raceElevationM": 1000 },
+    "input": {
+      "weeklyElevationM": 300,
+      "raceElevationM": 1000
+    },
     "expect": "iniciante"
   },
   {
     "fn": "bandElevation",
     "name": "100% exato — piso de Avançado",
-    "input": { "weeklyElevationM": 1500, "raceElevationM": 1500 },
+    "input": {
+      "weeklyElevationM": 1500,
+      "raceElevationM": 1500
+    },
     "expect": "avancado"
   },
   {
     "fn": "bandElevation",
     "name": "20% do D+ da prova — abaixo do piso de Iniciante",
-    "input": { "weeklyElevationM": 300, "raceElevationM": 1500 },
+    "input": {
+      "weeklyElevationM": 300,
+      "raceElevationM": 1500
+    },
     "expect": "sub_iniciante"
   },
   {
     "fn": "bandElevation",
     "name": "prova em estrada (D+ nulo) — eixo desligado",
-    "input": { "weeklyElevationM": 300, "raceElevationM": 0 },
+    "input": {
+      "weeklyElevationM": 300,
+      "raceElevationM": 0
+    },
     "expect": null
   },
   {
@@ -61,13 +88,36 @@
       "raceTimeSecondsPrevisto": 3600,
       "raceElevationM": 0,
       "runs": [
-        { "date": "2026-08-25", "duration_seconds": 3600, "elevation_gain_m": 0 },
-        { "date": "2026-08-18", "duration_seconds": 3300, "elevation_gain_m": 0 },
-        { "date": "2026-08-11", "duration_seconds": 3400, "elevation_gain_m": 0 },
-        { "date": "2026-08-04", "duration_seconds": 3200, "elevation_gain_m": 0 }
+        {
+          "date": "2026-08-25",
+          "duration_seconds": 3600,
+          "elevation_gain_m": 0
+        },
+        {
+          "date": "2026-08-18",
+          "duration_seconds": 3300,
+          "elevation_gain_m": 0
+        },
+        {
+          "date": "2026-08-11",
+          "duration_seconds": 3400,
+          "elevation_gain_m": 0
+        },
+        {
+          "date": "2026-08-04",
+          "duration_seconds": 3200,
+          "elevation_gain_m": 0
+        }
       ]
     },
-    "expect": { "timeOnFeetBand": "basico", "elevationBand": null, "level": "basico", "weeksWithData": 4 }
+    "expect": {
+      "peakTimeOnFeetSeconds": 3400,
+      "peakElevationM": 0,
+      "timeOnFeetBand": "basico",
+      "elevationBand": null,
+      "level": "basico",
+      "weeksWithData": 4
+    }
   },
   {
     "fn": "assessRaceLevelTriage",
@@ -77,13 +127,36 @@
       "raceTimeSecondsPrevisto": 4000,
       "raceElevationM": 500,
       "runs": [
-        { "date": "2026-08-25", "duration_seconds": 5000, "elevation_gain_m": 550 },
-        { "date": "2026-08-18", "duration_seconds": 4800, "elevation_gain_m": 500 },
-        { "date": "2026-08-11", "duration_seconds": 4900, "elevation_gain_m": 520 },
-        { "date": "2026-08-04", "duration_seconds": 4700, "elevation_gain_m": 480 }
+        {
+          "date": "2026-08-25",
+          "duration_seconds": 5000,
+          "elevation_gain_m": 550
+        },
+        {
+          "date": "2026-08-18",
+          "duration_seconds": 4800,
+          "elevation_gain_m": 500
+        },
+        {
+          "date": "2026-08-11",
+          "duration_seconds": 4900,
+          "elevation_gain_m": 520
+        },
+        {
+          "date": "2026-08-04",
+          "duration_seconds": 4700,
+          "elevation_gain_m": 480
+        }
       ]
     },
-    "expect": { "timeOnFeetBand": "medio", "elevationBand": "avancado", "level": "medio", "weeksWithData": 4 }
+    "expect": {
+      "peakTimeOnFeetSeconds": 4900,
+      "peakElevationM": 520,
+      "timeOnFeetBand": "medio",
+      "elevationBand": "avancado",
+      "level": "medio",
+      "weeksWithData": 4
+    }
   },
   {
     "fn": "assessRaceLevelTriage",
@@ -93,13 +166,36 @@
       "raceTimeSecondsPrevisto": 5000,
       "raceElevationM": 1500,
       "runs": [
-        { "date": "2026-08-25", "duration_seconds": 7200, "elevation_gain_m": 60 },
-        { "date": "2026-08-18", "duration_seconds": 7000, "elevation_gain_m": 50 },
-        { "date": "2026-08-11", "duration_seconds": 7100, "elevation_gain_m": 55 },
-        { "date": "2026-08-04", "duration_seconds": 6900, "elevation_gain_m": 45 }
+        {
+          "date": "2026-08-25",
+          "duration_seconds": 7200,
+          "elevation_gain_m": 60
+        },
+        {
+          "date": "2026-08-18",
+          "duration_seconds": 7000,
+          "elevation_gain_m": 50
+        },
+        {
+          "date": "2026-08-11",
+          "duration_seconds": 7100,
+          "elevation_gain_m": 55
+        },
+        {
+          "date": "2026-08-04",
+          "duration_seconds": 6900,
+          "elevation_gain_m": 45
+        }
       ]
     },
-    "expect": { "timeOnFeetBand": "avancado", "elevationBand": "sub_iniciante", "level": "sub_iniciante", "weeksWithData": 4 }
+    "expect": {
+      "peakTimeOnFeetSeconds": 7100,
+      "peakElevationM": 55,
+      "timeOnFeetBand": "avancado",
+      "elevationBand": "sub_iniciante",
+      "level": "sub_iniciante",
+      "weeksWithData": 4
+    }
   },
   {
     "fn": "assessRaceLevelTriage",
@@ -109,10 +205,21 @@
       "raceTimeSecondsPrevisto": 4000,
       "raceElevationM": 500,
       "runs": [
-        { "date": "2026-08-25", "duration_seconds": 5000, "elevation_gain_m": 500 }
+        {
+          "date": "2026-08-25",
+          "duration_seconds": 5000,
+          "elevation_gain_m": 500
+        }
       ]
     },
-    "expect": { "timeOnFeetBand": null, "elevationBand": null, "level": null, "weeksWithData": 1 }
+    "expect": {
+      "peakTimeOnFeetSeconds": null,
+      "peakElevationM": null,
+      "timeOnFeetBand": null,
+      "elevationBand": null,
+      "level": null,
+      "weeksWithData": 1
+    }
   },
   {
     "fn": "assessRaceLevelTriage",
@@ -122,11 +229,30 @@
       "raceTimeSecondsPrevisto": 4000,
       "raceElevationM": 500,
       "runs": [
-        { "date": "2026-08-25", "duration_seconds": 20000, "elevation_gain_m": 3000 },
-        { "date": "2026-08-18", "duration_seconds": 4000, "elevation_gain_m": 400 },
-        { "date": "2026-08-11", "duration_seconds": 3800, "elevation_gain_m": 380 }
+        {
+          "date": "2026-08-25",
+          "duration_seconds": 20000,
+          "elevation_gain_m": 3000
+        },
+        {
+          "date": "2026-08-18",
+          "duration_seconds": 4000,
+          "elevation_gain_m": 400
+        },
+        {
+          "date": "2026-08-11",
+          "duration_seconds": 3800,
+          "elevation_gain_m": 380
+        }
       ]
     },
-    "expect": { "timeOnFeetBand": "basico", "elevationBand": "medio", "level": "basico", "weeksWithData": 3 }
+    "expect": {
+      "peakTimeOnFeetSeconds": 4000,
+      "peakElevationM": 400,
+      "timeOnFeetBand": "basico",
+      "elevationBand": "medio",
+      "level": "basico",
+      "weeksWithData": 3
+    }
   }
 ]

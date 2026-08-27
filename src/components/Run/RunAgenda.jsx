@@ -10,6 +10,7 @@ import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import RaceHubView from './RaceHubView';
+import RaceLevelSuggestion from './RaceLevelSuggestion';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -298,6 +299,19 @@ export default function RunAgenda({ onClose }) {
     const nextKey = raceLevelCategoryKey(next.race_type, parseFormNumber(next.distance_km), parseFormNumber(next.elevation_gain_m));
     if (!nextKey || nextKey === prevKey) return next;
     return { ...next, experience_level: '' };
+  };
+
+  // Escolha do nível — pelo <select> ou pelo botão "Usar nível" de
+  // RaceLevelSuggestion, é sempre a mesma coisa: fixa o valor e confirma a
+  // categoria ATUAL como a que este nível responde, desligando o aviso de
+  // reconfirmação (experienceLevelStale) se estivesse ligado.
+  const handleChooseExperienceLevel = (level) => {
+    updateDraft('experience_level', level);
+    setExperienceLevelCategoryKey(
+      level
+        ? raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m))
+        : null
+    );
   };
 
   // "Obter do site" — a editar uma prova já gravada, usa o modo
@@ -795,18 +809,7 @@ export default function RunAgenda({ onClose }) {
               >
                 <select
                   value={draft.experience_level}
-                  onChange={e => {
-                    const level = e.target.value;
-                    updateDraft('experience_level', level);
-                    // Confirma a categoria ATUAL como a que este nível
-                    // responde — desliga o aviso de reconfirmação, se
-                    // estivesse ligado (ver experienceLevelStale abaixo).
-                    setExperienceLevelCategoryKey(
-                      level
-                        ? raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m))
-                        : null
-                    );
-                  }}
+                  onChange={e => handleChooseExperienceLevel(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
                 >
                   <option value="">Escolhe...</option>
@@ -823,6 +826,18 @@ export default function RunAgenda({ onClose }) {
                     <span>Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.</span>
                   </p>
                 )}
+                {/* Nível medido a partir do histórico de treino — proposta,
+                    nunca substituição (Bloco 8, specs/nivel-por-prova.md). */}
+                <RaceLevelSuggestion
+                  raceType={draft.race_type}
+                  distanceKm={parseFormNumber(draft.distance_km)}
+                  elevationGainM={parseFormNumber(draft.elevation_gain_m)}
+                  declaredLevel={draft.experience_level}
+                  profile={profile}
+                  runs={runs}
+                  todayISO={todayIso}
+                  onUseLevel={handleChooseExperienceLevel}
+                />
               </ExperienceLevelHelp>
 
               {/* Prioridade da prova */}
