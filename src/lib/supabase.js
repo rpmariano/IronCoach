@@ -28,7 +28,18 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
 }
 
 /**
- * Invoca uma Edge Function do Supabase garantindo um tempo limite (timeoutMs)
+ * Invoca uma Edge Function do Supabase garantindo um tempo limite (timeoutMs).
+ *
+ * O erro devolvido vem sempre acompanhado de `isTimeout`: só é `true` quando
+ * o PRÓPRIO CLIENTE desistiu de esperar (AbortError) — nesse caso o pedido
+ * pode legitimamente ainda estar em processamento no servidor (ver comentário
+ * grande sobre POLL_MAX_MS em Coach.jsx), e vale a pena aguardar/sondar.
+ * Qualquer outro erro (falha de rede antes de o pedido sequer sair — ex.:
+ * "Failed to send a request to the Edge Function" — ou um erro devolvido
+ * pelo próprio servidor) significa que NÃO há nada em curso para esperar;
+ * tratá-lo como se fosse um timeout mostra ao atleta um aviso de "demora"
+ * enganador (a resposta nunca vai chegar) e o mantém à espera até 3 minutos
+ * por nada.
  */
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
   const controller = new AbortController();
@@ -52,7 +63,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       }
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
       logAppEvent('error', fnName, detailedMsg || 'Erro na execução', { fnName });
-      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.' };
+      // O servidor respondeu (mesmo que com erro) — não há timeout nem
+      // processamento em curso a aguardar.
+      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.', isTimeout: false };
     }
 
     if (data?.usage) {
@@ -65,10 +78,13 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     if (err.name === 'AbortError') {
       console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
       logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
-      return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.' };
+      return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true };
     }
+    // Falha antes/sem resposta do servidor (rede, DNS, CORS...) — ex.:
+    // "Failed to send a request to the Edge Function". O pedido nunca
+    // chegou a ser processado, por isso NÃO é um timeout.
     console.error(`[EdgeFunction:${fnName}] Exceção não tratada:`, err);
     logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
-    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.' };
+    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false };
   }
 }

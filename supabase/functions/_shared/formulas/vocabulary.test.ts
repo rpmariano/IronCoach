@@ -6,6 +6,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
   normalizeGender,
   categorizeDistance,
+  categorizeElevationRatio,
   isExperienceLevel,
   isRacePriority,
   MIN_PREP_WEEKS,
@@ -69,4 +70,33 @@ Deno.test("MIN_PREP_WEEKS / MIN_VOLUME_KM: todos os 4 níveis × 5 categorias es
       assert(cat in MIN_VOLUME_KM[level]);
     }
   }
+});
+
+Deno.test("categorizeElevationRatio classifica pelos exemplos da doutrina (Bloco 8 #1/#2)", () => {
+  assertEquals(categorizeElevationRatio(20, 400), "rolante");       // 20 m/km
+  assertEquals(categorizeElevationRatio(30, 1000), "ondulado");     // 33,3 m/km
+  assertEquals(categorizeElevationRatio(40, 2500), "montanha");     // 62,5 m/km
+  assertEquals(categorizeElevationRatio(20, 2000), "alta_montanha"); // 100 m/km
+});
+
+Deno.test("categorizeElevationRatio: fronteiras exatas pertencem à banda seguinte", () => {
+  assertEquals(categorizeElevationRatio(10, 249), "rolante");
+  assertEquals(categorizeElevationRatio(10, 250), "ondulado");      // 25 m/km exato
+  assertEquals(categorizeElevationRatio(10, 499), "ondulado");
+  assertEquals(categorizeElevationRatio(10, 500), "montanha");      // 50 m/km exato
+  assertEquals(categorizeElevationRatio(10, 799), "montanha");
+  assertEquals(categorizeElevationRatio(10, 800), "alta_montanha"); // 80 m/km exato
+});
+
+Deno.test("categorizeElevationRatio devolve null sem distância, D+ inválido ou negativo", () => {
+  assertEquals(categorizeElevationRatio(null, 500), null);
+  assertEquals(categorizeElevationRatio(0, 500), null);
+  assertEquals(categorizeElevationRatio(10, null), null);
+  assertEquals(categorizeElevationRatio(10, undefined), null);
+  assertEquals(categorizeElevationRatio(10, NaN), null);
+  assertEquals(categorizeElevationRatio(10, -5), null);
+});
+
+Deno.test("categorizeElevationRatio: D+ zero é Rolante (prova plana), não null", () => {
+  assertEquals(categorizeElevationRatio(10, 0), "rolante");
 });

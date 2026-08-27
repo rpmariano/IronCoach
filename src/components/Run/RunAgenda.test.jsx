@@ -219,4 +219,89 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
     expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
   });
+
+  // Ver specs/nivel-por-prova.md, "Invalidação do nível declarado" — tipo,
+  // distância e D+ são os três antecessores da pergunta de nível; mudar de
+  // categoria depois de já ter respondido invalida a resposta.
+  describe('invalidação do nível ao mudar tipo/distância/D+', () => {
+    // Ordem estável dos <select> em "Detalhes da prova": Tipo, Distância,
+    // Nível, Prioridade — o D+ é <input type="number">, não combobox, por
+    // isso não desloca os índices entre estrada e trail.
+    function comboboxes() {
+      return screen.getAllByRole('combobox');
+    }
+
+    it('prova NOVA: mudar a distância de categoria limpa o nível em silêncio', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      // Distância por omissão é '10' (10k) — escolhe o nível para essa categoria.
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      expect(comboboxes()[2].value).toBe('medio');
+
+      // Muda para meia maratona — categoria diferente (10k → meia).
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+
+      expect(comboboxes()[2].value).toBe('');
+    });
+
+    it('prova NOVA: mudar a distância DENTRO da mesma categoria não limpa o nível', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      // 8 km continua categoria "10k" (categorizeDistance: km ≤ 11 → 10k).
+      fireEvent.change(comboboxes()[1], { target: { value: '8' } });
+
+      expect(comboboxes()[2].value).toBe('medio');
+    });
+
+    it('prova NOVA, trail: mudar o D+ de banda limpa o nível em silêncio', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[0], { target: { value: 'trail' } });
+      // 10 km com 200 m D+ → 20 m/km → banda "rolante".
+      fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '200' } });
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      expect(comboboxes()[2].value).toBe('medio');
+
+      // 10 km com 600 m D+ → 60 m/km → banda "montanha": categoria mudou.
+      fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '600' } });
+
+      expect(comboboxes()[2].value).toBe('');
+    });
+
+    it('a EDITAR uma prova gravada: mudar a distância NÃO limpa o nível, só avisa para reconfirmar', () => {
+      useAppStore.setState({ editingRaceId: 'race-1' }); // EXISTING_RACE: estrada, 10 km, nível "medio"
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      expect(comboboxes()[2].value).toBe('medio');
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } }); // 10k → meia
+
+      // Não apaga uma resposta já gravada — só destaca para reconfirmação.
+      expect(comboboxes()[2].value).toBe('medio');
+      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+    });
+
+    it('a EDITAR: reconfirmar o nível (reescolher no select) remove o aviso', () => {
+      useAppStore.setState({ editingRaceId: 'race-1' });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+
+      // O próprio atleta reconfirma o nível para a categoria atual (meia).
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+    });
+  });
 });

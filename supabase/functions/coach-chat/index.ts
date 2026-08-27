@@ -30,8 +30,9 @@ import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
-import { getRecommendedPrepWeeks } from "../_shared/formulas/racePlanning.ts";
+import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction } from "../_shared/formulas/racePlanning.ts";
 import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
+import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
@@ -1827,6 +1828,14 @@ const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
   iniciante: "Iniciante", basico: "Básico", medio: "Médio", avancado: "Avançado",
 };
 
+// "sub_iniciante" é um estado próprio do motor de triagem (Bloco 8,
+// raceLevelTriage.ts) — não uma chave de EXPERIENCE_LEVELS, por isso não
+// entra no mapa acima. Junta os dois para rotular qualquer LevelBand.
+function levelBandLabel(band: string): string {
+  if (band === "sub_iniciante") return "Abaixo de Iniciante";
+  return EXPERIENCE_LEVEL_LABELS[band] || band;
+}
+
 // Espelha DIETARY_RESTRICTIONS em src/utils/diet.js. Duplicado de propósito:
 // o bundle de deploy da Edge Function não leva ficheiros de fora da sua
 // pasta, por isso importar do cliente partiria em produção. Se mexeres num,
@@ -1991,13 +2000,34 @@ function formatHms(totalSeconds: number): string {
 // Inclui explicitamente "dias até à prova" para o modelo não ter de calcular
 // datas por conta própria.
 // deno-lint-ignore no-explicit-any
-function buildRaceEventsContext(
+export function buildRaceEventsContext(
   events: any[],
   todayISO: string,
   weeklyVolumeKm: number | null,
   profileLevel: string | null,
+  // deno-lint-ignore no-explicit-any
+  runs: any[],
 ): string | null {
   if (events.length === 0) return null;
+  // Mesma janela de 30 dias que o resto do contexto já usa (recentRuns) —
+  // cobre as 4 semanas rolantes que o motor de triagem precisa (Bloco 8)
+  // sem uma query extra. Nota honesta: RaceLevelSuggestion.jsx, no
+  // formulário, usa o histórico COMPLETO para a previsão de tempo (é o que
+  // já estava carregado no store) — aqui é só 30 dias, por isso o número
+  // pode divergir num atleta com um recorde antigo fora desta janela. Uma
+  // query de histórico completo aqui seria mais uma chamada à BD em TODAS
+  // as invocações do coach-chat; o atleta já tem get_running_history para
+  // ir buscar mais para trás se precisar.
+  const flattenedRuns = (runs || []).map((r) => ({
+    date: r.date,
+    // distance_km é o que sharedGetRacePrediction (RaceRun) precisa para
+    // achar a corrida mais rápida e prever o tempo; sem isto a previsão
+    // falha sempre (predictedSeconds=0) e a linha de nível medido nunca
+    // aparece — apanhado a verificar antes de fechar, não em produção.
+    distance_km: r.distance_km,
+    duration_seconds: r.duration_seconds,
+    elevation_gain_m: r.details?.elevation_gain_m ?? null,
+  }));
   const today = new Date(todayISO + "T00:00:00Z");
   const lines = events.map((e) => {
     const eventDate = new Date(e.date + "T00:00:00Z");
@@ -2044,7 +2074,44 @@ function buildRaceEventsContext(
       return `⚠ OBJETIVO_INVIAVEL: ${f}`;
     });
     const viabSuffix = viabLines.length > 0 ? `\n  ${viabLines.join("\n  ")}` : "";
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}`;
+
+    // Bloco 8 — Nível medido pelo histórico de treino (mesmo motor que
+    // RaceLevelSuggestion.jsx usa no formulário; ver
+    // specs/nivel-por-prova.md). Só entra no contexto quando é AVALIÁVEL —
+    // sem previsão de tempo (zero corridas) ou menos de 3 das últimas 4
+    // semanas com registo, não força cálculo nenhum: propor "sub_iniciante"
+    // com dados quase nulos daria um alarme falso, pior que ficar calado.
+    let triageSuffix = "";
+    if (e.distance_km) {
+      const raceForPrediction = {
+        distance_km: e.distance_km,
+        elevation_gain_m: e.race_type === "trail" ? e.elevation_gain_m : null,
+        race_type: e.race_type,
+        experience_level: effectiveLevel,
+      };
+      const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, flattenedRuns);
+      if (prediction.predictedSeconds > 0) {
+        const raceElevationM = e.race_type === "trail" && e.elevation_gain_m > 0 ? e.elevation_gain_m : 0;
+        const triage = assessRaceLevelTriage({
+          runs: flattenedRuns,
+          todayISO,
+          raceTimeSecondsPrevisto: prediction.predictedSeconds,
+          raceElevationM,
+        });
+        if (triage.level != null) {
+          const measuredLabel = levelBandLabel(triage.level);
+          if (!e.experience_level) {
+            triageSuffix = `\n  NÍVEL MEDIDO pelo histórico de treino (últimas 4 semanas): ${measuredLabel} — o atleta ainda não declarou nível nesta prova`;
+          } else if (triage.level === e.experience_level) {
+            triageSuffix = `\n  NÍVEL MEDIDO pelo histórico de treino: ${measuredLabel} (bate certo com o declarado)`;
+          } else {
+            triageSuffix = `\n  ⚠ NÍVEL MEDIDO pelo histórico de treino: ${measuredLabel} — diverge do declarado (${EXPERIENCE_LEVEL_LABELS[e.experience_level] || e.experience_level})`;
+          }
+        }
+      }
+    }
+
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${triageSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
@@ -2638,6 +2705,7 @@ export function buildSystemInstruction(
     `  2. MEMÓRIA DO ATLETA — factos duradouros que registaste (preferências, limitações, disponibilidade). Valem SEMPRE, mesmo que ninguém os mencione há semanas. Aplica-os a TODAS as propostas sem esperar que ele repita.\n` +
     `  3. HISTÓRICO DA CONVERSA — só as últimas mensagens. Serve para saber o que está a acontecer AGORA (o que ele acabou de pedir, decidir ou recusar). NÃO é fonte fiável para factos antigos: se algo importante só existe aí, provavelmente já caiu fora da janela.\n` +
   `- Por isso: assim que o atleta revelar um facto duradouro, GUARDA-O com save_coach_note em vez de contares com o histórico para o recordar. É o que impede que voltes a propor daqui a duas semanas exatamente o que ele já disse que não quer.\n` +
+    `- Por isso também: seja porque o atleta AFIRMA algo que registou/criou (ex.: "tenho uma prova nova", "acabei de meter o treino de ontem"), seja porque PERGUNTA diretamente por algo que pode já estar registado (ex.: "qual é a minha próxima prova?", "quanto pesei da última vez?"), o primeiro passo é sempre o mesmo: verificar se já consta nos DADOS ESTRUTURADOS acima (uma prova, um treino, uma refeição, uma avaliação corporal, um par de sapatilhas...) — a gravação na BD acontece antes da mensagem chegar até ti, por isso os dados já lá estão quase sempre, em qualquer um dos dois casos. Responde ou usa o que já lá está; só perguntes o que realmente não conste no contexto. Tratar uma pergunta ou afirmação sobre dados existentes como se fosse a primeira vez que o tema surge — pedindo de novo o que já está à vista — é o erro mais visível que podes cometer aos olhos dele.\n` +
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
@@ -2804,6 +2872,11 @@ export function buildSystemInstruction(
     `- Últimos 2-3 dias (>10 km): aumentar hidratos, intensidade quase zero.\n` +
     `- Dia da prova / dia seguinte: pergunta como correu, parabeniza — sem impor novo plano.\n` +
     `Não forces este tópico em perguntas não relacionadas — menciona só quando for relevante.\n\n` +
+    `## Nível Medido pelo Histórico de Treino\n` +
+    `Quando uma prova trouxer "NÍVEL MEDIDO pelo histórico de treino" no contexto, é o mesmo motor que o formulário da Agenda de Provas usa (Bloco 8) — não é opinião tua, é medido a partir das últimas 4 semanas de treino do atleta. Regras:\n` +
+    `- Sem "⚠" (bate certo ou o atleta ainda não declarou): não precisas de trazer o assunto — é só confirmação, mencionar sempre seria ruído.\n` +
+    `- Com "⚠" (diverge do declarado): traz isto à conversa quando fizer sentido no fluxo (ex.: ao falar de plano, taper, ou se o atleta mencionar a prova) — não é preciso interromper com um alerta isolado. Explica com uma frase o que o histórico mostra e o que o nível declarado pressupõe; nunca "corrijas" o nível sozinha — é um campo que só o atleta muda, no formulário da prova.\n` +
+    `- "Abaixo de Iniciante" é o caso mais sério — a preparação atual não chega nem para o piso mais baixo desta prova. Trata como REGRA CRÍTICA DE SEGURANÇA (mesmo peso que ACWR em perigo): fala com firmeza, sem alarmismo, e sugere concretamente reduzir o objetivo, despromover a prova a Secundária/Treino (menos taper, menos pressão), ou reforçar a preparação restante — nunca finjas que "Iniciante" seria um nível seguro para oferecer, porque não é o que os dados mostram.\n\n` +
     // ── Hidratação ────────────────────────────────────────────────────────────
     `## Hidratação\n` +
     `Tem em conta o "Água hoje" no contexto ao dar conselhos de treino ou nutrição. ` +
@@ -3608,7 +3681,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
-      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, experience_level, race_priority")
+      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -3627,6 +3700,7 @@ async function handler(req: Request): Promise<Response> {
       todayISO,
       weeklyVolumeKm,
       (profile?.experience_level as string | null) ?? null,
+      recentRuns || [],
     );
 
     // ── Bloco 5 — Avaliações corporais (body_assessments) ───────────────

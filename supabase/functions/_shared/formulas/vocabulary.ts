@@ -93,3 +93,38 @@ export const MIN_VOLUME_KM: Record<string, Record<RaceDistanceCategory, number>>
   medio:     { '5k': 25, '10k': 35, meia: 45, maratona: 60, ultra: 70 },
   avancado:  { '5k': 35, '10k': 45, meia: 60, maratona: 75, ultra: 90 },
 };
+
+// ─── Bloco 8 #1/#2 — Banda de terreno de trail (rácio D+/km) ────────────
+// Fronteiras da doutrina (src/coach-knowledge/08-nivel-por-prova-trail.md,
+// specs/coach-investigacao.md BLOCO 8 #1/#2). O rácio D+/km — não a
+// distância nem o D+ absoluto — é o eixo que separa exigências de terreno
+// realmente distintas, porque um trail de 10 km com 1000 m D+ e uma
+// ultra de 80 km quase plana pedem preparações muito diferentes apesar de
+// nenhum dos dois eixos isolados o revelar.
+//
+// Convenção de fronteira: cada banda inclui o limite inferior e exclui o
+// superior — os valores 25/50/80 pertencem à banda SEGUINTE. A doutrina
+// escreve "< 25" para a Rolante e depois "25 a 50" para a Ondulada; lida
+// literalmente, só faz sentido com esta convenção (o inverso duplicaria o
+// valor 25 em duas bandas). Ao contrário de categorizeDistance, que arruma
+// o limite na banda de baixo — as duas fórmulas não têm de partilhar
+// convenção, cada uma decide pela redação da sua própria doutrina.
+export type ElevationRatioCategory = 'rolante' | 'ondulado' | 'montanha' | 'alta_montanha';
+
+export function categorizeElevationRatio(
+  distanceKm: number | null | undefined,
+  elevationGainM: number | null | undefined,
+): ElevationRatioCategory | null {
+  // Number(null) é 0 (não NaN) — sem este check explícito, "sem D+
+  // registado" era lido como "0 m de D+", classificando sempre Rolante em
+  // vez de devolver "não avaliável".
+  if (elevationGainM == null) return null;
+  const km = Number(distanceKm);
+  const dPlus = Number(elevationGainM);
+  if (!(km > 0) || !Number.isFinite(dPlus) || dPlus < 0) return null;
+  const ratio = dPlus / km;
+  if (ratio < 25) return 'rolante';
+  if (ratio < 50) return 'ondulado';
+  if (ratio < 80) return 'montanha';
+  return 'alta_montanha';
+}

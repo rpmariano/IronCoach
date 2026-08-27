@@ -98,12 +98,16 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
-        await handleAsyncFallback(requestStartedAt);
+        if (isTimeout) {
+          await handleAsyncFallback(requestStartedAt);
+        } else {
+          handleImmediateFailure();
+        }
         return;
       }
 
@@ -358,6 +362,23 @@ export default function Coach() {
     setCoachLoading(false);
   };
 
+  // Chamado quando invokeEdgeFunctionWithTimeout falha com isTimeout=false —
+  // ou seja, o pedido nunca chegou a ser processado no servidor (falha de
+  // rede, DNS, CORS...) ou o servidor respondeu já com erro. Ao contrário de
+  // handleAsyncFallback, NÃO há nada em curso para esperar: sondar durante
+  // até 3 minutos só atrasaria uma mensagem que já sabemos de antemão que
+  // nunca vai chegar, e o aviso de "demora" (pensado para pedidos lentos mas
+  // em curso) seria enganador aqui. Informa já e liberta o campo para o
+  // atleta poder tentar de novo de imediato.
+  const handleImmediateFailure = () => {
+    addCoachMessage({
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: 'Não consegui enviar a tua mensagem — parece ter havido uma falha de rede ou de comunicação com o servidor. Verifica a ligação e tenta outra vez.'
+    });
+    setCoachLoading(false);
+  };
+
   const handleSend = async (textToSend) => {
     const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
@@ -398,12 +419,16 @@ export default function Coach() {
         activeInsights: insightsContext
       };
 
-      const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
-        await handleAsyncFallback(requestStartedAt);
+        if (isTimeout) {
+          await handleAsyncFallback(requestStartedAt);
+        } else {
+          handleImmediateFailure();
+        }
         return;
       }
 

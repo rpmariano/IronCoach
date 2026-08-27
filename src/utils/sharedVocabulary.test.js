@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeGender,
   categorizeDistance,
+  categorizeElevationRatio,
   isExperienceLevel,
   isRacePriority,
   MIN_PREP_WEEKS,
@@ -78,5 +79,36 @@ describe('MIN_PREP_WEEKS / MIN_VOLUME_KM — tabela única partilhada', () => {
         expect(MIN_VOLUME_KM[level]).toHaveProperty(cat);
       }
     }
+  });
+});
+
+describe('categorizeElevationRatio', () => {
+  it('classifica pelos exemplos da doutrina (Bloco 8 #1/#2)', () => {
+    expect(categorizeElevationRatio(20, 400)).toBe('rolante');        // 20 m/km
+    expect(categorizeElevationRatio(30, 1000)).toBe('ondulado');      // 33,3 m/km
+    expect(categorizeElevationRatio(40, 2500)).toBe('montanha');      // 62,5 m/km
+    expect(categorizeElevationRatio(20, 2000)).toBe('alta_montanha'); // 100 m/km
+  });
+
+  it('fronteiras exatas pertencem à banda seguinte', () => {
+    expect(categorizeElevationRatio(10, 249)).toBe('rolante');
+    expect(categorizeElevationRatio(10, 250)).toBe('ondulado');       // 25 m/km exato
+    expect(categorizeElevationRatio(10, 499)).toBe('ondulado');
+    expect(categorizeElevationRatio(10, 500)).toBe('montanha');       // 50 m/km exato
+    expect(categorizeElevationRatio(10, 799)).toBe('montanha');
+    expect(categorizeElevationRatio(10, 800)).toBe('alta_montanha');  // 80 m/km exato
+  });
+
+  it('devolve null sem distância, D+ inválido ou negativo', () => {
+    expect(categorizeElevationRatio(null, 500)).toBeNull();
+    expect(categorizeElevationRatio(0, 500)).toBeNull();
+    expect(categorizeElevationRatio(10, null)).toBeNull();
+    expect(categorizeElevationRatio(10, undefined)).toBeNull();
+    expect(categorizeElevationRatio(10, NaN)).toBeNull();
+    expect(categorizeElevationRatio(10, -5)).toBeNull();
+  });
+
+  it('D+ zero é Rolante (prova plana), não null', () => {
+    expect(categorizeElevationRatio(10, 0)).toBe('rolante');
   });
 });
