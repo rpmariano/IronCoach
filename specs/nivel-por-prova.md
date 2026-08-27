@@ -1,0 +1,161 @@
+# Nível por prova — motor de triagem
+
+Especificação do motor que determina o nível de um atleta **para uma prova
+concreta**, por oposição ao nível geral do Perfil.
+
+Doutrina: [src/coach-knowledge/08-nivel-por-prova-trail.md](../src/coach-knowledge/08-nivel-por-prova-trail.md).
+Investigação: [specs/coach-investigacao.md](coach-investigacao.md), BLOCO 8.
+
+## Porque existe
+
+`race_events.experience_level` existe desde a migração
+`20260809000000_experience_level.sql` com um propósito explícito: permitir que
+o nível de uma prova divirja do geral. Mas `ExperienceLevelHelp.jsx` serve os
+**mesmos critérios transversais** nos dois sítios (Perfil e Agenda), pelo que
+o atleta nunca teve como responder à segunda pergunta com outro critério.
+
+A consequência não era cosmética. O nível escolhido alimenta
+`MIN_PREP_WEEKS[nível][cat]`, que define `planStartDate` em
+`racePlanEngine.js`, que define em que fase do macrociclo o atleta aterra. Um
+nível mal calibrado desloca o plano inteiro — e num sentido perverso:
+declarar-se acima do real **encolhe** o alarme de viabilidade e **sobe** a
+carga prescrita, sem nada no sistema a contradizer.
+
+## Os dois eixos
+
+Ambos relativos à prova alvo (doutrina #3), nunca absolutos.
+
+```
+nível_tempo = banda_tempo(tempo_em_pé_semanal / tempo_previsto_prova)
+nível_dplus = banda_dplus(D+_semanal / D+_prova)            ← ICE
+nível_medido = min(nível_tempo, nível_dplus)                ← Bloco 0 #2
+```
+
+| Nível | Tempo em Pé | D+ |
+|---|---|---|
+| *abaixo de Iniciante* | < 70% | < 30% |
+| Iniciante | 70-90% | 30-50% |
+| Básico | 90-110% | 50-80% |
+| Médio | 110-140% | 80-100% |
+| Avançado | ≥ 140% | ≥ 100% |
+
+Fechados em baixo, abertos em cima (`≥ inferior`, `< superior`).
+
+`tempo_previsto_prova` vem de `getRacePrediction` → `predictRaceTime`, que já
+usa `calculateEquivalentFlatKm`. **É o uso sancionado** da conversão
+(doutrina #4): previsão de tempo, nunca dimensionamento de carga.
+
+## Leitura das últimas 4 semanas
+
+**2.ª semana mais alta**, não a média nem o máximo.
+
+| D+ nas 4 semanas | 2.ª mais alta | Leitura |
+|---|---|---|
+| `[1500, 210, 180, 200]` | 210 | rajada isolada não creditada |
+| `[1400, 1350, 1200, 900]` | 1350 | carga sustentada creditada |
+
+Menos de 3 semanas com dados → **não avaliável**, assumir o nível mais baixo.
+
+## Bandas de terreno (rácio D+/km)
+
+Servem dois fins: caracterizar a prova, e definir "terreno semelhante" na
+triagem (doutrina #7.1).
+
+| Banda | Rácio |
+|---|---|
+| Rolante | < 25 m/km |
+| Ondulado | 25-50 m/km |
+| Montanha | 50-80 m/km |
+| Alta montanha | > 80 m/km |
+
+Dão também o `categorizeElevation()` que faltava para a regra de invalidação
+(ver abaixo).
+
+## Dados de origem
+
+Todos já existentes — nada a acrescentar ao schema para a v1.
+
+| Necessário | Origem | Cobertura medida (2026-08-27) |
+|---|---|---|
+| Tempo em Pé | `runs.duration_seconds` | 62/62 |
+| D+ por treino | `runs.details.elevation_gain_m` | 59/62 · 7/7 nos últimos 30 d |
+| Distância | `runs.distance_km` | — |
+| Histórico de prova | `race_events` com `status='concluida'` | — |
+
+**Treino sem D+ registado conta como 0.** Conservador, alinhado com o
+"pecar por defeito" do resto do projeto.
+
+## Interação com a auto-declaração
+
+O motor **propõe**, o atleta **confirma ou justifica um override**. Não
+substitui a auto-declaração: o atleta sabe coisas que os dados não mostram
+(lesão recente, mudança de vida, treino não registado).
+
+O que muda é que passa a existir uma medição independente para contradizer
+uma auto-avaliação inflacionada — que é exatamente o buraco que originou este
+trabalho.
+
+Apresentação sugerida: mostrar a evidência, não só o veredicto.
+> *"Pelos teus últimos 30 dias — longo de 1h40 a 38 m/km, 620 m D+/semana, sem
+> prova nesta banda — para esta prova classificas como Básico. Concordas?"*
+
+## Invalidação do nível declarado
+
+O nível responde a uma pergunta definida por **três** antecessores: tipo,
+distância e (em trail) D+. Se algum muda de categoria, a pergunta mudou.
+
+| Antecessor | Invalida quando |
+|---|---|
+| `race_type` | muda estrada ↔ trail |
+| `distance_km` | muda de `categorizeDistance()` |
+| `elevation_gain_m` | muda de banda D+/km |
+
+Mudanças dentro da mesma categoria não invalidam (10 → 10,5 km não muda
+nada). Na criação, limpar o campo; **na edição, destacar para reconfirmação**
+em vez de limpar em silêncio.
+
+## Limitações conhecidas
+
+Documentadas, não resolvidas. Todas erram para o lado seguro exceto a
+primeira.
+
+**1. Passadeira não é detetável.** A doutrina pede que D+ obtido em passadeira
+conte a 50% (elimina a descida, logo o dano excêntrico). Não há campo em
+`runs.details` que o identifique — as chaves existentes são
+`avg_heart_rate_bpm`, `cadence_spm`, `calories_kcal`, `elevation_gain_m`,
+`race_type`, `recovery_seconds`, `splits`, `total_steps`, `vo2_max`,
+`warmup_minutes`. Sem esse campo, D+ de passadeira conta a 100%, o que
+**inflaciona o ICE e enfraquece o aviso** — falha na direção perigosa.
+Resolução: acrescentar um campo no registo de corrida. Até lá, a penalização
+não está ativa e isto tem de ser dito, não pressuposto.
+
+**2. D− não é guardado.** A simetria D+ ≈ D− não é simplificação escolhida, é
+imposta pelos dados. Provas ponto-a-ponto predominantemente descendentes ficam
+sub-avaliadas — o pior caso para dano excêntrico.
+
+**3. Desacoplamento aeróbico (doutrina #6, Avançado)** exige FC e splits da
+última prova. Existem em `details` (`avg_heart_rate_bpm` 60/62, `splits`
+11/62) mas só com importação de relógio. Tem de degradar com elegância.
+
+**4. Cap de ultra em gama.** A doutrina dá 10-14 h/semana para >50 km. O
+projeto usa o limite superior por convenção (`taper.ts`), mas aqui o superior
+é o **menos** conservador. Recomendado: 10 h.
+
+## Âmbito
+
+O eixo D+ (ICE) só se aplica a trail — em estrada `D+_prova ≈ 0` e a divisão
+degenera. Guarda: aplicar só com `race_type = 'trail'` ou acima de um piso de
+D+.
+
+**A estrada mantém-se em km** (`MIN_VOLUME_KM`), que continua válido em
+plano. Migrar a estrada para Tempo em Pé seria defensável (Koop argumenta-o)
+mas não é exigido por esta doutrina — fica fora de âmbito.
+
+## Ordem de implementação sugerida
+
+1. `categorizeElevation()` + regra de invalidação — desbloqueia o formulário,
+   independente do resto
+2. Motor de triagem (dois eixos + `min`) como fórmula partilhada em
+   `supabase/functions/_shared/formulas/`, com golden tests
+3. Proposta de nível na UI, com evidência à vista
+4. Campo de passadeira no registo de corrida (fecha a limitação 1)

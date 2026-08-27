@@ -1,7 +1,7 @@
 # Doutrina do Coach — src/coach-knowledge/
 
 Conversão de [specs/coach-investigacao.md](../../specs/coach-investigacao.md)
-(8 blocos, 73 perguntas, confiança ALTA na esmagadora maioria) em ficheiros
+(9 blocos, 80 perguntas, confiança ALTA na esmagadora maioria) em ficheiros
 consultáveis por bloco. Cada ficheiro é **gerado a partir das respostas já
 registadas e verificadas** nessa investigação — não reabre decisões, só as
 torna mais fáceis de encontrar por assunto.
@@ -23,6 +23,7 @@ torna mais fáceis de encontrar por assunto.
 | [05-corpo.md](05-corpo.md) | Métricas de bioimpedância fiáveis, metas realistas, transtornos alimentares |
 | [06-head-coach-arbitragem.md](06-head-coach-arbitragem.md) | Hierarquia de alarmes, comunicação por nível, o que nunca dizer |
 | [07-sugestoes-alimentares.md](07-sugestoes-alimentares.md) | Macros por refeição, equivalência g/kg→alimentos, pré-prova, restrições |
+| [08-nivel-por-prova-trail.md](08-nivel-por-prova-trail.md) | Nível para uma prova concreta, bandas D+/km, pré-requisitos de trail, triagem por Tempo em Pé |
 
 ## Como isto chega ao Coach, na prática
 
@@ -58,6 +59,7 @@ modelo de duas formas:
 | 5 — Corpo | ✅ Doutrina completa no prompt (BIA fiável vs. não fiável, variação de peso, médias móveis, gordura corporal faixas + piso RED-S, peso de prova proibido em iniciante/básico, tabela de ganho muscular por nível, visceral fat Renpho, água corporal, sinais de sobretreino #1-#4); `computeBodyMetrics` deteta queda de peso >1,5% em 72h (#11), gordura abaixo do piso RED-S (#6), visceral fat ≥10/≥15 (#8), exclui `muscle_mass_kg` (não fiável); fetch de `body_assessments` (30 dias) injetado no contexto; 21 testes novos (total 141) |
 | 6 — Head Coach | ✅ Doutrina completa no prompt: conflito composição/prova (défice a zero a 21-28d de prova A), hierarquia G1-G5 com ações explícitas (G1→clearance médico, G2→ortopedia, G3→multidisciplinar, G4→repouso, G5→sem impacto), vocabulário por nível (1-2 recs/iniciante → 4-5+/avançado; VDOT/HRV/RIR proibidos em iniciante), temas contraindicados por nível, frequência de ajuste 7-14 dias com razão fisiológica (Issurin/Verkhoshansky); 7 testes novos (total 148) |
 | 7 — Sugestões alimentares | ✅ `MEAL_DOCTRINE` em `coach-chat`, `coach-daily-summary`, `analyze-meal`; restrições alimentares em `src/utils/diet.js` |
+| 8 — Nível por prova / trail | ❌ Não implementado — doutrina registada, motor especificado em [specs/nivel-por-prova.md](../../specs/nivel-por-prova.md). `ExperienceLevelHelp.jsx` ainda serve critérios transversais nos dois sítios; não existe `categorizeElevation()` nem triagem por Tempo em Pé |
 
 Esta tabela é o mapa de gaps — cada `⚠️`/`❌` é candidato a próxima
 iteração. Atualizar sempre que uma peça passar a estar wired.

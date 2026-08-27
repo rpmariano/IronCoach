@@ -2,7 +2,7 @@
 
 Versão limpa de `coach-investigacao.md`, sem referências a colunas, flags ou
 schema. **Cada bloco é um pedido separado** — colar o preâmbulo seguido de um
-bloco de cada vez. São 73 perguntas em 13 blocos; num só pedido dariam
+bloco de cada vez. São 80 perguntas em 14 blocos; num só pedido dariam
 respostas rasas.
 
 Trazer as respostas de volta tal como vierem; a conversão em doutrina é depois.
@@ -319,3 +319,44 @@ com avisos e sugestões. Sempre como sugestão educativa, nunca prescrição.
 6. Quais são os erros alimentares mais comuns em corredores amadores? Dá-os
    por ordem de frequência e diz o impacto de cada um no rendimento ou na
    saúde.
+
+---
+
+## BLOCO 8 — Nível específico por prova, e trail (7 perguntas)
+
+Contexto: o corredor declara o seu nível DUAS vezes — um nível geral no
+perfil, e um nível por prova, que pode ser diferente (ex.: médio em estrada,
+iniciante na primeira prova de trail). Já tenho critérios transversais
+(Bloco 0) e tabelas de semanas e volume por nível × distância (Bloco 1 #1 e
+#2), indexadas só por distância. Nas provas de trail o corredor indica
+sempre a distância E o desnível acumulado (D+), portanto ambos são conhecidos
+no momento em que declara o nível. Hoje converto trail para distância
+equivalente pela regra "100 m de D+ ≈ 1 km plano", mas não uso essa
+conversão para calcular semanas de preparação, porque cria saltos de
+categoria desproporcionados.
+
+1. Qual é o eixo correto para exprimir a exigência de uma prova de trail:
+   desnível absoluto (D+ total), rácio D+/km, pontos ITRA, ou outro? Dá os
+   cortes numéricos nesse eixo.
+2. Que bandas desse eixo são qualitativamente distintas entre si — do tipo
+   plano / ondulado / montanha / alta montanha? Quero os limites em números,
+   porque preciso de saber quando duas provas de trail exigem preparações
+   diferentes.
+3. [POR NÍVEL] Que volume semanal, e que desnível acumulado semanal em treino,
+   devem existir como pré-requisito para cada uma dessas bandas?
+4. A equivalência "100 m de D+ ≈ 1 km plano" é adequada, e para que fins?
+   Serve para prever tempo de prova, para dimensionar semanas de preparação,
+   para calcular volume pré-requisito — ou só para alguns destes? Onde é que
+   falha, e existe uma formulação melhor nas fontes?
+5. Que critérios objetivos, além do volume e do desnível, separam os níveis em
+   trail? Interessa-me o que não é transponível da estrada: tolerância a
+   descida prolongada, terreno técnico, tempo em pé, uso de bastões.
+6. [POR NÍVEL] Que elementos do histórico de PROVA (por oposição ao histórico
+   de treino) são preditivos da preparação para uma distância e terreno?
+   Número de provas já feitas nessa distância, melhor tempo, quanto tempo
+   passou desde a última.
+7. É legítimo um corredor ter níveis diferentes consoante a distância e o
+   terreno — por exemplo médio aos 10 km em estrada e iniciante num trail de
+   montanha? Que critérios governam essa diferença, e que perguntas curtas são
+   mais preditivas do nível PARA UMA PROVA CONCRETA (distância e D+ conhecidos)
+   por oposição ao nível geral?
