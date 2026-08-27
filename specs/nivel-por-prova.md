@@ -153,9 +153,14 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
 
 ## Ordem de implementação sugerida
 
-1. `categorizeElevation()` + regra de invalidação — desbloqueia o formulário,
-   independente do resto
+1. ✅ **Feito** (2026-08-27) — `categorizeElevationRatio()` em
+   `supabase/functions/_shared/formulas/vocabulary.ts` (com testes duplos,
+   Deno e Vite) + regra de invalidação em `RunAgenda.jsx`: muda em silêncio a
+   criar (`applyExperienceLevelInvalidation`), destaca para reconfirmação a
+   editar (`experienceLevelStale`) — nunca apaga uma resposta já gravada.
 2. Motor de triagem (dois eixos + `min`) como fórmula partilhada em
    `supabase/functions/_shared/formulas/`, com golden tests
 3. Proposta de nível na UI, com evidência à vista
-4. Campo de passadeira no registo de corrida (fecha a limitação 1)
+4. Tabela do help por categoria em `ExperienceLevelHelp.jsx` (`context`
+   `'geral'`/`'prova'`, ver README do coach-knowledge)
+5. Campo de passadeira no registo de corrida (fecha a limitação 1)
