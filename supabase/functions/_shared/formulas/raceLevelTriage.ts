@@ -45,8 +45,11 @@ export function minLevel(a: LevelBand, b: LevelBand): LevelBand {
 // (src/utils/experience.js) e em getTaperDays (taper.ts) — na dúvida, o
 // resultado mais seguro. Fechadas em baixo, abertas em cima: um valor
 // exatamente no piso pertence à banda que esse piso abre, nunca à anterior.
-const TIME_ON_FEET_FLOORS_PCT = { iniciante: 70, basico: 90, medio: 110, avancado: 140 } as const;
-const ELEVATION_FLOORS_PCT = { iniciante: 30, basico: 50, medio: 80, avancado: 100 } as const;
+// Exportadas (não só internas a bandFromPct): ExperienceLevelHelp.jsx
+// mostra-as ao atleta como tabela de referência para trail — os mesmos
+// números que classificam, não uma cópia que possa divergir.
+export const TIME_ON_FEET_FLOORS_PCT = { iniciante: 70, basico: 90, medio: 110, avancado: 140 } as const;
+export const ELEVATION_FLOORS_PCT = { iniciante: 30, basico: 50, medio: 80, avancado: 100 } as const;
 
 function bandFromPct(pct: number, floors: Record<ExperienceLevel, number>): LevelBand {
   if (pct < floors.iniciante) return "sub_iniciante";

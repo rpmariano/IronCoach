@@ -177,6 +177,13 @@ mas não é exigido por esta doutrina — fica fora de âmbito.
    ação quando bate certo, avisa com firmeza (sem oferecer um nível de um
    clique) quando `sub_iniciante`. Continua proposta, nunca substituição —
    a auto-declaração decide sempre.
-4. Tabela do help por categoria em `ExperienceLevelHelp.jsx` (`context`
-   `'geral'`/`'prova'`, ver README do coach-knowledge)
+4. ✅ **Feito** (2026-08-27) — `ExperienceLevelHelp.jsx` ganhou
+   `context` (`'geral'` por omissão, inalterado, usado no Perfil;
+   `'prova'` em `RunAgenda.jsx`). Em `'prova'`, a tabela já não é a
+   transversal do Bloco 0 — é lida das MESMAS tabelas que classificam:
+   `MIN_PREP_WEEKS`/`MIN_VOLUME_KM` por categoria de distância em estrada,
+   `TIME_ON_FEET_FLOORS_PCT`/`ELEVATION_FLOORS_PCT` (agora exportadas de
+   `raceLevelTriage.ts`) em trail — com a banda de terreno da própria
+   prova (`categorizeElevationRatio`) mostrada como contexto. Nunca uma
+   cópia que possa divergir do que o motor de triagem realmente usa.
 5. Campo de passadeira no registo de corrida (fecha a limitação 1)

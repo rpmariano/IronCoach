@@ -806,6 +806,10 @@ export default function RunAgenda({ onClose }) {
               <ExperienceLevelHelp
                 label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
                 variant="dark"
+                context="prova"
+                raceType={draft.race_type}
+                distanceKm={parseFormNumber(draft.distance_km)}
+                elevationGainM={parseFormNumber(draft.elevation_gain_m)}
               >
                 <select
                   value={draft.experience_level}
