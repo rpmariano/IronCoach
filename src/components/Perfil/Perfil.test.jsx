@@ -303,3 +303,38 @@ describe('Perfil — FC em repouso (resting_hr_bpm)', () => {
     expect(mocks.updates.length).toBe(0);
   });
 });
+
+describe('Perfil — Altura (height_cm) sem pontuação', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: { ...PROFILE, height_cm: 180 },
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+    });
+  });
+
+  it('um valor com casa decimal (1.75) falha a validação e impede gravação', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    fireEvent.change(screen.getByDisplayValue('180'), { target: { value: '1.75' } });
+    const saveBtn = screen.getByRole('button', { name: /Guardar altera/ });
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+
+    // Como falha, o botão continua ativo (isDirty=true) e não há chamadas ao Supabase
+    await waitFor(() => expect(saveBtn).not.toBeDisabled());
+    expect(mocks.updates.length).toBe(0);
+  });
+
+  it('um valor inteiro (175) passa na validação e é gravado', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    fireEvent.change(screen.getByDisplayValue('180'), { target: { value: '175' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({ height_cm: 175 });
+  });
+});
