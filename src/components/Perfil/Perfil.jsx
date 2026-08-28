@@ -234,6 +234,15 @@ export default function Perfil() {
         }
       }
 
+      if ('height_cm' in updates && updates.height_cm !== null) {
+        const hVal = updates.height_cm;
+        if (!Number.isInteger(hVal)) {
+          showToast('A altura deve ser um número inteiro em centímetros (ex.: 175).', 'error');
+          setIsSaving(false);
+          return false;
+        }
+      }
+
       /* Ativar agora começa a contagem a partir deste momento, não do último
          registo antigo, e limpa um "silenciar resto do dia" que não deve
          sobreviver a reativar. */
@@ -636,7 +645,7 @@ export default function Perfil() {
             {/* Toggle global de autorização — cobre todos os objetivos (nutrição,
                 água, corpo). O Coach propõe sempre em texto primeiro e pede
                 confirmação; só grava quando o atleta diz que sim. */}
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5">
                   <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
@@ -650,13 +659,17 @@ export default function Perfil() {
               <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
                 aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
                 aria-pressed={!!draft.coach_can_set_nutrition_goals}
-                className="w-11 h-6 rounded-full relative transition shrink-0"
-                style={{ background: draft.coach_can_set_nutrition_goals ? 'var(--mod-coach-to)' : '#404040' }}>
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.coach_can_set_nutrition_goals ? 'left-5' : 'left-0.5'}`}></span>
+                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+                  draft.coach_can_set_nutrition_goals ? '' : 'bg-slate-200 dark:bg-neutral-800'
+                }`}
+                style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                  draft.coach_can_set_nutrition_goals ? 'translate-x-5' : 'translate-x-0'
+                }`} style={{ backgroundColor: '#ffffff' }}></span>
               </button>
             </div>
 
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -667,8 +680,12 @@ export default function Perfil() {
                 aria-label={draft.water_reminder_enabled ? 'Desativar lembretes de água' : 'Ativar lembretes de água'}
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
-                className={`w-11 h-6 rounded-full relative transition shrink-0 disabled:opacity-60 ${draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-neutral-700'}`}>
-                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${draft.water_reminder_enabled ? 'left-5' : 'left-0.5'}`}></span>
+                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
+                  draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-slate-200 dark:bg-neutral-800'
+                }`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                  draft.water_reminder_enabled ? 'translate-x-5' : 'translate-x-0'
+                }`} style={{ backgroundColor: '#ffffff' }}></span>
               </button>
             </div>
 
