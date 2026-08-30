@@ -29,6 +29,7 @@ import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO } from '../../lib/utils';
 
@@ -82,6 +83,15 @@ export default function RunAgenda({ onClose }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
+  // Identifica este rascunho de forma única para o sobreviver a um
+  // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
+  // provas diferentes nem entre uma edição e uma criação nova a seguir.
+  const draftStorageKey = editingEventId ? `ironcoach:prova-rascunho:${editingEventId}` : 'ironcoach:prova-rascunho:nova';
+  // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
+  // efeito de inicialização (que também corre sempre que `raceEvents`
+  // muda, ex.: outra prova gravada em paralelo) repunha o rascunho
+  // guardado por cima de alterações mais recentes ainda não persistidas.
+  const restoredForKeyRef = useRef(null);
   const [validationError, setValidationError] = useState(null);
   // Categoria (tipo+distância+D+) associada ao nível ATUALMENTE em
   // draft.experience_level — atualiza-se sempre que o próprio atleta o
@@ -228,12 +238,22 @@ export default function RunAgenda({ onClose }) {
     return () => window.removeEventListener('beforeunload', handler);
   }, [isFormOpen, isDirty]);
 
-  // Carrega a prova existente para o formulário, ou limpa se for nova.
+  // Carrega a prova existente para o formulário, ou limpa se for nova — a
+  // não ser que haja um rascunho por gravar guardado localmente (ver
+  // formDraftPersistence.js), caso em que o restaura por cima do valor
+  // "canónico". Só verifica o rascunho guardado UMA VEZ por sessão de
+  // edição/criação (restoredForKeyRef): este efeito volta a correr sempre
+  // que `raceEvents` muda por qualquer razão, e reaplicar o mesmo
+  // instantâneo guardado a cada vez seria inofensivo mas inútil.
   useEffect(() => {
+    const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
+    const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
+    restoredForKeyRef.current = draftStorageKey;
+
     if (editingEventId) {
       const ev = raceEvents.find(e => e.id === editingEventId);
       if (ev) {
-        setDraft({
+        const canonical = {
           date: ev.date || todayISO(),
           location: ev.location || '',
           name: ev.name || '',
@@ -258,7 +278,8 @@ export default function RunAgenda({ onClose }) {
           // (bug relatado 2026-08-30, ainda visível depois da correção
           // original por esta via).
           created_at: ev.created_at || null,
-        });
+        };
+        setDraft(persisted ? { ...canonical, ...persisted } : canonical);
         // A prova já gravada tem o nível "respondido" para a categoria com
         // que foi criada — trata-o como confirmado à partida. Só passa a
         // "por reconfirmar" (experienceLevelStale) se o próprio atleta
@@ -268,21 +289,30 @@ export default function RunAgenda({ onClose }) {
             ? raceLevelCategoryKey(ev.race_type, parseFormNumber(ev.distance_km), parseFormNumber(ev.elevation_gain_m))
             : null
         );
-        setIsDirty(false);
+        setIsDirty(!!persisted);
         setActivePage('hub');
       }
     } else {
-      setDraft(EMPTY_DRAFT);
+      setDraft(persisted ? { ...EMPTY_DRAFT, ...persisted } : EMPTY_DRAFT);
       setExperienceLevelCategoryKey(null);
-      setIsDirty(false);
+      setIsDirty(!!persisted);
       setActivePage('details');
       setTimeout(() => {
         scrollToRef.current(1, true);
       }, 0);
     }
-  }, [editingEventId, raceEvents]);
+  }, [editingEventId, raceEvents, draftStorageKey]);
+
+  // Grava o rascunho (com debounce) enquanto houver alterações por gravar
+  // — sobrevive a um recarregamento da página (ver formDraftPersistence.js).
+  usePersistedFormDraft(draftStorageKey, draft, { isDirty });
 
   const handleCloseForm = () => {
+    // Funil único por onde passa toda a saída "intencional" desta sessão
+    // de edição/criação (gravar, descartar, eliminar) — limpa o rascunho
+    // persistido, senão a próxima vez que se cria/edita esta mesma prova
+    // vinha com texto de uma sessão já terminada.
+    clearPersistedFormDraft(draftStorageKey);
     useAppStore.getState().setEditingRaceId(null);
     if (onClose) onClose();
   };
