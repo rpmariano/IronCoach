@@ -168,7 +168,10 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       stars: 1,
       gradeLabel: "Sem Registos",
       statusColor: "rose",
-      summary: "Sem treinos registados nesta fase. Mantém a consistência de pelo menos 3 sessões semanais para garantir a adaptação.",
+      // "Mantém a consistência" presumia uma consistência que não existe
+      // ainda — sem uma corrida registada, não há nada a manter. Ver bug
+      // relatado 2026-08-30.
+      summary: "Sem treinos registados nesta fase. Começa a registar pelo menos 3 sessões semanais para a Carol poder avaliar a tua adaptação.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: 0, avgPace: null },
     };
   }

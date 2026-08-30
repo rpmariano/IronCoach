@@ -21,7 +21,7 @@
     },
     "expect": {
       "score": 40, "stars": 1, "gradeLabel": "Sem Registos", "statusColor": "rose",
-      "summary": "Sem treinos registados nesta fase. Mantém a consistência de pelo menos 3 sessões semanais para garantir a adaptação.",
+      "summary": "Sem treinos registados nesta fase. Começa a registar pelo menos 3 sessões semanais para a Carol poder avaliar a tua adaptação.",
       "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": 0, "avgPace": null }
     }
   },
