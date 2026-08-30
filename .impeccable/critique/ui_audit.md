@@ -76,6 +76,12 @@ A auditoria visual foi realizada aplicando a metodologia **Impeccable UI Critiqu
 
 ---
 
+## 2.9. Adenda de Resolução (2026-08-30)
+
+* **Botão Flutuante (FAB)** — ✅ *Resolvido, com decisão diferente da recomendada*: em vez de adotar `var(--accent)` (secção 2.1/3), a equipa confirmou o gradiente âmbar já em produção (`#d97706` → `#fbbf24`, `Layout.jsx`) como a cor definitiva de marca para o FAB. `PRODUCT.md` foi atualizado para refletir esta decisão. O token `--fab-bg` (`#f3d5ab`, creme) estava órfão — já não correspondia ao código nem à decisão de marca — e foi removido de `globals.css`. As restantes recomendações desta secção (cores do menu do FAB, indicador de aba ativa, `aria-label`) mantêm-se em aberto.
+
+---
+
 ## 3. Matriz de Inconsistências Visuais Cruzadas
 
 | Item de UI | Estado Atual | Regra Padrão Aprovada |

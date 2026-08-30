@@ -90,6 +90,8 @@ export default function RunAgenda({ onClose }) {
   // experienceLevelStale, abaixo; specs/nivel-por-prova.md).
   const [experienceLevelCategoryKey, setExperienceLevelCategoryKey] = useState(null);
   const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const activePageIndex = PAGE_KEYS.indexOf(activePage);
   const scrollRef = useRef(null);
@@ -584,6 +586,30 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
+  // "Eliminar Prova" — só existe a editar uma prova já gravada (uma prova
+  // nova ainda sem id não tem o que apagar na BD; "Cancelar"/fechar já
+  // descarta o rascunho). Confirmação via ConfirmDeleteModal, não
+  // window.confirm — consistente com RunCard/GymSessionCard/MealCard/
+  // BodyAssessmentCard, que já usam este popup para o mesmo tipo de ação.
+  const handleDeleteRace = async () => {
+    if (!editingEventId) return;
+    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.from('race_events').delete().eq('id', editingEventId);
+      if (error) throw error;
+      setRaceEvents(raceEvents.filter(e => e.id !== editingEventId));
+      showToast('Prova eliminada');
+      setNavGuard(null);
+      handleCloseForm();
+    } catch (err) {
+      console.error('Error deleting race event:', err);
+      showToast('Erro ao eliminar prova.', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Botão "Cancelar" do formulário — só interrompe com o aviso se houver
   // alterações por gravar; sem navegação pendente nenhuma (target: null).
   const attemptCloseForm = () => {
@@ -653,7 +679,15 @@ export default function RunAgenda({ onClose }) {
     <div className="w-full max-w-lg mx-auto pb-10 fade-in">
       {leaveModal}
       {validationModal}
-      
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteRace}
+        isDeleting={isDeleting}
+        title="Eliminar prova"
+        message="Tens a certeza que queres eliminar esta prova? Esta ação não pode ser desfeita."
+      />
+
       <div className="space-y-4">
         {/* Cabeçalho + campos no MESMO cartão, como nos outros registos
             (Avaliação/Refeição/Corrida/Treino) — antes era um cartão
@@ -739,6 +773,17 @@ export default function RunAgenda({ onClose }) {
               />
 
               <div className="flex items-center gap-2 pt-2 pb-6">
+                {editingEventId && (
+                  <Button
+                    variant="light-danger"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSubmitting || isDeleting}
+                    className="flex-1 text-xs"
+                    icon={<Trash2 size={14} />}
+                  >
+                    Eliminar
+                  </Button>
+                )}
                 <Button
                   variant="light"
                   onClick={() => {
@@ -976,7 +1021,19 @@ export default function RunAgenda({ onClose }) {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 pt-1 pb-6">
+              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                {editingEventId && (
+                  <Button
+                    variant="light-danger"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSubmitting || isDeleting}
+                    type="button"
+                    className="text-xs"
+                    icon={<Trash2 size={14} />}
+                  >
+                    Eliminar
+                  </Button>
+                )}
                 <Button
                   variant="light"
                   onClick={attemptCloseForm}
