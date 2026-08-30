@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
+import { useScreenBackButton } from './utils/screenBackButton';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { ToastProvider } from './components/shared/ToastProvider';
@@ -84,6 +85,20 @@ export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
   const [isInitializing, setIsInitializing] = useState(true);
 
+  // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)
+  // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
+  // é usado no JSX.
+  const isCreatingOrEditing = !!openCreationMode || !!editingRaceId;
+
+  // Botão/gesto de "voltar" do telemóvel fecha este ecrã de topo em vez de
+  // sair da app inteira — ver o comentário completo em
+  // utils/screenBackButton.js (bug relatado 2026-08-30).
+  const closeTopScreen = useCallback(() => {
+    setOpenCreationMode(null);
+    setEditingRaceId(null);
+  }, [setOpenCreationMode, setEditingRaceId]);
+  useScreenBackButton(isCreatingOrEditing, closeTopScreen);
+
   useEffect(() => {
     registerServiceWorker();
 
@@ -160,7 +175,7 @@ export default function App() {
   // carrossel inteiro (as 5 páginas ficam sempre montadas lado a lado para
   // o gesto de deslizar, e a altura do carrossel é a da mais alta delas),
   // um "scroll infinito" para lá do fim do próprio formulário.
-  const isCreatingOrEditing = !!openCreationMode || !!editingRaceId;
+  // (isCreatingOrEditing já foi calculado acima, antes dos hooks.)
 
   return (
     <ToastProvider>

@@ -45,6 +45,7 @@ function renderAgenda() {
 describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
   beforeEach(() => {
     invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
     useAppStore.setState({
       raceEvents: [EXISTING_RACE],
       profile: { id: 'user-1' },
@@ -467,6 +468,58 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('BUG CORRIGIDO (2026-08-30) — rascunho sobrevive a voltar de outra app', () => {
+    it('prova NOVA: texto escrito sobrevive a um "recarregamento" (remount) da app', () => {
+      vi.useFakeTimers();
+      try {
+        const { unmount } = renderAgenda();
+        fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+        fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova a meio de preencher' } });
+
+        // Debounce da persistência (formDraftPersistence.js).
+        vi.advanceTimersByTime(700);
+
+        unmount();
+
+        // "Reabrir a app" — nova instância do componente, tal como acontece
+        // quando o Android recarrega a página ao voltar de outra app e
+        // apaga todo o estado em memória.
+        renderAgenda();
+        fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+        expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('Prova a meio de preencher');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('gravar com sucesso limpa o rascunho — a próxima prova nova não vem com texto antigo', async () => {
+      // Simula um rascunho já persistido de uma sessão anterior (poupa
+      // esperar pelo debounce real de formDraftPersistence.js).
+      localStorage.setItem('ironcoach:prova-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
+
+      const { unmount } = renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+      expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('Rascunho Antigo');
+
+      fillRequiredFields();
+      fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+
+      await waitFor(() => {
+        expect(useAppStore.getState().activeTab).toBe('calendario');
+      });
+      unmount();
+
+      expect(localStorage.getItem('ironcoach:prova-rascunho:nova')).toBeNull();
+
+      // Próxima prova nova: sem vestígios do rascunho gravado/descartado.
+      useAppStore.setState({ activeTab: 'holistica' });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+      expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('');
     });
   });
 });
