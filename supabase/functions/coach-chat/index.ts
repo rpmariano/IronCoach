@@ -1452,6 +1452,30 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     supersedesPlanId = candidate?.id ?? null;
   }
 
+  // Nunca mais de UMA proposta de plano de treino pendente ao mesmo tempo —
+  // esta substitui qualquer outra ainda por decidir, em vez de se
+  // empilhar como uma segunda opção confusa para o atleta escolher entre
+  // duas. Isto cobre tanto o modelo genuinamente reformular a proposta a
+  // meio da conversa, como o mesmo pedido ter chegado duplicado por uma
+  // falha de comunicação do lado do cliente (bug relatado 2026-08-30, que
+  // gerou exatamente este caso em produção). Só conta quem tem treino
+  // real (corrida/ginásio) — a mesma regra usada acima para
+  // supersedes_plan_id; uma proposta de só-refeições não bloqueia nem é
+  // bloqueada por esta.
+  const { data: pendingPlans } = await sb
+    .from("coach_plans")
+    .select("id, coach_plan_items(kind)")
+    .eq("user_id", userId)
+    .eq("status", "proposto");
+  const stalePendingIds = (pendingPlans || [])
+    // deno-lint-ignore no-explicit-any
+    .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
+    // deno-lint-ignore no-explicit-any
+    .map((p: any) => p.id);
+  if (stalePendingIds.length > 0) {
+    await sb.from("coach_plans").update({ status: "recusado" }).in("id", stalePendingIds);
+  }
+
   const { data: plan, error: planErr } = await sb
     .from("coach_plans")
     .insert({
