@@ -26,7 +26,8 @@ from numbered
 where br.id = numbered.id and br.bug_number is null;
 
 create sequence if not exists bug_reports_bug_number_seq;
-select setval('bug_reports_bug_number_seq', coalesce((select max(bug_number) from bug_reports), 0));
+select setval('bug_reports_bug_number_seq', coalesce((select max(bug_number) from bug_reports), 1), coalesce((select max(bug_number) is not null from bug_reports), false));
+
 
 alter table bug_reports alter column bug_number set default nextval('bug_reports_bug_number_seq');
 alter table bug_reports alter column bug_number set not null;
