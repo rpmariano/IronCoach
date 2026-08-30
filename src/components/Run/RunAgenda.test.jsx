@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -209,6 +209,39 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
         { label: 'Partida', when: 'Domingo 09:00', where: null },
       ]);
     });
+  });
+
+  it('BUG CORRIGIDO (2026-08-30) — o Hub embutido ao EDITAR uma prova gravada também respeita o início real da preparação (draft ficava sem created_at)', () => {
+    // A correção do macrociclo comprimido (calculateRaceTrainingPlan) só
+    // funciona se `race.created_at` chegar até ela. O RaceHubView embutido
+    // na aba "Treino e Evolução" recebe `race={draft}` — e o useEffect que
+    // popula o draft ao editar uma prova gravada listava os campos do
+    // formulário um a um, sem created_at, porque nunca é editável. Isso
+    // fazia TODA prova em edição parecer "sem created_at" (nunca
+    // comprimida) precisamente na única forma de veres o Hub de uma prova
+    // já gravada nesta app — bug ainda visível depois da correção original.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-30T12:00:00Z'));
+    try {
+      const compressedRace = {
+        ...EXISTING_RACE,
+        id: 'race-comprimida',
+        date: '2026-09-13', // 14 dias à frente — 6 semanas recomendadas (10k/medio) não cabem
+        distance_km: 10,
+        experience_level: 'medio',
+        created_at: '2026-08-30T10:14:44.086064+00:00',
+      };
+      useAppStore.setState({ raceEvents: [compressedRace], editingRaceId: 'race-comprimida' });
+      renderAgenda();
+
+      // Aba inicial ao editar já é "Treino e Evolução" (o Hub embutido).
+      const baseCard = screen.getByText('Base Aeróbica').closest('.rh-phase-card');
+      expect(within(baseCard).getByText('Não Realizada')).toBeInTheDocument();
+      expect(within(baseCard).queryByText('Concluída')).not.toBeInTheDocument();
+      expect(screen.getByText(/Sem\. 1 de 6/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('mostra o modal de dados incompletos sem rebentar ao gravar com campos obrigatórios em falta', () => {

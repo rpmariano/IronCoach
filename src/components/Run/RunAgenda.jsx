@@ -245,6 +245,17 @@ export default function RunAgenda({ onClose }) {
           website: ev.website || '',
           web_info: ev.web_info || null,
           notes: ev.notes || '',
+          // Não é um campo do formulário — nunca editável — mas o
+          // RaceHubView embutido (aba "Treino e Evolução", abaixo, `race=
+          // {draft}`) e a viabilidade em tempo real (useMemo `viability`)
+          // precisam dele para saber quando a prova foi de facto registada
+          // e detetar um macrociclo comprimido. Omiti-lo aqui fazia
+          // `computeEffectivePrepStart` tratar TODA prova em edição como
+          // "sem created_at" — nunca comprimida, mesmo quando era — e essa
+          // é a única forma de ver o Hub de uma prova já gravada nesta app
+          // (bug relatado 2026-08-30, ainda visível depois da correção
+          // original por esta via).
+          created_at: ev.created_at || null,
         });
         // A prova já gravada tem o nível "respondido" para a categoria com
         // que foi criada — trata-o como confirmado à partida. Só passa a
