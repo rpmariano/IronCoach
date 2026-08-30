@@ -220,6 +220,39 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(plan.readinessLevel).toBe('red');
   });
 
+  it('BUG CORRIGIDO (2026-08-30) — sem uma corrida registada na fase ativa, a Carol não presume um histórico/rácio 80-20 que não existe', () => {
+    // Mesmo caso comprimido do teste anterior, mas sem corridas nenhumas
+    // registadas: o texto genérico ("Continua a proteger o rácio 80/20...")
+    // presumia treino já feito mesmo com plan.currentPhase.evaluation a
+    // mostrar "Sem Registos" — contradição relatada pelo utilizador.
+    const race = {
+      id: 'race-comprimida-sem-runs',
+      name: 'Corrida do Tejo',
+      date: '2026-09-13',
+      distance_km: '10',
+      race_type: 'estrada',
+      elevation_gain_m: null,
+      experience_level: 'medio',
+      race_priority: 'a',
+      created_at: '2026-08-30 10:14:44.086064+00',
+    };
+    const plan = calculateRaceTrainingPlan({ race, profile: {}, runs: [], todayISO: '2026-08-30' });
+
+    expect(plan.currentPhase.evaluation.metrics.runsCount).toBe(0);
+    expect(plan.carolAnalysis.overviewText).not.toMatch(/Continua a proteger o rácio 80\/20/);
+    expect(plan.carolAnalysis.overviewText).toMatch(/ainda sem corridas registadas/);
+    expect(plan.carolAnalysis.overviewText).toMatch(/macrociclo ficou comprimido/);
+
+    // Com corridas na fase ativa, mantém o texto original (com dado real a citar).
+    const withRuns = calculateRaceTrainingPlan({
+      race,
+      profile: {},
+      runs: [{ date: '2026-08-30', distance_km: 5, duration_seconds: 1500, training_type: 'continuo', effort_rpe: 5 }],
+      todayISO: '2026-08-30',
+    });
+    expect(withRuns.carolAnalysis.overviewText).toMatch(/Continua a proteger o rácio 80\/20/);
+  });
+
   it('lida graciosamente com provas no passado (concluídas)', () => {
     const today = '2026-11-01';
     const plan = calculateRaceTrainingPlan({

@@ -379,8 +379,14 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     carolOverviewText = `Faltam ${daysToStart} dias para o início oficial do macrociclo de ${totalWeeks} semanas. Nesta fase prévia, mantém uma rotina regular de corrida fácil (Z1/Z2) e trabalho de força no ginásio para entrar na Fase de Base com boa tolerância muscular.`;
   } else if (daysToRace <= 7) {
     carolOverviewText = `Estamos na semana decisiva da prova (${daysToRace} dias restantes)! O trabalho duro está feito. Prioriza sono reparador, hidratação constante (1.5-2L/dia) e recarga equilibrada de hidratos de carbono. Mantém apenas 1 ou 2 corridas curtas com algumas acelerações para ativação neuromuscular.`;
-  } else {
+  } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
     carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}). O teu volume médio recente é de ${weeklyVol} km/semana. Continua a proteger o rácio 80/20 polarizado e respeita a semana de descarga a cada 3-4 semanas para garantir que a tua fadiga aguda (ACWR) se mantém em faixa segura.`;
+  } else {
+    // Sem uma única corrida registada nesta fase, "continua a proteger o
+    // rácio 80/20"/"respeita a semana de descarga" presumem um histórico
+    // que não existe — a Carol não pode avaliar (nem recomendar manter)
+    // algo que nunca começou a medir. Ver bug relatado 2026-08-30.
+    carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}), mas ainda sem corridas registadas nesta fase${isCompressed ? ' — o macrociclo ficou comprimido porque a prova foi registada a poucos dias da corrida' : ''}. Regista os teus treinos para a Carol poder acompanhar a tua evolução real; sem dados, não há rácio 80/20 nem fadiga aguda (ACWR) para avaliar.`;
   }
 
   return {
