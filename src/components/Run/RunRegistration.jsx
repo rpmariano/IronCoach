@@ -15,6 +15,7 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -82,6 +83,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     !runIdToEdit ? useAppStore.getState().planItemPrefill : null
   );
   const planItem = completingPlanItemRef.current?.kind === 'corrida' ? completingPlanItemRef.current : null;
+
+  // Identifica este rascunho de forma única para sobreviver a um
+  // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
+  // corridas diferentes nem entre uma edição e uma criação nova a seguir.
+  const draftStorageKey = runIdToEdit ? `ironcoach:corrida-rascunho:${runIdToEdit}` : 'ironcoach:corrida-rascunho:nova';
+  // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
+  // efeito de carregamento reporia o rascunho guardado por cima de
+  // alterações mais recentes ainda não persistidas.
+  const restoredForKeyRef = useRef(null);
 
   // --- RUNS STATE ---
   const [runKind, setRunKind] = useState(planItem?.isRace ? 'competicao' : 'treino'); // 'treino' | 'competicao'
@@ -197,6 +207,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
+    clearPersistedFormDraft(draftStorageKey);
     onClose();
     if (target) {
       // O guard ainda está registado neste render — o próprio setActiveTab()
@@ -337,52 +348,68 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (runIdToEdit) {
       const r = runs.find(r => r.id === runIdToEdit);
       if (r) {
-        setEntryMethod('manual');
-        setRunKind(r.kind || 'treino');
-        setRunTrainingType(r.training_type || 'continuo');
-        setRunDate(r.date || todayISO());
-        setRunName(r.name || '');
-        setRunDistance(r.distance_km || '');
-        setRunDuration(r.duration_seconds ? formatDuration(r.duration_seconds) : '');
-        setRunEffortRpe(r.effort_rpe || 0);
-        setRunNotes(r.notes || '');
-        setShoeId(r.shoe_id || null);
-        
-        const d = r.details || {};
-        setElevationGain(d.elevation_gain_m || '');
-        setCadence(d.cadence_spm || '');
-        setMaxCadence(d.max_cadence_spm || '');
-        setCalories(d.calories_kcal || '');
-        setVo2Max(d.vo2_max || '');
-        setAvgHeartRate(d.avg_heart_rate_bpm || '');
-        setMaxHeartRate(d.max_heart_rate_bpm || '');
+        // Rascunho por gravar guardado localmente (ver
+        // formDraftPersistence.js) sobrepõe-se ao valor canónico vindo do
+        // servidor — restaura-se UMA VEZ por sessão de edição
+        // (restoredForKeyRef), senão este efeito repunha-o a cada vez que
+        // voltasse a correr (ex.: `runs` muda por uma reanálise em paralelo).
+        const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
+        const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
+        restoredForKeyRef.current = draftStorageKey;
 
-        setSweatLossMl(d.sweat_loss_ml || '');
-        setTotalSteps(d.total_steps || '');
-        setMaxPace(d.max_pace_seconds_per_km ? formatPace(d.max_pace_seconds_per_km) : '');
-        setElevationLoss(d.elevation_loss_m || '');
-        setAerobicThreshold(d.aerobic_threshold_bpm || '');
-        setAnaerobicThreshold(d.anaerobic_threshold_bpm || '');
-        setHrRecovery(d.hr_recovery_bpm || '');
-        setGroundContactTime(d.ground_contact_time_ms || '');
-        setFlightTime(d.flight_time_ms || '');
-        setVerticalOscillation(d.vertical_oscillation_cm || '');
-        setAsymmetryPct(d.asymmetry_pct || '');
-        setLegStiffness(d.leg_stiffness_kn_m || '');
-        
-        setWarmupMinutes(d.warmup_minutes || '');
-        setRecoverySeconds(d.recovery_seconds || '');
-        setSplits(d.splits ? d.splits.map(s => ({ distance_km: s.distance_km || '', minutes: s.time_seconds ? formatDuration(s.time_seconds) : '' })) : []);
-        setHrZones(d.hr_zones ? d.hr_zones.map(z => ({ zone: z.zone || '', minutes: z.minutes || '' })) : []);
-        
-        setOfficialTime(d.official_time_seconds ? formatDuration(d.official_time_seconds) : '');
-        setPosition(d.position || '');
-        setCompletedRaceType(d.race_type || '10k');
+        const d = r.details || {};
+        const canonicalSplits = d.splits ? d.splits.map(s => ({ distance_km: s.distance_km || '', minutes: s.time_seconds ? formatDuration(s.time_seconds) : '' })) : [];
+        const canonicalHrZones = d.hr_zones ? d.hr_zones.map(z => ({ zone: z.zone || '', minutes: z.minutes || '' })) : [];
+
+        setEntryMethod(persisted?.entryMethod ?? 'manual');
+        setRunKind(persisted?.runKind ?? (r.kind || 'treino'));
+        setRunTrainingType(persisted?.runTrainingType ?? (r.training_type || 'continuo'));
+        setRunDate(persisted?.runDate ?? (r.date || todayISO()));
+        setRunName(persisted?.runName ?? (r.name || ''));
+        setRunDistance(persisted?.runDistance ?? (r.distance_km || ''));
+        setRunDuration(persisted?.runDuration ?? (r.duration_seconds ? formatDuration(r.duration_seconds) : ''));
+        setRunEffortRpe(persisted?.runEffortRpe ?? (r.effort_rpe || 0));
+        setRunNotes(persisted?.runNotes ?? (r.notes || ''));
+        setShoeId(persisted?.shoeId ?? (r.shoe_id || null));
+
+        setElevationGain(persisted?.elevationGain ?? (d.elevation_gain_m || ''));
+        setCadence(persisted?.cadence ?? (d.cadence_spm || ''));
+        setMaxCadence(persisted?.maxCadence ?? (d.max_cadence_spm || ''));
+        setCalories(persisted?.calories ?? (d.calories_kcal || ''));
+        setVo2Max(persisted?.vo2Max ?? (d.vo2_max || ''));
+        setAvgHeartRate(persisted?.avgHeartRate ?? (d.avg_heart_rate_bpm || ''));
+        setMaxHeartRate(persisted?.maxHeartRate ?? (d.max_heart_rate_bpm || ''));
+
+        setSweatLossMl(persisted?.sweatLossMl ?? (d.sweat_loss_ml || ''));
+        setTotalSteps(persisted?.totalSteps ?? (d.total_steps || ''));
+        setMaxPace(persisted?.maxPace ?? (d.max_pace_seconds_per_km ? formatPace(d.max_pace_seconds_per_km) : ''));
+        setElevationLoss(persisted?.elevationLoss ?? (d.elevation_loss_m || ''));
+        setAerobicThreshold(persisted?.aerobicThreshold ?? (d.aerobic_threshold_bpm || ''));
+        setAnaerobicThreshold(persisted?.anaerobicThreshold ?? (d.anaerobic_threshold_bpm || ''));
+        setHrRecovery(persisted?.hrRecovery ?? (d.hr_recovery_bpm || ''));
+        setGroundContactTime(persisted?.groundContactTime ?? (d.ground_contact_time_ms || ''));
+        setFlightTime(persisted?.flightTime ?? (d.flight_time_ms || ''));
+        setVerticalOscillation(persisted?.verticalOscillation ?? (d.vertical_oscillation_cm || ''));
+        setAsymmetryPct(persisted?.asymmetryPct ?? (d.asymmetry_pct || ''));
+        setLegStiffness(persisted?.legStiffness ?? (d.leg_stiffness_kn_m || ''));
+
+        setWarmupMinutes(persisted?.warmupMinutes ?? (d.warmup_minutes || ''));
+        setRecoverySeconds(persisted?.recoverySeconds ?? (d.recovery_seconds || ''));
+        setSplits(persisted?.splits ?? canonicalSplits);
+        setHrZones(persisted?.hrZones ?? canonicalHrZones);
+
+        setOfficialTime(persisted?.officialTime ?? (d.official_time_seconds ? formatDuration(d.official_time_seconds) : ''));
+        setPosition(persisted?.position ?? (d.position || ''));
+        setCompletedRaceType(persisted?.completedRaceType ?? (d.race_type || '10k'));
 
         // Distância, duração, RPE, tipo e métricas são dados ANALÍTICOS:
         // mudá-los muda a análise, e guardar passa pelo Coach para a
         // regenerar. Mudar só a data ou o nome é update direto, sem custo de
-        // API (mesmo padrão da Nutrição/Ginásio/Corpo — ver PRD 3.2).
+        // API (mesmo padrão da Nutrição/Ginásio/Corpo — ver PRD 3.2). A
+        // assinatura de partida compara sempre contra o valor CANÓNICO (do
+        // servidor), nunca contra o rascunho restaurado — é assim que um
+        // rascunho com métricas diferentes das gravadas dispara "Reanalisar"
+        // já na primeira renderização.
         setOriginalSnapshot(analyticalSignature({
           date: r.date,
           kind: r.kind || 'treino',
@@ -393,8 +420,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           notes: r.notes || null,
           details: r.details,
         }));
+        if (persisted) setIsFormDirty(true);
 
-        // Load photos (são privadas, precisamos de signed URLs)
+        // Load photos (são privadas, precisamos de signed URLs) — nunca
+        // vindas do rascunho persistido (ver usePersistedFormDraft abaixo).
         if (r.photo_paths && r.photo_paths.length > 0) {
           supabase.storage.from('run-photos').createSignedUrls(r.photo_paths, 3600).then(({ data, error }) => {
             if (!error && data) {
@@ -405,6 +434,71 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
     }
   }, [runIdToEdit, runs]);
+
+  // Restaura um rascunho de corrida NOVA por gravar (ver
+  // formDraftPersistence.js) — o caminho de edição está no efeito acima.
+  // Corre uma única vez por sessão de criação (restoredForKeyRef), sem
+  // depender de `runs`, para não repor o rascunho por cima de alterações
+  // recentes sempre que outra corrida é gravada em paralelo.
+  useEffect(() => {
+    if (runIdToEdit) return;
+    if (restoredForKeyRef.current === draftStorageKey) return;
+    restoredForKeyRef.current = draftStorageKey;
+    const persisted = restorePersistedFormDraft(draftStorageKey);
+    if (!persisted) return;
+    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
+    if (persisted.runKind) setRunKind(persisted.runKind);
+    if (persisted.runTrainingType) setRunTrainingType(persisted.runTrainingType);
+    if (persisted.runDate) setRunDate(persisted.runDate);
+    if (persisted.runName !== undefined) setRunName(persisted.runName);
+    if (persisted.shoeId !== undefined) setShoeId(persisted.shoeId);
+    if (persisted.runDistance !== undefined) setRunDistance(persisted.runDistance);
+    if (persisted.runDuration !== undefined) setRunDuration(persisted.runDuration);
+    if (persisted.runEffortRpe !== undefined) setRunEffortRpe(persisted.runEffortRpe);
+    if (persisted.runNotes !== undefined) setRunNotes(persisted.runNotes);
+    if (persisted.elevationGain !== undefined) setElevationGain(persisted.elevationGain);
+    if (persisted.cadence !== undefined) setCadence(persisted.cadence);
+    if (persisted.maxCadence !== undefined) setMaxCadence(persisted.maxCadence);
+    if (persisted.calories !== undefined) setCalories(persisted.calories);
+    if (persisted.vo2Max !== undefined) setVo2Max(persisted.vo2Max);
+    if (persisted.avgHeartRate !== undefined) setAvgHeartRate(persisted.avgHeartRate);
+    if (persisted.maxHeartRate !== undefined) setMaxHeartRate(persisted.maxHeartRate);
+    if (persisted.sweatLossMl !== undefined) setSweatLossMl(persisted.sweatLossMl);
+    if (persisted.totalSteps !== undefined) setTotalSteps(persisted.totalSteps);
+    if (persisted.maxPace !== undefined) setMaxPace(persisted.maxPace);
+    if (persisted.elevationLoss !== undefined) setElevationLoss(persisted.elevationLoss);
+    if (persisted.aerobicThreshold !== undefined) setAerobicThreshold(persisted.aerobicThreshold);
+    if (persisted.anaerobicThreshold !== undefined) setAnaerobicThreshold(persisted.anaerobicThreshold);
+    if (persisted.hrRecovery !== undefined) setHrRecovery(persisted.hrRecovery);
+    if (persisted.groundContactTime !== undefined) setGroundContactTime(persisted.groundContactTime);
+    if (persisted.flightTime !== undefined) setFlightTime(persisted.flightTime);
+    if (persisted.verticalOscillation !== undefined) setVerticalOscillation(persisted.verticalOscillation);
+    if (persisted.asymmetryPct !== undefined) setAsymmetryPct(persisted.asymmetryPct);
+    if (persisted.legStiffness !== undefined) setLegStiffness(persisted.legStiffness);
+    if (persisted.warmupMinutes !== undefined) setWarmupMinutes(persisted.warmupMinutes);
+    if (persisted.recoverySeconds !== undefined) setRecoverySeconds(persisted.recoverySeconds);
+    if (persisted.splits) setSplits(persisted.splits);
+    if (persisted.hrZones) setHrZones(persisted.hrZones);
+    if (persisted.officialTime !== undefined) setOfficialTime(persisted.officialTime);
+    if (persisted.position !== undefined) setPosition(persisted.position);
+    if (persisted.completedRaceType) setCompletedRaceType(persisted.completedRaceType);
+    setIsFormDirty(true);
+  }, [runIdToEdit, draftStorageKey]);
+
+  // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
+  // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
+  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
+  // picker não é restaurável depois de recarregar, e não são tipicamente o
+  // que se está a meio de escrever quando se é interrompido.
+  usePersistedFormDraft(draftStorageKey, {
+    entryMethod, runKind, runTrainingType, runDate, runName, shoeId,
+    runDistance, runDuration, runEffortRpe, runNotes,
+    elevationGain, cadence, maxCadence, calories, vo2Max, avgHeartRate, maxHeartRate,
+    sweatLossMl, totalSteps, maxPace, elevationLoss, aerobicThreshold, anaerobicThreshold,
+    hrRecovery, groundContactTime, flightTime, verticalOscillation, asymmetryPct, legStiffness,
+    warmupMinutes, recoverySeconds, splits, hrZones,
+    officialTime, position, completedRaceType,
+  }, { isDirty: isFormDirty });
 
   // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit
