@@ -11,23 +11,26 @@ import { invokeEdgeFunctionWithTimeout } from './supabase';
 // getter crie.
 
 // BUG CORRIGIDO (2026-08-30) — relatado como "erro de comunicação" ao
-// falar com a Carol, mesmo com rede no telemóvel, "já aconteceu algumas
-// vezes". A deteção de timeout comparava `err.name === 'AbortError'`, mas
-// `supabase.functions.invoke()` envolve QUALQUER falha do fetch — a nossa
-// própria AbortController incluída — num `FunctionsFetchError` genérico
-// (mensagem fixa "Failed to send a request to the Edge Function", nome
-// "FunctionsFetchError"), sem preservar o nome original. A comparação por
-// nome era por isso sempre falsa: um pedido que o PRÓPRIO cliente desistiu
-// de esperar (isTimeout deveria ser true, para acionar o aviso de demora +
-// sondagem em Coach.jsx) caía sempre no ramo de falha de rede genérica —
-// a mesma mensagem de uma falha de rede real, sem ligação nenhuma com o
-// estado da rede do atleta.
+// falar com a Carol, mesmo com rede no telemóvel, e persistente mesmo
+// depois de uma primeira tentativa de correção. Duas camadas do mesmo
+// problema, as duas confirmadas contra o código real de
+// @supabase/functions-js (não um mock inventado):
 //
-// Estes testes reproduzem o comportamento REAL da livraria (o erro nunca
-// chega com name: 'AbortError') — ao contrário dos testes de Coach.jsx,
-// que mockam invokeEdgeFunctionWithTimeout inteiro e por isso nunca
-// exercitam esta lógica de deteção.
-function mockFunctionsFetchError() {
+// 1. A deteção comparava `err.name === 'AbortError'` num `catch`.
+// 2. Mas FunctionsClient.invoke() NUNCA REJEITA a promise — envolve TUDO
+//    (incluindo a nossa própria AbortController a desistir) num try/catch
+//    interno e resolve SEMPRE com `{ data: null, error }`. O `catch` deste
+//    ficheiro nunca era alcançado para esta falha; a resposta chega
+//    sempre pelo ramo `if (error)`, que assumia isTimeout:false sempre.
+//
+// Confirmado em produção (app_logs): a mensagem gravada tinha sempre
+// meta:{fnName} — a assinatura exata do ramo `if (error)`, nunca do catch.
+//
+// Estes testes reproduzem o comportamento REAL da livraria (resolve,
+// nunca rejeita) — ao contrário dos testes de Coach.jsx, que mockam
+// invokeEdgeFunctionWithTimeout inteiro e por isso nunca exercitam esta
+// lógica de deteção.
+function functionsFetchError() {
   const err = new Error('Failed to send a request to the Edge Function');
   err.name = 'FunctionsFetchError';
   return err;
@@ -38,10 +41,10 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
     vi.restoreAllMocks();
   });
 
-  it('BUG CORRIGIDO — o próprio timer do cliente disparar dá isTimeout:true, mesmo com o erro embrulhado sem name "AbortError"', async () => {
+  it('BUG CORRIGIDO — o próprio timer do cliente disparar dá isTimeout:true (invoke() RESOLVE com {data:null, error}, nunca rejeita)', async () => {
     vi.spyOn(FunctionsClient.prototype, 'invoke').mockImplementation((_fnName, opts) => {
-      return new Promise((_resolve, reject) => {
-        opts.signal.addEventListener('abort', () => reject(mockFunctionsFetchError()));
+      return new Promise((resolve) => {
+        opts.signal.addEventListener('abort', () => resolve({ data: null, error: functionsFetchError() }));
       });
     });
 
@@ -52,7 +55,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('falha de rede genuína (sem o temporizador ter disparado) continua isTimeout:false', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockImplementation(() => Promise.reject(mockFunctionsFetchError()));
+    vi.spyOn(FunctionsClient.prototype, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
 
     const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
 
@@ -81,5 +84,18 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
     const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
 
     expect(result).toEqual({ data: { reply: 'olá' }, error: null });
+  });
+
+  it('rede de segurança: se invoke() alguma vez rejeitar em vez de resolver, o timer do cliente ainda é detetado no catch', async () => {
+    vi.spyOn(FunctionsClient.prototype, 'invoke').mockImplementation((_fnName, opts) => {
+      return new Promise((_resolve, reject) => {
+        opts.signal.addEventListener('abort', () => reject(functionsFetchError()));
+      });
+    });
+
+    const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 20);
+
+    expect(result.isTimeout).toBe(true);
+    expect(result.error).toMatch(/timeout/i);
   });
 });

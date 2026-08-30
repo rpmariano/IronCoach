@@ -42,23 +42,32 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
  * por nada.
  *
  * BUG CORRIGIDO (2026-08-30, relatado como "erro de comunicação" na Carol
- * mesmo com rede no telemóvel): a deteção de timeout comparava `err.name
- * === 'AbortError'`, mas `supabase.functions.invoke()` NUNCA deixa esse
- * nome sobreviver — o FunctionsClient da própria livraria envolve QUALQUER
- * falha do fetch (a nossa própria AbortController incluída) num
- * `FunctionsFetchError` genérico, com a mensagem fixa "Failed to send a
- * request to the Edge Function" e nome "FunctionsFetchError" (ver
- * node_modules/@supabase/functions-js — `.catch((fetchError) => { throw
- * new FunctionsFetchError(fetchError); })`, sem exceção para AbortError).
- * Ou seja: a comparação por nome era sempre falsa, e um pedido que o
- * PRÓPRIO cliente desistiu de esperar (ex.: o coach-chat a repetir uma
- * chamada ao Gemini que veio 503, facilmente ultrapassando os 45s daqui)
- * caía sempre no ramo genérico "Falha de rede ou de comunicação com o
- * servidor" em vez do aviso de demora com sondagem (handleAsyncFallback em
- * Coach.jsx) — dava exatamente a mesma mensagem de uma falha de rede real,
- * por isso "tinha rede no telemóvel" não batia certo com o que se via.
- * Correção: verificar `controller.signal.aborted` diretamente — é o NOSSO
- * temporizador, não depende de a livraria preservar o tipo do erro.
+ * mesmo com rede no telemóvel, persistente mesmo depois de uma primeira
+ * tentativa de correção). Duas camadas do mesmo problema:
+ *
+ * 1.ª tentativa (insuficiente): a deteção comparava `err.name ===
+ * 'AbortError'` num `catch`. Mas essa comparação era irrelevante — não
+ * porque a livraria disfarçasse o nome do erro (ver types.js:
+ * `FunctionsFetchError` fixa nome "FunctionsFetchError" e mensagem "Failed
+ * to send a request to the Edge Function"), mas porque **o próprio
+ * `FunctionsClient.invoke()` NUNCA REJEITA a promise**: envolve TODO o
+ * corpo em try/catch e devolve sempre `{ data: null, error }` — incluindo
+ * quando é a NOSSA AbortController a desistir (ver
+ * node_modules/@supabase/functions-js/dist/main/FunctionsClient.js,
+ * `catch (error) { return { data: null, error, ... } }`, sem excecionar
+ * abort). Ou seja: o `catch` deste ficheiro é código morto para esta
+ * falha — nunca é alcançado, porque não há exceção nenhuma para apanhar.
+ * A resposta chega sempre pelo ramo `if (error)` mais abaixo, que
+ * assumia `isTimeout: false` incondicionalmente.
+ *
+ * Confirmado em produção (app_logs): a mensagem gravada era sempre "Failed
+ * to send a request to the Edge Function" com `meta: { fnName }` — a
+ * assinatura exata do ramo `if (error)`, nunca do `catch`.
+ *
+ * Fix: verificar `controller.signal.aborted` logo a seguir a `await
+ * supabase.functions.invoke(...)`, antes de examinar `error` — é o NOSSO
+ * temporizador, a única fonte fiável de saber se fomos nós a desistir,
+ * independentemente de a livraria rejeitar ou resolver.
  */
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
   const controller = new AbortController();
@@ -73,6 +82,16 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     clearTimeout(timer);
 
     if (error) {
+      // supabase.functions.invoke() nunca rejeita — apanha SEMPRE a
+      // exceção internamente e resolve com {data:null, error}, mesmo
+      // quando é a NOSSA AbortController a desistir. Por isso é aqui, não
+      // no catch mais abaixo, que se decide se isto é um timeout nosso.
+      if (controller.signal.aborted) {
+        console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
+        logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
+        return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true };
+      }
+
       let detailedMsg = error.message;
       if (error.context && typeof error.context.json === 'function') {
         try {
@@ -94,6 +113,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     return { data, error: null };
   } catch (err) {
     clearTimeout(timer);
+    // Continua aqui por segurança (ex.: se a própria chamada a
+    // supabase.functions.invoke lançar antes de devolver, ou logAppEvent
+    // acima falhar) — mas na prática o ramo acima é que trata o caso real.
     if (controller.signal.aborted) {
       console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
       logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
