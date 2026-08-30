@@ -244,6 +244,50 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     }
   });
 
+  describe('eliminar prova', () => {
+    it('prova NOVA: não mostra o botão Eliminar (ainda não existe na BD)', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      expect(screen.queryByRole('button', { name: /^Eliminar$/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+      expect(screen.queryByRole('button', { name: /^Eliminar$/i })).not.toBeInTheDocument();
+    });
+
+    it('a EDITAR: pede confirmação num popup antes de eliminar, e cancelar não apaga nada', async () => {
+      useAppStore.setState({ editingRaceId: 'race-1' });
+      renderAgenda();
+
+      fireEvent.click(screen.getAllByRole('button', { name: /^Eliminar$/i })[0]);
+      expect(screen.getByText(/Tens a certeza que queres eliminar esta prova/i)).toBeInTheDocument();
+
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Cancelar$/i }));
+      // PremiumModal anima o fecho (400ms) antes de desmontar o conteúdo.
+      await waitFor(() => {
+        expect(screen.queryByText(/Tens a certeza que queres eliminar esta prova/i)).not.toBeInTheDocument();
+      });
+      expect(useAppStore.getState().raceEvents).toEqual([EXISTING_RACE]);
+    });
+
+    it('a EDITAR: confirmar no popup elimina a prova, atualiza o store e fecha o formulário', async () => {
+      vi.spyOn(supabase, 'from').mockReturnValue({
+        delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      });
+      const onClose = vi.fn();
+      useAppStore.setState({ editingRaceId: 'race-1' });
+      render(<ToastProvider><RunAgenda onClose={onClose} /></ToastProvider>);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /^Eliminar$/i })[0]);
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Eliminar$/i }));
+
+      await waitFor(() => {
+        expect(useAppStore.getState().raceEvents).toEqual([]);
+      });
+      expect(useAppStore.getState().editingRaceId).toBeNull();
+      expect(onClose).toHaveBeenCalled();
+    });
+  });
+
   it('mostra o modal de dados incompletos sem rebentar ao gravar com campos obrigatórios em falta', () => {
     renderAgenda();
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
