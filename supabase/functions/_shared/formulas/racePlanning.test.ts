@@ -4,6 +4,7 @@ import {
   getEffectiveDistanceKm,
   resolveExperienceLevel,
   getRacePrediction,
+  computeEffectivePrepStart,
 } from "./racePlanning.ts";
 
 const golden = JSON.parse(await Deno.readTextFile(new URL("./racePlanning.golden.json", import.meta.url)));
@@ -32,6 +33,12 @@ for (const { fn, name, input, expect } of golden) {
         assertEquals(result.experienceLevel, expect.experienceLevel);
         break;
       }
+      case "computeEffectivePrepStart":
+        assertEquals(
+          computeEffectivePrepStart(input.raceDateISO, input.totalWeeks, input.raceCreatedAtISO),
+          expect,
+        );
+        break;
     }
   });
 }

@@ -437,6 +437,13 @@
   opacity: 0.88;
 }
 
+/* Janela teórica anterior ao início real da preparação (macrociclo
+   comprimido — prova registada tarde demais) — visualmente distinta de
+   "concluída", nunca aconteceu. */
+.rh-phase-card.skipped-phase {
+  opacity: 0.6;
+}
+
 .rh-phase-header {
   display: flex;
   align-items: flex-start;
@@ -515,6 +522,12 @@
   background: rgba(148, 163, 184, 0.15);
   color: #94a3b8;
   border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.rh-pill-skipped {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
 }
 
 /* Classificação da Carol por Fase */

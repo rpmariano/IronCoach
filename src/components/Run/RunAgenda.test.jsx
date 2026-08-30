@@ -304,4 +304,33 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
     });
   });
+
+  // Bug relatado 2026-08-29: uma prova recém-criada com pouco tempo real até
+  // à corrida (o macrociclo recomendado não cabe) deixava de mostrar o
+  // alerta "Tempo insuficiente" mal o cálculo antigo considerasse a
+  // preparação teórica "em curso" — mesmo a prova acabada de nascer, sem um
+  // único dia de treino. Ver src/utils/racePlanEngine.test.js para o mesmo
+  // bug no motor do plano.
+  describe('alerta de viabilidade não desaparece com macrociclo comprimido (bug 2026-08-29)', () => {
+    it('prova nova a 17 dias de distância (10k): mostra "Tempo insuficiente" desde a criação, não só quando editada mais tarde', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-27T12:00:00Z'));
+      try {
+        // experience_level no perfil — sem nível conhecido, assessRaceViability
+        // não avalia nada (early return), independentemente da correção.
+        useAppStore.setState({ editingRaceId: null, profile: { id: 'user-1', experience_level: 'medio' } });
+        renderAgenda();
+        fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+        // Distância por omissão do rascunho novo já é '10' (10k) — só falta
+        // a data, a 17 dias (bem menos que as semanas mínimas recomendadas).
+        const dateInput = document.querySelector('input[type="date"]');
+        fireEvent.change(dateInput, { target: { value: '2026-09-13' } });
+
+        expect(screen.getByText(/Tempo insuficiente para a preparação/i)).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

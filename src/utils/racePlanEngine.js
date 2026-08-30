@@ -16,7 +16,7 @@ import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
 import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@formulas/recovery.ts';
-import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel } from '@formulas/racePlanning.ts';
+import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { computePhaseEvaluation } from '@formulas/racePhaseEvaluation.ts';
 import { computePhaseWindows, resolvePhaseState } from '@formulas/racePhases.ts';
 
@@ -119,6 +119,14 @@ export function resolveExperienceLevel(race, profile) {
   return sharedResolveExperienceLevel(race, profile);
 }
 
+// ─── Início Real da Preparação (Macrociclo Comprimido) ──────────────────────
+// Delega em @formulas/racePlanning.ts (T1.5) — única implementação,
+// partilhada com a Carol. Ver o comentário completo junto a
+// `effectiveStartDate` dentro de `calculateRaceTrainingPlan`, abaixo.
+export function computeEffectivePrepStartDate(raceDateISO, totalWeeks, raceCreatedAtISO) {
+  return computeEffectivePrepStart(raceDateISO, totalWeeks, raceCreatedAtISO);
+}
+
 // ─── Cálculo Completo do Plano & Fases ──────────────────────────────────────────
 export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], todayISO = null }) {
   const today = todayISO || getTodayISO();
@@ -153,7 +161,20 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const planEndDate = planEndDateObj.toISOString().slice(0, 10);
 
   const daysToRace = Math.round((raceDateObj.getTime() - todayDateObj.getTime()) / 86400000);
-  const daysToStart = Math.round((planStartDateObj.getTime() - todayDateObj.getTime()) / 86400000);
+
+  // ─── Início real da preparação (macrociclo comprimido) ──────────────────
+  // `planStartDate` é só o início IDEAL, contado para trás a partir da
+  // prova — não sabe quando a prova foi de facto registada. Se o atleta só
+  // criou a prova depois desse dia, a preparação nunca pôde começar nele:
+  // usá-lo às cegas para "onde estamos agora" fabricava fases marcadas
+  // "concluídas" sem uma única corrida, e escondia o alerta de tempo
+  // insuficiente (bug relatado 2026-08-29, com uma prova a 17 dias
+  // registada no próprio dia). `effectiveStartDate` é o mais tardio dos
+  // dois — o ideal, ou o dia em que a prova passou a existir para o atleta.
+  const { effectiveStartISO: effectiveStartDate, isCompressed, effectiveWeeksAvailable } =
+    computeEffectivePrepStart(raceDate, totalWeeks, race?.created_at || null);
+  const effectiveStartDateObj = new Date(effectiveStartDate + 'T00:00:00');
+  const daysToStart = Math.round((effectiveStartDateObj.getTime() - todayDateObj.getTime()) / 86400000);
 
   // Status temporal
   let trainingStatus = 'not_started'; // 'not_started' | 'in_progress' | 'race_day' | 'completed'
@@ -175,18 +196,26 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   } else {
     trainingStatus = 'in_progress';
     const daysElapsed = Math.abs(daysToStart);
-    const totalDays = totalWeeks * 7;
-    progressPercentage = Math.max(0, Math.min(100, Math.round((daysElapsed / totalDays) * 100)));
+    // Dias realmente disponíveis desde o início efetivo até à prova — igual
+    // a totalWeeks×7 quando não há compressão (effectiveStartDate ===
+    // planStartDate), por construção (planStartDate = raceDate −
+    // totalWeeks×7). Só diverge — e só para menos — quando comprimido.
+    const totalDaysAvailable = Math.max(1, Math.round((raceDateObj.getTime() - effectiveStartDateObj.getTime()) / 86400000));
+    progressPercentage = Math.max(0, Math.min(100, Math.round((daysElapsed / totalDaysAvailable) * 100)));
     currentWeek = Math.min(totalWeeks, Math.floor(daysElapsed / 7) + 1);
   }
 
   // ─── Análise Holística da Carol sobre a Evolução do Treino ───────────────────
   const weeklyVol = recentWeeklyVolume(runs, today);
   const weeksToRace = Math.floor(Math.max(0, daysToRace) / 7);
-  // Se o treino já está em curso ou concluído, a viabilidade avalia o ciclo total planeado (totalWeeks),
-  // evitando falsos positivos de "tempo insuficiente" a meio da preparação.
-  const prepWeeksForViability = (trainingStatus === 'in_progress' || trainingStatus === 'completed') 
-    ? totalWeeks 
+  // Se o treino já está em curso ou concluído, a viabilidade avalia as
+  // semanas REALMENTE disponíveis a partir do início efetivo
+  // (effectiveWeeksAvailable), não o ciclo total planeado às cegas —
+  // evita falsos positivos de "tempo insuficiente" a meio de uma
+  // preparação em curso (P0-7), sem voltar a escondê-lo quando a prova foi
+  // registada tarde demais para caber o macrociclo recomendado.
+  const prepWeeksForViability = (trainingStatus === 'in_progress' || trainingStatus === 'completed')
+    ? effectiveWeeksAvailable
     : weeksToRace;
 
   const viability = assessRaceViability({
@@ -231,9 +260,11 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   // ─── Determinação do Status de Cada Fase ────────────────────────────────────
   // Delega em @formulas/racePhases.ts (T1.5). O original recebia
   // `(startW, endW, startDateStr, endDateStr)` mas nunca usava os dois
-  // primeiros — deixaram de existir.
+  // primeiros — deixaram de existir. `effectiveStartDate` marca "skipped"
+  // qualquer janela inteiramente anterior ao início real da preparação
+  // (ver comentário em `effectiveStartDate`, acima).
   const determinePhaseState = (startDateStr, endDateStr) =>
-    resolvePhaseState(trainingStatus, today, startDateStr, endDateStr);
+    resolvePhaseState(trainingStatus, today, startDateStr, endDateStr, effectiveStartDate);
 
   // ─── Avaliação de Desempenho do Atleta pela Carol por Fase ──────────────────
   // Delega em @formulas/racePhaseEvaluation.ts (T1.5) — única implementação,
@@ -356,6 +387,14 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     raceDate,
     planStartDate,
     planEndDate,
+    // Início REAL da preparação e se o macrociclo teve de ser comprimido
+    // (prova registada depois do início ideal) — ver comentário acima de
+    // `effectiveStartDate`. `daysToStart`/`currentWeek`/`progressPercentage`
+    // já refletem isto; estes três campos ficam disponíveis para quem
+    // precisar de explicar a compressão em vez de só sofrer o efeito dela.
+    effectiveStartDate,
+    isCompressed,
+    effectiveWeeksAvailable,
     totalWeeks,
     taperWeeks,
     recoveryDays,

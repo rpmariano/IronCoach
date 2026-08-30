@@ -11,7 +11,7 @@ describe('racePhases — vetor dourado', () => {
     it(`${fn} — ${name}`, () => {
       const result = fn === 'computePhaseWindows'
         ? computePhaseWindows(input.totalWeeks, input.taperWeeks, input.planStartISO)
-        : resolvePhaseState(input.trainingStatus, input.todayISO, input.startDateStr, input.endDateStr);
+        : resolvePhaseState(input.trainingStatus, input.todayISO, input.startDateStr, input.endDateStr, input.effectiveStartISO);
       expect(result).toEqual(exp);
     });
   }

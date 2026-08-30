@@ -6,6 +6,7 @@ import {
   getEffectiveDistanceKm,
   resolveExperienceLevel,
   getRacePrediction,
+  computeEffectivePrepStart,
 } from '@formulas/racePlanning.ts';
 
 const goldenPath = path.resolve(__dirname, '../../supabase/functions/_shared/formulas/racePlanning.golden.json');
@@ -26,6 +27,9 @@ describe('racePlanning — vetor dourado', () => {
           break;
         case 'getRacePrediction':
           expect(getRacePrediction(input.race, input.profile, input.runs)).toEqual(exp);
+          break;
+        case 'computeEffectivePrepStart':
+          expect(computeEffectivePrepStart(input.raceDateISO, input.totalWeeks, input.raceCreatedAtISO)).toEqual(exp);
           break;
         default:
           throw new Error(`fn desconhecida: ${fn}`);

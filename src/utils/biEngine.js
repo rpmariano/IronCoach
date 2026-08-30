@@ -7,7 +7,7 @@ import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, resolveExperienceLevel } from './racePlanEngine';
-import { getRacePrediction as sharedGetRacePrediction } from '@formulas/racePlanning.ts';
+import { getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { todayISO } from '../lib/utils';
 // mealNutrients removido daqui — as duas únicas chamadas migraram para
 // @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
@@ -599,9 +599,15 @@ export function detectCoachInsights(data, profile) {
           // própria, e usar o equivalente ITRA cria um "penhasco" de
           // categoria por poucos km de D+ convertido (ver racePlanEngine.js).
           const totalWeeks = getRecommendedPrepWeeks(dist, expLevel);
-          const planStartDateObj = new Date(parseISO(next.date).getTime() - totalWeeks * 7 * 86400000);
-          const inProgress = planStartDateObj.getTime() <= now.getTime();
-          const prepWeeksForViability = inProgress ? totalWeeks : Math.floor(daysLeft / 7);
+          // effectiveStartISO/effectiveWeeksAvailable tratam o caso da prova
+          // ter sido registada depois do início ideal do macrociclo — usar
+          // sempre totalWeeks quando "em curso" fabricava semanas de
+          // preparação que nunca existiram e escondia 'tempo_insuficiente'
+          // num ciclo comprimido (bug relatado 2026-08-29, ver
+          // racePlanEngine.js e specs/formulas-checklist.md P0-7).
+          const { effectiveStartISO, effectiveWeeksAvailable } = computeEffectivePrepStart(next.date, totalWeeks, next.created_at || null);
+          const inProgress = effectiveStartISO <= format(now, 'yyyy-MM-dd');
+          const prepWeeksForViability = inProgress ? effectiveWeeksAvailable : Math.floor(daysLeft / 7);
 
           const viability = assessRaceViability({
             distanceKm: dist,

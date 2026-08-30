@@ -168,6 +168,58 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(basePhase.evaluation.summary).toContain('abaixo do alvo');
   });
 
+  it('BUG CORRIGIDO (2026-08-29) — prova registada a poucos dias da corrida não fabrica fases "concluídas" nem esconde o alerta de tempo insuficiente', () => {
+    // Caso real relatado: 10 km, medio, corrida a 17 dias, prova criada no
+    // próprio dia (created_at = hoje). Antes da correção: planStartDate era
+    // sempre contado para trás a partir da prova (raceDate − totalWeeks×7),
+    // ignorando quando a prova foi de facto registada — as fases Base e
+    // Construção caíam inteiramente no passado face a "hoje" e ficavam
+    // "completed" com 0 corridas (nota fixa de 40, "Sem Registos"), e a
+    // viabilidade era avaliada contra totalWeeks (6) em vez das ~2 semanas
+    // reais disponíveis, escondendo 'tempo_insuficiente'.
+    const race = {
+      id: 'race-comprimida',
+      name: 'Corrida do Tejo',
+      date: '2026-09-13',
+      distance_km: '10',
+      race_type: 'estrada',
+      elevation_gain_m: null,
+      experience_level: 'medio',
+      race_priority: 'a',
+      created_at: '2026-08-27 11:14:16.834118+00',
+    };
+    const plan = calculateRaceTrainingPlan({
+      race,
+      profile: {},
+      runs: [],
+      todayISO: '2026-08-27',
+    });
+
+    expect(plan.totalWeeks).toBe(6);
+    expect(plan.isCompressed).toBe(true);
+    expect(plan.effectiveStartDate).toBe('2026-08-27');
+    expect(plan.effectiveWeeksAvailable).toBe(2);
+
+    // A preparação "ideal" continua a apontar para 2026-08-02 (referência
+    // teórica), mas onde estamos agora é medido a partir do início efetivo.
+    expect(plan.planStartDate).toBe('2026-08-02');
+    expect(plan.trainingStatus).toBe('in_progress');
+    expect(plan.progressPercentage).toBe(0);
+
+    // Nenhuma fase antes do início efetivo pode fingir ter sido cumprida.
+    const base = plan.phases.find(p => p.id === 'base');
+    const build = plan.phases.find(p => p.id === 'build');
+    expect(base.state).toBe('skipped');
+    expect(build.state).toBe('skipped');
+    expect(base.evaluation.score).toBeNull();
+    expect(base.evaluation.gradeLabel).toBe('Não Realizada');
+
+    // O alerta que a preparação recomendada (6 semanas) não cabe no tempo
+    // real disponível (2 semanas) volta a aparecer.
+    expect(plan.viability.flags).toContain('tempo_insuficiente');
+    expect(plan.readinessLevel).toBe('red');
+  });
+
   it('lida graciosamente com provas no passado (concluídas)', () => {
     const today = '2026-11-01';
     const plan = calculateRaceTrainingPlan({

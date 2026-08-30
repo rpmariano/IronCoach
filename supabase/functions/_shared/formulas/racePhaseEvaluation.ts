@@ -28,7 +28,7 @@ import { categorizeDistance, MIN_VOLUME_KM } from "./vocabulary.ts";
 import { formatPaceMinKm } from "./paceFormat.ts";
 
 export type PhaseId = "base" | "build" | "peak" | "taper" | string;
-export type PhaseState = "upcoming" | "active" | "completed";
+export type PhaseState = "upcoming" | "active" | "completed" | "skipped";
 
 export interface RunForPhase {
   date: string;
@@ -119,6 +119,21 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       gradeLabel: "Planeada",
       statusColor: "slate",
       summary: "Aguardar início da fase para cálculo de métricas em tempo real.",
+      metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: null, avgPace: null },
+    };
+  }
+
+  // Janela teórica anterior ao início real da preparação (macrociclo
+  // comprimido — ver `resolvePhaseState` em racePhases.ts). Sem nota nem
+  // pontuação: não houve tempo de a cumprir, não é "sem registos" por falta
+  // de disciplina do atleta.
+  if (phaseState === "skipped") {
+    return {
+      score: null,
+      stars: 0,
+      gradeLabel: "Não Realizada",
+      statusColor: "slate",
+      summary: "Fase anterior ao início real da preparação — a prova foi registada tarde demais para cumprir todo o macrociclo recomendado.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: null, avgPace: null },
     };
   }

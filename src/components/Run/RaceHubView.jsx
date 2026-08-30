@@ -321,6 +321,7 @@ export default function RaceHubView({
           {phases.map((phase) => {
             const isActive = phase.state === 'active';
             const isCompleted = phase.state === 'completed';
+            const isSkipped = phase.state === 'skipped';
             const isExpanded = expandedPhaseId === phase.id || (isActive && expandedPhaseId === null);
             const evalData = phase.evaluation;
 
@@ -329,16 +330,17 @@ export default function RaceHubView({
                 key={phase.id}
                 onClick={() => togglePhase(phase.id)}
                 className={`rh-phase-card cursor-pointer ${
-                  isActive ? 'active-phase' : isCompleted ? 'completed-phase' : ''
+                  isActive ? 'active-phase' : isCompleted ? 'completed-phase' : isSkipped ? 'skipped-phase' : ''
                 }`}
               >
                 <div className="flex flex-col gap-1.5">
                   {/* Linha 1: [Ícone + Título] à esquerda | pílula de estado da
                       fase + chevron à direita. Só esta pílula (curta: "Em
-                      Curso"/"Concluída"/"Planeada") partilha a linha com o
-                      título — a de avaliação (texto mais longo, ex.: "Ajuste
-                      Recomendado · 50%") ia a esta coluna e espremia o nome
-                      da fase até truncar (ex.: "Base Aerób..."). */}
+                      Curso"/"Concluída"/"Não Realizada"/"Planeada") partilha a
+                      linha com o título — a de avaliação (texto mais longo,
+                      ex.: "Ajuste Recomendado · 50%") ia a esta coluna e
+                      espremia o nome da fase até truncar (ex.: "Base
+                      Aerób..."). */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <div className="rh-phase-num-badge shrink-0">
@@ -351,7 +353,7 @@ export default function RaceHubView({
 
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
-                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : 'Planeada'}
+                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : phase.state === 'skipped' ? 'Não Realizada' : 'Planeada'}
                       </span>
                       <div className="text-slate-400 pl-0.5">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

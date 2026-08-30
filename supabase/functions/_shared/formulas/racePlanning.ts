@@ -58,6 +58,47 @@ export function resolveExperienceLevel(race: RaceForPlanning | null | undefined,
   return race?.experience_level || profile?.experience_level || "iniciante";
 }
 
+// ─── Início real da preparação (macrociclo comprimido) ─────────────────────
+// O início "ideal" do plano (`raceDate − totalWeeks×7`) é só uma janela
+// teórica: se a prova foi registada DEPOIS desse dia, a preparação não pôde
+// começar nele — fingir que começou fabrica um histórico de treino
+// (fases "concluídas" sem uma única corrida, alerta de tempo insuficiente
+// escondido). O início real é o mais tardio dos dois: o ideal, ou o dia em
+// que a prova passou a existir para o atleta.
+export interface EffectivePrepStart {
+  effectiveStartISO: string;
+  isCompressed: boolean;
+  // Semanas realmente disponíveis até à prova a partir do início efetivo —
+  // é este número, não `totalWeeks`, que mede se há tempo para a preparação
+  // recomendada.
+  effectiveWeeksAvailable: number;
+}
+
+export function computeEffectivePrepStart(
+  raceDateISO: string,
+  totalWeeks: number,
+  raceCreatedAtISO?: string | null,
+): EffectivePrepStart {
+  const raceDateObj = new Date(raceDateISO + "T00:00:00Z");
+  const idealStartObj = new Date(raceDateObj.getTime() - totalWeeks * 7 * 86400000);
+  const idealStartISO = idealStartObj.toISOString().slice(0, 10);
+
+  // created_at é um timestamp (traz hora) — só a data interessa aqui, e a
+  // comparação lexicográfica de strings "YYYY-MM-DD" já ordena por data.
+  const createdAtISO = raceCreatedAtISO ? raceCreatedAtISO.slice(0, 10) : null;
+
+  if (!createdAtISO || createdAtISO <= idealStartISO) {
+    return { effectiveStartISO: idealStartISO, isCompressed: false, effectiveWeeksAvailable: totalWeeks };
+  }
+
+  const createdAtObj = new Date(createdAtISO + "T00:00:00Z");
+  const effectiveWeeksAvailable = Math.max(
+    0,
+    Math.round((raceDateObj.getTime() - createdAtObj.getTime()) / (7 * 86400000)),
+  );
+  return { effectiveStartISO: createdAtISO, isCompressed: true, effectiveWeeksAvailable };
+}
+
 export interface RacePrediction extends RiegelPrediction {
   predictedPaceReal: number;
   effectiveDistanceKm: number;

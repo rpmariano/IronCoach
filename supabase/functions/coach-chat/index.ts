@@ -30,7 +30,7 @@ import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
-import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction } from "../_shared/formulas/racePlanning.ts";
+import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
 import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
@@ -1222,11 +1222,21 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
   // informação nenhuma. Não vale um bloco no prompt.
   if (trainingStatus === "not_started") return null;
 
+  // Início real da preparação — se a prova só foi registada depois do
+  // início ideal do macrociclo (planStartISO), a preparação nunca pôde
+  // começar nele: sem isto, as fases anteriores ao registo apareciam para a
+  // Carol como "concluída" com 0 corridas, e a viabilidade abaixo era
+  // sempre avaliada contra totalWeeks às cegas, escondendo o alerta de
+  // tempo insuficiente também no prompt da Carol (mesmo bug relatado
+  // 2026-08-29 no RaceHubView/racePlanEngine.js do frontend — ver
+  // computeEffectivePrepStart em racePlanning.ts).
+  const { effectiveStartISO, effectiveWeeksAvailable } = computeEffectivePrepStart(race.date, totalWeeks, race.created_at ?? null);
+
   const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
   const viability = sharedAssessRaceViability({
     distanceKm,
     experienceLevel: level,
-    weeksToRace: totalWeeks,
+    weeksToRace: effectiveWeeksAvailable,
     weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
     racePriority: race.race_priority ?? "a",
   });
@@ -1234,11 +1244,14 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
   const PHASE_LABELS: Record<string, string> = {
     base: "Base Aeróbica", build: "Construção Específica", peak: "Pico de Carga", taper: "Polimento (Taper)",
   };
-  const STATE_LABELS: Record<string, string> = { completed: "concluída", active: "A DECORRER", upcoming: "por começar" };
+  const STATE_LABELS: Record<string, string> = {
+    completed: "concluída", active: "A DECORRER", upcoming: "por começar",
+    skipped: "não realizada — macrociclo comprimido, prova registada tarde demais",
+  };
 
   const lines: string[] = [];
   for (const w of computePhaseWindows(totalWeeks, taperWeeks, planStartISO)) {
-    const state = resolvePhaseState(trainingStatus, todayISO, w.startDate, w.endDate);
+    const state = resolvePhaseState(trainingStatus, todayISO, w.startDate, w.endDate, effectiveStartISO);
     if (state === "upcoming") continue; // sem dados ainda — nada a dizer
     const ev = computePhaseEvaluation({
       phaseId: w.id,

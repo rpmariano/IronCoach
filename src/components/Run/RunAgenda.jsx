@@ -28,7 +28,7 @@ import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } f
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
-import { getRecommendedPrepWeeks } from '../../utils/racePlanEngine';
+import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO } from '../../lib/utils';
 
@@ -168,13 +168,21 @@ export default function RunAgenda({ onClose }) {
     const weeksToRace = Math.floor(
       (new Date(draft.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
     );
-    // Se o ciclo de preparação recomendado já começou (a prova está a menos
-    // de totalWeeks de distância), avalia contra o ciclo total, não contra o
-    // que resta — senão o formulário marca 'tempo_insuficiente' a meio de
-    // uma preparação em curso que a Home/racePlanEngine já consideram normal
-    // (ver specs/formulas-checklist.md P0-7).
     const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
-    const prepWeeksForViability = weeksToRace < totalWeeks ? totalWeeks : weeksToRace;
+    // Se o ciclo de preparação recomendado já começou (a prova está a menos
+    // de totalWeeks de distância), avalia contra as semanas REALMENTE
+    // disponíveis a partir de quando a prova passou a existir para o
+    // atleta, não contra totalWeeks às cegas — senão volta a esconder
+    // 'tempo_insuficiente' quando a prova é criada tarde demais para caber
+    // o macrociclo recomendado (bug relatado 2026-08-29; a correção
+    // original de specs/formulas-checklist.md P0-7 substituía sempre por
+    // totalWeeks, o que fabricava esse bug). A editar uma prova já
+    // gravada, `draft.created_at` é a data real de registo; a criar uma
+    // nova, ainda não existe — conta hoje, que é quando vai passar a
+    // existir ao gravar.
+    const raceCreatedAtISO = editingEventId ? draft.created_at : todayIso;
+    const { effectiveWeeksAvailable } = computeEffectivePrepStartDate(draft.date, totalWeeks, raceCreatedAtISO);
+    const prepWeeksForViability = weeksToRace < totalWeeks ? effectiveWeeksAvailable : weeksToRace;
     return assessRaceViability({
       // Distância em bruto — MIN_VOLUME_KM não tem categoria de trail
       // própria na doutrina; usar o equivalente ITRA criava um "penhasco"
@@ -185,7 +193,7 @@ export default function RunAgenda({ onClose }) {
       weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
       racePriority: draft.race_priority,
     });
-  }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, profile?.experience_level, todayIso, weeklyVol]);
+  }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, draft.created_at, editingEventId, profile?.experience_level, todayIso, weeklyVol]);
 
   // Só é relevante a editar (a criar, a invalidação já limpa o campo em vez
   // de o deixar "por reconfirmar" — ver applyExperienceLevelInvalidation).
