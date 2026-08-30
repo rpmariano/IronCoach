@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
-import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
 
@@ -56,6 +56,14 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       setNavGuard: () => {},
       setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
     });
+  });
+
+  afterEach(() => {
+    // Alguns testes fazem vi.spyOn(supabase, 'from') para simular um insert
+    // com id/website — sem restaurar, esse spy sobrevivia para os testes
+    // seguintes e quebrava-os (mock global do módulo é partilhado entre
+    // todos os testes deste describe).
+    vi.restoreAllMocks();
   });
 
   it('não mostra o botão de obter do site sem website preenchido', () => {
@@ -150,6 +158,57 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     expect(screen.getByText(/Doca de Alcântara/)).toBeInTheDocument();
     expect(useAppStore.getState().raceEvents[0].web_info).toEqual(updatedEvent.web_info);
     expect(screen.getByRole('button', { name: /Atualizar Informação/i })).toBeInTheDocument();
+  });
+
+  it('BUG CORRIGIDO (2026-08-30) — prova NOVA com site preenchido mas sem "Obter Informação" pedido: recolhe a informação automaticamente ao gravar', async () => {
+    const insertedRace = {
+      id: 'race-nova-1', date: '2026-09-13', location: 'Lisboa', name: 'Prova Teste',
+      race_type: 'estrada', distance_km: 10, elevation_gain_m: null, experience_level: 'medio',
+      race_priority: 'a', target_time: '1:00:00', target_time_seconds: 3600, target_pace_seconds_per_km: 360,
+      website: 'https://novaprova.pt', web_info: null, notes: null, user_id: 'user-1', status: 'agendada',
+    };
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: insertedRace, error: null }) }) }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: {
+        race_event: {
+          ...insertedRace,
+          web_info: {
+            schedule: [{ label: 'Partida', when: 'Domingo 09:00', where: null }],
+            required_documents: null, category_info: null, gear_recommendations: null, logistics: null,
+            route_summary: null, route_segments: null, caveats: null,
+            source_url: 'https://novaprova.pt', fetched_at: '2026-08-30T10:00:00.000Z',
+          },
+        },
+      },
+      error: null,
+    });
+
+    useAppStore.setState({ editingRaceId: null });
+    renderAgenda();
+    fillRequiredFields();
+    fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+
+    // O pedido usa o modo já persistido (race_event_id), tal como "Obter
+    // Informação" numa prova existente — não bloqueia a navegação, que já
+    // aconteceu (ver waitFor de baixo).
+    await waitFor(() => {
+      expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
+        'enrich-race-event',
+        { body: { race_event_id: 'race-nova-1' } },
+        expect.any(Number),
+      );
+    });
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents.find(e => e.id === 'race-nova-1')?.web_info?.schedule).toEqual([
+        { label: 'Partida', when: 'Domingo 09:00', where: null },
+      ]);
+    });
   });
 
   it('mostra o modal de dados incompletos sem rebentar ao gravar com campos obrigatórios em falta', () => {

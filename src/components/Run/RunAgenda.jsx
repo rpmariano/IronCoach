@@ -521,6 +521,25 @@ export default function RunAgenda({ onClose }) {
         if (error) throw error;
         if (data) {
           setRaceEvents([...raceEvents, data]);
+          // Site preenchido, mas o atleta não pediu "Obter Informação" antes
+          // de gravar (web_info continua null) — pede-o agora, em segundo
+          // plano, em vez de obrigar a voltar a esta prova só para lembrar
+          // de o fazer. Já persiste sozinho (race_event_id), tal como o
+          // botão manual para uma prova existente; não bloqueia o fecho do
+          // formulário nem a navegação para o Calendário, que já aconteceram
+          // a seguir a este bloco — pode demorar até 90s.
+          if (data.website?.trim() && !data.web_info) {
+            invokeEdgeFunctionWithTimeout('enrich-race-event', { body: { race_event_id: data.id } }, 90000)
+              .then(({ data: enrichData }) => {
+                if (enrichData?.race_event) {
+                  const current = useAppStore.getState().raceEvents;
+                  useAppStore.getState().setRaceEvents(
+                    current.map(e => (e.id === data.id ? enrichData.race_event : e))
+                  );
+                }
+              })
+              .catch((err) => console.error('Erro a obter informação da prova (automático):', err));
+          }
         }
       }
       showToast('Prova guardada');
