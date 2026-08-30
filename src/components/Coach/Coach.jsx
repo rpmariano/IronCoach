@@ -9,6 +9,12 @@ import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+
+// Chave única — o chat da Carol é uma conversa só, não um registo por id
+// como os formulários (RunAgenda, MealRegistration, ...), por isso não há
+// aqui um sufixo de id a acrescentar.
+const COACH_CHAT_DRAFT_KEY = 'ironcoach:carol-chat-rascunho';
 
 // Quando invokeEdgeFunctionWithTimeout falha (rede ou o timeout de 45s do
 // cliente), não sabemos se o pedido chegou ou não a ser processado no
@@ -260,6 +266,22 @@ export default function Coach() {
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
+  // Bug relatado 2026-08-30 (mesma causa dos formulários de registo — ver
+  // formDraftPersistence.js): o Android descarta a página em segundo plano
+  // sob pressão de memória e recarrega-a do zero ao voltar, apagando este
+  // texto por escrever tal como qualquer outro estado em memória. Restaura
+  // uma única vez ao montar — este ecrã desmonta/remonta ao trocar de
+  // separador, por isso não precisa do guard restoredForKeyRef usado nos
+  // formulários (que ficam montados durante várias sessões de edição).
+  useEffect(() => {
+    const persisted = restorePersistedFormDraft(COACH_CHAT_DRAFT_KEY);
+    if (persisted?.inputStr) setInputStr(persisted.inputStr);
+  }, []);
+
+  // Grava o rascunho (com debounce) enquanto houver texto por enviar —
+  // handleSend limpa-o assim que a mensagem é enviada (ver abaixo).
+  usePersistedFormDraft(COACH_CHAT_DRAFT_KEY, { inputStr }, { isDirty: true });
+
   const cutoffTime = Date.now() - (hoursToShow * 60 * 60 * 1000);
   const visibleMessages = (coachMessages || []).filter(msg => {
     let msgTime;
@@ -384,6 +406,7 @@ export default function Coach() {
     if (!text || coachLoading) return;
 
     setInputStr('');
+    clearPersistedFormDraft(COACH_CHAT_DRAFT_KEY);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }

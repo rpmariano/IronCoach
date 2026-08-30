@@ -346,3 +346,74 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
 });
+
+// Bug relatado 2026-08-30: o texto por escrever perdia-se ao trocar de app e
+// voltar — o Android descarta a página em segundo plano e recarrega do
+// zero, apagando o estado em memória. Mesma correção dos formulários de
+// registo (ver src/utils/formDraftPersistence.js e RunAgenda.test.jsx).
+describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobrevive a voltar de outra app', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      profile: { id: 'user-1' },
+      coachMessages: [],
+      coachLoading: false,
+      coachSuggestions: [],
+      coachPlans: [],
+      coachPlanItems: [],
+      coachGoalProposals: [],
+      coachIntent: null,
+      session: { user: { id: 'user-1' } },
+      setCoachIntent: (intent) => useAppStore.setState({ coachIntent: intent }),
+      reloadCoachPlans: vi.fn().mockResolvedValue([]),
+      reloadCoachGoalProposals: vi.fn().mockResolvedValue([]),
+      respondToPlan: vi.fn().mockResolvedValue(true),
+      respondToGoalProposal: vi.fn().mockResolvedValue(true),
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    localStorage.clear();
+  });
+
+  it('texto escrito sobrevive a um "recarregamento" (remount) da app', () => {
+    vi.useFakeTimers();
+    const { unmount } = renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Pergunta a meio de escrever' } });
+
+    // Debounce da persistência (formDraftPersistence.js).
+    vi.advanceTimersByTime(700);
+
+    unmount();
+
+    // "Reabrir a app" — nova instância do componente, tal como acontece
+    // quando o Android recarrega a página ao voltar de outra app e apaga
+    // todo o estado em memória.
+    renderCoach();
+
+    expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe('Pergunta a meio de escrever');
+  });
+
+  it('enviar a mensagem limpa o rascunho — a próxima visita ao chat não vem com texto antigo', async () => {
+    // Simula um rascunho já persistido de uma sessão anterior (poupa
+    // esperar pelo debounce real de formDraftPersistence.js).
+    localStorage.setItem('ironcoach:carol-chat-rascunho', JSON.stringify({ inputStr: 'Rascunho Antigo' }));
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Olá!' } }, error: null });
+
+    const { unmount } = renderCoach();
+    expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe('Rascunho Antigo');
+
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+
+    await waitFor(() => expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe(''));
+    expect(localStorage.getItem('ironcoach:carol-chat-rascunho')).toBeNull();
+    unmount();
+
+    // Reabrir o chat: sem vestígios do rascunho enviado.
+    renderCoach();
+    expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe('');
+  });
+});
