@@ -207,7 +207,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
     // Começa em Treino e Evolução
     expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
-    expect(screen.getByText(/Análise da Carol · Evolução & Prontidão/i)).toBeInTheDocument();
+    expect(screen.getByText(/Evolução & Prontidão/i)).toBeInTheDocument();
     expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
     expect(screen.getByText(/Base Aeróbica/i)).toBeInTheDocument();
 
@@ -218,5 +218,119 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     // Volta para Treino e Evolução
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
     expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
+  });
+
+  // Ver specs/nivel-por-prova.md, "Invalidação do nível declarado" — tipo,
+  // distância e D+ são os três antecessores da pergunta de nível; mudar de
+  // categoria depois de já ter respondido invalida a resposta.
+  describe('invalidação do nível ao mudar tipo/distância/D+', () => {
+    // Ordem estável dos <select> em "Detalhes da prova": Tipo, Distância,
+    // Nível, Prioridade — o D+ é <input type="number">, não combobox, por
+    // isso não desloca os índices entre estrada e trail.
+    function comboboxes() {
+      return screen.getAllByRole('combobox');
+    }
+
+    it('prova NOVA: mudar a distância de categoria limpa o nível em silêncio', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      // Distância por omissão é '10' (10k) — escolhe o nível para essa categoria.
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      expect(comboboxes()[2].value).toBe('medio');
+
+      // Muda para meia maratona — categoria diferente (10k → meia).
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+
+      expect(comboboxes()[2].value).toBe('');
+    });
+
+    it('prova NOVA: mudar a distância DENTRO da mesma categoria não limpa o nível', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      // 8 km continua categoria "10k" (categorizeDistance: km ≤ 11 → 10k).
+      fireEvent.change(comboboxes()[1], { target: { value: '8' } });
+
+      expect(comboboxes()[2].value).toBe('medio');
+    });
+
+    it('prova NOVA, trail: mudar o D+ de banda limpa o nível em silêncio', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[0], { target: { value: 'trail' } });
+      // 10 km com 200 m D+ → 20 m/km → banda "rolante".
+      fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '200' } });
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      expect(comboboxes()[2].value).toBe('medio');
+
+      // 10 km com 600 m D+ → 60 m/km → banda "montanha": categoria mudou.
+      fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '600' } });
+
+      expect(comboboxes()[2].value).toBe('');
+    });
+
+    it('a EDITAR uma prova gravada: mudar a distância NÃO limpa o nível, só avisa para reconfirmar', () => {
+      useAppStore.setState({ editingRaceId: 'race-1' }); // EXISTING_RACE: estrada, 10 km, nível "medio"
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      expect(comboboxes()[2].value).toBe('medio');
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } }); // 10k → meia
+
+      // Não apaga uma resposta já gravada — só destaca para reconfirmação.
+      expect(comboboxes()[2].value).toBe('medio');
+      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+    });
+
+    it('a EDITAR: reconfirmar o nível (reescolher no select) remove o aviso', () => {
+      useAppStore.setState({ editingRaceId: 'race-1' });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+
+      // O próprio atleta reconfirma o nível para a categoria atual (meia).
+      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // Bug relatado 2026-08-29: uma prova recém-criada com pouco tempo real até
+  // à corrida (o macrociclo recomendado não cabe) deixava de mostrar o
+  // alerta "Tempo insuficiente" mal o cálculo antigo considerasse a
+  // preparação teórica "em curso" — mesmo a prova acabada de nascer, sem um
+  // único dia de treino. Ver src/utils/racePlanEngine.test.js para o mesmo
+  // bug no motor do plano.
+  describe('alerta de viabilidade não desaparece com macrociclo comprimido (bug 2026-08-29)', () => {
+    it('prova nova a 17 dias de distância (10k): mostra "Tempo insuficiente" desde a criação, não só quando editada mais tarde', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-27T12:00:00Z'));
+      try {
+        // experience_level no perfil — sem nível conhecido, assessRaceViability
+        // não avalia nada (early return), independentemente da correção.
+        useAppStore.setState({ editingRaceId: null, profile: { id: 'user-1', experience_level: 'medio' } });
+        renderAgenda();
+        fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+        // Distância por omissão do rascunho novo já é '10' (10k) — só falta
+        // a data, a 17 dias (bem menos que as semanas mínimas recomendadas).
+        const dateInput = document.querySelector('input[type="date"]');
+        fireEvent.change(dateInput, { target: { value: '2026-09-13' } });
+
+        expect(screen.getByText(/Tempo insuficiente para a preparação/i)).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

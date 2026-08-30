@@ -22,6 +22,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,9 +33,10 @@ const corsHeaders = {
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 30000;
 
-// Peso a que a estimativa se reporta — tem de ser igual a REFERENCE_WEIGHT_KG
-// em src/utils/shoes.js, senão o ajuste no cliente parte de uma base errada.
-const REFERENCE_WEIGHT_KG = 70;
+// Peso a que a estimativa se reporta — importado de ../_shared/formulas/
+// shoes.ts (T1), a mesma fonte que src/utils/shoes.js usa no cliente para
+// o ajuste ao peso real (Fase C: era uma constante local igual a 70,
+// duplicada à mão — ver specs/formulas-checklist.md Fase C).
 
 // Travões de sanidade: nenhuma sapatilha de corrida real dura menos de 100 km
 // nem mais de 1500 km. Um valor fora disto é alucinação do modelo, não uma

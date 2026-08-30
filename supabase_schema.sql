@@ -14,10 +14,10 @@ drop table if exists pain_logs cascade;
 create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default '',
-  calorie_goal numeric not null default 2000,
-  protein_goal numeric not null default 150,
-  carbs_goal numeric not null default 200,
-  fat_goal numeric not null default 70,
+  calorie_goal numeric,
+  protein_goal numeric,
+  carbs_goal numeric,
+  fat_goal numeric,
   accent_color text not null default 'amber'
     check (accent_color in ('orange','amber','coral','teal','sky','steel','plum','fuchsia','pink','green','lime','turquoise')),
   theme text not null default 'dark'
@@ -61,7 +61,7 @@ alter table profiles
 -- lembretes de água (módulo de hidratação + send-water-reminders). As horas de
 -- início/fim são em hora local de Lisboa, não UTC — ver 5.3 do PRD.
 alter table profiles
-  add column if not exists water_goal_ml integer not null default 2000,
+  add column if not exists water_goal_ml integer,
   add column if not exists water_reminder_enabled boolean not null default false,
   add column if not exists water_reminder_interval_minutes integer not null default 120,
   add column if not exists water_last_activity_at timestamptz,

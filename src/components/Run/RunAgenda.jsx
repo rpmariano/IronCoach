@@ -10,6 +10,7 @@ import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import RaceHubView from './RaceHubView';
+import RaceLevelSuggestion from './RaceLevelSuggestion';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -17,6 +18,7 @@ import {
   raceDistanceLabel,
   racePriorityLabel,
   racePriorityDescription,
+  raceLevelCategoryKey,
   parseDurationToSeconds,
   formatDuration,
   parsePaceToSeconds,
@@ -26,17 +28,20 @@ import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } f
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { useCarouselHaptics } from '../../utils/haptics';
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
+import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
   return format(parseISO(isoStr), 'd MMM yyyy', { locale: pt });
+}
+
+// Aceita vírgula como separador decimal, como o resto do formulário — só
+// para comparar categorias na invalidação do nível (ver
+// applyExperienceLevelInvalidation, mais abaixo).
+function parseFormNumber(v) {
+  return parseFloat((v ?? '').toString().replace(',', '.'));
 }
 
 const EMPTY_DRAFT = {
@@ -78,6 +83,12 @@ export default function RunAgenda({ onClose }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
   const [validationError, setValidationError] = useState(null);
+  // Categoria (tipo+distância+D+) associada ao nível ATUALMENTE em
+  // draft.experience_level — atualiza-se sempre que o próprio atleta o
+  // escolhe/confirma. Compara-se contra a categoria corrente para saber se
+  // a resposta ainda serve (ver applyExperienceLevelInvalidation e
+  // experienceLevelStale, abaixo; specs/nivel-por-prova.md).
+  const [experienceLevelCategoryKey, setExperienceLevelCategoryKey] = useState(null);
   const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
 
   const activePageIndex = PAGE_KEYS.indexOf(activePage);
@@ -152,16 +163,45 @@ export default function RunAgenda({ onClose }) {
 
   const viability = useMemo(() => {
     if (!draft.distance_km || !draft.date) return { flags: [], isViable: true };
+    const distanceKm = parseFloat((draft.distance_km || '').toString().replace(',', '.'));
+    const experienceLevel = draft.experience_level || profile?.experience_level;
     const weeksToRace = Math.floor(
       (new Date(draft.date + 'T00:00:00').getTime() - new Date(todayIso + 'T00:00:00').getTime()) / (7 * 86400000)
     );
+    const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
+    // Se o ciclo de preparação recomendado já começou (a prova está a menos
+    // de totalWeeks de distância), avalia contra as semanas REALMENTE
+    // disponíveis a partir de quando a prova passou a existir para o
+    // atleta, não contra totalWeeks às cegas — senão volta a esconder
+    // 'tempo_insuficiente' quando a prova é criada tarde demais para caber
+    // o macrociclo recomendado (bug relatado 2026-08-29; a correção
+    // original de specs/formulas-checklist.md P0-7 substituía sempre por
+    // totalWeeks, o que fabricava esse bug). A editar uma prova já
+    // gravada, `draft.created_at` é a data real de registo; a criar uma
+    // nova, ainda não existe — conta hoje, que é quando vai passar a
+    // existir ao gravar.
+    const raceCreatedAtISO = editingEventId ? draft.created_at : todayIso;
+    const { effectiveWeeksAvailable } = computeEffectivePrepStartDate(draft.date, totalWeeks, raceCreatedAtISO);
+    const prepWeeksForViability = weeksToRace < totalWeeks ? effectiveWeeksAvailable : weeksToRace;
     return assessRaceViability({
-      distanceKm: parseFloat((draft.distance_km || '').toString().replace(',', '.')),
-      experienceLevel: draft.experience_level || profile?.experience_level,
-      weeksToRace: weeksToRace >= 0 ? weeksToRace : 0,
+      // Distância em bruto — MIN_VOLUME_KM não tem categoria de trail
+      // própria na doutrina; usar o equivalente ITRA criava um "penhasco"
+      // de categoria por poucos km de D+ convertido (ver racePlanEngine.js).
+      distanceKm,
+      experienceLevel,
+      weeksToRace: prepWeeksForViability >= 0 ? prepWeeksForViability : 0,
       weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      racePriority: draft.race_priority,
     });
-  }, [draft.distance_km, draft.date, draft.experience_level, profile?.experience_level, todayIso, weeklyVol]);
+  }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, draft.created_at, editingEventId, profile?.experience_level, todayIso, weeklyVol]);
+
+  // Só é relevante a editar (a criar, a invalidação já limpa o campo em vez
+  // de o deixar "por reconfirmar" — ver applyExperienceLevelInvalidation).
+  const experienceLevelStale = useMemo(() => {
+    if (!editingEventId || !draft.experience_level || !experienceLevelCategoryKey) return false;
+    const currentKey = raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m));
+    return !!currentKey && currentKey !== experienceLevelCategoryKey;
+  }, [editingEventId, draft.experience_level, draft.race_type, draft.distance_km, draft.elevation_gain_m, experienceLevelCategoryKey]);
 
   const FLAG_LABELS = {
     ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
@@ -206,11 +246,26 @@ export default function RunAgenda({ onClose }) {
           web_info: ev.web_info || null,
           notes: ev.notes || '',
         });
+        // A prova já gravada tem o nível "respondido" para a categoria com
+        // que foi criada — trata-o como confirmado à partida. Só passa a
+        // "por reconfirmar" (experienceLevelStale) se o próprio atleta
+        // mudar tipo/distância/D+ nesta sessão de edição.
+        setExperienceLevelCategoryKey(
+          ev.experience_level
+            ? raceLevelCategoryKey(ev.race_type, parseFormNumber(ev.distance_km), parseFormNumber(ev.elevation_gain_m))
+            : null
+        );
         setIsDirty(false);
+        setActivePage('hub');
       }
     } else {
       setDraft(EMPTY_DRAFT);
+      setExperienceLevelCategoryKey(null);
       setIsDirty(false);
+      setActivePage('details');
+      setTimeout(() => {
+        scrollToRef.current(1, true);
+      }, 0);
     }
   }, [editingEventId, raceEvents]);
 
@@ -228,6 +283,48 @@ export default function RunAgenda({ onClose }) {
   const updateDraft = (key, val) => {
     setIsDirty(true);
     setDraft(prev => ({ ...prev, [key]: val }));
+  };
+
+  // Tipo, distância e (em trail) D+ são os três antecessores da pergunta
+  // "qual o teu nível para esta prova" (ver specs/nivel-por-prova.md,
+  // "Invalidação do nível declarado"). Quando um deles muda de categoria
+  // DEPOIS de o atleta já ter respondido, a resposta deixou de valer para a
+  // pergunta atual.
+  //
+  // A CRIAR uma prova nova, limpa em silêncio — é a mesma UX de mudar o
+  // piso já limpar o D+ logo acima (updateTerrain): o atleta ainda não
+  // respondeu à pergunta nova, não há resposta antiga a proteger.
+  //
+  // A EDITAR uma já gravada, NUNCA limpa — apagar uma resposta já gravada
+  // seria destrutivo. Em vez disso fica "por reconfirmar"
+  // (experienceLevelStale, derivado no render a partir de
+  // experienceLevelCategoryKey) até o próprio atleta voltar a escolher um
+  // nível.
+  //
+  // Categoria "desconhecida" (ex.: trail sem D+ preenchido, de um lado ou
+  // do outro) nunca invalida por si só — não há evidência de mismatch,
+  // só falta de dado; não vale a pena apagar uma resposta por isso.
+  const applyExperienceLevelInvalidation = (prev, next) => {
+    if (editingEventId) return next;
+    if (!prev.experience_level) return next;
+    const prevKey = raceLevelCategoryKey(prev.race_type, parseFormNumber(prev.distance_km), parseFormNumber(prev.elevation_gain_m));
+    if (!prevKey) return next;
+    const nextKey = raceLevelCategoryKey(next.race_type, parseFormNumber(next.distance_km), parseFormNumber(next.elevation_gain_m));
+    if (!nextKey || nextKey === prevKey) return next;
+    return { ...next, experience_level: '' };
+  };
+
+  // Escolha do nível — pelo <select> ou pelo botão "Usar nível" de
+  // RaceLevelSuggestion, é sempre a mesma coisa: fixa o valor e confirma a
+  // categoria ATUAL como a que este nível responde, desligando o aviso de
+  // reconfirmação (experienceLevelStale) se estivesse ligado.
+  const handleChooseExperienceLevel = (level) => {
+    updateDraft('experience_level', level);
+    setExperienceLevelCategoryKey(
+      level
+        ? raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m))
+        : null
+    );
   };
 
   // "Obter do site" — a editar uma prova já gravada, usa o modo
@@ -282,7 +379,17 @@ export default function RunAgenda({ onClose }) {
   // esse campo) — a BD reforça isto com um check constraint.
   const updateTerrain = (key) => {
     setIsDirty(true);
-    setDraft(prev => ({ ...prev, race_type: key, elevation_gain_m: key === 'trail' ? prev.elevation_gain_m : '' }));
+    setDraft(prev => applyExperienceLevelInvalidation(
+      prev,
+      { ...prev, race_type: key, elevation_gain_m: key === 'trail' ? prev.elevation_gain_m : '' },
+    ));
+  };
+
+  // D+ só existe em trail (ver updateTerrain acima) — muda de banda D+/km
+  // e pode invalidar o nível autodeclarado, tal como tipo e distância.
+  const updateElevation = (val) => {
+    setIsDirty(true);
+    setDraft(prev => applyExperienceLevelInvalidation(prev, { ...prev, elevation_gain_m: val }));
   };
 
   // Mudar a distância recalcula o campo (tempo ou ritmo) que não foi o
@@ -301,7 +408,7 @@ export default function RunAgenda({ onClose }) {
           if (timeSecs) next.target_pace = formatPace(Math.round(timeSecs / dist));
         }
       }
-      return next;
+      return applyExperienceLevelInvalidation(prev, next);
     });
   };
 
@@ -701,7 +808,7 @@ export default function RunAgenda({ onClose }) {
                       inputMode="numeric"
                       placeholder="Ex.: 1200"
                       value={draft.elevation_gain_m}
-                      onChange={e => { updateDraft('elevation_gain_m', e.target.value) }}
+                      onChange={e => { updateElevation(e.target.value) }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                     />
                   </div>
@@ -712,10 +819,14 @@ export default function RunAgenda({ onClose }) {
               <ExperienceLevelHelp
                 label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
                 variant="dark"
+                context="prova"
+                raceType={draft.race_type}
+                distanceKm={parseFormNumber(draft.distance_km)}
+                elevationGainM={parseFormNumber(draft.elevation_gain_m)}
               >
                 <select
                   value={draft.experience_level}
-                  onChange={e => { updateDraft('experience_level', e.target.value) }}
+                  onChange={e => handleChooseExperienceLevel(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
                 >
                   <option value="">Escolhe...</option>
@@ -726,6 +837,24 @@ export default function RunAgenda({ onClose }) {
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
                 </p>
+                {experienceLevelStale && (
+                  <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1.5">
+                    <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                    <span>Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.</span>
+                  </p>
+                )}
+                {/* Nível medido a partir do histórico de treino — proposta,
+                    nunca substituição (Bloco 8, specs/nivel-por-prova.md). */}
+                <RaceLevelSuggestion
+                  raceType={draft.race_type}
+                  distanceKm={parseFormNumber(draft.distance_km)}
+                  elevationGainM={parseFormNumber(draft.elevation_gain_m)}
+                  declaredLevel={draft.experience_level}
+                  profile={profile}
+                  runs={runs}
+                  todayISO={todayIso}
+                  onUseLevel={handleChooseExperienceLevel}
+                />
               </ExperienceLevelHelp>
 
               {/* Prioridade da prova */}

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -1929,14 +1929,21 @@ Deno.test("computeBodyMetrics: peso mais recente aparece quando há só 1 mediç
   assertStringIncludes(out!, "72.5 kg");
 });
 
-Deno.test("computeBodyMetrics: média de 7 dias quando há ≥2 medições recentes", () => {
+// Fase C (specs/formulas-checklist.md): a tendência de peso passou a
+// delegar em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) — a mesma
+// fórmula que src/utils/biEngine.js usa — em vez de uma média simples dos
+// últimos 7 dias.
+Deno.test("computeBodyMetrics: tendência de peso (EWMA partilhada) quando há ≥2 medições", () => {
   const rows = [
     makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
     makeBA("2026-08-09T07:00:00Z", { weight_kg: 73.0 }),
   ];
   const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
-  // média = (71+73)/2 = 72.0
-  assertStringIncludes(out!, "72.0 kg");
+  // <5 pontos → sem suavização EWMA; peso mais recente = 71.0, tendência
+  // descendo (71-73 = -2 kg/semana).
+  assertStringIncludes(out!, "71.0 kg");
+  assertStringIncludes(out!, "tendência descendo");
+  assertStringIncludes(out!, "-2 kg/semana");
   assertStringIncludes(out!, "2 medições");
 });
 
@@ -2172,9 +2179,13 @@ function makeRunSummary(overrides: Record<string, unknown> = {}): unknown {
     training_type: "rodagem",
     distance_km: 10,
     duration_seconds: 3600,
-    cadence_spm: null,
-    avg_heart_rate_bpm: null,
-    ...overrides,
+    // Cadência/FC vivem em runs.details (jsonb), não em colunas de topo —
+    // ver o comentário em summariseRuns. Os overrides continuam a ser
+    // passados com os nomes simples, e são reagrupados aqui.
+    details: {
+      cadence_spm: (overrides as Record<string, unknown>).cadence_spm ?? null,
+      avg_heart_rate_bpm: (overrides as Record<string, unknown>).avg_heart_rate_bpm ?? null,
+    },
   };
 }
 
@@ -2254,4 +2265,131 @@ Deno.test("buildCoachingModeContext manda o modo prevalecer sobre a doutrina de 
   // Sem esta precedência, as regras que pressupõem plano continuariam a
   // ganhar por estarem escritas primeiro e em maior volume.
   assertStringIncludes(ctx, "acima de qualquer outra");
+});
+
+// ── buildRaceEventsContext — Bloco 8, nível medido pelo histórico ──────────
+// Mesmo motor que RaceLevelSuggestion.jsx usa no formulário (raceLevelTriage.ts)
+// — ver specs/nivel-por-prova.md. Todos os valores abaixo foram confirmados a
+// correr getRacePrediction/assessRaceLevelTriage reais (não calculados à mão)
+// antes de fixar aqui, porque não há Deno neste ambiente de desenvolvimento
+// para os validar diretamente.
+
+// deno-lint-ignore no-explicit-any
+function makeRaceEvent(overrides: any = {}): any {
+  return {
+    date: "2026-09-14", // +18 dias de 2026-08-27 — mesma data usada nos runs abaixo
+    name: "Prova Teste",
+    race_type: "trail",
+    location: null,
+    target_time: null,
+    target_time_seconds: null,
+    target_pace_seconds_per_km: null,
+    distance_km: 10,
+    elevation_gain_m: 500,
+    experience_level: "iniciante",
+    race_priority: "a",
+    ...overrides,
+  };
+}
+
+// Mesmos 4 runs usados na verificação manual (getRacePrediction real) — dão
+// nível medido "Iniciante" contra esta prova (10km trail, 500m D+).
+// deno-lint-ignore no-explicit-any
+const RUNS_MEDIDO_INICIANTE: any[] = [
+  { date: "2026-08-25", distance_km: 12, duration_seconds: 5000, details: { elevation_gain_m: 550 } },
+  { date: "2026-08-18", distance_km: 11, duration_seconds: 4800, details: { elevation_gain_m: 500 } },
+  { date: "2026-08-11", distance_km: 11.5, duration_seconds: 4900, details: { elevation_gain_m: 520 } },
+  { date: "2026-08-04", distance_km: 11, duration_seconds: 4700, details: { elevation_gain_m: 480 } },
+];
+
+const TODAY_ISO = "2026-08-27";
+
+Deno.test("buildRaceEventsContext: nível declarado bate certo com o medido — sem ⚠", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ experience_level: "iniciante" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "NÍVEL MEDIDO pelo histórico de treino: Iniciante (bate certo com o declarado)");
+  assertEquals(ctx!.includes("⚠"), false);
+});
+
+Deno.test("buildRaceEventsContext: nível declarado diverge do medido — alerta com o declarado entre parêntesis", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ experience_level: "avancado" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Iniciante — diverge do declarado (Avançado)");
+});
+
+Deno.test("buildRaceEventsContext: sem nível declarado — propõe sem comparar", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ experience_level: null })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "NÍVEL MEDIDO pelo histórico de treino (últimas 4 semanas): Iniciante — o atleta ainda não declarou nível nesta prova");
+  assertEquals(ctx!.includes("⚠"), false);
+});
+
+Deno.test("buildRaceEventsContext: sub_iniciante rotula 'Abaixo de Iniciante' (Red Flag)", () => {
+  // 20km trail, 1500m D+ — motor cardiovascular alto (tempo em pé alto) mas
+  // D+ semanal quase nulo puxa o nível medido para baixo do piso de Iniciante.
+  // deno-lint-ignore no-explicit-any
+  const runs: any[] = [
+    { date: "2026-08-25", distance_km: 20, duration_seconds: 7200, details: { elevation_gain_m: 60 } },
+    { date: "2026-08-18", distance_km: 19, duration_seconds: 7000, details: { elevation_gain_m: 50 } },
+    { date: "2026-08-11", distance_km: 19.5, duration_seconds: 7100, details: { elevation_gain_m: 55 } },
+    { date: "2026-08-04", distance_km: 18, duration_seconds: 6900, details: { elevation_gain_m: 45 } },
+  ];
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ distance_km: 20, elevation_gain_m: 1500, experience_level: "avancado" })],
+    TODAY_ISO, null, null, runs,
+  );
+  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Abaixo de Iniciante — diverge do declarado (Avançado)");
+});
+
+Deno.test("buildRaceEventsContext: em estrada, o eixo de D+ fica desligado (D+ da prova é null)", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ race_type: "estrada", elevation_gain_m: null, experience_level: "basico" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  // Sem o eixo de D+, o nível medido vem só do Tempo em Pé — dá "Médio" para
+  // esta combinação (previsão de tempo diferente da prova de trail acima,
+  // por não somar D+ à distância equivalente), não o "Iniciante" de lá.
+  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Médio — diverge do declarado (Básico)");
+});
+
+Deno.test("buildRaceEventsContext: menos de 3 semanas com dados — sem linha de nível medido", () => {
+  // deno-lint-ignore no-explicit-any
+  const runs: any[] = [
+    { date: "2026-08-25", distance_km: 12, duration_seconds: 5000, details: { elevation_gain_m: 500 } },
+  ];
+  const ctx = buildRaceEventsContext([makeRaceEvent()], TODAY_ISO, null, null, runs);
+  assertEquals(ctx!.includes("NÍVEL MEDIDO"), false);
+});
+
+Deno.test("buildRaceEventsContext: sem corridas nenhumas — sem previsão, sem linha nem crash", () => {
+  const ctx = buildRaceEventsContext([makeRaceEvent()], TODAY_ISO, null, null, []);
+  assertEquals(ctx!.includes("NÍVEL MEDIDO"), false);
+});
+
+Deno.test("buildRaceEventsContext: prova sem distance_km — não tenta prever nem rebenta", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ distance_km: null })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertEquals(ctx!.includes("NÍVEL MEDIDO"), false);
+});
+
+Deno.test("buildRaceEventsContext: sem runs[].details (undefined) não rebenta — D+ conta 0, eixo puxa para baixo", () => {
+  // deno-lint-ignore no-explicit-any
+  const runsSemDetails: any[] = RUNS_MEDIDO_INICIANTE.map(({ details: _details, ...r }) => r);
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ experience_level: "iniciante" })],
+    TODAY_ISO, null, null, runsSemDetails,
+  );
+  // r.details?.elevation_gain_m ?? null sobrevive a details ausente (não
+  // rebenta); D+ semanal fica 0 em todas as janelas, o que classifica o eixo
+  // de D+ como sub_iniciante e puxa o nível medido para baixo do declarado
+  // "iniciante" — min() a fazer exatamente o que deve.
+  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Abaixo de Iniciante — diverge do declarado (Iniciante)");
 });

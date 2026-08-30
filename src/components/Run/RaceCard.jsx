@@ -24,12 +24,7 @@ import {
   formatPace,
 } from '../../utils/run';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
+import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';

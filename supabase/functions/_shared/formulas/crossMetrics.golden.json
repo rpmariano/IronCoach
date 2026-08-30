@@ -1,0 +1,61 @@
+[
+  {
+    "name": "weightVsPace (par mais próximo) e gymLoadVsRunRPE (por semana), janela 'semana'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "runs": [
+        { "date": "2026-08-24", "distance_km": 10, "duration_seconds": 3000, "effort_rpe": 7 },
+        { "date": "2026-08-20", "distance_km": 5, "duration_seconds": 1500, "effort_rpe": null }
+      ],
+      "gymSessions": [{ "date": "2026-08-24", "workout_session_sets": [{ "reps": 10, "weight": 80 }] }],
+      "bodyAssessments": [{ "date": "2026-08-23", "weight_kg": 70 }, { "date": "2026-08-18", "weight_kg": 71 }]
+    },
+    "expect": {
+      "weightVsPace": [
+        { "date": "2026-08-24", "weight": 70, "pace": 300 },
+        { "date": "2026-08-20", "weight": 70, "pace": 300 }
+      ],
+      "gymLoadVsRunRPE": [
+        { "date": "2026-08-17", "gymVolume": 0, "runRPE": 5 },
+        { "date": "2026-08-24", "gymVolume": 800, "runRPE": 7 }
+      ],
+      "combinedACWR": 4
+    }
+  },
+  {
+    "name": "combinedACWR usa o de corrida quando é o maior, mesmo fora do 'range' selecionado",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "runs": [{ "date": "2026-08-24", "distance_km": 40, "duration_seconds": 7200, "effort_rpe": 8 }],
+      "gymSessions": [{ "date": "2026-08-10", "workout_session_sets": [{ "reps": 5, "weight": 100 }] }],
+      "bodyAssessments": []
+    },
+    "expect": {
+      "weightVsPace": [],
+      "gymLoadVsRunRPE": [{ "date": "2026-08-24", "gymVolume": 0, "runRPE": 8 }],
+      "combinedACWR": 4
+    }
+  },
+  {
+    "name": "combinedACWR usa o de ginásio quando é o maior",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "runs": [{ "date": "2026-08-10", "distance_km": 20, "duration_seconds": 6000, "effort_rpe": 5 }],
+      "gymSessions": [{ "date": "2026-08-24", "workout_session_sets": [{ "reps": 10, "weight": 100 }] }],
+      "bodyAssessments": []
+    },
+    "expect": {
+      "weightVsPace": [],
+      "gymLoadVsRunRPE": [{ "date": "2026-08-24", "gymVolume": 1000, "runRPE": 0 }],
+      "combinedACWR": 4
+    }
+  },
+  {
+    "name": "sem dados nenhuns — tudo vazio, combinedACWR 0",
+    "input": { "todayISO": "2026-08-25", "range": "semana", "runs": [], "gymSessions": [], "bodyAssessments": [] },
+    "expect": { "weightVsPace": [], "gymLoadVsRunRPE": [], "combinedACWR": 0 }
+  }
+]

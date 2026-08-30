@@ -13,6 +13,12 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
+import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
+import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
+import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
+import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,23 +152,23 @@ function formatPlanItemsSummary(items: any[]): string {
   }).join(" + ");
 }
 
-const VIAB_MIN_WEEKS: Record<string, Record<string, number | null>> = {
-  iniciante: { "5k":  6, "10k": 10, "meia": 16, "maratona": 24, "ultra": null },
-  basico:    { "5k":  6, "10k":  8, "meia": 12, "maratona": 18, "ultra":   24 },
-  medio:     { "5k":  4, "10k":  6, "meia": 10, "maratona": 14, "ultra":   18 },
-  avancado:  { "5k":  4, "10k":  4, "meia":  8, "maratona": 12, "ultra":   14 },
-};
+// Cópia local de src/utils/raceViability.js — agora reexporta a tabela de
+// ../_shared/formulas/vocabulary.ts (T0), a mesma que o frontend e
+// coach-chat usam. Deixou de ser cópia (specs/formulas-checklist.md Fase B).
+const VIAB_MIN_WEEKS = SHARED_MIN_PREP_WEEKS;
+const viabCatDist = sharedCategorizeDistance;
 
-function viabCatDist(km: number | null): string | null {
-  if (!km) return null;
-  if (km <=  5.5) return "5k";
-  if (km <= 11.0) return "10k";
-  if (km <= 22.5) return "meia";
-  if (km <= 50.0) return "maratona";
-  return "ultra";
-}
-
-function getRacePhase(daysUntil: number, distanceKm: number | null, level: string | null): string {
+// O corte do Polimento/Taper delega em ../_shared/formulas/taper.ts (T1) —
+// era um `daysUntil <= 14` fixo, igual para qualquer nível/distância/
+// prioridade (mesma correção de coach-chat/index.ts — ver
+// specs/formulas-checklist.md Fase C).
+function getRacePhase(
+  daysUntil: number,
+  distanceKm: number | null,
+  level: string | null,
+  racePriority: string | null,
+  raceType: string | null,
+): string {
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
   const cat = viabCatDist(distanceKm);
   let minWeeks = 12; // defeito
@@ -170,11 +176,12 @@ function getRacePhase(daysUntil: number, distanceKm: number | null, level: strin
     minWeeks = VIAB_MIN_WEEKS[level][cat] as number;
   }
   const maxDays = minWeeks * 7;
+  const taperDays = sharedGetTaperDays(distanceKm, racePriority ?? "a", level ?? "iniciante", raceType ?? "estrada");
 
   if (daysUntil > maxDays + 14) return `Não iniciado (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
   if (daysUntil > maxDays) return `A iniciar em breve (faltam ${daysUntil - maxDays} dias para o início oficial do plano de ${minWeeks} semanas)`;
   if (daysUntil === maxDays) return `Início do plano (arranca hoje o bloco de ${minWeeks} semanas)`;
-  if (daysUntil <= 14) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias)`;
+  if (daysUntil <= taperDays) return `Polimento / Taper (fase final de redução de carga, faltam ${daysUntil} dias, taper de ${taperDays} dias para este nível/distância/prioridade)`;
   return `Em curso / Carga (a meio da preparação, plano de ${minWeeks} semanas)`;
 }
 
@@ -295,7 +302,9 @@ export function buildDailySummaryContext(params: {
       fase_do_plano: getRacePhase(
         Math.round((new Date(nextRace.date + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86400000),
         nextRace.distance_km ?? null,
-        nextRace.experience_level || profile?.experience_level || 'iniciante'
+        nextRace.experience_level || profile?.experience_level || 'iniciante',
+        nextRace.race_priority ?? null,
+        nextRace.race_type ?? null,
       )
     } : null,
   };
@@ -322,7 +331,7 @@ function buildWarningsMessage(
   todayPlanItems: any[],
   waterTotal: number,
   waterGoal: number | null,
-  bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null },
+  bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null; weightLossTooFast?: boolean; weightLossPct?: number | null },
   acwr?: { ratio: number | null },
 ): string | null {
   const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso");
@@ -344,14 +353,17 @@ function buildWarningsMessage(
 
   // Alerta RED-S: gordura corporal abaixo do limiar de segurança (ACSM)
   if (bodyMetrics?.hasRedSRisk && bodyMetrics.latestBodyFat !== null) {
-    const threshold = bodyMetrics.gender === "feminino" ? "16%" : "8%";
+    const threshold = isFemale(bodyMetrics.gender) ? "16%" : "8%";
     const redSMsg = ` ⚠️ Percentagem de gordura corporal (${bodyMetrics.latestBodyFat}%) abaixo do limiar de segurança (${threshold}). Risco RED-S — consulta um profissional de saúde.`;
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
 
-  // Alerta de perda de peso rápida (> 0,9 kg/semana indica défice excessivo)
-  if (bodyMetrics?.weeklyWeightChange !== null && bodyMetrics?.weeklyWeightChange !== undefined && bodyMetrics.weeklyWeightChange < -0.9) {
-    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange)} kg/semana). Certifica-te que estás a comer o suficiente para suportar o treino.`;
+  // Alerta de perda de peso rápida — limiar por nível, delega em
+  // ../_shared/formulas/weightLossRate.ts (T1). Era um valor absoluto fixo
+  // (0,9 kg/semana para toda a gente); a doutrina é sempre relativa à
+  // massa corporal e ao nível (ver specs/formulas-checklist.md Fase C).
+  if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
+    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Certifica-te que estás a comer o suficiente para suportar o treino.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
@@ -388,6 +400,9 @@ function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | null {
 // Aguda = média diária dos últimos 7 dias; Crónica = média diária dos últimos 28.
 // ACWR > 1,5 indica risco elevado de lesão por sobrecarga (Foster 1998, Gabbett 2016).
 // Usa distância de corrida como proxy de carga (simplificação conservadora).
+// O ratio delega em ../_shared/formulas/acwr.ts (T1) — a mesma fórmula que
+// coach-chat e biEngine.js usam desde a Fase C (specs/formulas-checklist.md).
+// A agregação por data fica aqui (impura, específica desta runtime).
 function computeACWR(runs: any[], today: string): { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null } {
   const day7  = addDaysISO(today, -6);   // início da janela aguda (7 dias)
   const day28 = addDaysISO(today, -27);  // início da janela crónica (28 dias)
@@ -397,56 +412,90 @@ function computeACWR(runs: any[], today: string): { acute_km_per_day: number; ch
     .reduce((s: number, r: any) => s + (Number(r.distance_km) || 0), 0);
   const acutePerDay   = acuteKm / 7;
   const chronicPerDay = chronicKm / 28;
-  const ratio = chronicPerDay === 0 ? null : Math.round((acutePerDay / chronicPerDay) * 100) / 100;
+  // computeAcwr espera a média SEMANAL crónica (chronicPerDay × 7), não a
+  // diária — só o formato de entrada muda, o rácio resultante é o mesmo.
+  const { ratio } = sharedComputeAcwr(acuteKm, chronicPerDay * 7);
   return {
     acute_km_per_day:   Math.round(acutePerDay   * 10) / 10,
     chronic_km_per_day: Math.round(chronicPerDay * 10) / 10,
-    ratio,
+    ratio:              ratio !== null ? Math.round(ratio * 100) / 100 : null,
   };
+}
+
+// profiles.gender só grava 'M'/'F' (ver Perfil.jsx) — antes esta função
+// comparava com "masculino"/"feminino", que nunca batiam certo, e o TMB
+// caía sempre no ramo feminino (ver specs/formulas-checklist.md P0-1).
+// normalizeGender() (../_shared/formulas/vocabulary.ts, T0) já aceita os
+// valores por extenso por defensividade — Fase B substitui a comparação
+// manual daqui pelo vocabulário partilhado (specs/formulas-checklist.md
+// Fase B).
+export function isFemale(gender: string | null | undefined): boolean {
+  return normalizeGender(gender) === "F";
 }
 
 // Métricas de composição corporal — RED-S e tendência de peso.
 // Limiares RED-S: < 8 % homem, < 16 % mulher (ACSM Position Stand 2007).
-// Perda rápida: > 0,9 kg/semana sugere défice excessivo para atleta em treino.
-function computeBodyMetrics(bodyAssessments: any[], gender: string | null): {
+// Perda rápida: ritmo sustentado > limiar por nível (Bloco 4.1 #5/4.2 #3 —
+// ver ../_shared/formulas/weightLossRate.ts). Era um valor absoluto fixo
+// (0,9 kg/semana, igual para toda a gente) — a doutrina é sempre relativa
+// à massa corporal e ao nível do atleta, nunca um kg/semana fixo (Fase C,
+// specs/formulas-checklist.md).
+// weeklyWeightChange delega em ../_shared/formulas/weightTrend.ts (T1,
+// EWMA α≈0,25) — antes usava uma regressão só entre o ponto mais recente e
+// o mais antigo, ignorando todos os intermédios (Fase C escolheu a EWMA,
+// já usada em src/utils/biEngine.js, como fórmula única — ver
+// specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md Fase C).
+export function computeBodyMetrics(bodyAssessments: any[], gender: string | null, experienceLevel?: string | null): {
   latestBodyFat: number | null;
   latestWeight: number | null;
   hasRedSRisk: boolean;
   weeklyWeightChange: number | null;
+  weightLossTooFast: boolean;
+  weightLossPct: number | null;
 } {
   if (!bodyAssessments || bodyAssessments.length === 0) {
-    return { latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null };
+    return { latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null, weightLossTooFast: false, weightLossPct: null };
   }
   const latest = bodyAssessments[0]; // mais recente (ORDER BY date DESC)
   const latestBodyFat = latest.body_fat_pct != null ? Math.round(Number(latest.body_fat_pct) * 10) / 10 : null;
   const latestWeight  = latest.weight_kg      != null ? Math.round(Number(latest.weight_kg)      * 10) / 10 : null;
-  const redSThreshold = gender === "feminino" ? 16 : 8;
+  const redSThreshold = isFemale(gender) ? 16 : 8;
   const hasRedSRisk   = latestBodyFat !== null && latestBodyFat < redSThreshold;
-  let weeklyWeightChange: number | null = null;
-  if (bodyAssessments.length >= 2 && latestWeight !== null) {
-    const oldest      = bodyAssessments[bodyAssessments.length - 1];
-    const oldestWeight = oldest.weight_kg != null ? Number(oldest.weight_kg) : null;
-    if (oldestWeight !== null) {
-      const daysDiff = Math.max(1, Math.round(
-        (new Date(latest.date + "T00:00:00Z").getTime() - new Date(oldest.date + "T00:00:00Z").getTime()) / 86400000
-      ));
-      weeklyWeightChange = Math.round(((latestWeight - oldestWeight) / daysDiff * 7) * 10) / 10;
-    }
-  }
-  return { latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange };
+
+  // computeWeightTrend espera ordem ascendente (mais antigo primeiro) —
+  // bodyAssessments vem DESC da query.
+  const rawPoints = [...bodyAssessments]
+    .filter((a) => a.weight_kg != null && Number(a.weight_kg) > 0 && a.date)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    .map((a) => ({ date: String(a.date), weight: Number(a.weight_kg) }));
+  const trend = rawPoints.length >= 2 ? computeWeightTrend(rawPoints) : null;
+  const weeklyWeightChange = trend ? Math.round(trend.weeklyRate * 10) / 10 : null;
+
+  const lossRate = (trend && latestWeight)
+    ? sharedAssessWeightLossRate(trend.weeklyRate, latestWeight, experienceLevel ?? null)
+    : null;
+
+  return {
+    latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange,
+    weightLossTooFast: lossRate?.isTooFast ?? false,
+    weightLossPct: lossRate ? Math.round(lossRate.lossPct * 10) / 10 : null,
+  };
 }
 
-// TDEE estimado via Mifflin-St Jeor × fator atividade moderada (1,55 — 3-5x/semana).
-// Usado no contexto do Gemini para que a sugestão alimentar tenha base calórica real.
-function computeTDEE(profile: any): number | null {
+// TDEE (GETD) estimado via Mifflin-St Jeor — delega em
+// ../_shared/formulas/tdee.ts (T1), fator único ×1,3 + custo do treino
+// (Bloco 4.1 #4). Era ×1,55 sem custo de treino nenhum — divergia ~400+
+// kcal do coach-chat para o mesmo perfil no mesmo dia (P0-4,
+// specs/formulas-checklist.md, resolvido na Fase C).
+// weeklyVolumeKm: km corridos nos últimos 7 dias, para somar o custo do
+// treino em vez de o ignorar.
+export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null): number | null {
   const { weight_kg, height_cm, gender, birth_date } = profile || {};
   if (!weight_kg || !height_cm || !gender || !birth_date) return null;
   const ageMs = new Date().getTime() - new Date(birth_date + "T00:00:00Z").getTime();
   const age   = Math.floor(ageMs / (365.25 * 86400 * 1000));
-  const bmr   = gender === "masculino"
-    ? 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age + 5
-    : 10 * Number(weight_kg) + 6.25 * Number(height_cm) - 5 * age - 161;
-  return Math.round(bmr * 1.55);
+  const bmr   = sharedComputeBMR(Number(weight_kg), Number(height_cm), age, isFemale(gender));
+  return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
 const RESPONSE_SCHEMA = {
@@ -612,9 +661,9 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).eq("date", today),
       sb.from("water_logs").select("amount_ml").eq("user_id", userId).eq("date", today),
       // Janela alargada a 30 dias para calcular ACWR (precisa de 28 dias de histórico crónico)
-      sb.from("runs").select("date, training_type, distance_km, duration_seconds, avg_heart_rate_bpm, cadence_spm, kind")
+      sb.from("runs").select("date, training_type, distance_km, duration_seconds, effort_rpe, details, kind")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
-      sb.from("workout_sessions").select("date, categories, duration_seconds, avg_heart_rate_bpm, exertion")
+      sb.from("workout_sessions").select("date, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
         .select("id, period_start, period_end, created_at")
@@ -622,7 +671,7 @@ Deno.serve(async (req) => {
         .eq("status", "aceite")
         .order("created_at", { ascending: false }),
       // 3 próximas provas com prioridade e distância para alertas de taper corretos
-      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_pace")
+      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_pace_seconds_per_km")
         .eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(3),
       // Composição corporal: 30 dias para RED-S e tendência de peso
@@ -653,8 +702,10 @@ Deno.serve(async (req) => {
 
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
-    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null);
-    const tdee        = computeTDEE(profile);
+    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
+    // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
+    // custo do treino (ver computeTDEE acima).
+    const tdee        = computeTDEE(profile, acwr.acute_km_per_day * 7);
 
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],

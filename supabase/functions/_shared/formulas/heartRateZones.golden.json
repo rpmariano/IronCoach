@@ -1,0 +1,12 @@
+{
+  "maxHR": [
+    { "name": "30 anos", "input": { "age": 30 }, "expect": 187 },
+    { "name": "45 anos", "input": { "age": 45 }, "expect": 177 }
+  ],
+  "karvonen": [
+    { "name": "maxHR 187, FC repouso 60", "input": { "maxHR": 187, "restingHR": 60 }, "expect": { "z1": [124, 136], "z2": [136, 149], "z3": [149, 162], "z4": [162, 174], "z5": [174, 187] } }
+  ],
+  "pctMax": [
+    { "name": "maxHR 177", "input": { "maxHR": 177 }, "expect": { "z1": [89, 106], "z2": [106, 124], "z3": [124, 142], "z4": [142, 159], "z5": [159, 177] } }
+  ]
+}

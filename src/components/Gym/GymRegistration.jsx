@@ -10,6 +10,7 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import { todayISO } from '../../lib/utils';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -23,11 +24,6 @@ const GYM_CATEGORIES = {
 const GYM_CATEGORIES_VISIBLE = 6;
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 function parseDurationInput(val) {
   val = val.trim().toLowerCase();
@@ -351,9 +347,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setGymSessions([data.session, ...gymSessions]);
+      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+        console.warn('Aviso: análise retornou 0 séries', data);
+      }
+      setGymSessions([sessionWithSets, ...gymSessions]);
       showToast('Treino registado');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
+      finishCreateAndGoToCalendar(sessionWithSets);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -391,7 +391,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setGymSessions([data.session, ...gymSessions]);
+      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+        console.warn('Aviso: análise retornou 0 séries', data);
+      }
+      setGymSessions([sessionWithSets, ...gymSessions]);
 
       // Se esta sessão vem do plano, marca o item como concluído — a data
       // usada é a do formulário, que pode ter sido alterada face ao
@@ -404,7 +408,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       }
 
       showToast('Treino registado');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.session ? data.session : (typeof createdSession !== 'undefined' ? createdSession : undefined));
+      finishCreateAndGoToCalendar(sessionWithSets);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
@@ -448,7 +452,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         });
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
-        savedSession = data?.session;
+        savedSession = data?.session ? { ...data.session, workout_session_sets: data.sets || [] } : null;
         useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
         const { error: sessionError } = await supabase

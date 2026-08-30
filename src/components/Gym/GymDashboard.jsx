@@ -9,7 +9,9 @@ import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
-import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume } from '../../utils/biEngine';
+import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume, sessionVolumeKg } from '../../utils/biEngine';
+import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
+import { todayISO } from '../../lib/utils';
 
 function formatDurationMinutes(seconds) {
   if (!seconds) return '0 min';
@@ -33,19 +35,15 @@ export default function GymDashboard() {
 
   const { volumeByDay } = useMemo(() => {
     const byDay = {};
-    
+
+    // sessionVolumeKg() (biEngine.js) — antes este componente reimplementava
+    // a soma peso×reps sem o atalho `volume_kg`, que sessionVolumeKg já
+    // trata (specs/formulas-checklist.md Fase C).
     sessionsInRange.forEach(session => {
       const dateStr = session.date;
-      let sessionVol = 0;
-      const sets = session.workout_session_sets || session.logs || [];
-      sets.forEach(set => {
-        if (set.reps != null && set.weight != null) {
-          sessionVol += set.weight * set.reps;
-        }
-      });
-      byDay[dateStr] = (byDay[dateStr] || 0) + sessionVol;
+      byDay[dateStr] = (byDay[dateStr] || 0) + sessionVolumeKg(session);
     });
-    
+
     return {
       volumeByDay: byDay
     };
@@ -95,46 +93,15 @@ export default function GymDashboard() {
     };
   }, [muscleVolume]);
 
-  // Analytics de Aulas e Modalidades
-  const classAnalytics = useMemo(() => {
-    const classSessions = sessionsInRange.filter(s => s.kind === 'aula');
-    const classMap = {};
-    let totalClassSeconds = 0;
-    let rpeSum = 0;
-    let rpeCount = 0;
-
-    classSessions.forEach(s => {
-      const duration = Number(s.duration_seconds || 0);
-      totalClassSeconds += duration;
-      const exertionVal = s.exertion != null ? Number(s.exertion) : (s.rpe != null ? Number(s.rpe) : null);
-      if (exertionVal !== null && !isNaN(exertionVal)) {
-        rpeSum += exertionVal;
-        rpeCount++;
-      }
-      
-      const rawCats = s.categories && s.categories.length > 0 ? s.categories : (s.name ? [s.name] : ['Aula de Grupo']);
-      rawCats.forEach(rawCat => {
-        const cat = rawCat.trim();
-        if (!classMap[cat]) {
-          classMap[cat] = { name: cat, count: 0, totalSeconds: 0, rpeSum: 0, rpeCount: 0 };
-        }
-        classMap[cat].count++;
-        classMap[cat].totalSeconds += duration;
-        if (exertionVal !== null && !isNaN(exertionVal)) {
-          classMap[cat].rpeSum += exertionVal;
-          classMap[cat].rpeCount++;
-        }
-      });
-    });
-
-    const classList = Object.values(classMap).sort((a, b) => b.count - a.count);
-    return {
-      totalClasses: classSessions.length,
-      totalClassSeconds,
-      avgRpe: rpeCount > 0 ? (rpeSum / rpeCount).toFixed(1) : null,
-      classList
-    };
-  }, [sessionsInRange]);
+  // Analytics de Aulas e Modalidades — delega em @formulas/classAnalytics.ts
+  // (T1.5), partilhado com a Carol (specs/formulas-checklist.md Fase E).
+  // Nota: recebe `gymSessions` (não `sessionsInRange`) porque a própria
+  // função já aplica o filtro de período por dentro — mesma fonte usada
+  // por `calculateVolumeLoad`/`calculateMuscleGroupVolume` acima.
+  const classAnalytics = useMemo(
+    () => computeClassAnalytics(gymSessions, todayISO(), rangeKey),
+    [gymSessions, rangeKey],
+  );
 
   // Shared scale options
   const darkScalesVertical = {

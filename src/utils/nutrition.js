@@ -1,4 +1,6 @@
-import { startOfDay, startOfWeek, startOfMonth, format, differenceInDays } from 'date-fns';
+import { computeItemNutrients, computeMealNutrients } from '@formulas/mealNutrients.ts';
+import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
+import { todayISO } from '../lib/utils';
 
 export const MACROS = [
   { key: 'calories', goalKey: 'calorie_goal', label: 'Calorias', unit: 'kcal', color: '#dd3c4f' },
@@ -17,90 +19,21 @@ export const MICROS = [
   { key: 'potassium_mg', label: 'Potássio', unit: 'mg' },
 ];
 
-export function rangeBounds(rangeStr) {
-  const now = new Date();
-  const today = format(now, 'yyyy-MM-dd');
-  let startDate = now;
+// rangeBounds() removida (Fase E) — sem consumidor fora de rangeTotals(),
+// que passou a delegar em @formulas/micronutrientTotals.ts.
 
-  if (rangeStr === 'semana') {
-    startDate = startOfWeek(now, { weekStartsOn: 1 });
-  } else if (rangeStr === 'mes') {
-    startDate = startOfMonth(now);
-  } else {
-    startDate = startOfDay(now);
-  }
-
-  const start = format(startDate, 'yyyy-MM-dd');
-  const end = today;
-  const daysElapsed = Math.max(1, differenceInDays(now, startDate) + 1);
-
-  return { start, end, daysElapsed };
-}
-
+// Delegam em @formulas/mealNutrients.ts (T1.5) — única implementação,
+// partilhada com a Carol (specs/formulas-checklist.md Fase E). Ganharam
+// ferro/cálcio/vitamina C/potássio no resultado (antes nunca calculados,
+// mesmo com as colunas *_per_100g gravadas — bug corrigido nessa migração);
+// os consumidores existentes só liam calories/protein/carbs/fat e não
+// quebram com as chaves novas.
 export function itemNutrients(item) {
-  if (!item) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  
-  // Direct macros on item if present
-  if (
-    (item.calories !== undefined && item.calories !== null && Number(item.calories) > 0) ||
-    (item.protein !== undefined && item.protein !== null && Number(item.protein) > 0) ||
-    (item.carbs !== undefined && item.carbs !== null && Number(item.carbs) > 0) ||
-    (item.fat !== undefined && item.fat !== null && Number(item.fat) > 0)
-  ) {
-    return {
-      calories: Number(item.calories) || 0,
-      protein: Number(item.protein) || 0,
-      carbs: Number(item.carbs) || 0,
-      fat: Number(item.fat) || 0,
-      fiber: Number(item.fiber) || 0,
-      sugar: Number(item.sugar) || 0,
-      sodium: Number(item.sodium) || 0,
-    };
-  }
-
-  // Per 100g scaling fallback
-  const grams = Number(item.quantity_grams ?? item.amount_g ?? item.quantity ?? 100);
-  const factor = grams / 100;
-
-  const cal100 = Number(item.calories_per_100g ?? item.food_item?.calories ?? item.calories_100g ?? 0);
-  const prot100 = Number(item.protein_per_100g ?? item.food_item?.protein ?? item.protein_100g ?? 0);
-  const carbs100 = Number(item.carbs_per_100g ?? item.food_item?.carbs ?? item.carbs_100g ?? 0);
-  const fat100 = Number(item.fat_per_100g ?? item.food_item?.fat ?? item.fat_100g ?? 0);
-
-  return {
-    calories: factor * cal100,
-    protein: factor * prot100,
-    carbs: factor * carbs100,
-    fat: factor * fat100,
-    fiber: factor * Number(item.fiber_per_100g ?? item.food_item?.fiber ?? 0),
-    sugar: factor * Number(item.sugar_per_100g ?? item.food_item?.sugar ?? 0),
-    sodium: factor * Number(item.sodium_per_100g ?? item.food_item?.sodium ?? 0),
-  };
+  return computeItemNutrients(item);
 }
 
 export function mealNutrients(meal) {
-  const total = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 };
-  
-  const items = meal?.meal_items || [];
-  if (items.length > 0) {
-    items.forEach(item => {
-      const n = itemNutrients(item);
-      total.calories += n.calories;
-      total.protein += n.protein;
-      total.carbs += n.carbs;
-      total.fat += n.fat;
-      total.fiber += n.fiber || 0;
-      total.sugar += n.sugar || 0;
-      total.sodium += n.sodium || 0;
-    });
-  } else {
-    total.calories = Number(meal?.calories) || 0;
-    total.protein = Number(meal?.protein) || 0;
-    total.carbs = Number(meal?.carbs) || 0;
-    total.fat = Number(meal?.fat) || 0;
-  }
-  
-  return total;
+  return computeMealNutrients(meal);
 }
 
 /* Um dia "de carga" — tem um item do plano de treino de corrida longa nesse
@@ -162,32 +95,14 @@ export function dayWaterGoalMet(waterLogs, dateStr, profile) {
   return total >= (Number(profile?.water_goal_ml) || 2000);
 }
 
+// Delega em @formulas/micronutrientTotals.ts (T1.5) — única implementação,
+// partilhada com a Carol. `rangeStr` mantém a mesma semântica de sempre
+// ('semana' = desde segunda-feira, 'mes' = desde o dia 1, qualquer outra
+// coisa = só hoje) — é um período de CALENDÁRIO, distinto do período
+// rolante de `filterByDateRange` (biEngine.js); ver o comentário em
+// micronutrientTotals.ts.
 export function rangeTotals(meals, rangeStr) {
-  const { start, end } = rangeBounds(rangeStr);
-  let c = 0, p = 0, h = 0, f = 0;
-  let micros = {
-    fiber: 0, sugar: 0, sodium: 0, iron_mg: 0, calcium_mg: 0, vitamin_c_mg: 0, potassium_mg: 0
-  };
-  
-  for (const m of meals) {
-    if (m.date >= start && m.date <= end) {
-      const n = mealNutrients(m);
-      c += n.calories;
-      p += n.protein;
-      h += n.carbs;
-      f += n.fat;
-      
-      micros.fiber += n.fiber || 0;
-      micros.sugar += n.sugar || 0;
-      micros.sodium += n.sodium || 0;
-      micros.iron_mg += n.iron_mg || 0;
-      micros.calcium_mg += n.calcium_mg || 0;
-      micros.vitamin_c_mg += n.vitamin_c_mg || 0;
-      micros.potassium_mg += n.potassium_mg || 0;
-    }
-  }
-  
-  return { calories: c, protein: p, carbs: h, fat: f, ...micros };
+  return computeNutrientRangeTotals(meals, todayISO(), rangeStr);
 }
 
 export function mealTypeLabel(type) {

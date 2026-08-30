@@ -2773,3 +2773,251 @@ afirmações categóricas.
 
 **Quando a literatura não diferenciar por nível, registá-lo** — "sem
 diferenciação encontrada" é uma resposta válida e evita que se invente uma.
+
+---
+
+# BLOCO 8 — Nível específico por prova, e trail
+
+## Porque existe este bloco
+
+O Bloco 0 definiu os níveis com critérios **transversais** (volume semanal,
+anos de prática, ritmo aos 5 km). O Bloco 1 indexou semanas e volume
+pré-requisito por **distância**. Faltava o eixo que o produto sempre
+pressupôs mas nunca investigou: o nível **para uma prova concreta**, que pode
+divergir do geral — o exemplo estava escrito no contexto do próprio Bloco 1
+("avançado em estrada, iniciante na primeira prova de trail"), mas nenhuma
+pergunta o cobria.
+
+A consequência em produção foi visível: `ExperienceLevelHelp.jsx` serve os
+MESMOS critérios transversais nos dois sítios onde o atleta declara o nível
+(Perfil e Agenda de Provas). O atleta não tinha como responder à segunda
+pergunta com outro critério que não o da primeira.
+
+## Desafio crítico que reorientou o bloco (2026-08-27)
+
+A primeira formulação das perguntas pedia pré-requisitos de trail por **banda
+de distância**. As fontes rejeitaram a premissa:
+
+> A regra "100 m D+ ≈ 1 km plano" é perigosa se for usada para estruturar o
+> volume de treino semanal ou semanas de preparação. Se a utilizares para
+> ditar volume, vais prescrever cargas cardiovasculares irrealistas e ignorar
+> o dano neuromuscular (excêntrico). No trail, a métrica soberana para
+> planear carga de treino é o Tempo em Pé (Time on Feet), não a quilometragem
+> equivalente.
+
+Isto valida — por uma razão mais funda — a decisão já tomada em
+`src/utils/racePlanEngine.js`, que evita o equivalente ITRA para semanas de
+preparação. Mas condena o fallback escolhido: usar distância em bruto também
+não é a resposta certa. O estado anterior era "acidentalmente não-errado, e
+ainda assim não certo".
+
+## Respostas
+
+### #1 e #2 — Eixo de exigência e bandas qualitativas
+
+```
+Pergunta:  Bloco 8 #1/#2 — eixo de exigência do trail e bandas
+Valor:     O eixo mais robusto para separar treinos/provas independentemente
+           da distância é o RÁCIO DE DESNÍVEL (metros de D+ por quilómetro).
+           Pontos ITRA servem para categorizar o esforço global (volume + D+),
+           mas falham na tipologia do terreno.
+           - Banda 1 — Rolante/Rápido ("estradão"): <25 m/km (ex.: 20 km com
+             400 m D+). Foco no ritmo aeróbico; transição fácil da estrada.
+           - Banda 2 — Ondulado/Trail médio: 25-50 m/km (ex.: 30 km com
+             1000 m D+). Exige caminhada tática nas subidas mais íngremes;
+             corre-se a maior parte.
+           - Banda 3 — Montanha: 50-80 m/km (ex.: 40 km com 2500 m D+).
+             Alternância constante; forte exigência excêntrica nas descidas;
+             uso frequente de bastões.
+           - Banda 4 — Alta montanha/Skyrunning: >80 m/km (ex.: 20 km com
+             2000 m D+). Progressão lenta, terreno altamente técnico, corrida
+             apenas em secções limitadas.
+Condições: Limiares aplicados à altimetria geral da prova.
+Fonte:     UESCA Trail Running Certification; ITRA (International Trail
+           Running Association) Technical Guidelines
+Confiança: ALTA
+```
+
+### #3 — Pré-requisitos de volume e D+ semanal, por nível
+
+```
+Pergunta:  Bloco 8 #3 — volume e D+ semanal pré-requisito [POR NÍVEL]
+Iniciante: Volume semanal equivalente a 70-80% do TEMPO projetado da prova.
+           D+ semanal acumulado igual a 30-50% do D+ da prova.
+Básico:    Volume semanal 90-100% do tempo projetado. D+ semanal 50-70% do
+           D+ da prova.
+Médio:     Volume semanal 110-130% do tempo projetado. D+ semanal 80-100% do
+           D+ da prova.
+Avançado:  Volume semanal >140% do tempo projetado. D+ semanal 100-150% do
+           D+ da prova, com sessões específicas de downhill (dano excêntrico).
+Condições: Pressupõe o MICROCICLO DE PICO, 3-4 semanas antes da prova. Os
+           valores são RELATIVOS à prova alvo, não absolutos. Em provas de
+           ultra-distância (>50 km) o tempo semanal exigido estabiliza
+           (cap 10-14 h/semana) para evitar burnout.
+Fonte:     Jason Koop — Training Essentials for Ultrarunning (planeamento de
+           volume); UESCA Trail Running Certification Manual (prescrição de
+           carga); norma CTS (Carmichael Training Systems)
+Confiança: ALTA
+```
+
+### #4 — A equivalência "100 m de D+ ≈ 1 km plano"
+
+```
+Pergunta:  Bloco 8 #4 — validade da conversão de trail para plano
+Valor:     ADEQUADA apenas para estimar tempo de prova (pacing) e gasto
+           calórico/nutrição. Ex.: a 5:00/km no plano, uma prova de 20 km com
+           1000 m D+ calcula-se como 30 km de esforço plano (~2h30).
+           FALHA GRAVEMENTE para dimensionar plano de treinos, volume semanal
+           ou semanas de preparação — a carga biomecânica de subir e descer
+           montanha não é simulável a correr quilómetros planos.
+           FORMULAÇÃO CORRETA para o motor de planeamento: converter o esforço
+           da prova em HORAS estimadas e dimensionar semanas de preparação e
+           treinos longos com base no TEMPO EM PÉ, emparelhado com o
+           cumprimento do rácio D+/km (#1).
+Condições: A omissão que a torna inválida para treino é a variável do tempo
+           de impacto.
+Fonte:     ITRA (fórmula original de esforço de prova / pontos UTMB);
+           Guillaume Millet — Ultramarathon Safety and Performance (crítica à
+           transposição direta para volume de treino)
+Confiança: ALTA
+```
+
+### #5 — Critérios objetivos exclusivos do trail
+
+```
+Pergunta:  Bloco 8 #5 — vetores que não existem na estrada
+Valor:     1. CARGA EXCÊNTRICA (capacidade de descida): os quadríceps
+              suportam 5-7x o peso corporal em declives acentuados. A quebra
+              muscular nas descidas é a causa n.º 1 de DNF.
+           2. TERRENO E AGILIDADE (propriocepção): lama, raízes, pedra solta.
+              Um atleta pode ter VO2máx de elite na estrada e ser lento na
+              montanha por travagem constante.
+           3. TÁTICA DE CAMINHADA (power hiking): no trail caminhar é uma
+              marcha engrenada, não descanso. Eficiência biomecânica do power
+              hike em subidas >10% de inclinação.
+           4. EQUIPAMENTO E AUTONOMIA: mochila de 1,5-2,5 kg, uso eficiente de
+              bastões (timing bípede vs. alternado), autossuficiência
+              hídrica/alimentar entre abastecimentos.
+Fonte:     Guillaume Millet et al. (fadiga neuromuscular e dano por contrações
+           excêntricas prolongadas); Jason Koop (eficiência metabólica da
+           caminhada em inclinações >10%)
+Confiança: ALTA
+```
+
+### #6 — Histórico de prova preditivo, por nível
+
+```
+Pergunta:  Bloco 8 #6 — histórico de PROVA preditivo [POR NÍVEL]
+Iniciante: 0 provas na distância/banda de D+. O tempo-alvo é o cut-off.
+Básico:    1-2 provas concluídas em banda de D+ ou distância INFERIOR nos
+           últimos 12 meses. Sem estratégia de prova; correu por sensações.
+Médio:     3+ provas concluídas na mesma distância/banda de D+. Tem métricas
+           do tempo passado, posição no terço superior (top 30-50%) e
+           nutrição documentada (g/hora de HC).
+Avançado:  Histórico recente (<6 meses) em provas similares. Divisões de
+           ritmo documentadas (geriu esforço no primeiro terço, negative
+           split). O fator preditivo não é o volume concluído, mas o
+           DESACOPLAMENTO AERÓBICO durante a última prova.
+Fonte:     Joe Friel — The Ultra Trail Runner's Bible; princípios de triagem
+           de atletas da UESCA
+Confiança: ALTA
+```
+
+### #7 — Nível divergente por prova, e triagem rápida
+
+```
+Pergunta:  Bloco 8 #7 — legitimidade do nível por prova e questionário curto
+Valor:     ESTRITAMENTE LEGÍTIMO. O princípio da Especificidade dita que a
+           base cardiovascular é transferível, mas a adaptação biomecânica
+           local (tendões, ligamentos, resistência à fadiga periférica) NÃO é.
+           Três perguntas de triagem, que cruzam as três variáveis
+           inegociáveis:
+           1. "Qual foi o teu treino mais longo (em horas) nas últimas 4
+              semanas em terreno semelhante (rácio D+/km)?"
+              → valida o Tempo em Pé recente (carga aguda).
+           2. "Quantos metros de D+ acumulaste, em média, por semana no
+              último mês?"
+              → valida a tolerância mecânica (excêntrica e concêntrica).
+           3. "Nos últimos 6 meses concluíste alguma prova com distância E
+              desnível dentro de 20% desta prova alvo?"
+              → valida a experiência direta (especificidade tática).
+Condições: Cruzando as três, o algoritmo classifica se, PARA AQUELA PROVA, o
+           atleta tem infraestrutura de Avançado ou volta a Iniciante.
+Fonte:     Princípio fisiológico da Especificidade (ACSM); diretrizes de
+           onboarding de atletas da CTS (Carmichael Training Systems)
+Confiança: ALTA
+```
+
+## Índice de Cobertura Excêntrica (ICE) — métrica derivada
+
+Proposta pelas fontes como mitigação do caso mais perigoso: o corredor de
+estrada com motor cardiovascular alto e D+ semanal quase nulo, que transita
+para trail. O VO2máx dele não o protege da rutura muscular nas descidas.
+
+```
+ICE = D+_treino_semanal / D+_prova
+```
+
+Exemplo das fontes: maratonista de 3 h (Avançado), 70 km/semana mas só 300 m
+D+/semana, inscreve trail de 30 km com 1500 m D+. `ICE = 300/1500 = 0,20` →
+o sistema impede a importação do perfil "Avançado" e trata-o como Iniciante
+de trail, bloqueando pacing agressivo e prescrevendo power hiking.
+
+**Penalização de passadeira** (proposta pelas fontes): D+ obtido em passadeira
+inclinada deveria contar a 50%, porque elimina a componente de descida —
+prepara os pulmões e deixa os quadríceps vulneráveis. **Não se aplica a este
+produto** (esclarecido pelo utilizador, 2026-08-27): `runs` só regista piso
+estrada/trail — nunca passadeira; um treino de passadeira é registado como
+treino de GINÁSIO, em texto livre, e nunca alimenta `elevation_gain_m`. O
+D+ de uma corrida é sempre D+ real, por construção. Ver "Passadeira — não é
+uma limitação deste sistema" em [specs/nivel-por-prova.md](nivel-por-prova.md).
+
+## Decisões tomadas sobre as respostas (2026-08-27)
+
+Três lacunas nas respostas obrigaram a decisões nossas. Ficam registadas
+como DECISÃO DE PROJETO, não como doutrina citada — a distinção importa para
+quem ler o código depois.
+
+**1. Bandas com buracos.** As percentagens da #3 deixam intervalos por
+cobrir: no eixo D+ falta 70-80%; no eixo tempo faltam 80-90%, 100-110% e
+130-140%. Regra adotada: **cada banda estende-se para cima até ao piso da
+banda seguinte**, o que faz o atleta cair sempre no nível MAIS BAIXO dos dois
+candidatos. Deriva do princípio de segurança que o projeto já aplica em
+`EXPERIENCE_TIEBREAK_HINT` ("escolhe o mais baixo") e em `taper.ts` ("limite
+superior da gama, mais conservador"). Não vem das fontes.
+
+**2. Pico vs. média.** A #3 é explicitamente do microciclo de PICO, mas a
+triagem mede as últimas 4 semanas. Comparar média contra alvo de pico
+sub-avalia sistematicamente. Regra adotada: usar a **2.ª semana mais alta das
+últimas 4** — mantém a leitura orientada ao pico e exclui por construção uma
+rajada isolada (uma semana isolada nunca é a segunda mais alta). Com menos de
+3 semanas de dados, tratar como não avaliável e assumir o nível mais baixo.
+Decisão de engenharia, não vem das fontes.
+
+**3. Limiares do ICE vs. bandas da #3.** Os limiares propostos para o ICE
+(0,80 / 0,40) não coincidem exactamente com as bandas de D+ da #3 (80% /
+30%). Adotadas as **bandas da #3**, que são a resposta com fonte citada; o
+ICE fica como o cálculo do eixo D+, não como escala própria. Pela mesma
+razão, abandonou-se o mecanismo de "cortar um grau": cortar um grau pode
+aterrar o atleta num nível cujo pré-requisito também não cumpre (um Avançado
+com ICE 0,75 cai para Médio, que exige 80-100%). Atribui-se diretamente o
+nível da banda ocupada.
+
+## Balanço do Bloco 8
+
+Fecha a lacuna que o Bloco 0 deixou em aberto e que o Bloco 1 pressupôs sem
+resolver. Sete perguntas, todas com fonte e confiança ALTA.
+
+O achado com maior consequência de produto não é doutrinário mas de dados: as
+três perguntas de triagem da #7 são **computáveis a partir do que já está
+guardado** (`runs.duration_seconds` 62/62, `runs.details.elevation_gain_m`
+59/62, `race_events` com `status='concluida'`). O nível por prova deixa de ter
+de ser adivinhado pelo atleta — passa a ser medido e proposto, com a evidência
+à vista, ficando a auto-declaração como confirmação ou override justificado.
+
+Isto resolve de caminho o incentivo perverso identificado na análise que
+originou o bloco: declarar-se acima do nível real encolhia o alarme de
+viabilidade e subia a carga prescrita, sem nada no sistema que o
+contradissesse.
+
+Especificação do motor: [specs/nivel-por-prova.md](nivel-por-prova.md).

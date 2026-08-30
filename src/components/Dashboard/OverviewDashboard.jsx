@@ -13,6 +13,7 @@ import {
   filterByDateRange,
   acwrStatusLabel,
 } from '../../utils/biEngine';
+import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 
 export default function OverviewDashboard({ scrollToTab }) {
   const {
@@ -91,14 +92,16 @@ export default function OverviewDashboard({ scrollToTab }) {
     [meals, bodyAssessments, runs, gymSessions]
   );
   const calPct = adherence?.calories?.compliance_pct ?? 0;
-  // 115% é o mesmo teto usado no NutritionDashboard (getComplianceStatus) —
-  // antes disto o selo só olhava para o mínimo, e um atleta a comer 150% do
-  // alvo via na mesma "🟢 Calorias OK".
+  // Classificação delega em @formulas/nutritionCompliance.ts (T1) — esta
+  // era a escala escolhida como única entre as 3 que existiam
+  // (NutritionDashboard, biEngine.js e esta), por decisão explícita do
+  // utilizador (specs/formulas-checklist.md).
   const nutriBadge = useMemo(() => {
-    if (calPct > 115) return { label: '🟡 Acima do alvo', color: 'yellow' };
-    if (calPct >= 90) return { label: '🟢 Calorias OK', color: 'green' };
-    if (calPct >= 70) return { label: '🟡 Baixa ingestão', color: 'yellow' };
-    if (calPct > 0) return { label: '🔴 Deficit crítico', color: 'red' };
+    const zone = classifyCalorieCompliance(calPct);
+    if (zone === 'over') return { label: '🟡 Acima do alvo', color: 'yellow' };
+    if (zone === 'ok') return { label: '🟢 Calorias OK', color: 'green' };
+    if (zone === 'low') return { label: '🟡 Baixa ingestão', color: 'yellow' };
+    if (zone === 'critical') return { label: '🔴 Deficit crítico', color: 'red' };
     return { label: '⚪ Sem dados', color: 'neutral' };
   }, [calPct]);
   const eaAvg = eaData?.average ?? 0;

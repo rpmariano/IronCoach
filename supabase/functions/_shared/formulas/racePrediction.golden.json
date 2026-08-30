@@ -1,0 +1,35 @@
+{
+  "riegel": [
+    {
+      "name": "10km em 40min → previsão de meia maratona, nível médio",
+      "input": { "runs": [{ "distance_km": 10, "duration_seconds": 2400, "date": "2026-01-01" }], "targetDistanceKm": 21.1, "experienceLevel": "medio" },
+      "expect": { "predictedSeconds": 5296.03253372687, "predictedPace": 250.99680254629712, "confidence": 0.4, "basedOn": { "distance": 10, "time": 2400, "date": "2026-01-01" } }
+    },
+    {
+      "name": "5km em 25min → previsão de 10km, nível iniciante (fator 1,085)",
+      "input": { "runs": [{ "distance_km": 5, "duration_seconds": 1500, "date": "2026-01-02" }], "targetDistanceKm": 10, "experienceLevel": "iniciante" },
+      "expect": { "predictedSeconds": 3182.063224104651, "predictedPace": 318.2063224104651, "confidence": 0.4, "basedOn": { "distance": 5, "time": 1500, "date": "2026-01-02" } }
+    },
+    {
+      "name": "empate de ritmo — a primeira corrida na ordem original vence",
+      "input": { "runs": [{ "distance_km": 10, "duration_seconds": 3000, "date": "A" }, { "distance_km": 5, "duration_seconds": 1500, "date": "B" }], "targetDistanceKm": 10, "experienceLevel": "medio" },
+      "expect": { "predictedSeconds": 3000, "predictedPace": 300, "confidence": 0.8, "basedOn": { "distance": 10, "time": 3000, "date": "A" } }
+    },
+    {
+      "name": "sem corridas — tudo a zero, basedOn null",
+      "input": { "runs": [], "targetDistanceKm": 10, "experienceLevel": "medio" },
+      "expect": { "predictedSeconds": 0, "predictedPace": 0, "confidence": 0, "basedOn": null }
+    }
+  ],
+  "vdot": [
+    { "name": "10km em 40min", "input": { "distanceKm": 10, "timeSeconds": 2400 }, "expect": 51.9 },
+    { "name": "5km em 20min", "input": { "distanceKm": 5, "timeSeconds": 1200 }, "expect": 49.8 },
+    { "name": "distância inválida (0) — devolve 0", "input": { "distanceKm": 0, "timeSeconds": 2400 }, "expect": 0 },
+    { "name": "tempo inválido (0) — devolve 0", "input": { "distanceKm": 10, "timeSeconds": 0 }, "expect": 0 }
+  ],
+  "equivalentFlatKm": [
+    { "name": "trail com D+ soma 100m=1km", "input": { "distanceKm": 20, "elevationGainM": 1000, "raceType": "trail" }, "expect": 30 },
+    { "name": "trail sem D+ fica igual", "input": { "distanceKm": 10, "elevationGainM": null, "raceType": "trail" }, "expect": 10 },
+    { "name": "estrada ignora D+", "input": { "distanceKm": 10, "elevationGainM": 500, "raceType": "estrada" }, "expect": 10 }
+  ]
+}

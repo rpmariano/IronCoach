@@ -240,9 +240,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       // A resposta traz meal e items em separado — o store espera-os juntos,
       // tal como loadInitialData os carrega (select('*, meal_items(*)')).
-      setMeals([...meals, { ...data.meal, meal_items: data.items }]);
+      const mealWithItems = { ...data.meal, meal_items: data.items || [] };
+      if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
+        console.warn('Aviso: análise retornou 0 itens', data);
+      }
+      setMeals([...meals, mealWithItems]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
+      finishCreateAndGoToCalendar(mealWithItems);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -297,7 +301,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       setMeals([...meals, data.meal]);
       showToast('Refeição registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.meal ? data.meal : (typeof createdMeal !== 'undefined' ? createdMeal : undefined));
+      finishCreateAndGoToCalendar(data?.meal);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');

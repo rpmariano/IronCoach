@@ -9,6 +9,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import { todayISO } from '../../lib/utils';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -27,12 +28,6 @@ const BODY_METRICS = [
 ];
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-body
-
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
 
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
@@ -271,7 +266,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
+      finishCreateAndGoToCalendar(data?.assessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
@@ -305,7 +300,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(typeof data !== 'undefined' && data.assessment ? data.assessment : (typeof createdAssessment !== 'undefined' ? createdAssessment : undefined));
+      finishCreateAndGoToCalendar(data?.assessment);
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');

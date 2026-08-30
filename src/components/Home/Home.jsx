@@ -11,16 +11,11 @@ import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
 import { calculateRaceTrainingPlan, formatDatePTShort } from '../../utils/racePlanEngine';
+import { raceDistanceLabel } from '../../utils/run';
 import { detectCoachInsights, calculateReadinessIndex } from '../../utils/biEngine';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-function todayISO() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-}
+import { todayISO } from '../../lib/utils';
 
 function statCardBg(color) {
   return {
@@ -133,7 +128,10 @@ function NextRaceCard({ raceEvents = [], runs = [], meals = [], bodyAssessments 
                   date={formattedDate}
                   location={next.location || 'Não definida'}
                   tag={next.race_type || 'Prova'}
+                  distance={raceDistanceLabel(next.distance_km)}
+                  priority={next.race_priority}
                   daysRemaining={daysUntil}
+                  daysToStart={plan.daysToStart}
                   progressPercentage={plan.progressPercentage}
                   readiness={readinessColor}
                   readinessReason={readinessReason}

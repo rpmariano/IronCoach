@@ -1,0 +1,12 @@
+[
+  { "input": null, "expect": "no_data" },
+  { "input": 0, "expect": "no_data" },
+  { "input": 40, "expect": "critical" },
+  { "input": 69, "expect": "critical" },
+  { "input": 70, "expect": "low" },
+  { "input": 89, "expect": "low" },
+  { "input": 90, "expect": "ok" },
+  { "input": 115, "expect": "ok" },
+  { "input": 116, "expect": "over" },
+  { "input": 200, "expect": "over" }
+]

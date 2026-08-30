@@ -1,0 +1,45 @@
+[
+  {
+    "name": "semana (desde segunda) — inclui hoje e a segunda, exclui refeição de antes da segunda",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [
+        { "date": "2026-08-24", "calories": 500, "protein": 40, "carbs": 50, "fat": 15 },
+        { "date": "2026-08-20", "calories": 9999, "protein": 999, "carbs": 999, "fat": 999 },
+        { "date": "2026-08-25", "meal_items": [{ "quantity_grams": 200, "calories_per_100g": 100, "protein_per_100g": 5, "carbs_per_100g": 10, "fat_per_100g": 2, "iron_mg_per_100g": 3, "calcium_mg_per_100g": 50, "vitamin_c_mg_per_100g": 10, "potassium_mg_per_100g": 250 }] }
+      ]
+    },
+    "expect": { "calories": 700, "protein": 50, "carbs": 70, "fat": 19, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 6, "calcium_mg": 100, "vitamin_c_mg": 20, "potassium_mg": 500 }
+  },
+  {
+    "name": "mes (desde dia 1) — inclui a refeição de 08-20 que 'semana' excluía",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "meals": [
+        { "date": "2026-08-24", "calories": 500, "protein": 40, "carbs": 50, "fat": 15 },
+        { "date": "2026-08-20", "calories": 9999, "protein": 999, "carbs": 999, "fat": 999 },
+        { "date": "2026-08-25", "meal_items": [{ "quantity_grams": 200, "calories_per_100g": 100, "protein_per_100g": 5, "carbs_per_100g": 10, "fat_per_100g": 2, "iron_mg_per_100g": 3, "calcium_mg_per_100g": 50, "vitamin_c_mg_per_100g": 10, "potassium_mg_per_100g": 250 }] }
+      ]
+    },
+    "expect": { "calories": 10699, "protein": 1049, "carbs": 1069, "fat": 1018, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 6, "calcium_mg": 100, "vitamin_c_mg": 20, "potassium_mg": 500 }
+  },
+  {
+    "name": "hoje — só a refeição de hoje, mostrando os micronutrientes corrigidos (antes sempre 0)",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "hoje",
+      "meals": [
+        { "date": "2026-08-24", "calories": 500, "protein": 40, "carbs": 50, "fat": 15 },
+        { "date": "2026-08-25", "meal_items": [{ "quantity_grams": 200, "calories_per_100g": 100, "protein_per_100g": 5, "carbs_per_100g": 10, "fat_per_100g": 2, "iron_mg_per_100g": 3, "calcium_mg_per_100g": 50, "vitamin_c_mg_per_100g": 10, "potassium_mg_per_100g": 250 }] }
+      ]
+    },
+    "expect": { "calories": 200, "protein": 10, "carbs": 20, "fat": 4, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 6, "calcium_mg": 100, "vitamin_c_mg": 20, "potassium_mg": 500 }
+  },
+  {
+    "name": "sem refeições — tudo a zero",
+    "input": { "todayISO": "2026-08-25", "range": "semana", "meals": [] },
+    "expect": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  }
+]

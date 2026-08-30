@@ -1,0 +1,72 @@
+[
+  {
+    "name": "caso real do bug 2026-08-25 — 65 km na sexta anterior contam como 'semana passada'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "runs": [
+        { "date": "2026-08-21", "distance_km": 25 },
+        { "date": "2026-08-21", "distance_km": 20 },
+        { "date": "2026-08-21", "distance_km": 20 },
+        { "date": "2026-08-24", "distance_km": 10 }
+      ]
+    },
+    "expect": {
+      "currentWeek": { "startISO": "2026-08-24", "endISO": "2026-08-30", "km": 10, "count": 1 },
+      "previousWeek": { "startISO": "2026-08-17", "endISO": "2026-08-23", "km": 65, "count": 3 }
+    }
+  },
+  {
+    "name": "hoje é segunda-feira — semana atual ainda sem corridas",
+    "input": {
+      "todayISO": "2026-08-24",
+      "runs": [
+        { "date": "2026-08-21", "distance_km": 25 },
+        { "date": "2026-08-21", "distance_km": 20 },
+        { "date": "2026-08-21", "distance_km": 20 }
+      ]
+    },
+    "expect": {
+      "currentWeek": { "startISO": "2026-08-24", "endISO": "2026-08-30", "km": 0, "count": 0 },
+      "previousWeek": { "startISO": "2026-08-17", "endISO": "2026-08-23", "km": 65, "count": 3 }
+    }
+  },
+  {
+    "name": "hoje é domingo — última corrida da semana já entra na semana atual",
+    "input": {
+      "todayISO": "2026-08-30",
+      "runs": [
+        { "date": "2026-08-24", "distance_km": 8 },
+        { "date": "2026-08-30", "distance_km": 12 }
+      ]
+    },
+    "expect": {
+      "currentWeek": { "startISO": "2026-08-24", "endISO": "2026-08-30", "km": 20, "count": 2 },
+      "previousWeek": { "startISO": "2026-08-17", "endISO": "2026-08-23", "km": 0, "count": 0 }
+    }
+  },
+  {
+    "name": "sem corridas — devolve as janelas de datas mesmo com totais a zero",
+    "input": {
+      "todayISO": "2026-01-01",
+      "runs": []
+    },
+    "expect": {
+      "currentWeek": { "startISO": "2025-12-29", "endISO": "2026-01-04", "km": 0, "count": 0 },
+      "previousWeek": { "startISO": "2025-12-22", "endISO": "2025-12-28", "km": 0, "count": 0 }
+    }
+  },
+  {
+    "name": "corrida fora das duas semanas (há 3 semanas) não entra em nenhum total",
+    "input": {
+      "todayISO": "2026-08-25",
+      "runs": [
+        { "date": "2026-08-03", "distance_km": 40 },
+        { "date": "2026-08-21", "distance_km": 15 }
+      ]
+    },
+    "expect": {
+      "currentWeek": { "startISO": "2026-08-24", "endISO": "2026-08-30", "km": 0, "count": 0 },
+      "previousWeek": { "startISO": "2026-08-17", "endISO": "2026-08-23", "km": 15, "count": 1 }
+    }
+  }
+]

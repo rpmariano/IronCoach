@@ -1,3 +1,5 @@
+import { formatPaceMinKm as sharedFormatPaceMinKm } from '@formulas/paceFormat.ts';
+import { categorizeDistance, categorizeElevationRatio } from '@formulas/vocabulary.ts';
 // Conversões de tempo e ritmo da Corrida, e os tipos de prova.
 //
 // Vive aqui (e não dentro de um componente) porque o registo de corrida e a
@@ -57,6 +59,37 @@ export function racePriorityLabel(key) {
 
 export function racePriorityDescription(key) {
   return (RACE_PRIORITIES.find(p => p.key === key) || {}).description || '';
+}
+
+// ---------------------------------------------------------------------------
+// Banda de terreno de trail (rácio D+/km) — Bloco 8 #1/#2, ver
+// specs/nivel-por-prova.md e src/coach-knowledge/08-nivel-por-prova-trail.md.
+// ---------------------------------------------------------------------------
+export const ELEVATION_RATIO_BANDS = [
+  { key: 'rolante', label: 'Rolante', description: '< 25 m de D+ por km — transição fácil vindo da estrada.' },
+  { key: 'ondulado', label: 'Ondulado', description: '25-50 m/km — caminhada tática nas subidas mais íngremes.' },
+  { key: 'montanha', label: 'Montanha', description: '50-80 m/km — forte exigência excêntrica nas descidas.' },
+  { key: 'alta_montanha', label: 'Alta Montanha', description: '> 80 m/km — terreno técnico, progressão lenta.' },
+];
+
+export function elevationRatioLabel(key) {
+  return (ELEVATION_RATIO_BANDS.find(b => b.key === key) || {}).label || key;
+}
+
+// Chave que identifica "a mesma pergunta de nível" — tipo de piso + categoria
+// de distância +, só em trail, banda de desnível. Usada para saber quando o
+// nível autodeclarado pelo atleta deixou de responder à pergunta que o
+// motivou (mudou a distância de categoria, ou o D+ mudou de banda) — ver
+// specs/nivel-por-prova.md, secção "Invalidação do nível declarado". Em
+// trail sem D+ ainda preenchido devolve null: não há categoria para
+// comparar, não porque a prova não tenha uma.
+export function raceLevelCategoryKey(raceType, distanceKm, elevationGainM) {
+  const distCat = categorizeDistance(distanceKm);
+  if (!distCat) return null;
+  if (raceType !== 'trail') return `estrada:${distCat}`;
+  const elevCat = categorizeElevationRatio(distanceKm, elevationGainM);
+  if (!elevCat) return null;
+  return `trail:${distCat}:${elevCat}`;
 }
 
 // Etiqueta da pílula a partir da distância gravada — cai para "X km" numa
@@ -125,9 +158,9 @@ export function parsePaceToSeconds(paceStr) {
   return mins * 60 + secs;
 }
 
+// Delega em @formulas/paceFormat.ts (T1.5) — única implementação, partilhada
+// com a Carol (specs/formulas-checklist.md Fase F). O formato de PONTO
+// ("5.20") é o canónico da app desde a Fase D.
 export function formatPace(secondsPerKm) {
-  if (!secondsPerKm) return '';
-  const m = Math.floor(secondsPerKm / 60);
-  const s = Math.round(secondsPerKm % 60);
-  return `${m}.${s.toString().padStart(2, '0')}`;
+  return sharedFormatPaceMinKm(secondsPerKm);
 }
