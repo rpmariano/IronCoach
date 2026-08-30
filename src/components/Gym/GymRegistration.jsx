@@ -11,6 +11,7 @@ import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
 import { todayISO } from '../../lib/utils';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -72,6 +73,15 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   
   const isEditing = !!sessionIdToEdit;
+
+  // Identifica este rascunho de forma única para sobreviver a um
+  // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
+  // treinos diferentes nem entre uma edição e uma criação nova a seguir.
+  const draftStorageKey = sessionIdToEdit ? `ironcoach:treino-rascunho:${sessionIdToEdit}` : 'ironcoach:treino-rascunho:nova';
+  // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
+  // efeito de carregamento reporia o rascunho guardado por cima de
+  // alterações mais recentes ainda não persistidas.
+  const restoredForKeyRef = useRef(null);
 
   // Item do plano que esta sessão vai concluir, se veio do botão "Concluir"
   // no Início — ver Home.jsx e specs/plano-de-treino.md §5.2. Só um estado de
@@ -169,6 +179,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
+    clearPersistedFormDraft(draftStorageKey);
     onClose();
     if (target) {
       // O guard ainda está registado neste render — o próprio setActiveTab()
@@ -229,16 +240,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (!sessionIdToEdit) return;
     const session = gymSessions.find(s => s.id === sessionIdToEdit);
     if (!session) return;
-    setDate(session.date || todayISO());
-    setKind(session.kind === 'aula' ? 'aula' : 'forca');
-    setName(session.name || '');
-    setCategories(session.categories || []);
-    setNotes(session.notes || '');
-    setDurationStr(session.duration_seconds ? formatDurationInput(session.duration_seconds) : '');
-    setCalories(session.calories_kcal ?? '');
-    setAvgHr(session.avg_hr ?? '');
-    setMaxHr(session.max_hr ?? '');
-    setExertion(session.exertion ?? '');
+    // Rascunho por gravar guardado localmente (ver formDraftPersistence.js)
+    // sobrepõe-se ao valor canónico vindo do servidor — restaura-se UMA VEZ
+    // por sessão de edição (restoredForKeyRef), senão este efeito repunha-o
+    // a cada vez que voltasse a correr.
+    const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
+    const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
+    restoredForKeyRef.current = draftStorageKey;
 
     const grouped = new Map();
     for (const s of session.workout_session_sets || []) {
@@ -246,14 +254,30 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(s);
     }
-    const loadedExercises = Array.from(grouped.entries()).map(([exName, sets], i) => ({
+    const canonicalExercises = Array.from(grouped.entries()).map(([exName, sets], i) => ({
       key: `${Date.now()}-${i}`,
       name: exName,
       sets: sets
         .sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0))
         .map((s, j) => ({ key: s.id || `${Date.now()}-${i}-${j}`, reps: s.reps ?? '', weight: s.weight ?? '' })),
     }));
-    setExercises(loadedExercises);
+    setDate(persisted?.date ?? (session.date || todayISO()));
+    setKind(persisted?.kind ?? (session.kind === 'aula' ? 'aula' : 'forca'));
+    setName(persisted?.name ?? (session.name || ''));
+    setCategories(persisted?.categories ?? (session.categories || []));
+    setCustomCategory(persisted?.customCategory ?? '');
+    setNotes(persisted?.notes ?? (session.notes || ''));
+    setDurationStr(persisted?.durationStr ?? (session.duration_seconds ? formatDurationInput(session.duration_seconds) : ''));
+    setCalories(persisted?.calories ?? (session.calories_kcal ?? ''));
+    setAvgHr(persisted?.avgHr ?? (session.avg_hr ?? ''));
+    setMaxHr(persisted?.maxHr ?? (session.max_hr ?? ''));
+    setExertion(persisted?.exertion ?? (session.exertion ?? ''));
+    setExercises(persisted?.exercises ?? canonicalExercises);
+    setEntryMethod(persisted?.entryMethod ?? 'manual');
+    // A assinatura de partida compara sempre contra o valor CANÓNICO (do
+    // servidor), nunca contra o rascunho restaurado — é assim que um
+    // rascunho com séries/métricas diferentes das gravadas dispara "Guardar
+    // e Reanalisar" já na primeira renderização.
     setOriginalSnapshot(analyticalSignature({
       date: session.date,
       kind: session.kind === 'aula' ? 'aula' : 'forca',
@@ -264,11 +288,48 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       avgHr: session.avg_hr,
       maxHr: session.max_hr,
       exertion: session.exertion,
-      sets: flattenExercises(loadedExercises),
+      sets: flattenExercises(canonicalExercises),
     }));
-    setEntryMethod('manual');
+    if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionIdToEdit]);
+
+  // Restaura um rascunho de treino NOVO por gravar (ver
+  // formDraftPersistence.js) — o caminho de edição está no efeito acima.
+  // Corre uma única vez por sessão de criação (restoredForKeyRef), sem
+  // depender de `gymSessions`, para não repor o rascunho por cima de
+  // alterações recentes sempre que outro treino é gravado em paralelo.
+  useEffect(() => {
+    if (sessionIdToEdit) return;
+    if (restoredForKeyRef.current === draftStorageKey) return;
+    restoredForKeyRef.current = draftStorageKey;
+    const persisted = restorePersistedFormDraft(draftStorageKey);
+    if (!persisted) return;
+    if (persisted.date) setDate(persisted.date);
+    if (persisted.kind) setKind(persisted.kind);
+    if (persisted.categories) setCategories(persisted.categories);
+    if (persisted.customCategory !== undefined) setCustomCategory(persisted.customCategory);
+    if (persisted.name !== undefined) setName(persisted.name);
+    if (persisted.notes !== undefined) setNotes(persisted.notes);
+    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
+    if (persisted.durationStr !== undefined) setDurationStr(persisted.durationStr);
+    if (persisted.calories !== undefined) setCalories(persisted.calories);
+    if (persisted.avgHr !== undefined) setAvgHr(persisted.avgHr);
+    if (persisted.maxHr !== undefined) setMaxHr(persisted.maxHr);
+    if (persisted.exertion !== undefined) setExertion(persisted.exertion);
+    if (persisted.exercises) setExercises(persisted.exercises);
+    setIsFormDirty(true);
+  }, [sessionIdToEdit, draftStorageKey]);
+
+  // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
+  // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
+  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
+  // picker não é restaurável depois de recarregar, e não são tipicamente o
+  // que se está a meio de escrever quando se é interrompido.
+  usePersistedFormDraft(draftStorageKey, {
+    date, kind, categories, customCategory, name, notes, entryMethod,
+    durationStr, calories, avgHr, maxHr, exertion, exercises,
+  }, { isDirty: isFormDirty });
 
   // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
   // ou o nome não justifica uma chamada ao Gemini.

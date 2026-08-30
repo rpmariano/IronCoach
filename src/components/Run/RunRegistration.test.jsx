@@ -486,3 +486,69 @@ describe('RunRegistration — guarda de navegação com formulário sujo', () =>
     expect(useAppStore.getState().navGuard).toBeNull();
   });
 });
+
+// Bug relatado 2026-08-30: formulários perdiam todo o texto ao trocar de app
+// e voltar — o Android descarta a página em segundo plano e recarrega do
+// zero, apagando o estado em memória. Ver src/utils/formDraftPersistence.js
+// e a mesma correção em RunAgenda.jsx (RunAgenda.test.jsx tem o padrão).
+describe('RunRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive a voltar de outra app', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+  it('corrida NOVA: texto escrito sobrevive a um "recarregamento" (remount) da app', () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<RunRegistration onClose={onClose} />);
+      fireEvent.change(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...'), {
+        target: { value: 'Corrida a meio de preencher' },
+      });
+
+      // Debounce da persistência (formDraftPersistence.js).
+      vi.advanceTimersByTime(700);
+
+      unmount();
+
+      // "Reabrir a app" — nova instância do componente, tal como acontece
+      // quando o Android recarrega a página ao voltar de outra app e apaga
+      // todo o estado em memória.
+      render(<RunRegistration onClose={onClose} />);
+
+      expect(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...').value).toBe('Corrida a meio de preencher');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gravar com sucesso limpa o rascunho — a próxima corrida nova não vem com texto antigo', async () => {
+    // Simula um rascunho já persistido de uma sessão anterior (poupa esperar
+    // pelo debounce real de formDraftPersistence.js).
+    localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ runNotes: 'Rascunho Antigo' }));
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-9' } }, error: null });
+
+    const { unmount } = render(<RunRegistration onClose={onClose} />);
+    expect(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...').value).toBe('Rascunho Antigo');
+
+    goManual();
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+    fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    unmount();
+
+    expect(localStorage.getItem('ironcoach:corrida-rascunho:nova')).toBeNull();
+
+    // Próxima corrida nova: sem vestígios do rascunho gravado.
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...').value).toBe('');
+  });
+});

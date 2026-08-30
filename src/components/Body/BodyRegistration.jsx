@@ -10,6 +10,7 @@ import Chip from '../shared/Chip';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
 import { todayISO } from '../../lib/utils';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -36,6 +37,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   
   const isEditing = !!assessmentIdToEdit;
+
+  // Identifica este rascunho de forma única para sobreviver a um
+  // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
+  // avaliações diferentes nem entre uma edição e uma criação nova a seguir.
+  const draftStorageKey = assessmentIdToEdit ? `ironcoach:avaliacao-rascunho:${assessmentIdToEdit}` : 'ironcoach:avaliacao-rascunho:nova';
+  // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
+  // efeito de carregamento reporia o rascunho guardado por cima de
+  // alterações mais recentes ainda não persistidas.
+  const restoredForKeyRef = useRef(null);
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(todayISO());
@@ -103,6 +113,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
+    clearPersistedFormDraft(draftStorageKey);
     onClose();
     if (target) {
       // O guard ainda está registado neste render — o próprio setActiveTab()
@@ -147,17 +158,55 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     if (!assessmentIdToEdit) return;
     const a = bodyAssessments.find(x => x.id === assessmentIdToEdit);
     if (!a) return;
-    setDate(a.date || todayISO());
-    setNotes(a.notes || '');
-    const loaded = {};
+    // Rascunho por gravar guardado localmente (ver formDraftPersistence.js)
+    // sobrepõe-se ao valor canónico vindo do servidor — restaura-se UMA VEZ
+    // por sessão de edição (restoredForKeyRef), senão este efeito repunha-o
+    // a cada vez que voltasse a correr.
+    const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
+    const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
+    restoredForKeyRef.current = draftStorageKey;
+
+    const canonicalMetrics = {};
     for (const m of BODY_METRICS) {
-      if (a[m.key] !== null && a[m.key] !== undefined) loaded[m.key] = String(a[m.key]);
+      if (a[m.key] !== null && a[m.key] !== undefined) canonicalMetrics[m.key] = String(a[m.key]);
     }
-    setMetrics(loaded);
-    setOriginalSnapshot(analyticalSignature(a.notes, loaded));
-    setEntryMethod('manual');
+    setDate(persisted?.date ?? (a.date || todayISO()));
+    setNotes(persisted?.notes ?? (a.notes || ''));
+    setMetrics(persisted?.metrics ?? canonicalMetrics);
+    setEntryMethod(persisted?.entryMethod ?? 'manual');
+    // A assinatura de partida compara sempre contra o valor CANÓNICO (do
+    // servidor), nunca contra o rascunho restaurado — é assim que um
+    // rascunho com métricas/observações diferentes das gravadas dispara
+    // "Guardar e Reanalisar" já na primeira renderização.
+    setOriginalSnapshot(analyticalSignature(a.notes, canonicalMetrics));
+    if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentIdToEdit]);
+
+  // Restaura um rascunho de avaliação NOVA por gravar (ver
+  // formDraftPersistence.js) — o caminho de edição está no efeito acima.
+  // Corre uma única vez por sessão de criação (restoredForKeyRef), sem
+  // depender de `bodyAssessments`, para não repor o rascunho por cima de
+  // alterações recentes sempre que outra avaliação é gravada em paralelo.
+  useEffect(() => {
+    if (assessmentIdToEdit) return;
+    if (restoredForKeyRef.current === draftStorageKey) return;
+    restoredForKeyRef.current = draftStorageKey;
+    const persisted = restorePersistedFormDraft(draftStorageKey);
+    if (!persisted) return;
+    if (persisted.date) setDate(persisted.date);
+    if (persisted.notes !== undefined) setNotes(persisted.notes);
+    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
+    if (persisted.metrics) setMetrics(persisted.metrics);
+    setIsFormDirty(true);
+  }, [assessmentIdToEdit, draftStorageKey]);
+
+  // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
+  // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
+  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
+  // picker não é restaurável depois de recarregar, e não são tipicamente o
+  // que se está a meio de escrever quando se é interrompido.
+  usePersistedFormDraft(draftStorageKey, { date, notes, metrics, entryMethod }, { isDirty: isFormDirty });
 
   const needsReanalysis = isEditing
     && originalSnapshot !== null

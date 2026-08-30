@@ -422,3 +422,63 @@ describe('GymRegistration — guarda de navegação com formulário sujo', () =>
     expect(useAppStore.getState().navGuard).toBeNull();
   });
 });
+
+// Bug relatado 2026-08-30: formulários perdiam todo o texto ao trocar de app
+// e voltar — o Android descarta a página em segundo plano e recarrega do
+// zero, apagando o estado em memória. Ver src/utils/formDraftPersistence.js
+// e a mesma correção em RunAgenda.jsx (RunAgenda.test.jsx tem o padrão).
+describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive a voltar de outra app', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [] });
+  });
+
+  it('treino NOVO: nome escrito sobrevive a um "recarregamento" (remount) da app', () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<GymRegistration onClose={onClose} />);
+      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+      fireEvent.change(screen.getByPlaceholderText('Nome do treino'), { target: { value: 'Treino a meio de preencher' } });
+
+      // Debounce da persistência (formDraftPersistence.js).
+      vi.advanceTimersByTime(700);
+
+      unmount();
+
+      // "Reabrir a app" — nova instância do componente, tal como acontece
+      // quando o Android recarrega a página ao voltar de outra app e apaga
+      // todo o estado em memória.
+      render(<GymRegistration onClose={onClose} />);
+
+      expect(screen.getByPlaceholderText('Nome do treino').value).toBe('Treino a meio de preencher');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gravar com sucesso limpa o rascunho — o próximo treino novo não vem com nome antigo', async () => {
+    // Simula um rascunho já persistido de uma sessão anterior (poupa esperar
+    // pelo debounce real de formDraftPersistence.js).
+    localStorage.setItem('ironcoach:treino-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+
+    const { unmount } = render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByPlaceholderText('Nome do treino').value).toBe('Rascunho Antigo');
+
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    unmount();
+
+    expect(localStorage.getItem('ironcoach:treino-rascunho:nova')).toBeNull();
+
+    // Próximo treino novo: sem vestígios do rascunho gravado.
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByPlaceholderText('Nome do treino').value).toBe('');
+  });
+});
