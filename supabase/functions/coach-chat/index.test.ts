@@ -253,7 +253,7 @@ Deno.test("runGetGymHistory propaga erro de query", async () => {
 // inserido e apagado, para os testes verificarem que nada fica gravado quando
 // a validação falha, e que o rollback acontece quando os itens falham.
 // deno-lint-ignore no-explicit-any
-function makePlanSb(opts: { planError?: any; itemsError?: any; activePlans?: any[] } = {}) {
+function makePlanSb(opts: { planError?: any; itemsError?: any; activePlans?: any[]; pendingPlans?: any[] } = {}) {
   const calls = { planInserts: [] as any[], itemInserts: [] as any[], deletes: [] as string[], supersededIds: [] as string[] };
   const sb = {
     from: (table: string) => {
@@ -278,15 +278,24 @@ function makePlanSb(opts: { planError?: any; itemsError?: any; activePlans?: any
               return Promise.resolve({ error: null });
             },
           }),
-          // Suporta a query de replace_active_plan: .select().eq().eq().gte()
+          // Duas cadeias diferentes terminam na mesma .select().eq().eq(...):
+          //   .select().eq(user_id).eq(status:'aceite').gte(period_end) — replace_active_plan
+          //   .select().eq(user_id).eq(status:'proposto')               — verificação de propostas pendentes
+          // O 2.º .eq() devolve um objeto que é ao mesmo tempo "thenable"
+          // (para o 2.º caso, que faz await direto) e tem um método .gte
+          // (para o 1.º, que encadeia mais um passo) — cobre as duas sem
+          // precisar de inspecionar o valor passado.
           select: (_cols: string) => ({
             eq: (_c1: string, _v1: unknown) => ({
               eq: (_c2: string, _v2: unknown) => ({
+                then: (resolve: (v: { data: unknown; error: null }) => void) =>
+                  resolve({ data: opts.pendingPlans ?? [], error: null }),
                 gte: (_c3: string, _v3: unknown) => Promise.resolve({ data: opts.activePlans ?? [], error: null }),
               }),
             }),
           }),
-          // Suporta o update de replace_active_plan: .update({status}).in("id", ids)
+          // Suporta o update de replace_active_plan E da verificação de
+          // propostas pendentes — as duas usam .update({status}).in("id", ids).
           update: (_data: unknown) => ({
             in: (_col: string, ids: string[]) => {
               calls.supersededIds.push(...ids);
@@ -385,6 +394,38 @@ Deno.test("runProposeTrainingPlan não deixa training_type num item de ginásio"
   });
   assertEquals(calls.itemInserts[0].training_type, null);
   assertEquals(calls.itemInserts[0].categories, ["Pernas"]);
+});
+
+// BUG CORRIGIDO 2026-08-30: uma falha de comunicação do cliente fez o
+// mesmo pedido do atleta chegar duplicado, e a Carol propôs DOIS planos de
+// treino quase idênticos em segundos, ambos pendentes ao mesmo tempo — o
+// atleta viu-se a escolher entre duas opções confusas em vez de rever uma
+// única proposta. Nunca deve haver mais de uma proposta de treino pendente.
+Deno.test("runProposeTrainingPlan marca propostas pendentes anteriores como recusadas antes de gravar a nova", async () => {
+  const { sb, calls } = makePlanSb({
+    pendingPlans: [{ id: "plano-pendente-antigo", coach_plan_items: [{ kind: "corrida" }] }],
+  });
+  const result = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+
+  assertStringIncludes(result, "Plano criado com 2 treino(s)");
+  assertEquals(calls.supersededIds, ["plano-pendente-antigo"]);
+  assertEquals(calls.planInserts.length, 1);
+});
+
+Deno.test("runProposeTrainingPlan não marca propostas pendentes sem treino real (ex.: só refeições)", async () => {
+  const { sb, calls } = makePlanSb({
+    pendingPlans: [{ id: "plano-so-refeicoes", coach_plan_items: [] }],
+  });
+  await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+
+  assertEquals(calls.supersededIds, []);
+});
+
+Deno.test("runProposeTrainingPlan sem propostas pendentes anteriores não marca nada", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+
+  assertEquals(calls.supersededIds, []);
 });
 
 Deno.test("runProposeTrainingPlan apaga o plano se os itens falharem", async () => {
