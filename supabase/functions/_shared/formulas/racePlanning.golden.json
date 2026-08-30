@@ -9,6 +9,24 @@
   { "fn": "resolveExperienceLevel", "name": "sem nível na prova — usa o do perfil", "input": { "race": {}, "profile": { "experience_level": "medio" } }, "expect": "medio" },
   { "fn": "resolveExperienceLevel", "name": "sem nenhum — default iniciante", "input": { "race": {}, "profile": {} }, "expect": "iniciante" },
   {
+    "fn": "computeEffectivePrepStart",
+    "name": "sem created_at — sem compressão, início efetivo é o ideal (comportamento anterior ao bug fix, inalterado)",
+    "input": { "raceDateISO": "2026-10-15", "totalWeeks": 6, "raceCreatedAtISO": null },
+    "expect": { "effectiveStartISO": "2026-09-03", "isCompressed": false, "effectiveWeeksAvailable": 6 }
+  },
+  {
+    "fn": "computeEffectivePrepStart",
+    "name": "prova criada antes do início ideal — sem compressão, mesmo resultado",
+    "input": { "raceDateISO": "2026-12-15", "totalWeeks": 6, "raceCreatedAtISO": "2026-08-01" },
+    "expect": { "effectiveStartISO": "2026-11-03", "isCompressed": false, "effectiveWeeksAvailable": 6 }
+  },
+  {
+    "fn": "computeEffectivePrepStart",
+    "name": "prova de 10k registada no próprio dia, 17 dias antes da corrida — macrociclo comprimido de 6 para 2 semanas (bug relatado 2026-08-29)",
+    "input": { "raceDateISO": "2026-09-13", "totalWeeks": 6, "raceCreatedAtISO": "2026-08-27 11:14:16.834118+00" },
+    "expect": { "effectiveStartISO": "2026-08-27", "isCompressed": true, "effectiveWeeksAvailable": 2 }
+  },
+  {
     "fn": "getRacePrediction",
     "name": "meia-maratona, nível médio, uma corrida de base — previsão real (não equivalente, pois é estrada)",
     "input": {

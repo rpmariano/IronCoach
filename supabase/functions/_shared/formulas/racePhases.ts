@@ -21,7 +21,7 @@
 
 export type TrainingPhaseId = "base" | "build" | "peak" | "taper";
 export type TrainingStatus = "not_started" | "in_progress" | "race_day" | "completed";
-export type PhaseState = "upcoming" | "active" | "completed";
+export type PhaseState = "upcoming" | "active" | "completed" | "skipped";
 
 export interface PhaseWindow {
   id: TrainingPhaseId;
@@ -92,13 +92,26 @@ export function computePhaseWindows(
   }));
 }
 
-/** Estado de uma fase face a hoje, dado o estado global do macrociclo. */
+/**
+ * Estado de uma fase face a hoje, dado o estado global do macrociclo.
+ *
+ * `effectiveStartISO` (opcional) é o início REAL da preparação — ver
+ * `computeEffectivePrepStart` em `racePlanning.ts` — quando difere do início
+ * teórico da janela (prova registada depois de a fase já dever ter
+ * começado, na doutrina). Uma fase inteiramente anterior a esse início
+ * nunca pôde acontecer: sem esta verificação, `completed` fabricava um
+ * histórico de treino que não existiu (bug relatado 2026-08-29 — fases
+ * marcadas concluídas e alerta de tempo insuficiente escondido numa prova
+ * criada a poucos dias da corrida).
+ */
 export function resolvePhaseState(
   trainingStatus: TrainingStatus,
   todayISO: string,
   startDateStr: string,
   endDateStr: string,
+  effectiveStartISO?: string,
 ): PhaseState {
+  if (effectiveStartISO && endDateStr < effectiveStartISO) return "skipped";
   if (trainingStatus === "completed") return "completed";
   if (trainingStatus === "not_started") return "upcoming";
   if (todayISO > endDateStr) return "completed";

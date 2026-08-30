@@ -72,6 +72,19 @@
     }
   },
   {
+    "name": "fase comida pela compressão do macrociclo (prova registada tarde) — sem nota, rótulo 'Não Realizada', nunca 'Sem Registos' (bug relatado 2026-08-29)",
+    "input": {
+      "phaseId": "base", "phaseState": "skipped", "phaseWeeks": 2,
+      "startDateStr": "2026-08-02", "endDateStr": "2026-08-15",
+      "distanceKm": 10, "experienceLevel": "medio", "viabilityFlags": [], "runs": []
+    },
+    "expect": {
+      "score": null, "stars": 0, "gradeLabel": "Não Realizada", "statusColor": "slate",
+      "summary": "Fase anterior ao início real da preparação — a prova foi registada tarde demais para cumprir todo o macrociclo recomendado.",
+      "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": null, "avgPace": null }
+    }
+  },
+  {
     "name": "penalizações de viabilidade acumulam (×0,85 tempo + ×0,9 volume) — mesma fase do caso anterior desce de 51 para 39",
     "input": {
       "phaseId": "peak", "phaseState": "completed", "phaseWeeks": 4,
