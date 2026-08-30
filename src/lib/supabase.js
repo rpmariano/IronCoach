@@ -31,8 +31,8 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
  * Invoca uma Edge Function do Supabase garantindo um tempo limite (timeoutMs).
  *
  * O erro devolvido vem sempre acompanhado de `isTimeout`: só é `true` quando
- * o PRÓPRIO CLIENTE desistiu de esperar (AbortError) — nesse caso o pedido
- * pode legitimamente ainda estar em processamento no servidor (ver comentário
+ * o PRÓPRIO CLIENTE desistiu de esperar — nesse caso o pedido pode
+ * legitimamente ainda estar em processamento no servidor (ver comentário
  * grande sobre POLL_MAX_MS em Coach.jsx), e vale a pena aguardar/sondar.
  * Qualquer outro erro (falha de rede antes de o pedido sequer sair — ex.:
  * "Failed to send a request to the Edge Function" — ou um erro devolvido
@@ -40,11 +40,30 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
  * tratá-lo como se fosse um timeout mostra ao atleta um aviso de "demora"
  * enganador (a resposta nunca vai chegar) e o mantém à espera até 3 minutos
  * por nada.
+ *
+ * BUG CORRIGIDO (2026-08-30, relatado como "erro de comunicação" na Carol
+ * mesmo com rede no telemóvel): a deteção de timeout comparava `err.name
+ * === 'AbortError'`, mas `supabase.functions.invoke()` NUNCA deixa esse
+ * nome sobreviver — o FunctionsClient da própria livraria envolve QUALQUER
+ * falha do fetch (a nossa própria AbortController incluída) num
+ * `FunctionsFetchError` genérico, com a mensagem fixa "Failed to send a
+ * request to the Edge Function" e nome "FunctionsFetchError" (ver
+ * node_modules/@supabase/functions-js — `.catch((fetchError) => { throw
+ * new FunctionsFetchError(fetchError); })`, sem exceção para AbortError).
+ * Ou seja: a comparação por nome era sempre falsa, e um pedido que o
+ * PRÓPRIO cliente desistiu de esperar (ex.: o coach-chat a repetir uma
+ * chamada ao Gemini que veio 503, facilmente ultrapassando os 45s daqui)
+ * caía sempre no ramo genérico "Falha de rede ou de comunicação com o
+ * servidor" em vez do aviso de demora com sondagem (handleAsyncFallback em
+ * Coach.jsx) — dava exatamente a mesma mensagem de uma falha de rede real,
+ * por isso "tinha rede no telemóvel" não batia certo com o que se via.
+ * Correção: verificar `controller.signal.aborted` diretamente — é o NOSSO
+ * temporizador, não depende de a livraria preservar o tipo do erro.
  */
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  
+
   try {
     const invokeOptions = {
       ...options,
@@ -52,7 +71,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     };
     const { data, error } = await supabase.functions.invoke(fnName, invokeOptions);
     clearTimeout(timer);
-    
+
     if (error) {
       let detailedMsg = error.message;
       if (error.context && typeof error.context.json === 'function') {
@@ -75,7 +94,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     return { data, error: null };
   } catch (err) {
     clearTimeout(timer);
-    if (err.name === 'AbortError') {
+    if (controller.signal.aborted) {
       console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
       logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
       return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true };
