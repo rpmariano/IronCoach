@@ -365,3 +365,64 @@ describe('BodyRegistration — guarda de navegação com formulário sujo', () =
     expect(useAppStore.getState().navGuard).toBeNull();
   });
 });
+
+// Bug relatado 2026-08-30: formulários perdiam todo o texto ao trocar de app
+// e voltar — o Android descarta a página em segundo plano e recarrega do
+// zero, apagando o estado em memória. Ver src/utils/formDraftPersistence.js
+// e a mesma correção em RunAgenda.jsx (RunAgenda.test.jsx tem o padrão).
+describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive a voltar de outra app', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('avaliação NOVA: métrica escrita sobrevive a um "recarregamento" (remount) da app', () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(<BodyRegistration onClose={onClose} />);
+      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+      fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
+
+      // Debounce da persistência (formDraftPersistence.js).
+      vi.advanceTimersByTime(700);
+
+      unmount();
+
+      // "Reabrir a app" — nova instância do componente, tal como acontece
+      // quando o Android recarrega a página ao voltar de outra app e apaga
+      // todo o estado em memória.
+      render(<BodyRegistration onClose={onClose} />);
+      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+      expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gravar com sucesso limpa o rascunho — a próxima avaliação nova não vem com valores antigos', async () => {
+    // Simula um rascunho já persistido de uma sessão anterior (poupa esperar
+    // pelo debounce real de formDraftPersistence.js).
+    localStorage.setItem('ironcoach:avaliacao-rascunho:nova', JSON.stringify({ entryMethod: 'manual', metrics: { weight_kg: '78.5' } }));
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-9' } }, error: null });
+
+    const { unmount } = render(<BodyRegistration onClose={onClose} />);
+    expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    unmount();
+
+    expect(localStorage.getItem('ironcoach:avaliacao-rascunho:nova')).toBeNull();
+
+    // Próxima avaliação nova: sem vestígios do rascunho gravado.
+    render(<BodyRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    expect(screen.getByLabelText('Peso (kg)')).toHaveValue(null);
+  });
+});

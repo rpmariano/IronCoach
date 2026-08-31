@@ -10,6 +10,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
+import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -48,6 +49,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   
 
   const isEditing = !!mealIdToEdit;
+
+  // Identifica este rascunho de forma única para sobreviver a um
+  // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
+  // refeições diferentes nem entre uma edição e uma criação nova a seguir.
+  const draftStorageKey = mealIdToEdit ? `ironcoach:refeicao-rascunho:${mealIdToEdit}` : 'ironcoach:refeicao-rascunho:nova';
+  // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
+  // efeito de carregamento reporia o rascunho guardado por cima de
+  // alterações mais recentes ainda não persistidas.
+  const restoredForKeyRef = useRef(null);
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -126,6 +136,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     autoCloseRef.current = true;
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
+    clearPersistedFormDraft(draftStorageKey);
     onClose();
     if (target) {
       // O guard ainda está registado neste render — o próprio setActiveTab()
@@ -168,20 +179,65 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (!mealIdToEdit) return;
     const meal = meals.find(m => m.id === mealIdToEdit);
     if (!meal) return;
-    setDate(meal.date || format(new Date(), 'yyyy-MM-dd'));
-    setMealType(meal.meal_type || 'almoco');
-    setNotes(meal.notes || '');
-    const items = (meal.meal_items || []).map((it, i) => ({
+    // Rascunho por gravar guardado localmente (ver formDraftPersistence.js)
+    // sobrepõe-se ao valor canónico vindo do servidor — restaura-se UMA VEZ
+    // por sessão de edição (restoredForKeyRef), senão este efeito repunha-o
+    // a cada vez que voltasse a correr.
+    const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
+    const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
+    restoredForKeyRef.current = draftStorageKey;
+
+    const canonicalItems = (meal.meal_items || []).map((it, i) => ({
       key: it.id || `${Date.now()}-${i}`,
       dbId: it.id,
       name: it.name,
       grams: it.quantity_grams,
     }));
-    setManualItems(items);
-    setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, items));
-    setEntryMethod('manual');
+    setDate(persisted?.date ?? (meal.date || format(new Date(), 'yyyy-MM-dd')));
+    setMealType(persisted?.mealType ?? (meal.meal_type || 'almoco'));
+    setNotes(persisted?.notes ?? (meal.notes || ''));
+    setManualItems(persisted?.manualItems ?? canonicalItems);
+    setItemName(persisted?.itemName ?? '');
+    setItemGrams(persisted?.itemGrams ?? '');
+    setEntryMethod(persisted?.entryMethod ?? 'manual');
+    // A assinatura de partida compara sempre contra o valor CANÓNICO (do
+    // servidor), nunca contra o rascunho restaurado — é assim que um
+    // rascunho com alimentos/observações diferentes dos gravados dispara
+    // "Guardar e Reanalisar" já na primeira renderização.
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, canonicalItems));
+    if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
+
+  // Restaura um rascunho de refeição NOVA por gravar (ver
+  // formDraftPersistence.js) — o caminho de edição está no efeito acima.
+  // Corre uma única vez por sessão de criação (restoredForKeyRef), sem
+  // depender de `meals`, para não repor o rascunho por cima de alterações
+  // recentes sempre que outra refeição é gravada em paralelo.
+  useEffect(() => {
+    if (mealIdToEdit) return;
+    if (restoredForKeyRef.current === draftStorageKey) return;
+    restoredForKeyRef.current = draftStorageKey;
+    const persisted = restorePersistedFormDraft(draftStorageKey);
+    if (!persisted) return;
+    if (persisted.date) setDate(persisted.date);
+    if (persisted.mealType) setMealType(persisted.mealType);
+    if (persisted.notes !== undefined) setNotes(persisted.notes);
+    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
+    if (persisted.manualItems) setManualItems(persisted.manualItems);
+    if (persisted.itemName !== undefined) setItemName(persisted.itemName);
+    if (persisted.itemGrams !== undefined) setItemGrams(persisted.itemGrams);
+    setIsFormDirty(true);
+  }, [mealIdToEdit, draftStorageKey]);
+
+  // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
+  // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
+  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
+  // picker não é restaurável depois de recarregar, e não são tipicamente o
+  // que se está a meio de escrever quando se é interrompido.
+  usePersistedFormDraft(draftStorageKey, {
+    date, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
+  }, { isDirty: isFormDirty });
 
   // Regenera a análise se a data, alimentos ou observações mudaram
   const needsReanalysis = isEditing
