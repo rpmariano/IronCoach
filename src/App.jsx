@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
-import { useScreenBackButton } from './utils/screenBackButton';
+import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { ToastProvider } from './components/shared/ToastProvider';
@@ -90,14 +90,22 @@ export default function App() {
   // é usado no JSX.
   const isCreatingOrEditing = !!openCreationMode || !!editingRaceId;
 
-  // Botão/gesto de "voltar" do telemóvel fecha este ecrã de topo em vez de
-  // sair da app inteira — ver o comentário completo em
-  // utils/screenBackButton.js (bug relatado 2026-08-30).
+  // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
+  // o ecrã de topo em vez de sair da app inteira — ver o comentário
+  // completo em utils/appNavigationHistory.js (bug relatado 2026-08-30;
+  // uma primeira correção só cobria o ecrã de registo/edição, insuficiente
+  // para navegar entre separadores).
   const closeTopScreen = useCallback(() => {
     setOpenCreationMode(null);
     setEditingRaceId(null);
   }, [setOpenCreationMode, setEditingRaceId]);
-  useScreenBackButton(isCreatingOrEditing, closeTopScreen);
+  useAppNavigationHistory({
+    activeTab,
+    setActiveTab,
+    isCreatingOrEditing,
+    closeTopScreen,
+    ready: !isInitializing,
+  });
 
   useEffect(() => {
     registerServiceWorker();
