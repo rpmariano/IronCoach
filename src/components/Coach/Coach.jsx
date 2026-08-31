@@ -492,13 +492,6 @@ export default function Coach() {
     }
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
   const defaultSuggestions = [
     'Como está a minha nutrição hoje?',
     'Cria-me um plano de treino para uma meia maratona',
@@ -687,7 +680,10 @@ export default function Coach() {
             rows={1}
             value={inputStr}
             onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
+            // Enter faz sempre quebra de linha, nunca envia — só o botão
+            // envia. Pedido explícito do utilizador 2026-08-31: uma
+            // mensagem mais longa (várias linhas) enviava-se a meio sem
+            // querer ao carregar em Enter para mudar de linha.
             placeholder="Escreve a tua pergunta..."
             className="flex-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-3 text-sm text-slate-300 placeholder-slate-600 outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
             style={{ minHeight: '44px' }}

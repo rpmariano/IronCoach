@@ -105,6 +105,26 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).toBeDisabled();
   });
 
+  it('BUG CORRIGIDO 2026-08-31 — Enter faz quebra de linha, nunca envia a pergunta; só o botão envia', () => {
+    // Pedido explícito do utilizador: uma mensagem mais longa (várias
+    // linhas) enviava-se a meio sem querer ao carregar em Enter para
+    // mudar de linha — Enter (com ou sem Shift) nunca deve chamar
+    // invokeEdgeFunctionWithTimeout nem limpar o campo.
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+    renderCoach();
+
+    const textarea = screen.getByPlaceholderText('Escreve a tua pergunta...');
+    fireEvent.change(textarea, { target: { value: 'Primeira linha' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter', shiftKey: true });
+
+    expect(invokeEdgeFunctionWithTimeout).not.toHaveBeenCalled();
+    expect(textarea.value).toBe('Primeira linha');
+  });
+
   it('encontra a resposta por sondagem: substitui o aviso pela resposta real e destrava o campo', async () => {
     // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
     // pedido pode legitimamente ainda estar em processamento no servidor —
