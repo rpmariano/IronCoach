@@ -54,7 +54,7 @@ function formatDatePT(isoStr) {
   }
 }
 
-export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false }) {
+export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false, hideActions = false }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
 
@@ -439,40 +439,45 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             </Button>
           )}
 
-          <div className="flex items-center gap-2 pt-1">
-            {run.photo_paths?.length > 0 && (
+          {/* Ações — escondidas quando o cartão é só uma pré-visualização
+              (ex.: CreatedRecordModal, que tem os seus próprios botões de
+              Eliminar/Fechar agrupados no rodapé). */}
+          {!hideActions && (
+            <div className="flex items-center gap-2 pt-1">
+              {run.photo_paths?.length > 0 && (
+                <Button
+                  variant="light"
+                  onClick={handleReanalyze}
+                  disabled={isReanalyzing}
+                  isLoading={isReanalyzing}
+                  className="flex-1 text-xs"
+                  icon={!isReanalyzing && <RefreshCw size={14} />}
+                >
+                  Reanalisar
+                </Button>
+              )}
+              {onEdit && (
+                <Button
+                  variant="light"
+                  onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}
+                  className="flex-1 text-xs"
+                  icon={<PencilLine size={14} />}
+                >
+                  Editar
+                </Button>
+              )}
               <Button
-                variant="light"
-                onClick={handleReanalyze}
-                disabled={isReanalyzing}
-                isLoading={isReanalyzing}
+                variant="light-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+                isLoading={isDeleting}
                 className="flex-1 text-xs"
-                icon={!isReanalyzing && <RefreshCw size={14} />}
+                icon={!isDeleting && <Trash2 size={14} />}
               >
-                Reanalisar
+                Eliminar
               </Button>
-            )}
-            {onEdit && (
-              <Button
-                variant="light"
-                onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}
-                className="flex-1 text-xs"
-                icon={<PencilLine size={14} />}
-              >
-                Editar
-              </Button>
-            )}
-            <Button
-              variant="light-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isDeleting}
-              isLoading={isDeleting}
-              className="flex-1 text-xs"
-              icon={!isDeleting && <Trash2 size={14} />}
-            >
-              Eliminar
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       )}
       <ConfirmDeleteModal
