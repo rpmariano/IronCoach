@@ -22,7 +22,7 @@ const MEAL_ICONS = {
    observações entram no prompt de estimação — "hambúrguer" caseiro e do
    McDonald's não dão os mesmos valores). Editar aqui à mão deixava a
    "Análise do Coach" a descrever uma refeição que já não existe. */
-export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
+export default function MealCard({ meal, onEdit, defaultExpanded = false, hideActions = false }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
@@ -238,29 +238,33 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false }) {
             </Button>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            {onEdit && (
+          {/* Action Buttons — escondidos quando o cartão é só uma
+              pré-visualização (ex.: CreatedRecordModal, que tem os seus
+              próprios botões de Eliminar/Fechar agrupados no rodapé). */}
+          {!hideActions && (
+            <div className="flex items-center gap-2 pt-1">
+              {onEdit && (
+                <Button
+                  variant="light"
+                  onClick={() => onEdit(meal.id)}
+                  className="flex-1 text-xs"
+                  icon={<PencilLine size={14} />}
+                >
+                  Editar
+                </Button>
+              )}
               <Button
-                variant="light"
-                onClick={() => onEdit(meal.id)}
+                variant="light-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+                isLoading={isDeleting}
                 className="flex-1 text-xs"
-                icon={<PencilLine size={14} />}
+                icon={!isDeleting && <Trash2 size={14} />}
               >
-                Editar
+                Eliminar refeição
               </Button>
-            )}
-            <Button
-              variant="light-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isDeleting}
-              isLoading={isDeleting}
-              className="flex-1 text-xs"
-              icon={!isDeleting && <Trash2 size={14} />}
-            >
-              Eliminar refeição
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       )}
       <ConfirmDeleteModal

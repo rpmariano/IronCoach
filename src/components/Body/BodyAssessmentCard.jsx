@@ -13,7 +13,7 @@ import Button from '../shared/Button';
    nas observações muda a análise do Coach e tem de a regenerar. Editar aqui à
    mão deixava a "Análise do Coach" a descrever uma avaliação que já não
    existe. Mesmo padrão da Nutrição/Ginásio (ver PRD 3.2/3.3/3.5). */
-export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded = false }) {
+export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded = false, hideActions = false }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
@@ -190,29 +190,35 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
             </Button>
           )}
 
-          {/* Ações */}
-          <div className="flex items-center gap-2 pt-1">
-            {onEdit && (
+          {/* Ações — escondidas quando o cartão é só uma pré-visualização
+              (ex.: CreatedRecordModal, que tem os seus próprios botões de
+              Eliminar/Fechar agrupados no rodapé; mostrar aqui também dava
+              um "Eliminar avaliação" solto lá em cima, sem fazer nada por
+              causa do pointer-events-none do preview). */}
+          {!hideActions && (
+            <div className="flex items-center gap-2 pt-1">
+              {onEdit && (
+                <Button
+                  variant="light"
+                  onClick={() => onEdit(assessment.id)}
+                  className="flex-1 text-xs"
+                  icon={<PencilLine size={14} />}
+                >
+                  Editar
+                </Button>
+              )}
               <Button
-                variant="light"
-                onClick={() => onEdit(assessment.id)}
+                variant="light-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+                isLoading={isDeleting}
                 className="flex-1 text-xs"
-                icon={<PencilLine size={14} />}
+                icon={!isDeleting && <Trash2 size={14} />}
               >
-                Editar
+                Eliminar avaliação
               </Button>
-            )}
-            <Button
-              variant="light-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isDeleting}
-              isLoading={isDeleting}
-              className="flex-1 text-xs"
-              icon={!isDeleting && <Trash2 size={14} />}
-            >
-              Eliminar avaliação
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       )}
       <ConfirmDeleteModal

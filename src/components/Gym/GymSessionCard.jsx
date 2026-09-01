@@ -16,7 +16,7 @@ import { formatDuration } from '../../utils/run';
    esforço ou nas observações muda a análise do Coach e tem de a regenerar.
    Editar aqui à mão deixava a "Análise do Coach" a descrever um treino que
    já não existe. Mesmo padrão da Nutrição (ver MealCard.jsx e PRD 3.2). */
-export default function GymSessionCard({ session, onEdit, defaultExpanded = false }) {
+export default function GymSessionCard({ session, onEdit, defaultExpanded = false, hideActions = false }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const onToggleExpand = () => setIsExpanded(prev => !prev);
   const { profile, loadInitialData } = useAppStore();
@@ -269,29 +269,33 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
             </Button>
           )}
 
-          {/* Bottom Action Bar */}
-          <div className="flex items-center gap-2 pt-1">
-            {onEdit && (
+          {/* Bottom Action Bar — escondida quando o cartão é só uma
+              pré-visualização (ex.: CreatedRecordModal, que tem os seus
+              próprios botões de Eliminar/Fechar agrupados no rodapé). */}
+          {!hideActions && (
+            <div className="flex items-center gap-2 pt-1">
+              {onEdit && (
+                <Button
+                  variant="light"
+                  onClick={() => onEdit(session.id)}
+                  className="flex-1 text-xs"
+                  icon={<PencilLine size={14} />}
+                >
+                  Editar
+                </Button>
+              )}
               <Button
-                variant="light"
-                onClick={() => onEdit(session.id)}
+                variant="light-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={isDeleting}
+                isLoading={isDeleting}
                 className="flex-1 text-xs"
-                icon={<PencilLine size={14} />}
+                icon={!isDeleting && <Trash2 size={14} />}
               >
-                Editar
+                Eliminar treino
               </Button>
-            )}
-            <Button
-              variant="light-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isDeleting}
-              isLoading={isDeleting}
-              className="flex-1 text-xs"
-              icon={!isDeleting && <Trash2 size={14} />}
-            >
-              Eliminar treino
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       )}
       <ConfirmDeleteModal
