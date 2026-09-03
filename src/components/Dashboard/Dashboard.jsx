@@ -13,6 +13,16 @@ import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import { detectCoachInsights } from '../../utils/biEngine';
 
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+// "back" com overshoot — a pílula ultrapassa levemente o alvo antes de
+// assentar, o toque elástico ("slime") pedido em vez de um travão seco.
+const easeOutBack = (t) => {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+};
+
 const TABS = [
   { key: 'hub', label: 'Visão Geral', icon: <LayoutDashboard size={14} />, color: '#0ea5e9' },
   { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #c026d3)' },
@@ -60,13 +70,18 @@ export default function Dashboard({ activeModule }) {
   scrollToRef.current = scrollTo;
 
   // Indicador do subnav em "pílula elástica": ao trocar de separador, em vez
-  // de deslizar em linha reta, estica primeiro a cobrir todo o trajeto entre
-  // o separador antigo e o novo (engolindo os que ficam pelo meio) e só
-  // depois contrai até assentar só no novo, revelando-os outra vez à medida
-  // que recua. Mede as posições reais dos botões em vez de usar % fixas —
-  // só assim dá para calcular o "span" entre dois separadores quaisquer.
+  // de saltar em duas fases distintas, desliza num único movimento contínuo
+  // (requestAnimationFrame, não CSS transition) que primeiro estica a cobrir
+  // todo o trajeto entre o separador antigo e o novo (engolindo os que ficam
+  // pelo meio) e depois contrai até assentar só no novo, com um leve
+  // overshoot elástico — por serem frames calculados, não duas transições
+  // CSS encadeadas, não há o "salto" de trocar de animação a meio. Mede as
+  // posições reais dos botões em vez de usar % fixas — só assim dá para
+  // calcular o "span" entre dois separadores quaisquer.
   const [indicatorStyle, setIndicatorStyle] = useState(null);
   const prevIndicatorIndex = useRef(currentIndex);
+  const indicatorRectRef = useRef(null); // última posição visual real (para continuar de forma fluida se o utilizador tocar noutro separador a meio da animação)
+  const indicatorRafRef = useRef(null);
 
   const measureTab = useCallback((idx) => {
     const container = subnavRef.current;
@@ -77,51 +92,83 @@ export default function Dashboard({ activeModule }) {
     return { left: bRect.left - cRect.left, width: bRect.width };
   }, []);
 
+  const setIndicatorRect = useCallback((rect) => {
+    indicatorRectRef.current = rect;
+    setIndicatorStyle({ ...rect, transition: 'none' });
+  }, []);
+
+  const animateIndicator = useCallback((fromRect, toRect) => {
+    if (indicatorRafRef.current) cancelAnimationFrame(indicatorRafRef.current);
+
+    const spanLeft = Math.min(fromRect.left, toRect.left);
+    const spanRight = Math.max(fromRect.left + fromRect.width, toRect.left + toRect.width);
+    // Mais separadores de distância => mais tempo de deslize, para não
+    // parecer apressado nem parecer um salto num trajeto longo.
+    const distance = toRect.width > 0 ? Math.round(Math.abs(toRect.left - fromRect.left) / toRect.width) : 1;
+    const duration = Math.min(620, 260 + distance * 90);
+    const start = performance.now();
+
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration);
+      let left, right;
+      if (p < 0.45) {
+        // Fase de esticar (0–45% do trajeto no tempo).
+        const g = easeOutCubic(p / 0.45);
+        left = lerp(fromRect.left, spanLeft, g);
+        right = lerp(fromRect.left + fromRect.width, spanRight, g);
+      } else {
+        // Fase de contrair até ao alvo, com overshoot.
+        const s = easeOutBack((p - 0.45) / 0.55);
+        left = lerp(spanLeft, toRect.left, s);
+        right = lerp(spanRight, toRect.left + toRect.width, s);
+      }
+      setIndicatorRect({ left, width: Math.max(0, right - left) });
+
+      if (p < 1) {
+        indicatorRafRef.current = requestAnimationFrame(tick);
+      } else {
+        setIndicatorRect(toRect);
+        indicatorRafRef.current = null;
+      }
+    };
+    indicatorRafRef.current = requestAnimationFrame(tick);
+  }, [setIndicatorRect]);
+
   useEffect(() => {
     const target = measureTab(currentIndex);
     if (!target) return;
     const prevIdx = prevIndicatorIndex.current;
+    prevIndicatorIndex.current = currentIndex;
 
     if (prevIdx === currentIndex) {
       // Montagem inicial (ou re-render sem troca real) — posiciona sem animar.
-      if (!indicatorStyle) setIndicatorStyle({ ...target, transition: 'none' });
+      if (!indicatorRectRef.current) setIndicatorRect(target);
       return;
     }
 
-    const prevRect = measureTab(prevIdx) || target;
-    const spanLeft = Math.min(prevRect.left, target.left);
-    const spanRight = Math.max(prevRect.left + prevRect.width, target.left + target.width);
+    // Continua a partir da posição visual atual (não da posição "oficial" do
+    // separador antigo) — se o utilizador tocar noutro separador a meio da
+    // animação, o deslize retoma dali em vez de saltar de volta ao início.
+    animateIndicator(indicatorRectRef.current || measureTab(prevIdx) || target, target);
+  }, [currentIndex, measureTab, animateIndicator, setIndicatorRect]);
 
-    // Fase 1 (160ms): estica a cobrir o trajeto todo.
-    setIndicatorStyle({
-      left: spanLeft,
-      width: spanRight - spanLeft,
-      transition: 'left 160ms cubic-bezier(0.4,0,0.2,1), width 160ms cubic-bezier(0.4,0,0.2,1)',
-    });
-
-    // Fase 2 (280ms, com leve overshoot): contrai até ao separador novo.
-    const t = setTimeout(() => {
-      setIndicatorStyle({
-        ...target,
-        transition: 'left 280ms cubic-bezier(0.34,1.56,0.64,1), width 280ms cubic-bezier(0.34,1.56,0.64,1)',
-      });
-    }, 160);
-
-    prevIndicatorIndex.current = currentIndex;
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, measureTab]);
+  useEffect(() => () => {
+    if (indicatorRafRef.current) cancelAnimationFrame(indicatorRafRef.current);
+  }, []);
 
   // Reajusta a posição (sem animar) se a largura do ecrã mudar — ex.: rodar
   // o telemóvel a meio de uma troca de separador.
   useEffect(() => {
     const onResize = () => {
       const target = measureTab(currentIndex);
-      if (target) setIndicatorStyle({ ...target, transition: 'none' });
+      if (target) {
+        if (indicatorRafRef.current) { cancelAnimationFrame(indicatorRafRef.current); indicatorRafRef.current = null; }
+        setIndicatorRect(target);
+      }
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [currentIndex, measureTab]);
+  }, [currentIndex, measureTab, setIndicatorRect]);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {

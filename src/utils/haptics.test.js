@@ -122,9 +122,12 @@ describe('useCarouselHaptics hook', () => {
     expect(setCurrentIndex).not.toHaveBeenCalled();
 
     // Depois da janela de supressão, um scroll genuíno do utilizador volta a
-    // ser respeitado normalmente.
+    // ser respeitado normalmente. A janela cresce com a distância percorrida
+    // (550ms + 220ms por separador saltado) — para uma distância de 3 são
+    // precisos 1210ms, não os 500ms fixos de antes (era exatamente esse
+    // teto curto que causava a regressão descrita no título deste teste).
     act(() => {
-      vi.advanceTimersByTime(500);
+      vi.advanceTimersByTime(1210);
     });
     act(() => {
       scrollRef.current.scrollLeft = 300; // índice 1
