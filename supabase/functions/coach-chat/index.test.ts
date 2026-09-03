@@ -1488,7 +1488,12 @@ Deno.test("computeACWR zona segura: 40 km/sem crónica, 40 km aguda → rácio 1
   ];
   // crónica = (10+30)/4 = 10; aguda = 10 → ratio = 1.0
   const r = computeACWR(runs, TODAY_ACWR);
-  assertEquals(r?.zone, "seguro(0,80-1,30)");
+  // Fronteira semi-aberta (_shared/formulas/acwr.ts): 1,30 inclui-se em
+  // "seguro" — ZONE_LABELS.safe fecha o intervalo com "]", não ")". Este
+  // valor nunca tinha corrido contra a implementação real (ver nota em
+  // "computeACWR zona risco_acrescido", abaixo) — só descoberto agora que
+  // o CI passou a correr `deno test` antes do deploy.
+  assertEquals(r?.zone, "seguro(0,80-1,30]");
   assertEquals(r?.ratio, 1.0);
 });
 
@@ -1505,37 +1510,25 @@ Deno.test("computeACWR zona PERIGO: aguda muito alta relativamente à crónica",
   ];
   // rácio = 30 / 11.25 = 2.67
   const r = computeACWR(runs2, TODAY_ACWR);
-  assertEquals(r?.zone, "PERIGO(≥1,50)");
+  // ZONE_LABELS.danger usa ">1,50" (fronteira exclusiva — 1,50 exato cai em
+  // "caution", ver classifyAcwrZone), não "≥1,50".
+  assertEquals(r?.zone, "PERIGO(>1,50)");
 });
 
-Deno.test("computeACWR zona risco_acrescido: rácio entre 1.31 e 1.49", () => {
-  // crónica = 10 km/sem; aguda = 14 km → rácio ~1.40
+Deno.test("computeACWR zona risco_acrescido: rácio entre 1,30 (exclusivo) e 1,50 (inclusivo)", () => {
+  // aguda (7 dias) = 14 km; crónica = (14+27)/4 = 10,25 km/sem → rácio =
+  // 14/10,25 ≈ 1,3659 → cai no lado "caution" da fronteira semi-aberta
+  // (>1,30, ver _shared/formulas/acwr.ts). Valor confirmado à mão contra
+  // computeRunAcwr — o anterior nunca tinha corrido contra a implementação
+  // real (deno test bloqueado neste ambiente até o CI passar a corrê-lo
+  // antes do deploy) e tinha o rácio E a etiqueta ("1,31-1,49)") errados.
   const runs = [
-    makeRun(2, 7), makeRun(5, 7),   // 14 km aguda
-    makeRun(9, 10), makeRun(16, 10), makeRun(23, 10), // +30 km fora dos 7 dias → total 44/4=11 crónica
-  ];
-  // rácio = 14 / (44/4) = 14/11 ≈ 1.27 → ainda seguro. Ajustar.
-  const runs2 = [
-    makeRun(2, 14),                   // 14 km aguda
-    makeRun(9, 5), makeRun(16, 5), makeRun(23, 5), // 15 km fora dos 7 → total 29/4 = 7.25 crónica
-  ];
-  // rácio = 14 / 7.25 ≈ 1.93 → PERIGO. Vamos acertar.
-  const runs3 = [
-    makeRun(2, 13),                   // 13 km aguda
-    makeRun(9, 4), makeRun(16, 4), makeRun(23, 4), makeRun(3, 2), // +10 km fora → total 23/4=5.75 ... 13/5.75=2.26 PERIGO
-    // melhor: crónica ≈ 10 km/sem → 40 km total; aguda = 13,5 km → ratio 1.35
-  ];
-  const runs4 = [
-    makeRun(2, 6), makeRun(4, 7),     // 13 km aguda (7 dias)
-    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → total 40/4=10 crónica → ratio 1.3 (seguro)
-  ];
-  // Rácio 1.3 já é seguro. Para risco_acrescido preciso de 1.31-1.49.
-  const runs5 = [
     makeRun(2, 7), makeRun(4, 7),     // 14 km aguda
-    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → 41/4 = 10.25 crónica → ratio = 14/10.25 ≈ 1.37
+    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km fora da janela aguda
   ];
-  const r = computeACWR(runs5, TODAY_ACWR);
-  assertEquals(r?.zone, "risco_acrescido(1,31-1,49)");
+  const r = computeACWR(runs, TODAY_ACWR);
+  assertEquals(r?.ratio, 1.37);
+  assertEquals(r?.zone, "risco_acrescido(1,31-1,50]");
 });
 
 Deno.test("computeACWR zona destreino: aguda < 80% da crónica", () => {
@@ -2346,8 +2339,15 @@ const RUNS_MEDIDO_INICIANTE: any[] = [
 const TODAY_ISO = "2026-08-27";
 
 Deno.test("buildRaceEventsContext: nível declarado bate certo com o medido — sem ⚠", () => {
+  // date sobreposta ao defeito do makeRaceEvent (+18 dias): um "iniciante"
+  // numa 10k precisa de 10 semanas mínimas de preparação (Bloco 1,
+  // MIN_PREP_WEEKS) — com só 18 dias (~2,5 semanas) a própria viabilidade
+  // (função não relacionada com o nível medido, mas cujo aviso também usa
+  // "⚠") marcava "tempo_insuficiente" e fazia este teste falhar por um
+  // motivo que nada tem a ver com o que ele testa. +80 dias (~11 semanas)
+  // fica acima do mínimo e isola só o comportamento do nível medido.
   const ctx = buildRaceEventsContext(
-    [makeRaceEvent({ experience_level: "iniciante" })],
+    [makeRaceEvent({ experience_level: "iniciante", date: "2026-11-15" })],
     TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
   );
   assertStringIncludes(ctx!, "NÍVEL MEDIDO pelo histórico de treino: Iniciante (bate certo com o declarado)");
