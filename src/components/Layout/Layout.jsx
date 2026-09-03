@@ -92,7 +92,18 @@ export default function Layout({ children }) {
   };
 
   return (
-    <div className="max-w-md mx-auto min-h-screen flex flex-col relative" >
+    // min-h-dvh (não min-h-screen): min-h-screen usa a "layout viewport",
+    // que no Android Chrome NÃO encolhe quando o teclado abre (o meta
+    // viewport aqui não pede interactive-widget=resizes-content, por isso o
+    // comportamento por omissão é resizes-visual). O nav/FAB fixed já segue
+    // a "visual viewport" corretamente e fica acima do teclado — mas com
+    // min-h-screen, este contentor (e por extensão a altura do <main> e o
+    // rodapé de input do Coach, que vive no fluxo normal lá dentro) fica
+    // preso à altura antiga do ecrã e não encolhe, ficando parte por trás do
+    // teclado quando o browser faz scroll para mostrar o campo focado —
+    // é o que colide com o nav/FAB fixo (bug-019, "caixa de texto cortada").
+    // dvh acompanha a visual viewport, tal como os elementos fixed.
+    <div className="max-w-md mx-auto min-h-dvh flex flex-col relative" >
 
 
       {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
