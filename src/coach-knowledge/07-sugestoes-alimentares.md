@@ -261,3 +261,23 @@ afirmações categóricas.
 **Quando a literatura não diferenciar por nível, registá-lo** — "sem
 diferenciação encontrada" é uma resposta válida e evita que se invente uma.
 
+## Nota de operacionalização (2026-09-03) — baixo atrito nas sugestões
+
+Não reabre nenhuma das perguntas acima; a ciência e os números continuam os
+mesmos. O que mudou foi como o prompt operacional (`MEAL_DOCTRINE`, duplicado
+em `coach-chat`, `coach-daily-summary` e `analyze-meal`) traduzia esses
+números em texto: pedia uma ementa a "fechar as contas" ao grama, com macros
+exatos por refeição, muitas vezes com alimentos diferentes a cada dia — na
+prática, obrigava o atleta a ir às compras por um ingrediente novo
+constantemente. Feedback direto do utilizador: isto gera ansiedade e
+frustração, não adesão.
+
+Correção aplicada nos três prompts e nas descrições dos campos
+`meal_suggestion`/`save_meal_suggestions`: sugestões por **categoria de
+alimento + quantidade redonda** ("150g de peixe", "2 ovos", "150g de iogurte
+skyr"), reutilizando um núcleo pequeno de alimentos comuns ao longo da
+semana em vez de uma ementa de precisão que varia todos os dias. Os valores
+de g/kg e a tabela de equivalência (#2) continuam a calibrar a *ordem de
+grandeza* da porção sugerida — deixaram de ser uma equação que tem de fechar
+ao grama. As refeições do dia (pequeno-almoço/almoço/lanche/jantar) mantêm-se.
+

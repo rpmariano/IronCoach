@@ -210,10 +210,16 @@ const PROPOSE_PLAN_TOOL = {
             meal_suggestion: {
               type: "STRING",
               description:
-                "Sugestão alimentar OBRIGATÓRIA COMPLETA para todos os dias do plano, independentemente da carga do treino. " +
-                "Deves apresentar as refeições completas (Pequeno-almoço, Lanche da manhã, Almoço, Lanche da tarde, Jantar e Ceia), " +
-                "com a indicação dos macronutrientes esperados por cada refeição e o total do dia. " +
-                "Inclui a explicação das opções tomadas e adequa-as ao treino planeado para o dia. " +
+                "Sugestão alimentar OBRIGATÓRIA para todos os dias do plano, independentemente da carga do treino. " +
+                "Percorre as refeições do dia (Pequeno-almoço, Almoço, Lanche, Jantar — Ceia só se fizer sentido), mas por " +
+                "CATEGORIA de alimento e quantidade redonda, NUNCA um cardápio de precisão a listar macros exatos por " +
+                "refeição: \"Pequeno-almoço: omelete de 2 ovos + fatia de pão. Almoço: 150g de peixe/frango + 100g de " +
+                "arroz/batata + vegetais à vontade. Lanche: 150g de iogurte skyr + fruta. Jantar: 150g de proteína + " +
+                "leguminosas ou hidratos + vegetais.\" Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa " +
+                "(ovos, frango, peixe fresco ou em lata, iogurte skyr/grego, arroz, batata, aveia, leguminosas, fruta, " +
+                "vegetais) e REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às compras por um " +
+                "ingrediente novo todos os dias; isso cria atrito e abandono, não adesão. Adequa as quantidades (não o " +
+                "cardápio inteiro) ao treino do dia — mais hidratos em dia de treino exigente, sem variar os alimentos-base. " +
                 "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares.",
             },
           },
@@ -289,8 +295,12 @@ const SAVE_MEALS_TOOL = {
               type: "STRING",
               description:
                 "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
-                "(pequeno-almoço, almoço, jantar e snacks se relevantes), quantidades " +
-                "aproximadas e racional nutricional em 2-4 frases.",
+                "(pequeno-almoço, almoço, jantar e snacks se relevantes), por CATEGORIA de " +
+                "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
+                "iogurte skyr\"), não um cardápio de precisão. Reutiliza alimentos comuns de dia " +
+                "para dia — não exijas ingredientes novos a cada sugestão, isso obriga o atleta a " +
+                "ir às compras constantemente e gera atrito, não adesão. Racional nutricional " +
+                "breve. 2-4 frases no total.",
             },
           },
           required: ["date", "meal"],
@@ -1994,6 +2004,13 @@ const MEAL_DOCTRINE =
   `DOUTRINA DE NUTRIÇÃO (Bloco 7 da investigação — ACSM/AND 2016, ISSN ` +
   `Nutrient Timing/Kerksick 2017, Burke 2021, INSA/PortFIR). Usa isto sempre ` +
   `que sugerires ou comentares uma refeição, não o teu conhecimento geral:\n` +
+  `- BAIXO ATRITO — a regra mais importante desta doutrina: sugere por ` +
+  `CATEGORIA de alimento e quantidade redonda ("150g de peixe", "2 ovos", ` +
+  `"150g de iogurte skyr"), nunca um cardápio de precisão que varia todos os ` +
+  `dias. Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa e ` +
+  `REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às ` +
+  `compras por um ingrediente novo a cada refeição sugerida. Excesso de ` +
+  `precisão/variedade gera ansiedade e abandono, não adesão.\n` +
   `- Dia leve/descanso (<60 min Z1-Z2): pequeno-almoço 20-25% kcal, almoço ` +
   `30-35%, lanche 10-15%, jantar 25-30%, ceia opcional 5-10%. Proteína ` +
   `0,3-0,4 g/kg por refeição, 3-5 doses espaçadas 3-4h.\n` +
@@ -2004,9 +2021,12 @@ const MEAL_DOCTRINE =
   `- Equivalência proteína por 100 g (INSA/PortFIR, não a tabela americana): ` +
   `frango/peru peito 30-31, vaca magra 28-30, salmão/atum fresco 24-26, ovo ` +
   `inteiro 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, ` +
-  `lentilhas/grão/feijão cozidos 8-9, whey 24 g/scoop de 30 g. SOMA sempre ` +
-  `os alimentos até bateres a meta em g/kg — nunca cites uma ementa de ` +
-  `exemplo sem verificar que a soma fecha as contas.\n` +
+  `lentilhas/grão/feijão cozidos 8-9, whey 24 g/scoop de 30 g. Usa estes ` +
+  `valores como referência de ORDEM DE GRANDEZA da porção a sugerir, não ` +
+  `como equação a fechar ao grama — SOMA sempre mentalmente para confirmar ` +
+  `que a sugestão bate perto da meta em g/kg, mas arredonda para porções ` +
+  `redondas (100g/150g/200g, 1-2 ovos): nunca cites uma ementa claramente ` +
+  `desalinhada do alvo (ex.: 40g de proteína quando o alvo é 100g).\n` +
   `- Pré-prova, 24-48h antes (provas >60-90 min): prioriza arroz branco, ` +
   `massa branca, pão branco, batata sem pele, banana madura, mel, frango/ ` +
   `peru/claras/peixe branco. Evita integrais, leguminosas, crucíferas, ` +
