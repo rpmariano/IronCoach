@@ -25,7 +25,7 @@ import RunIcon from '../shared/RunIcon';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -210,7 +210,7 @@ export default function RaceHubView({
               <span className="rh-spec-lbl">Objetivo</span>
               <span className="rh-spec-val">
                 {[
-                  race?.target_time ? `Total: ${race.target_time}` : null,
+                  race?.target_time ? `Total: ${formatTargetTimeLabel(race.target_time)}` : null,
                   // race é o rascunho em edição (RunAgenda), que só tem
                   // target_pace (string "5.00" já formatada) — o
                   // target_pace_seconds_per_km só existe depois de gravar,

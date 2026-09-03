@@ -351,10 +351,12 @@ type RunExtraction = {
    falava de "desvio" e "atraso" a atletas que nunca tiveram plano.
 
    intervention_needed fica SUPRIMIDO nos dois modos sem plano: o fluxo de
-   intervenção existe para renegociar um plano (resolve_intervention só aceita
-   "plano_ajustado" ou "atleta_ignorou"), por isso o botão vermelho sem plano
-   nenhum não teria ação possível do outro lado. O aviso de risco continua a
-   chegar ao atleta pelo texto da nota. */
+   intervenção existe sobretudo para renegociar um plano (resolve_intervention
+   aceita "plano_ajustado" ou "atleta_ignorou", ambos dependentes de plano; o
+   3º desfecho, "falso_positivo" — desvio sinalizado por engano de registo —,
+   não depende de plano, mas mantemos a supressão por simplicidade: sem plano
+   nenhum, o botão vermelho não tem uma renegociação do outro lado na maioria
+   dos casos. O aviso de risco continua a chegar ao atleta pelo texto da nota. */
 export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
   if (hasPlan) {
     return hasUpcomingRace

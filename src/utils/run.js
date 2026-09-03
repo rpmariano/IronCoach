@@ -132,6 +132,17 @@ export function formatDuration(totalSeconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// race.target_time é texto livre gravado tal como o atleta o escreveu
+// (RunAgenda) — "50" (só minutos, sem ":ss") passa a validação da mesma
+// forma que "50:00", mas mostrado em bruto fica sem unidade (bug-013:
+// "Total: 50" lê-se como 50 segundos). Junta "min" só quando falta o
+// separador ":" — formatos já em m:ss ou h:mm:ss ficam como estão.
+export function formatTargetTimeLabel(targetTime) {
+  const str = (targetTime || '').toString().trim();
+  if (!str) return str;
+  return str.includes(':') ? str : `${str}min`;
+}
+
 // ---------------------------------------------------------------------------
 // Ritmo (min/km)
 // ---------------------------------------------------------------------------

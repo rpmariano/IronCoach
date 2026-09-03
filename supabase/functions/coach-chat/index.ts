@@ -351,9 +351,13 @@ const RESOLVE_INTERVENTION_TOOL = {
   name: "resolve_intervention",
   description:
     "Zera o estado de intervenção proativa do atleta, removendo o botão flutuante de alerta da app. " +
-    "SÓ DEVES CHAMAR ESTA FUNÇÃO se o plano foi efetivamente ajustado (e o atleta aceitou o novo plano) " +
-    "OU se o atleta respondeu de forma EXPLÍCITA que compreendeu os riscos apontados mas quer ignorá-los " +
-    "e manter o plano como está. " +
+    "SÓ DEVES CHAMAR ESTA FUNÇÃO num destes três desfechos:\n" +
+    "1) O plano foi efetivamente ajustado (propose_training_plan) e o atleta aceitou o novo plano → 'plano_ajustado'.\n" +
+    "2) O atleta respondeu de forma EXPLÍCITA que compreendeu os riscos apontados mas quer ignorá-los e manter " +
+    "o plano como está → 'atleta_ignorou'.\n" +
+    "3) O desvio sinalizado NÃO É REAL — ex.: foi um erro de registo (caminhada registada como corrida, distância " +
+    "ou duração trocada, sessão duplicada), o atleta esclareceu o engano e não há nada no plano para ajustar → " +
+    "'falso_positivo'.\n" +
     "NÃO aciones isto perante desculpas genéricas ('amanhã volto ao foco', 'desculpa, falhei'). Nesses casos, " +
     "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.",
   parameters: {
@@ -361,7 +365,7 @@ const RESOLVE_INTERVENTION_TOOL = {
     properties: {
       action_taken: {
         type: "STRING",
-        enum: ["plano_ajustado", "atleta_ignorou"],
+        enum: ["plano_ajustado", "atleta_ignorou", "falso_positivo"],
         description: "Qual foi o desfecho que permitiu resolver a intervenção."
       }
     },
@@ -1817,8 +1821,8 @@ export async function runSaveCoachNote(sb: any, userId: string, args: any): Prom
 
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
   const actionTaken = args?.action_taken;
-  if (actionTaken !== "plano_ajustado" && actionTaken !== "atleta_ignorou") {
-    return "Erro: action_taken tem de ser 'plano_ajustado' ou 'atleta_ignorou'. A intervenção não foi resolvida.";
+  if (actionTaken !== "plano_ajustado" && actionTaken !== "atleta_ignorou" && actionTaken !== "falso_positivo") {
+    return "Erro: action_taken tem de ser 'plano_ajustado', 'atleta_ignorou' ou 'falso_positivo'. A intervenção não foi resolvida.";
   }
 
   const { error } = await sb
@@ -3454,7 +3458,8 @@ export function buildSystemInstruction(
     sys += `\nREGRA PARA RESOLVER A INTERVENÇÃO: A intervenção SÓ FICA RESOLVIDA se:\n` +
            `1) Propores um plano ajustado (propose_training_plan) E o atleta O ACEITAR. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'plano_ajustado'.\n` +
            `2) O atleta afirmar EXPLÍCITAMENTE que percebeu mas quer ignorar o aviso e manter o plano como está. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'atleta_ignorou'.\n` +
-           `NÃO aceites meras promessas de "vou melhorar amanhã" para resolver a intervenção. Mantém o rigor e insiste que o plano ficou comprometido e precisa de revisão. Enquanto não resolveres a intervenção (chamando a ferramenta), o botão de alerta continuará ativo na app do atleta.\n`;
+           `3) O desvio sinalizado se revelar um FALSO POSITIVO — o atleta esclarece que foi um erro de registo (ex.: caminhada gravada como corrida, distância/duração trocada, sessão duplicada) e não há, de facto, desvio nenhum a ajustar no plano. Nesse caso, chama 'resolve_intervention' indicando 'falso_positivo'. NÃO confundas isto com uma desculpa para o desvio real (ex.: "estava cansado" não é falso positivo — o treino aconteceu como registado).\n` +
+           `NÃO aceites meras promessas de "vou melhorar amanhã" para resolver a intervenção. Mantém o rigor e insiste que o plano ficou comprometido e precisa de revisão, EXCETO no caso 3, em que não há desvio real para insistir. Enquanto não resolveres a intervenção (chamando a ferramenta), o botão de alerta continuará ativo na app do atleta.\n`;
   }
 
   return sys;
