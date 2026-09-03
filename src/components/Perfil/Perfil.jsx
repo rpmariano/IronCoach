@@ -94,16 +94,27 @@ export default function Perfil() {
   const tabIndex = TAB_KEYS.indexOf(tab);
   const scrollRef = useRef(null);
   const scrollToRef = useRef(() => {});
+  // Espelha isDirty numa ref, atualizada de imediato no corpo do render (tal
+  // como scrollToRef, abaixo) — não num useEffect. discardAndLeave/
+  // saveAndLeave chamam goToPendingTarget logo a seguir a setIsDirty(false),
+  // sem esperar por um novo render; se handleTabIndexChange lesse `isDirty`
+  // do closure do useCallback (só atualizado no próximo render), via a
+  // scrollTo síncrona despoletada por goToPendingTarget, encontrava sempre o
+  // valor antigo (true) e voltava a abrir este mesmo aviso — o popup não
+  // desaparecia e o scroll físico do carrossel avançava para o separador de
+  // destino sem o estado `tab` (que pinta o menu) alguma vez acompanhar.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
   const handleTabIndexChange = useCallback((idx) => {
     const nextTab = TAB_KEYS[idx];
     if (!nextTab || nextTab === tab) return;
-    if (isDirty) {
+    if (isDirtyRef.current) {
       scrollToRef.current(TAB_KEYS.indexOf(tab));
       setLeavePrompt({ kind: 'tab', target: nextTab });
       return;
     }
     setTab(nextTab);
-  }, [tab, isDirty]);
+  }, [tab]);
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef, TAB_KEYS.length, tabIndex, handleTabIndexChange
   );
@@ -319,6 +330,7 @@ export default function Perfil() {
     dirtyKeys.current.clear();
     setDraft(profile || {});
     setIsDirty(false);
+    isDirtyRef.current = false; // ver comentário junto de isDirtyRef, acima
     setLeavePrompt(null);
     goToPendingTarget(pending);
   };
@@ -327,6 +339,7 @@ export default function Perfil() {
     const pending = leavePrompt;
     const saved = await handleSave();
     if (!saved) return; // mantém o aviso aberto para o utilizador decidir
+    isDirtyRef.current = false; // ver comentário junto de isDirtyRef, acima
     setLeavePrompt(null);
     goToPendingTarget(pending);
   };
