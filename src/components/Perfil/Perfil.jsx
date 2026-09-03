@@ -13,6 +13,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
 import ShoeCabinet from './ShoeCabinet';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { todayISO } from '../../lib/utils';
 
 const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
@@ -119,6 +120,11 @@ export default function Perfil() {
     scrollRef, TAB_KEYS.length, tabIndex, handleTabIndexChange
   );
   scrollToRef.current = scrollTo;
+
+  // Indicador do subnav em "pílula elástica" — ver useElasticPillIndicator
+  // (mesma mecânica do Dashboard.jsx, que usa o mesmo hook partilhado).
+  const subnavRef = useRef(null);
+  const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, tabIndex);
 
   // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
   // sincroniza o scroll nesses casos.
@@ -393,30 +399,36 @@ export default function Perfil() {
   return (
     <div className="space-y-4 fade-in pb-8">
       {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
-      <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
-        {/* Sliding indicator — tint translúcido em vez de preenchimento
-            sólido, a condizer com o resto da app (ver Dashboard.jsx).
+      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+        {/* Indicador "pílula elástica" — tint translúcido em vez de
+            preenchimento sólido, a condizer com o resto da app (ver
+            useElasticPillIndicator e Dashboard.jsx, que usa o mesmo hook).
             rounded-lg (não -xl) e p-2 (não -1.5): com o contentor a
             rounded-2xl (16px), uma pílula com raio maior do que sobra depois
             do preenchimento ficava com o canto cortado pelo overflow-hidden,
             mais visível na pílula da direita. */}
-        <div
-          className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out border"
-          style={{
-            width: 'calc((100% - 24px) / 4)', // 4 tabs, 3 gaps of 8px
-            transform: `translateX(calc(${tabIndex} * 100% + ${tabIndex * 8}px))`,
-            background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
-            borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
-          }}
-        />
+        {indicatorStyle && (
+          <div
+            aria-hidden="true"
+            className="absolute top-1 bottom-1 rounded-lg border"
+            style={{
+              left: indicatorStyle.left,
+              width: indicatorStyle.width,
+              transition: indicatorStyle.transition,
+              background: 'color-mix(in srgb, var(--mod-prova) 32%, transparent)',
+              borderColor: 'color-mix(in srgb, var(--mod-prova) 55%, transparent)',
+            }}
+          />
+        )}
         {[
           { key: 'perfil', label: 'Pessoal', icon: User },
           { key: 'metas', label: 'Metas', icon: Target },
           { key: 'equipamento', label: 'Equipa.', icon: Footprints },
           { key: 'coach', label: 'Coach', icon: Bot },
-        ].map(t => (
+        ].map((t, i) => (
           <button
             key={t.key}
+            ref={setItemRef(i)}
             onClick={() => requestTabChange(t.key)}
             style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
             className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
