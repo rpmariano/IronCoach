@@ -7,6 +7,7 @@ import {
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
+import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import './WeeklyPlanCard.css';
@@ -366,15 +367,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              {days.map((_, idx) => (
-                <button 
-                  key={idx} 
-                  type="button"
-                  onClick={() => scrollTo(idx)}
-                  aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-                />
-              ))}
+              <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
         )}
@@ -506,15 +499,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              {days.map((_, idx) => (
-                <button 
-                  key={idx} 
-                  type="button"
-                  onClick={() => scrollTo(idx)}
-                  aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-                />
-              ))}
+              <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
         )}
