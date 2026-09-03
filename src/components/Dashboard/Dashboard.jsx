@@ -34,6 +34,8 @@ export default function Dashboard({ activeModule }) {
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);
+  const subnavRef = useRef(null);
+  const tabRefs = useRef([]);
   // scrollTo só existe depois de chamar o hook, mas o setter que lhe passamos
   // (handleIndexChange) precisa de lhe chamar quando o navGuard recusa a
   // troca — guarda-se numa ref para partir o ciclo sem duplicar a lógica do
@@ -56,6 +58,70 @@ export default function Dashboard({ activeModule }) {
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;
+
+  // Indicador do subnav em "pílula elástica": ao trocar de separador, em vez
+  // de deslizar em linha reta, estica primeiro a cobrir todo o trajeto entre
+  // o separador antigo e o novo (engolindo os que ficam pelo meio) e só
+  // depois contrai até assentar só no novo, revelando-os outra vez à medida
+  // que recua. Mede as posições reais dos botões em vez de usar % fixas —
+  // só assim dá para calcular o "span" entre dois separadores quaisquer.
+  const [indicatorStyle, setIndicatorStyle] = useState(null);
+  const prevIndicatorIndex = useRef(currentIndex);
+
+  const measureTab = useCallback((idx) => {
+    const container = subnavRef.current;
+    const btn = tabRefs.current[idx];
+    if (!container || !btn) return null;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
+    return { left: bRect.left - cRect.left, width: bRect.width };
+  }, []);
+
+  useEffect(() => {
+    const target = measureTab(currentIndex);
+    if (!target) return;
+    const prevIdx = prevIndicatorIndex.current;
+
+    if (prevIdx === currentIndex) {
+      // Montagem inicial (ou re-render sem troca real) — posiciona sem animar.
+      if (!indicatorStyle) setIndicatorStyle({ ...target, transition: 'none' });
+      return;
+    }
+
+    const prevRect = measureTab(prevIdx) || target;
+    const spanLeft = Math.min(prevRect.left, target.left);
+    const spanRight = Math.max(prevRect.left + prevRect.width, target.left + target.width);
+
+    // Fase 1 (160ms): estica a cobrir o trajeto todo.
+    setIndicatorStyle({
+      left: spanLeft,
+      width: spanRight - spanLeft,
+      transition: 'left 160ms cubic-bezier(0.4,0,0.2,1), width 160ms cubic-bezier(0.4,0,0.2,1)',
+    });
+
+    // Fase 2 (280ms, com leve overshoot): contrai até ao separador novo.
+    const t = setTimeout(() => {
+      setIndicatorStyle({
+        ...target,
+        transition: 'left 280ms cubic-bezier(0.34,1.56,0.64,1), width 280ms cubic-bezier(0.34,1.56,0.64,1)',
+      });
+    }, 160);
+
+    prevIndicatorIndex.current = currentIndex;
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, measureTab]);
+
+  // Reajusta a posição (sem animar) se a largura do ecrã mudar — ex.: rodar
+  // o telemóvel a meio de uma troca de separador.
+  useEffect(() => {
+    const onResize = () => {
+      const target = measureTab(currentIndex);
+      if (target) setIndicatorStyle({ ...target, transition: 'none' });
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [currentIndex, measureTab]);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {
@@ -118,29 +184,34 @@ export default function Dashboard({ activeModule }) {
   return (
     <div className="space-y-4 fade-in">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
-        {/* Sliding indicator — tint translúcido da cor do módulo em vez de
-            preenchimento sólido, a condizer com o glassmorphism escuro do
-            resto da app; o texto ativo fica na própria cor em vez de branco.
-            Sem shadow-md: dentro de um contentor overflow-hidden a sombra
-            fica cortada a direito mesmo junto ao canto arredondado do
+      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
+        {/* Indicador "pílula elástica" — tint translúcido da cor do módulo em
+            vez de preenchimento sólido, a condizer com o glassmorphism escuro
+            do resto da app; o texto ativo fica na própria cor em vez de
+            branco. Sem shadow-md: dentro de um contentor overflow-hidden a
+            sombra fica cortada a direito mesmo junto ao canto arredondado do
             separador, em vez de esbater — mais visível na pílula da direita
             porque é onde o canto do indicador fica mais perto do canto do
-            contentor. */}
-        <div
-          className="absolute top-[6px] bottom-[6px] rounded-lg transition-all duration-300 ease-in-out border"
-          style={{
-            // Calculado a partir de TABS.length em vez de fixo — um separador
-            // a mais/a menos não desalinha o indicador outra vez.
-            width: `calc((100% - ${(TABS.length - 1) * 8}px) / ${TABS.length})`,
-            transform: `translateX(calc(${currentIndex} * 100% + ${currentIndex * 8}px))`,
-            background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 18%, transparent)`,
-            borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 40%, transparent)`,
-          }}
-        />
+            contentor. Posição/largura em px medidos (ver measureTab acima),
+            não % fixas — é o que permite esticar o indicador a cobrir
+            qualquer par de separadores antes de contrair no novo. */}
+        {indicatorStyle && (
+          <div
+            aria-hidden="true"
+            className="absolute top-[6px] bottom-[6px] rounded-lg border"
+            style={{
+              left: indicatorStyle.left,
+              width: indicatorStyle.width,
+              transition: indicatorStyle.transition,
+              background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 18%, transparent)`,
+              borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 40%, transparent)`,
+            }}
+          />
+        )}
         {TABS.map((t, i) => (
           <button
             key={t.key}
+            ref={el => { tabRefs.current[i] = el; }}
             onClick={() => scrollTo(i)}
             style={activeModule === t.key ? { color: t.color } : undefined}
             className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-300 ${
