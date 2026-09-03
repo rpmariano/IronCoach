@@ -867,7 +867,7 @@ export default function RunAgenda({ onClose }) {
             <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
               {/* 1.1 Data · 1.2 Local */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
                   <input
                     type="date"
@@ -876,7 +876,7 @@ export default function RunAgenda({ onClose }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -891,7 +891,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -902,7 +902,7 @@ export default function RunAgenda({ onClose }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
                   <select
                     value={draft.race_type}
@@ -916,7 +916,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* Distância · D+ (só em Trail) */}
               <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
                   <select
                     value={draft.distance_km}
@@ -929,7 +929,7 @@ export default function RunAgenda({ onClose }) {
                   </select>
                 </div>
                 {draft.race_type === 'trail' && (
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
                     <input
                       type="number"
@@ -1004,7 +1004,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* Objetivo de tempo total · Objetivo de pace */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -1016,7 +1016,7 @@ export default function RunAgenda({ onClose }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
                   <input
                     type="text"

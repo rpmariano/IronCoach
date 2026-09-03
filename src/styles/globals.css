@@ -73,9 +73,18 @@
   --data-peso:#dd3c71;
 }
 
-html, body { 
+html, body {
   background-color: #0b1120;
   min-height: 100vh;
+  /* Rede de segurança contra qualquer elemento que transborde horizontalmente
+     (bug-018: "Nova Prova" cortada do lado esquerdo em Android). Sem isto,
+     um filho mais largo que o ecrã (ex.: um <input type="date"> nativo numa
+     coluna de grid-cols-2 estreita — ver RunAgenda.jsx) empurra a página
+     inteira e o browser fica com o documento deslocado para a direita,
+     cortando a margem esquerda em vez de a direita. Não afeta os carrosséis
+     internos (.tab-swipe-carousel etc.), que continuam a fazer o seu próprio
+     scroll horizontal contido. */
+  overflow-x: hidden;
 }
 
 body {
