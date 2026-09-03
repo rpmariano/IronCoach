@@ -1,7 +1,9 @@
 import React, { useMemo, useState, useRef } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { Flag, ChevronLeft, ChevronRight, Bot } from 'lucide-react';
+import { Flag, ChevronLeft, ChevronRight, Bot, X } from 'lucide-react';
+import PremiumModal from '../shared/PremiumModal';
+import Button from '../shared/Button';
 import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
 import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
@@ -245,10 +247,39 @@ export default function Home() {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     completeMealPlanItem, cancelMealPlanItem,
-    addWaterLog, setEditingRaceId
+    addWaterLog, setEditingRaceId, setProfile
   } = useAppStore();
 
   const [showInsights, setShowInsights] = useState(false);
+  const [showDismissIntervention, setShowDismissIntervention] = useState(false);
+  const [isDismissingIntervention, setIsDismissingIntervention] = useState(false);
+
+  // Rede de segurança do botão "A Carol precisa de falar contigo": a via
+  // normal é a Carol chamar resolve_intervention no chat, mas isso depende
+  // do modelo reconhecer o desfecho certo — se a conversa não encaixar
+  // perfeitamente numa das regras do prompt, o aviso fica preso (bug-016).
+  // Isto dá ao atleta uma saída manual, sempre disponível, independente do
+  // que a Carol decidiu na conversa.
+  const handleDismissIntervention = async () => {
+    if (!profile?.id) return;
+    setIsDismissingIntervention(true);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { error } = await supabase
+        .from('profiles')
+        .update({ coach_intervention_status: 'resolved', coach_intervention_reason: null })
+        .eq('id', profile.id);
+      if (error) throw error;
+      setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
+      setShowDismissIntervention(false);
+      showToast('Aviso dispensado.', 'success');
+    } catch (err) {
+      console.error('Erro ao dispensar intervenção:', err);
+      showToast('Não foi possível dispensar o aviso. Tenta novamente.', 'error');
+    } finally {
+      setIsDismissingIntervention(false);
+    }
+  };
 
   const homeInsights = useMemo(() => {
     const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
@@ -395,25 +426,78 @@ export default function Home() {
       {/* Botão de Intervenção Proativa do Coach */}
       {(profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress') && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm">
-          <button
-            onClick={() => handleNav('coach')}
-            className="w-full shadow-lg shadow-orange-500/20 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform py-3 px-4 rounded-xl flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="bg-white/20 p-2 rounded-full relative">
-                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 border border-white rounded-full animate-pulse"></span>
-                <Bot size={20} className="text-white" />
+          <div className="relative">
+            <button
+              onClick={() => handleNav('coach')}
+              className="w-full shadow-lg shadow-orange-500/20 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform py-3 px-4 rounded-xl flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-white/20 p-2 rounded-full relative">
+                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 border border-white rounded-full animate-pulse"></span>
+                  <Bot size={20} className="text-white" />
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="text-white font-bold text-sm leading-tight">A Carol precisa de falar contigo</span>
+                  <span className="text-orange-100 text-xs mt-0.5">O teu plano requer atenção</span>
+                </div>
               </div>
-              <div className="flex flex-col items-start">
-                <span className="text-white font-bold text-sm leading-tight">A Carol precisa de falar contigo</span>
-                <span className="text-orange-100 text-xs mt-0.5">O teu plano requer atenção</span>
-              </div>
-            </div>
-            <span className="text-white bg-black/20 p-1.5 rounded-full">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-            </span>
-          </button>
+              <span className="text-white bg-black/20 p-1.5 rounded-full">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </span>
+            </button>
+            {/* Saída manual (bug-016): se a conversa com a Carol já resolveu o
+                assunto mas o aviso ficou preso (ela não chamou resolve_intervention),
+                o atleta não fica refém disso. */}
+            <button
+              type="button"
+              onClick={() => setShowDismissIntervention(true)}
+              aria-label="Dispensar aviso"
+              className="absolute -top-2 -right-2 bg-slate-900 border border-white/20 text-white/80 hover:text-white rounded-full p-1 shadow-md active:scale-95 transition-transform"
+            >
+              <X size={12} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
+      )}
+
+      {showDismissIntervention && (
+        <PremiumModal
+          isOpen={showDismissIntervention}
+          onClose={() => !isDismissingIntervention && setShowDismissIntervention(false)}
+          title="Dispensar aviso da Carol"
+          icon={Bot}
+          theme="warning"
+          variant="dialog"
+          maxWidth="max-w-sm"
+        >
+          <div className="p-6">
+            <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
+              Isto remove o aviso sem passar pela conversa com a Carol. Usa isto só se já esclareceste o assunto
+              com ela e o botão ficou preso por engano — caso contrário, fala primeiro com a Carol.
+            </p>
+            <div className="space-y-3">
+              <Button
+                onClick={handleDismissIntervention}
+                disabled={isDismissingIntervention}
+                isLoading={isDismissingIntervention}
+                type="button"
+                variant="danger"
+                className="w-full"
+              >
+                {isDismissingIntervention ? 'A dispensar...' : 'Dispensar aviso'}
+              </Button>
+              <Button
+                onClick={() => setShowDismissIntervention(false)}
+                disabled={isDismissingIntervention}
+                type="button"
+                variant="ghost"
+                className="w-full"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </PremiumModal>
       )}
 
       <CoachInsightButton insights={homeInsights} onClick={() => setShowInsights(true)} />

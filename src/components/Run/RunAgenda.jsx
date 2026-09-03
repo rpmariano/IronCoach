@@ -45,6 +45,20 @@ function parseFormNumber(v) {
   return parseFloat((v ?? '').toString().replace(',', '.'));
 }
 
+// "Objetivo tempo total" tem de ficar em mm:ss ou h:mm:ss — um valor gravado
+// sem separador (ex.: "50") é ambíguo na apresentação (RaceHubView/RaceCard
+// mostravam-no cru, ver bug-013). m:ss aceita minutos com 1-2 dígitos.
+const TARGET_TIME_FORMAT_RE = /^\d{1,2}:[0-5]\d(:[0-5]\d)?$/;
+
+// Reformata "50" -> "50:00"; usado ao abrir uma prova antiga gravada antes
+// desta validação existir, e ao sair do campo enquanto se escreve uma nova.
+function normalizeTargetTimeValue(val) {
+  const str = (val || '').trim();
+  if (!str || str.includes(':')) return str;
+  const secs = parseDurationToSeconds(str);
+  return secs ? formatDuration(secs) : str;
+}
+
 const EMPTY_DRAFT = {
   date: todayISO(),
   location: '',
@@ -262,7 +276,7 @@ export default function RunAgenda({ onClose }) {
           elevation_gain_m: ev.elevation_gain_m?.toString() || '',
           experience_level: ev.experience_level || '',
           race_priority: ev.race_priority || 'a',
-          target_time: ev.target_time || '',
+          target_time: normalizeTargetTimeValue(ev.target_time),
           target_pace: ev.target_pace_seconds_per_km ? formatPace(ev.target_pace_seconds_per_km) : '',
           website: ev.website || '',
           web_info: ev.web_info || null,
@@ -468,6 +482,13 @@ export default function RunAgenda({ onClose }) {
     });
   };
 
+  // Se o atleta escrever só dígitos ("50"), interpretamos como minutos e
+  // reformatamos para mm:ss ao sair do campo — evita bloquear o preenchimento
+  // rápido sem deixar o valor gravado sem separador (bug-013).
+  const normalizeTargetTimeOnBlur = () => {
+    setDraft(prev => ({ ...prev, target_time: normalizeTargetTimeValue(prev.target_time) }));
+  };
+
   const handleTargetPaceChange = (val) => {
     lastEditedTargetRef.current = 'pace';
     setIsDirty(true);
@@ -504,6 +525,10 @@ export default function RunAgenda({ onClose }) {
     const targetPaceSecs = parsePaceToSeconds(draft.target_pace);
     if (!targetTimeSecs || !targetPaceSecs) {
       setValidationError('Indica o objetivo de tempo total ou o ritmo-alvo — o outro campo é calculado automaticamente a partir dele.');
+      return false;
+    }
+    if (draft.target_time.trim() && !TARGET_TIME_FORMAT_RE.test(draft.target_time.trim())) {
+      setValidationError('O objetivo de tempo total tem de estar no formato mm:ss ou h:mm:ss (ex.: 50:00 ou 1:45:00).');
       return false;
     }
 
@@ -842,7 +867,7 @@ export default function RunAgenda({ onClose }) {
             <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
               {/* 1.1 Data · 1.2 Local */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
                   <input
                     type="date"
@@ -851,7 +876,7 @@ export default function RunAgenda({ onClose }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -866,7 +891,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -877,7 +902,7 @@ export default function RunAgenda({ onClose }) {
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
                   <select
                     value={draft.race_type}
@@ -891,7 +916,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* Distância · D+ (só em Trail) */}
               <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
                   <select
                     value={draft.distance_km}
@@ -904,7 +929,7 @@ export default function RunAgenda({ onClose }) {
                   </select>
                 </div>
                 {draft.race_type === 'trail' && (
-                  <div>
+                  <div className="min-w-0">
                     <label className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
                     <input
                       type="number"
@@ -979,7 +1004,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* Objetivo de tempo total · Objetivo de pace */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
                   <input
                     type="text"
@@ -987,10 +1012,11 @@ export default function RunAgenda({ onClose }) {
                     placeholder="Ex.: 1:45:00"
                     value={draft.target_time}
                     onChange={e => { handleTargetTimeChange(e.target.value) }}
+                    onBlur={normalizeTargetTimeOnBlur}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
                   <input
                     type="text"
