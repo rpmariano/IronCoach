@@ -231,7 +231,6 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
-    completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId, setProfile
   } = useAppStore();
 
@@ -320,24 +319,6 @@ export default function Home() {
     }
   };
 
-  const handleCompleteMeal = async (item) => {
-    const success = await completeMealPlanItem(item.id);
-    if (success) {
-      showToast('Sugestão alimentar marcada como seguida');
-    } else {
-      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
-    }
-  };
-
-  const handleCancelMeal = async (item) => {
-    const success = await cancelMealPlanItem(item.id);
-    if (success) {
-      showToast('Sugestão alimentar marcada como não seguida');
-    } else {
-      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
-    }
-  };
-
   const modifiedPlanItems = useMemo(() => {
     const raceDates = new Set(raceEvents.map(r => r.date));
     
@@ -403,8 +384,6 @@ export default function Home() {
         planItems={modifiedPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
-        onCompleteMeal={handleCompleteMeal}
-        onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
 
