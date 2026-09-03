@@ -1,4 +1,4 @@
-# Publica as Edge Functions no Supabase a cada push que as toque.
+# Testa e publica as Edge Functions no Supabase a cada push que as toque.
 #
 # Existia um buraco aqui: só havia workflow para o frontend (deploy-pages.yml,
 # só a partir de master). As Edge Functions eram sempre publicadas à mão via
@@ -9,6 +9,13 @@
 # Corre em dev E master (ao contrário do deploy-pages, que só corre em
 # master) porque não existe BD de desenvolvimento separada — dev já é
 # produção para o backend, ver CLAUDE.md/memória do projeto.
+#
+# Segundo buraco, encontrado depois: ao contrário do frontend (deploy-pages.yml
+# corre `npx vitest run` antes do build), este workflow publicava direto, sem
+# nunca correr a suite `deno test` das próprias Edge Functions — uma alteração
+# que partisse um teste só se descobria em produção, depois do deploy. O job
+# `test` abaixo corre-a primeiro; `deploy` só arranca se `test` passar
+# (needs: test), tal como o deploy-pages já bloqueava em CI vermelho.
 #
 # Requer o secret SUPABASE_ACCESS_TOKEN (Settings → Secrets and variables →
 # Actions), gerado em https://supabase.com/dashboard/account/tokens.
@@ -22,7 +29,7 @@ on:
       - "supabase/functions/**"
   workflow_dispatch:
 
-# Um deploy de cada vez por ramo — evita duas publicações a pisarem-se se
+# Uma execução de cada vez por ramo — evita duas publicações a pisarem-se se
 # houver dois pushes seguidos.
 concurrency:
   group: deploy-edge-functions-${{ github.ref }}
@@ -32,7 +39,28 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # cwd = supabase/functions: é onde vive o deno.json que restringe o
+      # glob de teste a *.test.ts (sem isso o Deno também tentava compilar os
+      # *.spec.ts só-Vitest de _shared/formulas/, que importam de "vitest" e
+      # não existem no runtime Deno — ver esse deno.json e
+      # specs/formulas-checklist.md Fase B). -A: são os nossos próprios
+      # testes, com mocks do cliente Supabase — sem chamadas de rede reais a
+      # autorizar uma a uma.
+      - name: Testes (deno test)
+        working-directory: supabase/functions
+        run: deno test -A
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
