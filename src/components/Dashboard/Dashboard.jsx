@@ -105,7 +105,7 @@ export default function Dashboard({ activeModule }) {
     // Mais separadores de distância => mais tempo de deslize, para não
     // parecer apressado nem parecer um salto num trajeto longo.
     const distance = toRect.width > 0 ? Math.round(Math.abs(toRect.left - fromRect.left) / toRect.width) : 1;
-    const duration = Math.min(620, 260 + distance * 90);
+    const duration = Math.min(950, 420 + distance * 130);
     const start = performance.now();
 
     const tick = (now) => {
@@ -250,8 +250,8 @@ export default function Dashboard({ activeModule }) {
               left: indicatorStyle.left,
               width: indicatorStyle.width,
               transition: indicatorStyle.transition,
-              background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 18%, transparent)`,
-              borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 40%, transparent)`,
+              background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 32%, transparent)`,
+              borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 55%, transparent)`,
             }}
           />
         )}
