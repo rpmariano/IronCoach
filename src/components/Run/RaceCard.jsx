@@ -22,6 +22,7 @@ import {
   racePriorityLabel,
   raceTerrainLabel,
   formatPace,
+  formatTargetTimeLabel,
 } from '../../utils/run';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
@@ -127,7 +128,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
                 <Target size={11} className="text-amber-500" /> Objetivo
               </span>
               <span className="text-xs font-bold text-slate-800 truncate">
-                {ev.target_time ? `Tempo: ${ev.target_time}` : (ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : 'Sem meta')}
+                {ev.target_time ? `Tempo: ${formatTargetTimeLabel(ev.target_time)}` : (ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : 'Sem meta')}
               </span>
               <span className="text-[11px] font-medium text-slate-500 truncate">
                 {ev.target_time && ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : (ev.race_priority ? `Prioridade ${racePriorityLabel(ev.race_priority)}` : 'Treino contínuo')}
