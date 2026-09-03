@@ -171,6 +171,29 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
 
     expect(screen.getByRole('dialog')).toHaveTextContent('Tens alterações por gravar');
   });
+
+  // Regressão do bug-005: "Gravar e sair" ao trocar de separador deixava o
+  // aviso preso reaberto e o realce do menu preso no separador anterior,
+  // mesmo com o carrossel já a mostrar o separador de destino. Causa: o
+  // guard de isDirty era lido do closure do useCallback, ainda desatualizado
+  // no instante síncrono em que goToPendingTarget dispara o scrollTo — ver
+  // isDirtyRef em Perfil.jsx.
+  it('gravar e sair ao trocar de separador fecha o aviso e sincroniza o separador ativo', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    sujarCalorias('2222');
+
+    fireEvent.click(screen.getByRole('button', { name: /Pessoal/ }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Tens alterações por gravar');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gravar e sair' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+
+    expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--mod-prova)' });
+    expect(screen.getByRole('button', { name: /Metas/ })).not.toHaveStyle({ color: 'var(--mod-prova)' });
+  });
 });
 
 // ─── Autorização do Coach para escrever metas — DECISÃO N1, camada 1 ───────

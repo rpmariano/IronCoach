@@ -8,11 +8,26 @@ vi.mock('../../store', () => ({
   useAppStore: vi.fn(),
 }));
 
+// Data fixa (ex.: '2026-10-15') tornava o teste refém do relógio: o plano de
+// preparação para 10 km/nível médio dura 6 semanas (42 dias, ver
+// MIN_PREP_WEEKS em supabase/functions/_shared/formulas/vocabulary.ts), e
+// bastava a corrida real chegar a 42 dias dessa data fixa para o treino
+// passar de "not_started" a "in_progress" e a asserção de "Início do
+// Treino" (linha 75) deixar de bater certo — foi o que aconteceu ao chegar
+// a 2026-09-03. Calcular a data sempre "bem no futuro" a partir de "agora"
+// mantém o teste sempre no estado not_started, seja qual for o dia em que
+// corre.
+const futureDateISO = (daysFromNow) => {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  return d.toISOString().slice(0, 10);
+};
+
 describe('RaceCard — Detalhe da Prova no Calendário', () => {
   const sampleRace = {
     id: 'race-1',
     name: 'Corrida do Tejo',
-    date: '2026-10-15',
+    date: futureDateISO(180), // 180 dias (~25 semanas) — bem acima das 6 exigidas, nunca "in_progress".
     distance_km: 10,
     race_type: 'estrada',
     race_priority: 'a',
