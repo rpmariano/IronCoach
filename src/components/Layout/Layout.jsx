@@ -294,19 +294,7 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
           style={{ background: activeColor }}
         />
       )}
-      <span className="relative flex items-center justify-center">
-        {/* Onda brilhante a chamar a atenção para o Coach — ancorada ao
-            ícone (não ao botão inteiro, que também inclui o rótulo por
-            baixo) e só enquanto o separador não está ativo (ver
-            .coach-wave-ring-nav em globals.css) */}
-        {tab === 'coach' && !active && (
-          <>
-            <span aria-hidden="true" className="coach-wave-ring-nav" />
-            <span aria-hidden="true" className="coach-wave-ring-nav coach-wave-ring--delay" />
-          </>
-        )}
-        <span className="relative">{icon}</span>
-      </span>
+      {icon}
       <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );

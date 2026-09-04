@@ -231,8 +231,6 @@ describe('PlanDayCard — sugestão alimentar', () => {
     isOverdue: false,
     onComplete: () => {},
     onCancel: () => {},
-    onCompleteMeal: () => {},
-    onCancelMeal: () => {},
     expanded: true,
     ...over,
   });

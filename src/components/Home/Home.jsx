@@ -230,7 +230,7 @@ export default function Home() {
   const { showToast } = useToast();
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
-    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, setMealStatus,
+    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
     addWaterLog, setEditingRaceId, setProfile
   } = useAppStore();
 
@@ -319,20 +319,6 @@ export default function Home() {
     }
   };
 
-  // Segui/Não segui da sugestão alimentar do dia — independente do
-  // status do treino do mesmo item (ver setMealStatus no store). Só
-  // mostra sucesso se o update realmente aconteceu — setMealStatus()
-  // devolve false e só regista console.error numa falha, sem lançar.
-  const handleCompleteMeal = async (item) => {
-    const ok = await setMealStatus(item.id, 'seguida');
-    showToast(ok ? 'Sugestão marcada como seguida' : 'Erro ao marcar a sugestão. Tenta novamente.', ok ? 'success' : 'error');
-  };
-
-  const handleCancelMeal = async (item) => {
-    const ok = await setMealStatus(item.id, 'nao_seguida');
-    showToast(ok ? 'Sugestão marcada como não seguida' : 'Erro ao marcar a sugestão. Tenta novamente.', ok ? 'success' : 'error');
-  };
-
   const modifiedPlanItems = useMemo(() => {
     const raceDates = new Set(raceEvents.map(r => r.date));
     
@@ -398,8 +384,6 @@ export default function Home() {
         planItems={modifiedPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
-        onCompleteMeal={handleCompleteMeal}
-        onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
 

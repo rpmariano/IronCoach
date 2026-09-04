@@ -180,31 +180,6 @@ body {
 .animate-bottom-sheet-slide { animation: bottomSheetSlideUp .32s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 @keyframes bottomSheetSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
-/* Onda brilhante do botão Coach na barra inferior: dois anéis a nascer do
-   centro do ícone e a dissipar-se para fora, em loop, com desfasamento
-   entre eles para a onda parecer contínua em vez de "piscar". Só corre
-   quando o separador Coach não está ativo — serve para chamar a atenção
-   para ele, não faz sentido continuar a pulsar quando já lá estamos. */
-.coach-wave-ring-nav {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 30px;
-  height: 30px;
-  margin: -15px 0 0 -15px;
-  border-radius: 9999px;
-  background: var(--mod-coach-to, #06b6d4);
-  opacity: 0;
-  pointer-events: none;
-  animation: coachWaveNav 2.2s ease-out infinite;
-}
-.coach-wave-ring-nav.coach-wave-ring--delay { animation-delay: 1.1s; }
-@keyframes coachWaveNav {
-  0% { transform: scale(0.3); opacity: 0.45; }
-  70% { opacity: 0.12; }
-  100% { transform: scale(1.8); opacity: 0; }
-}
-
 /* Onda brilhante do botão flutuante de insights da Carol (CoachInsightButton):
    dois anéis a nascer do centro do botão e a dissipar-se para fora, em loop,
    com desfasamento entre eles para a onda parecer contínua em vez de
