@@ -149,9 +149,14 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const totalWeeks = getRecommendedPrepWeeks(distanceKm, experienceLevel);
   const taperWeeks = Math.min(Math.max(1, getTaperWeeks(distanceKm, racePriority, experienceLevel, raceType)), Math.floor(totalWeeks / 3));
 
-  // Datas de referência
-  const raceDateObj = new Date(raceDate + 'T00:00:00');
-  const todayDateObj = new Date(today + 'T00:00:00');
+  // Datas de referência — 'Z' força interpretação UTC. Sem isto,
+  // "T00:00:00" é meia-noite LOCAL, e toISOString() (sempre UTC) do
+  // planStartDate/planEndDate mais abaixo desliza um dia para trás em
+  // qualquer fuso horário à frente de UTC (ex: Lisboa em horário de
+  // verão) — mesma classe de bug que addDaysISO() já evita em
+  // src/lib/utils.js.
+  const raceDateObj = new Date(raceDate + 'T00:00:00Z');
+  const todayDateObj = new Date(today + 'T00:00:00Z');
 
   const planStartDateObj = new Date(raceDateObj.getTime() - totalWeeks * 7 * 86400000);
   const planStartDate = planStartDateObj.toISOString().slice(0, 10);
@@ -173,7 +178,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   // dois — o ideal, ou o dia em que a prova passou a existir para o atleta.
   const { effectiveStartISO: effectiveStartDate, isCompressed, effectiveWeeksAvailable } =
     computeEffectivePrepStart(raceDate, totalWeeks, race?.created_at || null);
-  const effectiveStartDateObj = new Date(effectiveStartDate + 'T00:00:00');
+  const effectiveStartDateObj = new Date(effectiveStartDate + 'T00:00:00Z');
   const daysToStart = Math.round((effectiveStartDateObj.getTime() - todayDateObj.getTime()) / 86400000);
 
   // Status temporal

@@ -14,6 +14,19 @@ import { useEffect, useRef } from 'react';
 
 const DEBOUNCE_MS = 600;
 
+// Regista o timer de debounce pendente de cada `key`, para que
+// clearPersistedFormDraft() o consiga cancelar mesmo vindo de fora do
+// componente que o agendou (handleClose() não tem acesso ao timerRef do
+// hook). Sem isto há uma corrida real: editar um campo e gravar com
+// sucesso em menos de DEBOUNCE_MS deixa o timer do último keystroke por
+// disparar — se disparar DEPOIS de clearPersistedFormDraft() (ex.: o
+// componente ainda não desmontou, ou desmontou mas o timer já tinha
+// dado a volta ao event loop), o rascunho "gravado com sucesso"
+// ressuscita em localStorage. Reproduzido nos testes de
+// RunRegistration/RunAgenda sob carga (suite completa) — a mesma janela
+// existe em produção num telemóvel lento.
+const pendingTimers = new Map();
+
 /**
  * Persiste `draft` em localStorage (com debounce) enquanto houver
  * alterações por gravar. Chamar em conjunto com `restorePersistedFormDraft`
@@ -37,6 +50,7 @@ export function usePersistedFormDraft(key, draft, { isDirty = true, isEnabled = 
     if (!isEnabled || !isDirty || !key) return undefined;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
+      pendingTimers.delete(key);
       try {
         localStorage.setItem(key, JSON.stringify(draft));
       } catch (_) {
@@ -45,7 +59,11 @@ export function usePersistedFormDraft(key, draft, { isDirty = true, isEnabled = 
         // piora nada.
       }
     }, DEBOUNCE_MS);
-    return () => clearTimeout(timerRef.current);
+    pendingTimers.set(key, timerRef.current);
+    return () => {
+      clearTimeout(timerRef.current);
+      if (pendingTimers.get(key) === timerRef.current) pendingTimers.delete(key);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, JSON.stringify(draft), isDirty, isEnabled]);
 }
@@ -64,6 +82,14 @@ export function restorePersistedFormDraft(key) {
 /** Remove o rascunho guardado — chamar ao gravar com sucesso ou ao descartar. */
 export function clearPersistedFormDraft(key) {
   if (!key) return;
+  // Cancela um write de debounce ainda pendente para esta key ANTES de
+  // limpar — senão ele pode disparar a seguir e "ressuscitar" o rascunho
+  // que acabámos de descartar (ver comentário em pendingTimers acima).
+  const timer = pendingTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    pendingTimers.delete(key);
+  }
   try {
     localStorage.removeItem(key);
   } catch (_) {
