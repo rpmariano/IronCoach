@@ -256,7 +256,10 @@ describe('PlanDayCard — sugestão alimentar', () => {
         items={[item({ kind: 'descanso', meal_suggestion: suggestionText })]}
       />
     );
-    expect(screen.getByText('2000')).toBeInTheDocument(); // DEFAULT_CALORIE_GOAL
+    // Sem calorie_goal no perfil, deriva das metas de macro por omissão
+    // (150×4 + 200×4 + 70×9 = 2030) em vez do DEFAULT_CALORIE_GOAL fixo
+    // (2000) — nunca mostra um total que contradiga os três anéis.
+    expect(screen.getByText('2030')).toBeInTheDocument();
     expect(screen.getByText('150')).toBeInTheDocument(); // DEFAULT_PROTEIN_GOAL
   });
 

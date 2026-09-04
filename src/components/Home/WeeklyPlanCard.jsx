@@ -143,18 +143,21 @@ function MacroRing({ grams, share, color, label }) {
    isso já existe noutro sítio via computeMacroAdherence, a partir de
    refeições REGISTADAS; aqui é só contexto de referência). share de
    energia (%) por macro — 4 kcal/g proteína e hidratos, 9 kcal/g gordura. */
-function macroGoalShares(calorieGoal, proteinGoal, carbsGoal, fatGoal) {
+function macroGoalShares(proteinGoal, carbsGoal, fatGoal) {
   const p = proteinGoal * 4, h = carbsGoal * 4, g = fatGoal * 9;
   const sum = p + h + g || 1;
-  return { proteina: p / sum, hidratos: h / sum, gordura: g / sum };
+  return { proteina: p / sum, hidratos: h / sum, gordura: g / sum, kcalFromMacros: Math.round(sum) };
 }
 
 function MacroRings({ profile }) {
-  const calorieGoal = profile?.calorie_goal || DEFAULT_CALORIE_GOAL;
   const proteinGoal = profile?.protein_goal || DEFAULT_PROTEIN_GOAL;
   const carbsGoal = profile?.carbs_goal || DEFAULT_CARBS_GOAL;
   const fatGoal = profile?.fat_goal || DEFAULT_FAT_GOAL;
-  const shares = macroGoalShares(calorieGoal, proteinGoal, carbsGoal, fatGoal);
+  const shares = macroGoalShares(proteinGoal, carbsGoal, fatGoal);
+  // calorie_goal é anulável (migration make_goals_nullable) — sem ele, deriva
+  // das metas de macro em vez de cair no default fixo, para o número de kcal
+  // nunca contradizer o que os três anéis já mostram.
+  const calorieGoal = profile?.calorie_goal || shares.kcalFromMacros || DEFAULT_CALORIE_GOAL;
   return (
     <>
       <div className="wpc-nutri-total">
