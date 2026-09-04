@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2433,4 +2433,131 @@ Deno.test("buildRaceEventsContext: sem runs[].details (undefined) não rebenta �
   // de D+ como sub_iniciante e puxa o nível medido para baixo do declarado
   // "iniciante" — min() a fazer exatamente o que deve.
   assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Abaixo de Iniciante — diverge do declarado (Iniciante)");
+});
+
+// ─── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ─────────
+// Pedido do utilizador (2026-09-04): a Carol passa a cruzar as próprias
+// sugestões (coach_plan_items.meal_suggestion) com o que foi registado, e a
+// conhecer os alimentos concretos que o atleta come, não só macros agregados.
+
+// deno-lint-ignore no-explicit-any
+function makeHabitMeal(date: string, mealType: string, names: string[]): any {
+  return {
+    date,
+    meal_type: mealType,
+    meal_items: names.map((name) => ({
+      name, quantity_grams: 100, calories_per_100g: 100, protein_per_100g: 10, carbs_per_100g: 10, fat_per_100g: 5,
+    })),
+  };
+}
+
+Deno.test("computeMealHabits: alimento repetido ≥2x aparece, ordenado por frequência", () => {
+  const meals = [
+    makeHabitMeal("2026-08-01", "almoco", ["Frango"]),
+    makeHabitMeal("2026-08-02", "almoco", ["frango"]), // mesma comida, caixa diferente — conta junto
+    makeHabitMeal("2026-08-03", "almoco", ["atum"]),
+    makeHabitMeal("2026-08-04", "almoco", ["atum"]),
+    makeHabitMeal("2026-08-05", "almoco", ["atum"]),
+  ];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.almoco, [
+    { name: "Atum", count: 3 },
+    { name: "Frango", count: 2 },
+  ]);
+});
+
+Deno.test("computeMealHabits: um único registo não é hábito — fica de fora", () => {
+  const meals = [makeHabitMeal("2026-08-01", "jantar", ["Salmão"])];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.jantar, undefined);
+});
+
+Deno.test("computeMealHabits: agrupa por tipo de refeição, não junta tudo", () => {
+  const meals = [
+    makeHabitMeal("2026-08-01", "pequeno-almoco", ["Aveia"]),
+    makeHabitMeal("2026-08-02", "pequeno-almoco", ["Aveia"]),
+    makeHabitMeal("2026-08-01", "jantar", ["Aveia"]), // mesmo nome, refeição diferente — não conta para o pequeno-almoço
+  ];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.jantar, undefined); // só 1x em jantar
+  assertEquals(habits["pequeno-almoco"], [{ name: "Aveia", count: 2 }]);
+});
+
+Deno.test("computeMealHabits: máximo de 4 alimentos por refeição", () => {
+  const names = ["a", "b", "c", "d", "e"];
+  const meals = names.flatMap((n) => [
+    makeHabitMeal("2026-08-01", "almoco", [n]),
+    makeHabitMeal("2026-08-02", "almoco", [n]),
+  ]);
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.almoco.length, 4);
+});
+
+Deno.test("computeMealHabits: sem meal_type ou sem meal_items não rebenta", () => {
+  // deno-lint-ignore no-explicit-any
+  const meals: any[] = [{ date: "2026-08-01" }, { date: "2026-08-02", meal_type: "almoco" }];
+  assertEquals(computeMealHabits(meals), {});
+});
+
+Deno.test("buildSuggestionAdherencePanel: sem sugestões passadas devolve null", () => {
+  assertEquals(buildSuggestionAdherencePanel([], {}, 2000), null);
+});
+
+Deno.test("buildSuggestionAdherencePanel: dia sem refeições registadas assinala claramente", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "Omelete de 2 ovos ao pequeno-almoço." }],
+    {},
+    2000,
+  );
+  assertStringIncludes(panel!, "2026-08-20: sugeriste algo, mas o atleta NÃO registou nenhuma refeição nesse dia");
+});
+
+Deno.test("buildSuggestionAdherencePanel: dia com refeições mostra kcal e % da meta calórica", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "..." }],
+    { "2026-08-20": { kcal: 1800, prot: 0, carbs: 0, fat: 0, meals: 3 } },
+    2000,
+  );
+  assertStringIncludes(panel!, "2026-08-20: registou 3 refeição(ões), 1800 kcal (90% da meta calórica)");
+});
+
+Deno.test("buildSuggestionAdherencePanel: sem meta calórica (null) omite a percentagem", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "..." }],
+    { "2026-08-20": { kcal: 1800, prot: 0, carbs: 0, fat: 0, meals: 3 } },
+    null,
+  );
+  assertStringIncludes(panel!, "2026-08-20: registou 3 refeição(ões), 1800 kcal");
+  assertEquals(panel!.includes("% da meta"), false);
+});
+
+// sysCom (acima) fixa os primeiros 12 argumentos e não reencaminha os
+// opcionais a seguir — precisa de uma chamada direta a buildSystemInstruction
+// para chegar aos dois novos painéis, no fim da lista de parâmetros.
+function sysWithNewPanels(mealHabitsPanel: string | null, suggestionAdherencePanel: string | null): string {
+  return buildSystemInstruction(
+    null,
+    BIO_BASE,
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, false, null, null, null, null, null, null, null, null, null, null,
+    mealHabitsPanel,
+    suggestionAdherencePanel,
+  );
+}
+
+Deno.test("buildSystemInstruction: painéis de hábitos e aderência entram no prompt quando passados", () => {
+  const sys = sysWithNewPanels("PAINEL DE HÁBITOS DE TESTE", "PAINEL DE ADERÊNCIA DE TESTE");
+  assertStringIncludes(sys, "PAINEL DE HÁBITOS DE TESTE");
+  assertStringIncludes(sys, "PAINEL DE ADERÊNCIA DE TESTE");
+});
+
+Deno.test("buildSystemInstruction: sem os painéis novos (chamadas antigas) o prompt não ganha nada extra", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("PAINEL DE HÁBITOS DE TESTE"), false);
+});
+
+Deno.test("MEAL_DOCTRINE manda usar os painéis de hábitos/aderência quando existirem", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "HÁBITOS ALIMENTARES REAIS");
+  assertStringIncludes(sys, "SUGESTÕES ALIMENTARES RECENTES vs. REGISTADO");
 });
