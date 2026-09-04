@@ -50,8 +50,14 @@ export default function CoachText({ children }) {
         const parts = trimmed.split(/(\*\*.*?\*\*)/g);
         const formattedLine = parts.map((part, pIdx) => {
           if (part.startsWith('**') && part.endsWith('**')) {
+            // Sem cor própria — herda a do texto à volta. CoachText é usado
+            // em contextos claros (MealCard) e escuros (chat do Coach,
+            // WeeklyPlanCard); "text-slate-900" fixo ficava ilegível
+            // (escuro sobre escuro) nos segundos, porque a cascata CSS do
+            // Tailwind vencia a cor pensada para o tema escuro de quem
+            // chama isto.
             return (
-              <strong key={pIdx} className="font-bold text-slate-900">
+              <strong key={pIdx} className="font-bold">
                 {part.slice(2, -2)}
               </strong>
             );

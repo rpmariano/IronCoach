@@ -326,7 +326,13 @@ export function PlanDayCard({
                         <MacroRings profile={profile} />
                       </div>
 
-                      <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                      {/* Sem "text-slate-700"/"text-sm"/"font-normal" do
+                          Tailwind aqui — competiam em especificidade com a
+                          cor clara de .wpc-info-box-text (tema escuro do
+                          cartão) e venciam por virem depois no CSS
+                          compilado, deixando o texto cinzento-escuro quase
+                          invisível sobre o fundo escuro. */}
+                      <div className="wpc-info-box-text mt-2" style={{ whiteSpace: 'pre-wrap' }}>
                         <CoachText>{item.meal_suggestion}</CoachText>
                       </div>
 
