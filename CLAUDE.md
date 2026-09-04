@@ -44,7 +44,7 @@ Ao começar a trabalhar no projeto, verificar se `npm run dev` está a correr; s
 
 Incidente 2026-09-04: duas sessões Claude Code (uma local nesta pasta, outra cloud — sessões cloud têm o seu próprio clone isolado, não mexem nesta pasta, mas fazem push para as mesmas branches) escreveram em `dev-claude`/`dev` ao mesmo tempo sem se verem uma à outra. Uma reintroduziu, sem saber, duas coisas que a outra tinha acabado de remover de propósito. Não há forma de impedir outra sessão de existir — mas há forma de detetar a tempo, antes de o dano acontecer.
 
-`.claude-session-lock.json` (raiz do repo, **committed** — não gitignored, tem de ser visível a partir de qualquer clone, incluindo sessões cloud) regista quem está a trabalhar em cada branch agora:
+`.claude-session-lock.<branch>.json` (raiz do repo, **committed** — não gitignored, tem de ser visível a partir de qualquer clone, incluindo sessões cloud) regista quem está a trabalhar nessa branch agora. **Um nome de ficheiro por branch** (`.claude-session-lock.dev-claude.json`, `.claude-session-lock.dev-antigravity.json`, `.claude-session-lock.dev.json`) — nunca o mesmo path em duas branches, senão o merge `dev-claude`→`dev` colidia sempre nas mesmas linhas (apanhado na revisão pré-push do commit que introduziu isto):
 
 ```json
 { "session": "<nome/id da sessão>", "startedAt": "<ISO>", "heartbeatAt": "<ISO>" }
@@ -52,12 +52,12 @@ Incidente 2026-09-04: duas sessões Claude Code (uma local nesta pasta, outra cl
 
 **Ao começar a trabalhar nesta branch** (antes do primeiro `git commit`):
 1. `git fetch origin`
-2. `git show origin/dev-claude:.claude-session-lock.json` (falha silenciosamente se o ficheiro ainda não existir nessa branch — assumir livre)
+2. `git show origin/dev-claude:.claude-session-lock.dev-claude.json` (falha silenciosamente se o ficheiro ainda não existir nessa branch — assumir livre)
 3. Se existir e `heartbeatAt` for de **há menos de 45 minutos**: **parar e avisar o utilizador** — "parece que outra sessão está ativa desde HH:MM, confirmas que posso continuar?" — nunca decidir sozinho que está tudo bem.
-4. Caso contrário (sem lock, ou lock com mais de 45min): escrever/commitar `.claude-session-lock.json` com os dados desta sessão como parte do primeiro commit, e fazer push o mais cedo possível — é o aviso que protege a próxima sessão a chegar.
+4. Caso contrário (sem lock, ou lock com mais de 45min): escrever/commitar `.claude-session-lock.dev-claude.json` com os dados desta sessão como parte do primeiro commit, e fazer push o mais cedo possível — é o aviso que protege a próxima sessão a chegar.
 
 **Durante uma sessão longa:** atualizar `heartbeatAt` e voltar a fazer commit/push antes de cada novo push a `dev-claude` (não precisa de commit dedicado — inclui no próximo commit de trabalho).
 
 **Não há limpeza garantida no fim** — uma sessão pode simplesmente parar sem "fechar" o lock. A janela de 45min é a rede de segurança real, não a limpeza. Por isso: nunca tratar um lock com mais de 45min como sinal de perigo, e nunca tratar a AUSÊNCIA de lock como garantia absoluta — é deteção best-effort, não um lock exclusivo de verdade.
 
-Mesma lógica antes do merge `dev-claude` → `dev` (passo 3 do Fluxo de deploy acima): verificar também `origin/dev:.claude-session-lock.json` antes de fazer push a `dev`, pelo mesmo motivo.
+Mesma lógica antes do merge `dev-claude` → `dev` (passo 3 do Fluxo de deploy acima): verificar também `origin/dev:.claude-session-lock.dev.json` antes de fazer push a `dev` (ficheiro próprio dessa branch, não o de `dev-claude` — que só se copia para lá via merge, sem conflito, exatamente por ter nome diferente).
