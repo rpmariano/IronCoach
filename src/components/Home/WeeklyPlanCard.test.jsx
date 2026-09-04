@@ -1,5 +1,7 @@
+import React from 'react';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
-import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow } from './WeeklyPlanCard';
+import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard } from './WeeklyPlanCard';
 
 const item = (over = {}) => ({
   id: 'x', plan_id: 'p', kind: 'corrida', status: 'pendente',
@@ -210,6 +212,75 @@ describe('computeAcceptedWindow', () => {
 /* Simulação: vários planos aceites ao mesmo tempo. Desde que aceitar passou
    a viver no chat, o atleta pode ter um plano de treino e um de refeições
    aceites em simultâneo, com períodos muito diferentes. */
+describe('PlanDayCard — sugestão alimentar', () => {
+  const structuredSuggestion = [
+    'Pequeno-almoço: Omelete de 2 ovos com espinafres + 1 fatia de pão escuro + sumo de laranja natural.',
+    'Lanche da manhã: 1 iogurte líquido proteico + 15g de cajus.',
+    'Almoço: 160g de atum ao natural com 180g de grão-de-bico cozido, ovo cozido picado e legumes.',
+    'Lanche da tarde: 1 taça de fruta variada + 150g de iogurte natural.',
+    'Jantar: 150g de lombo de porco magro assado + 180g de arroz de legumes + salada verde.',
+    'Ceia: Chá de tília com 2 bolachas de aveia.',
+    'Total: ~2150 kcal | Proteína: 130g | Hidratos: 240g | Gordura: 65g',
+    'Racional: Recuperação muscular entre sessões de qualidade, mantendo micronutrientes e gorduras de qualidade.',
+  ].join('\n');
+
+  const dayProps = (over = {}) => ({
+    dateISO: '2026-08-11',
+    dayNumber: 1,
+    isToday: false,
+    isOverdue: false,
+    onComplete: () => {},
+    onCancel: () => {},
+    onCompleteMeal: () => {},
+    onCancelMeal: () => {},
+    expanded: true,
+    ...over,
+  });
+
+  it('formato estruturado: mostra totais, os anéis de macros e as 6 refeições', () => {
+    render(
+      <PlanDayCard
+        {...dayProps()}
+        items={[item({ kind: 'descanso', meal_suggestion: structuredSuggestion })]}
+      />
+    );
+    expect(screen.getByText('~2150')).toBeInTheDocument();
+    expect(screen.getByText('130')).toBeInTheDocument();
+    expect(screen.getByText('240')).toBeInTheDocument();
+    expect(screen.getByText('65')).toBeInTheDocument();
+    expect(screen.getByText('Pequeno-almoço')).toBeInTheDocument();
+    expect(screen.getByText('Lanche da manhã')).toBeInTheDocument();
+    expect(screen.getByText('Almoço')).toBeInTheDocument();
+    expect(screen.getByText('Lanche da tarde')).toBeInTheDocument();
+    expect(screen.getByText('Jantar')).toBeInTheDocument();
+    expect(screen.getByText('Ceia')).toBeInTheDocument();
+    expect(screen.getByText(/Recuperação muscular entre sessões de qualidade/)).toBeInTheDocument();
+  });
+
+  it('texto livre antigo (sem o formato): parseMealSuggestion falha e cai no render em texto corrido', () => {
+    const freeText = 'Hoje come bem e hidrata-te, sem regras rígidas.';
+    render(
+      <PlanDayCard
+        {...dayProps()}
+        items={[item({ kind: 'descanso', meal_suggestion: freeText })]}
+      />
+    );
+    expect(screen.getByText(freeText)).toBeInTheDocument();
+    // Não deve tentar renderizar a UI estruturada sem dados para isso.
+    expect(screen.queryByText('Total estimado do dia')).not.toBeInTheDocument();
+  });
+
+  it('mostra o indicador de sugestão alimentar na linha fechada do dia', () => {
+    render(
+      <PlanDayCard
+        {...dayProps({ expanded: false })}
+        items={[item({ kind: 'descanso', meal_suggestion: structuredSuggestion })]}
+      />
+    );
+    expect(document.querySelector('.wpc-meal-indicator')).toBeInTheDocument();
+  });
+});
+
 describe('computeAcceptedWindow — vários planos aceites (simulação)', () => {
   const plan = (over = {}) => ({
     id: 'p1', status: 'aceite', period_start: '2026-08-10', period_end: '2026-08-16', ...over,

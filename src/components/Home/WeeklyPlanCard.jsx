@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Award, StickyNote, Clock, Flag, MessageCircle
+  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
@@ -10,7 +10,10 @@ import CoachText from '../shared/CoachText';
 import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { parseMealSuggestion, macroShares, MEAL_ICON_BY_TIPO } from '../../utils/parseMealSuggestion';
 import './WeeklyPlanCard.css';
+
+const MEAL_ICON_COMPONENT = { Sunrise, Apple, Salad, Cherry, UtensilsCrossed, Coffee };
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
 
@@ -109,6 +112,36 @@ function itemKindClass(item) {
   return 'rest';
 }
 
+function MacroRing({ grams, share, color, label }) {
+  const R = 31, C = 2 * Math.PI * R; // 194.8
+  return (
+    <div className="wpc-macro-ring">
+      <div className="wpc-macro-ring-svg-wrap">
+        <svg width="68" height="68" viewBox="0 0 74 74">
+          <circle cx="37" cy="37" r={R} fill="none" stroke="rgba(255,255,255,.09)" strokeWidth="5" />
+          <circle cx="37" cy="37" r={R} fill="none" stroke={color} strokeWidth="5" strokeLinecap="round"
+            strokeDasharray={C} strokeDashoffset={C * (1 - share)} transform="rotate(-90 37 37)" />
+        </svg>
+        <div className="wpc-macro-ring-center">
+          <span>{grams}</span><small>g</small>
+        </div>
+      </div>
+      <div className="wpc-macro-ring-label">{label}</div>
+    </div>
+  );
+}
+
+function MacroRings({ totais }) {
+  const shares = macroShares(totais);
+  return (
+    <div className="wpc-macro-rings">
+      <MacroRing grams={totais.proteina_g} share={shares.proteina} color="var(--data-proteina-ink)" label="Proteína" />
+      <MacroRing grams={totais.hidratos_g} share={shares.hidratos} color="var(--data-hidratos-ink)" label="Hidratos" />
+      <MacroRing grams={totais.gordura_g} share={shares.gordura} color="var(--data-gordura-ink)" label="Gordura" />
+    </div>
+  );
+}
+
 /* Um dia do plano. */
 export function PlanDayCard({
   dateISO,
@@ -118,6 +151,8 @@ export function PlanDayCard({
   isOverdue,
   onComplete,
   onCancel,
+  onCompleteMeal,
+  onCancelMeal,
   readOnly,
   expanded: controlledExpanded,
   onToggleExpand,
@@ -236,25 +271,90 @@ export function PlanDayCard({
                   </div>
                 )}
 
-                {item.meal_suggestion && (
-                  <div className="wpc-info-box" style={{ marginTop: '12px' }}>
-                    <details className="wpc-info-box-details">
-                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Award size={14} /> Sugestão alimentar e nutricional
+                {item.meal_suggestion && (() => {
+                  const parsed = parseMealSuggestion(item.meal_suggestion);
+                  return (
+                    <div className="wpc-info-box" style={{ marginTop: '12px' }}>
+                      <details className="wpc-info-box-details">
+                        <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Salad size={14} /> Sugestão alimentar e nutricional
+                          </div>
+                          <ChevronDown size={14} className="details-chevron" />
+                        </summary>
+
+                        {parsed ? (
+                          <div className="wpc-nutri-body">
+                            <div className="wpc-nutri-total">
+                              <div className="wpc-nutri-total-value">
+                                <span>~{parsed.totais.kcal}</span><small>kcal</small>
+                              </div>
+                              <div className="wpc-nutri-total-label">Total estimado do dia</div>
+                            </div>
+
+                            <MacroRings totais={parsed.totais} />
+                            <div className="wpc-nutri-ring-legend">anel = % da energia total</div>
+
+                            <div className="wpc-nutri-meals">
+                              {parsed.refeicoes.map((r) => {
+                                const Icon = MEAL_ICON_COMPONENT[MEAL_ICON_BY_TIPO[r.tipo]];
+                                const principal = ['pequeno_almoco', 'almoco', 'jantar'].includes(r.tipo);
+                                return (
+                                  <div className="wpc-nutri-meal-row" key={r.tipo}>
+                                    <span className={`wpc-nutri-meal-icon ${principal ? 'is-main' : ''}`}>
+                                      {Icon && <Icon size={18} />}
+                                    </span>
+                                    <div>
+                                      <div className="wpc-nutri-meal-name">{r.label}</div>
+                                      <p className="wpc-nutri-meal-text">{r.texto}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {parsed.racional && (
+                              <div className="wpc-nutri-racional">
+                                <div className="wpc-nutri-racional-label">Racional</div>
+                                <p className="wpc-nutri-racional-text">{parsed.racional}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                            <CoachText>{item.meal_suggestion}</CoachText>
+                          </div>
+                        )}
+
+                        <p className="wpc-info-box-disclaimer mt-2">
+                          Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
+                          dúvida clínica, fala com um nutricionista.
+                        </p>
+                      </details>
+
+                      {!readOnly && (!item.meal_status || item.meal_status === 'pendente') && (
+                        <div className="wpc-actions" style={{ marginTop: '12px' }}>
+                          <button onClick={() => onCompleteMeal(item)} className="wpc-btn wpc-btn-primary">
+                            <Check size={14} /> Segui
+                          </button>
+                          <button onClick={() => onCancelMeal(item)} className="wpc-btn wpc-btn-secondary">
+                            <XIcon size={14} /> Não segui
+                          </button>
                         </div>
-                        <ChevronDown size={14} className="details-chevron" />
-                      </summary>
-                      <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
-                        <CoachText>{item.meal_suggestion}</CoachText>
-                      </div>
-                      <p className="wpc-info-box-disclaimer mt-2">
-                        Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
-                        dúvida clínica, fala com um nutricionista.
-                      </p>
-                    </details>
-                  </div>
-                )}
+                      )}
+                      {item.meal_status === 'seguida' && (
+                        <div className="wpc-pill-status success" style={{ marginTop: '12px' }}>
+                          <Check size={14} /> Seguida
+                        </div>
+                      )}
+                      {item.meal_status === 'nao_seguida' && (
+                        <div className="wpc-pill-status danger" style={{ marginTop: '12px' }}>
+                          <XIcon size={14} /> Não seguida
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
 
               </div>
@@ -352,7 +452,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onNav }) {
+export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onCompleteMeal, onCancelMeal, onNav }) {
   const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
 
   const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
@@ -461,6 +561,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
                 isOverdue={day.isOverdue}
                 onComplete={onComplete}
                 onCancel={onCancel}
+                onCompleteMeal={onCompleteMeal}
+                onCancelMeal={onCancelMeal}
                 expanded={allExpanded}
                 onToggleExpand={setAllExpanded}
               />

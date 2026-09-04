@@ -307,9 +307,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #d1fae5;
+  background: rgba(52, 211, 153, 0.14);
   color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.4);
+  border: 1px solid rgba(52, 211, 153, 0.38);
 }
 
 .wpc-chevron {
@@ -405,7 +405,7 @@
 }
 
 .wpc-info-box-header.nutri {
-  color: var(--mod-nutricao);
+  color: var(--mod-nutricao-ink);
 }
 
 .wpc-info-box-header.rest {
@@ -436,12 +436,60 @@
 }
 
 .wpc-info-box-disclaimer {
-  font-size: 0.65rem;
-  color: var(--mod-nutricao);
+  font-size: 10.5px;
+  color: var(--mod-nutricao-ink);
   opacity: 0.8;
   margin-top: 6px;
   font-weight: 600;
 }
+
+.wpc-nutri-body { margin-top: 2px; }
+
+.wpc-nutri-total { text-align: center; margin: 14px 0 4px; }
+.wpc-nutri-total-value {
+  display: flex; align-items: baseline; justify-content: center; gap: 5px;
+  font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
+  font-variant-numeric: tabular-nums; color: #f8fafc;
+}
+.wpc-nutri-total-value small { font-size: 12px; font-weight: 700; color: rgba(203,213,225,.75); }
+.wpc-nutri-total-label {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: rgba(203,213,225,.5); margin-top: 6px;
+}
+
+.wpc-macro-rings { display: flex; justify-content: space-between; gap: 6px; margin: 14px 0 4px; }
+.wpc-macro-ring { text-align: center; }
+.wpc-macro-ring-svg-wrap { position: relative; width: 68px; height: 68px; }
+.wpc-macro-ring-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; font-variant-numeric: tabular-nums;
+}
+.wpc-macro-ring-center span { font-size: 14px; font-weight: 800; line-height: 1; color: #f8fafc; }
+.wpc-macro-ring-center small { font-size: 9px; font-weight: 700; color: rgba(203,213,225,.6); margin-top: 2px; }
+.wpc-macro-ring-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: rgba(203,213,225,.6); margin-top: 7px;
+}
+.wpc-nutri-ring-legend { font-size: 9.5px; color: rgba(203,213,225,.42); text-align: center; margin: 8px 0 14px; }
+
+.wpc-nutri-meals { display: flex; flex-direction: column; }
+.wpc-nutri-meal-row {
+  display: flex; gap: 11px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,.08);
+}
+.wpc-nutri-meal-row:last-child { border-bottom: 1px solid rgba(255,255,255,.08); }
+.wpc-nutri-meal-icon {
+  width: 20px; height: 20px; flex: none; margin-top: 1px; color: rgba(203,213,225,.6);
+  display: flex; align-items: center; justify-content: center;
+}
+.wpc-nutri-meal-icon.is-main { color: #34d399; }
+.wpc-nutri-meal-name { font-size: 12px; font-weight: 800; color: #f8fafc; }
+.wpc-nutri-meal-text { font-size: 12.5px; line-height: 1.5; color: #cbd5e1; margin-top: 3px; text-wrap: pretty; }
+
+.wpc-nutri-racional { margin-top: 14px; padding-left: 12px; border-left: 2px solid rgba(52,211,153,.35); }
+.wpc-nutri-racional-label {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: rgba(203,213,225,.5);
+}
+.wpc-nutri-racional-text { font-size: 12.5px; line-height: 1.5; color: #e2e8f0; margin-top: 5px; text-wrap: pretty; }
 
 /* Glass Buttons */
 .wpc-actions {

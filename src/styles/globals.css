@@ -71,6 +71,10 @@
   --data-carbs: #8b8118;
   --data-fat: #dd3cb7;
   --data-peso:#dd3c71;
+  --data-proteina-ink: #7295ec;
+  --data-hidratos-ink: #c9bb3a;
+  --data-gordura-ink:  #e879c5;
+  --mod-nutricao-ink:  #34d399;
 }
 
 html, body {

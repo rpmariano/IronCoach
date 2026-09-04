@@ -230,7 +230,7 @@ export default function Home() {
   const { showToast } = useToast();
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
-    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
+    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem, setMealStatus,
     addWaterLog, setEditingRaceId, setProfile
   } = useAppStore();
 
@@ -319,6 +319,18 @@ export default function Home() {
     }
   };
 
+  // Segui/Não segui da sugestão alimentar do dia — independente do
+  // status do treino do mesmo item (ver setMealStatus no store).
+  const handleCompleteMeal = (item) => {
+    setMealStatus(item.id, 'seguida');
+    showToast('Sugestão marcada como seguida');
+  };
+
+  const handleCancelMeal = (item) => {
+    setMealStatus(item.id, 'nao_seguida');
+    showToast('Sugestão marcada como não seguida');
+  };
+
   const modifiedPlanItems = useMemo(() => {
     const raceDates = new Set(raceEvents.map(r => r.date));
     
@@ -384,6 +396,8 @@ export default function Home() {
         planItems={modifiedPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
+        onCompleteMeal={handleCompleteMeal}
+        onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
 
