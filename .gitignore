@@ -2,7 +2,11 @@ node_modules/
 dist/
 .env
 .env.local
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/agents/**
+!.claude/skills/
+!.claude/skills/**
 supabase/.temp/
 supabase/.branches/
 .tmp.driveupload/
