@@ -213,16 +213,14 @@ describe('computeAcceptedWindow', () => {
    a viver no chat, o atleta pode ter um plano de treino e um de refeições
    aceites em simultâneo, com períodos muito diferentes. */
 describe('PlanDayCard — sugestão alimentar', () => {
-  const structuredSuggestion = [
-    'Pequeno-almoço: Omelete de 2 ovos com espinafres + 1 fatia de pão escuro + sumo de laranja natural.',
-    'Lanche da manhã: 1 iogurte líquido proteico + 15g de cajus.',
-    'Almoço: 160g de atum ao natural com 180g de grão-de-bico cozido, ovo cozido picado e legumes.',
-    'Lanche da tarde: 1 taça de fruta variada + 150g de iogurte natural.',
-    'Jantar: 150g de lombo de porco magro assado + 180g de arroz de legumes + salada verde.',
-    'Ceia: Chá de tília com 2 bolachas de aveia.',
-    'Total: ~2150 kcal | Proteína: 130g | Hidratos: 240g | Gordura: 65g',
-    'Racional: Recuperação muscular entre sessões de qualidade, mantendo micronutrientes e gorduras de qualidade.',
-  ].join('\n');
+  // A doutrina viva do Coach (coach-chat/index.ts) escreve sempre por
+  // categoria de alimento e quantidade redonda, NUNCA um cardápio de
+  // precisão com macros exatos — por isso os anéis não podem depender de
+  // extrair números do texto da sugestão. Mostram o OBJETIVO do perfil
+  // (a adesão REAL, a partir de refeições registadas, já existe à parte
+  // via computeMacroAdherence). O texto em si é sempre prosa (CoachText).
+  const suggestionText = 'Pequeno-almoço: omelete de 2 ovos + fatia de pão. ' +
+    'Almoço: 150g de peixe + 100g de arroz + vegetais. Jantar: 150g de proteína + hidratos + vegetais.';
 
   const dayProps = (over = {}) => ({
     dateISO: '2026-08-11',
@@ -235,44 +233,51 @@ describe('PlanDayCard — sugestão alimentar', () => {
     ...over,
   });
 
-  it('formato estruturado: mostra totais, os anéis de macros e as 6 refeições', () => {
+  it('mostra os anéis com os objetivos de macros do perfil do atleta', () => {
+    const profile = { calorie_goal: 2400, protein_goal: 160, carbs_goal: 280, fat_goal: 80 };
     render(
       <PlanDayCard
         {...dayProps()}
-        items={[item({ kind: 'descanso', meal_suggestion: structuredSuggestion })]}
+        profile={profile}
+        items={[item({ kind: 'descanso', meal_suggestion: suggestionText })]}
       />
     );
-    expect(screen.getByText('~2150')).toBeInTheDocument();
-    expect(screen.getByText('130')).toBeInTheDocument();
-    expect(screen.getByText('240')).toBeInTheDocument();
-    expect(screen.getByText('65')).toBeInTheDocument();
-    expect(screen.getByText('Pequeno-almoço')).toBeInTheDocument();
-    expect(screen.getByText('Lanche da manhã')).toBeInTheDocument();
-    expect(screen.getByText('Almoço')).toBeInTheDocument();
-    expect(screen.getByText('Lanche da tarde')).toBeInTheDocument();
-    expect(screen.getByText('Jantar')).toBeInTheDocument();
-    expect(screen.getByText('Ceia')).toBeInTheDocument();
-    expect(screen.getByText(/Recuperação muscular entre sessões de qualidade/)).toBeInTheDocument();
+    expect(screen.getByText('2400')).toBeInTheDocument();
+    expect(screen.getByText('160')).toBeInTheDocument();
+    expect(screen.getByText('280')).toBeInTheDocument();
+    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.getByText('Objetivo diário de calorias')).toBeInTheDocument();
   });
 
-  it('texto livre antigo (sem o formato): parseMealSuggestion falha e cai no render em texto corrido', () => {
-    const freeText = 'Hoje come bem e hidrata-te, sem regras rígidas.';
+  it('sem perfil (ou sem metas definidas), usa os valores por omissão em vez de rebentar', () => {
     render(
       <PlanDayCard
         {...dayProps()}
-        items={[item({ kind: 'descanso', meal_suggestion: freeText })]}
+        items={[item({ kind: 'descanso', meal_suggestion: suggestionText })]}
       />
     );
-    expect(screen.getByText(freeText)).toBeInTheDocument();
-    // Não deve tentar renderizar a UI estruturada sem dados para isso.
-    expect(screen.queryByText('Total estimado do dia')).not.toBeInTheDocument();
+    expect(screen.getByText('2000')).toBeInTheDocument(); // DEFAULT_CALORIE_GOAL
+    expect(screen.getByText('150')).toBeInTheDocument(); // DEFAULT_PROTEIN_GOAL
+  });
+
+  it('mostra sempre o texto da sugestão tal como o Coach escreveu (via CoachText), sem tentar extrair estrutura', () => {
+    render(
+      <PlanDayCard
+        {...dayProps()}
+        items={[item({ kind: 'descanso', meal_suggestion: suggestionText })]}
+      />
+    );
+    // CoachText decompõe por refeição (ver CoachText.jsx) — verifica o
+    // conteúdo real, não a string inteira como um só nó de texto.
+    expect(screen.getByText(/omelete de 2 ovos \+ fatia de pão/)).toBeInTheDocument();
+    expect(screen.getByText(/150g de peixe \+ 100g de arroz \+ vegetais/)).toBeInTheDocument();
   });
 
   it('mostra o indicador de sugestão alimentar na linha fechada do dia', () => {
     render(
       <PlanDayCard
         {...dayProps({ expanded: false })}
-        items={[item({ kind: 'descanso', meal_suggestion: structuredSuggestion })]}
+        items={[item({ kind: 'descanso', meal_suggestion: suggestionText })]}
       />
     );
     expect(document.querySelector('.wpc-meal-indicator')).toBeInTheDocument();

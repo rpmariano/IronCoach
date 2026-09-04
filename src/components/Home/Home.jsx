@@ -382,6 +382,7 @@ export default function Home() {
       <WeeklyPlanCard
         plans={coachPlans}
         planItems={modifiedPlanItems}
+        profile={profile}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
         onNav={handleNav}

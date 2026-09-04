@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
+  Utensils, Coffee, Salad, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
@@ -10,10 +10,18 @@ import CoachText from '../shared/CoachText';
 import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
-import { parseMealSuggestion, macroShares, MEAL_ICON_BY_TIPO } from '../../utils/parseMealSuggestion';
 import './WeeklyPlanCard.css';
 
-const MEAL_ICON_COMPONENT = { Sunrise, Apple, Salad, Cherry, UtensilsCrossed, Coffee };
+// Mesmos valores por omissão de computeMacroAdherence
+// (supabase/functions/_shared/formulas/macroAdherence.ts) — não importados
+// de lá porque essa função calcula ADESÃO a partir de refeições REGISTADAS
+// (fora de âmbito aqui); isto é só a META do perfil, mas os defaults têm de
+// bater certo com os usados no resto da app quando o atleta ainda não os
+// definiu.
+const DEFAULT_CALORIE_GOAL = 2000;
+const DEFAULT_PROTEIN_GOAL = 150;
+const DEFAULT_CARBS_GOAL = 200;
+const DEFAULT_FAT_GOAL = 70;
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
 
@@ -131,14 +139,37 @@ function MacroRing({ grams, share, color, label }) {
   );
 }
 
-function MacroRings({ totais }) {
-  const shares = macroShares(totais);
+/* Objetivos de macros do perfil (meta do atleta, não o realizado do dia —
+   isso já existe noutro sítio via computeMacroAdherence, a partir de
+   refeições REGISTADAS; aqui é só contexto de referência). share de
+   energia (%) por macro — 4 kcal/g proteína e hidratos, 9 kcal/g gordura. */
+function macroGoalShares(calorieGoal, proteinGoal, carbsGoal, fatGoal) {
+  const p = proteinGoal * 4, h = carbsGoal * 4, g = fatGoal * 9;
+  const sum = p + h + g || 1;
+  return { proteina: p / sum, hidratos: h / sum, gordura: g / sum };
+}
+
+function MacroRings({ profile }) {
+  const calorieGoal = profile?.calorie_goal || DEFAULT_CALORIE_GOAL;
+  const proteinGoal = profile?.protein_goal || DEFAULT_PROTEIN_GOAL;
+  const carbsGoal = profile?.carbs_goal || DEFAULT_CARBS_GOAL;
+  const fatGoal = profile?.fat_goal || DEFAULT_FAT_GOAL;
+  const shares = macroGoalShares(calorieGoal, proteinGoal, carbsGoal, fatGoal);
   return (
-    <div className="wpc-macro-rings">
-      <MacroRing grams={totais.proteina_g} share={shares.proteina} color="var(--data-proteina-ink)" label="Proteína" />
-      <MacroRing grams={totais.hidratos_g} share={shares.hidratos} color="var(--data-hidratos-ink)" label="Hidratos" />
-      <MacroRing grams={totais.gordura_g} share={shares.gordura} color="var(--data-gordura-ink)" label="Gordura" />
-    </div>
+    <>
+      <div className="wpc-nutri-total">
+        <div className="wpc-nutri-total-value">
+          <span>{calorieGoal}</span><small>kcal</small>
+        </div>
+        <div className="wpc-nutri-total-label">Objetivo diário de calorias</div>
+      </div>
+      <div className="wpc-macro-rings">
+        <MacroRing grams={proteinGoal} share={shares.proteina} color="var(--data-proteina-ink)" label="Proteína" />
+        <MacroRing grams={carbsGoal} share={shares.hidratos} color="var(--data-hidratos-ink)" label="Hidratos" />
+        <MacroRing grams={fatGoal} share={shares.gordura} color="var(--data-gordura-ink)" label="Gordura" />
+      </div>
+      <div className="wpc-nutri-ring-legend">anel = % da energia do objetivo diário</div>
+    </>
   );
 }
 
@@ -151,6 +182,7 @@ export function PlanDayCard({
   isOverdue,
   onComplete,
   onCancel,
+  profile,
   readOnly,
   expanded: controlledExpanded,
   onToggleExpand,
@@ -269,69 +301,39 @@ export function PlanDayCard({
                   </div>
                 )}
 
-                {item.meal_suggestion && (() => {
-                  const parsed = parseMealSuggestion(item.meal_suggestion);
-                  return (
-                    <div className="wpc-info-box" style={{ marginTop: '12px' }}>
-                      <details className="wpc-info-box-details">
-                        <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Salad size={14} /> Sugestão alimentar e nutricional
-                          </div>
-                          <ChevronDown size={14} className="details-chevron" />
-                        </summary>
+                {item.meal_suggestion && (
+                  <div className="wpc-info-box" style={{ marginTop: '12px' }}>
+                    <details className="wpc-info-box-details">
+                      <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Salad size={14} /> Sugestão alimentar e nutricional
+                        </div>
+                        <ChevronDown size={14} className="details-chevron" />
+                      </summary>
 
-                        {parsed ? (
-                          <div className="wpc-nutri-body">
-                            <div className="wpc-nutri-total">
-                              <div className="wpc-nutri-total-value">
-                                <span>~{parsed.totais.kcal}</span><small>kcal</small>
-                              </div>
-                              <div className="wpc-nutri-total-label">Total estimado do dia</div>
-                            </div>
+                      {/* Anéis mostram o OBJETIVO de macros do perfil — não os
+                          da sugestão em si. O Coach escreve por categoria de
+                          alimento e quantidade redonda, nunca macros exatos
+                          (ver coach-chat/index.ts, doutrina de
+                          meal_suggestion/save_meal_suggestions), por isso não
+                          há números fiáveis a extrair daqui. A adesão REAL às
+                          metas já é calculada noutro sítio a partir do que o
+                          atleta regista de refeições (computeMacroAdherence). */}
+                      <div className="wpc-nutri-body">
+                        <MacroRings profile={profile} />
+                      </div>
 
-                            <MacroRings totais={parsed.totais} />
-                            <div className="wpc-nutri-ring-legend">anel = % da energia total</div>
+                      <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                        <CoachText>{item.meal_suggestion}</CoachText>
+                      </div>
 
-                            <div className="wpc-nutri-meals">
-                              {parsed.refeicoes.map((r) => {
-                                const Icon = MEAL_ICON_COMPONENT[MEAL_ICON_BY_TIPO[r.tipo]];
-                                const principal = ['pequeno_almoco', 'almoco', 'jantar'].includes(r.tipo);
-                                return (
-                                  <div className="wpc-nutri-meal-row" key={r.tipo}>
-                                    <span className={`wpc-nutri-meal-icon ${principal ? 'is-main' : ''}`}>
-                                      {Icon && <Icon size={18} />}
-                                    </span>
-                                    <div>
-                                      <div className="wpc-nutri-meal-name">{r.label}</div>
-                                      <p className="wpc-nutri-meal-text">{r.texto}</p>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-
-                            {parsed.racional && (
-                              <div className="wpc-nutri-racional">
-                                <div className="wpc-nutri-racional-label">Racional</div>
-                                <p className="wpc-nutri-racional-text">{parsed.racional}</p>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="wpc-info-box-text text-sm font-normal text-slate-700 mt-2" style={{ whiteSpace: 'pre-wrap' }}>
-                            <CoachText>{item.meal_suggestion}</CoachText>
-                          </div>
-                        )}
-
-                        <p className="wpc-info-box-disclaimer mt-2">
-                          Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
-                          dúvida clínica, fala com um nutricionista.
-                        </p>
-                      </details>
-                    </div>
-                  );
-                })()}
+                      <p className="wpc-info-box-disclaimer mt-2">
+                        Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
+                        dúvida clínica, fala com um nutricionista.
+                      </p>
+                    </details>
+                  </div>
+                )}
 
 
               </div>
@@ -429,7 +431,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onNav }) {
+export default function WeeklyPlanCard({ plans = [], planItems = [], profile, onComplete, onCancel, onNav }) {
   const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
 
   const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
@@ -538,6 +540,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
                 isOverdue={day.isOverdue}
                 onComplete={onComplete}
                 onCancel={onCancel}
+                profile={profile}
                 expanded={allExpanded}
                 onToggleExpand={setAllExpanded}
               />
