@@ -86,10 +86,11 @@ graph LR
 ```
 
 ### ⚙️ Configuração de Ambientes e Deploy
-* **Ramo `master` (Produção)**: Alojado no **GitHub Pages** em `https://rpmariano.github.io/ironhealth/`. 
+* **Ramo `master` (Produção)**: Alojado no **GitHub Pages** em `https://rpmariano.github.io/IronCoach/` (repositório renomeado de `ironhealth`/`ironcoach` para `IronCoach`).
   * O build é automatizado via GitHub Actions (`.github/workflows/deploy-pages.yml`).
-  * O `vite.config.mjs` lê a base path via `VITE_BASE=/ironhealth/`.
+  * O `vite.config.mjs` lê a base path via `VITE_BASE=/IronCoach/`.
 * **Ramo `dev` (Desenvolvimento)**: Alojado no **Netlify** sob domínio temporário com base path `/`.
+  * Não existe BD de desenvolvimento separada — o Supabase é único e partilhado por `dev` e `master` (ver `.github/workflows/deploy-edge-functions.yml`).
 * **Segurança e Regra de Caminhos de Assets**:
   * Para evitar 404 em assets da diretoria `/public/` nos diferentes caminhos de base, deve usar-se sempre o utilitário `publicUrl()` (`src/lib/utils.js`).
   * O Service Worker em `public/sw.js` is registado com o scope correto recorrendo a `import.meta.env.BASE_URL`.
