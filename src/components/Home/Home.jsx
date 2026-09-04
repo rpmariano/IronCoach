@@ -320,15 +320,17 @@ export default function Home() {
   };
 
   // Segui/Não segui da sugestão alimentar do dia — independente do
-  // status do treino do mesmo item (ver setMealStatus no store).
-  const handleCompleteMeal = (item) => {
-    setMealStatus(item.id, 'seguida');
-    showToast('Sugestão marcada como seguida');
+  // status do treino do mesmo item (ver setMealStatus no store). Só
+  // mostra sucesso se o update realmente aconteceu — setMealStatus()
+  // devolve false e só regista console.error numa falha, sem lançar.
+  const handleCompleteMeal = async (item) => {
+    const ok = await setMealStatus(item.id, 'seguida');
+    showToast(ok ? 'Sugestão marcada como seguida' : 'Erro ao marcar a sugestão. Tenta novamente.', ok ? 'success' : 'error');
   };
 
-  const handleCancelMeal = (item) => {
-    setMealStatus(item.id, 'nao_seguida');
-    showToast('Sugestão marcada como não seguida');
+  const handleCancelMeal = async (item) => {
+    const ok = await setMealStatus(item.id, 'nao_seguida');
+    showToast(ok ? 'Sugestão marcada como não seguida' : 'Erro ao marcar a sugestão. Tenta novamente.', ok ? 'success' : 'error');
   };
 
   const modifiedPlanItems = useMemo(() => {
