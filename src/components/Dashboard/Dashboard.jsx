@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -34,6 +35,7 @@ export default function Dashboard({ activeModule }) {
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);
+  const subnavRef = useRef(null);
   // scrollTo só existe depois de chamar o hook, mas o setter que lhe passamos
   // (handleIndexChange) precisa de lhe chamar quando o navGuard recusa a
   // troca — guarda-se numa ref para partir o ciclo sem duplicar a lógica do
@@ -56,6 +58,9 @@ export default function Dashboard({ activeModule }) {
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;
+
+  // Indicador do subnav em "pílula elástica" — ver useElasticPillIndicator.
+  const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, currentIndex);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {
@@ -118,29 +123,34 @@ export default function Dashboard({ activeModule }) {
   return (
     <div className="space-y-4 fade-in">
       {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
-        {/* Sliding indicator — tint translúcido da cor do módulo em vez de
-            preenchimento sólido, a condizer com o glassmorphism escuro do
-            resto da app; o texto ativo fica na própria cor em vez de branco.
-            Sem shadow-md: dentro de um contentor overflow-hidden a sombra
-            fica cortada a direito mesmo junto ao canto arredondado do
+      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
+        {/* Indicador "pílula elástica" — tint translúcido da cor do módulo em
+            vez de preenchimento sólido, a condizer com o glassmorphism escuro
+            do resto da app; o texto ativo fica na própria cor em vez de
+            branco. Sem shadow-md: dentro de um contentor overflow-hidden a
+            sombra fica cortada a direito mesmo junto ao canto arredondado do
             separador, em vez de esbater — mais visível na pílula da direita
             porque é onde o canto do indicador fica mais perto do canto do
-            contentor. */}
-        <div
-          className="absolute top-[6px] bottom-[6px] rounded-lg transition-all duration-300 ease-in-out border"
-          style={{
-            // Calculado a partir de TABS.length em vez de fixo — um separador
-            // a mais/a menos não desalinha o indicador outra vez.
-            width: `calc((100% - ${(TABS.length - 1) * 8}px) / ${TABS.length})`,
-            transform: `translateX(calc(${currentIndex} * 100% + ${currentIndex * 8}px))`,
-            background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 18%, transparent)`,
-            borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 40%, transparent)`,
-          }}
-        />
+            contentor. Posição/largura em px medidos (ver measureTab acima),
+            não % fixas — é o que permite esticar o indicador a cobrir
+            qualquer par de separadores antes de contrair no novo. */}
+        {indicatorStyle && (
+          <div
+            aria-hidden="true"
+            className="absolute top-[6px] bottom-[6px] rounded-lg border"
+            style={{
+              left: indicatorStyle.left,
+              width: indicatorStyle.width,
+              transition: indicatorStyle.transition,
+              background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 32%, transparent)`,
+              borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 55%, transparent)`,
+            }}
+          />
+        )}
         {TABS.map((t, i) => (
           <button
             key={t.key}
+            ref={setItemRef(i)}
             onClick={() => scrollTo(i)}
             style={activeModule === t.key ? { color: t.color } : undefined}
             className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-300 ${

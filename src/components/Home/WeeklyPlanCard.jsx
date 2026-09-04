@@ -7,6 +7,7 @@ import {
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
 import CoachText from '../shared/CoachText';
+import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import './WeeklyPlanCard.css';
@@ -117,8 +118,6 @@ export function PlanDayCard({
   isOverdue,
   onComplete,
   onCancel,
-  onCompleteMeal,
-  onCancelMeal,
   readOnly,
   expanded: controlledExpanded,
   onToggleExpand,
@@ -254,28 +253,6 @@ export function PlanDayCard({
                         dúvida clínica, fala com um nutricionista.
                       </p>
                     </details>
-                    
-                    {!readOnly && (!item.meal_status || item.meal_status === 'pendente') && (
-                      <div className="wpc-actions" style={{ marginTop: '12px' }}>
-                        <button onClick={() => onCompleteMeal(item)} className="wpc-btn wpc-btn-primary">
-                          <Check size={14} /> Segui
-                        </button>
-                        <button onClick={() => onCancelMeal(item)} className="wpc-btn wpc-btn-secondary">
-                          <XIcon size={14} /> Não segui
-                        </button>
-                      </div>
-                    )}
-                    
-                    {item.meal_status === 'seguida' && (
-                      <div className="wpc-pill-status success" style={{ marginTop: '12px' }}>
-                        <Check size={14} /> Seguida
-                      </div>
-                    )}
-                    {item.meal_status === 'nao_seguida' && (
-                      <div className="wpc-pill-status danger" style={{ marginTop: '12px' }}>
-                        <XIcon size={14} /> Não seguida
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -303,7 +280,7 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
       dateISO,
       dayNumber: i + 1,
       isToday: dateISO === today,
-      isOverdue: dateISO < today && dayItems.some(it => (it.kind !== 'descanso' && it.status === 'pendente') || (it.meal_suggestion && (!it.meal_status || it.meal_status === 'pendente'))),
+      isOverdue: dateISO < today && dayItems.some(it => it.kind !== 'descanso' && it.status === 'pendente'),
       items: dayItems,
     });
   }
@@ -366,15 +343,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              {days.map((_, idx) => (
-                <button 
-                  key={idx} 
-                  type="button"
-                  onClick={() => scrollTo(idx)}
-                  aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-                />
-              ))}
+              <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
         )}
@@ -383,7 +352,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onCompleteMeal, onCancelMeal, onNav }) {
+export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete, onCancel, onNav }) {
   const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
 
   const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
@@ -492,8 +461,6 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
                 isOverdue={day.isOverdue}
                 onComplete={onComplete}
                 onCancel={onCancel}
-                onCompleteMeal={onCompleteMeal}
-                onCancelMeal={onCancelMeal}
                 expanded={allExpanded}
                 onToggleExpand={setAllExpanded}
               />
@@ -506,15 +473,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], onComplete,
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              {days.map((_, idx) => (
-                <button 
-                  key={idx} 
-                  type="button"
-                  onClick={() => scrollTo(idx)}
-                  aria-label={`Ver dia ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-                />
-              ))}
+              <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
         )}

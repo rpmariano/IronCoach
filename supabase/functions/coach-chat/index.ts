@@ -210,10 +210,16 @@ const PROPOSE_PLAN_TOOL = {
             meal_suggestion: {
               type: "STRING",
               description:
-                "Sugestão alimentar OBRIGATÓRIA COMPLETA para todos os dias do plano, independentemente da carga do treino. " +
-                "Deves apresentar as refeições completas (Pequeno-almoço, Lanche da manhã, Almoço, Lanche da tarde, Jantar e Ceia), " +
-                "com a indicação dos macronutrientes esperados por cada refeição e o total do dia. " +
-                "Inclui a explicação das opções tomadas e adequa-as ao treino planeado para o dia. " +
+                "Sugestão alimentar OBRIGATÓRIA para todos os dias do plano, independentemente da carga do treino. " +
+                "Percorre as refeições do dia (Pequeno-almoço, Almoço, Lanche, Jantar — Ceia só se fizer sentido), mas por " +
+                "CATEGORIA de alimento e quantidade redonda, NUNCA um cardápio de precisão a listar macros exatos por " +
+                "refeição: \"Pequeno-almoço: omelete de 2 ovos + fatia de pão. Almoço: 150g de peixe/frango + 100g de " +
+                "arroz/batata + vegetais à vontade. Lanche: 150g de iogurte skyr + fruta. Jantar: 150g de proteína + " +
+                "leguminosas ou hidratos + vegetais.\" Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa " +
+                "(ovos, frango, peixe fresco ou em lata, iogurte skyr/grego, arroz, batata, aveia, leguminosas, fruta, " +
+                "vegetais) e REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às compras por um " +
+                "ingrediente novo todos os dias; isso cria atrito e abandono, não adesão. Adequa as quantidades (não o " +
+                "cardápio inteiro) ao treino do dia — mais hidratos em dia de treino exigente, sem variar os alimentos-base. " +
                 "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares.",
             },
           },
@@ -289,8 +295,12 @@ const SAVE_MEALS_TOOL = {
               type: "STRING",
               description:
                 "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
-                "(pequeno-almoço, almoço, jantar e snacks se relevantes), quantidades " +
-                "aproximadas e racional nutricional em 2-4 frases.",
+                "(pequeno-almoço, almoço, jantar e snacks se relevantes), por CATEGORIA de " +
+                "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
+                "iogurte skyr\"), não um cardápio de precisão. Reutiliza alimentos comuns de dia " +
+                "para dia — não exijas ingredientes novos a cada sugestão, isso obriga o atleta a " +
+                "ir às compras constantemente e gera atrito, não adesão. Racional nutricional " +
+                "breve. 2-4 frases no total.",
             },
           },
           required: ["date", "meal"],
@@ -1156,6 +1166,108 @@ function buildNutritionAnalyticsPanel(
   return `PAINEL DE NUTRIÇÃO/CORPO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
+// ─── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ─────────
+// Fechava aqui o ciclo que faltava: a Carol propunha refeições
+// (meal_suggestion/save_meal_suggestions) mas nunca sabia se o atleta as
+// seguiu nem que alimentos concretos ele realmente come — só via macros
+// agregados sem ligação nenhuma às suas próprias sugestões. Pedido do
+// utilizador (2026-09-04): "se ela for conhecendo os hábitos alimentares do
+// atleta... as suas sugestões vão de encontro aos desejos/gostos/hábitos".
+
+const MEAL_TYPE_LABELS_PT: Record<string, string> = {
+  "pequeno-almoco": "Pequeno-almoço",
+  "lanche-manha": "Lanche da manhã",
+  "almoco": "Almoço",
+  "lanche": "Lanche",
+  "jantar": "Jantar",
+  "ceia": "Ceia",
+};
+
+// Frequência de alimentos (meal_items.name) por tipo de refeição — a
+// aproximação mais direta a "hábitos/gostos" sem exigir nenhuma estrutura
+// nova: o nome já é escrito pelo analyze-meal a cada refeição registada.
+// deno-lint-ignore no-explicit-any
+export function computeMealHabits(meals: any[]): Record<string, { name: string; count: number }[]> {
+  const counts: Record<string, Record<string, number>> = {};
+  for (const meal of meals || []) {
+    const mealType = meal?.meal_type;
+    if (!mealType) continue;
+    for (const it of (meal.meal_items || [])) {
+      const raw = String(it?.name || "").trim();
+      if (!raw) continue;
+      const key = raw.toLowerCase();
+      if (!counts[mealType]) counts[mealType] = {};
+      counts[mealType][key] = (counts[mealType][key] || 0) + 1;
+    }
+  }
+  const result: Record<string, { name: string; count: number }[]> = {};
+  for (const [mealType, freq] of Object.entries(counts)) {
+    const entries = Object.entries(freq)
+      // Um único registo não é "hábito" — é ruído. Precisa de se repetir.
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([name, count]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), count }));
+    if (entries.length > 0) result[mealType] = entries;
+  }
+  return result;
+}
+
+// deno-lint-ignore no-explicit-any
+function buildMealHabitsPanel(meals: any[], windowDays: number): string | null {
+  // Poucos dias com registo → qualquer "padrão" seria ruído, não hábito
+  // real; melhor a Carol ficar sem esta informação do que inventar um.
+  const MIN_DAYS_FOR_HABITS = 5;
+  const daysWithMeals = new Set((meals || []).map((m: any) => m.date)).size;
+  if (daysWithMeals < MIN_DAYS_FOR_HABITS) return null;
+
+  const habits = computeMealHabits(meals);
+  const entries = Object.entries(habits);
+  if (entries.length === 0) return null;
+
+  const lines = entries.map(
+    ([mealType, foods]) =>
+      `- ${MEAL_TYPE_LABELS_PT[mealType] || mealType}: ${foods.map((f) => `${f.name} (${f.count}x)`).join(", ")}`,
+  );
+  return (
+    `HÁBITOS ALIMENTARES REAIS (últimos ${windowDays} dias, ${daysWithMeals} dias com registo) — usa isto ` +
+    `para escolher QUE alimento dentro de cada categoria nas tuas sugestões, aproximando-as do que o atleta ` +
+    `já come e gosta, em vez de exemplos genéricos (ex.: se ele come muito atum e quase nunca peixe fresco, ` +
+    `sugere atum). Isto NUNCA tem precedência sobre metas de macros nem restrições alimentares — só decide o ` +
+    `QUÊ dentro do que já é adequado:\n${lines.join("\n")}`
+  );
+}
+
+// Cruza cada sugestão alimentar passada (coach_plan_items.meal_suggestion,
+// dias já vividos) com o que foi realmente registado nesse dia — sem isto a
+// Carol nunca sabia se as próprias sugestões estavam a ser seguidas.
+// mealsByDate: mesmo formato devolvido por aggregateMealsByDate.
+// deno-lint-ignore no-explicit-any
+export function buildSuggestionAdherencePanel(
+  pastSuggestions: any[],
+  mealsByDate: Record<string, DayTotals>,
+  calorieGoal: number | null,
+): string | null {
+  if (!pastSuggestions || pastSuggestions.length === 0) return null;
+
+  const lines = pastSuggestions.map((s: any) => {
+    const day = mealsByDate[s.planned_date];
+    if (!day || day.meals === 0) {
+      return `- ${s.planned_date}: sugeriste algo, mas o atleta NÃO registou nenhuma refeição nesse dia`;
+    }
+    const pctStr = calorieGoal ? ` (${Math.round((day.kcal / calorieGoal) * 100)}% da meta calórica)` : "";
+    return `- ${s.planned_date}: registou ${day.meals} refeição(ões), ${Math.round(day.kcal)} kcal${pctStr}`;
+  });
+
+  return (
+    `SUGESTÕES ALIMENTARES RECENTES vs. REGISTADO — cruza o que sugeriste com o que o atleta realmente ` +
+    `comeu nesses dias, para calibrares a próxima sugestão. Se ele sistematicamente não regista nada ou ` +
+    `fica muito abaixo da meta nos dias em que sugeriste algo, considera que a sugestão pode estar a pedir ` +
+    `demasiado (ementa complicada, alimento que ele não gosta/não tem em casa) — simplifica em vez de repetir ` +
+    `a mesma abordagem:\n${lines.join("\n")}`
+  );
+}
+
 // ─── Índice de Prontidão + métricas cruzadas (Fase E — omnisciência) ───────
 // O gap original que motivou toda a Fase E: antes desta migração, este
 // número (score 0-100 + pilares) só existia no ecrã (Home, RaceHubView) — a
@@ -1994,6 +2106,13 @@ const MEAL_DOCTRINE =
   `DOUTRINA DE NUTRIÇÃO (Bloco 7 da investigação — ACSM/AND 2016, ISSN ` +
   `Nutrient Timing/Kerksick 2017, Burke 2021, INSA/PortFIR). Usa isto sempre ` +
   `que sugerires ou comentares uma refeição, não o teu conhecimento geral:\n` +
+  `- BAIXO ATRITO — a regra mais importante desta doutrina: sugere por ` +
+  `CATEGORIA de alimento e quantidade redonda ("150g de peixe", "2 ovos", ` +
+  `"150g de iogurte skyr"), nunca um cardápio de precisão que varia todos os ` +
+  `dias. Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa e ` +
+  `REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às ` +
+  `compras por um ingrediente novo a cada refeição sugerida. Excesso de ` +
+  `precisão/variedade gera ansiedade e abandono, não adesão.\n` +
   `- Dia leve/descanso (<60 min Z1-Z2): pequeno-almoço 20-25% kcal, almoço ` +
   `30-35%, lanche 10-15%, jantar 25-30%, ceia opcional 5-10%. Proteína ` +
   `0,3-0,4 g/kg por refeição, 3-5 doses espaçadas 3-4h.\n` +
@@ -2004,9 +2123,12 @@ const MEAL_DOCTRINE =
   `- Equivalência proteína por 100 g (INSA/PortFIR, não a tabela americana): ` +
   `frango/peru peito 30-31, vaca magra 28-30, salmão/atum fresco 24-26, ovo ` +
   `inteiro 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, ` +
-  `lentilhas/grão/feijão cozidos 8-9, whey 24 g/scoop de 30 g. SOMA sempre ` +
-  `os alimentos até bateres a meta em g/kg — nunca cites uma ementa de ` +
-  `exemplo sem verificar que a soma fecha as contas.\n` +
+  `lentilhas/grão/feijão cozidos 8-9, whey 24 g/scoop de 30 g. Usa estes ` +
+  `valores como referência de ORDEM DE GRANDEZA da porção a sugerir, não ` +
+  `como equação a fechar ao grama — SOMA sempre mentalmente para confirmar ` +
+  `que a sugestão bate perto da meta em g/kg, mas arredonda para porções ` +
+  `redondas (100g/150g/200g, 1-2 ovos): nunca cites uma ementa claramente ` +
+  `desalinhada do alvo (ex.: 40g de proteína quando o alvo é 100g).\n` +
   `- Pré-prova, 24-48h antes (provas >60-90 min): prioriza arroz branco, ` +
   `massa branca, pão branco, batata sem pele, banana madura, mel, frango/ ` +
   `peru/claras/peixe branco. Evita integrais, leguminosas, crucíferas, ` +
@@ -2018,7 +2140,13 @@ const MEAL_DOCTRINE =
   `(risco de hiponatremia).\n` +
   `Tudo isto é SUGESTÃO EDUCATIVA, nunca prescrição — usa "considera"/` +
   `"costuma ajudar", não imposição. As restrições alimentares do atleta ` +
-  `(se indicadas abaixo) têm sempre precedência sobre esta doutrina geral.`;
+  `(se indicadas abaixo) têm sempre precedência sobre esta doutrina geral.\n` +
+  `- Se houver painéis "HÁBITOS ALIMENTARES REAIS" e/ou "SUGESTÕES ALIMENTARES ` +
+  `RECENTES vs. REGISTADO" mais abaixo, USA-OS SEMPRE: o primeiro diz que ` +
+  `alimentos concretos escolher dentro de cada categoria (o atleta já come e ` +
+  `gosta deles); o segundo diz se as tuas sugestões recentes estão a ` +
+  `funcionar — ajusta a abordagem se não estiverem, não repitas o que não ` +
+  `pegou.`;
 
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
 // "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
@@ -2555,6 +2683,10 @@ export function buildSystemInstruction(
   readinessPanel: string | null = null,
   // Idem — nota por fase do macrociclo (Fase F).
   racePhasesPanel: string | null = null,
+  // Idem — hábitos alimentares reais por frequência de alimento (Bloco 7).
+  mealHabitsPanel: string | null = null,
+  // Idem — sugestões alimentares passadas vs. o que foi registado (Bloco 7).
+  suggestionAdherencePanel: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -3437,6 +3569,8 @@ export function buildSystemInstruction(
   if (nutritionAnalyticsPanel) sys += `\n\n${nutritionAnalyticsPanel}`;
   if (readinessPanel) sys += `\n\n${readinessPanel}`;
   if (racePhasesPanel) sys += `\n\n${racePhasesPanel}`;
+  if (mealHabitsPanel) sys += `\n\n${mealHabitsPanel}`;
+  if (suggestionAdherencePanel) sys += `\n\n${suggestionAdherencePanel}`;
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
@@ -3863,6 +3997,51 @@ async function handler(req: Request): Promise<Response> {
 
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
 
+    // ── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ────
+    // Uma janela mais larga do que a de 7 dias usada acima (nutritionSummary/
+    // nutritionAnalyticsPanel): hábitos alimentares só se leem com mais
+    // histórico, e esta mesma query também serve de base ao cruzamento com
+    // as sugestões passadas (por isso pede meal_type/name, que a query de
+    // 7 dias não precisa). 30 dias cobre folgadamente qualquer microciclo
+    // de 7-14 dias (Bloco 6 #5).
+    const HABITS_WINDOW_DAYS = 30;
+    const habitsStartD = new Date();
+    habitsStartD.setUTCDate(habitsStartD.getUTCDate() - (HABITS_WINDOW_DAYS - 1));
+    const habitsStartISO = habitsStartD.toISOString().slice(0, 10);
+
+    const { data: habitMeals, error: err_habitMeals } = await sb
+      .from("meals")
+      .select(
+        "date, meal_type, meal_items(name, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)",
+      )
+      .eq("user_id", userId)
+      .gte("date", habitsStartISO)
+      .lte("date", todayISO);
+    warnIfQueryFailed("meals(30d, hábitos)", err_habitMeals);
+
+    // Sugestões que a Carol já deu para dias já vividos (planned_date <
+    // hoje) — sem filtrar por plano aceite/proposto: mesmo uma sugestão
+    // solta ainda é sinal útil sobre se o formato/alimentos propostos
+    // "pegam" no atleta. coach_plan_items_user_date_idx(user_id,
+    // planned_date) cobre esta consulta diretamente.
+    const { data: pastSuggestions, error: err_pastSuggestions } = await sb
+      .from("coach_plan_items")
+      .select("planned_date, meal_suggestion")
+      .eq("user_id", userId)
+      .not("meal_suggestion", "is", null)
+      .lt("planned_date", todayISO)
+      .gte("planned_date", habitsStartISO)
+      .order("planned_date", { ascending: true })
+      .limit(20);
+    warnIfQueryFailed("coach_plan_items(sugestões passadas)", err_pastSuggestions);
+
+    const mealHabitsPanel = buildMealHabitsPanel(habitMeals || [], HABITS_WINDOW_DAYS);
+    const suggestionAdherencePanel = buildSuggestionAdherencePanel(
+      pastSuggestions || [],
+      aggregateMealsByDate(habitMeals || []),
+      (profile?.calorie_goal as number | null) ?? null,
+    );
+
     /* Modo de acompanhamento — qual das quatro situações se aplica.
        Usa activePlanIds (plano ACEITE cujo período cobre hoje) e não
        activePlanItems: um plano em curso cujos dias restantes já passaram
@@ -3978,7 +4157,9 @@ async function handler(req: Request): Promise<Response> {
       gymAnalyticsPanel,
       nutritionAnalyticsPanel,
       readinessPanel,
-      racePhasesPanel
+      racePhasesPanel,
+      mealHabitsPanel,
+      suggestionAdherencePanel
     );
 
     let finalSystemInstruction = systemInstruction;

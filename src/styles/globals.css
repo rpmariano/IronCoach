@@ -181,7 +181,7 @@ body {
    entre eles para a onda parecer contínua em vez de "piscar". Só corre
    quando o separador Coach não está ativo — serve para chamar a atenção
    para ele, não faz sentido continuar a pulsar quando já lá estamos. */
-.coach-wave-ring {
+.coach-wave-ring-nav {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -192,13 +192,33 @@ body {
   background: var(--mod-coach-to, #06b6d4);
   opacity: 0;
   pointer-events: none;
+  animation: coachWaveNav 2.2s ease-out infinite;
+}
+.coach-wave-ring-nav.coach-wave-ring--delay { animation-delay: 1.1s; }
+@keyframes coachWaveNav {
+  0% { transform: scale(0.3); opacity: 0.45; }
+  70% { opacity: 0.12; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Onda brilhante do botão flutuante de insights da Carol (CoachInsightButton):
+   dois anéis a nascer do centro do botão e a dissipar-se para fora, em loop,
+   com desfasamento entre eles para a onda parecer contínua em vez de
+   "piscar". Chama a atenção para o alerta sem depender só da cor/badge. */
+.coach-wave-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--mod-coach-to, #06b6d4);
+  opacity: 0;
+  pointer-events: none;
   animation: coachWave 2.2s ease-out infinite;
 }
 .coach-wave-ring--delay { animation-delay: 1.1s; }
 @keyframes coachWave {
-  0% { transform: scale(0.3); opacity: 0.45; }
+  0% { transform: scale(0.6); opacity: 0.45; }
   70% { opacity: 0.12; }
-  100% { transform: scale(1.8); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
 }
 
 /* ===== Seg-nav (sub-navegação deslizante) ===== */

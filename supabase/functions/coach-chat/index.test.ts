@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -1488,7 +1488,12 @@ Deno.test("computeACWR zona segura: 40 km/sem crónica, 40 km aguda → rácio 1
   ];
   // crónica = (10+30)/4 = 10; aguda = 10 → ratio = 1.0
   const r = computeACWR(runs, TODAY_ACWR);
-  assertEquals(r?.zone, "seguro(0,80-1,30)");
+  // Fronteira semi-aberta (_shared/formulas/acwr.ts): 1,30 inclui-se em
+  // "seguro" — ZONE_LABELS.safe fecha o intervalo com "]", não ")". Este
+  // valor nunca tinha corrido contra a implementação real (ver nota em
+  // "computeACWR zona risco_acrescido", abaixo) — só descoberto agora que
+  // o CI passou a correr `deno test` antes do deploy.
+  assertEquals(r?.zone, "seguro(0,80-1,30]");
   assertEquals(r?.ratio, 1.0);
 });
 
@@ -1505,37 +1510,25 @@ Deno.test("computeACWR zona PERIGO: aguda muito alta relativamente à crónica",
   ];
   // rácio = 30 / 11.25 = 2.67
   const r = computeACWR(runs2, TODAY_ACWR);
-  assertEquals(r?.zone, "PERIGO(≥1,50)");
+  // ZONE_LABELS.danger usa ">1,50" (fronteira exclusiva — 1,50 exato cai em
+  // "caution", ver classifyAcwrZone), não "≥1,50".
+  assertEquals(r?.zone, "PERIGO(>1,50)");
 });
 
-Deno.test("computeACWR zona risco_acrescido: rácio entre 1.31 e 1.49", () => {
-  // crónica = 10 km/sem; aguda = 14 km → rácio ~1.40
+Deno.test("computeACWR zona risco_acrescido: rácio entre 1,30 (exclusivo) e 1,50 (inclusivo)", () => {
+  // aguda (7 dias) = 14 km; crónica = (14+27)/4 = 10,25 km/sem → rácio =
+  // 14/10,25 ≈ 1,3659 → cai no lado "caution" da fronteira semi-aberta
+  // (>1,30, ver _shared/formulas/acwr.ts). Valor confirmado à mão contra
+  // computeRunAcwr — o anterior nunca tinha corrido contra a implementação
+  // real (deno test bloqueado neste ambiente até o CI passar a corrê-lo
+  // antes do deploy) e tinha o rácio E a etiqueta ("1,31-1,49)") errados.
   const runs = [
-    makeRun(2, 7), makeRun(5, 7),   // 14 km aguda
-    makeRun(9, 10), makeRun(16, 10), makeRun(23, 10), // +30 km fora dos 7 dias → total 44/4=11 crónica
-  ];
-  // rácio = 14 / (44/4) = 14/11 ≈ 1.27 → ainda seguro. Ajustar.
-  const runs2 = [
-    makeRun(2, 14),                   // 14 km aguda
-    makeRun(9, 5), makeRun(16, 5), makeRun(23, 5), // 15 km fora dos 7 → total 29/4 = 7.25 crónica
-  ];
-  // rácio = 14 / 7.25 ≈ 1.93 → PERIGO. Vamos acertar.
-  const runs3 = [
-    makeRun(2, 13),                   // 13 km aguda
-    makeRun(9, 4), makeRun(16, 4), makeRun(23, 4), makeRun(3, 2), // +10 km fora → total 23/4=5.75 ... 13/5.75=2.26 PERIGO
-    // melhor: crónica ≈ 10 km/sem → 40 km total; aguda = 13,5 km → ratio 1.35
-  ];
-  const runs4 = [
-    makeRun(2, 6), makeRun(4, 7),     // 13 km aguda (7 dias)
-    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → total 40/4=10 crónica → ratio 1.3 (seguro)
-  ];
-  // Rácio 1.3 já é seguro. Para risco_acrescido preciso de 1.31-1.49.
-  const runs5 = [
     makeRun(2, 7), makeRun(4, 7),     // 14 km aguda
-    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km → 41/4 = 10.25 crónica → ratio = 14/10.25 ≈ 1.37
+    makeRun(10, 9), makeRun(17, 9), makeRun(24, 9), // +27 km fora da janela aguda
   ];
-  const r = computeACWR(runs5, TODAY_ACWR);
-  assertEquals(r?.zone, "risco_acrescido(1,31-1,49)");
+  const r = computeACWR(runs, TODAY_ACWR);
+  assertEquals(r?.ratio, 1.37);
+  assertEquals(r?.zone, "risco_acrescido(1,31-1,50]");
 });
 
 Deno.test("computeACWR zona destreino: aguda < 80% da crónica", () => {
@@ -2346,8 +2339,15 @@ const RUNS_MEDIDO_INICIANTE: any[] = [
 const TODAY_ISO = "2026-08-27";
 
 Deno.test("buildRaceEventsContext: nível declarado bate certo com o medido — sem ⚠", () => {
+  // date sobreposta ao defeito do makeRaceEvent (+18 dias): um "iniciante"
+  // numa 10k precisa de 10 semanas mínimas de preparação (Bloco 1,
+  // MIN_PREP_WEEKS) — com só 18 dias (~2,5 semanas) a própria viabilidade
+  // (função não relacionada com o nível medido, mas cujo aviso também usa
+  // "⚠") marcava "tempo_insuficiente" e fazia este teste falhar por um
+  // motivo que nada tem a ver com o que ele testa. +80 dias (~11 semanas)
+  // fica acima do mínimo e isola só o comportamento do nível medido.
   const ctx = buildRaceEventsContext(
-    [makeRaceEvent({ experience_level: "iniciante" })],
+    [makeRaceEvent({ experience_level: "iniciante", date: "2026-11-15" })],
     TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
   );
   assertStringIncludes(ctx!, "NÍVEL MEDIDO pelo histórico de treino: Iniciante (bate certo com o declarado)");
@@ -2433,4 +2433,131 @@ Deno.test("buildRaceEventsContext: sem runs[].details (undefined) não rebenta �
   // de D+ como sub_iniciante e puxa o nível medido para baixo do declarado
   // "iniciante" — min() a fazer exatamente o que deve.
   assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Abaixo de Iniciante — diverge do declarado (Iniciante)");
+});
+
+// ─── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ─────────
+// Pedido do utilizador (2026-09-04): a Carol passa a cruzar as próprias
+// sugestões (coach_plan_items.meal_suggestion) com o que foi registado, e a
+// conhecer os alimentos concretos que o atleta come, não só macros agregados.
+
+// deno-lint-ignore no-explicit-any
+function makeHabitMeal(date: string, mealType: string, names: string[]): any {
+  return {
+    date,
+    meal_type: mealType,
+    meal_items: names.map((name) => ({
+      name, quantity_grams: 100, calories_per_100g: 100, protein_per_100g: 10, carbs_per_100g: 10, fat_per_100g: 5,
+    })),
+  };
+}
+
+Deno.test("computeMealHabits: alimento repetido ≥2x aparece, ordenado por frequência", () => {
+  const meals = [
+    makeHabitMeal("2026-08-01", "almoco", ["Frango"]),
+    makeHabitMeal("2026-08-02", "almoco", ["frango"]), // mesma comida, caixa diferente — conta junto
+    makeHabitMeal("2026-08-03", "almoco", ["atum"]),
+    makeHabitMeal("2026-08-04", "almoco", ["atum"]),
+    makeHabitMeal("2026-08-05", "almoco", ["atum"]),
+  ];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.almoco, [
+    { name: "Atum", count: 3 },
+    { name: "Frango", count: 2 },
+  ]);
+});
+
+Deno.test("computeMealHabits: um único registo não é hábito — fica de fora", () => {
+  const meals = [makeHabitMeal("2026-08-01", "jantar", ["Salmão"])];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.jantar, undefined);
+});
+
+Deno.test("computeMealHabits: agrupa por tipo de refeição, não junta tudo", () => {
+  const meals = [
+    makeHabitMeal("2026-08-01", "pequeno-almoco", ["Aveia"]),
+    makeHabitMeal("2026-08-02", "pequeno-almoco", ["Aveia"]),
+    makeHabitMeal("2026-08-01", "jantar", ["Aveia"]), // mesmo nome, refeição diferente — não conta para o pequeno-almoço
+  ];
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.jantar, undefined); // só 1x em jantar
+  assertEquals(habits["pequeno-almoco"], [{ name: "Aveia", count: 2 }]);
+});
+
+Deno.test("computeMealHabits: máximo de 4 alimentos por refeição", () => {
+  const names = ["a", "b", "c", "d", "e"];
+  const meals = names.flatMap((n) => [
+    makeHabitMeal("2026-08-01", "almoco", [n]),
+    makeHabitMeal("2026-08-02", "almoco", [n]),
+  ]);
+  const habits = computeMealHabits(meals);
+  assertEquals(habits.almoco.length, 4);
+});
+
+Deno.test("computeMealHabits: sem meal_type ou sem meal_items não rebenta", () => {
+  // deno-lint-ignore no-explicit-any
+  const meals: any[] = [{ date: "2026-08-01" }, { date: "2026-08-02", meal_type: "almoco" }];
+  assertEquals(computeMealHabits(meals), {});
+});
+
+Deno.test("buildSuggestionAdherencePanel: sem sugestões passadas devolve null", () => {
+  assertEquals(buildSuggestionAdherencePanel([], {}, 2000), null);
+});
+
+Deno.test("buildSuggestionAdherencePanel: dia sem refeições registadas assinala claramente", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "Omelete de 2 ovos ao pequeno-almoço." }],
+    {},
+    2000,
+  );
+  assertStringIncludes(panel!, "2026-08-20: sugeriste algo, mas o atleta NÃO registou nenhuma refeição nesse dia");
+});
+
+Deno.test("buildSuggestionAdherencePanel: dia com refeições mostra kcal e % da meta calórica", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "..." }],
+    { "2026-08-20": { kcal: 1800, prot: 0, carbs: 0, fat: 0, meals: 3 } },
+    2000,
+  );
+  assertStringIncludes(panel!, "2026-08-20: registou 3 refeição(ões), 1800 kcal (90% da meta calórica)");
+});
+
+Deno.test("buildSuggestionAdherencePanel: sem meta calórica (null) omite a percentagem", () => {
+  const panel = buildSuggestionAdherencePanel(
+    [{ planned_date: "2026-08-20", meal_suggestion: "..." }],
+    { "2026-08-20": { kcal: 1800, prot: 0, carbs: 0, fat: 0, meals: 3 } },
+    null,
+  );
+  assertStringIncludes(panel!, "2026-08-20: registou 3 refeição(ões), 1800 kcal");
+  assertEquals(panel!.includes("% da meta"), false);
+});
+
+// sysCom (acima) fixa os primeiros 12 argumentos e não reencaminha os
+// opcionais a seguir — precisa de uma chamada direta a buildSystemInstruction
+// para chegar aos dois novos painéis, no fim da lista de parâmetros.
+function sysWithNewPanels(mealHabitsPanel: string | null, suggestionAdherencePanel: string | null): string {
+  return buildSystemInstruction(
+    null,
+    BIO_BASE,
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, false, null, null, null, null, null, null, null, null, null, null,
+    mealHabitsPanel,
+    suggestionAdherencePanel,
+  );
+}
+
+Deno.test("buildSystemInstruction: painéis de hábitos e aderência entram no prompt quando passados", () => {
+  const sys = sysWithNewPanels("PAINEL DE HÁBITOS DE TESTE", "PAINEL DE ADERÊNCIA DE TESTE");
+  assertStringIncludes(sys, "PAINEL DE HÁBITOS DE TESTE");
+  assertStringIncludes(sys, "PAINEL DE ADERÊNCIA DE TESTE");
+});
+
+Deno.test("buildSystemInstruction: sem os painéis novos (chamadas antigas) o prompt não ganha nada extra", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("PAINEL DE HÁBITOS DE TESTE"), false);
+});
+
+Deno.test("MEAL_DOCTRINE manda usar os painéis de hábitos/aderência quando existirem", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "HÁBITOS ALIMENTARES REAIS");
+  assertStringIncludes(sys, "SUGESTÕES ALIMENTARES RECENTES vs. REGISTADO");
 });

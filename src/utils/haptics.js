@@ -45,6 +45,7 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
   // um índice de cada vez, por isso o problema só era visível ao clicar.
   const programmaticScrollRef = useRef(false);
   const programmaticScrollTimeoutRef = useRef(null);
+  const programmaticScrollEndCleanupRef = useRef(null);
 
   const changeCard = useCallback((newIndex) => {
     if (newIndex >= 0 && newIndex < itemCount && newIndex !== activeIndexRef.current) {
@@ -77,24 +78,45 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
 
   const scrollTo = useCallback((idx, instant = false) => {
     const targetIdx = Math.max(0, Math.min(itemCount - 1, idx));
+    const distance = Math.abs(targetIdx - activeIndexRef.current);
     if (targetIdx !== activeIndexRef.current) {
       changeCard(targetIdx);
     } else {
       triggerCarouselTick();
     }
     if (scrollRef.current) {
+      const el = scrollRef.current;
       programmaticScrollRef.current = true;
       if (programmaticScrollTimeoutRef.current) clearTimeout(programmaticScrollTimeoutRef.current);
-      // Janela alinhada com a duração típica de um scroll suave entre vários
-      // cartões; depois disto, eventos de scroll voltam a ser tratados como
-      // vindos do utilizador.
-      programmaticScrollTimeoutRef.current = setTimeout(() => {
-        programmaticScrollRef.current = false;
-      }, 500);
-      if (typeof scrollRef.current.scrollTo === 'function') {
-        scrollRef.current.scrollTo({ left: targetIdx * (scrollRef.current.offsetWidth || 0), behavior: instant ? 'instant' : 'smooth' });
+      if (programmaticScrollEndCleanupRef.current) {
+        programmaticScrollEndCleanupRef.current();
+        programmaticScrollEndCleanupRef.current = null;
+      }
+
+      const clearGuard = () => { programmaticScrollRef.current = false; };
+
+      // scrollend (quando suportado) é o sinal exato de que a animação
+      // nativa acabou — mais preciso do que um temporizador fixo.
+      if ('onscrollend' in el) {
+        const onScrollEnd = () => { clearGuard(); el.removeEventListener('scrollend', onScrollEnd); };
+        el.addEventListener('scrollend', onScrollEnd);
+        programmaticScrollEndCleanupRef.current = () => el.removeEventListener('scrollend', onScrollEnd);
+      }
+
+      // Rede de segurança para quando scrollend não existe (ou nunca dispara,
+      // ex.: alvo igual à posição atual): a duração real do scroll suave
+      // nativo cresce com a distância percorrida — saltar 2+ separadores
+      // (ex.: de um do meio para o da ponta) podia ultrapassar folgadamente
+      // os 500ms fixos de antes, a guarda caía a meio da animação e o
+      // próximo evento de scroll, apanhado numa posição intermédia, era lido
+      // como a escolha do utilizador — o separador "saltava" para o destino
+      // e logo a seguir "voltava" para o vizinho.
+      programmaticScrollTimeoutRef.current = setTimeout(clearGuard, instant ? 60 : 550 + distance * 220);
+
+      if (typeof el.scrollTo === 'function') {
+        el.scrollTo({ left: targetIdx * (el.offsetWidth || 0), behavior: instant ? 'instant' : 'smooth' });
       } else {
-        scrollRef.current.scrollLeft = targetIdx * (scrollRef.current.offsetWidth || 0);
+        el.scrollLeft = targetIdx * (el.offsetWidth || 0);
       }
     }
   }, [scrollRef, itemCount, changeCard]);

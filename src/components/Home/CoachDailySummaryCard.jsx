@@ -4,6 +4,7 @@ import { Sparkles, RefreshCw, History, AlertTriangle, Utensils, CalendarClock, L
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
+import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import './CoachDailySummaryCard.css';
 
@@ -295,15 +296,7 @@ export default function CoachDailySummaryCard() {
         {messages.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              {messages.map((_, idx) => (
-                <button 
-                  key={idx} 
-                  type="button"
-                  onClick={() => scrollTo(idx)}
-                  aria-label={`Ver mensagem ${idx + 1}`}
-                  className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === index ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-                />
-              ))}
+              <CarouselDots count={messages.length} currentIndex={index} onSelect={scrollTo} ariaLabelPrefix="Ver mensagem" />
             </div>
           </div>
         )}

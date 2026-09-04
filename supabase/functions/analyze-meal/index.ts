@@ -411,7 +411,10 @@ const MEAL_DOCTRINE =
   `o teu conhecimento geral: por refeição, a proteína alvo ronda 0,3-0,4 g/kg do peso do ` +
   `atleta; em dia de treino exigente os hidratos concentram-se antes/depois do treino. ` +
   `Equivalência prática (por 100 g): frango/peru peito 30-31 g proteína, salmão/atum 24-26, ` +
-  `ovo 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, lentilhas/grão 8-9.`;
+  `ovo 12,5 (≈6 g/ovo), skyr/iogurte grego 0% 10-12, tofu firme 12-15, lentilhas/grão 8-9. ` +
+  `A sugestão a acrescentar/reduzir deve ser um alimento comum e uma quantidade redonda ` +
+  `("mais 100g de frango"), não uma ementa de precisão — baixo atrito, não adesão obrigatória ` +
+  `a um número exato.`;
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
   "pequeno-almoco": "Pequeno-almoço",

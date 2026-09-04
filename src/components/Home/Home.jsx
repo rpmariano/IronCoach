@@ -9,6 +9,7 @@ import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
 import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
 import WeeklyPlanCard from './WeeklyPlanCard';
 import CoachDailySummaryCard from './CoachDailySummaryCard';
+import CarouselDots from '../shared/CarouselDots';
 import { useToast } from '../shared/ToastProvider';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
@@ -153,15 +154,7 @@ function NextRaceCard({ raceEvents = [], runs = [], meals = [], bodyAssessments 
       {upcoming.length > 1 && (
         <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
           <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
-            {upcoming.map((_, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => scrollTo(idx)}
-                aria-label={`Ver prova ${idx + 1}`}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-              />
-            ))}
+            <CarouselDots count={upcoming.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver prova" />
           </div>
         </div>
       )}
@@ -223,15 +216,7 @@ function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }
       
       <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
         <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
-          {[0, 1].map((idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => scrollTo(idx)}
-              aria-label={`Ver cartão ${idx + 1}`}
-              className={`h-1.5 shrink-0 rounded-full transition-all duration-300 ${idx === currentIndex ? 'w-4 bg-slate-300' : 'w-1.5 bg-slate-300 opacity-40'}`}
-            />
-          ))}
+          <CarouselDots count={2} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver cartão" />
         </div>
       </div>
     </div>
@@ -246,7 +231,6 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
-    completeMealPlanItem, cancelMealPlanItem,
     addWaterLog, setEditingRaceId, setProfile
   } = useAppStore();
 
@@ -335,24 +319,6 @@ export default function Home() {
     }
   };
 
-  const handleCompleteMeal = async (item) => {
-    const success = await completeMealPlanItem(item.id);
-    if (success) {
-      showToast('Sugestão alimentar marcada como seguida');
-    } else {
-      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
-    }
-  };
-
-  const handleCancelMeal = async (item) => {
-    const success = await cancelMealPlanItem(item.id);
-    if (success) {
-      showToast('Sugestão alimentar marcada como não seguida');
-    } else {
-      showToast('Erro: Falha na base de dados (Corre a migração SQL!)');
-    }
-  };
-
   const modifiedPlanItems = useMemo(() => {
     const raceDates = new Set(raceEvents.map(r => r.date));
     
@@ -418,8 +384,6 @@ export default function Home() {
         planItems={modifiedPlanItems}
         onComplete={handleCompleteItem}
         onCancel={handleCancelItem}
-        onCompleteMeal={handleCompleteMeal}
-        onCancelMeal={handleCancelMeal}
         onNav={handleNav}
       />
 
