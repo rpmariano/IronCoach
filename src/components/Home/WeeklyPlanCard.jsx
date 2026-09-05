@@ -29,11 +29,11 @@ const DEFAULT_FAT_GOAL = 70;
 // crasha), mas não faz sentido.
 const MEAL_ICON_BY_TIPO = {
   'pequeno-almoco': Sunrise, 'lanche-manha': Apple, almoco: Salad,
-  'lanche-tarde': Cherry, jantar: UtensilsCrossed, ceia: Coffee,
+  lanche: Cherry, jantar: UtensilsCrossed, ceia: Coffee,
 };
 const MEAL_LABEL_BY_TIPO = {
   'pequeno-almoco': 'Pequeno-almoço', 'lanche-manha': 'Lanche da manhã', almoco: 'Almoço',
-  'lanche-tarde': 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
+  lanche: 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
 };
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -330,7 +330,12 @@ export function PlanDayCard({
                   </div>
                 )}
 
-                {item.meal_suggestion && (
+                {/* meal_macros é opcional e pode vir preenchido sem
+                    meal_suggestion (só dias de descanso exigem
+                    meal_suggestion/notes na Edge Function — ver
+                    coach-chat/index.ts) — não esconder macros válidos só
+                    porque o texto corrido ficou vazio. */}
+                {(item.meal_suggestion || item.meal_macros) && (
                   <div className="wpc-info-box" style={{ marginTop: '12px' }}>
                     <details className="wpc-info-box-details">
                       <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

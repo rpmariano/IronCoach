@@ -124,7 +124,7 @@ const RUN_TRAINING_TYPES = [
 // WeeklyPlanCard.jsx, MEAL_ICON_BY_TIPO). Hífen: convenção partilhada com
 // analyze-meal/index.ts MEAL_TYPES (specs/PRD.md documenta um incidente
 // real de produção causado por underscore em 2 dos 6 tipos).
-const MEAL_TYPE_KEYS = ["pequeno-almoco", "lanche-manha", "almoco", "lanche-tarde", "jantar", "ceia"];
+const MEAL_TYPE_KEYS = ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "jantar", "ceia"];
 
 // meal_items[]/meal_estimated_* — campos IRMÃOS de meal_suggestion/meal
 // (não aninhados dentro de um OBJECT à parte), opcionais. Adicionados
@@ -1539,30 +1539,38 @@ export function buildMealMacros(raw: any): Record<string, unknown> | null {
   const validItems: { tipo: string; texto: string }[] = [];
   for (const it of rawItems) {
     if (!it || typeof it !== "object") continue;
-    const tipo = String(it.meal_type ?? "").trim();
-    const texto = String(it.description ?? "").trim();
+    // typeof estrito em vez de String(x ?? "") coagido: um array de 1
+    // elemento (ex. ["almoco"]) vira "almoco" ao coagir e passava o
+    // enum sem ser mesmo uma string — rejeitar logo a forma errada.
+    if (typeof it.meal_type !== "string" || typeof it.description !== "string") continue;
+    const tipo = it.meal_type.trim();
+    const texto = it.description.trim();
     if (!MEAL_TYPE_KEYS.includes(tipo) || !texto) continue;
     validItems.push({ tipo, texto });
   }
-  if (validItems.length === 0) return null;
 
-  // Se algum item foi descartado (meal_type inválido, descrição vazia), o
-  // total meal_estimated_* já não corresponde ao que sobrou — mais seguro
-  // não confiar nele do que mostrar um número desalinhado da lista visível.
+  // Se algum item foi descartado (meal_type inválido, descrição vazia, ou
+  // forma errada), o total meal_estimated_* já não corresponde ao que
+  // sobrou — mais seguro não confiar nele do que mostrar um número
+  // desalinhado da lista visível. (validItems.length===0 já cai aqui via
+  // enoughItems, não precisa de guarda própria.)
   const noneDropped = validItems.length === rawItems.length;
   const enoughItems = validItems.length >= 2; // schema pede minItems:2
 
-  // `!= null` em vez de Number(x) direto: um campo explicitamente `null`
-  // não pode contar como "0 válido" — tem de ser tratado como em falta.
-  const hasAllFields = ["meal_estimated_kcal", "meal_estimated_protein_g", "meal_estimated_carbs_g", "meal_estimated_fat_g"]
-    .every((k) => raw[k] != null);
-  const kcal = Number(raw.meal_estimated_kcal);
-  const protein = Number(raw.meal_estimated_protein_g);
-  const carbs = Number(raw.meal_estimated_carbs_g);
-  const fat = Number(raw.meal_estimated_fat_g);
-  const macrosValid = hasAllFields && [kcal, protein, carbs, fat].every((n) => Number.isFinite(n) && n >= 0);
+  // typeof "number" em vez de "!= null" + Number(x) coagido: uma string
+  // vazia, um booleano ou um array de 1 elemento passavam a coerção e
+  // viravam um 0/N com ar válido em vez de invalidar a estimativa toda.
+  const macroKeys = [
+    "meal_estimated_kcal",
+    "meal_estimated_protein_g",
+    "meal_estimated_carbs_g",
+    "meal_estimated_fat_g",
+  ] as const;
+  const macroValues = macroKeys.map((k) => raw[k]);
+  const macrosValid = macroValues.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0);
 
   if (!noneDropped || !enoughItems || !macrosValid) return null;
+  const [kcal, protein, carbs, fat] = macroValues as number[];
   return {
     items: validItems,
     kcal: Math.round(kcal),
@@ -1924,9 +1932,18 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
       if (match.existingItemId) {
         // Já há um item nesse dia (tipicamente o treino) — a sugestão cola-se
         // a ele, nunca cria um segundo item para o mesmo dia.
+        // meal_items é OPCIONAL em cada chamada (ao contrário de `meal`, que
+        // é sempre obrigatório) — uma chamada seguinte só para afinar o
+        // texto pode legitimamente não trazer meal_items, e mealMacros vem
+        // null. Só sobrescrever meal_macros quando esta chamada trouxe uma
+        // estimativa nova e válida; caso contrário preservar a que já lá
+        // estava, para não apagar um número bom por causa de uma edição
+        // que nem mexia nos macros.
+        const updatePayload: Record<string, unknown> = { meal_suggestion: meal };
+        if (mealMacros !== null) updatePayload.meal_macros = mealMacros;
         const { error: upErr } = await sb
           .from("coach_plan_items")
-          .update({ meal_suggestion: meal, meal_macros: mealMacros })
+          .update(updatePayload)
           .eq("id", match.existingItemId);
         if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
       } else {
