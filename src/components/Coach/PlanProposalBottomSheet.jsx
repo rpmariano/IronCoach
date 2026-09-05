@@ -183,6 +183,7 @@ export function PlanProposalBottomSheet({
                   items={day.items}
                   isToday={false}
                   isOverdue={false}
+                  profile={profile}
                   readOnly
                 />
               ))}
