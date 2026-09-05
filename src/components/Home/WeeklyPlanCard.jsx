@@ -23,9 +23,10 @@ const DEFAULT_PROTEIN_GOAL = 150;
 const DEFAULT_CARBS_GOAL = 200;
 const DEFAULT_FAT_GOAL = 70;
 
-// Tipo de refeição → ícone lucide. As keys têm de bater certo com
-// MEAL_TYPES em supabase/functions/coach-chat/index.ts — mudar aqui sem
-// mudar lá parte os ícones (fica sem ícone, não crasha).
+// Tipo de refeição → ícone lucide. Usado quando item.meal_macros.items
+// existe — na prática nunca, desde que coach-chat/index.ts deixou de
+// gerar meal_macros (revertido 2026-09-05, ver MacroRings mais abaixo).
+// Mantido para quando/se a geração for retomada com um schema mais raso.
 const MEAL_ICON_BY_TIPO = {
   'pequeno-almoco': Sunrise, 'lanche-manha': Apple, almoco: Salad,
   'lanche-tarde': Cherry, jantar: UtensilsCrossed, ceia: Coffee,
@@ -161,13 +162,16 @@ function macroGoalShares(proteinGoal, carbsGoal, fatGoal) {
   return { proteina: p / sum, hidratos: h / sum, gordura: g / sum, kcalFromMacros: Math.round(sum) };
 }
 
-/* `mealMacros` (coach_plan_items.meal_macros) é o cálculo real da Carol
-   para ESTA sugestão — alimentos/gramas concretos por trás do texto
-   generalizado, alinhados ao objetivo diário menos o já registado (ver
-   MEAL_SUGGESTION_DOCTRINE em coach-chat/index.ts). Preferido sempre que
-   existe; sem ele (sugestões antigas, anteriores a 2026-09-05, ou quando a
-   validação do modelo falhou), cai no objetivo diário do perfil — mesmo
-   comportamento de antes desta funcionalidade. */
+/* `mealMacros` (coach_plan_items.meal_macros) seria o cálculo real da
+   Carol para ESTA sugestão — mas a geração desse campo foi REVERTIDA em
+   coach-chat/index.ts no dia do deploy (2026-09-05: o schema aninhado
+   fazia a API de function calling do Gemini rejeitar TODAS as mensagens
+   ao Coach com 400, ver specs/plano-de-treino.md). meal_macros fica
+   sempre null/ausente na prática — este componente e a coluna na BD
+   ficam dormentes de propósito (não removidos, para retomar mais tarde
+   com um schema mais raso) em vez de arrancados; por isso cai sempre no
+   objetivo diário do perfil, o mesmo comportamento de antes desta
+   funcionalidade. */
 function MacroRings({ profile, mealMacros }) {
   const proteinGoal = mealMacros?.protein_g ?? (profile?.protein_goal || DEFAULT_PROTEIN_GOAL);
   const carbsGoal = mealMacros?.carbs_g ?? (profile?.carbs_goal || DEFAULT_CARBS_GOAL);
