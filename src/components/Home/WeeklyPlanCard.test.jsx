@@ -215,8 +215,8 @@ describe('computeAcceptedWindow', () => {
 describe('PlanDayCard — sugestão alimentar', () => {
   // 2026-09-05: item.meal_macros (coach_plan_items.meal_macros) traz o
   // cálculo REAL da Carol para esta sugestão — alimentos/gramas concretos
-  // por trás do texto generalizado (ver MEAL_SUGGESTION_DOCTRINE em
-  // coach-chat/index.ts). Os testes abaixo cobrem os dois caminhos: COM
+  // por trás do texto generalizado (ver MEAL_MACROS_SCHEMA_PROPERTIES e
+  // buildMealMacros em coach-chat/index.ts). Os testes abaixo cobrem os dois caminhos: COM
   // meal_macros (novo — anéis reais + lista de refeições com ícone lucide)
   // e SEM (sugestões antigas ou validação do modelo falhada — cai no
   // objetivo do perfil + texto corrido via CoachText, comportamento de
@@ -328,6 +328,22 @@ describe('PlanDayCard — sugestão alimentar', () => {
       />
     );
     expect(document.querySelector('.wpc-meal-indicator')).toBeInTheDocument();
+  });
+
+  it('com meal_macros mas SEM meal_suggestion (dia de treino, texto não obrigatório): mostra a caixa na mesma', () => {
+    // Só dias de descanso exigem meal_suggestion/notes na Edge Function
+    // (coach-chat/index.ts) — um dia de treino pode ter meal_items/macros
+    // válidos sem texto corrido nenhum. A caixa não pode ficar escondida
+    // só porque meal_suggestion veio vazio.
+    render(
+      <PlanDayCard
+        {...dayProps()}
+        items={[item({ kind: 'corrida', meal_macros: mealMacros })]}
+      />
+    );
+    expect(screen.getByText('Sugestão alimentar e nutricional')).toBeInTheDocument();
+    expect(screen.getByText('2150')).toBeInTheDocument();
+    expect(screen.getByText('Pequeno-almoço')).toBeInTheDocument();
   });
 });
 
