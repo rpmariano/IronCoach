@@ -259,7 +259,8 @@ fazer isto"*.
 
 | Alteração | Porquê |
 |---|---|
-| `coach_plan_items.meal_suggestion text` | Texto livre, não macros estruturadas. O enquadramento decidido é **sugestão educativa, nunca prescrição**; um campo numérico convidaria a app a tratá-lo como meta, que é exatamente o que não pode acontecer. As metas do dia continuam a sair de `planAffectsDay()`. |
+| `coach_plan_items.meal_suggestion text` | Texto sempre generalizado por categoria/quantidade redonda — o enquadramento **sugestão educativa, nunca prescrição** mantém-se. As metas do dia continuam a sair de `planAffectsDay()`; isto não muda. |
+| `coach_plan_items.meal_macros jsonb` (2026-09-05) | Decisão revista: o texto continua livre e generalizado, mas por trás dele a Carol calcula kcal/macros reais (alimentos/gramas concretos, nunca escritos em prosa), alinhados ao objetivo diário do perfil menos o já registado nesse dia. Alimenta os anéis de macro do cartão do dia (`WeeklyPlanCard.jsx`) com a estimativa real da sugestão em vez do objetivo diário genérico. Nulo para sugestões anteriores a esta data ou quando a validação do modelo falha — o frontend cai então no objetivo diário do perfil. Ver `MEAL_SUGGESTION_DOCTRINE` em `coach-chat/index.ts`. |
 | `kind` passa a aceitar `'descanso'` | Um dia sem treino pode ter sugestão alimentar (véspera de longão, recuperação). Sem este valor não havia onde a pendurar. Não afeta nutrição — `planAffectsDay()` exige `kind='corrida'`. |
 
 Um item `descanso` sem `meal_suggestion` **nem** `notes` é rejeitado na Edge

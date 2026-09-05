@@ -119,6 +119,74 @@ const RUN_TRAINING_TYPES = [
   "intervalos", "subidas", "trail", "tecnico",
 ];
 
+// Tipos de refeição da sugestão alimentar estruturada — usados tanto no
+// schema das tools abaixo como no frontend (src/components/Home/
+// WeeklyPlanCard.jsx, MEAL_ICON_BY_TIPO). As keys têm de bater certo dos
+// dois lados; mudar aqui sem mudar lá parte os ícones por refeição.
+const MEAL_TYPES: [string, string][] = [
+  ["pequeno_almoco", "Pequeno-almoço"],
+  ["lanche_manha", "Lanche da manhã"],
+  ["almoco", "Almoço"],
+  ["lanche_tarde", "Lanche da tarde"],
+  ["jantar", "Jantar"],
+  ["ceia", "Ceia"],
+];
+const MEAL_TYPE_KEYS = MEAL_TYPES.map(([k]) => k);
+const MEAL_TYPE_LABELS: Record<string, string> = Object.fromEntries(MEAL_TYPES);
+
+// Doutrina partilhada por PROPOSE_PLAN_TOOL.meal_suggestion e
+// SAVE_MEALS_TOOL.meal — histórico 2026-09-05: o atleta via macros exatos
+// ("Total: ~2150 kcal | Proteína: 130g | ...") no texto, o que a doutrina
+// anterior proibia explicitamente (specs/plano-de-treino.md §nutrição,
+// "um campo numérico convidaria a app a tratá-lo como meta"). Decisão
+// revista: o CÁLCULO interno continua preciso (alimentos e gramas
+// concretos, dos quais dá para derivar kcal/macros reais), mas o TEXTO
+// mostrado ao atleta mantém-se sempre generalizado por categoria — só os
+// campos estimated_kcal/estimated_protein_g/... (fora do texto, nunca
+// escritos em prosa) carregam os números.
+const MEAL_SUGGESTION_DOCTRINE =
+  "Pensa internamente em alimentos e quantidades CONCRETOS para conseguires calcular kcal/macros reais " +
+  "(ex.: 150g de peito de frango grelhado + 50g de brócolos + 50g de cenoura salteada) — mas o texto de " +
+  "cada refeição (`items[].description`) generaliza sempre isso por CATEGORIA de alimento e quantidade " +
+  "redonda, NUNCA o alimento exato nem números de macros (ex.: \"150g de carne de aves + 100g de " +
+  "vegetais\", não \"150g de peito de frango + 50g de brócolos + 50g de cenoura\"). É a mesma base de " +
+  "cálculo, só o texto transmitido ao atleta é que fica simples — não é uma prescrição de precisão. " +
+  "Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa (ovos, aves, peixe, iogurte " +
+  "skyr/grego, arroz, batata, aveia, leguminosas, fruta, vegetais) e REPETE-OS de dia para dia — o " +
+  "atleta não pode sentir que precisa de ir às compras por um ingrediente novo todos os dias; isso cria " +
+  "atrito e abandono, não adesão. " +
+  "Os quatro estimated_* têm de somar o dia inteiro e ficar alinhados ao objetivo diário de macros do " +
+  "atleta (perfil) MENOS o que ele já registou nesse dia (ver refeições registadas no contexto) — nunca " +
+  "o objetivo diário inteiro outra vez se ele já comeu hoje — e ajustados à carga de treino do dia (mais " +
+  "hidratos em dia de treino exigente). Sem objetivo de macros definido no perfil, estima com base em " +
+  "peso/nível/objetivo do atleta como farias para qualquer recomendação nutricional.";
+
+// Forma comum do OBJECT meal_suggestion/meal nas duas tools de escrita.
+const MEAL_SUGGESTION_SCHEMA_PROPERTIES = {
+  items: {
+    type: "ARRAY",
+    description:
+      "Uma entrada por refeição do dia (Pequeno-almoço, Almoço, Jantar — as outras só se fizerem " +
+      "sentido nesse dia). Mínimo 2 refeições.",
+    items: {
+      type: "OBJECT",
+      properties: {
+        meal_type: { type: "STRING", enum: MEAL_TYPE_KEYS, description: "Qual refeição do dia." },
+        description: {
+          type: "STRING",
+          description: "Texto generalizado por categoria de alimento e quantidade redonda — ver doutrina acima.",
+        },
+      },
+      required: ["meal_type", "description"],
+    },
+    minItems: 2,
+  },
+  estimated_kcal: { type: "NUMBER", description: "Total de kcal do dia inteiro, calculado a partir dos alimentos concretos pensados internamente." },
+  estimated_protein_g: { type: "NUMBER", description: "Total de proteína (g) do dia inteiro." },
+  estimated_carbs_g: { type: "NUMBER", description: "Total de hidratos de carbono (g) do dia inteiro." },
+  estimated_fat_g: { type: "NUMBER", description: "Total de gordura (g) do dia inteiro." },
+};
+
 // Ferramenta de ESCRITA — as três acima só leem. Grava um plano de treino em
 // coach_plans/coach_plan_items com status 'proposto'; o atleta aceita ou
 // recusa depois, no cliente. Sem isto, o coach recomendaria treinos em prosa
@@ -208,19 +276,11 @@ const PROPOSE_PLAN_TOOL = {
                 "\"6km bem lentos, sem pressa nenhuma\" (recuperacao).",
             },
             meal_suggestion: {
-              type: "STRING",
+              type: "OBJECT",
               description:
                 "Sugestão alimentar OBRIGATÓRIA para todos os dias do plano, independentemente da carga do treino. " +
-                "Percorre as refeições do dia (Pequeno-almoço, Almoço, Lanche, Jantar — Ceia só se fizer sentido), mas por " +
-                "CATEGORIA de alimento e quantidade redonda, NUNCA um cardápio de precisão a listar macros exatos por " +
-                "refeição: \"Pequeno-almoço: omelete de 2 ovos + fatia de pão. Almoço: 150g de peixe/frango + 100g de " +
-                "arroz/batata + vegetais à vontade. Lanche: 150g de iogurte skyr + fruta. Jantar: 150g de proteína + " +
-                "leguminosas ou hidratos + vegetais.\" Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa " +
-                "(ovos, frango, peixe fresco ou em lata, iogurte skyr/grego, arroz, batata, aveia, leguminosas, fruta, " +
-                "vegetais) e REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às compras por um " +
-                "ingrediente novo todos os dias; isso cria atrito e abandono, não adesão. Adequa as quantidades (não o " +
-                "cardápio inteiro) ao treino do dia — mais hidratos em dia de treino exigente, sem variar os alimentos-base. " +
-                "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares.",
+                MEAL_SUGGESTION_DOCTRINE,
+              properties: MEAL_SUGGESTION_SCHEMA_PROPERTIES,
             },
           },
           required: ["planned_date", "kind"],
@@ -292,15 +352,9 @@ const SAVE_MEALS_TOOL = {
           properties: {
             date: { type: "STRING", description: "Data no formato YYYY-MM-DD." },
             meal: {
-              type: "STRING",
-              description:
-                "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
-                "(pequeno-almoço, almoço, jantar e snacks se relevantes), por CATEGORIA de " +
-                "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
-                "iogurte skyr\"), não um cardápio de precisão. Reutiliza alimentos comuns de dia " +
-                "para dia — não exijas ingredientes novos a cada sugestão, isso obriga o atleta a " +
-                "ir às compras constantemente e gera atrito, não adesão. Racional nutricional " +
-                "breve. 2-4 frases no total.",
+              type: "OBJECT",
+              description: "Sugestão alimentar para o dia inteiro. " + MEAL_SUGGESTION_DOCTRINE,
+              properties: MEAL_SUGGESTION_SCHEMA_PROPERTIES,
             },
           },
           required: ["date", "meal"],
@@ -1471,6 +1525,64 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
   return `Corridas de ${start_date} a ${end_date} (${data.length}):\n${summariseRuns(data).join("\n")}`;
 }
 
+// Valida e achata a sugestão alimentar estruturada (MEAL_SUGGESTION_SCHEMA_
+// PROPERTIES) que o modelo devolve em propose_training_plan/items[].
+// meal_suggestion e save_meal_suggestions/suggestions[].meal.
+//
+// `text` é a versão simplificada em prosa — o que SEMPRE existiu na coluna
+// coach_plan_items.meal_suggestion, para os ~10 sítios deste ficheiro que já
+// a leem (memória da Carol, cruzamento com registos, etc.) continuarem a
+// funcionar sem qualquer alteração. `macros` é o campo novo (coach_
+// plan_items.meal_macros), null se a validação falhar — nunca bloqueia a
+// gravação do resto por causa dos números; degrada para o comportamento
+// anterior a esta funcionalidade (frontend cai no objetivo diário do
+// perfil).
+//
+// Aceita também uma string simples (formato antigo) por segurança — se o
+// modelo alguma vez devolver o formato pré-migração antes da cache do
+// prompt renovar, ou numa function call antiga em retry.
+// deno-lint-ignore no-explicit-any
+export function normalizeMealSuggestion(raw: any): { text: string | null; macros: Record<string, unknown> | null } {
+  if (raw == null) return { text: null, macros: null };
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return { text: trimmed || null, macros: null };
+  }
+  if (typeof raw !== "object") return { text: null, macros: null };
+
+  const rawItems = Array.isArray(raw.items) ? raw.items : [];
+  const validItems: { tipo: string; texto: string }[] = [];
+  for (const it of rawItems) {
+    if (!it || typeof it !== "object") continue;
+    const tipo = String(it.meal_type ?? "").trim();
+    const texto = String(it.description ?? "").trim();
+    if (!MEAL_TYPE_KEYS.includes(tipo) || !texto) continue;
+    validItems.push({ tipo, texto });
+  }
+  if (validItems.length === 0) return { text: null, macros: null };
+
+  const text = validItems.map((i) => `${MEAL_TYPE_LABELS[i.tipo]}: ${i.texto}`).join(" ");
+
+  const kcal = Number(raw.estimated_kcal);
+  const protein = Number(raw.estimated_protein_g);
+  const carbs = Number(raw.estimated_carbs_g);
+  const fat = Number(raw.estimated_fat_g);
+  const macrosValid = [kcal, protein, carbs, fat].every((n) => Number.isFinite(n) && n >= 0);
+
+  return {
+    text,
+    macros: macrosValid
+      ? {
+        items: validItems,
+        kcal: Math.round(kcal),
+        protein_g: Math.round(protein),
+        carbs_g: Math.round(carbs),
+        fat_g: Math.round(fat),
+      }
+      : null,
+  };
+}
+
 // Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
 // e o limite trava uma resposta descontrolada do modelo a criar dezenas de
 // linhas na base de dados.
@@ -1512,9 +1624,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (item.kind === "corrida" && item.training_type && !RUN_TRAINING_TYPES.includes(item.training_type)) {
       return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${RUN_TRAINING_TYPES.join(", ")}.`;
     }
-    const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
-      ? item.meal_suggestion.trim()
-      : null;
+    const { text: mealSuggestion, macros: mealMacros } = normalizeMealSuggestion(item.meal_suggestion);
     const itemNotes = typeof item.notes === "string" && item.notes.trim() ? item.notes.trim() : null;
     // Um dia de descanso sem sugestão nem nota não tem nada para mostrar — só
     // ocuparia uma linha vazia no plano. Rejeitar aqui ensina o modelo a não
@@ -1541,6 +1651,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       target_duration_min: isTraining && duration > 0 ? Math.round(duration) : null,
       notes: itemNotes,
       meal_suggestion: mealSuggestion,
+      meal_macros: mealMacros,
     });
   }
 
@@ -1808,11 +1919,12 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
   };
 
   const saved: string[] = [];
-  const outside: { date: string; meal: string }[] = [];
+  const outside: { date: string; text: string; macros: Record<string, unknown> | null }[] = [];
 
   for (const s of suggestions) {
     const { date, meal } = s || {};
-    if (!date || !meal) continue;
+    const { text, macros } = normalizeMealSuggestion(meal);
+    if (!date || !text) continue;
     const match = await planForDate(date);
 
     if (match) {
@@ -1823,7 +1935,7 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
         // a ele, nunca cria um segundo item para o mesmo dia.
         const { error: upErr } = await sb
           .from("coach_plan_items")
-          .update({ meal_suggestion: meal })
+          .update({ meal_suggestion: text, meal_macros: macros })
           .eq("id", match.existingItemId);
         if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
       } else {
@@ -1834,13 +1946,14 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
           user_id: userId,
           planned_date: date,
           kind: "descanso",
-          meal_suggestion: meal,
+          meal_suggestion: text,
+          meal_macros: macros,
         });
         if (insErr) return `Erro ao inserir sugestão para ${date}: ${insErr.message}`;
       }
       saved.push(date);
     } else {
-      outside.push({ date, meal });
+      outside.push({ date, text, macros });
     }
   }
 
@@ -1870,7 +1983,8 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
       user_id: userId,
       planned_date: o.date,
       kind: "descanso",
-      meal_suggestion: o.meal,
+      meal_suggestion: o.text,
+      meal_macros: o.macros,
     }));
     const { error: itemsErr } = await sb.from("coach_plan_items").insert(items);
     if (itemsErr) return `Erro ao inserir itens de sugestão: ${itemsErr.message}`;

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Salad, StickyNote, Clock, Flag, MessageCircle
+  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
@@ -22,6 +22,18 @@ const DEFAULT_CALORIE_GOAL = 2000;
 const DEFAULT_PROTEIN_GOAL = 150;
 const DEFAULT_CARBS_GOAL = 200;
 const DEFAULT_FAT_GOAL = 70;
+
+// Tipo de refeição → ícone lucide. As keys têm de bater certo com
+// MEAL_TYPES em supabase/functions/coach-chat/index.ts — mudar aqui sem
+// mudar lá parte os ícones (fica sem ícone, não crasha).
+const MEAL_ICON_BY_TIPO = {
+  pequeno_almoco: Sunrise, lanche_manha: Apple, almoco: Salad,
+  lanche_tarde: Cherry, jantar: UtensilsCrossed, ceia: Coffee,
+};
+const MEAL_LABEL_BY_TIPO = {
+  pequeno_almoco: 'Pequeno-almoço', lanche_manha: 'Lanche da manhã', almoco: 'Almoço',
+  lanche_tarde: 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
+};
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
 
@@ -149,29 +161,38 @@ function macroGoalShares(proteinGoal, carbsGoal, fatGoal) {
   return { proteina: p / sum, hidratos: h / sum, gordura: g / sum, kcalFromMacros: Math.round(sum) };
 }
 
-function MacroRings({ profile }) {
-  const proteinGoal = profile?.protein_goal || DEFAULT_PROTEIN_GOAL;
-  const carbsGoal = profile?.carbs_goal || DEFAULT_CARBS_GOAL;
-  const fatGoal = profile?.fat_goal || DEFAULT_FAT_GOAL;
+/* `mealMacros` (coach_plan_items.meal_macros) é o cálculo real da Carol
+   para ESTA sugestão — alimentos/gramas concretos por trás do texto
+   generalizado, alinhados ao objetivo diário menos o já registado (ver
+   MEAL_SUGGESTION_DOCTRINE em coach-chat/index.ts). Preferido sempre que
+   existe; sem ele (sugestões antigas, anteriores a 2026-09-05, ou quando a
+   validação do modelo falhou), cai no objetivo diário do perfil — mesmo
+   comportamento de antes desta funcionalidade. */
+function MacroRings({ profile, mealMacros }) {
+  const proteinGoal = mealMacros?.protein_g ?? (profile?.protein_goal || DEFAULT_PROTEIN_GOAL);
+  const carbsGoal = mealMacros?.carbs_g ?? (profile?.carbs_goal || DEFAULT_CARBS_GOAL);
+  const fatGoal = mealMacros?.fat_g ?? (profile?.fat_goal || DEFAULT_FAT_GOAL);
   const shares = macroGoalShares(proteinGoal, carbsGoal, fatGoal);
-  // calorie_goal é anulável (migration make_goals_nullable) — sem ele, deriva
-  // das metas de macro em vez de cair no default fixo, para o número de kcal
-  // nunca contradizer o que os três anéis já mostram.
-  const calorieGoal = profile?.calorie_goal || shares.kcalFromMacros || DEFAULT_CALORIE_GOAL;
+  // calorie_goal é anulável (migration make_goals_nullable) — sem ele (e
+  // sem mealMacros.kcal), deriva das metas de macro em vez de cair no
+  // default fixo, para o número de kcal nunca contradizer os três anéis.
+  const calorieGoal = mealMacros?.kcal ?? (profile?.calorie_goal || shares.kcalFromMacros || DEFAULT_CALORIE_GOAL);
+  const label = mealMacros ? 'Estimativa desta sugestão' : 'Objetivo diário de calorias';
+  const legend = mealMacros ? 'anel = % da energia desta sugestão' : 'anel = % da energia do objetivo diário';
   return (
     <>
       <div className="wpc-nutri-total">
         <div className="wpc-nutri-total-value">
           <span>{calorieGoal}</span><small>kcal</small>
         </div>
-        <div className="wpc-nutri-total-label">Objetivo diário de calorias</div>
+        <div className="wpc-nutri-total-label">{label}</div>
       </div>
       <div className="wpc-macro-rings">
         <MacroRing grams={proteinGoal} share={shares.proteina} color="var(--data-proteina-ink)" label="Proteína" />
         <MacroRing grams={carbsGoal} share={shares.hidratos} color="var(--data-hidratos-ink)" label="Hidratos" />
         <MacroRing grams={fatGoal} share={shares.gordura} color="var(--data-gordura-ink)" label="Gordura" />
       </div>
-      <div className="wpc-nutri-ring-legend">anel = % da energia do objetivo diário</div>
+      <div className="wpc-nutri-ring-legend">{legend}</div>
     </>
   );
 }
@@ -314,27 +335,47 @@ export function PlanDayCard({
                         <ChevronDown size={14} className="details-chevron" />
                       </summary>
 
-                      {/* Anéis mostram o OBJETIVO de macros do perfil — não os
-                          da sugestão em si. O Coach escreve por categoria de
-                          alimento e quantidade redonda, nunca macros exatos
-                          (ver coach-chat/index.ts, doutrina de
-                          meal_suggestion/save_meal_suggestions), por isso não
-                          há números fiáveis a extrair daqui. A adesão REAL às
-                          metas já é calculada noutro sítio a partir do que o
-                          atleta regista de refeições (computeMacroAdherence). */}
+                      {/* Anéis mostram os números REAIS da sugestão (item.
+                          meal_macros — cálculo da Carol a partir de
+                          alimentos/gramas concretos, alinhado ao objetivo
+                          diário menos o já registado nesse dia). Sem isso
+                          (sugestões anteriores a 2026-09-05, ou validação
+                          do modelo falhou), cai no objetivo do perfil —
+                          ver MacroRings. */}
                       <div className="wpc-nutri-body">
-                        <MacroRings profile={profile} />
+                        <MacroRings profile={profile} mealMacros={item.meal_macros} />
                       </div>
 
-                      {/* Sem "text-slate-700"/"text-sm"/"font-normal" do
-                          Tailwind aqui — competiam em especificidade com a
-                          cor clara de .wpc-info-box-text (tema escuro do
-                          cartão) e venciam por virem depois no CSS
-                          compilado, deixando o texto cinzento-escuro quase
-                          invisível sobre o fundo escuro. */}
-                      <div className="wpc-info-box-text mt-2" style={{ whiteSpace: 'pre-wrap' }}>
-                        <CoachText>{item.meal_suggestion}</CoachText>
-                      </div>
+                      {item.meal_macros?.items?.length > 0 ? (
+                        <div className="wpc-nutri-meals mt-2">
+                          {item.meal_macros.items.map((r, idx) => {
+                            const Icon = MEAL_ICON_BY_TIPO[r.tipo];
+                            const principal = ['pequeno_almoco', 'almoco', 'jantar'].includes(r.tipo);
+                            return (
+                              <div className="wpc-nutri-meal-row" key={`${r.tipo}-${idx}`}>
+                                <span className={`wpc-nutri-meal-icon ${principal ? 'is-main' : ''}`}>
+                                  {Icon && <Icon size={18} />}
+                                </span>
+                                <div>
+                                  <div className="wpc-nutri-meal-name">{MEAL_LABEL_BY_TIPO[r.tipo] || r.tipo}</div>
+                                  <p className="wpc-nutri-meal-text">{r.texto}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        // Sugestão sem estrutura (antiga, ou a Carol não
+                        // conseguiu calcular macros válidos) — cai no texto
+                        // corrido de sempre. Sem "text-slate-700"/"text-sm"/
+                        // "font-normal" do Tailwind aqui: competiam em
+                        // especificidade com a cor clara de .wpc-info-box-text
+                        // (tema escuro) e venciam por virem depois no CSS
+                        // compilado, deixando o texto quase invisível.
+                        <div className="wpc-info-box-text mt-2" style={{ whiteSpace: 'pre-wrap' }}>
+                          <CoachText>{item.meal_suggestion}</CoachText>
+                        </div>
+                      )}
 
                       <p className="wpc-info-box-disclaimer mt-2">
                         Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de

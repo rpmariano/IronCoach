@@ -646,6 +646,11 @@ create table if not exists coach_plan_items (
   -- Sugestão alimentar do dia, em texto livre. Educativa, nunca prescritiva
   -- — ver specs/coach-investigacao.md, Bloco 7. Não altera as metas do dia.
   meal_suggestion text,
+  -- Cálculo estruturado (kcal/macros) por trás de meal_suggestion — nulo
+  -- para sugestões antigas ou quando a validação do modelo falha. Forma:
+  -- {items:[{tipo,texto}], kcal, protein_g, carbs_g, fat_g}. Ver migration
+  -- 20260905120000_meal_macros.sql.
+  meal_macros jsonb,
   meal_status text not null default 'pendente' check (meal_status in ('pendente', 'seguida', 'nao_seguida')),
   status text not null default 'pendente' check (status in ('pendente', 'concluido', 'cancelado')),
   actual_date date,
