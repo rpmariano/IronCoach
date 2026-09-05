@@ -119,6 +119,58 @@ const RUN_TRAINING_TYPES = [
   "intervalos", "subidas", "trail", "tecnico",
 ];
 
+// Tipos de refeição da estimativa de macros opcional (meal_items) — usados
+// tanto no schema das tools abaixo como no frontend (src/components/Home/
+// WeeklyPlanCard.jsx, MEAL_ICON_BY_TIPO). Hífen: convenção partilhada com
+// analyze-meal/index.ts MEAL_TYPES (specs/PRD.md documenta um incidente
+// real de produção causado por underscore em 2 dos 6 tipos).
+const MEAL_TYPE_KEYS = ["pequeno-almoco", "lanche-manha", "almoco", "lanche-tarde", "jantar", "ceia"];
+
+// meal_items[]/meal_estimated_* — campos IRMÃOS de meal_suggestion/meal
+// (não aninhados dentro de um OBJECT à parte), opcionais. Adicionados
+// 2026-09-05 depois de um incidente real: uma primeira tentativa colocava
+// isto dentro de um OBJECT meal_suggestion (STRING -> OBJECT), e esse
+// nesting extra (ARRAY->OBJECT->OBJECT->ARRAY->OBJECT) fazia a API de
+// function calling do Gemini devolver 400 INVALID_ARGUMENT em QUALQUER
+// mensagem ao Coach — as tools vão todas em cada chamada, independente da
+// que o modelo escolhe. Esta forma (campos soltos ao lado de
+// meal_suggestion, mesma profundidade do items[]/suggestions[] de topo
+// que já funcionava) foi validada diretamente contra a API do Gemini
+// antes de voltar a produção — ver specs/plano-de-treino.md.
+const MEAL_MACROS_SCHEMA_PROPERTIES = {
+  meal_items: {
+    type: "ARRAY",
+    description:
+      "OPCIONAL — só quando também quiseres dar uma estimativa de kcal/macros (ver os 4 campos " +
+      "meal_estimated_* abaixo). Uma entrada por refeição, alinhada ao texto correspondente em " +
+      "meal_suggestion/meal (mesma categoria/quantidade, não repitas alimento exato aqui se não o " +
+      "puseste lá). Mínimo 2 refeições — sem isto, não preencher nenhum dos 4 campos numéricos.",
+    items: {
+      type: "OBJECT",
+      properties: {
+        meal_type: { type: "STRING", enum: MEAL_TYPE_KEYS, description: "Qual refeição do dia." },
+        description: { type: "STRING", description: "Categoria de alimento e quantidade redonda, igual ao espírito do texto principal." },
+      },
+      required: ["meal_type", "description"],
+    },
+    minItems: 2,
+    maxItems: MEAL_TYPE_KEYS.length,
+  },
+  meal_estimated_kcal: {
+    type: "NUMBER",
+    description:
+      "OPCIONAL, só junto com meal_items preenchido. Total de kcal do dia inteiro. Pensa " +
+      "internamente em alimentos e gramas concretos para calculares isto com precisão (mesmo que " +
+      "o texto de meal_suggestion/meal fique generalizado por categoria) — alinha ao objetivo " +
+      "diário de macros do perfil MENOS o já registado nesse dia (ver refeições registadas no " +
+      "contexto), e ajusta à carga de treino do dia. Sem objetivo de macros no perfil, estima com " +
+      "base em peso/nível/objetivo do atleta.",
+  },
+  meal_estimated_protein_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de proteína (g) do dia inteiro." },
+  meal_estimated_carbs_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de hidratos de carbono (g) do dia inteiro." },
+  meal_estimated_fat_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de gordura (g) do dia inteiro." },
+};
+
 // Ferramenta de ESCRITA — as três acima só leem. Grava um plano de treino em
 // coach_plans/coach_plan_items com status 'proposto'; o atleta aceita ou
 // recusa depois, no cliente. Sem isto, o coach recomendaria treinos em prosa
@@ -222,6 +274,7 @@ const PROPOSE_PLAN_TOOL = {
                 "cardápio inteiro) ao treino do dia — mais hidratos em dia de treino exigente, sem variar os alimentos-base. " +
                 "É uma SUGESTÃO EDUCATIVA, nunca prescrição. Respeita restrições alimentares.",
             },
+            ...MEAL_MACROS_SCHEMA_PROPERTIES,
           },
           required: ["planned_date", "kind"],
         },
@@ -302,6 +355,7 @@ const SAVE_MEALS_TOOL = {
                 "ir às compras constantemente e gera atrito, não adesão. Racional nutricional " +
                 "breve. 2-4 frases no total.",
             },
+            ...MEAL_MACROS_SCHEMA_PROPERTIES,
           },
           required: ["date", "meal"],
         },
@@ -1471,6 +1525,53 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
   return `Corridas de ${start_date} a ${end_date} (${data.length}):\n${summariseRuns(data).join("\n")}`;
 }
 
+// Valida e monta a estimativa opcional de macros (MEAL_MACROS_SCHEMA_
+// PROPERTIES: meal_items[] + meal_estimated_*) a partir do item/sugestão
+// bruto que o modelo devolveu. Completamente independente da extração do
+// TEXTO de meal_suggestion/meal (essa nunca muda, é sempre a string
+// simples de sempre) — uma falha aqui nunca impede a gravação do texto,
+// só deixa meal_macros null (o frontend cai no objetivo do perfil).
+// deno-lint-ignore no-explicit-any
+export function buildMealMacros(raw: any): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const rawItems = Array.isArray(raw.meal_items) ? raw.meal_items : [];
+  const validItems: { tipo: string; texto: string }[] = [];
+  for (const it of rawItems) {
+    if (!it || typeof it !== "object") continue;
+    const tipo = String(it.meal_type ?? "").trim();
+    const texto = String(it.description ?? "").trim();
+    if (!MEAL_TYPE_KEYS.includes(tipo) || !texto) continue;
+    validItems.push({ tipo, texto });
+  }
+  if (validItems.length === 0) return null;
+
+  // Se algum item foi descartado (meal_type inválido, descrição vazia), o
+  // total meal_estimated_* já não corresponde ao que sobrou — mais seguro
+  // não confiar nele do que mostrar um número desalinhado da lista visível.
+  const noneDropped = validItems.length === rawItems.length;
+  const enoughItems = validItems.length >= 2; // schema pede minItems:2
+
+  // `!= null` em vez de Number(x) direto: um campo explicitamente `null`
+  // não pode contar como "0 válido" — tem de ser tratado como em falta.
+  const hasAllFields = ["meal_estimated_kcal", "meal_estimated_protein_g", "meal_estimated_carbs_g", "meal_estimated_fat_g"]
+    .every((k) => raw[k] != null);
+  const kcal = Number(raw.meal_estimated_kcal);
+  const protein = Number(raw.meal_estimated_protein_g);
+  const carbs = Number(raw.meal_estimated_carbs_g);
+  const fat = Number(raw.meal_estimated_fat_g);
+  const macrosValid = hasAllFields && [kcal, protein, carbs, fat].every((n) => Number.isFinite(n) && n >= 0);
+
+  if (!noneDropped || !enoughItems || !macrosValid) return null;
+  return {
+    items: validItems,
+    kcal: Math.round(kcal),
+    protein_g: Math.round(protein),
+    carbs_g: Math.round(carbs),
+    fat_g: Math.round(fat),
+  };
+}
+
 // Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
 // e o limite trava uma resposta descontrolada do modelo a criar dezenas de
 // linhas na base de dados.
@@ -1541,6 +1642,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       target_duration_min: isTraining && duration > 0 ? Math.round(duration) : null,
       notes: itemNotes,
       meal_suggestion: mealSuggestion,
+      meal_macros: buildMealMacros(item),
     });
   }
 
@@ -1808,11 +1910,12 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
   };
 
   const saved: string[] = [];
-  const outside: { date: string; meal: string }[] = [];
+  const outside: { date: string; meal: string; mealMacros: Record<string, unknown> | null }[] = [];
 
   for (const s of suggestions) {
     const { date, meal } = s || {};
     if (!date || !meal) continue;
+    const mealMacros = buildMealMacros(s);
     const match = await planForDate(date);
 
     if (match) {
@@ -1823,7 +1926,7 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
         // a ele, nunca cria um segundo item para o mesmo dia.
         const { error: upErr } = await sb
           .from("coach_plan_items")
-          .update({ meal_suggestion: meal })
+          .update({ meal_suggestion: meal, meal_macros: mealMacros })
           .eq("id", match.existingItemId);
         if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
       } else {
@@ -1835,12 +1938,13 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
           planned_date: date,
           kind: "descanso",
           meal_suggestion: meal,
+          meal_macros: mealMacros,
         });
         if (insErr) return `Erro ao inserir sugestão para ${date}: ${insErr.message}`;
       }
       saved.push(date);
     } else {
-      outside.push({ date, meal });
+      outside.push({ date, meal, mealMacros });
     }
   }
 
@@ -1871,6 +1975,7 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
       planned_date: o.date,
       kind: "descanso",
       meal_suggestion: o.meal,
+      meal_macros: o.mealMacros,
     }));
     const { error: itemsErr } = await sb.from("coach_plan_items").insert(items);
     if (itemsErr) return `Erro ao inserir itens de sugestão: ${itemsErr.message}`;
