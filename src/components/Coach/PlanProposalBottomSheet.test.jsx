@@ -39,7 +39,43 @@ describe('PlanProposalBottomSheet', () => {
     expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
   });
 
+  it('anéis de macros de uma sugestão alimentar sem meal_macros usam as metas reais do perfil, não os defaults (regressão: profile não chegava ao PlanDayCard)', () => {
+    const itemWithLegacyMeal = {
+      id: 'item-meal',
+      plan_id: 'plan-1',
+      planned_date: '2026-08-15',
+      kind: 'corrida',
+      training_type: 'continuo',
+      target_distance_km: 5,
+      status: 'pendente',
+      meal_suggestion: 'Foca-te em hidratos antes do treino.',
+      // sem meal_macros: sugestão antiga ou validação de macros da Gemini falhou
+    };
+    const profileWithCustomGoals = {
+      calorie_goal: 2600,
+      protein_goal: 180,
+      carbs_goal: 260,
+      fat_goal: 95,
+    };
 
+    render(
+      <PlanProposalBottomSheet
+        plan={mockPlan}
+        items={[itemWithLegacyMeal]}
+        profile={profileWithCustomGoals}
+        onRespondPlan={() => {}}
+        onClose={() => {}}
+      />
+    );
+
+    // O cartão do dia começa fechado — expande para revelar a sugestão alimentar.
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes do dia 1' }));
+
+    expect(screen.getByText('180')).toBeInTheDocument(); // proteína real do perfil
+    expect(screen.getByText('2600')).toBeInTheDocument(); // calorias reais do perfil
+    expect(screen.queryByText('150')).not.toBeInTheDocument(); // DEFAULT_PROTEIN_GOAL não deve aparecer
+    expect(screen.queryByText('2000')).not.toBeInTheDocument(); // DEFAULT_CALORIE_GOAL não deve aparecer
+  });
 
   it('fecha o modal com animação ao clicar no botão de cruz (X)', async () => {
     const onClose = vi.fn();
