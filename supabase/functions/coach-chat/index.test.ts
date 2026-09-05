@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -538,6 +538,99 @@ Deno.test("uma sugestão alimentar em branco fica null, não string vazia", asyn
     items: [{ planned_date: "2026-08-16", kind: "corrida", meal_suggestion: "   " }],
   });
   assertEquals(calls.itemInserts[0].meal_suggestion, null);
+});
+
+// ─── estimativa opcional de macros (2026-09-05, retomada depois do incidente
+// do mesmo dia) ──────────────────────────────────────────────────────────
+// meal_items[]/meal_estimated_* são campos IRMÃOS de meal_suggestion — não
+// aninhados dentro dele — validados diretamente contra a API real do
+// Gemini antes de voltar a produção (schema-test-temp, ver
+// specs/plano-de-treino.md). meal_suggestion (texto) é sempre extraído
+// exatamente como antes, independente disto.
+
+const VALID_MEAL_ITEMS = [
+  { meal_type: "pequeno-almoco", description: "2 ovos + fatia de pão" },
+  { meal_type: "almoco", description: "150g de carne de aves + 100g de vegetais" },
+  { meal_type: "jantar", description: "150g de peixe + batata + salada" },
+];
+const VALID_MEAL_MACROS_RAW = {
+  meal_items: VALID_MEAL_ITEMS,
+  meal_estimated_kcal: 2150,
+  meal_estimated_protein_g: 130,
+  meal_estimated_carbs_g: 240,
+  meal_estimated_fat_g: 65,
+};
+
+Deno.test("buildMealMacros: forma válida dá items achatados + macros", () => {
+  const macros = buildMealMacros(VALID_MEAL_MACROS_RAW);
+  assertEquals(macros, {
+    items: [
+      { tipo: "pequeno-almoco", texto: "2 ovos + fatia de pão" },
+      { tipo: "almoco", texto: "150g de carne de aves + 100g de vegetais" },
+      { tipo: "jantar", texto: "150g de peixe + batata + salada" },
+    ],
+    kcal: 2150,
+    protein_g: 130,
+    carbs_g: 240,
+    fat_g: 65,
+  });
+});
+
+Deno.test("buildMealMacros: sem meal_items (formato antigo, só texto) dá null sem rebentar", () => {
+  assertEquals(buildMealMacros({}), null);
+  assertEquals(buildMealMacros(null), null);
+  assertEquals(buildMealMacros({ meal_items: [] }), null);
+});
+
+Deno.test("buildMealMacros: meal_type desconhecido é descartado e anula os macros (total já não bate certo)", () => {
+  const macros = buildMealMacros({
+    meal_items: [
+      { meal_type: "brunch_chique", description: "inválido" },
+      { meal_type: "almoco", description: "150g de peixe" },
+      { meal_type: "jantar", description: "150g de carne" },
+    ],
+    meal_estimated_kcal: 500, meal_estimated_protein_g: 30, meal_estimated_carbs_g: 40, meal_estimated_fat_g: 15,
+  });
+  assertEquals(macros, null);
+});
+
+Deno.test("buildMealMacros: menos de 2 refeições válidas não confia no total", () => {
+  const macros = buildMealMacros({
+    meal_items: [{ meal_type: "jantar", description: "150g de peixe" }],
+    meal_estimated_kcal: 500, meal_estimated_protein_g: 30, meal_estimated_carbs_g: 40, meal_estimated_fat_g: 15,
+  });
+  assertEquals(macros, null);
+});
+
+Deno.test("buildMealMacros: campo estimated_* explicitamente null não conta como 0 válido", () => {
+  const macros = buildMealMacros({ ...VALID_MEAL_MACROS_RAW, meal_estimated_protein_g: null });
+  assertEquals(macros, null);
+});
+
+Deno.test("runProposeTrainingPlan: grava meal_macros ao lado de meal_suggestion (texto inalterado)", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{
+      planned_date: "2026-08-16",
+      kind: "descanso",
+      meal_suggestion: "Pequeno-almoço: 2 ovos. Almoço: frango. Jantar: peixe.",
+      ...VALID_MEAL_MACROS_RAW,
+    }],
+  });
+  // Texto extraído exatamente como sempre — independente de meal_items.
+  assertEquals(calls.itemInserts[0].meal_suggestion, "Pequeno-almoço: 2 ovos. Almoço: frango. Jantar: peixe.");
+  assertEquals(calls.itemInserts[0].meal_macros?.kcal, 2150);
+});
+
+Deno.test("runProposeTrainingPlan: sem meal_items, meal_macros fica null mas o texto grava na mesma", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-16", kind: "descanso", meal_suggestion: "Come bem hoje." }],
+  });
+  assertEquals(calls.itemInserts[0].meal_suggestion, "Come bem hoje.");
+  assertEquals(calls.itemInserts[0].meal_macros, null);
 });
 
 Deno.test("aceita um dia de descanso que traga sugestão alimentar", async () => {
@@ -1394,6 +1487,28 @@ Deno.test("save_meal_suggestions: cria item descanso quando não existe item no 
   assertEquals(inserted?.kind, "descanso");
   assertEquals(inserted?.user_id, "u1");
   assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
+});
+
+Deno.test("save_meal_suggestions: grava meal_macros quando a sugestão traz meal_items ao lado de meal", async () => {
+  const { sb, calls } = makeMealsSb({
+    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
+    existingItem: null,
+  });
+  const result = await runSaveMealSuggestions(sb, "u1", {
+    suggestions: [{
+      date: "2026-08-13",
+      meal: "Almoço: peixe. Jantar: frango.",
+      meal_items: [
+        { meal_type: "almoco", description: "150g de peixe + arroz" },
+        { meal_type: "jantar", description: "150g de carne de aves + vegetais" },
+      ],
+      meal_estimated_kcal: 1800, meal_estimated_protein_g: 120, meal_estimated_carbs_g: 180, meal_estimated_fat_g: 55,
+    }],
+  });
+  assertStringIncludes(result, "gravadas");
+  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
+  assertEquals(inserted?.meal_suggestion, "Almoço: peixe. Jantar: frango.");
+  assertEquals(inserted?.meal_macros?.kcal, 1800);
 });
 
 Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano ativo", async () => {

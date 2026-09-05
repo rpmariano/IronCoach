@@ -24,15 +24,16 @@ const DEFAULT_CARBS_GOAL = 200;
 const DEFAULT_FAT_GOAL = 70;
 
 // Tipo de refeição → ícone lucide. As keys têm de bater certo com
-// MEAL_TYPES em supabase/functions/coach-chat/index.ts — mudar aqui sem
-// mudar lá parte os ícones (fica sem ícone, não crasha).
+// MEAL_TYPE_KEYS em supabase/functions/coach-chat/index.ts — mudar aqui
+// sem mudar lá deixa a refeição sem ícone (fallback silencioso, não
+// crasha), mas não faz sentido.
 const MEAL_ICON_BY_TIPO = {
   'pequeno-almoco': Sunrise, 'lanche-manha': Apple, almoco: Salad,
-  'lanche-tarde': Cherry, jantar: UtensilsCrossed, ceia: Coffee,
+  lanche: Cherry, jantar: UtensilsCrossed, ceia: Coffee,
 };
 const MEAL_LABEL_BY_TIPO = {
   'pequeno-almoco': 'Pequeno-almoço', 'lanche-manha': 'Lanche da manhã', almoco: 'Almoço',
-  'lanche-tarde': 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
+  lanche: 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
 };
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -164,10 +165,14 @@ function macroGoalShares(proteinGoal, carbsGoal, fatGoal) {
 /* `mealMacros` (coach_plan_items.meal_macros) é o cálculo real da Carol
    para ESTA sugestão — alimentos/gramas concretos por trás do texto
    generalizado, alinhados ao objetivo diário menos o já registado (ver
-   MEAL_SUGGESTION_DOCTRINE em coach-chat/index.ts). Preferido sempre que
-   existe; sem ele (sugestões antigas, anteriores a 2026-09-05, ou quando a
-   validação do modelo falhou), cai no objetivo diário do perfil — mesmo
-   comportamento de antes desta funcionalidade. */
+   MEAL_MACROS_SCHEMA_PROPERTIES/buildMealMacros em coach-chat/index.ts).
+   Opcional e pode faltar (sugestões antigas, anteriores a 2026-09-05, ou
+   quando o modelo não o preencheu/a validação falhou) — nesse caso cai
+   no objetivo diário do perfil, o mesmo comportamento de antes desta
+   funcionalidade. Histórico: uma 1ª tentativa no mesmo dia aninhava isto
+   dentro de um OBJECT meal_suggestion à parte e isso partiu o chat
+   inteiro (400 do Gemini) — esta forma usa campos irmãos, mais rasos,
+   validados contra a API real antes do redeploy (specs/plano-de-treino.md). */
 function MacroRings({ profile, mealMacros }) {
   const proteinGoal = mealMacros?.protein_g ?? (profile?.protein_goal || DEFAULT_PROTEIN_GOAL);
   const carbsGoal = mealMacros?.carbs_g ?? (profile?.carbs_goal || DEFAULT_CARBS_GOAL);
@@ -217,7 +222,11 @@ export function PlanDayCard({
   const d = new Date(dateISO + 'T00:00:00');
   const dayLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-  const hasMeal = items.some(i => i.meal_suggestion);
+  // meal_macros pode vir válido sem meal_suggestion (dia de treino, texto
+  // não obrigatório — ver a mesma condição na caixa expandida abaixo) — o
+  // indicador da linha fechada tem de acompanhar, senão o atleta não sabe
+  // que há sugestão nutricional sem abrir o dia.
+  const hasMeal = items.some(i => i.meal_suggestion || i.meal_macros);
   const empty = items.length === 0;
 
   // Um dia vazio não abre — não há detalhe nenhum por trás dele.
@@ -325,7 +334,12 @@ export function PlanDayCard({
                   </div>
                 )}
 
-                {item.meal_suggestion && (
+                {/* meal_macros é opcional e pode vir preenchido sem
+                    meal_suggestion (só dias de descanso exigem
+                    meal_suggestion/notes na Edge Function — ver
+                    coach-chat/index.ts) — não esconder macros válidos só
+                    porque o texto corrido ficou vazio. */}
+                {(item.meal_suggestion || item.meal_macros) && (
                   <div className="wpc-info-box" style={{ marginTop: '12px' }}>
                     <details className="wpc-info-box-details">
                       <summary className="wpc-info-box-header nutri" style={{ cursor: 'pointer', outline: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

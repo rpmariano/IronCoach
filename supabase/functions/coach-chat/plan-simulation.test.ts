@@ -366,6 +366,44 @@ Deno.test("PERCURSO E2: repetir num dia SEM treino também não duplica o item d
   assertEquals(doDia[0].meal_suggestion, "Segunda.");
 });
 
+Deno.test("PERCURSO E3: repetir sem meal_items preserva os macros já gravados (não apaga com null)", async () => {
+  const { sb, db } = createFakeDb();
+  await runProposeTrainingPlan(sb, USER, trainingPlan());
+  accept(db, db.coach_plans[0].id);
+
+  // meal_items/meal_estimated_* são OPCIONAIS em cada chamada, ao contrário
+  // de `meal` (sempre obrigatório) — bug real 2026-09-05: uma chamada
+  // seguinte sem meal_items sobrescrevia meal_macros com null mesmo sem
+  // intenção nenhuma de apagar a estimativa.
+  await runSaveMealSuggestions(sb, USER, {
+    suggestions: [{
+      date: plus(2),
+      meal: "Frango com arroz e brócolos.",
+      meal_items: [
+        { meal_type: "almoco", description: "150g de carne de aves cozida com 100g de vegetais." },
+        { meal_type: "jantar", description: "150g de peixe grelhado com 100g de arroz." },
+      ],
+      meal_estimated_kcal: 1800,
+      meal_estimated_protein_g: 140,
+      meal_estimated_carbs_g: 180,
+      meal_estimated_fat_g: 50,
+    }],
+  });
+
+  const before = db.coach_plan_items.find((i) => i.planned_date === plus(2));
+  assert(before!.meal_macros, "esperava meal_macros gravado na primeira chamada");
+  assertEquals(before!.meal_macros.kcal, 1800);
+
+  // Pedido seguinte só para afinar o texto — não traz meal_items.
+  await runSaveMealSuggestions(sb, USER, {
+    suggestions: [{ date: plus(2), meal: "Só ajusta o tempero, mantém o resto." }],
+  });
+
+  const after = db.coach_plan_items.find((i) => i.planned_date === plus(2));
+  assertEquals(after!.meal_suggestion, "Só ajusta o tempero, mantém o resto.");
+  assertEquals(after!.meal_macros, before!.meal_macros, "meal_macros não pode ser apagado por uma chamada sem meal_items");
+});
+
 // ─── PERCURSO F: o contexto que o Coach vê a seguir ──────────────────────
 
 Deno.test("PERCURSO F: depois de aceitar, o contexto do Coach mostra o plano como ATIVO, não pendente", async () => {
