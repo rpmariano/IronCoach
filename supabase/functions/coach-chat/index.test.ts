@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, normalizeMealSuggestion, type BodyAssessmentRow } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, type BodyAssessmentRow } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -538,113 +538,6 @@ Deno.test("uma sugestão alimentar em branco fica null, não string vazia", asyn
     items: [{ planned_date: "2026-08-16", kind: "corrida", meal_suggestion: "   " }],
   });
   assertEquals(calls.itemInserts[0].meal_suggestion, null);
-});
-
-// ─── sugestão alimentar estruturada (2026-09-05) ────────────────────────────
-// meal_suggestion passou de string livre a { items: [{meal_type, description}],
-// estimated_kcal, estimated_protein_g, estimated_carbs_g, estimated_fat_g } —
-// texto continua generalizado (o que sempre esteve em meal_suggestion), os
-// números ficam à parte em meal_macros. Ver MEAL_SUGGESTION_DOCTRINE.
-
-const VALID_STRUCTURED_MEAL = {
-  items: [
-    { meal_type: "pequeno-almoco", description: "2 ovos + fatia de pão" },
-    { meal_type: "almoco", description: "150g de carne de aves + 100g de vegetais" },
-    { meal_type: "jantar", description: "150g de peixe + batata + salada" },
-  ],
-  estimated_kcal: 2150,
-  estimated_protein_g: 130,
-  estimated_carbs_g: 240,
-  estimated_fat_g: 65,
-};
-
-Deno.test("normalizeMealSuggestion: formato estruturado válido dá texto achatado + macros", () => {
-  const { text, macros } = normalizeMealSuggestion(VALID_STRUCTURED_MEAL);
-  assertEquals(
-    text,
-    "Pequeno-almoço: 2 ovos + fatia de pão Almoço: 150g de carne de aves + 100g de vegetais Jantar: 150g de peixe + batata + salada",
-  );
-  assertEquals(macros, {
-    items: [
-      { tipo: "pequeno-almoco", texto: "2 ovos + fatia de pão" },
-      { tipo: "almoco", texto: "150g de carne de aves + 100g de vegetais" },
-      { tipo: "jantar", texto: "150g de peixe + batata + salada" },
-    ],
-    kcal: 2150,
-    protein_g: 130,
-    carbs_g: 240,
-    fat_g: 65,
-  });
-});
-
-Deno.test("normalizeMealSuggestion: string simples (formato antigo) continua a funcionar", () => {
-  const { text, macros } = normalizeMealSuggestion("  Ao pequeno-almoço, 80 g de aveia com banana.  ");
-  assertEquals(text, "Ao pequeno-almoço, 80 g de aveia com banana.");
-  assertEquals(macros, null);
-});
-
-Deno.test("normalizeMealSuggestion: null/undefined/vazio dá null nos dois", () => {
-  assertEquals(normalizeMealSuggestion(null), { text: null, macros: null });
-  assertEquals(normalizeMealSuggestion(undefined), { text: null, macros: null });
-  assertEquals(normalizeMealSuggestion({ items: [] }), { text: null, macros: null });
-});
-
-Deno.test("normalizeMealSuggestion: meal_type desconhecido é ignorado no texto, mas anula os macros (o total já não bate certo com o que sobrou)", () => {
-  const { text, macros } = normalizeMealSuggestion({
-    items: [
-      { meal_type: "brunch_chique", description: "não é um tipo válido" },
-      { meal_type: "almoco", description: "150g de peixe" },
-      { meal_type: "jantar", description: "150g de carne" },
-    ],
-    estimated_kcal: 500, estimated_protein_g: 30, estimated_carbs_g: 40, estimated_fat_g: 15,
-  });
-  // O texto sobrevive com as refeições válidas — não depende dos macros.
-  assertEquals(text, "Almoço: 150g de peixe Jantar: 150g de carne");
-  // Mas os 500kcal/30g/... eram o total para os 3 items originais,
-  // incluindo o "brunch_chique" descartado — já não correspondem ao que
-  // ficou visível (2 refeições). Mais seguro cair no objetivo do perfil.
-  assertEquals(macros, null);
-});
-
-Deno.test("normalizeMealSuggestion: menos de 2 refeições válidas não confia no total do dia", () => {
-  const { text, macros } = normalizeMealSuggestion({
-    items: [{ meal_type: "jantar", description: "150g de peixe" }],
-    estimated_kcal: 500, estimated_protein_g: 30, estimated_carbs_g: 40, estimated_fat_g: 15,
-  });
-  assertEquals(text, "Jantar: 150g de peixe");
-  assertEquals(macros, null);
-});
-
-Deno.test("normalizeMealSuggestion: macros inválidos/em falta não bloqueiam o texto — só ficam null", () => {
-  const { text, macros } = normalizeMealSuggestion({
-    items: VALID_STRUCTURED_MEAL.items,
-    estimated_kcal: 2150,
-    // proteína em falta — não dá para confiar no conjunto.
-  });
-  assertEquals(text, "Pequeno-almoço: 2 ovos + fatia de pão Almoço: 150g de carne de aves + 100g de vegetais Jantar: 150g de peixe + batata + salada");
-  assertEquals(macros, null);
-});
-
-Deno.test("normalizeMealSuggestion: estimated_protein_g explicitamente null não conta como 0g válido", () => {
-  const { macros } = normalizeMealSuggestion({
-    items: VALID_STRUCTURED_MEAL.items,
-    estimated_kcal: 2150, estimated_protein_g: null, estimated_carbs_g: 240, estimated_fat_g: 65,
-  });
-  assertEquals(macros, null);
-});
-
-Deno.test("runProposeTrainingPlan grava meal_macros junto da sugestão estruturada", async () => {
-  const { sb, calls } = makePlanSb();
-  await runProposeTrainingPlan(sb, "user-1", {
-    ...VALID_PLAN,
-    items: [{ planned_date: "2026-08-16", kind: "descanso", meal_suggestion: VALID_STRUCTURED_MEAL }],
-  });
-  assertEquals(
-    calls.itemInserts[0].meal_suggestion,
-    "Pequeno-almoço: 2 ovos + fatia de pão Almoço: 150g de carne de aves + 100g de vegetais Jantar: 150g de peixe + batata + salada",
-  );
-  assertEquals(calls.itemInserts[0].meal_macros?.kcal, 2150);
-  assertEquals(calls.itemInserts[0].meal_macros?.protein_g, 130);
 });
 
 Deno.test("aceita um dia de descanso que traga sugestão alimentar", async () => {
@@ -1501,29 +1394,6 @@ Deno.test("save_meal_suggestions: cria item descanso quando não existe item no 
   assertEquals(inserted?.kind, "descanso");
   assertEquals(inserted?.user_id, "u1");
   assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
-});
-
-Deno.test("save_meal_suggestions: grava meal_macros junto da sugestão estruturada", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: null,
-  });
-  const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{
-      date: "2026-08-13",
-      meal: {
-        items: [
-          { meal_type: "almoco", description: "150g de peixe + arroz" },
-          { meal_type: "jantar", description: "150g de carne de aves + vegetais" },
-        ],
-        estimated_kcal: 1800, estimated_protein_g: 120, estimated_carbs_g: 180, estimated_fat_g: 55,
-      },
-    }],
-  });
-  assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
-  assertEquals(inserted?.meal_suggestion, "Almoço: 150g de peixe + arroz Jantar: 150g de carne de aves + vegetais");
-  assertEquals(inserted?.meal_macros?.kcal, 1800);
 });
 
 Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano ativo", async () => {
