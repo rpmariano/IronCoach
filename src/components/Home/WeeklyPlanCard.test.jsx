@@ -330,6 +330,20 @@ describe('PlanDayCard — sugestão alimentar', () => {
     expect(document.querySelector('.wpc-meal-indicator')).toBeInTheDocument();
   });
 
+  it('mostra o indicador na linha fechada mesmo sem meal_suggestion, se houver meal_macros', () => {
+    // Achado do hook de pre-push: a caixa expandida já abre só com
+    // meal_macros, mas o indicador da linha fechada (hasMeal) tinha
+    // ficado só a olhar para meal_suggestion — o atleta não saberia que
+    // havia sugestão nutricional sem abrir o dia.
+    render(
+      <PlanDayCard
+        {...dayProps({ expanded: false })}
+        items={[item({ kind: 'corrida', meal_macros: mealMacros })]}
+      />
+    );
+    expect(document.querySelector('.wpc-meal-indicator')).toBeInTheDocument();
+  });
+
   it('com meal_macros mas SEM meal_suggestion (dia de treino, texto não obrigatório): mostra a caixa na mesma', () => {
     // Só dias de descanso exigem meal_suggestion/notes na Edge Function
     // (coach-chat/index.ts) — um dia de treino pode ter meal_items/macros

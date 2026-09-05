@@ -222,7 +222,11 @@ export function PlanDayCard({
   const d = new Date(dateISO + 'T00:00:00');
   const dayLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 
-  const hasMeal = items.some(i => i.meal_suggestion);
+  // meal_macros pode vir válido sem meal_suggestion (dia de treino, texto
+  // não obrigatório — ver a mesma condição na caixa expandida abaixo) — o
+  // indicador da linha fechada tem de acompanhar, senão o atleta não sabe
+  // que há sugestão nutricional sem abrir o dia.
+  const hasMeal = items.some(i => i.meal_suggestion || i.meal_macros);
   const empty = items.length === 0;
 
   // Um dia vazio não abre — não há detalhe nenhum por trás dele.
