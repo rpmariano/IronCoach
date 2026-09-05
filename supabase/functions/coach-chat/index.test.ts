@@ -548,7 +548,7 @@ Deno.test("uma sugestão alimentar em branco fica null, não string vazia", asyn
 
 const VALID_STRUCTURED_MEAL = {
   items: [
-    { meal_type: "pequeno_almoco", description: "2 ovos + fatia de pão" },
+    { meal_type: "pequeno-almoco", description: "2 ovos + fatia de pão" },
     { meal_type: "almoco", description: "150g de carne de aves + 100g de vegetais" },
     { meal_type: "jantar", description: "150g de peixe + batata + salada" },
   ],
@@ -566,7 +566,7 @@ Deno.test("normalizeMealSuggestion: formato estruturado válido dá texto achata
   );
   assertEquals(macros, {
     items: [
-      { tipo: "pequeno_almoco", texto: "2 ovos + fatia de pão" },
+      { tipo: "pequeno-almoco", texto: "2 ovos + fatia de pão" },
       { tipo: "almoco", texto: "150g de carne de aves + 100g de vegetais" },
       { tipo: "jantar", texto: "150g de peixe + batata + salada" },
     ],
@@ -589,16 +589,30 @@ Deno.test("normalizeMealSuggestion: null/undefined/vazio dá null nos dois", () 
   assertEquals(normalizeMealSuggestion({ items: [] }), { text: null, macros: null });
 });
 
-Deno.test("normalizeMealSuggestion: meal_type desconhecido é ignorado, resto sobrevive", () => {
+Deno.test("normalizeMealSuggestion: meal_type desconhecido é ignorado no texto, mas anula os macros (o total já não bate certo com o que sobrou)", () => {
   const { text, macros } = normalizeMealSuggestion({
     items: [
       { meal_type: "brunch_chique", description: "não é um tipo válido" },
-      { meal_type: "jantar", description: "150g de peixe" },
+      { meal_type: "almoco", description: "150g de peixe" },
+      { meal_type: "jantar", description: "150g de carne" },
     ],
     estimated_kcal: 500, estimated_protein_g: 30, estimated_carbs_g: 40, estimated_fat_g: 15,
   });
+  // O texto sobrevive com as refeições válidas — não depende dos macros.
+  assertEquals(text, "Almoço: 150g de peixe Jantar: 150g de carne");
+  // Mas os 500kcal/30g/... eram o total para os 3 items originais,
+  // incluindo o "brunch_chique" descartado — já não correspondem ao que
+  // ficou visível (2 refeições). Mais seguro cair no objetivo do perfil.
+  assertEquals(macros, null);
+});
+
+Deno.test("normalizeMealSuggestion: menos de 2 refeições válidas não confia no total do dia", () => {
+  const { text, macros } = normalizeMealSuggestion({
+    items: [{ meal_type: "jantar", description: "150g de peixe" }],
+    estimated_kcal: 500, estimated_protein_g: 30, estimated_carbs_g: 40, estimated_fat_g: 15,
+  });
   assertEquals(text, "Jantar: 150g de peixe");
-  assertEquals(macros?.items, [{ tipo: "jantar", texto: "150g de peixe" }]);
+  assertEquals(macros, null);
 });
 
 Deno.test("normalizeMealSuggestion: macros inválidos/em falta não bloqueiam o texto — só ficam null", () => {
@@ -608,6 +622,14 @@ Deno.test("normalizeMealSuggestion: macros inválidos/em falta não bloqueiam o 
     // proteína em falta — não dá para confiar no conjunto.
   });
   assertEquals(text, "Pequeno-almoço: 2 ovos + fatia de pão Almoço: 150g de carne de aves + 100g de vegetais Jantar: 150g de peixe + batata + salada");
+  assertEquals(macros, null);
+});
+
+Deno.test("normalizeMealSuggestion: estimated_protein_g explicitamente null não conta como 0g válido", () => {
+  const { macros } = normalizeMealSuggestion({
+    items: VALID_STRUCTURED_MEAL.items,
+    estimated_kcal: 2150, estimated_protein_g: null, estimated_carbs_g: 240, estimated_fat_g: 65,
+  });
   assertEquals(macros, null);
 });
 

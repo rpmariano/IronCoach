@@ -27,12 +27,12 @@ const DEFAULT_FAT_GOAL = 70;
 // MEAL_TYPES em supabase/functions/coach-chat/index.ts — mudar aqui sem
 // mudar lá parte os ícones (fica sem ícone, não crasha).
 const MEAL_ICON_BY_TIPO = {
-  pequeno_almoco: Sunrise, lanche_manha: Apple, almoco: Salad,
-  lanche_tarde: Cherry, jantar: UtensilsCrossed, ceia: Coffee,
+  'pequeno-almoco': Sunrise, 'lanche-manha': Apple, almoco: Salad,
+  'lanche-tarde': Cherry, jantar: UtensilsCrossed, ceia: Coffee,
 };
 const MEAL_LABEL_BY_TIPO = {
-  pequeno_almoco: 'Pequeno-almoço', lanche_manha: 'Lanche da manhã', almoco: 'Almoço',
-  lanche_tarde: 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
+  'pequeno-almoco': 'Pequeno-almoço', 'lanche-manha': 'Lanche da manhã', almoco: 'Almoço',
+  'lanche-tarde': 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia',
 };
 
 /* Plano do atleta no ecrã Início. Ver specs/plano-de-treino.md e
@@ -350,7 +350,7 @@ export function PlanDayCard({
                         <div className="wpc-nutri-meals mt-2">
                           {item.meal_macros.items.map((r, idx) => {
                             const Icon = MEAL_ICON_BY_TIPO[r.tipo];
-                            const principal = ['pequeno_almoco', 'almoco', 'jantar'].includes(r.tipo);
+                            const principal = ['pequeno-almoco', 'almoco', 'jantar'].includes(r.tipo);
                             return (
                               <div className="wpc-nutri-meal-row" key={`${r.tipo}-${idx}`}>
                                 <span className={`wpc-nutri-meal-icon ${principal ? 'is-main' : ''}`}>

@@ -124,10 +124,10 @@ const RUN_TRAINING_TYPES = [
 // WeeklyPlanCard.jsx, MEAL_ICON_BY_TIPO). As keys têm de bater certo dos
 // dois lados; mudar aqui sem mudar lá parte os ícones por refeição.
 const MEAL_TYPES: [string, string][] = [
-  ["pequeno_almoco", "Pequeno-almoço"],
-  ["lanche_manha", "Lanche da manhã"],
+  ["pequeno-almoco", "Pequeno-almoço"],
+  ["lanche-manha", "Lanche da manhã"],
   ["almoco", "Almoço"],
-  ["lanche_tarde", "Lanche da tarde"],
+  ["lanche-tarde", "Lanche da tarde"],
   ["jantar", "Jantar"],
   ["ceia", "Ceia"],
 ];
@@ -180,6 +180,12 @@ const MEAL_SUGGESTION_SCHEMA_PROPERTIES = {
       required: ["meal_type", "description"],
     },
     minItems: 2,
+    // Só há 6 tipos de refeição possíveis (MEAL_TYPE_KEYS) — sem isto, o
+    // ficheiro já teve um incidente real de meal_suggestion verbosa a
+    // estourar maxOutputTokens (ver comentário mais abaixo, subida de
+    // 4000→8192), e SAVE_MEALS_TOOL.suggestions já usa o mesmo padrão
+    // (minItems/maxItems) ao lado.
+    maxItems: MEAL_TYPE_KEYS.length,
   },
   estimated_kcal: { type: "NUMBER", description: "Total de kcal do dia inteiro, calculado a partir dos alimentos concretos pensados internamente." },
   estimated_protein_g: { type: "NUMBER", description: "Total de proteína (g) do dia inteiro." },
@@ -1563,15 +1569,31 @@ export function normalizeMealSuggestion(raw: any): { text: string | null; macros
 
   const text = validItems.map((i) => `${MEAL_TYPE_LABELS[i.tipo]}: ${i.texto}`).join(" ");
 
+  // estimated_* são o total para TODOS os items que o modelo devolveu — se
+  // algum foi descartado aqui (meal_type inválido, descrição vazia), o
+  // total deixa de corresponder ao que fica visível em `text`/`items`. Mais
+  // seguro cair no objetivo do perfil (o frontend trata macros:null assim)
+  // do que mostrar um número que já não bate certo com a lista à vista. O
+  // texto em si não depende disto — sobrevive com os items válidos.
+  const noneDropped = validItems.length === rawItems.length;
+  // O schema pede minItems:2 — um resultado com só 1 refeição válida não é
+  // "completo" o suficiente para confiar no total do dia inteiro.
+  const enoughItems = validItems.length >= 2;
+
+  // `!= null` em vez de Number(x) direto: um `estimated_protein_g: null`
+  // explícito não pode contar como "0g de proteína válidos" — tem de ser
+  // tratado como campo em falta, não como valor real.
+  const hasAllFields = ["estimated_kcal", "estimated_protein_g", "estimated_carbs_g", "estimated_fat_g"]
+    .every((k) => raw[k] != null);
   const kcal = Number(raw.estimated_kcal);
   const protein = Number(raw.estimated_protein_g);
   const carbs = Number(raw.estimated_carbs_g);
   const fat = Number(raw.estimated_fat_g);
-  const macrosValid = [kcal, protein, carbs, fat].every((n) => Number.isFinite(n) && n >= 0);
+  const macrosValid = hasAllFields && [kcal, protein, carbs, fat].every((n) => Number.isFinite(n) && n >= 0);
 
   return {
     text,
-    macros: macrosValid
+    macros: (noneDropped && enoughItems && macrosValid)
       ? {
         items: validItems,
         kcal: Math.round(kcal),

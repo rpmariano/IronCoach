@@ -226,7 +226,7 @@ describe('PlanDayCard — sugestão alimentar', () => {
 
   const mealMacros = {
     items: [
-      { tipo: 'pequeno_almoco', texto: '2 ovos + fatia de pão' },
+      { tipo: 'pequeno-almoco', texto: '2 ovos + fatia de pão' },
       { tipo: 'almoco', texto: '150g de peixe + arroz + vegetais' },
       { tipo: 'jantar', texto: '150g de proteína + hidratos + vegetais' },
     ],
