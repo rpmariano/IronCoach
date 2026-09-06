@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2738,4 +2738,43 @@ Deno.test("schema das tools: o caso E continua a ser o único que envia save_mea
     const has = namesFor(kind).includes("save_meal_suggestions");
     assertEquals(has, kind === "E", `caso ${kind}: save_meal_suggestions presente=${has}`);
   }
+});
+
+// ─── extractReplyText: o texto pode não vir na primeira parte ─────────────
+// Incidente 2026-09-05T17:48:22Z: o Gemini devolveu 200 com um functionCall
+// (mais thoughtSignature) e a função tratou como "resposta vazia" -> 502 ao
+// atleta. Antes lia-se parts[0].text; agora percorre-se todas as partes.
+const wrap = (parts: unknown[]) => ({ candidates: [{ content: { parts } }] });
+
+Deno.test("extractReplyText: texto na primeira parte (caso normal)", () => {
+  assertEquals(extractReplyText(wrap([{ text: "olá" }])), "olá");
+});
+
+Deno.test("extractReplyText: texto depois de uma functionCall na mesma resposta", () => {
+  assertEquals(
+    extractReplyText(wrap([{ functionCall: { name: "save_coach_note", args: {} } }, { text: "registei" }])),
+    "registei",
+  );
+});
+
+Deno.test("extractReplyText: parte de raciocínio antes do texto não esconde o texto", () => {
+  assertEquals(extractReplyText(wrap([{ thoughtSignature: "abc" }, { text: "resposta" }])), "resposta");
+});
+
+Deno.test("extractReplyText: só functionCall, sem texto nenhum -> undefined", () => {
+  assertEquals(
+    extractReplyText(wrap([{ functionCall: { name: "save_coach_note", args: {} }, thoughtSignature: "x" }])),
+    undefined,
+  );
+});
+
+Deno.test("extractReplyText: texto vazio ou só espaços não conta como resposta", () => {
+  assertEquals(extractReplyText(wrap([{ text: "   " }])), undefined);
+  assertEquals(extractReplyText(wrap([{ text: "" }, { text: "a sério" }])), "a sério");
+});
+
+Deno.test("extractReplyText: resposta malformada ou vazia não rebenta", () => {
+  assertEquals(extractReplyText(undefined), undefined);
+  assertEquals(extractReplyText({}), undefined);
+  assertEquals(extractReplyText(wrap([])), undefined);
 });

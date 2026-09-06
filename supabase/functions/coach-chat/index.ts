@@ -1598,6 +1598,21 @@ export function buildMealMacros(raw: any): Record<string, unknown> | null {
   };
 }
 
+// Texto da resposta final do modelo. Percorre TODAS as partes em vez de
+// assumir parts[0]: o gemini-3.8-flash devolve partes de raciocínio
+// (thoughtSignature) e pode pôr uma functionCall à frente do texto, e nesses
+// casos parts[0].text é undefined mesmo havendo texto logo a seguir — o que
+// dava um 502 "resposta vazia" com a resposta ali à mão. Ver o loop de
+// function calling e o incidente de 2026-09-05T17:48:22Z.
+// deno-lint-ignore no-explicit-any
+export function extractReplyText(geminiJson: any): string | undefined {
+  const parts: any[] = geminiJson?.candidates?.[0]?.content?.parts || [];
+  for (const p of parts) {
+    if (typeof p?.text === "string" && p.text.trim()) return p.text;
+  }
+  return undefined;
+}
+
 // Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
 // e o limite trava uma resposta descontrolada do modelo a criar dezenas de
 // linhas na base de dados.
@@ -4364,6 +4379,15 @@ async function handler(req: Request): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     const allowedTools = allowedToolsFor(turnCase);
 
+    // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
+    // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
+    // por trás do alias "-latest" nunca era registado, nem o caso de turno,
+    // nem que declarações tinham seguido — e é o caso de turno que decide
+    // quais seguem. Custa uma linha por chamada.
+    const toolsSent = buildTools(allowedTools)[0].functionDeclarations;
+    const toolNamesSent = toolsSent.map((t: { name: string }) => t.name);
+    const toolsBytes = JSON.stringify(buildTools(allowedTools)).length;
+
     // ── Loop de function calling ──────────────────────────────────────────
     // tools + response_schema coexistem: quando o modelo decide chamar uma
     // função devolve uma parte functionCall (ignora o schema), quando decide
@@ -4419,8 +4443,14 @@ async function handler(req: Request): Promise<Response> {
     let goalWasProposed = false;
 
     let geminiJson: Record<string, unknown> | undefined;
-    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const isLastAllowedRound = round === MAX_TOOL_ROUNDS;
+    // MAX_TOOL_ROUNDS rondas que EXECUTAM ferramentas, MAIS uma ronda final
+    // que serve só para recolher o texto. Antes a última ronda ainda oferecia
+    // ferramentas e, se o modelo pedisse uma em vez de responder, saía-se daqui
+    // com uma resposta sem texto: o atleta levava 502 "resposta vazia" E a
+    // escrita que o modelo tinha pedido perdia-se sem deixar rasto. Confirmado
+    // em produção a 2026-09-05T17:48:22Z (um save_coach_note engolido assim).
+    for (let round = 0; round <= MAX_TOOL_ROUNDS + 1; round++) {
+      const isFinalRound = round === MAX_TOOL_ROUNDS + 1;
       let geminiRes: Response;
       try {
         geminiRes = await callGemini();
@@ -4430,7 +4460,7 @@ async function handler(req: Request): Promise<Response> {
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
-        console.error("Gemini error:", geminiRes.status, errText);
+        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: toolNamesSent, toolsBytes }));
         if (geminiRes.status === 429) {
           return jsonResponse({
             error: "O coach atingiu o limite de pedidos da API neste momento. Tenta novamente dentro de alguns minutos.",
@@ -4452,7 +4482,19 @@ async function handler(req: Request): Promise<Response> {
       // deno-lint-ignore no-explicit-any
       const functionCalls = parts.filter((p) => p.functionCall);
 
-      if (functionCalls.length === 0 || isLastAllowedRound) {
+      console.log("coach-chat gemini", JSON.stringify({
+        round,
+        turnCase,
+        modelVersion: parsedRes?.modelVersion ?? null,
+        responseId: parsedRes?.responseId ?? null,
+        tools: toolNamesSent,
+        toolsBytes,
+        // deno-lint-ignore no-explicit-any
+        calls: functionCalls.map((p: any) => p.functionCall?.name),
+        hasText: Boolean(extractReplyText(parsedRes)),
+      }));
+
+      if (functionCalls.length === 0 || isFinalRound) {
         geminiJson = parsedRes;
         break;
       }
@@ -4498,9 +4540,7 @@ async function handler(req: Request): Promise<Response> {
       contents.push({ role: "user", parts: responseParts });
     }
 
-    const rawText: string | undefined =
-      // deno-lint-ignore no-explicit-any
-      (geminiJson as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const rawText = extractReplyText(geminiJson);
 
     if (!rawText) {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
