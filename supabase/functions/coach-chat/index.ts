@@ -4384,15 +4384,15 @@ async function handler(req: Request): Promise<Response> {
     // por trás do alias "-latest" nunca era registado, nem o caso de turno,
     // nem que declarações tinham seguido — e é o caso de turno que decide
     // quais seguem. Custa uma linha por chamada.
-    const toolsSent = buildTools(allowedTools)[0].functionDeclarations;
-    const toolNamesSent = toolsSent.map((t: { name: string }) => t.name);
-    const toolsBytes = JSON.stringify(buildTools(allowedTools)).length;
+    const toolsBlock = buildTools(allowedTools);
+    const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
+    const toolsBytes = JSON.stringify(toolsBlock).length;
 
     // ── Loop de function calling ──────────────────────────────────────────
     // tools + response_schema coexistem: quando o modelo decide chamar uma
     // função devolve uma parte functionCall (ignora o schema), quando decide
     // responder ao utilizador segue o schema {reply, suggestions} como sempre.
-    async function callGemini() {
+    async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
         {
@@ -4401,7 +4401,12 @@ async function handler(req: Request): Promise<Response> {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: finalSystemInstruction }] },
             contents,
-            tools: buildTools(allowedTools),
+            // Na ronda final isto fica de fora de propósito: sem ferramentas
+            // ao dispor, o modelo não pode responder com uma functionCall e é
+            // obrigado a produzir texto. Ver o loop abaixo. Verificado contra a
+            // API real (2026-09-06): um pedido sem tools cujo histórico já tem
+            // functionCall/functionResponse é aceite e devolve texto.
+            ...(withTools ? { tools: toolsBlock } : {}),
             generationConfig: {
               temperature: 0.7,
               // Sem thinkingConfig de propósito: o campo para desativar/limitar
@@ -4443,17 +4448,19 @@ async function handler(req: Request): Promise<Response> {
     let goalWasProposed = false;
 
     let geminiJson: Record<string, unknown> | undefined;
-    // MAX_TOOL_ROUNDS rondas que EXECUTAM ferramentas, MAIS uma ronda final
-    // que serve só para recolher o texto. Antes a última ronda ainda oferecia
-    // ferramentas e, se o modelo pedisse uma em vez de responder, saía-se daqui
-    // com uma resposta sem texto: o atleta levava 502 "resposta vazia" E a
-    // escrita que o modelo tinha pedido perdia-se sem deixar rasto. Confirmado
-    // em produção a 2026-09-05T17:48:22Z (um save_coach_note engolido assim).
-    for (let round = 0; round <= MAX_TOOL_ROUNDS + 1; round++) {
-      const isFinalRound = round === MAX_TOOL_ROUNDS + 1;
+    // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
+    // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
+    // o que o nome da constante sempre prometeu ("antes de forçar resposta
+    // final"). Antes a ronda final ainda oferecia ferramentas: se o modelo
+    // pedisse uma em vez de responder, saía-se daqui com uma resposta sem
+    // texto, o atleta levava 502 "resposta vazia" E a escrita pedida perdia-se
+    // sem deixar rasto. Confirmado em produção a 2026-09-05T17:48:22Z, um
+    // save_coach_note engolido exatamente assim.
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      const isFinalRound = round === MAX_TOOL_ROUNDS;
       let geminiRes: Response;
       try {
-        geminiRes = await callGemini();
+        geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha ao contactar o coach." }, 504);
       }
@@ -4500,6 +4507,13 @@ async function handler(req: Request): Promise<Response> {
       }
 
       // O modelo pediu dados — regista o turno e executa cada function call.
+      // `parts` vai VERBATIM, tal como veio da API, e tem de continuar assim:
+      // o gemini-3.8-flash EXIGE que cada functionCall reproduzida no
+      // histórico traga o thought_signature original. Confirmado contra a API
+      // real (2026-09-06): reconstruir a parte à mão, mesmo com name/args
+      // corretos, dá 400 INVALID_ARGUMENT — "Function call is missing a
+      // thought_signature in functionCall parts". Nunca filtrar, reordenar nem
+      // reconstruir estas partes.
       contents.push({ role: "model", parts });
       const responseParts = [];
       for (const p of functionCalls) {
