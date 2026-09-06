@@ -23,6 +23,24 @@ Nunca fazer `git checkout` para outra branch dentro desta pasta.
 4. Merge para `master` **apenas com autorização explícita e inequívoca** do utilizador, sempre um pedido fresco (não vale aprovação de sessões anteriores).
 5. Nunca correr `git commit`/`git push` diretamente em `master`.
 
+> **Não há staging para o backend.** O `.github/workflows/deploy-edge-functions.yml`
+> dispara em pushes a **`dev` E a `master`**, ambos contra o único projeto Supabase
+> real. Um push a `dev` que toque `supabase/functions/**` está a fazer deploy em
+> produção nesse instante — não é um ensaio. Consequências, todas verificadas no
+> incidente de 2026-09-05/06:
+>
+> - A tentativa falhada entrou em produção pelo push a `dev`, ~50 minutos antes do
+>   merge para `master` que foi tratado como o go-live.
+> - **`dev` e `master` nunca podem divergir num ficheiro de Edge Function**: seja qual
+>   for a branch que faça push por último, é essa que fica em produção. Depois de um
+>   revert de emergência ficaram divergentes, e qualquer push a `master` — mesmo sem
+>   relação nenhuma com o assunto — teria revertido o fix em silêncio.
+> - O frontend não tem este problema: o GitHub Pages só faz deploy de `master`.
+>
+> Isto não altera a regra do `master` (continua a exigir pedido fresco). Altera o
+> *risco* de um push a `dev`: verificar antes com o mesmo cuidado que se teria para
+> produção, porque é produção.
+
 Ver [[deploy-workflow-rules]] na memória para o detalhe completo desta regra.
 
 ## Servidor de desenvolvimento
