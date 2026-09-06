@@ -1552,6 +1552,12 @@ export function buildMealMacros(raw: any): Record<string, unknown> | null {
 
   const rawItems = Array.isArray(raw.meal_items) ? raw.meal_items : [];
   const validItems: { tipo: string; texto: string }[] = [];
+  // Um tipo de refeição repetido (dois "almoco") é uma lista incoerente: o
+  // cartão mostraria duas linhas "Almoço" e os totais teriam contado as duas.
+  // Trata-se como qualquer outro item descartado — via noneDropped, invalida
+  // a estimativa toda, que é a regra já usada aqui: nunca mostrar um número
+  // que não corresponda à lista visível.
+  const tiposVistos = new Set<string>();
   for (const it of rawItems) {
     if (!it || typeof it !== "object") continue;
     // typeof estrito em vez de String(x ?? "") coagido: um array de 1
@@ -1561,6 +1567,8 @@ export function buildMealMacros(raw: any): Record<string, unknown> | null {
     const tipo = it.meal_type.trim();
     const texto = it.description.trim();
     if (!MEAL_TYPE_KEYS.includes(tipo) || !texto) continue;
+    if (tiposVistos.has(tipo)) continue;
+    tiposVistos.add(tipo);
     validItems.push({ tipo, texto });
   }
 

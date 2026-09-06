@@ -2778,3 +2778,40 @@ Deno.test("extractReplyText: resposta malformada ou vazia não rebenta", () => {
   assertEquals(extractReplyText({}), undefined);
   assertEquals(extractReplyText(wrap([])), undefined);
 });
+
+// ─── buildMealMacros: tipo de refeição repetido ───────────────────────────
+// Achado do revisor de pre-push (2026-09-06): dois "almoco" passavam os dois,
+// dando duas linhas "Almoço" no cartão com totais que as contaram às duas.
+const macrosBase = {
+  meal_estimated_kcal: 2000,
+  meal_estimated_protein_g: 140,
+  meal_estimated_carbs_g: 220,
+  meal_estimated_fat_g: 60,
+};
+
+Deno.test("buildMealMacros: meal_type repetido invalida a estimativa (lista incoerente)", () => {
+  const out = buildMealMacros({
+    meal_items: [
+      { meal_type: "almoco", description: "150g de carne de aves com vegetais" },
+      { meal_type: "almoco", description: "150g de peixe com arroz" },
+      { meal_type: "jantar", description: "sopa e omelete" },
+    ],
+    ...macrosBase,
+  });
+  assertEquals(out, null);
+});
+
+Deno.test("buildMealMacros: tipos todos distintos continuam a passar", () => {
+  const out = buildMealMacros({
+    meal_items: [
+      { meal_type: "almoco", description: "150g de carne de aves com vegetais" },
+      { meal_type: "jantar", description: "150g de peixe com arroz" },
+    ],
+    ...macrosBase,
+  });
+  assertEquals(out?.items, [
+    { tipo: "almoco", texto: "150g de carne de aves com vegetais" },
+    { tipo: "jantar", texto: "150g de peixe com arroz" },
+  ]);
+  assertEquals(out?.kcal, 2000);
+});
