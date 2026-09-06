@@ -4467,7 +4467,7 @@ async function handler(req: Request): Promise<Response> {
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
-        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: toolNamesSent, toolsBytes }));
+        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
         if (geminiRes.status === 429) {
           return jsonResponse({
             error: "O coach atingiu o limite de pedidos da API neste momento. Tenta novamente dentro de alguns minutos.",
@@ -4494,8 +4494,10 @@ async function handler(req: Request): Promise<Response> {
         turnCase,
         modelVersion: parsedRes?.modelVersion ?? null,
         responseId: parsedRes?.responseId ?? null,
-        tools: toolNamesSent,
-        toolsBytes,
+        // ronda final vai sem ferramentas — o log tem de o mostrar, senão
+        // quem o ler no próximo incidente pensa que foram enviadas.
+        tools: isFinalRound ? [] : toolNamesSent,
+        toolsBytes: isFinalRound ? 0 : toolsBytes,
         // deno-lint-ignore no-explicit-any
         calls: functionCalls.map((p: any) => p.functionCall?.name),
         hasText: Boolean(extractReplyText(parsedRes)),
