@@ -141,10 +141,12 @@ const MEAL_MACROS_SCHEMA_PROPERTIES = {
   meal_items: {
     type: "ARRAY",
     description:
-      "OPCIONAL — só quando também quiseres dar uma estimativa de kcal/macros (ver os 4 campos " +
-      "meal_estimated_* abaixo). Uma entrada por refeição, alinhada ao texto correspondente em " +
-      "meal_suggestion/meal (mesma categoria/quantidade, não repitas alimento exato aqui se não o " +
-      "puseste lá). Mínimo 2 refeições — sem isto, não preencher nenhum dos 4 campos numéricos.",
+      "PREENCHE SEMPRE que preencheres meal_suggestion/meal — é isto que dá ao atleta os números " +
+      "reais da sugestão em vez do objetivo genérico do perfil. Uma entrada por refeição do dia, " +
+      "alinhada ao texto correspondente em meal_suggestion/meal (mesma categoria e quantidade; não " +
+      "introduzas aqui alimentos que não puseste lá). Mínimo 2 refeições, e preenche também os 4 " +
+      "campos meal_estimated_* abaixo — os 5 campos andam sempre juntos: se não conseguires calcular " +
+      "os totais com confiança, deixa os 5 vazios em vez de preencher só alguns.",
     items: {
       type: "OBJECT",
       properties: {
@@ -169,16 +171,16 @@ const MEAL_MACROS_SCHEMA_PROPERTIES = {
   meal_estimated_kcal: {
     type: "NUMBER",
     description:
-      "OPCIONAL, só junto com meal_items preenchido. Total de kcal do dia inteiro. Pensa " +
+      "PREENCHE SEMPRE junto com meal_items. Total de kcal do dia inteiro. Pensa " +
       "internamente em alimentos e gramas concretos para calculares isto com precisão (mesmo que " +
       "o texto de meal_suggestion/meal fique generalizado por categoria) — alinha ao objetivo " +
       "diário de macros do perfil MENOS o já registado nesse dia (ver refeições registadas no " +
       "contexto), e ajusta à carga de treino do dia. Sem objetivo de macros no perfil, estima com " +
       "base em peso/nível/objetivo do atleta.",
   },
-  meal_estimated_protein_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de proteína (g) do dia inteiro." },
-  meal_estimated_carbs_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de hidratos de carbono (g) do dia inteiro." },
-  meal_estimated_fat_g: { type: "NUMBER", description: "OPCIONAL, junto com meal_items. Total de gordura (g) do dia inteiro." },
+  meal_estimated_protein_g: { type: "NUMBER", description: "Preenche sempre junto com meal_items. Total de proteína (g) do dia inteiro." },
+  meal_estimated_carbs_g: { type: "NUMBER", description: "Preenche sempre junto com meal_items. Total de hidratos de carbono (g) do dia inteiro." },
+  meal_estimated_fat_g: { type: "NUMBER", description: "Preenche sempre junto com meal_items. Total de gordura (g) do dia inteiro." },
 };
 
 // Ferramenta de ESCRITA — as três acima só leem. Grava um plano de treino em
@@ -2284,7 +2286,16 @@ const MEAL_DOCTRINE =
   `alimentos concretos escolher dentro de cada categoria (o atleta já come e ` +
   `gosta deles); o segundo diz se as tuas sugestões recentes estão a ` +
   `funcionar — ajusta a abordagem se não estiverem, não repitas o que não ` +
-  `pegou.`;
+  `pegou.
+` +
+  `- SEMPRE que gravares uma sugestão alimentar (propose_training_plan com ` +
+  `meal_suggestion, ou save_meal_suggestions), preenche TAMBÉM meal_items ` +
+  `(uma entrada por refeição) e os quatro meal_estimated_kcal/protein_g/` +
+  `carbs_g/fat_g. Sem eles o cartão do atleta mostra o objetivo genérico do ` +
+  `perfil em vez dos números da refeição que TU sugeriste, e a sugestão ` +
+  `perde metade do valor. Pensa internamente em alimentos e gramas ` +
+  `concretos para os calculares — o texto que o atleta lê continua ` +
+  `generalizado por categoria, os números é que têm de ser a sério.`;
 
 // Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
 // "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
