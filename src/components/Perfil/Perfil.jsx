@@ -11,6 +11,7 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { useCarouselHaptics } from '../../utils/haptics';
@@ -82,7 +83,7 @@ const DEFAULT_REMINDER_END_HOUR = 22;
 const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
   const [tab, setTab] = useState('perfil');
 
   // Local state form (draft)
@@ -755,6 +756,35 @@ export default function Perfil() {
               caminhos seria redundante e o botão daqui nunca funcionou.
               A própria Edge Function suggest-goals foi removida a
               2026-08-23, já sem nada que a chamasse. */}
+          {/* "Rever o arranque com a Carol" — os seis passos do onboarding
+              outra vez, preenchidos a partir do perfil e da Memória do Coach
+              (ponto 8 do handoff; texto do mock "Perfil · Coach"). Abre o
+              mesmo componente de ecrã inteiro do primeiro acesso; ao terminar
+              volta para aqui. */}
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
+            style={{
+              minHeight: 'var(--tap)',
+              padding: 15,
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--tint-coach-bg)',
+              border: '1px solid var(--tint-coach-bd)',
+            }}
+          >
+            <CoachAvatar size={36} radius={11} />
+            <span className="flex-1 min-w-0">
+              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--coach-soft)' }}>
+                Rever o arranque com a Carol
+              </span>
+              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+                Os seis passos outra vez, com as respostas que já deste
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+
           <CoachMemoryCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.

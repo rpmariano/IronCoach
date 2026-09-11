@@ -5,6 +5,8 @@ import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
+import Onboarding from './components/Onboarding/Onboarding';
+import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
 
 // Components
@@ -38,6 +40,10 @@ const DEMO_PROFILE = {
   fat_goal: 65,
   water_goal_ml: 2500,
   goal_weight_kg: 72.0,
+  // O perfil fictício conta como já arrancado: ?demo=true existe para ver os
+  // ecrãs reais da app, não para ficar preso nos seis passos do onboarding.
+  // Para VER o arranque em demo há o parâmetro ?onboarding=1 (ver abaixo).
+  onboarding_done: true,
 };
 
 // Dados fictícios para o modo ?demo=true — deixa ver o layout real da app
@@ -78,17 +84,53 @@ function buildDemoData() {
   };
 }
 
+// Variante de ?demo=true&onboarding=1: um atleta mesmo acabado de chegar —
+// sem registos e sem provas. É a segunda metade da regra de arranque (a
+// primeira é onboarding_done a false, posto no perfil demo).
+function buildEmptyDemoData() {
+  return {
+    raceEvents: [], waterLogs: [], meals: [], runs: [], gymSessions: [],
+    bodyAssessments: [], coachPlans: [], coachPlanItems: [], coachNotes: [],
+  };
+}
+
 import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
 import UIAuditSandbox from './components/DesignSystem/UIAuditSandbox';
 
 export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
+  const profile = useAppStore((s) => s.profile);
+  const runs = useAppStore((s) => s.runs);
+  const meals = useAppStore((s) => s.meals);
+  const gymSessions = useAppStore((s) => s.gymSessions);
+  const bodyAssessments = useAppStore((s) => s.bodyAssessments);
+  const raceEvents = useAppStore((s) => s.raceEvents);
+  const onboardingOpen = useAppStore((s) => s.onboardingOpen);
+  const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
+  const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
+     - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
+       sem `onboarding_done` E sem registo nenhum nem prova. Quem já usa a app
+       nunca o vê, mesmo tendo a coluna a `false` (ela nasceu agora, a `false`
+       para toda a gente); nesse caso marca-se como feito em silêncio.
+     - REENTRADA: `onboardingOpen`, posto pelo cartão "Rever o arranque com a
+       Carol" em Perfil · Coach. Conta como ecrã de topo, para o "voltar" do
+       telemóvel o fechar em vez de sair da app. */
+  const dadosAtleta = { profile, runs, meals, gymSessions, bodyAssessments, raceEvents };
+  const needsOnboarding = !isInitializing && shouldShowOnboarding(dadosAtleta);
+  const silentlyDone = !isInitializing && shouldSilentlyMarkDone(dadosAtleta);
+  const showOnboarding = !!session && (needsOnboarding || onboardingOpen);
+
+  useEffect(() => {
+    if (silentlyDone) markOnboardingDone();
+  }, [silentlyDone, markOnboardingDone]);
 
   // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)
   // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
   // é usado no JSX.
-  const isCreatingOrEditing = !!openCreationMode || !!editingRaceId;
+  const isCreatingOrEditing = !!openCreationMode || !!editingRaceId || onboardingOpen;
 
   // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
   // o ecrã de topo em vez de sair da app inteira — ver o comentário
@@ -98,7 +140,8 @@ export default function App() {
   const closeTopScreen = useCallback(() => {
     setOpenCreationMode(null);
     setEditingRaceId(null);
-  }, [setOpenCreationMode, setEditingRaceId]);
+    setOnboardingOpen(false);
+  }, [setOpenCreationMode, setEditingRaceId, setOnboardingOpen]);
   useAppNavigationHistory({
     activeTab,
     setActiveTab,
@@ -125,12 +168,24 @@ export default function App() {
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
-        setProfile(DEMO_PROFILE);
+        // ?demo=true&onboarding=1 — o único sítio onde o arranque se vê sem
+        // criar uma conta nova: perfil por arrancar E sem registo nenhum nem
+        // prova, que é exatamente o que a regra de utils/onboarding.js exige.
+        // Só existe em demo; sem `demo=true` o parâmetro não faz nada.
+        const forcarOnboarding = params.get('onboarding') === '1';
+        // O fallback local (utils/onboarding.js) grava "feito" ao terminar —
+        // sem isto, recarregar o mesmo URL já não mostrava o arranque.
+        if (forcarOnboarding) {
+          try { localStorage.removeItem(onboardingLocalKey('demo-user')); } catch (_) { /* modo privado */ }
+        }
+        setProfile(forcarOnboarding
+          ? { ...DEMO_PROFILE, onboarding_done: false }
+          : DEMO_PROFILE);
         // setState direto (em vez dos setters individuais) porque isto é
         // inicialização única fora do fluxo normal de dados — os setters
         // existem para respostas do Supabase, não para semear um estado
         // fictício de propósito.
-        useAppStore.setState(buildDemoData());
+        useAppStore.setState(forcarOnboarding ? buildEmptyDemoData() : buildDemoData());
         setIsInitializing(false);
       } else {
         setSession(null);
@@ -171,6 +226,23 @@ export default function App() {
 
   if (!session) {
     return <ToastProvider><Auth /></ToastProvider>;
+  }
+
+  /* O arranque não tem navegação inferior — o mock não a mostra e não há para
+     onde navegar antes de a app saber quem é o atleta. Por isso vive FORA do
+     <Layout>, como ecrã inteiro, tanto no primeiro acesso como na reentrada
+     pelo Perfil (ver Onboarding.jsx). `reentry` muda só duas coisas: o
+     primeiro passo ganha "Voltar", e terminar devolve ao Perfil em vez de
+     mudar de separador. */
+  if (showOnboarding) {
+    return (
+      <ToastProvider>
+        <Onboarding
+          reentry={!needsOnboarding}
+          onDone={() => setOnboardingOpen(false)}
+        />
+      </ToastProvider>
+    );
   }
 
   // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)

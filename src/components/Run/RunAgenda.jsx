@@ -93,6 +93,16 @@ export default function RunAgenda({ onClose }) {
   const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
+  // Prova declarada no passo 6 do arranque (Onboarding.jsx). Chega com nome,
+  // data, distância e terreno; falta-lhe o local e o objetivo de tempo, que
+  // race_events exige e o arranque não pergunta — é por isso que o onboarding
+  // entrega aqui em vez de gravar sozinho. Lido UMA vez, na inicialização do
+  // rascunho, e limpo do store logo a seguir.
+  const racePrefillRef = useRef(useAppStore.getState().racePrefill);
+  useEffect(() => {
+    if (racePrefillRef.current) useAppStore.getState().setRacePrefill(null);
+  }, []);
+
   const editingEventId = editingRaceId;
   const isFormOpen = true;
   const [activePage, setActivePage] = useState('hub'); // 'hub' | 'details'
@@ -309,9 +319,13 @@ export default function RunAgenda({ onClose }) {
         setActivePage('hub');
       }
     } else {
-      setDraft(persisted ? { ...EMPTY_DRAFT, ...persisted } : EMPTY_DRAFT);
+      const prefill = racePrefillRef.current;
+      const partida = prefill ? { ...EMPTY_DRAFT, ...prefill } : EMPTY_DRAFT;
+      setDraft(persisted ? { ...partida, ...persisted } : partida);
       setExperienceLevelCategoryKey(null);
-      setIsDirty(!!persisted);
+      // Vindo do arranque há mesmo alterações por gravar — o aviso de saída
+      // vale tanto para elas como para as escritas à mão.
+      setIsDirty(!!persisted || !!prefill);
       setActivePage('details');
       setTimeout(() => {
         scrollToRef.current(1, true);

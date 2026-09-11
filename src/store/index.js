@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { todayISO, addDaysISO } from '../lib/utils';
+import { markOnboardingDoneLocally } from '../utils/onboarding';
 
 const getInitialDashboardTab = () => {
   try {
@@ -116,6 +117,18 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  // Onboarding (ponto 8 do redesenho 2026-09). No primeiro acesso é App.jsx
+  // que o decide sozinho, a partir do perfil e dos registos (ver
+  // utils/onboarding.js) — esta flag é só a REENTRADA de propósito, pelo
+  // cartão "Rever o arranque com a Carol" em Perfil · Coach.
+  onboardingOpen: false,
+  setOnboardingOpen: (open) => set({ onboardingOpen: !!open }),
+  // Campos do passo 6 do arranque à espera do formulário de Prova, que os
+  // consome uma vez ao montar (RunAgenda.jsx). race_events exige local,
+  // objetivo de tempo e ritmo-alvo — o arranque não os pergunta, por isso
+  // entrega o que tem e o formulário que já existe recolhe o resto.
+  racePrefill: null,
+  setRacePrefill: (values) => set({ racePrefill: values || null }),
   // Persiana de registar água (Home/WaterSheet.jsx), aberta pelo FAB —
   // redesenho 2026-09: a órbita do Início é só leitura, o registo vive aqui.
   waterSheetOpen: false,
@@ -519,6 +532,38 @@ export const useAppStore = create((set, get) => ({
     }
   },
   
+  /* Fecha o arranque: grava as respostas do onboarding no perfil e marca-o
+     como feito. Serve dois casos — o fim dos seis passos (com `updates`) e a
+     marcação silenciosa de quem já tinha dados antes desta coluna existir
+     (sem `updates`, ver utils/onboarding.js).
+
+     Tolerância deliberada ao erro: `profiles.onboarding_done` pode ainda não
+     existir na base de dados quando este código chega ao browser (a migração
+     20260911180000 e o deploy do frontend são independentes). Nesse caso o
+     UPDATE inteiro falha — e com ele perdiam-se também as respostas. Por isso
+     repete-se o UPDATE sem a coluna nova, e a marca fica na mesma em
+     localStorage por utilizador: o arranque não volta a aparecer neste
+     dispositivo, que é o que o atleta nota. O store é atualizado sempre,
+     mesmo com a base de dados a recusar, para a interface seguir em frente. */
+  markOnboardingDone: async (updates = {}) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    markOnboardingDoneLocally(userId);
+    set((state) => ({ profile: { ...state.profile, ...updates, onboarding_done: true } }));
+    if (!userId) return false;
+
+    const { error } = await supabase.from('profiles').update({ ...updates, onboarding_done: true }).eq('id', userId);
+    if (!error) return true;
+
+    console.error('Erro a gravar onboarding_done (a coluna já existe?):', error);
+    if (Object.keys(updates).length === 0) return false;
+    const { error: fallbackError } = await supabase.from('profiles').update(updates).eq('id', userId);
+    if (fallbackError) {
+      console.error('Erro a gravar as respostas do arranque:', fallbackError);
+      return false;
+    }
+    return true;
+  },
+
   snoozeWaterReminder: async (userId, scope = 'next') => {
     try {
       // lisbon time helper
