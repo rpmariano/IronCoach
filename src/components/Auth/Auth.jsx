@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { Loader2 } from 'lucide-react';
 import Button from '../shared/Button';
 import AppBackground from '../Layout/AppBackground';
 export default function Auth() {
@@ -96,7 +95,7 @@ export default function Auth() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="exemplo@email.com"
               required
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
@@ -108,7 +107,7 @@ export default function Auth() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
@@ -118,7 +117,7 @@ export default function Auth() {
             isLoading={loading}
             className="w-full"
           >
-            {authMode === 'signin' ? 'Entrar' : 'Criar Conta'}
+            {authMode === 'signin' ? 'Entrar' : 'Criar conta'}
           </Button>
         </form>
 
@@ -155,7 +154,7 @@ export default function Auth() {
             setErrorMsg(null);
             setInfoMsg(null);
           }}
-          className="w-full min-h-[44px] text-center font-medium text-xs text-[var(--text-3)] hover:text-[var(--text-2)] transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--accent)] outline-none"
+          className="w-full min-h-[44px] text-center font-medium text-xs text-[var(--text-3)] hover:text-[var(--text-2)] transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] outline-none"
         >
           {authMode === 'signin' ? 'Ainda não tens conta? Criar conta' : 'Já tens conta? Entrar'}
         </button>

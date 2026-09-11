@@ -120,12 +120,12 @@ export function PlanProposalBottomSheet({
             <div className="flex items-center gap-3">
               <Button
                 variant="module"
-                moduleColor="var(--grad-coach)"
+                moduleColor="var(--grad-coach-legible)"
                 onClick={() => handleRespondGoalAction(true)}
                 className="flex-1 text-sm py-3.5"
                 icon={<Check size={18} />}
               >
-                Aceitar Objetivos
+                Aceitar objetivos
               </Button>
               <Button
                 variant="light"
@@ -198,12 +198,12 @@ export function PlanProposalBottomSheet({
             <div className="flex items-center gap-3">
               <Button
                 variant="module"
-                moduleColor="linear-gradient(135deg, var(--ok) 0%, color-mix(in srgb, var(--ok) 55%, var(--bg-app)) 100%)"
+                moduleColor="var(--ok)"
                 onClick={() => handleRespondPlanAction(true)}
                 className="flex-1 text-sm py-3.5"
                 icon={<Check size={18} />}
               >
-                Aceitar Plano
+                Aceitar plano
               </Button>
               <Button
                 variant="light"

@@ -19,7 +19,7 @@ export default function StatusCard({ rings, empty = false, onRegisterMeal }) {
         <p className="text-[12.5px] leading-[1.55] mt-3.5 max-w-[250px]" style={{ color: 'var(--text-4)' }}>
           Os anéis enchem-se com o teu primeiro registo. Uma refeição chega para eu perceber como comes.
         </p>
-        <button type="button" onClick={onRegisterMeal} className="inline-flex items-center gap-2 min-h-[44px] mt-3.5 px-[18px] rounded-[12px] text-[12.5px] font-extrabold" style={{ background: 'rgba(199,125,255,.14)', border: '1px solid rgba(199,125,255,.4)', color: 'var(--nutrition)' }}>
+        <button type="button" onClick={onRegisterMeal} className="inline-flex items-center gap-2 min-h-[44px] mt-3.5 px-[18px] rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'rgba(199,125,255,.14)', border: '1px solid rgba(199,125,255,.4)', color: 'var(--nutrition)' }}>
           <Camera size={15} /> Registar refeição
         </button>
       </div>

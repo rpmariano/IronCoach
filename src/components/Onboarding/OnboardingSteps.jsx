@@ -129,7 +129,7 @@ export function OptionCard({ icon, title, description, selected, tone = 'coach',
       </span>
       {selected && (
         <span className="shrink-0 flex items-center justify-center" style={{ width: 22, height: 22, borderRadius: '50%', background: cor, color: `var(--${tone}-ink)` }}>
-          <Check size={13} strokeWidth={3} />
+          <Check size={13} />
         </span>
       )}
     </button>
@@ -498,7 +498,7 @@ export function StepFecho({ titulo, resumo }) {
     <>
       <div className="shrink-0 flex justify-center">
         <span className="flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--tint-ok-bg)', border: '1.5px solid var(--ok)', color: 'var(--ok)', boxShadow: '0 0 0 10px rgba(52,211,153,.07)' }}>
-          <Check size={30} strokeWidth={2.5} />
+          <Check size={30} />
         </span>
       </div>
       <h2 className="shrink-0" style={{ margin: '20px 0 0', fontSize: 26, fontWeight: 900, color: 'var(--text-1)', letterSpacing: '-.025em', lineHeight: 1.16, textAlign: 'center' }}>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
-import { Droplets, Plus, Minus, GlassWater, Info, Trash2, Bell, BellOff, Clock } from 'lucide-react';
+import { Droplets, Info, Trash2, Bell, BellOff, Clock } from 'lucide-react';
 import { lisbonTodayISO } from '../../lib/utils';
 
 const WATER_PRESETS = [200, 250, 300];
@@ -201,7 +201,6 @@ export default function WaterTracker() {
           </div>
         </div>
       )}
-
 
       {/* Silenciar lembretes sem desligar o interruptor geral do Perfil. */}
       {remindersOn && (

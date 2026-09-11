@@ -15,7 +15,7 @@ export const Input = forwardRef(({
   
   const borderClasses = error 
     ? 'border-[var(--tint-danger-bd)] focus:ring-[var(--danger)]' 
-    : 'border-[var(--border-glass)] focus:ring-[var(--accent)]';
+    : 'border-[var(--border-glass)] focus:ring-[var(--focus-ring)]';
 
   const iconPadding = icon ? 'pl-11' : '';
 

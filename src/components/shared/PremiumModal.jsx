@@ -6,10 +6,22 @@ import { X } from 'lucide-react';
    era âmbar (#a16207 → #eab308) — o âmbar é da prova; o 'warning' era
    laranja e passa ao coral; o 'run' era roxo e o 'nutri' verde (que é o
    --ok), ambos fora do esquema. O subtítulo lê-se sobre a cor cheia, por
-   isso é a tinta escura do tom em vez de um branco esbatido. */
+   isso é a tinta escura do tom em vez de um branco esbatido.
+
+   O título e o subtítulo ficam em cima da PONTA ESCURA do gradiente (135deg
+   começa no canto superior esquerdo, que é onde o texto vive), e a ponta
+   escura era uma mistura a 55% com o fundo da app: aí a tinta do tom dava
+   2,46:1 (corpo), 2,66 (nutrição), 2,70 (danger), 2,75 (warn), 3,35 (ginásio),
+   3,62 (corrida) — nenhum chegava a AA. `deep()` mantém o gradiente na mesma
+   matéria e no mesmo sentido, mas pára a 15% do caminho para o fundo: o pior
+   caso passa a 4,53:1 e o melhor a 7,52:1. A prova e a Carol continuam com os
+   seus gradientes próprios (--grad-race já dava 5,73:1; --grad-coach-legible
+   é o --grad-coach travado no degrau que a tinta ainda lê). */
+const deep = (c) => `color-mix(in srgb, ${c} 85%, var(--bg-app))`;
+
 const THEMES = {
   coach: {
-    bg: 'var(--grad-coach)',
+    bg: 'var(--grad-coach-legible)',
     subColor: 'var(--coach-ink)'
   },
   race: {
@@ -17,31 +29,31 @@ const THEMES = {
     subColor: 'var(--race-ink)'
   },
   run: {
-    bg: 'linear-gradient(135deg, var(--mod-corrida-from), var(--run))',
+    bg: `linear-gradient(135deg, ${deep('var(--run)')}, var(--run))`,
     subColor: 'var(--run-ink)'
   },
   gym: {
-    bg: 'linear-gradient(135deg, var(--mod-ginasio-from), var(--gym))',
+    bg: `linear-gradient(135deg, ${deep('var(--gym)')}, var(--gym))`,
     subColor: 'var(--gym-ink)'
   },
   nutri: {
-    bg: 'linear-gradient(135deg, var(--mod-nutricao-from), var(--nutrition))',
+    bg: `linear-gradient(135deg, ${deep('var(--nutrition)')}, var(--nutrition))`,
     subColor: 'var(--nutrition-ink)'
   },
   body: {
-    bg: 'linear-gradient(135deg, var(--mod-corpo-from), var(--body))',
+    bg: `linear-gradient(135deg, ${deep('var(--body)')}, var(--body))`,
     subColor: 'var(--body-ink)'
   },
   danger: {
-    bg: 'linear-gradient(135deg, color-mix(in srgb, var(--danger) 55%, var(--bg-app)), var(--danger))',
+    bg: `linear-gradient(135deg, ${deep('var(--danger)')}, var(--danger))`,
     subColor: 'var(--danger-ink)'
   },
   warning: {
-    bg: 'linear-gradient(135deg, color-mix(in srgb, var(--warn) 55%, var(--bg-app)), var(--warn))',
+    bg: `linear-gradient(135deg, ${deep('var(--warn)')}, var(--warn))`,
     subColor: 'var(--warn-ink)'
   },
   info: {
-    bg: 'var(--grad-coach)',
+    bg: 'var(--grad-coach-legible)',
     subColor: 'var(--coach-ink)'
   },
   neutral: {
@@ -242,8 +254,11 @@ export default function PremiumModal({
             className="tap-44 shrink-0 active:scale-95 transition-transform"
             aria-label="Fechar"
           >
-            <span className="w-8 h-8 rounded-full bg-black/15 flex items-center justify-center text-white hover:bg-black/25">
-              <X size={18} strokeWidth={2.5} />
+            {/* Era branco sobre um scrim preto a 15% — por cima de um
+                cabeçalho claro isso desaparecia. Mesma insignia do ícone do
+                título (branco a 20%) e a tinta do tom por cima. */}
+            <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30" style={{ color: activeTheme.subColor }}>
+              <X size={18} />
             </span>
           </button>
         </div>

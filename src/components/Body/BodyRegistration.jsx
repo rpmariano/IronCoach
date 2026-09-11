@@ -5,11 +5,10 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
+import { ScanLine, X, ImagePlus, Camera, PencilLine, MessageSquare } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
-import Card from '../shared/Card';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
@@ -142,7 +141,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
-     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Avaliação registada') => {
@@ -192,7 +191,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com métricas/observações diferentes das gravadas dispara
-    // "Guardar e Reanalisar" já na primeira renderização.
+    // "Guardar e reanalisar" já na primeira renderização.
     setOriginalSnapshot(analyticalSignature(a.notes, canonicalMetrics));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -376,21 +375,21 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       onClick={handleSaveEdit}
       disabled={isSaving}
       busy={isSaving}
-      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : entryMethod === 'foto' ? (
     <CoachAnalyzeButton
       onClick={handleAnalyzePhotos}
       disabled={!photos.length || isAnalyzing}
       busy={isAnalyzing}
-      label="Analisar Avaliação"
+      label="Analisar avaliação"
     />
   ) : (
     <CoachAnalyzeButton
       onClick={handleSaveManual}
       disabled={isSaving}
       busy={isSaving}
-      label="Analisar Avaliação"
+      label="Analisar avaliação"
     />
   );
 
@@ -414,7 +413,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -570,7 +569,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           return (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={() => {
                 useAppStore.getState().dismissIntervention(editingAssessment.id, notes);
                 useAppStore.setState({
@@ -590,7 +589,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           );

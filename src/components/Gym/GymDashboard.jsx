@@ -1,10 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { TrendingUp, Dumbbell, Users } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import '../../lib/chartSetup';
-
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
@@ -300,5 +298,4 @@ export default function GymDashboard() {
     </div>
   );
 }
-
 

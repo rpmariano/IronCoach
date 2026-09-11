@@ -92,6 +92,12 @@
   /* gradientes */
   --grad-race: linear-gradient(135deg, #d97706, #fbbf24);
   --grad-coach: linear-gradient(135deg, #0e7490, #22d3ee);
+  /* O mesmo gradiente, mas travado no degrau em que a tinta escura ainda se
+     lê: --coach-deep (#0e7490) só dá 3,00:1 com --coach-ink, e é onde o
+     --grad-coach acaba. Este pára a 55% do caminho (5,6:1 na ponta escura,
+     8,9:1 na clara). Para superfícies com texto por cima (botões "Analisar"
+     da Carol); o --grad-coach completo fica para as decorativas. */
+  --grad-coach-legible: linear-gradient(135deg, color-mix(in srgb, var(--coach) 55%, var(--coach-deep)), var(--coach));
   --grad-brand: linear-gradient(135deg, #1e333d, #2d4a57);
   --grad-nav-pill: linear-gradient(90deg, #22d3ee, #7fb3c7);
   --grad-ambient: radial-gradient(115% 55% at 12% 0%, rgba(217,119,6,.18) 0%, transparent 58%),

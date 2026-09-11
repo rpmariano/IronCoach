@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
@@ -399,7 +398,6 @@ export function PlanDayCard({
                   </div>
                 )}
 
-
               </div>
             ))}
           </div>
@@ -519,7 +517,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
         <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
       </span>
       <span className="wpc-pending-link">
-        Ver no chat <ChevronRight size={12} strokeWidth={3} />
+        Ver no chat <ChevronRight size={12} />
       </span>
     </button>
   );
@@ -568,7 +566,6 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
   return (
     <div className="flex flex-col gap-3">
 
-
       <div className="wpc-card">
         <div className="wpc-glow-coach"></div>
         <div className="wpc-content">
@@ -581,7 +578,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
                 onNav('coach');
               }}
               className="tap-h-44 text-xs font-semibold px-2 py-1 rounded-md"
-              style={{ color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 15%, transparent)' }}
+              style={{ color: 'var(--coach)', background: 'color-mix(in srgb, var(--coach) 15%, transparent)' }}
             >
               Adaptar Plano
             </button>

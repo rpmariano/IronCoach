@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Plus, Trash2, Pencil, Check, X, Loader2, MessageSquare, HelpCircle } from 'lucide-react';
+import { Brain, Plus, Trash2, Pencil, Check, Loader2, MessageSquare, HelpCircle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';

@@ -278,13 +278,13 @@ export default function BugNotificationsHandler() {
               </Button>
               <Button
                 variant={responseStatus === 'not_ok' ? 'outline' : 'module'}
-                moduleColor={responseStatus === 'ok' ? 'var(--green)' : undefined}
+                moduleColor={responseStatus === 'ok' ? 'var(--ok)' : undefined}
                 onClick={handleSubmitResponse}
                 disabled={submitting || !responseStatus}
                 className="flex-1"
-                icon={submitting ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : undefined}
+                icon={submitting ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
               >
-                {submitting ? 'A responder...' : 'Responder'}
+                {submitting ? 'A responder…' : 'Responder'}
               </Button>
             </div>
           </div>

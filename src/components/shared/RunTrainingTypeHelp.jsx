@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { HelpCircle, X, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { HelpCircle, Sparkles } from 'lucide-react';
 import PremiumModal from './PremiumModal';
 
 const RUN_TRAINING_TYPES_DOCS = [

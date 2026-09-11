@@ -1,8 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
-import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp, Utensils } from 'lucide-react';
+import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, Utensils } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,7 +15,6 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { format, eachDayOfInterval, subDays, subWeeks, subMonths, subYears } from 'date-fns';
-
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import MacroComplianceChart from '../BI/MacroComplianceChart';

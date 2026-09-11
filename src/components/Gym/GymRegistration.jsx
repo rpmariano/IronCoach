@@ -5,12 +5,11 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2, MessageSquare } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Trash2, MessageSquare } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
-import Card from '../shared/Card';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
@@ -27,7 +26,6 @@ const GYM_CATEGORIES = {
 };
 const GYM_CATEGORIES_VISIBLE = 6;
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
-
 
 function parseDurationInput(val) {
   val = val.trim().toLowerCase();
@@ -209,7 +207,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
-     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Treino registado') => {
@@ -572,21 +570,21 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       onClick={handleSaveEdit}
       disabled={isSaving}
       busy={isSaving}
-      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : entryMethod === 'foto' ? (
     <CoachAnalyzeButton
       onClick={handleAnalyzePhotos}
       disabled={!photos.length || isAnalyzing}
       busy={isAnalyzing}
-      label="Analisar Treino"
+      label="Analisar treino"
     />
   ) : (
     <CoachAnalyzeButton
       onClick={handleSaveManual}
       disabled={isSaving}
       busy={isSaving}
-      label="Analisar Treino"
+      label="Analisar treino"
     />
   );
 
@@ -610,7 +608,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
@@ -988,7 +986,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           return (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={() => {
                 useAppStore.getState().dismissIntervention(editingSession.id, notes);
                 useAppStore.setState({
@@ -1008,7 +1006,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           );

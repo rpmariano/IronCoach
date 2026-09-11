@@ -140,7 +140,10 @@ function PrimaryButton({ children, tone = 'coach', hero = false, ...rest }) {
         minHeight: hero ? 'var(--tap-hero)' : 50,
         borderRadius: 'var(--radius-md)',
         border: 'none',
-        background: tone === 'race' ? 'var(--grad-race)' : 'var(--grad-coach)',
+        // --grad-coach desce ate --coach-deep, onde a tinta da 3,00:1 (medido no
+        // primeiro ecra do arranque). O -legible e o mesmo gradiente travado
+        // no degrau anterior: 5,6:1.
+        background: tone === 'race' ? 'var(--grad-race)' : 'var(--grad-coach-legible)',
         color: tone === 'race' ? 'var(--race-ink)' : 'var(--coach-ink)',
         fontSize: hero ? 15 : 14.5,
         fontWeight: 800,

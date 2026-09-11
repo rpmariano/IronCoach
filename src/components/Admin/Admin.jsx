@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
+import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
@@ -449,9 +449,9 @@ export default function Admin() {
             onClick={() => !isBugReviewer && setActiveTab(t.key)}
             disabled={isBugReviewer}
             className={`shrink-0 flex items-center gap-1.5 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs font-semibold transition ${
-              displayedTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-[var(--text-3)] hover:text-[var(--text-2)] bg-[var(--surface-glass)]'
+              displayedTab === t.key ? 'bg-[var(--coach)] shadow-md' : 'text-[var(--text-3)] hover:text-[var(--text-2)] bg-[var(--surface-glass)]'
             } ${isBugReviewer ? 'cursor-default' : ''}`}
-            style={displayedTab === t.key ? { color: '#fff' } : undefined}
+            style={displayedTab === t.key ? { color: 'var(--coach-ink)' } : undefined}
           >
             <t.icon size={14} /> {t.label}
           </button>
@@ -610,7 +610,7 @@ export default function Admin() {
                         }}
                         className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] bg-[var(--surface-strong)] hover:bg-[var(--surface-glass-hover)] active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-[var(--text-2)] transition border border-[var(--border-glass-strong)]"
                       >
-                        <Eye size={14} /> Ver Detalhes
+                        <Eye size={14} /> Ver detalhes
                       </button>
                       <button
                         onClick={() => handleToggleBugReportStatus(item)}
@@ -621,7 +621,7 @@ export default function Admin() {
                             : 'bg-[var(--tint-ok-bg)] hover:bg-[var(--tint-ok-bg-hover)] text-[var(--ok-soft)] border-[var(--tint-ok-bd)]'
                         }`}
                       >
-                        {item.status === 'resolved' ? <><RotateCcw size={14} /> Reabrir</> : <><Check size={14} /> Marcar Resolvido</>}
+                        {item.status === 'resolved' ? <><RotateCcw size={14} /> Reabrir</> : <><Check size={14} /> Marcar resolvido</>}
                       </button>
                     </div>
                   </div>
@@ -746,19 +746,19 @@ export default function Admin() {
                       disabled={bugReportUpdating}
                       className="flex-1"
                       icon={bugReportUpdating
-                        ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" />
+                        ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                         : (selectedBugReport.status === 'resolved' ? <RotateCcw size={16} /> : <Check size={16} />)}
                     >
-                      {bugReportUpdating ? 'A atualizar...' : (selectedBugReport.status === 'resolved' ? 'Reabrir' : 'Resolvido')}
+                      {bugReportUpdating ? 'A atualizar…' : (selectedBugReport.status === 'resolved' ? 'Reabrir' : 'Resolvido')}
                     </Button>
                     <Button
                       variant="primary"
                       onClick={() => handleSendBugNotification(selectedBugReport)}
                       disabled={bugNotificationSending || !selectedBugReport.user_id || !bugNotificationMessage.trim()}
                       className="flex-1"
-                      icon={bugNotificationSending ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : <Send size={16} />}
+                      icon={bugNotificationSending ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Send size={16} />}
                     >
-                      {bugNotificationSending ? 'A enviar...' : 'Notificar'}
+                      {bugNotificationSending ? 'A enviar…' : 'Notificar'}
                     </Button>
                   </div>
                 </div>
@@ -971,9 +971,9 @@ export default function Admin() {
                           onClick={handleSaveUnknownLog}
                           disabled={savingLog}
                           className="flex-1"
-                          icon={savingLog ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+                          icon={savingLog ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Check size={16} />}
                         >
-                          {savingLog ? 'A Guardar...' : 'Guardar Alterações'}
+                          {savingLog ? 'A guardar…' : 'Guardar alterações'}
                         </Button>
                       </div>
                     </div>
@@ -996,7 +996,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setMetricsRange(r)}
-                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-[var(--text-1)]' : 'text-[var(--text-3)]'}`}
+                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--coach)] text-[var(--coach-ink)]' : 'text-[var(--text-3)]'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -1113,7 +1113,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-[var(--text-1)]' : 'text-[var(--text-3)]'}`}
+                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--coach)] text-[var(--coach-ink)]' : 'text-[var(--text-3)]'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>

@@ -391,7 +391,9 @@ describe('Perfil — ação na ActionBar', () => {
 
   it('no separador Equipamento a barra passa a "Adicionar sapatilhas"', async () => {
     render(<Perfil />);
-    fireEvent.click(screen.getByRole('button', { name: /Equipa\./ }));
+    // O rótulo visível continua a ser "Equipa." (abreviatura do mock), mas o
+    // nome acessível é agora "Equipamento" — o srLabel do SubNav.
+    fireEvent.click(screen.getByRole('button', { name: /Equipamento/ }));
     const botao = await screen.findByRole('button', { name: /Adicionar sapatilhas/ });
     expect(screen.getByTestId('action-bar')).toContainElement(botao);
     expect(screen.queryByRole('button', { name: /Guardar altera/ })).not.toBeInTheDocument();

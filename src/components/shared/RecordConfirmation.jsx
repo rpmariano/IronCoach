@@ -44,7 +44,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', onDone 
           className="record-confirm-check flex items-center justify-center rounded-full"
           style={{ width: 56, height: 56, background: 'rgba(52,211,153,.16)', border: '1.5px solid var(--ok)', color: 'var(--ok)' }}
         >
-          <Check size={26} strokeWidth={2.5} />
+          <Check size={26} />
         </span>
       </div>
       <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: 'var(--ok-soft)' }}>{label}</div>

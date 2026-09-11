@@ -69,7 +69,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
   it('não mostra o botão de obter do site sem website preenchido', () => {
     renderAgenda();
-    expect(screen.queryByRole('button', { name: /Obter Informação/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Obter informação/i })).not.toBeInTheDocument();
   });
 
   it('mostra o botão assim que se escreve um site e se visualiza a aba Treino e Evolução', () => {
@@ -80,7 +80,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     
     // Volta a Treino e Evolução
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
-    expect(screen.getByRole('button', { name: /Obter Informação/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Obter informação/i })).toBeInTheDocument();
   });
 
   it('prova nova: pede em modo rascunho (sem race_event_id) e guarda só no rascunho, sem persistir', async () => {
@@ -107,7 +107,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
     
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Obter Informação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -145,7 +145,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     useAppStore.setState({ editingRaceId: 'race-1' });
     renderAgenda();
 
-    fireEvent.click(screen.getByRole('button', { name: /Obter Informação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -158,10 +158,10 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     });
     expect(screen.getByText(/Doca de Alcântara/)).toBeInTheDocument();
     expect(useAppStore.getState().raceEvents[0].web_info).toEqual(updatedEvent.web_info);
-    expect(screen.getByRole('button', { name: /Atualizar Informação/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Atualizar informação/i })).toBeInTheDocument();
   });
 
-  it('BUG CORRIGIDO (2026-08-30) — prova NOVA com site preenchido mas sem "Obter Informação" pedido: recolhe a informação automaticamente ao gravar', async () => {
+  it('BUG CORRIGIDO (2026-08-30) — prova NOVA com site preenchido mas sem "Obter informação" pedido: recolhe a informação automaticamente ao gravar', async () => {
     const insertedRace = {
       id: 'race-nova-1', date: '2026-09-13', location: 'Lisboa', name: 'Prova Teste',
       race_type: 'estrada', distance_km: 10, elevation_gain_m: null, experience_level: 'medio',
@@ -192,7 +192,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fillRequiredFields();
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
 
     // O pedido usa o modo já persistido (race_event_id), tal como "Obter
     // Informação" numa prova existente — não bloqueia a navegação, que já
@@ -293,7 +293,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     renderAgenda();
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
@@ -315,7 +315,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     const dateInput = document.querySelector('input[type="date"]');
     const expectedDate = dateInput.value;
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
 
     await waitFor(() => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -329,7 +329,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBeNull();
@@ -506,7 +506,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('Rascunho Antigo');
 
       fillRequiredFields();
-      fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
 
       await waitFor(() => {
         expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -538,6 +538,6 @@ describe('RunAgenda — ação primária na ActionBar', () => {
   it('renderiza o botão primário dentro da barra de ação fixa', () => {
     renderAgenda();
     const bar = screen.getByTestId('action-bar');
-    expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar Prova/i }));
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar prova/i }));
   });
 });

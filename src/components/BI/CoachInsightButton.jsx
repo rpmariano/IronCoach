@@ -22,13 +22,15 @@ export default function CoachInsightButton({ insights, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      aria-label={`${insights.length} insight${insights.length === 1 ? '' : 's'} do Coach`}
+      aria-label={`${insights.length} insight${insights.length === 1 ? '' : 's'} da Carol`}
       className="fixed right-4 bottom-[100px] z-[38] w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-      style={{ background: 'var(--grad-coach)', animation: hasCritical || hasWarning ? 'coach-pulse-ring 2s infinite' : 'none' }}
+      style={{ background: 'var(--grad-coach-legible)', animation: hasCritical || hasWarning ? 'coach-pulse-ring 2s infinite' : 'none' }}
     >
       <span aria-hidden="true" className="coach-wave-ring" style={{ background: wave }} />
       <span aria-hidden="true" className="coach-wave-ring coach-wave-ring--delay" style={{ background: wave }} />
-      {Icon ? <Icon className="relative w-6 h-6" style={{ color: '#fff' }} /> : <CoachAvatar size={48} className="relative" />}
+      {/* O icone era branco sobre o ciano da Carol: 1,81:1 para um objeto
+          grafico (precisa de 3:1). A tinta do tom da 8,9:1. */}
+      {Icon ? <Icon className="relative w-6 h-6" style={{ color: 'var(--coach-ink)' }} /> : <CoachAvatar size={48} className="relative" />}
       <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold" style={{ background: wave, color: waveInk, border: '2px solid #fff' }}>
         {insights.length}
       </span>

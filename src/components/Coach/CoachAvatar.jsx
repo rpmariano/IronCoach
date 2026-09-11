@@ -29,7 +29,7 @@ export default function CoachAvatar({ mood = 'neutral', size = 30, radius, class
         width: size,
         height: size,
         borderRadius: radius ?? '50%',
-        background: 'var(--grad-coach)',
+        background: 'var(--grad-coach-legible)',
         color: 'var(--coach-ink)',
         ...style,
       }}

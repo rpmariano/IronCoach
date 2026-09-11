@@ -205,7 +205,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             </div>
           )}
 
-          {/* Falar com a Coach se a análise indicar intervenção */}
+          {/* Falar com a Carol se a análise indicar intervenção */}
           {Boolean(
             coachCommentary &&
             /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
@@ -213,7 +213,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           ) && (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={(e) => {
                 e.stopPropagation();
                 useAppStore.getState().dismissIntervention(meal.id, coachCommentary);
@@ -233,7 +233,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           )}

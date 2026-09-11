@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Loader2, Sparkles, PencilLine, Plus, Camera, MessageSquare, Footprints } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -15,7 +15,6 @@ import RecordConfirmation from '../shared/RecordConfirmation';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
-import Card from '../shared/Card';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -31,7 +30,6 @@ const SneakerIcon = ({ className }) => (
     <path d="M2 11c0 1.7 1.3 3 3 3h7" />
   </svg>
 );
-
 
 /* Espelha TRAINING_TYPE_KEYS/LABELS em supabase/functions/analyze-run —
    têm de bater certo com o enum fixo do schema que o Gemini usa. O conjunto
@@ -64,7 +62,6 @@ const COMPLETED_RACE_TYPES = [
   { key: '42k', label: 'Maratona' },
   { key: 'outro', label: 'Outro' },
 ];
-
 
 // Convert "43m" or "37:57" or "1:11:26" to seconds
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
@@ -236,7 +233,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
-     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
@@ -883,21 +880,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
      no fim do formulário: num ecrã de registo com este comprimento ficava
      sempre abaixo da dobra. O rótulo é o mesmo de antes (os testes e o
-     atleta conhecem-no): "Analisar Corrida" a criar, "Guardar Alterações"
-     (ou "Guardar e Reanalisar") a editar. */
+     atleta conhecem-no): "Analisar corrida" a criar, "Guardar alterações"
+     (ou "Guardar e reanalisar") a editar. */
   const primaryAction = showFotoBlock ? (
     <CoachAnalyzeButton
       onClick={handleAnalyzeRun}
       disabled={!runPhotos.length || analyzingRun}
       busy={analyzingRun}
-      label="Analisar Corrida"
+      label="Analisar corrida"
     />
   ) : runIdToEdit ? (
     <CoachAnalyzeButton
       onClick={() => handleSaveCorrida(false, needsReanalysis)}
       disabled={isSubmitting}
       busy={isSubmitting}
-      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : (
     // Criar uma corrida manualmente também passa pelo Coach, por isso tem o
@@ -906,7 +903,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       onClick={handleSaveCorrida}
       disabled={isSubmitting}
       busy={isSubmitting}
-      label="Analisar Corrida"
+      label="Analisar corrida"
     />
   );
 
@@ -1503,7 +1500,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             return (
               <Button
                 variant="module"
-                moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+                moduleColor="var(--grad-coach-legible)"
                 onClick={() => {
                   useAppStore.getState().dismissIntervention(editingRun.id, notes);
                   useAppStore.setState({
@@ -1523,7 +1520,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               >
                 <div className="flex items-center justify-center gap-2 w-full">
                   <MessageSquare size={16} />
-                  <span>Falar com a Coach</span>
+                  <span>Falar com a Carol</span>
                 </div>
               </Button>
             );
@@ -1574,10 +1571,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <button
           type="button"
           onClick={() => setShowMissingMetricsSheet(true)}
-          className="fixed bottom-20 right-5 z-[90] min-h-[44px] text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90"
-          style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+          className="fixed bottom-20 right-5 z-[90] min-h-[44px] text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90"
+          style={{ background: 'var(--grad-coach-legible)' }}
         >
-          <Sparkles className="w-4 h-4 text-white" />
+          <Sparkles className="w-4 h-4" />
           <span>Métricas em falta ({missingKeysList.length})</span>
         </button>
       )}

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
 import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
@@ -128,7 +127,6 @@ export default function Layout({ children }) {
       {/* Fundo (gradiente ambiente + curvas de nível + fade) — uma vez, por
           baixo de tudo. Ver AppBackground.jsx. */}
       <AppBackground />
-
 
       {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
           composição no Chromium em que o desfoque deixa de ser recalculado

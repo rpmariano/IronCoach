@@ -34,7 +34,7 @@ const selectPhoto = async () => {
   await screen.findByAltText('Print 1');
 };
 
-describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
+describe('RunRegistration — Analisar corrida (analyze-run)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     render(<RunRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -69,7 +69,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -86,7 +86,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: '' } });
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     render(<RunRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
@@ -125,7 +125,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     render(<RunRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -138,7 +138,7 @@ describe('RunRegistration — Analisar Corrida (analyze-run)', () => {
     render(<RunRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     await screen.findByTestId('missing-metrics-bottom-sheet');
     expect(screen.getByText('Métricas em falta')).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 48.5')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Analisar Corrida/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar corrida/i })).toBeInTheDocument();
   });
 
   it('esconde o seletor e vai direto aos campos manuais quando está a editar', () => {
@@ -182,7 +182,7 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
 
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
 });
 
@@ -204,7 +204,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
     fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -230,7 +230,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.change(zoneSelects[zoneSelects.length - 1], { target: { value: '2' } });
     fireEvent.change(screen.getByPlaceholderText('Minutos'), { target: { value: '20' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -246,7 +246,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     render(<RunRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -258,7 +258,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     goManual();
     fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: '' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
@@ -269,7 +269,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     render(<RunRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await screen.findByText('Falha a gravar corrida.');
@@ -308,7 +308,7 @@ describe('RunRegistration — editar corrida existente', () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
     fireEvent.change(screen.getByDisplayValue('Rodagem'), { target: { value: 'Rodagem longa' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
 
     await waitFor(() => expect(mocks.updateRun).toHaveBeenCalledTimes(1));
     const [payload, id] = mocks.updateRun.mock.calls[0];
@@ -331,7 +331,7 @@ describe('RunRegistration — editar corrida existente', () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
     fireEvent.change(screen.getByDisplayValue('Não indicar'), { target: { value: SHOE_UUID } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
 
     await waitFor(() => expect(mocks.updateRun).toHaveBeenCalledTimes(1));
     const [payload] = mocks.updateRun.mock.calls[0];
@@ -343,7 +343,7 @@ describe('RunRegistration — editar corrida existente', () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
     fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -360,7 +360,7 @@ describe('RunRegistration — editar corrida existente', () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
     fireEvent.change(screen.getByDisplayValue('165'), { target: { value: '178' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -374,7 +374,7 @@ describe('RunRegistration — editar corrida existente', () => {
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
 
     fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '12' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await screen.findByText('Falha na análise.');
@@ -539,7 +539,7 @@ describe('RunRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     goManual();
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
     fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -566,6 +566,6 @@ describe('RunRegistration — ação primária na ActionBar', () => {
   it('renderiza o botão primário dentro da barra de ação fixa', () => {
     render(<RunRegistration onClose={() => {}} />);
     const bar = screen.getByTestId('action-bar');
-    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar Corrida/i }));
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar corrida/i }));
   });
 });

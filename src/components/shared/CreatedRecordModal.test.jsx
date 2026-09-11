@@ -83,10 +83,10 @@ describe('CreatedRecordModal', () => {
   /* Pedido do utilizador (2026-09-01): o "Eliminar avaliação" do cartão de
      pré-visualização era um botão só de decoração — o wrapper
      pointer-events-none do preview desativa-o — e vivia isolado lá em
-     cima, longe de "Atualizar Registo"/"Fechar" (rodapé à parte). Os três
+     cima, longe de "Atualizar registo"/"Fechar" (rodapé à parte). Os três
      botões devem de estar juntos no mesmo frame, e "Fechar" deve de ser o
      mais destacado dos três. */
-  describe('Fechar, Atualizar Registo e Eliminar juntos', () => {
+  describe('Fechar, Atualizar registo e Eliminar juntos', () => {
     it('mostra os três botões no mesmo frame, com "Fechar" como o mais destacado (variant primary)', () => {
       mockStore({
         newlyCreatedRecord: { type: 'body', record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2 } },
@@ -96,7 +96,7 @@ describe('CreatedRecordModal', () => {
       // PremiumModal também tem o seu próprio X com aria-label="Fechar" —
       // filtra pelo texto visível do botão para apanhar só o nosso.
       const fechar = screen.getAllByRole('button', { name: 'Fechar' }).find((el) => el.textContent === 'Fechar');
-      const atualizar = screen.getByRole('button', { name: /Atualizar Registo/i });
+      const atualizar = screen.getByRole('button', { name: /Atualizar registo/i });
       const eliminar = screen.getByRole('button', { name: /^Eliminar$/i });
 
       // Mesmo contentor (frame) — o pai imediato comum aos três.

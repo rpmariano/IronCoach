@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { todayISO, addDaysISO } from '../lib/utils';
+import { todayISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 
 const getInitialDashboardTab = () => {

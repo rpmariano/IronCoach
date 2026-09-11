@@ -27,7 +27,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
             variant="danger"
             className="w-full"
           >
-            {isDeleting ? 'A eliminar...' : 'Eliminar'}
+            {isDeleting ? 'A eliminar…' : 'Eliminar'}
           </Button>
           <Button 
             onClick={onClose} 

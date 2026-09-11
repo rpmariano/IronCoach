@@ -186,7 +186,7 @@ export default function ReportIssueButton() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Resume o problema numa frase curta..."
               maxLength={80}
-              className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none"
+              className="w-full min-h-[44px] bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none"
               disabled={submitting}
             />
           </div>
@@ -268,9 +268,9 @@ export default function ReportIssueButton() {
               onClick={handleSubmit}
               disabled={submitting}
               className="flex-1"
-              icon={submitting ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : <Send size={15} />}
+              icon={submitting ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Send size={15} />}
             >
-              {submitting ? 'A enviar...' : 'Enviar report'}
+              {submitting ? 'A enviar…' : 'Enviar report'}
             </Button>
           </div>
         </div>

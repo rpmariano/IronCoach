@@ -391,7 +391,7 @@ export default function RaceHubView({
           <div className="rh-track-bar">
             <div className="rh-track-fill" style={{ '--rh-track-scale': Math.max(0, Math.min(100, progressPercentage)) / 100 }} />
             <div className="rh-runner-dot" style={{ left: `${progressPercentage}%` }}>
-              <RunIcon size={14} strokeWidth={2.5} color="var(--race-deep)" />
+              <RunIcon size={14} color="var(--race-deep)" />
             </div>
           </div>
           <div className="rh-track-labels">
@@ -498,8 +498,15 @@ export default function RaceHubView({
           <span
             className="rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full border"
             style={{
-              background: readiness.level === 'high' ? 'var(--tint-ok-bg)'
-                : readiness.level === 'medium' ? 'var(--tint-warn-bg)' : 'var(--tint-danger-bg)',
+              // A tinta aqui empilha-se sobre DUAS superfícies translúcidas
+              // (o cartão do módulo + a .rh-carol-box), e o fundo efetivo
+              // subia o suficiente para o coral do --danger ficar em 4,34:1.
+              // Mesma cor, mas misturada com o fundo da app em vez de
+              // somada ao que estiver por baixo: 5,90:1, e igual em
+              // qualquer sítio onde a pílula apareça.
+              background: readiness.level === 'high' ? 'color-mix(in srgb, var(--ok) 16%, var(--bg-app))'
+                : readiness.level === 'medium' ? 'color-mix(in srgb, var(--warn) 10%, var(--bg-app))'
+                : 'color-mix(in srgb, var(--danger) 12%, var(--bg-app))',
               borderColor: readiness.level === 'high' ? 'var(--tint-ok-bd)'
                 : readiness.level === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
               color: readiness.level === 'high' ? 'var(--ok)'
@@ -679,7 +686,7 @@ export default function RaceHubView({
               onClick={onFetchWebInfo}
               icon={info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
             >
-              {info ? 'Atualizar Informação' : 'Obter Informação'}
+              {info ? 'Atualizar informação' : 'Obter informação'}
             </Button>
           )}
         </div>
@@ -705,7 +712,7 @@ export default function RaceHubView({
             ) : (
               <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center space-y-2">
                 <p className="text-xs text-[var(--text-3)] font-medium">
-                  Clica em <span className="text-[var(--race)] font-bold">"Obter Informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
+                  Clica em <span className="text-[var(--race)] font-bold">"Obter informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
                 </p>
               </div>
             )}

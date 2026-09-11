@@ -1,9 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { TrendingUp, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
+import { TrendingUp, Mountain, Activity, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
-import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
+import { format, subDays, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
 import RunIcon from '../shared/RunIcon';
 import TimeFilterBar from '../BI/TimeFilterBar';
@@ -273,8 +273,6 @@ export default function RunDashboard() {
         onChange={setActiveRange}
         module="corrida"
       />
-
-
 
       {/* 2. KPICard row (2x2 grid) */}
       <div className="grid grid-cols-2 gap-3">

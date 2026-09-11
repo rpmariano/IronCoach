@@ -36,7 +36,7 @@ export function UnsavedChangesModal({
             isLoading={isSaving}
             className="w-full"
           >
-            {isSaving ? 'A guardar...' : 'Gravar e sair'}
+            {isSaving ? 'A guardar…' : 'Gravar e sair'}
           </Button>
 
           <Button

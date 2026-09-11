@@ -30,7 +30,10 @@ const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
 const TABS = [
   { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
   { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
-  { key: 'equipamento', label: 'Equipa.', icon: <Footprints size={14} />, tone: 'run' },
+  // srLabel: "Equipa." lê-se "equipa" num leitor de ecrã, que é outra coisa.
+  // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
+  // Geral"); faltava aqui.
+  { key: 'equipamento', label: 'Equipa.', srLabel: 'Equipamento', icon: <Footprints size={14} />, tone: 'run' },
   { key: 'coach', label: 'Coach', icon: <Bot size={14} />, tone: 'coach' },
 ];
 
@@ -68,8 +71,8 @@ const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 function CoachBadge() {
   return (
     <span title="Meta definida pelo Coach"
-      className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-white"
-      style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}>
+      className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-[var(--coach-ink)]"
+      style={{ background: 'var(--grad-coach-legible)' }}>
       Coach
     </span>
   );
@@ -389,11 +392,9 @@ export default function Perfil() {
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       isLoading={isSaving}
-      // text-amber-950 sobrepõe-se ao text-white do variant="module" (ver
-      // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
-      // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
-      // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
-      className="w-full text-xs text-[var(--race-ink)]"
+      // A tinta vem do próprio Button (resolveModuleInk, a partir do
+      // moduleColor) — dourado (#fbbf24) é claro demais para branco em cima.
+      className="w-full text-xs"
     >
       Guardar alterações
     </Button>
@@ -407,10 +408,7 @@ export default function Perfil() {
       variant="module"
       moduleColor="var(--mod-corrida)"
       onClick={() => shoeCabinetRef.current?.openNew()}
-      // Mesma razão do "Guardar alterações" acima: sobre a cor cheia do
-      // módulo (--mod-corrida, #2ee0ff) o branco dava 1,59:1. A tinta escura
-      // do módulo (--run-ink) é o que o handoff manda pôr sobre a cor cheia.
-      className="w-full text-xs text-[var(--run-ink)]"
+      className="w-full text-xs"
     >
       <Plus size={14} /> Adicionar sapatilhas
     </Button>
@@ -456,7 +454,7 @@ export default function Perfil() {
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
               </div>
               <div>
@@ -465,7 +463,7 @@ export default function Perfil() {
                   id="perfil-genero"
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -485,7 +483,7 @@ export default function Perfil() {
                   max={todayISO()}
                   value={draft.birth_date || ''}
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
@@ -497,7 +495,7 @@ export default function Perfil() {
                   id="perfil-nivel"
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -538,7 +536,7 @@ export default function Perfil() {
                   placeholder="Ex.: 52"
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
@@ -569,12 +567,12 @@ export default function Perfil() {
               <div>
                 <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
                 <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
               </div>
               <div>
                 <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
                 <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
               </div>
             </div>
             
@@ -686,7 +684,7 @@ export default function Perfil() {
                 style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.coach_can_set_nutrition_goals ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: 'var(--text-1)' }}></span>
+                }`} style={{ backgroundColor: draft.coach_can_set_nutrition_goals ? 'var(--coach-ink)' : 'var(--text-1)' }}></span>
               </button>
             </div>
 
@@ -702,11 +700,11 @@ export default function Perfil() {
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
                 className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
-                  draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-[var(--surface-strong)]'
+                  draft.water_reminder_enabled ? 'bg-[var(--mod-prova)]' : 'bg-[var(--surface-strong)]'
                 }`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.water_reminder_enabled ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: 'var(--text-1)' }}></span>
+                }`} style={{ backgroundColor: draft.water_reminder_enabled ? 'var(--race-ink)' : 'var(--text-1)' }}></span>
               </button>
             </div>
 
@@ -715,7 +713,7 @@ export default function Perfil() {
                 <div>
                   <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-[var(--text-3)] block mb-1">Frequência (minutos)</label>
                   <select id="perfil-lembrete-intervalo" value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -725,14 +723,14 @@ export default function Perfil() {
                   <div>
                     <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">Início</label>
                     <select id="perfil-lembrete-inicio" value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
                     <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Fim</label>
                     <select id="perfil-lembrete-fim" value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>

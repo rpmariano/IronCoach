@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { ChevronLeft, ChevronRight, ScanLine } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -44,12 +43,12 @@ export default function BodyCalendar() {
 
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Botão Nova Avaliação */}
+      {/* Botão Nova avaliação */}
       <button
         onClick={() => setOpenCreationMode('assessment')}
-        className="w-full bg-[var(--accent)] text-[var(--text-1)] font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
+        className="w-full bg-[var(--mod-corpo)] text-[var(--body-ink)] font-bold text-sm rounded-2xl py-3.5 flex items-center justify-center gap-2 active:scale-[0.98] transition shadow-lg"
       >
-        <ScanLine size={20} /> Nova Avaliação
+        <ScanLine size={20} /> Nova avaliação
       </button>
 
       {/* Cartão do Calendário */}

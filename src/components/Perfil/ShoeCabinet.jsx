@@ -9,6 +9,7 @@ import Button from '../shared/Button';
 import {
   wearStatus, shoeLabel, WEAR_LEVEL_LABELS, REFERENCE_WEIGHT_KG,
 } from '../../utils/shoes';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
 
 // Tom de cada nível de desgaste. 'ok' é deliberadamente discreto — a maior
 // parte dos pares está em bom estado e não precisa de chamar a atenção.
@@ -237,7 +238,8 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
       <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
         Os km de cada par somam-se sozinhos a partir das corridas em que o
         escolheres. A vida útil mostrada já está ajustada ao teu peso
-        {weightKg ? ` (${weightKg} kg)` : ''} — um corredor mais pesado gasta
+        {/* Vírgula decimal, como o resto da app (design-system: "72,4 kg"). */}
+        {weightKg ? ` (${fmtNumber(weightKg)} kg)` : ''} — um corredor mais pesado gasta
         a entressola mais depressa.
       </p>
 
@@ -408,7 +410,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
               isLoading={saving}
               className="flex-1"
             >
-              {saving ? 'A guardar...' : 'Guardar'}
+              {saving ? 'A guardar…' : 'Guardar'}
             </Button>
           </div>
         </div>

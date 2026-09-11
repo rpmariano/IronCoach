@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, PencilLine, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -168,7 +168,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
-     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada') => {
@@ -221,7 +221,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com alimentos/observações diferentes dos gravados dispara
-    // "Guardar e Reanalisar" já na primeira renderização.
+    // "Guardar e reanalisar" já na primeira renderização.
     setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, canonicalItems));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,7 +328,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // ----------------------------------
   // REGISTO MANUAL — adicionar é só local; a estimativa de nutrientes e o
-  // comentário do Coach só acontecem ao premir "Analisar Refeição". As
+  // comentário do Coach só acontecem ao premir "Analisar refeição". As
   // gramas são opcionais: quando não indicadas, o Coach estima a porção
   // típica a partir da descrição do alimento + das observações da refeição
   // (ex.: "fiambre" com a observação "1 fatia" dá o mesmo resultado que
@@ -435,21 +435,21 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       onClick={handleSaveEdit}
       disabled={isAnalyzing || (needsReanalysis && !manualItems.length)}
       busy={isAnalyzing}
-      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : entryMethod === 'foto' ? (
     <CoachAnalyzeButton
       onClick={handleAnalyzePhotos}
       disabled={!photos.length || isAnalyzing}
       busy={isAnalyzing}
-      label="Analisar Refeição"
+      label="Analisar refeição"
     />
   ) : (
     <CoachAnalyzeButton
       onClick={handleFinalizeManual}
       disabled={!manualItems.length || isAnalyzing}
       busy={isAnalyzing}
-      label="Analisar Refeição"
+      label="Analisar refeição"
     />
   );
 
@@ -526,7 +526,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--accent)] shadow-sm transition"
+            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
           />
           <div className="text-[11px] text-[var(--text-3)] mr-2">Data da refeição</div>
         </div>
@@ -607,12 +607,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 </div>
                 {photos.length < MAX_PHOTOS && (
                   <div className="grid grid-cols-2 gap-2 mb-4">
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--accent)]/70 hover:bg-[var(--accent)]/5 transition bg-[var(--surface-glass)]">
+                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                       <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
                       <Camera size={16} className="text-[var(--nutrition)]" />
                       <span className="text-xs font-semibold text-[var(--nutrition)]">Tirar foto</span>
                     </label>
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--accent)]/70 hover:bg-[var(--accent)]/5 transition bg-[var(--surface-glass)]">
+                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                       <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
                       <ImagePlus size={16} className="text-[var(--nutrition)]" />
                       <span className="text-xs font-semibold text-[var(--nutrition)]">Da galeria</span>
@@ -623,12 +623,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2 mb-3">
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition bg-[var(--surface-glass)]">
+                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
                     <Camera size={24} className="text-[var(--text-3)]" />
                     <p className="text-xs text-[var(--text-3)] font-medium">Tirar foto</p>
                   </label>
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition bg-[var(--surface-glass)]">
+                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                     <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
                     <ImagePlus size={24} className="text-[var(--text-3)]" />
                     <p className="text-xs text-[var(--text-3)] font-medium">Da galeria</p>
@@ -765,7 +765,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             placeholder="Detalhes que mudam os valores nutricionais..."
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
+            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] resize-none shadow-sm transition"
           />
         </div>
 
@@ -778,7 +778,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           return (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={() => {
                 useAppStore.getState().dismissIntervention(editingMeal.id, notes);
                 useAppStore.setState({
@@ -798,7 +798,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           );

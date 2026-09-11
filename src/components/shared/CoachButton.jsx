@@ -5,28 +5,27 @@ import Button from './Button';
 // Gradiente do módulo Coach — qualquer botão de "Analisar" (Corrida, Nutrição,
 // ...) usa-o no fundo todo, para deixar claro que quem vai comentar o registo
 // é o Coach, não uma ação de gravar qualquer.
-export const COACH_GRADIENT = 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))';
+//
+// Era 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))',
+// que desce até --coach-deep: aí nem branco (2,43:1) nem a tinta escura
+// (3,00:1) chegam a AA, e o remendo era uma sombra de texto. O
+// --grad-coach-legible pára a 55% do caminho para o escuro — mesma matiz,
+// mesmo sentido, e a tinta do Coach lê-se em toda a extensão (5,6:1 na ponta
+// escura, 8,9:1 na clara). Sem sombra de texto.
+export const COACH_GRADIENT = 'var(--grad-coach-legible)';
 
-/* var(--mod-coach-to) é claro (#06b6d4) e var(--mod-coach-from) é escuro
-   (#155e75) — nem texto branco nem escuro tem contraste WCAG AA nas duas
-   pontas do gradiente ao mesmo tempo (medido: branco 2,43:1 no lado claro,
-   escuro 2,46:1 no lado escuro). Texto/ícone brancos com uma sombra a
-   compensar, em vez de escurecer o gradiente da marca. */
-export const COACH_TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.35)';
-
-/* Cor via style, não pela classe: o texto destes botões tem de ser branco a
-   valer sobre o gradiente do Coach, e não o --text-1 do resto da app. (Até ao
-   impeccable colorize havia também um override global que reescrevia
-   text-white; saiu com os outros — ver a tabela em globals.css.) */
+/* A insígnia do ícone era um scrim preto a 18% com o ícone branco — sobre
+   ciano claro isso é o mesmo problema outra vez. Agora é um scrim claro e o
+   ícone herda a tinta do botão (currentColor). */
 export function CoachIcon({ busy }) {
   return (
     <span
       className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-      style={{ background: 'rgba(0,0,0,0.18)' }}
+      style={{ background: 'rgba(255,255,255,0.28)' }}
     >
       {busy
-        ? <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#fff' }} />
-        : <Sparkles className="w-3.5 h-3.5" style={{ color: '#fff' }} />}
+        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        : <Sparkles className="w-3.5 h-3.5" />}
     </span>
   );
 }
@@ -44,10 +43,14 @@ export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar'
       onClick={onClick}
       disabled={disabled}
       aria-busy={busy || undefined}
-      className="w-full text-[14px] disabled:opacity-30"
+      // disabled:opacity-30 era um caso à parte: a 30% o botão principal do
+      // ecrã desaparecia na barra de ação (o gradiente ficava quase igual ao
+      // fundo e o rótulo ilegível). O piso do próprio Button (opacity-50) é o
+      // que os outros botões desativados da app já usam.
+      className="w-full text-[14px]"
       icon={<CoachIcon busy={busy} />}
     >
-      <span style={{ textShadow: COACH_TEXT_SHADOW }}>{busy ? busyLabel : label}</span>
+      <span>{busy ? busyLabel : label}</span>
     </Button>
   );
 }

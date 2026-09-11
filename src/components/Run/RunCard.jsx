@@ -413,7 +413,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             </div>
           )}
 
-          {/* Falar com a Coach se a análise indicar intervenção */}
+          {/* Falar com a Carol se a análise indicar intervenção */}
           {Boolean(
             coachCommentary &&
             /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
@@ -421,7 +421,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           ) && (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={(e) => {
                 e.stopPropagation();
                 useAppStore.getState().dismissIntervention(run.id, coachCommentary);
@@ -441,7 +441,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           )}

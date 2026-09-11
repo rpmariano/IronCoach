@@ -6,11 +6,10 @@ import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import Warning from '../shared/Warning';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw, Sliders, Trophy } from 'lucide-react';
+import { CalendarPlus, CheckCircle, Trash2, Check, Loader2, AlertTriangle, X, Sparkles, Sliders } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
-import RaceWebInfoSections from './RaceWebInfoSections';
 import RaceHubView from './RaceHubView';
 import RaceLevelSuggestion from './RaceLevelSuggestion';
 import {
@@ -26,7 +25,7 @@ import {
   parsePaceToSeconds,
   formatPace,
 } from '../../utils/run';
-import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
+import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
@@ -610,7 +609,7 @@ export default function RunAgenda({ onClose }) {
         if (error) throw error;
         if (data) {
           setRaceEvents([...raceEvents, data]);
-          // Site preenchido, mas o atleta não pediu "Obter Informação" antes
+          // Site preenchido, mas o atleta não pediu "Obter informação" antes
           // de gravar (web_info continua null) — pede-o agora, em segundo
           // plano, em vez de obrigar a voltar a esta prova só para lembrar
           // de o fazer. Já persiste sozinho (race_event_id), tal como o
@@ -671,7 +670,7 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
-  // "Eliminar Prova" — só existe a editar uma prova já gravada (uma prova
+  // "Eliminar prova" — só existe a editar uma prova já gravada (uma prova
   // nova ainda sem id não tem o que apagar na BD; "Cancelar"/fechar já
   // descarta o rascunho). Confirmação via ConfirmDeleteModal, não
   // window.confirm — consistente com RunCard/GymSessionCard/MealCard/
@@ -1114,7 +1113,7 @@ export default function RunAgenda({ onClose }) {
                 </div>
               )}
 
-              {/* Menos uma coluna do que antes: "Guardar Prova" subiu para a
+              {/* Menos uma coluna do que antes: "Guardar prova" subiu para a
                   ActionBar fixa, aqui só ficam as ações secundárias. */}
               <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 {editingEventId && (
@@ -1143,7 +1142,7 @@ export default function RunAgenda({ onClose }) {
         </div>
       </div>
 
-      {/* Barra de ação fixa (ponto 2 do handoff): "Guardar Prova" era o
+      {/* Barra de ação fixa (ponto 2 do handoff): "Guardar prova" era o
           terceiro botão de uma fila no fim de cada uma das duas páginas do
           carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
           é uma só, sempre visível, seja qual for a página. */}
@@ -1154,10 +1153,10 @@ export default function RunAgenda({ onClose }) {
           onClick={handleSaveForm}
           disabled={isSubmitting || !draft.name.trim()}
           type="button"
-          className="w-full text-xs text-[var(--race-ink)]"
+          className="w-full text-xs"
           icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
         >
-          Guardar Prova
+          Guardar prova
         </Button>
       </ActionBar>
     </div>

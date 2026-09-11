@@ -38,7 +38,7 @@ export default function GymCalendar() {
 
   return (
     <div className="space-y-4 fade-in pb-8">
-      {/* Botão Novo Treino */}
+      {/* Botão Novo treino */}
       <Button 
         variant="module"
         moduleColor="var(--mod-ginasio-to)"
@@ -47,7 +47,7 @@ export default function GymCalendar() {
         size="lg"
         icon={<Dumbbell size={20} />}
       >
-        Novo Treino
+        Novo treino
       </Button>
 
       {/* Cartão do Calendário */}

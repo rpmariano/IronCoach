@@ -31,7 +31,9 @@ export function Chip({
   // resto da app. Mesma receita /15 bg · /40 border já usada nos botões
   // tracejados de upload (RunRegistration, GymRegistration, ...).
   const activeVariants = {
-    accent: 'bg-[var(--accent)]/15 text-[var(--accent-ink)] border-[var(--accent)]/40 shadow-sm',
+    // 'accent' é o nome histórico da variante por omissão; a cor é a da
+    // Carol, tal como o --accent de globals.css (alias de --coach).
+    accent: 'bg-[var(--coach)]/15 text-[var(--coach)] border-[var(--coach)]/40 shadow-sm',
     gym: 'bg-[var(--mod-ginasio-to)]/15 text-[var(--mod-ginasio-to)] border-[var(--mod-ginasio-to)]/40 shadow-sm',
     run: 'bg-[var(--mod-corrida-to)]/15 text-[var(--mod-corrida-to)] border-[var(--mod-corrida-to)]/40 shadow-sm',
     nutrition: 'bg-[var(--mod-nutricao-to)]/15 text-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]/40 shadow-sm',

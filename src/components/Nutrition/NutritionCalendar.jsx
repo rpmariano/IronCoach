@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { dayNutrientStatus, dayWaterGoalMet } from '../../utils/nutrition';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
-import { ChevronLeft, ChevronRight, Flame, Camera } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Camera } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import MealCard from './MealCard';
@@ -72,13 +72,13 @@ export default function NutritionCalendar({ onRegisterClick }) {
       {/* Botão de Registo */}
       <Button 
         variant="module"
-        moduleColor="var(--accent)"
+        moduleColor="var(--mod-nutricao)"
         onClick={onRegisterClick}
         className="w-full text-sm rounded-2xl shadow-lg"
         size="lg"
         icon={<Camera size={20} />}
       >
-        Registar Refeição
+        Registar refeição
       </Button>
 
       {/* Calendar Grid */}

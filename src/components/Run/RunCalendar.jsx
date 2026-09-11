@@ -91,13 +91,13 @@ export default function RunCalendar({ onNewRun }) {
     <div className="space-y-4 fade-in pb-20">
       <Button 
         variant="module"
-        moduleColor="var(--accent)"
+        moduleColor="var(--mod-corrida)"
         onClick={() => onNewRun(selectedDate)}
         className="w-full text-sm rounded-2xl shadow-lg"
         size="lg"
         icon={<SneakerIcon className="w-5 h-5 mb-0.5" />}
       >
-        Nova Corrida
+        Nova corrida
       </Button>
 
       <div className="card rounded-2xl p-4">
@@ -139,7 +139,7 @@ export default function RunCalendar({ onNewRun }) {
                 key={dateIso}
                 onClick={() => setSelectedDate(dateIso)}
                 className={btnClass}
-                style={{ background: isSelected ? 'var(--accent)' : undefined, color: isSelected ? '#fff' : undefined }}
+                style={{ background: isSelected ? 'var(--mod-corrida)' : undefined, color: isSelected ? 'var(--run-ink)' : undefined }}
               >
                 {dayNum}
                 {/* Dia selecionado tem fundo Coral, onde o cinzento não lê bem. */}

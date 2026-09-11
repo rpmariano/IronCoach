@@ -337,10 +337,10 @@ export default function Calendar() {
           onClose={() => setRaceToDelete(null)}
           actions={(
             <>
-              <button type="button" onClick={confirmDeleteRace} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+              <button type="button" onClick={confirmDeleteRace} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
                 Eliminar
               </button>
-              <button type="button" onClick={() => setRaceToDelete(null)} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+              <button type="button" onClick={() => setRaceToDelete(null)} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
                 Cancelar
               </button>
             </>

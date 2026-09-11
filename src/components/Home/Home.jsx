@@ -134,10 +134,10 @@ export default function Home() {
           onClose={() => !dismissing && setShowDismiss(false)}
           actions={(
             <>
-              <button type="button" disabled={dismissing} onClick={dismissIntervention} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
+              <button type="button" disabled={dismissing} onClick={dismissIntervention} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
                 {dismissing ? 'A dispensar…' : 'Dispensar'}
               </button>
-              <button type="button" disabled={dismissing} onClick={() => setShowDismiss(false)} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+              <button type="button" disabled={dismissing} onClick={() => setShowDismiss(false)} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
                 Cancelar
               </button>
             </>
