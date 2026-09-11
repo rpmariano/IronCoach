@@ -5,6 +5,8 @@ import {
   CheckCircle,
   PencilLine,
   Trash2,
+  Trophy,
+  Eye,
   Link as LinkIcon,
   ChevronDown,
   ChevronUp,
@@ -23,6 +25,7 @@ import {
   raceTerrainLabel,
   formatPace,
   formatTargetTimeLabel,
+  findRaceRun,
 } from '../../utils/run';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
@@ -32,16 +35,26 @@ function formatDatePT(isoStr) {
   return format(parseISO(isoStr), 'd MMM yyyy', { locale: pt });
 }
 
-export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
+export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegisterRace, onViewRun }) {
   const { profile, runs } = useAppStore();
   const [expanded, setExpanded] = useState(false);
   const todayIso = todayISO();
-  
+
   const toggleExpand = () => setExpanded(!expanded);
-  
+
   const distanceLabel = raceDistanceLabel(ev.distance_km);
   const isPast = ev.date < todayIso;
   const done = ev.status === 'concluida';
+
+  /* A partir do DIA da prova, a ação que interessa é registá-la — não marcar
+     um estado (specs/prova-concluida.md §3). Sem limite de dias aqui, ao
+     contrário do cartão do Início: a agenda é o histórico, e registar uma
+     prova três semanas depois continua a ser legítimo.
+     "Marcar como concluída" fica como saída secundária para quem não quer
+     registar nada, e desaparece assim que há corrida ligada — aí seria uma
+     contradição a oferecer-se ao lado do registo. */
+  const raceRun = findRaceRun(runs, ev);
+  const canRegister = ev.date <= todayIso && !raceRun;
 
   // Macrociclo e evolução da preparação através do motor unificado
   const plan = useMemo(() => {
@@ -219,15 +232,37 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
           {ev.notes && <p className="text-[11px] text-[var(--text-3)] italic px-0.5">"{ev.notes}"</p>}
 
           {/* Botões de Ação */}
-          <div className="flex items-center gap-2 pt-1">
+          {canRegister && onRegisterRace && (
             <Button
-              variant="light"
-              onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
-              className={`flex-1 text-xs ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
-              icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
+              variant="module"
+              moduleColor="var(--mod-prova)"
+              onClick={(e) => { e.stopPropagation(); onRegisterRace(ev); }}
+              className="w-full text-xs"
+              icon={<Trophy size={14} />}
             >
-              {done ? 'Repor' : 'Concluída'}
+              Registar a prova
             </Button>
+          )}
+          <div className="flex items-center gap-2 pt-1">
+            {raceRun && onViewRun ? (
+              <Button
+                variant="light"
+                onClick={(e) => { e.stopPropagation(); onViewRun(raceRun.id); }}
+                className="flex-1 text-xs text-[var(--race)]"
+                icon={<Eye size={14} />}
+              >
+                Ver registo
+              </Button>
+            ) : (
+              <Button
+                variant="light"
+                onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
+                className={`flex-1 text-xs ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
+                icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
+              >
+                {done ? 'Repor' : 'Marcar como concluída'}
+              </Button>
+            )}
             {onEdit && (
               <Button
                 variant="light"

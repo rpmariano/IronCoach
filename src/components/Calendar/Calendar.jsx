@@ -51,7 +51,6 @@ export default function Calendar() {
   const [editingGymId, setEditingGymId] = useState(null);
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingBodyId, setEditingBodyId] = useState(null);
-  const [racePrefillActive, setRacePrefillActive] = useState(false);
   // Prova cuja eliminação está por confirmar. Era um window.confirm — o
   // popup do sistema não fala a língua da app, não diz o que se perde e
   // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog
@@ -173,22 +172,14 @@ export default function Calendar() {
     if (alvo) handleDeleteRace(alvo.id);
   };
 
-  const handleCompleteRace = (ev) => {
-    useAppStore.setState({ planItemPrefill: {
-      kind: 'corrida',
-      isRace: true,
-      planned_date: ev.date,
-      title: ev.name,
-      target_distance_km: ev.distance_km,
-      target_duration: ev.target_time_seconds,
-      elevation_gain_m: ev.elevation_gain_m,
-      race_type: ev.race_type
-    }});
-    setRacePrefillActive(true);
-  };
+  /* Registar a prova abre o registo de corrida em MODO PROVA, pelo store
+     (specs/prova-concluida.md §3) — ecrã de topo no separador Corrida, como
+     as outras duas entradas. Antes disto era um planItemPrefill montado à
+     mão que abria o formulário aqui dentro, sem ligação nenhuma à prova: a
+     corrida ficava órfã e o hub só a encontrava por coincidência de data. */
+  const handleRegisterRace = (ev) => useAppStore.getState().openRaceRun(ev.id);
 
   if (editingRunId) return <RunRegistration onClose={() => setEditingRunId(null)} runIdToEdit={editingRunId} />;
-  if (racePrefillActive) return <RunRegistration onClose={() => { setRacePrefillActive(false); useAppStore.setState({ planItemPrefill: null }); }} runIdToEdit={null} />;
   if (editingGymId) return <GymRegistration onClose={() => setEditingGymId(null)} sessionIdToEdit={editingGymId} />;
   if (editingMealId) return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;
   if (editingBodyId) return <BodyRegistration onClose={() => setEditingBodyId(null)} assessmentIdToEdit={editingBodyId} />;
@@ -314,7 +305,15 @@ export default function Calendar() {
         )}
 
         {selectedRaces.map(race => (
-          <RaceCard key={race.id} ev={race} onEdit={setEditingRaceId} onToggleStatus={() => handleCompleteRace(race)} onDelete={() => setRaceToDelete(race)} />
+          <RaceCard
+            key={race.id}
+            ev={race}
+            onEdit={setEditingRaceId}
+            onRegisterRace={handleRegisterRace}
+            onViewRun={setEditingRunId}
+            onToggleStatus={handleToggleRaceStatus}
+            onDelete={() => setRaceToDelete(race)}
+          />
         ))}
         {selectedRuns.map(run => (
           <RunCard key={run.id} run={run} onEdit={setEditingRunId} onDelete={handleDeleteRun} />

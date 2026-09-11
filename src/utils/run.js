@@ -21,6 +21,21 @@ export function raceTerrainLabel(key) {
   return (RACE_TERRAIN_TYPES.find(t => t.key === key) || {}).label || key;
 }
 
+/* A corrida que registou esta prova (specs/prova-concluida.md §1).
+   `runs.race_id` é a ligação real e é sempre o que manda. A coincidência de
+   data com uma corrida de competição fica como recurso, e SÓ para registos
+   anteriores a essa coluna existir — era assim que o hub encontrava a
+   corrida antes, e falhava em tudo o que fosse registado no dia seguinte.
+   Ponto único: o hub, o cartão do Início e o da agenda têm de concordar
+   sobre o que é uma prova "já registada". */
+export function findRaceRun(runs, race) {
+  if (!race?.id) return null;
+  const list = runs || [];
+  return list.find(r => r?.race_id === race.id)
+    || list.find(r => !r?.race_id && r?.kind === 'competicao' && r?.date === race.date)
+    || null;
+}
+
 // Distâncias fixas que o utilizador escolhe — a mesma lista alimenta o select
 // e a pílula do cartão em RunAgenda. 21.0975/42.195 usam a distância oficial
 // (não 21/42 redondos) e têm o nome próprio da prova em vez de "X km".

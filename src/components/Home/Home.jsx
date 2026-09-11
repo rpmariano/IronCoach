@@ -75,6 +75,9 @@ export default function Home() {
   };
 
   const createRace = () => setOpenCreationMode('race');
+  // Registar a prova é abrir o registo de corrida em modo prova — o store
+  // trata do prefill e do separador (specs/prova-concluida.md §3).
+  const registerRace = (raceId) => useAppStore.getState().openRaceRun(raceId);
   const registerMeal = () => { setActiveTab('nutricao'); setOpenCreationMode('meal'); };
   const registerRun = () => { setActiveTab('corrida'); setOpenCreationMode('run'); };
 
@@ -121,7 +124,7 @@ export default function Home() {
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
 
       <SectionLabel>Para onde vou</SectionLabel>
-      <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} />
+      <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} />
 
       <SectionLabel>Como estou</SectionLabel>
       <StatusCard rings={rings} />

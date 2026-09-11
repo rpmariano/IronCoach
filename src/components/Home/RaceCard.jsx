@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flag, Trophy } from 'lucide-react';
 import { todayISO } from '../../lib/utils';
+import { findRaceRun } from '../../utils/run';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
@@ -19,11 +20,34 @@ function DaysCount({ days, animate }) {
   return <>{useCountUpText(days, { animate })}</>;
 }
 
-export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace }) {
+/* A partir do dia da prova, o cartão deixa de ser "para onde vou" e passa a
+   ser "o que ficou por registar": a prova mantém-se aqui até 7 dias depois
+   enquanto não houver uma corrida ligada a ela (specs/prova-concluida.md §3).
+   Depois disso sai — o sítio dela passa a ser o hub. */
+const DIAS_A_ESPERAR_PELO_REGISTO = 7;
+
+function diasEntre(a, b) {
+  return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
+}
+
+export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace }) {
   const today = todayISO();
+  // Uma prova está registada quando há uma corrida ligada a ela — por
+  // race_id, ou pela data nos registos antigos (ver findRaceRun).
+  const estaRegistada = useMemo(() => {
+    const registadas = new Set((raceEvents || []).filter((e) => findRaceRun(runs, e)).map((e) => e.id));
+    return (id) => registadas.has(id);
+  }, [raceEvents, runs]);
   const upcoming = useMemo(
-    () => (raceEvents || []).filter((e) => e.status !== 'concluida' && e.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5),
-    [raceEvents, today],
+    () => (raceEvents || [])
+      .filter((e) => {
+        if (!e?.date) return false;
+        if (e.date >= today) return e.status !== 'concluida';
+        return diasEntre(today, e.date) <= DIAS_A_ESPERAR_PELO_REGISTO && !estaRegistada(e.id);
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 5),
+    [raceEvents, today, estaRegistada],
   );
   const [index, setIndex] = useState(0);
   const safeIndex = Math.min(index, Math.max(0, upcoming.length - 1));
@@ -55,6 +79,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     );
   }
 
+  // A prova já chegou (é hoje ou já passou) e não tem corrida ligada: o que
+  // falta aqui é o registo, não a contagem decrescente.
+  const porRegistar = race.date <= today && !estaRegistada(race.id);
+  const jaPassou = race.date < today;
+
   return (
     <GlassCard glow tone="race" padding="16px 16px 12px" data-testid="race-card">
       <div role="button" tabIndex={0} onClick={() => onOpenRace?.(race.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpenRace?.(race.id); }} className="cursor-pointer">
@@ -73,16 +102,46 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
                 </button>
               )}
             </div>
-            <div className="text-[17px] font-black leading-[1.1] mt-1 truncate" style={{ color: 'var(--text-1)' }}>{model.phaseName}</div>
-            {model.weekLabel && <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>}
+            <div className="text-[17px] font-black leading-[1.1] mt-1 truncate" style={{ color: 'var(--text-1)' }}>
+              {porRegistar && jaPassou ? 'Prova por registar' : model.phaseName}
+            </div>
+            {porRegistar && jaPassou ? (
+              <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
+                {`correste há ${diasEntre(today, race.date)} ${diasEntre(today, race.date) === 1 ? 'dia' : 'dias'}`}
+              </div>
+            ) : model.weekLabel ? (
+              <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>
+            ) : null}
           </div>
-          <div className="text-right shrink-0">
-            <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
-            <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
-          </div>
+          {/* Um "0 dias" grande numa prova que já foi corrida não diz nada —
+              o troféu diz. */}
+          {porRegistar && jaPassou ? (
+            <div className="shrink-0 flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+              <Trophy size={20} />
+            </div>
+          ) : (
+            <div className="text-right shrink-0">
+              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
+              <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
+            </div>
+          )}
         </div>
         <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
       </div>
+
+      {/* A ação do dia da prova: âmbar cheio, porque é a única coisa que
+          interessa fazer a partir daqui. */}
+      {porRegistar && (
+        <button
+          type="button"
+          data-testid="race-card-register"
+          onClick={(e) => { e.stopPropagation(); onRegisterRace?.(race.id); }}
+          className="w-full inline-flex items-center justify-center gap-2 mt-3 rounded-[11px] text-[12.5px] font-extrabold"
+          style={{ minHeight: 44, background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
+        >
+          <Trophy size={15} /> Registar a prova
+        </button>
+      )}
       {upcoming.length > 1 && (
         <div className="flex justify-center mt-2.5 -mb-1 min-h-[24px] items-center">
           <CarouselDots count={upcoming.length} currentIndex={safeIndex} onSelect={setIndex} ariaLabelPrefix="Ver prova" />

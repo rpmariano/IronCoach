@@ -148,4 +148,77 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     fireEvent.click(screen.getByRole('button', { name: /Eliminar/i }));
     expect(mockOnDelete).toHaveBeenCalledWith('race-1');
   });
+
+  it('antes do dia da prova não há nada para registar', () => {
+    render(
+      <RaceCard
+        ev={sampleRace}
+        onEdit={mockOnEdit}
+        onToggleStatus={mockOnToggleStatus}
+        onDelete={mockOnDelete}
+        onRegisterRace={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+    expect(screen.queryByRole('button', { name: /Registar a prova/i })).not.toBeInTheDocument();
+  });
+});
+
+/* A partir do dia da prova, a ação primária do cartão passa a ser registá-la
+   (specs/prova-concluida.md §3). "Marcar como concluída" fica como saída
+   secundária para quem não quer registar nada, e desaparece assim que há
+   corrida ligada — aí o que faz sentido é ver o registo. */
+describe('RaceCard — a partir do dia da prova', () => {
+  const hoje = new Date();
+  const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const provaDeHoje = {
+    id: 'race-1',
+    name: 'Corrida do Tejo',
+    date: localISO(hoje),
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'a',
+    location: 'Lisboa',
+    target_time: '50:00',
+    target_pace_seconds_per_km: 300,
+    status: 'agendada',
+  };
+
+  const expandir = () => fireEvent.click(screen.getByText('Corrida do Tejo'));
+  const mockFns = { edit: vi.fn(), toggle: vi.fn(), del: vi.fn() };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAppStore.mockReturnValue({ profile: { experience_level: 'medio' }, runs: [] });
+  });
+
+  it('oferece "Registar a prova" e mantém "Marcar como concluída" como secundária', () => {
+    const onRegisterRace = vi.fn();
+    render(<RaceCard ev={provaDeHoje} onEdit={mockFns.edit} onToggleStatus={mockFns.toggle} onDelete={mockFns.del} onRegisterRace={onRegisterRace} />);
+    expandir();
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    expect(onRegisterRace).toHaveBeenCalledWith(provaDeHoje);
+
+    const secundaria = screen.getByRole('button', { name: /Marcar como concluída/i });
+    fireEvent.click(secundaria);
+    expect(mockFns.toggle).toHaveBeenCalledWith(provaDeHoje);
+  });
+
+  it('com corrida ligada, mostra "Ver registo" e já não oferece marcar nem registar', () => {
+    useAppStore.mockReturnValue({
+      profile: { experience_level: 'medio' },
+      runs: [{ id: 'run-7', kind: 'competicao', race_id: 'race-1', date: provaDeHoje.date }],
+    });
+    const onViewRun = vi.fn();
+    render(<RaceCard ev={{ ...provaDeHoje, status: 'concluida' }} onEdit={mockFns.edit} onToggleStatus={mockFns.toggle} onDelete={mockFns.del} onRegisterRace={vi.fn()} onViewRun={onViewRun} />);
+    expandir();
+
+    expect(screen.queryByRole('button', { name: /Registar a prova/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Marcar como concluída/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Ver registo/i }));
+    expect(onViewRun).toHaveBeenCalledWith('run-7');
+  });
 });
