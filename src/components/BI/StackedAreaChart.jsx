@@ -1,41 +1,58 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
-import { format, parseISO } from 'date-fns';
-import { pt } from 'date-fns/locale';
 import MetricInfo from './MetricInfo';
+import ChartFrame from './ChartFrame';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
+
+/* Ponto 6 do redesenho:
+   - A legenda do Chart.js (desenhada na tela) e os ticks com callback
+     `${v} kg` saem; passam a HTML no ChartFrame.
+   - Paleta: era verde esmeralda (#10b981) e rosa-vermelho (#f43f5e) — o
+     verde é "dentro do alvo" e não uma série. Passa às cores do mock
+     "Dashboard · Corpo": massa gorda no rosa do corpo (--body), massa magra
+     no violeta (--nutrition), exatamente como a barra de composição do mock
+     ("Gordura 11,5%" rosa, "Músculo 54,8%" violeta). */
+
+const MAGRA = '#c77dff';  // --nutrition
+const GORDA = '#ff5fa8';  // --body
 
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
-  const chartRef = useRef(null);
+  const dates = data.dates || [];
+  const lean = data.leanMassKg || [];
+  const fat = data.fatMassKg || [];
 
-  const labels = (data.dates || []).map(d => {
-    try { return format(parseISO(d), 'dd MMM', { locale: pt }); }
-    catch { return d; }
-  });
+  const lastLean = lean.length ? Number(lean[lean.length - 1]) : 0;
+  const lastFat = fat.length ? Number(fat[fat.length - 1]) : 0;
+  const total = lastLean + lastFat;
+
+  const firstLean = lean.length ? Number(lean[0]) : 0;
+  const leanDelta = lean.length >= 2 ? lastLean - firstLean : null;
 
   const chartData = {
-    labels,
+    // Sem labels de texto: o eixo x não escreve nada. Os índices bastam.
+    labels: dates.map((_, i) => i),
     datasets: [
       {
-        label: 'Massa Magra',
-        data: data.leanMassKg || [],
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.15)',
-        pointBackgroundColor: '#10b981',
-        pointBorderColor: '#fff',
-        pointRadius: 4,
+        label: 'Massa magra',
+        data: lean,
+        borderColor: MAGRA,
+        backgroundColor: 'rgba(199, 125, 255, 0.18)',
+        pointBackgroundColor: MAGRA,
+        pointBorderColor: 'rgba(11,17,32,1)',
+        pointRadius: 3,
         pointHoverRadius: 6,
         fill: 'origin',
         tension: 0.2,
       },
       {
-        label: 'Massa Gorda',
-        data: data.fatMassKg || [],
-        borderColor: '#f43f5e',
-        backgroundColor: 'rgba(244, 63, 94, 0.15)',
-        pointBackgroundColor: '#f43f5e',
-        pointBorderColor: '#fff',
-        pointRadius: 4,
+        label: 'Massa gorda',
+        data: fat,
+        borderColor: GORDA,
+        backgroundColor: 'rgba(255, 95, 168, 0.18)',
+        pointBackgroundColor: GORDA,
+        pointBorderColor: 'rgba(11,17,32,1)',
+        pointRadius: 3,
         pointHoverRadius: 6,
         fill: '-1',
         tension: 0.2,
@@ -47,11 +64,7 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { 
-        position: 'top',
-        align: 'end',
-        labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', color: 'rgba(255, 255, 255, 0.8)', font: { size: 11 } }
-      },
+      legend: { display: false },
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.95)',
         titleColor: '#f8fafc',
@@ -62,49 +75,43 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         mode: 'index',
         intersect: false,
         callbacks: {
-          label: (context) => {
-            const val = Number(context.raw || 0);
-            return ` ${context.dataset.label}: ${val.toFixed(1)} kg`;
-          },
-          footer: (tooltipItems) => {
-            const total = tooltipItems.reduce((sum, item) => sum + Number(item.raw || 0), 0);
-            return `Total (Peso): ${total.toFixed(1)} kg`;
-          }
+          title: (items) => dates[items?.[0]?.dataIndex] || '',
+          label: (context) => ` ${context.dataset.label}: ${fmtNumber(context.raw, 1)} kg`,
+          footer: (items) => `Total: ${fmtNumber(items.reduce((s, i) => s + Number(i.raw || 0), 0), 1)} kg`
         }
       }
     },
     scales: {
-      x: { 
-        grid: { display: false }, 
-        ticks: { color: 'rgba(255, 255, 255, 0.5)' } 
-      },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
       y: {
         stacked: true,
         beginAtZero: true,
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { 
-          color: 'rgba(255, 255, 255, 0.6)',
-          callback: (v) => `${v} kg`,
-          font: { size: 11 }
-        }
+        ticks: { display: false },
+        border: { display: false },
       }
     },
-    interaction: {
-      mode: 'nearest',
-      axis: 'x',
-      intersect: false
-    }
+    interaction: { mode: 'nearest', axis: 'x', intersect: false }
   };
 
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex flex-wrap items-start mb-3 gap-2">
-        <h3 className="text-[12px] font-bold text-slate-200 flex-1 leading-tight">Composição Corporal (kg)</h3>
-        <MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área verde se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />
-      </div>
-      <div className="h-64 relative">
-        <Line ref={chartRef} data={chartData} options={options} />
-      </div>
-    </div>
+    <ChartFrame
+      className={className}
+      label="Composição corporal"
+      info={<MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área violeta se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />}
+      hint={dates.length > 0 ? `${dates.length} avaliações` : undefined}
+      value={total > 0 ? fmtNumber(total, 1) : '—'}
+      unit="kg"
+      delta={leanDelta !== null && Math.abs(leanDelta) >= 0.1
+        ? { text: `${leanDelta > 0 ? '+' : '−'}${fmtNumber(Math.abs(leanDelta), 1)} kg de massa magra`, tone: leanDelta >= 0 ? 'ok' : 'warn' }
+        : undefined}
+      legend={[
+        { label: `Massa magra ${fmtNumber(lastLean, 1)} kg`, color: MAGRA },
+        { label: `Massa gorda ${fmtNumber(lastFat, 1)} kg`, color: GORDA },
+      ]}
+      height={200}
+    >
+      <Line data={chartData} options={options} />
+    </ChartFrame>
   );
 }

@@ -22,6 +22,9 @@ import KPICard from '../BI/KPICard';
 import MacroComplianceChart from '../BI/MacroComplianceChart';
 import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
 import MetricInfo from '../BI/MetricInfo';
+import ChartFrame from '../BI/ChartFrame';
+import VerdictLine from '../BI/VerdictLine';
+import { nutritionVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 
@@ -70,10 +73,19 @@ export default function NutritionDashboard() {
     return calculateMacroAdherence(meals, profile, bodyAssessments || [], biRange);
   }, [meals, profile, bodyAssessments, biRange]);
 
-  const eaData = useMemo(() => {
-    const res = calculateEnergyAvailability(meals, bodyAssessments || [], runs || [], gymSessions || [], biRange);
-    return res?.daily || [];
+  const eaWindow = useMemo(() => {
+    return calculateEnergyAvailability(meals, bodyAssessments || [], runs || [], gymSessions || [], biRange);
   }, [meals, bodyAssessments, runs, gymSessions, biRange]);
+  const eaData = eaWindow?.daily || [];
+
+  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
+     utils/dashboardVerdicts.js — aqui só se juntam os dados que o biEngine
+     já calculou. A janela de EA passa inteira (e não só `daily`) porque o
+     veredicto cita a média do período como prova. */
+  const verdict = useMemo(
+    () => nutritionVerdict({ adherence, ea: eaWindow }),
+    [adherence, eaWindow]
+  );
 
   // Chart Data preparation for selected macro trend
   const chartData = useMemo(() => {
@@ -143,14 +155,15 @@ export default function NutritionDashboard() {
         }
       }
     },
+    // Ponto 6: os ticks deixam de escrever dentro da tela — o valor do
+    // último dia é o número grande do ChartFrame e os extremos do eixo vão
+    // para os cantos, em HTML.
     scales: {
-      x: {
-        grid: { display: false },
-        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 11 } }
-      },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
       y: {
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 11 } },
+        ticks: { display: false },
+        border: { display: false },
         beginAtZero: true
       }
     }
@@ -188,6 +201,9 @@ export default function NutritionDashboard() {
 
   return (
     <div className="space-y-4 fade-in pb-20">
+      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
+      <VerdictLine text={verdict.text} tone={verdict.tone} />
+
       <TimeFilterBar
         activeRange={activeFilter}
         onChange={setActiveFilter}
@@ -258,29 +274,26 @@ export default function NutritionDashboard() {
       </div>
 
       {/* Macro Trend Line Chart — logo a seguir aos 4 cards */}
-      {chartData && (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <div className="flex items-start mb-2 gap-2">
-            <h2 className="text-[11px] font-semibold text-slate-200 flex-1 flex items-center gap-1.5 uppercase tracking-wider">
-              {(() => {
-                const SelectedIcon = getMacroIcon(selectedMacro);
-                return <SelectedIcon size={14} style={{ color: MACROS.find(m => m.key === selectedMacro)?.color }} />;
-              })()}
-              {MACROS.find(m => m.key === selectedMacro)?.label} por Dia
-            </h2>
-            <MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />
-          </div>
-          <div className="flex justify-center items-center gap-3 mb-4 text-[11px] text-slate-400 font-semibold">
-            <span className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 
-              {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})
-            </span>
-          </div>
-          <div className="h-48">
+      {chartData && (() => {
+        const macroObj = MACROS.find(m => m.key === selectedMacro) || MACROS[0];
+        const series = chartData.datasets[0].data;
+        const lastValue = series.length ? series[series.length - 1] : 0;
+        const maxValue = series.length ? Math.max(...series) : 0;
+        return (
+          <ChartFrame
+            label={`${macroObj.label} por dia`}
+            info={<MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />}
+            value={fmtNumber(lastValue, macroObj.key === 'calories' ? 0 : 1)}
+            unit={`${macroObj.unit} no último dia`}
+            valueColor={macroObj.color}
+            axis={maxValue > 0 ? { min: `0 ${macroObj.unit}`, max: `${fmtNumber(maxValue, 0)} ${macroObj.unit}` } : undefined}
+            legend={[{ label: `${macroObj.label} (${macroObj.unit})`, color: macroObj.color, shape: 'line' }]}
+            height={192}
+          >
             <Line data={chartData} options={chartOptions} />
-          </div>
-        </div>
-      )}
+          </ChartFrame>
+        );
+      })()}
 
       {/* BI Charts */}
       {adherence?.dailyBreakdown && adherence.dailyBreakdown.length > 0 && (

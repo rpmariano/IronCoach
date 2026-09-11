@@ -9,9 +9,16 @@ import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
+import ChartFrame from '../BI/ChartFrame';
+import VerdictLine from '../BI/VerdictLine';
+import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume, sessionVolumeKg } from '../../utils/biEngine';
 import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
 import { todayISO } from '../../lib/utils';
+
+// Semanas cobertas por cada filtro de período — denominador da frequência
+// semanal usada pela frase de veredicto.
+const WEEKS_BY_RANGE = { dia: 1, semana: 1, mes: 4, trimestre: 13, '6meses': 26, ano: 52 };
 
 function formatDurationMinutes(seconds) {
   if (!seconds) return '0 min';
@@ -51,6 +58,16 @@ export default function GymDashboard() {
 
   const strengthSessions = useMemo(() => sessionsInRange.filter(s => s.kind !== 'aula'), [sessionsInRange]);
 
+  // Valores que o ponto 6 põe em HTML acima dos gráficos, em vez de os
+  // deixar nos ticks do eixo.
+  const dayVolumes = useMemo(() => Object.keys(volumeByDay).sort().map(d => volumeByDay[d]), [volumeByDay]);
+  const lastDayVolume = dayVolumes.length ? dayVolumes[dayVolumes.length - 1] : 0;
+  const maxDayVolume = dayVolumes.length ? Math.max(...dayVolumes) : 0;
+  const topMuscle = useMemo(() => {
+    const groups = Object.keys(muscleVolume).sort((a, b) => muscleVolume[b].sets - muscleVolume[a].sets);
+    return groups.length ? { name: groups[0], sets: muscleVolume[groups[0]].sets } : null;
+  }, [muscleVolume]);
+
   const volChartData = useMemo(() => {
     const days = Object.keys(volumeByDay).sort();
     return {
@@ -58,13 +75,16 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Volume (kg)',
         data: days.map(d => volumeByDay[d]),
+        // Ponto 6, paleta das séries: era um gradiente âmbar
+        // (#d97706 → #f59e0b) e o âmbar é da prova. Passa ao ardósia do
+        // ginásio (--gym #9ec3d2), em tinta.
         backgroundColor: (context) => {
           const chart = context.chart;
           const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          if (!chartArea) return 'rgba(158, 195, 210, 0.7)';
           const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
-          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          gradient.addColorStop(0, 'rgba(158, 195, 210, 0.25)');
+          gradient.addColorStop(1, 'rgba(158, 195, 210, 0.9)');
           return gradient;
         },
         borderRadius: 6
@@ -79,13 +99,14 @@ export default function GymDashboard() {
       datasets: [{
         label: 'Séries',
         data: groups.map(g => muscleVolume[g].sets),
+        // Mesma razão do gráfico acima: fora o âmbar, dentro o ardósia.
         backgroundColor: (context) => {
           const chart = context.chart;
           const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
+          if (!chartArea) return 'rgba(158, 195, 210, 0.7)';
           const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
-          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
+          gradient.addColorStop(0, 'rgba(158, 195, 210, 0.25)');
+          gradient.addColorStop(1, 'rgba(158, 195, 210, 0.9)');
           return gradient;
         },
         borderRadius: 6
@@ -103,14 +124,27 @@ export default function GymDashboard() {
     [gymSessions, rangeKey],
   );
 
-  // Shared scale options
+  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
+     utils/dashboardVerdicts.js; aqui só se juntam os dados já calculados.
+     `weeksInRange` é o denominador da frequência semanal — o número de
+     semanas que o filtro de período cobre. */
+  const verdict = useMemo(() => gymVerdict({
+    weeklyBreakdown: volumeData.weeklyBreakdown,
+    strengthSessions: strengthSessions.length,
+    classes: classAnalytics.totalClasses,
+    weeksInRange: WEEKS_BY_RANGE[rangeKey] || 4,
+    totalVolumeLoad: volumeData.totalVolumeLoad,
+  }), [volumeData, strengthSessions.length, classAnalytics.totalClasses, rangeKey]);
+
+  // Ponto 6: os ticks deixam de escrever dentro da tela — os valores atuais
+  // e os extremos dos eixos passam a HTML no ChartFrame.
   const darkScalesVertical = {
-    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
-    x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
   };
   const darkScalesHorizontal = {
-    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
-    y: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+    y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
   };
   const baseChartOptions = {
     responsive: true,
@@ -120,6 +154,9 @@ export default function GymDashboard() {
 
   return (
     <div className="space-y-4 fade-in">
+      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
+      <VerdictLine text={verdict.text} tone={verdict.tone} />
+
       <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="ginasio" />
       
       <div className="grid grid-cols-3 gap-3">
@@ -142,20 +179,30 @@ export default function GymDashboard() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-              <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Volume Diário (kg)</p>
-              <div className="h-52 relative">
-                <Bar data={volChartData} options={{ ...baseChartOptions, scales: darkScalesVertical }} />
-              </div>
-            </div>
+            <ChartFrame
+              label="Volume diário"
+              value={fmtNumber(lastDayVolume, 0)}
+              unit="kg no último dia com treino"
+              valueColor="var(--gym)"
+              axis={maxDayVolume > 0 ? { min: '0 kg', max: `${fmtNumber(maxDayVolume, 0)} kg` } : undefined}
+              legend={[{ label: 'Volume-carga do dia', color: 'var(--gym)' }]}
+              height={192}
+            >
+              <Bar data={volChartData} options={{ ...baseChartOptions, scales: darkScalesVertical }} />
+            </ChartFrame>
 
             {Object.keys(muscleVolume).length > 0 && (
-              <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-                <p className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider mb-3">Séries por Músculo</p>
-                <div className="h-52 relative">
-                  <Bar data={muscleChartData} options={{ ...baseChartOptions, indexAxis: 'y', scales: darkScalesHorizontal }} />
-                </div>
-              </div>
+              <ChartFrame
+                label="Séries por músculo"
+                value={topMuscle ? topMuscle.sets : '—'}
+                unit={topMuscle ? `séries em ${topMuscle.name}` : undefined}
+                valueColor="var(--gym)"
+                hint={`${Object.keys(muscleVolume).length} grupos`}
+                legend={[{ label: 'Séries no período', color: 'var(--gym)' }]}
+                height={192}
+              >
+                <Bar data={muscleChartData} options={{ ...baseChartOptions, indexAxis: 'y', scales: darkScalesHorizontal }} />
+              </ChartFrame>
             )}
           </div>
 

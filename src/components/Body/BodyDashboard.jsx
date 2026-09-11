@@ -2,13 +2,16 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
-import { User, CalendarDays, Activity } from 'lucide-react';
+import { User, CalendarDays } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 import Button from '../shared/Button';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import StackedAreaChart from '../BI/StackedAreaChart';
 import MetricInfo from '../BI/MetricInfo';
+import ChartFrame from '../BI/ChartFrame';
+import VerdictLine from '../BI/VerdictLine';
+import { bodyVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
 
 export default function BodyDashboard({ onGoToCalendar }) {
@@ -109,9 +112,12 @@ export default function BodyDashboard({ onGoToCalendar }) {
     };
   }, [points, selectedMetric]);
 
+  // Ponto 6: os ticks deixam de escrever dentro da tela — o valor atual é o
+  // número grande do ChartFrame e os extremos do eixo vão para os cantos,
+  // em HTML.
   const darkScales = {
-    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
-    x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
   };
 
   const chartOptions = {
@@ -123,6 +129,15 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
   const weightTrendData = useMemo(() => calculateWeightTrend(filteredAssessments), [filteredAssessments]);
   const compositionData = useMemo(() => calculateCompositionTrend(filteredAssessments), [filteredAssessments]);
+
+  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
+     utils/dashboardVerdicts.js — aqui só se juntam os dados que o biEngine
+     já calculou. */
+  const verdict = useMemo(() => bodyVerdict({
+    weightTrend: weightTrendData,
+    composition: compositionData,
+    assessmentCount: filteredAssessments.length,
+  }), [weightTrendData, compositionData, filteredAssessments.length]);
 
   if (bodyAssessments.length === 0) {
     return (
@@ -174,6 +189,9 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
   return (
     <div className="space-y-4 fade-in pb-16">
+      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
+      <VerdictLine text={verdict.text} tone={verdict.tone} />
+
       <TimeFilterBar
         activeRange={timeRange}
         onChange={setTimeRange}
@@ -225,62 +243,73 @@ export default function BodyDashboard({ onGoToCalendar }) {
       </div>
 
       {/* 2. Gráfico da Métrica Selecionada (reage aos cards acima) */}
-      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedMetric.color }} />
-            <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider truncate">{selectedMetric.label}</h2>
-          </div>
-          {latestVal !== null && (
-            <span className="text-xl font-bold text-white">{fmtMetric(selectedMetric, latestVal)}</span>
-          )}
-        </div>
-
-        <div className="mb-3">
-          {goalVal != null && latestVal != null ? (
-            <span className="text-[11px] text-slate-400">
-              Objetivo: <span className="text-slate-200 font-semibold">{fmtMetric(selectedMetric, goalVal)}</span>
-            </span>
-          ) : (
-            <span className="text-[11px] text-slate-400">
-              {points.length} leitura(s){goalVal == null ? ' · sem objetivo definido' : ''}
-            </span>
-          )}
-        </div>
-
-        {points.length >= 1 ? (
-          <div className="h-48 relative">
-            <Line data={chartData} options={chartOptions} />
-          </div>
-        ) : (
-          <p className="text-[11px] text-slate-500 py-8 text-center uppercase tracking-wider">Sem leituras desta métrica no período selecionado.</p>
-        )}
-      </div>
+      {(() => {
+        const vals = points.map(a => Number(a[selectedMetric.key])).filter(v => isFinite(v));
+        const first = vals.length ? vals[0] : null;
+        const diff = vals.length >= 2 ? vals[vals.length - 1] - first : null;
+        return (
+          <ChartFrame
+            label={selectedMetric.label}
+            hint={goalVal != null ? `objetivo ${fmtMetric(selectedMetric, goalVal)}` : `${points.length} leitura${points.length === 1 ? '' : 's'}`}
+            value={latestVal !== null ? fmtMetric(selectedMetric, latestVal) : '—'}
+            unit={selectedMetric.unit || undefined}
+            valueColor={selectedMetric.color}
+            delta={diff !== null && Math.abs(diff) >= 0.01
+              ? {
+                  text: `${diff > 0 ? '+' : '−'}${fmtNumber(Math.abs(diff), selectedMetric.dec)}${selectedMetric.unit ? ' ' + selectedMetric.unit : ''} no período`,
+                  tone: selectedMetric.good === 'down'
+                    ? (diff < 0 ? 'ok' : 'warn')
+                    : selectedMetric.good === 'up'
+                      ? (diff > 0 ? 'ok' : 'warn')
+                      : 'neutral',
+                }
+              : undefined}
+            axis={vals.length > 1
+              ? { min: fmtMetric(selectedMetric, Math.min(...vals)), max: fmtMetric(selectedMetric, Math.max(...vals)) }
+              : undefined}
+            legend={[{ label: selectedMetric.label, color: selectedMetric.color, shape: 'line' }]}
+            height={points.length >= 1 ? 192 : 0}
+            footer={points.length >= 1 ? undefined : 'Sem leituras desta métrica no período selecionado.'}
+          >
+            {points.length >= 1 ? <Line data={chartData} options={chartOptions} /> : null}
+          </ChartFrame>
+        );
+      })()}
 
       {/* 3. Tendência de Peso (EWMA) */}
-      {weightTrendData && (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <div className="flex items-start gap-2 mb-3">
-            <div className="flex items-center gap-2 flex-1">
-              <Activity className="w-4 h-4 text-[var(--mod-corpo)]" />
-              <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider leading-tight">
-                {weightTrendData.isEWMASmoothing ? 'Tendência de Peso (EWMA)' : 'Evolução de Peso'}
-              </h2>
-            </div>
-            <MetricInfo text={
-              weightTrendData.isEWMASmoothing 
-                ? "O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha!"
+      {weightTrendData && (() => {
+        const ma = weightTrendData.movingAverage || [];
+        const lastWeight = ma.length ? Number(ma[ma.length - 1].weight) : null;
+        const raw = (weightTrendData.rawPoints || []).map(pt => Number(pt.weight)).filter(v => isFinite(v));
+        const rate = Number(weightTrendData.weeklyRate ?? 0);
+        return (
+          <ChartFrame
+            label={weightTrendData.isEWMASmoothing ? 'Tendência de peso (EWMA)' : 'Evolução de peso'}
+            info={<MetricInfo text={
+              weightTrendData.isEWMASmoothing
+                ? "O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha."
                 : "A evolução direta do teu peso no período selecionado. A tendência (EWMA) será ativada automaticamente quando registares pelo menos 5 pesagens neste período."
-            } />
-          </div>
-          <div className="h-48 relative">
-            <Line 
-              data={weightDualChartData} 
-              options={chartOptions} 
-            />
-          </div>
-        </div>
-      )}
+            } />}
+            hint={`${raw.length} pesagens`}
+            value={lastWeight !== null ? fmtNumber(lastWeight, 1) : '—'}
+            unit="kg"
+            valueColor="var(--body)"
+            delta={Math.abs(rate) >= 0.05
+              ? { text: `${rate > 0 ? '+' : '−'}${fmtNumber(Math.abs(rate), 1)} kg/semana`, tone: Math.abs(rate) >= 1 ? 'danger' : 'neutral' }
+              : undefined}
+            axis={raw.length > 1
+              ? { min: `${fmtNumber(Math.min(...raw), 1)} kg`, max: `${fmtNumber(Math.max(...raw), 1)} kg` }
+              : undefined}
+            legend={[
+              { label: weightTrendData.isEWMASmoothing ? 'Tendência' : 'Evolução', color: 'var(--body)', shape: 'line' },
+              { label: 'Pesagens', color: 'rgba(248,250,252,.4)' },
+            ]}
+            height={192}
+          >
+            <Line data={weightDualChartData} options={chartOptions} />
+          </ChartFrame>
+        );
+      })()}
 
       {/* 4. Composição Corporal (Massa Magra vs Massa Gorda - Eixo Duplo) */}
       {compositionData && compositionData.dates.length > 0 && (

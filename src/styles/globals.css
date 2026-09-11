@@ -86,22 +86,37 @@
   --race-to: var(--race);
   --race-glow: rgba(251, 191, 36, 0.35);
 
-  /* Cores de dados (macros + métricas). NÃO são módulos nem significados:
-     são séries de gráfico. Verificadas contra o âmbar da prova (#fbbf24 /
-     #f59e0b / #d97706) — nenhuma lá cai; os hidratos são um ocre-azeitona
-     (#8b8118) claramente distinto, por isso ficam como estão. */
-  --data-calorias:#dd3c4f;
-  --data-proteina:#3c6cdd;
-  --data-hidratos:#8b8118;
-  --data-gordura:#dd3cb7;
-  --data-calories: #dd3c4f;
-  --data-protein: #3c6cdd;
-  --data-carbs: #8b8118;
-  --data-fat: #dd3cb7;
-  --data-peso:#dd3c71;
-  --data-proteina-ink: #7295ec;
-  --data-hidratos-ink: #c9bb3a;
-  --data-gordura-ink:  #e879c5;
+  /* Cores de dados (macros + métricas) — ponto 6 do redesenho, "paleta das
+     séries de dados". Deixaram de ser uma paleta própria (azul/ocre/magenta
+     inventados) e passaram a ALIASES das oito cores com significado: a app
+     tem oito cores, não doze. Quem manda é o mock "Dashboard · Nutrição",
+     que mostra proteína a rosa (--body), hidratos a violeta (--nutrition) e
+     gordura a ciano (--run); e o mock "Dashboard · Corpo", que mostra
+     gordura a rosa e músculo a violeta. Nenhuma série usa âmbar nem coral:
+     o âmbar é da prova e o coral é aviso.
+
+     O âmbar entra só como --data-alvo — a linha do alvo calórico e os dias
+     que ficam fora dele, no mock "Calorias vs. alvo". Aí não é uma série:
+     é a meta, e a meta é a prova.
+
+     Duas séries partilham cor (proteína/gordura-corporal em --body;
+     hidratos/massa-magra em --nutrition) mas nunca aparecem no mesmo
+     gráfico: macros em MacroComplianceChart, composição em
+     StackedAreaChart. */
+  --data-calorias: var(--nutrition);
+  --data-proteina: var(--body);
+  --data-hidratos: var(--nutrition);
+  --data-gordura:  var(--run);
+  --data-calories: var(--nutrition);
+  --data-protein: var(--body);
+  --data-carbs: var(--nutrition);
+  --data-fat: var(--run);
+  --data-peso: var(--body);
+  --data-magra: var(--nutrition);
+  --data-alvo: var(--race);
+  --data-proteina-ink: var(--body);
+  --data-hidratos-ink: var(--nutrition);
+  --data-gordura-ink:  var(--run);
   /* "ink" das macros = a própria cor, lida sobre a tinta a 16% (handoff:
      "texto sobre tinta a 16% é a própria cor"). O da nutrição estava a
      apontar para o verde do --ok, que é outro significado. */

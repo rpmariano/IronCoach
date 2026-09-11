@@ -1,86 +1,51 @@
 import React from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
-import { format, parseISO } from 'date-fns';
-import { pt } from 'date-fns/locale';
 import MetricInfo from './MetricInfo';
+import ChartFrame from './ChartFrame';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
+
+/* Ponto 6 do redesenho:
+   - O `predictionPlugin` desenhava uma caixa com texto DENTRO da tela
+     (`ctx.fillText` do nome da prova e do tempo previsto). Sai por
+     completo: o tempo previsto é agora o número grande do ChartFrame e o
+     nome da prova é a etiqueta ao lado. Fica só a linha do VDOT no canvas.
+   - Ticks e o `title` do eixo y ("VDOT") saem também.
+   - Paleta: a série do VDOT estava em âmbar — o âmbar é da prova, e o VDOT
+     é forma de corrida. A série passa ao ciano da corrida (--run); o âmbar
+     fica só no número da PREVISÃO, que é mesmo da prova. */
+
+const RUN = '#2ee0ff';   // --run
 
 export default function RacePredictionChart({ vdotTrend = [], prediction, className = '' }) {
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
     const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    return h > 0 ? `${h}h${m}:${s} min` : `${m}:${s} min`;
+    return h > 0 ? `${h}h${m}:${s}` : `${m}:${s}`;
   };
 
-  // Deduplicate: keep only the best (highest) VDOT per unique date
+  // Um ponto por data, ficando com o melhor VDOT do dia.
   const deduped = Object.values(
     vdotTrend.reduce((acc, d) => {
-      const key = d.date;
-      if (!acc[key] || d.vdot > acc[key].vdot) acc[key] = d;
+      if (!acc[d.date] || d.vdot > acc[d.date].vdot) acc[d.date] = d;
       return acc;
     }, {})
   ).sort((a, b) => a.date.localeCompare(b.date));
 
-  const labels = deduped.map(d => {
-    try { return format(parseISO(d.date), 'dd MMM', { locale: pt }); }
-    catch { return d.date; }
-  });
-
-  const predictionPlugin = {
-    id: 'predictionAnno',
-    afterDraw: (chart) => {
-      if (!prediction) return;
-      const { ctx, chartArea } = chart;
-      if (!chartArea) return;
-
-      const boxW = 148;
-      const boxH = 58;
-      const boxX = chartArea.left + 8; // top-left, away from the data peak
-      const boxY = chartArea.top + 8;
-
-      ctx.save();
-
-      // Shadow
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 4;
-
-      // Background
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.beginPath();
-      ctx.roundRect(boxX, boxY, boxW, boxH, 10);
-      ctx.fill();
-
-      // Border
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.4)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      // Label "Previsão →"
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '9px system-ui';
-      ctx.fillText('PREVISÃO → ' + (prediction.raceName || 'Prova'), boxX + 10, boxY + 20);
-
-      // Time value
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 18px system-ui';
-      ctx.fillText(formatTime(prediction.predictedSeconds), boxX + 10, boxY + 44);
-
-      ctx.restore();
-    }
-  };
+  const vdots = deduped.map(d => Number(d.vdot));
+  const firstVdot = vdots.length ? vdots[0] : null;
+  const lastVdot = vdots.length ? vdots[vdots.length - 1] : null;
+  const hasTrend = deduped.length >= 2;
 
   const data = {
-    labels,
+    labels: deduped.map((_, i) => i),
     datasets: [
       {
         label: 'VDOT',
-        data: deduped.map(d => d.vdot),
-        borderColor: '#fbbf24',
-        backgroundColor: 'rgba(251, 191, 36, 0.15)',
+        data: vdots,
+        borderColor: RUN,
+        backgroundColor: 'rgba(46, 224, 255, 0.15)',
         fill: true,
         tension: 0.4,
         pointRadius: 0,
@@ -102,61 +67,49 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
         borderWidth: 1,
         padding: 10,
         callbacks: {
-          label: (ctx) => `VDOT: ${Number(ctx.raw).toFixed(1)}`
+          title: (items) => deduped[items?.[0]?.dataIndex]?.date || '',
+          label: (ctx) => `VDOT: ${fmtNumber(ctx.raw, 1)}`
         }
       }
     },
     scales: {
-      x: {
-        grid: { display: false },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.5)',
-          maxTicksLimit: 6,
-          maxRotation: 0,
-        }
-      },
-      y: {
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: {
-          color: 'rgba(255, 255, 255, 0.5)',
-          callback: (v) => `${v}`
-        },
-        title: {
-          display: true,
-          text: 'VDOT',
-          color: 'rgba(255, 255, 255, 0.35)',
-          font: { size: 11 }
-        }
-      }
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
+      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { display: false }, border: { display: false } }
     }
   };
 
-  const hasTrend = deduped.length >= 2;
+  // O número grande: o tempo previsto quando há prova (âmbar, é da prova);
+  // senão o VDOT atual (ciano, é da corrida).
+  const value = prediction ? formatTime(prediction.predictedSeconds) : (lastVdot !== null ? fmtNumber(lastVdot, 1) : '—');
+  const unit = prediction ? (prediction.raceName || 'prova') : 'VDOT';
+  const valueColor = prediction ? 'var(--race)' : 'var(--run)';
+
+  const vdotDelta = hasTrend ? lastVdot - firstVdot : null;
+
+  const legend = [{ label: `VDOT ${lastVdot !== null ? fmtNumber(lastVdot, 1) : '—'}`, color: RUN, shape: 'line' }];
+  if (prediction) legend.push({ label: 'Previsão da prova', color: 'var(--race)' });
 
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex flex-wrap items-start mb-3">
-        <h3 className="text-[12px] font-bold text-slate-200">Evolução VDOT & Previsão de Prova</h3>
-        <MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />
-      </div>
-      {hasTrend ? (
-        <div className="h-64 relative">
-          <Line data={data} options={options} plugins={[predictionPlugin]} />
-        </div>
-      ) : prediction ? (
-        <div className="flex items-center justify-between gap-3 py-2">
-          <p className="text-[11px] text-slate-500 leading-snug max-w-[65%]">
-            Regista mais corridas para veres a evolução do VDOT ao longo do tempo.
-          </p>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-slate-500">Previsão → {prediction.raceName || 'Prova'}</p>
-            <p className="text-lg font-bold text-amber-400">{formatTime(prediction.predictedSeconds)}</p>
-          </div>
-        </div>
-      ) : (
-        <p className="text-[11px] text-slate-500 py-2">Regista corridas para veres a previsão desta prova.</p>
-      )}
-    </div>
+    <ChartFrame
+      className={className}
+      label={prediction ? 'Previsão de prova' : 'Evolução do VDOT'}
+      info={<MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />}
+      value={value}
+      unit={unit}
+      valueColor={valueColor}
+      delta={vdotDelta !== null && Math.abs(vdotDelta) >= 0.1
+        ? { text: `VDOT ${vdotDelta > 0 ? '+' : '−'}${fmtNumber(Math.abs(vdotDelta), 1)}`, tone: vdotDelta >= 0 ? 'ok' : 'warn' }
+        : undefined}
+      legend={hasTrend ? legend : []}
+      axis={hasTrend ? { min: fmtNumber(Math.min(...vdots), 1), max: fmtNumber(Math.max(...vdots), 1) } : undefined}
+      height={hasTrend ? 200 : 0}
+      footer={!hasTrend
+        ? (prediction
+            ? 'Regista mais corridas para veres a evolução do VDOT ao longo do tempo.'
+            : 'Regista corridas para veres a previsão desta prova.')
+        : undefined}
+    >
+      {hasTrend ? <Line data={data} options={options} /> : null}
+    </ChartFrame>
   );
 }
-

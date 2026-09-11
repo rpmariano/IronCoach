@@ -2,6 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
+import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
+import { buildTrailModel } from '../../utils/homeModels';
 
 /* Ponto 3 do redesenho: os pilares tinham emoji (🏃 ⚡ 🥗 📈 🎯). Passam a
    lucide, cada um na cor do que mede — os dois de nutrição/energia no roxo
@@ -30,6 +32,25 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   );
 
   const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;
+
+  /* Ponto 6 do redesenho: "Prontidão com o bloco da prova". O cartão dizia
+     só o nome e os dias que faltam; passa a dizer também em que FASE do
+     macrociclo se está e em que SEMANA — a mesma informação que o trilho do
+     Início mostra. Não se recalcula nada aqui: reaproveita-se o
+     calculateRaceTrainingPlan (racePlanEngine) e o buildTrailModel
+     (homeModels) que o Início já usa, para os dois ecrãs não poderem
+     divergir. Sem prova, `trail` é null e o bloco inteiro não aparece. */
+  const trail = useMemo(() => {
+    if (!nextRace) return null;
+    try {
+      const plan = calculateRaceTrainingPlan({ race: nextRace, profile: profile || {}, runs: runs || [] });
+      return plan ? buildTrailModel(plan) : null;
+    } catch (e) {
+      // Uma prova com datas impossíveis não pode partir o cartão inteiro:
+      // sem plano, mostra-se só o nome e os dias, como antes.
+      return null;
+    }
+  }, [nextRace, profile, runs]);
 
   /* Prontidão alta/média/baixa = dentro do alvo / atenção / erro. A média
      era âmbar (#f59e0b) — o âmbar é da prova; atenção é o coral --warn. */
@@ -87,8 +108,18 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 <span className="text-[11px] text-amber-400 font-bold uppercase tracking-wider">Próxima Prova</span>
               </div>
               <p className="text-sm font-bold text-white leading-tight truncate">{nextRace.name || nextRace.race_name || 'Prova'}</p>
+              {trail?.phaseName && (
+                <p
+                  data-testid="readiness-race-phase"
+                  className="text-[11px] font-semibold mt-0.5 truncate"
+                  style={{ color: 'var(--race)' }}
+                >
+                  {trail.phaseName}
+                  {trail.weekLabel ? ` · ${trail.weekLabel}` : ''}
+                </p>
+              )}
               <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                {daysLeft === 0 ? 'É hoje!' : daysLeft === 1 ? 'Amanhã!' : `Faltam ${daysLeft} dias`}
+                {daysLeft === 0 ? 'É hoje' : daysLeft === 1 ? 'Amanhã' : `Faltam ${daysLeft} dias`}
               </p>
             </>
           ) : (

@@ -11,6 +11,9 @@ import ACWRChart from '../BI/ACWRChart';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
+import ChartFrame from '../BI/ChartFrame';
+import VerdictLine from '../BI/VerdictLine';
+import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
 import { computeBestPace } from '@formulas/bestPace.ts';
@@ -140,14 +143,16 @@ export default function RunDashboard() {
         {
           label: 'Distância (km)',
           data,
+          // Ponto 6, paleta das séries: era azul genérico (59,130,246).
+          // Passa ao ciano da corrida (--run #2ee0ff), em tinta.
           backgroundColor: (context) => {
             const chart = context.chart;
             const { ctx, chartArea } = chart;
-            if (!chartArea) return 'rgba(59, 130, 246, 0.6)';
-            
+            if (!chartArea) return 'rgba(46, 224, 255, 0.6)';
+
             const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
-            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.8)');
+            gradient.addColorStop(0, 'rgba(46, 224, 255, 0.25)');
+            gradient.addColorStop(1, 'rgba(46, 224, 255, 0.9)');
             return gradient;
           },
           borderRadius: 6,
@@ -160,13 +165,16 @@ export default function RunDashboard() {
     // dependências, o que rebentava o componente ao montar (ReferenceError).
   }, [periodRuns, activeRange]);
 
+  // Ponto 6: os ticks deixam de escrever dentro da tela. O total do período
+  // é o número grande do ChartFrame e os extremos do eixo vão para os
+  // cantos, em HTML.
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
-      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
     }
   };
 
@@ -178,6 +186,18 @@ export default function RunDashboard() {
   // mostrava sempre 0 km de desnível, 0 kcal e cadência "—", mesmo com dados
   // gravados — ver comentário em runWatchMetrics.ts.
   const watchMetrics = useMemo(() => computeRunWatchMetrics(periodRuns), [periodRuns]);
+
+  /* Ponto 6 do redesenho: a frase de veredicto. O dashboard tem de dizer se
+     está bem ou mal antes de mostrar um único número (auditoria, achado 6).
+     As regras vivem em utils/dashboardVerdicts.js — aqui só se juntam os
+     dados que o biEngine já calculou acima. */
+  const verdict = useMemo(() => runVerdict({
+    acwr: acwrData,
+    weeklyVolume: acwrWeeklyData,
+    vdotTrend,
+    distribution,
+    runCount: periodRuns.length,
+  }), [acwrData, acwrWeeklyData, vdotTrend, distribution, periodRuns.length]);
 
   const renderBucket = (label, b) => {
     if (!b) {
@@ -212,6 +232,9 @@ export default function RunDashboard() {
 
   return (
     <div className="space-y-4 fade-in">
+      {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
+      <VerdictLine text={verdict.text} tone={verdict.tone} />
+
       {/* 1. TimeFilterBar */}
       <TimeFilterBar
         activeRange={activeRange}
@@ -311,12 +334,18 @@ export default function RunDashboard() {
           </p>
         </div>
       ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <p className="text-[11px] font-semibold text-slate-200 mb-3 uppercase tracking-wider">Distância por dia</p>
-          <div className="h-44">
-            <Bar data={chartData} options={chartOptions} />
-          </div>
-        </div>
+        <ChartFrame
+          label="Distância por dia"
+          value={fmtNumber(totalDist, 1)}
+          unit="km no período"
+          valueColor="var(--run)"
+          delta={{ text: `${periodRuns.length} ${periodRuns.length === 1 ? 'corrida' : 'corridas'}`, tone: 'neutral' }}
+          axis={{ min: '0 km', max: `${fmtNumber(Math.max(...chartData.datasets[0].data, 0), 1)} km` }}
+          legend={[{ label: 'Distância diária', color: 'var(--run)' }]}
+          height={176}
+        >
+          <Bar data={chartData} options={chartOptions} />
+        </ChartFrame>
       )}
 
       {/* 8. Recordes: Melhor pace de sempre */}

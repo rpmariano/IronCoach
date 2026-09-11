@@ -82,7 +82,12 @@ describe('NutritionDashboard', () => {
       ],
     });
     render(<NutritionDashboard />);
-    expect(screen.getByText('1')).toBeInTheDocument();
+    // Desde o ponto 6 do redesenho o "1" aparece duas vezes: no KPI da
+    // proteína e no número grande do ChartFrame da adesão às macros (que
+    // mostra a proteína do último dia, também em g/kg). Aqui interessa o
+    // KPI — é ele que prova qual o peso usado no denominador.
+    const kpiValue = screen.getAllByText('1').filter(el => el.className.includes('text-2xl'));
+    expect(kpiValue).toHaveLength(1);
   });
 
   it('não rebenta sem refeições nenhumas', () => {

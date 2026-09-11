@@ -1,17 +1,29 @@
+/* Cores das métricas de corpo — ponto 6 do redesenho ("paleta das séries
+   de dados"). Eram treze cores avulsas (verdes, azuis, magentas) sem
+   relação com as oito com significado; nenhuma delas dizia "corpo". Passam
+   a duas, as mesmas que o mock "Dashboard · Corpo" usa na barra de
+   composição: rosa (--body) para peso e gordura, violeta (--nutrition)
+   para tudo o que é massa magra, músculo, água e osso. Nunca aparecem duas
+   ao mesmo tempo no mesmo gráfico — só se vê uma métrica de cada vez — por
+   isso não há ambiguidade. Em hexadecimal porque o Chart.js pinta em
+   <canvas> e não resolve var(--x); os valores são os de tokens/colors.css. */
+const C_MASSA = '#ff5fa8';  // --body
+const C_MAGRA = '#c77dff';  // --nutrition
+
 export const BODY_METRICS = [
-  { key: 'weight_kg', label: 'Peso', unit: 'kg', dec: 1, color: '#dd3c71', good: null },
-  { key: 'bmi', label: 'IMC', unit: '', dec: 1, color: '#da2fd7', good: 'down' },
-  { key: 'body_fat_pct', label: 'Gordura corporal', unit: '%', dec: 1, color: '#dd3c94', good: 'down' },
-  { key: 'skeletal_muscle_pct', label: 'Músculo esquelético', unit: '%', dec: 1, color: '#468f19', good: 'up' },
-  { key: 'muscle_mass_kg', label: 'Massa muscular', unit: 'kg', dec: 1, color: '#2c931a', good: 'up' },
-  { key: 'body_water_pct', label: 'Água corporal', unit: '%', dec: 1, color: '#2b82da', good: 'up' },
-  { key: 'protein_pct', label: 'Proteína', unit: '%', dec: 1, color: '#5f8b18', good: 'up' },
-  { key: 'bone_mass_kg', label: 'Massa óssea', unit: 'kg', dec: 1, color: '#643cdd', good: null },
-  { key: 'bmr_kcal', label: 'Metabolismo basal', unit: 'kcal', dec: 0, color: '#768618', good: 'up' },
-  { key: 'visceral_fat', label: 'Gordura visceral', unit: '', dec: 0, color: '#bc3cdd', good: 'down' },
-  { key: 'subcutaneous_fat_pct', label: 'Gordura subcutânea', unit: '%', dec: 1, color: '#1a9324', good: 'down' },
-  { key: 'metabolic_age', label: 'Idade metabólica', unit: 'anos', dec: 0, color: '#1a9340', good: 'down' },
-  { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1, color: '#198f89', good: 'up' }
+  { key: 'weight_kg', label: 'Peso', unit: 'kg', dec: 1, color: C_MASSA, good: null },
+  { key: 'bmi', label: 'IMC', unit: '', dec: 1, color: C_MASSA, good: 'down' },
+  { key: 'body_fat_pct', label: 'Gordura corporal', unit: '%', dec: 1, color: C_MASSA, good: 'down' },
+  { key: 'skeletal_muscle_pct', label: 'Músculo esquelético', unit: '%', dec: 1, color: C_MAGRA, good: 'up' },
+  { key: 'muscle_mass_kg', label: 'Massa muscular', unit: 'kg', dec: 1, color: C_MAGRA, good: 'up' },
+  { key: 'body_water_pct', label: 'Água corporal', unit: '%', dec: 1, color: C_MAGRA, good: 'up' },
+  { key: 'protein_pct', label: 'Proteína', unit: '%', dec: 1, color: C_MAGRA, good: 'up' },
+  { key: 'bone_mass_kg', label: 'Massa óssea', unit: 'kg', dec: 1, color: C_MAGRA, good: null },
+  { key: 'bmr_kcal', label: 'Metabolismo basal', unit: 'kcal', dec: 0, color: C_MASSA, good: 'up' },
+  { key: 'visceral_fat', label: 'Gordura visceral', unit: '', dec: 0, color: C_MASSA, good: 'down' },
+  { key: 'subcutaneous_fat_pct', label: 'Gordura subcutânea', unit: '%', dec: 1, color: C_MASSA, good: 'down' },
+  { key: 'metabolic_age', label: 'Idade metabólica', unit: 'anos', dec: 0, color: C_MASSA, good: 'down' },
+  { key: 'lean_body_mass_kg', label: 'Massa magra', unit: 'kg', dec: 1, color: C_MAGRA, good: 'up' }
 ];
 
 // Idade cronológica a partir da data de nascimento. Deriva-se sempre — nunca
