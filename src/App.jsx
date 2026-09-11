@@ -1,30 +1,136 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
-import Onboarding from './components/Onboarding/Onboarding';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
 
-// Components
+// O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
+// instantânea (é por isso que usa fontes de sistema); o Início e a moldura
+// que o envolve (Layout, Auth) nunca podem ficar à espera de um pedido de
+// rede extra. Tudo o resto abre por ação do atleta e entra por import()
+// dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
-import Coach from './components/Coach/Coach';
-import Nutrition from './components/Nutrition/Nutrition';
-import Gym from './components/Gym/Gym';
-import Body from './components/Body/Body';
-import Run from './components/Run/Run';
-import Perfil from './components/Perfil/Perfil';
-import Admin from './components/Admin/Admin';
-import Dashboard from './components/Dashboard/Dashboard';
-import Calendar from './components/Calendar/Calendar';
-import RunAgenda from './components/Run/RunAgenda';
-import MealRegistration from './components/Nutrition/MealRegistration';
-import BodyRegistration from './components/Body/BodyRegistration';
-import RunRegistration from './components/Run/RunRegistration';
-import GymRegistration from './components/Gym/GymRegistration';
+
+/* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
+   era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
+   inteiro (Dashboard), o Admin, o arranque, os quatro dashboards e os cinco
+   ecrãs de registo — nada disso visível no Início.
+
+   As fábricas de import ficam em constantes (em vez de inline no lazy())
+   para poderem ser reutilizadas no pré-carregamento por gesto, mais abaixo:
+   tocar num separador da barra começa a descarregar o chunk antes de o
+   React o pedir, e o esqueleto quase nunca chega a aparecer. */
+const loadDashboard = () => import('./components/Dashboard/Dashboard');
+const loadCalendar = () => import('./components/Calendar/Calendar');
+const loadCoach = () => import('./components/Coach/Coach');
+const loadPerfil = () => import('./components/Perfil/Perfil');
+const loadAdmin = () => import('./components/Admin/Admin');
+const loadOnboarding = () => import('./components/Onboarding/Onboarding');
+const loadRunAgenda = () => import('./components/Run/RunAgenda');
+const loadMealRegistration = () => import('./components/Nutrition/MealRegistration');
+const loadBodyRegistration = () => import('./components/Body/BodyRegistration');
+const loadRunRegistration = () => import('./components/Run/RunRegistration');
+const loadGymRegistration = () => import('./components/Gym/GymRegistration');
+
+const Dashboard = lazy(loadDashboard);
+const Calendar = lazy(loadCalendar);
+const Coach = lazy(loadCoach);
+const Perfil = lazy(loadPerfil);
+const Admin = lazy(loadAdmin);
+const Onboarding = lazy(loadOnboarding);
+const RunAgenda = lazy(loadRunAgenda);
+const MealRegistration = lazy(loadMealRegistration);
+const BodyRegistration = lazy(loadBodyRegistration);
+const RunRegistration = lazy(loadRunRegistration);
+const GymRegistration = lazy(loadGymRegistration);
+
+// Bancadas de teste do design system: só se chegam por ?tab=design-system /
+// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém.
+const ButtonShowcase = lazy(() => import('./components/DesignSystem/ButtonShowcase'));
+const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandbox'));
+
+/* Pré-carregamento por gesto. A barra inferior vive no Layout.jsx, que não é
+   território deste ficheiro — em vez de lhe acrescentar handlers, ouve-se o
+   pointerdown na fase de captura e lê-se o `data-vert` que os botões já
+   expõem. Entre o dedo tocar e o React trocar de separador há tempo de
+   sobra para o chunk chegar; se o atributo um dia mudar, isto simplesmente
+   deixa de pré-carregar (o esqueleto do Suspense cobre o caso). */
+const PRELOAD_BY_TAB = {
+  calendario: loadCalendar,
+  dashboard: loadDashboard,
+  coach: loadCoach,
+};
+
+function usePreloadOnNavTouch() {
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target) return;
+
+      const navBtn = target.closest('[data-vert]');
+      if (navBtn) {
+        PRELOAD_BY_TAB[navBtn.dataset.vert]?.();
+        return;
+      }
+      // O "+" é o único botão do nav sem data-vert. Abre o menu de registo,
+      // por isso vale a pena aquecer os cinco formulários de uma vez — são
+      // pequenos e o atleta ainda tem de escolher qual.
+      if (target.closest('[data-testid="bottom-nav"]')) {
+        loadRunAgenda(); loadMealRegistration(); loadBodyRegistration();
+        loadRunRegistration(); loadGymRegistration();
+        return;
+      }
+      // O botão "Perfil" vive no cabeçalho, não no nav. Não há como o
+      // distinguir do logótipo sem lhe tocar no Layout, e não faz mal:
+      // o chunk do Perfil é pequeno e o pior caso é aquecê-lo sem ser
+      // preciso.
+      if (target.closest('header')) loadPerfil();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
+}
+
+/* Esqueleto de transição — a mesma linguagem do `carol-skeleton` do Início
+   (barras a rgba(255,255,255,.08)). Nunca um spinner nem a palavra "a
+   carregar" escrita no ecrã: o estado diz-se a quem usa leitor de ecrã pelo
+   role/aria-label, e a quem vê pela forma do conteúdo que está prestes a
+   chegar. Na prática quase nunca aparece — o pré-carregamento acima trata
+   disso — e existe sobretudo para a primeira visita a cada separador com
+   rede lenta. */
+function ScreenSkeleton() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label="A carregar o ecrã"
+      data-testid="screen-skeleton"
+      className="flex flex-col gap-3 pt-2 animate-pulse"
+    >
+      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
+      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
+      <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
+    </div>
+  );
+}
+
+/* Para os ecrãs que vivem FORA do Layout (arranque, bancadas de teste) o
+   fallback é exatamente o mesmo placeholder que o App já mostra enquanto
+   `isInitializing` — a troca entre os dois é invisível. */
+function FullScreenLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-transparent">
+      <div className="animate-pulse flex flex-col items-center">
+        <div className="w-12 h-12 bg-[var(--brd-700)] rounded-xl mb-4"></div>
+        <div className="h-4 w-24 bg-[var(--brd-700)] rounded"></div>
+      </div>
+    </div>
+  );
+}
 
 const DEMO_PROFILE = {
   id: 'demo-user',
@@ -94,9 +200,6 @@ function buildEmptyDemoData() {
   };
 }
 
-import ButtonShowcase from './components/DesignSystem/ButtonShowcase';
-import UIAuditSandbox from './components/DesignSystem/UIAuditSandbox';
-
 export default function App() {
   const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
   const profile = useAppStore((s) => s.profile);
@@ -149,6 +252,10 @@ export default function App() {
     closeTopScreen,
     ready: !isInitializing,
   });
+
+  // Aquece o chunk do separador ao toque, antes de o React o pedir — ver o
+  // comentário em usePreloadOnNavTouch, no topo.
+  usePreloadOnNavTouch();
 
   useEffect(() => {
     registerServiceWorker();
@@ -206,22 +313,15 @@ export default function App() {
   }, [setSession, setProfile, loadInitialData, setActiveTab]);
 
   if (activeTab === 'design-system') {
-    return <ButtonShowcase />;
+    return <Suspense fallback={<FullScreenLoader />}><ButtonShowcase /></Suspense>;
   }
-  
+
   if (activeTab === 'audit-sandbox') {
-    return <UIAuditSandbox />;
+    return <Suspense fallback={<FullScreenLoader />}><UIAuditSandbox /></Suspense>;
   }
 
   if (isInitializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 bg-[var(--brd-700)] rounded-xl mb-4"></div>
-          <div className="h-4 w-24 bg-[var(--brd-700)] rounded"></div>
-        </div>
-      </div>
-    );
+    return <FullScreenLoader />;
   }
 
   if (!session) {
@@ -237,10 +337,12 @@ export default function App() {
   if (showOnboarding) {
     return (
       <ToastProvider>
-        <Onboarding
-          reentry={!needsOnboarding}
-          onDone={() => setOnboardingOpen(false)}
-        />
+        <Suspense fallback={<FullScreenLoader />}>
+          <Onboarding
+            reentry={!needsOnboarding}
+            onDone={() => setOnboardingOpen(false)}
+          />
+        </Suspense>
       </ToastProvider>
     );
   }
@@ -260,27 +362,33 @@ export default function App() {
   return (
     <ToastProvider>
       <Layout>
-        {!isCreatingOrEditing && (
-          <>
-            {activeTab === 'home' && <Home />}
-            {activeTab === 'calendario' && <Calendar />}
-            {['hub', 'nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
-            {activeTab === 'coach' && <Coach />}
-            {activeTab === 'perfil' && <Perfil />}
-            {activeTab === 'admin' && <Admin />}
-          </>
-        )}
+        {/* O Suspense vive DENTRO do Layout, e não à volta dele: o cabeçalho,
+            a barra inferior e o FAB não têm de piscar por causa do ecrã que
+            está a chegar. O esqueleto aparece onde o conteúdo vai aparecer,
+            dentro do <main>. */}
+        <Suspense fallback={<ScreenSkeleton />}>
+          {!isCreatingOrEditing && (
+            <>
+              {activeTab === 'home' && <Home />}
+              {activeTab === 'calendario' && <Calendar />}
+              {['hub', 'nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
+              {activeTab === 'coach' && <Coach />}
+              {activeTab === 'perfil' && <Perfil />}
+              {activeTab === 'admin' && <Admin />}
+            </>
+          )}
 
-        {(openCreationMode === 'race' || editingRaceId) && (
-          <RunAgenda onClose={() => {
-            setOpenCreationMode(null);
-            setEditingRaceId(null);
-          }} />
-        )}
-        {openCreationMode === 'meal' && <MealRegistration onClose={() => setOpenCreationMode(null)} />}
-        {openCreationMode === 'assessment' && <BodyRegistration onClose={() => setOpenCreationMode(null)} />}
-        {openCreationMode === 'run' && <RunRegistration onClose={() => setOpenCreationMode(null)} />}
-        {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
+          {(openCreationMode === 'race' || editingRaceId) && (
+            <RunAgenda onClose={() => {
+              setOpenCreationMode(null);
+              setEditingRaceId(null);
+            }} />
+          )}
+          {openCreationMode === 'meal' && <MealRegistration onClose={() => setOpenCreationMode(null)} />}
+          {openCreationMode === 'assessment' && <BodyRegistration onClose={() => setOpenCreationMode(null)} />}
+          {openCreationMode === 'run' && <RunRegistration onClose={() => setOpenCreationMode(null)} />}
+          {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
+        </Suspense>
       </Layout>
     </ToastProvider>
   );
