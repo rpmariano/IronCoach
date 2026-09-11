@@ -294,13 +294,19 @@ export default function Layout({ children }) {
       <nav
         ref={navRef}
         data-testid="bottom-nav"
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
         style={{
           // --nav-h (76px): a barra tem de medir o que a moldura dos mocks
           // reserva para ela, senão a ActionBar — que assenta a
           // --actionbar-bottom (76px) do fundo — flutua sobre um vão. Só com
           // os 44px do botão mais o padding a barra dava ~59px.
-          minHeight: 'var(--nav-h)',
+          // Safe-area: o index.html pede viewport-fit=cover, por isso a
+          // barra chega ao fundo físico do ecrã e, num telemóvel com
+          // indicador de gestos, os ícones ficavam por baixo dele. O
+          // max()/env() só acrescenta onde há inset — num ecrã sem notch
+          // env() é 0 e a barra mede os mesmos 76px de sempre.
+          minHeight: 'calc(var(--nav-h) + env(safe-area-inset-bottom, 0px))',
+          paddingBottom: 'max(8px, env(safe-area-inset-bottom, 0px))',
           background: 'var(--bg-nav)',
           backdropFilter: 'blur(var(--blur-chrome))',
           WebkitBackdropFilter: 'blur(var(--blur-chrome))',

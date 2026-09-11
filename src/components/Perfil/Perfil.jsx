@@ -417,7 +417,7 @@ export default function Perfil() {
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
     // O Perfil é dourado como a prova — a mesma cor do indicador dos
     // separadores e do "Guardar alterações".
-    <div className="space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+    <div data-screen="perfil" className="space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
       {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
           separador ativo, ícone + rótulo nos quatro. */}
       <SubNav

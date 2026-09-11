@@ -441,6 +441,20 @@ a[href]:not(.no-tap-scale):active {
 /* ===== Utilitários ===== */
 .no-scrollbar::-webkit-scrollbar { display:none; }
 .no-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
+/* Piso de toque nos campos do Perfil. O handoff pede "44px mínimo em
+   qualquer ação" (ponto 2) e o Field do design system desenha-se a 48;
+   os campos do Perfil vinham do legado a ~36px de altura. Regra em vez de
+   uma classe por campo: são vinte, e o que muda é o piso, não o desenho —
+   quem já passa dos 44 (o textarea, os botões) não sente nada.
+   Só o Perfil: as grelhas de métricas avançadas dos registos têm dezenas
+   de campos minúsculos de propósito e mudá-las é decisão de desenho, não
+   de auditoria. */
+[data-screen="perfil"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-screen="perfil"] select,
+[data-screen="perfil"] textarea {
+  min-height: var(--tap);
+}
+
 .tap-44 { min-width:var(--tap); min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
 .tap-h-44 { min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
 

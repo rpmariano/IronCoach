@@ -45,7 +45,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
       {/* Toggle button */}
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition"
+        className="w-full min-h-[44px] flex items-center justify-between px-4 py-3 hover:bg-white/5 transition"
       >
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-indigo-400" />

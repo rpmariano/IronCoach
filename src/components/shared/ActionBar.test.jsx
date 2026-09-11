@@ -16,7 +16,10 @@ describe('ActionBar', () => {
     render(<ActionBar><Button>Guardar</Button></ActionBar>);
     const bar = screen.getByTestId('action-bar');
     // 76px do fundo (--actionbar-bottom), para assentar sobre a nav de 76px.
-    expect(bar.style.bottom).toBe('var(--actionbar-bottom)');
+    // Mais o safe-area: a nav cresce env(safe-area-inset-bottom) num ecrã
+    // com indicador de gestos (Layout.jsx) e a barra tem de subir com ela.
+    // Sem notch env() é 0 e a barra fica nos mesmos 76px.
+    expect(bar.style.bottom).toBe('calc(var(--actionbar-bottom) + env(safe-area-inset-bottom, 0px))');
     expect(bar.className).toContain('fixed');
     // Mesma coluna centrada max-w-md do header/nav do Layout.
     expect(bar.className).toContain('max-w-md');

@@ -33,9 +33,14 @@ export default function ActionBar({ children, aboveNav = true, className = '', s
       data-testid="action-bar"
       className={`fixed left-1/2 -translate-x-1/2 w-full max-w-md flex items-center gap-3 ${className}`}
       style={{
-        bottom: aboveNav ? 'var(--actionbar-bottom)' : 0,
+        // Safe-area (index.html tem viewport-fit=cover): assente sobre a
+        // nav, sobe com ela — a nav cresce env(safe-area-inset-bottom) num
+        // ecrã com indicador de gestos (Layout.jsx). Colada ao fundo, é a
+        // própria barra que ganha o respiro por baixo do botão. Sem notch
+        // env() é 0 e nada muda.
+        bottom: aboveNav ? 'calc(var(--actionbar-bottom) + env(safe-area-inset-bottom, 0px))' : 0,
         zIndex: 'var(--z-actionbar, 30)',
-        padding: aboveNav ? '12px 16px' : '14px 20px 26px',
+        padding: aboveNav ? '12px 16px' : '14px 20px max(26px, env(safe-area-inset-bottom, 0px))',
         background: 'rgba(4,8,15,.9)',
         backdropFilter: 'blur(var(--blur-sheet))',
         WebkitBackdropFilter: 'blur(var(--blur-sheet))',

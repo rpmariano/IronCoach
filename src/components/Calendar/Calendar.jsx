@@ -219,13 +219,17 @@ export default function Calendar() {
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4">
+        {/* -mx-4: as sete células a 44px (piso de toque) precisam de
+            7x44 + 6x4 = 332px e o interior do cartão só dá 301 — a grelha
+            sai 16px para cada lado do padding do cartão, que lhe passa a
+            dar 333. O cabeçalho dos dias sai com ela, senão desalinhava. */}
+        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4 -mx-4">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
             <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center">
+        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center -mx-4">
           {Array.from({ length: firstWeekday }).map((_, i) => (
             <div key={`empty-${i}`} className="flex justify-center items-center"></div>
           ))}
@@ -245,7 +249,7 @@ export default function Calendar() {
               <div className="flex justify-center items-center" key={dayStr}>
                 <button
                   onClick={() => setSelectedDate(date)}
-                  className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
+                  className={`w-[44px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
                       ? 'bg-white border-[var(--green)] text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : dayRaces.length > 0
