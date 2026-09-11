@@ -6,6 +6,7 @@ import { Bot, LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, A
 import RunIcon from '../shared/RunIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
+import AppBackground from './AppBackground';
 
 const TAB_MODULE_COLORS = {
   home: 'var(--green)',
@@ -105,6 +106,10 @@ export default function Layout({ children }) {
     // dvh acompanha a visual viewport, tal como os elementos fixed.
     <div className="max-w-md mx-auto min-h-dvh flex flex-col relative" >
 
+      {/* Fundo (gradiente ambiente + curvas de nível + fade) — uma vez, por
+          baixo de tudo. Ver AppBackground.jsx. */}
+      <AppBackground />
+
 
       {/* Header — fixed (não sticky): sticky + backdrop-blur tem um bug de
           composição no Chromium em que o desfoque deixa de ser recalculado
@@ -119,14 +124,23 @@ export default function Layout({ children }) {
           composição própria para o cabeçalho — sem isto, um scroll grande
           e abrupto (ex.: o próprio reset de scroll ao trocar de separador)
           ainda conseguia repetir o mesmo problema mesmo já fixed. */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 z-20 w-full max-w-md bg-[#0f172a]/70 backdrop-blur-3xl border-b border-white/10 will-change-transform">
+      <div
+        className="fixed top-0 left-1/2 -translate-x-1/2 z-20 w-full max-w-md border-b will-change-transform"
+        style={{
+          background: 'var(--bg-header)',
+          backdropFilter: 'blur(var(--blur-chrome))',
+          WebkitBackdropFilter: 'blur(var(--blur-chrome))',
+          borderColor: 'var(--border-glass-strong)',
+          boxShadow: '0 6px 18px rgba(0,0,0,.45)',
+        }}
+      >
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <img src={publicUrl('logo.png')} alt="" className="w-9 h-9 rounded-xl object-cover" onError={e => { e.target.style.display='none'; }} />
             </button>
             <div>
-              <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--green)' }}>IronCoach</h1>
+              <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</h1>
               <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{todayLabel}</p>
             </div>
           </div>
@@ -136,8 +150,8 @@ export default function Layout({ children }) {
             <BugNotificationsHandler />
             <button
               onClick={() => setActiveTab('perfil')}
-              className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition shadow-[0_2px_10px_rgba(251,191,36,0.25)]"
-              style={{ background: 'linear-gradient(135deg, #d97706, #fbbf24)', color: 'white', border: 'none' }}
+              className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition"
+              style={{ background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
             >
               <User size={14} /> Perfil
             </button>
@@ -146,7 +160,9 @@ export default function Layout({ children }) {
       </div>
 
       {/* Conteúdo */}
-      <main ref={mainRef} className="flex-1 px-4 pt-[89px] pb-28 overflow-y-auto">
+      {/* padding-top = --header-h (85px) e padding-bottom = --scroll-pad-bottom
+          (112px), os mesmos da moldura dos mocks. */}
+      <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)' }}>
         {children}
       </main>
 
@@ -233,7 +249,13 @@ export default function Layout({ children }) {
 
       {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 bg-[#0f172a]/70 backdrop-blur-3xl border-t border-white/10 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        style={{
+          background: 'var(--bg-nav)',
+          backdropFilter: 'blur(var(--blur-chrome))',
+          WebkitBackdropFilter: 'blur(var(--blur-chrome))',
+          borderColor: 'var(--border-glass-strong)',
+        }}
       >
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
         <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />

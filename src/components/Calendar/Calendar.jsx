@@ -196,7 +196,7 @@ export default function Calendar() {
     <div className="space-y-4 fade-in pb-8">
       
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
-      <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/80 shadow-[0_10px_40px_rgba(0,0,0,0.05),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+      <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-between mb-5">
           <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
             <ChevronLeft size={16} />
@@ -291,7 +291,7 @@ export default function Calendar() {
         </h3>
 
         {!hasRecords && (
-          <div className="rounded-2xl p-6 bg-white/40 border border-white/80 border-dashed flex flex-col items-center justify-center text-slate-500 shadow-[inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <div className="rounded-2xl p-6 bg-white/40 border border-white/15 border-dashed flex flex-col items-center justify-center text-slate-500">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
             <p className="text-[11px]">Sem registos neste dia</p>
           </div>

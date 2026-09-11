@@ -1,0 +1,75 @@
+/* IronCoach — cores. Oito cores, um significado cada. Nunca reutilizar uma cor para outro fim. */
+:root {
+  /* fundo e superfícies */
+  --bg-app: #0b1120;
+  --bg-header: rgba(4, 8, 15, .92);
+  --bg-nav: rgba(15, 23, 42, .72);
+  --bg-sheet: #111a26;
+  --bg-scrim: rgba(4, 8, 15, .62);
+  --surface-glass: rgba(255, 255, 255, .05);
+  --surface-glass-hover: rgba(255, 255, 255, .08);
+  --surface-raised: rgba(255, 255, 255, .06);
+  --border-glass: rgba(255, 255, 255, .10);
+  --border-glass-strong: rgba(255, 255, 255, .14);
+  --border-hairline: rgba(255, 255, 255, .08);
+
+  /* texto */
+  --text-1: #f8fafc;
+  --text-2: #e2e8f0;
+  --text-3: #cbd5e1;
+  --text-4: #9aa5b4;
+  --text-muted: #8b96a4;
+  --text-placeholder: #75808f;
+
+  /* marca */
+  --brand: #7fb3c7;            /* wordmark, ícones inativos da nav */
+  --brand-deep-1: #1e333d;
+  --brand-deep-2: #2d4a57;
+  --brand-cream: #eccea4;      /* glifo do logo */
+
+  /* significados — uma cor, um sentido */
+  --race: #fbbf24;             /* a prova. Só a prova. */
+  --race-deep: #d97706;
+  --race-ink: #1a1206;         /* texto sobre âmbar */
+  --coach: #22d3ee;            /* a Carol */
+  --coach-deep: #0e7490;
+  --coach-soft: #a5f3fc;
+  --coach-ink: #04252b;
+  --run: #2ee0ff;              /* módulo corrida */
+  --gym: #9ec3d2;              /* módulo ginásio */
+  --nutrition: #c77dff;        /* módulo nutrição */
+  --body: #ff5fa8;             /* módulo corpo */
+  --ok: #34d399;               /* concluído, dentro do alvo */
+  --ok-soft: #a7f3d0;
+  --warn: #fb7c4d;             /* aviso. Nunca âmbar. */
+  --warn-soft: #fed7c3;
+  --danger: #f87171;           /* erro, admin */
+
+  /* tintas (fundo + borda) para cada significado */
+  --tint-race-bg: rgba(251, 191, 36, .16);   --tint-race-bd: rgba(251, 191, 36, .40);
+  --tint-coach-bg: rgba(34, 211, 238, .07);  --tint-coach-bd: rgba(34, 211, 238, .30);
+  --tint-run-bg: rgba(46, 224, 255, .16);    --tint-run-bd: rgba(46, 224, 255, .40);
+  --tint-gym-bg: rgba(158, 195, 210, .16);   --tint-gym-bd: rgba(158, 195, 210, .40);
+  --tint-nutrition-bg: rgba(199, 125, 255, .16); --tint-nutrition-bd: rgba(199, 125, 255, .40);
+  --tint-body-bg: rgba(255, 95, 168, .16);   --tint-body-bd: rgba(255, 95, 168, .40);
+  --tint-ok-bg: rgba(52, 211, 153, .16);     --tint-ok-bd: rgba(52, 211, 153, .40);
+  --tint-warn-bg: rgba(251, 124, 77, .10);   --tint-warn-bd: rgba(251, 124, 77, .34);
+  --tint-danger-bg: rgba(248, 113, 113, .12); --tint-danger-bd: rgba(248, 113, 113, .34);
+
+  /* gradientes */
+  --grad-race: linear-gradient(135deg, #d97706, #fbbf24);
+  --grad-coach: linear-gradient(135deg, #0e7490, #22d3ee);
+  --grad-brand: linear-gradient(135deg, #1e333d, #2d4a57);
+  --grad-nav-pill: linear-gradient(90deg, #22d3ee, #7fb3c7);
+  --grad-ambient: radial-gradient(115% 55% at 12% 0%, rgba(217,119,6,.18) 0%, transparent 58%),
+                  radial-gradient(95% 45% at 95% 30%, rgba(14,165,233,.13) 0%, transparent 62%),
+                  radial-gradient(130% 60% at 50% 104%, rgba(90,143,163,.16) 0%, transparent 62%);
+  --grad-fade: linear-gradient(180deg, rgba(11,17,32,.55) 0%, rgba(11,17,32,0) 22%, rgba(11,17,32,0) 74%, rgba(11,17,32,.6) 100%);
+
+  /* sombras */
+  --shadow-card: 0 12px 32px rgba(0, 0, 0, .30);
+  --shadow-sheet: 0 -14px 40px rgba(0, 0, 0, .60);
+  --shadow-dialog: 0 24px 60px rgba(0, 0, 0, .60);
+  --shadow-fab: 0 4px 20px rgba(251, 191, 36, .35);
+  --glow-pill: 0 0 9px rgba(34, 211, 238, .55);
+}

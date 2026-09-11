@@ -1,0 +1,32 @@
+/* IronCoach — movimento. O movimento explica o dado, nunca o decora. */
+:root {
+  --ease-out: cubic-bezier(.16, 1, .3, 1);      /* entradas, desenhos, crescimentos */
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1); /* confirmação de registo */
+  --ease-back: cubic-bezier(.22, 1, .36, 1);     /* contagem de números */
+
+  --dur-tap: 120ms;
+  --dur-tab-content: 280ms;     /* conteúdo a seguir a pílula */
+  --dur-pill-sub: 320ms;        /* minhoca nos subnavs */
+  --dur-sheet-open: 340ms;
+  --dur-sheet-close: 240ms;
+  --dur-confirm: 420ms;         /* impulso do check */
+  --dur-bars: 550ms;            /* barras a crescer, stagger 60ms */
+  --dur-confirm-exit: 900ms;
+  --dur-pill-nav-max: 950ms;    /* minhoca na nav inferior: 420 + 130·distância, teto 950 */
+  --dur-rings: 1100ms;          /* anéis a desenhar, stagger 80ms */
+  --dur-count: 1400ms;          /* números a contar */
+  --dur-trail: 1600ms;          /* trilho do macrociclo */
+  --dur-breathe: 2600ms;        /* halo da Carol, três ciclos e para */
+
+  --stagger-rings: 80ms;
+  --stagger-bars: 60ms;
+  --typing-min: 600ms;          /* "a escrever…" */
+  --typing-max: 900ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-tab-content: 120ms; --dur-pill-sub: 120ms; --dur-sheet-open: 120ms; --dur-sheet-close: 120ms;
+    --dur-confirm: 120ms; --dur-bars: 0ms; --dur-pill-nav-max: 120ms; --dur-rings: 0ms;
+    --dur-count: 0ms; --dur-trail: 0ms; --dur-breathe: 0ms; --typing-min: 0ms; --typing-max: 0ms;
+  }
+}

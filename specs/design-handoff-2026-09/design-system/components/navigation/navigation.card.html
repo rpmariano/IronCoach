@@ -1,0 +1,26 @@
+<!-- @dsCard group="Components" viewport="700x380" name="Navigation" subtitle="BottomNav, SubNav, ElasticPill, ActionBar — clica para ver a minhoca" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg-app);font-family:var(--font-sans);color:var(--text-1);padding:16px 18px;box-sizing:border-box}*{box-sizing:border-box}</style></head>
+<body><div id="root"></div>
+<script type="text/babel">
+const NS = window.IronCoach || {};
+const { BottomNav, SubNav, ActionBar, Button } = NS;
+const I = (d) => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+const S = (d) => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+function App(){ if(!BottomNav) return <div style={{color:'var(--text-4)',fontSize:12}}>Bundle não carregado — definir o tipo do ficheiro como Design System.</div>;
+  const [nav,setNav]=React.useState(0); const [sub,setSub]=React.useState(1); const [p,setP]=React.useState(0);
+  return <div style={{display:'flex',gap:22,alignItems:'flex-start'}}>
+    <div style={{position:'relative',width:390,height:150,borderRadius:20,overflow:'hidden',background:'var(--bg-app)',border:'1px solid var(--border-glass-strong)'}}>
+      <ActionBar><Button tone="gym" variant="tinted" style={{flex:1}}>Guardar alterações</Button></ActionBar>
+      <BottomNav active={nav} onChange={setNav} fabIcon={I('M12 5v14M5 12h14')} items={[{icon:I('M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z'),label:'Início'},{icon:I('M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z'),label:'Calendário'},{icon:I('M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z'),label:'Dashboard'},{icon:I('M12 8V4H8M4 8h16v12H4zM2 14h2M20 14h2M15 13v2M9 13v2'),label:'Coach'}]} />
+    </div>
+    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+      <SubNav width={280} active={sub} onChange={setSub} tones={['run','run','gym','nutrition','body']} items={[{icon:S('M3 3h7v9H3z'),label:'Geral'},{icon:S('M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16'),label:'Corrida'},{icon:S('M14.4 14.4 9.6 9.6M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829'),label:'Ginásio'},{icon:S('M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3'),label:'Nutrição'},{icon:S('M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8'),label:'Corpo'}]} />
+      <SubNav width={280} active={p} onChange={setP} tones={['gym','race','run','coach']} items={[{label:'Perfil'},{label:'Metas'},{label:'Equipamento'},{label:'Coach'}]} />
+      <div style={{fontSize:11,color:'var(--text-4)',lineHeight:1.5}}>Nav: 420 + 130·distância ms, teto 950. Subnav: 320 ms. Nunca duas em movimento ao mesmo tempo.</div>
+    </div>
+  </div>; }
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

@@ -1,0 +1,49 @@
+/* IronCoach — espaço, raio, camadas. Base 4. */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* moldura do ecrã */
+  --screen-w: 390px;
+  --screen-pad-x: 16px;
+  --header-h: 85px;         /* padding-top do scroll */
+  --nav-h: 76px;            /* altura da barra inferior */
+  --scroll-pad-bottom: 112px;
+  --scroll-pad-bottom-actionbar: 168px; /* quando há barra de ação fixa */
+  --actionbar-bottom: 76px; /* assenta sobre a nav */
+
+  /* toque */
+  --tap: 44px;              /* mínimo em qualquer ação */
+  --tap-primary: 46px;
+  --tap-hero: 52px;
+
+  /* raio */
+  --radius-xs: 7px;
+  --radius-sm: 11px;        /* botões, campos */
+  --radius-md: 14px;        /* botões de ícone, avisos */
+  --radius-lg: 18px;        /* cartões secundários */
+  --radius-xl: 20px;        /* cartão da Carol */
+  --radius-2xl: 24px;       /* cartão principal */
+  --radius-sheet: 28px;
+  --radius-frame: 40px;
+  --radius-pill: 9999px;
+
+  /* vidro */
+  --blur-card: 20px;
+  --blur-chrome: 40px;
+  --blur-sheet: 30px;
+
+  /* camadas */
+  --z-scroll: 0;
+  --z-header: 20;
+  --z-actionbar: 30;
+  --z-scrim: 30;
+  --z-nav: 40;
+  --z-sheet: 40;
+  --z-fab-menu: 50;
+}

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
 import { Loader2 } from 'lucide-react';
 import Button from '../shared/Button';
+import AppBackground from '../Layout/AppBackground';
 export default function Auth() {
   const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
@@ -62,7 +63,8 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-transparent text-slate-800 fade-in">
-      <div className="card rounded-3xl p-6 max-w-sm w-full shadow-lg border border-[var(--brd-700)] space-y-4">
+      <AppBackground />
+      <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
         <div className="flex items-center gap-2 justify-center mb-1">
           <img src={publicUrl('logo.png')} alt="IronCoach" className="w-10 h-10 rounded-xl object-cover" />

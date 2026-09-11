@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  doc-page:not(:defined) { visibility:hidden; }
+  a { color:#0e7490; } a:hover { color:#155e75; }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+
+<doc-page margin="0.7in">
+
+  <div style="font-family:'Archivo',system-ui,sans-serif; color:#1a1f26">
+
+    <div style="display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding-bottom:10px; border-bottom:2px solid #1a1f26">
+      <span style="font-size:10px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; color:#0e7490">IronCoach · auditoria UX/UI</span>
+      <span style="font-size:10px; color:#6b7684">9 de setembro de 2026</span>
+    </div>
+
+    <h1 style="margin:22px 0 10px; font-size:30px; font-weight:900; letter-spacing:-.025em; line-height:1.1; color:#1a1f26">Pronto para produção?<br>Não sem estas 12 correções.</h1>
+
+    <p style="margin:0 0 16px; font-size:12.5px; line-height:1.65; color:#3d4653">Auditoria dos 24 ecrãs de <strong>IronCoach - App.dc.html</strong> — a linguagem 6c aplicada a Início, Calendário, Dashboard (Visão Geral e quatro módulos), Coach, Perfil (quatro separadores), cinco registos, Provas, Admin, duas persianas e dois popups. As medições de contraste, tamanho de texto, alvos de toque e posição na dobra foram tiradas do DOM renderizado, não estimadas a olho. Cada achado indica os ecrãs afetados e o que fazer.</p>
+
+    <div style="display:flex; gap:10px; margin:0 0 22px; break-inside:avoid">
+      <div style="flex:1; border:1px solid #e2e0da; border-left:3px solid #b91c1c; border-radius:6px; padding:11px 13px">
+        <div style="font-size:22px; font-weight:900; color:#b91c1c; line-height:1">3</div>
+        <div style="font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#6b7684; margin-top:4px">Erros · bloqueiam</div>
+      </div>
+      <div style="flex:1; border:1px solid #e2e0da; border-left:3px solid #b45309; border-radius:6px; padding:11px 13px">
+        <div style="font-size:22px; font-weight:900; color:#b45309; line-height:1">5</div>
+        <div style="font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#6b7684; margin-top:4px">Riscos · decidir</div>
+      </div>
+      <div style="flex:1; border:1px solid #e2e0da; border-left:3px solid #0e7490; border-radius:6px; padding:11px 13px">
+        <div style="font-size:22px; font-weight:900; color:#0e7490; line-height:1">4</div>
+        <div style="font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#6b7684; margin-top:4px">Lacunas · antes de lançar</div>
+      </div>
+    </div>
+
+    <p style="margin:0 0 26px; font-size:12.5px; line-height:1.65; color:#3d4653; padding:13px 15px; background:#f4f1ec; border-radius:8px; break-inside:avoid"><strong>Veredicto.</strong> O contraste passa em todos os ecrãs — o problema não é cor, é escala. Vinte e nove ocorrências de texto abaixo de 10px e trinta e seis alvos de toque abaixo de 44px vêm todas da mesma causa: os mocks foram desenhados num ecrã grande, onde 9px ainda se lê. Num telefone real não se lê. Os três erros são mecânicos e resolvem-se numa passagem. Os cinco riscos são decisões tuas — sobretudo o sistema de cor, que hoje tem três significados a competir pelo âmbar.</p>
+
+    <h2 style="margin:0 0 4px; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#b91c1c">Erros · bloqueiam produção</h2>
+    <div style="height:2px; background:#b91c1c; margin-bottom:18px"></div>
+
+    <div style="margin-bottom:22px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">1. Texto a 8,5–9,5px em 12 dos 24 ecrãs</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">O mínimo utilizável num telefone é 11px, e 12px para qualquer coisa que o atleta tenha de ler em movimento. Estas ocorrências ficam abaixo disso:</p>
+      <div style="border:1px solid #e2e0da; border-radius:8px; overflow:hidden; margin-bottom:10px">
+        <div style="display:flex; gap:10px; padding:8px 12px; background:#f4f1ec; font-size:9.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#6b7684"><span style="flex:0 0 46px">Tam.</span><span style="flex:1">Onde</span><span style="flex:0 0 150px">Ecrãs</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 46px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b91c1c">8,5px</span><span style="flex:1">Separador "Coach" no subnav do Perfil — quatro separadores em 348px não cabem</span><span style="flex:0 0 150px; color:#6b7684">os 4 do Perfil</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 46px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b91c1c">9px</span><span style="flex:1">Etiquetas de eixo dos gráficos: "42,6", "8,4k", "alvo 2400", "74,1 kg", "72,4 kg"</span><span style="flex:0 0 150px; color:#6b7684">4 dashboards de módulo</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 46px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b91c1c">9px</span><span style="flex:1">"Prontidão" dentro do anel; "chamadas" e "já em cache"; categorias "Limitação", "Disponibilidade", "Objetivo"</span><span style="flex:0 0 150px; color:#6b7684">Dash. Geral, Admin, Perfil·Coach</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 46px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b45309">9,5px</span><span style="flex:1">Fases do macrociclo (BASE / ESPECÍFICA / TAPER), datas do trilho, a palavra "dias"</span><span style="flex:0 0 150px; color:#6b7684">Início, Hub de prova</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 46px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b45309">9,5px</span><span style="flex:1">Cinco labels do subnav do Dashboard; estados "Ativa" / "A gastar" / "Aposentada"; badges "Aberto" / "Em curso"</span><span style="flex:0 0 150px; color:#6b7684">5 dashboards, Perfil·Equip., Admin</span></div>
+      </div>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Fazer:</strong> piso de 11px, sem exceções, e 12px para dados. Os subnavs de cinco separadores não cabem com texto legível em 390px — passa a ícone com label só na pílula ativa, ou a scroll horizontal (o padrão que já usas no Admin). Nos gráficos, tira as etiquetas de dentro do SVG e põe o valor atual como número grande acima do gráfico.</p>
+    </div>
+
+    <div style="margin-bottom:22px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">2. Trinta e seis alvos de toque abaixo de 44px</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">O <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">min-height:44px</code> que o código já aplica ao header e à nav inferior não foi respeitado dentro dos cartões. Medidas reais:</p>
+      <div style="border:1px solid #e2e0da; border-radius:8px; overflow:hidden; margin-bottom:10px">
+        <div style="display:flex; gap:10px; padding:8px 12px; background:#f4f1ec; font-size:9.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#6b7684"><span style="flex:0 0 66px">Medido</span><span style="flex:1">Controlo</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 66px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b91c1c">46×28</span><span style="flex:1">"+250" dentro da órbita, no Início — o alvo mais pequeno da app, e serve para registar água várias vezes por dia</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 66px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b91c1c">30×30</span><span style="flex:1">Setas ‹ › de dia no cartão do plano; fechar a persiana de Análise Cruzada; fechar o popup de insights</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 66px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b45309">32–36</span><span style="flex:1">Voltar e fechar em todos os headers contextuais (5 registos, Perfil, Hub, persiana de refeições)</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 66px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b45309">86×38</span><span style="flex:1">"Guardar" nos quatro registos e na Prova nova — é a ação que fecha o fluxo</span></div>
+        <div style="display:flex; gap:10px; padding:9px 12px; border-top:1px solid #eeece6; font-size:11.5px; color:#3d4653"><span style="flex:0 0 66px; font-family:'JetBrains Mono',monospace; font-weight:600; color:#b45309">34–42</span><span style="flex:1">"Registar sessão" (42), "Aceitar"/"Recusar" no Coach (40), "Entendido" (36), "Editar"/"Aposentar"/"Reativar" (36), "Atualizar" no Admin (34), células do calendário (42 de largura)</span></div>
+      </div>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Fazer:</strong> 44px de altura em toda a ação que confirma, guarda ou registta. Nos ícones de 30–36px, mantém o desenho e alarga só a área tocável com padding — não precisas de os fazer maiores visualmente. O "+250" é o caso a repensar por inteiro: está pequeno porque a órbita não tem espaço, o que é sinal de que ação e visualização não deviam partilhar o mesmo cartão.</p>
+    </div>
+
+    <div style="margin-bottom:22px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">3. A ação primária fica abaixo da dobra em três ecrãs</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">Em <strong>Perfil·Metas</strong> e <strong>Perfil·Coach</strong> o botão "Guardar alterações" só aparece depois de percorrer 148–187px; em <strong>Perfil·Equipamento</strong> é o "Adicionar sapatilhas". O atleta edita, não vê como confirmar, e sai sem gravar.</p>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">Isto não é novo: o comentário na linha 137 do <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">Perfil.jsx</code> descreve exatamente este problema no código atual, e resolve-o ajustando a altura do carrossel ao separador ativo. Os mocks perderam essa solução.</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Fazer:</strong> barra de ação fixa acima da nav inferior em todos os ecrãs de edição — Perfil (quatro separadores) e os cinco registos. Resolve isto e o ponto 2 ao mesmo tempo, porque a barra dá espaço para os 44px.</p>
+    </div>
+
+    <h2 style="margin:30px 0 4px; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#b45309">Riscos · decidir antes de produção</h2>
+    <div style="height:2px; background:#b45309; margin-bottom:18px"></div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">4. O âmbar tem três significados</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">Fixámos que o âmbar é a cor da prova. Mas ele aparece também como cor de aviso (energia disponível, alertas de viabilidade, badge "Em curso") e como cor de estado nos KPIs. No <strong>Dashboard·Nutrição</strong> os três usos coexistem no mesmo ecrã: violeta é o módulo, âmbar marca "88% do alvo" como aviso, e âmbar é a linha do alvo. O atleta não consegue saber se âmbar significa "prova", "atenção" ou "nutrição".</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Decidido:</strong> âmbar exclusivo da prova; os avisos passam a coral <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">#fb7c4d</code>, que não colide com o âmbar nem com o rosa do corpo e mantém o peso de bloco. O sistema passa a oito cores, cada uma com um só significado.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">5. A minhoca em sete sítios</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">A pílula elástica está na nav inferior e nos seis subnavs. Nunca há duas no mesmo ecrã, mas a animação corre até 950ms — na nav inferior é assinatura, num subnav que o atleta troca quatro vezes seguidas para comparar módulos torna-se espera.</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Decidir:</strong> manter os 950ms na nav inferior e cortar para 300–350ms nos subnavs. O <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">useElasticPillIndicator</code> já aceita a duração como parâmetro.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">6. Os dashboards de módulo não dizem se está bem ou mal</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">Os quatro seguem a mesma receita: quatro KPIs, um gráfico, uma lista. Nada no ecrã diz ao atleta o que concluir. Definiste "ambos os públicos, com progressive disclosure" — o experiente lê os números, mas o iniciante fica sem leitura.</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Decidir:</strong> uma frase de veredicto no topo de cada módulo, como fizeste na direção 1d — "O volume está a subir de forma segura" antes dos KPIs. Uma frase, não um cartão.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">7. A órbita mistura leitura e ação</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">Os três anéis do Início são o elemento mais distintivo da app, e funcionam como leitura. Mas o "+250" dentro deles é uma ação — a mais frequente do dia — encaixada onde não há espaço, daí os 28px de altura. Também obriga a legenda: três anéis concêntricos não se leem sem os pontos coloridos ao lado.</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Decidir:</strong> ou a órbita é só leitura e o registo de água vive no botão flutuante (onde já existe), ou o cartão cresce para dar 44px ao "+250". A primeira é mais limpa e liberta 30px de altura no ecrã mais cheio da app.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">8. O fundo de curvas de nível não está em todos os ecrãs</h3>
+      <p style="margin:0 0 9px; font-size:12.5px; line-height:1.6; color:#3d4653">É o elemento que une os blocos — o teu problema de origem. Está em 12 dos 24 ecrãs; falta nos popups, nas persianas e em parte dos registos. Onde falta, o vidro volta a não ter nada para desfocar, que era exatamente a causa do "escuro a mais".</p>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#1a1f26; padding-left:12px; border-left:3px solid #1a1f26"><strong>Decidir:</strong> mover o fundo para o <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">Layout.jsx</code>, uma vez, por baixo de tudo. Assim nenhum ecrã novo nasce sem ele.</p>
+    </div>
+
+    <h2 style="margin:30px 0 4px; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#0e7490">Lacunas · o que os mocks não cobrem</h2>
+    <div style="height:2px; background:#0e7490; margin-bottom:18px"></div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">9. Nenhum estado vazio</h3>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#3d4653">Os 24 ecrãs mostram um atleta com prova marcada, plano aceite, seis semanas de histórico e avaliações corporais. Nenhum mostra o primeiro dia. O Início sem prova ativa perde o cartão que ancora o ecrã; o Dashboard sem dados perde os quatro KPIs e o gráfico; a órbita sem registos são três anéis vazios. Isto é o que o utilizador novo vê primeiro, e é o ecrã que decide se ele volta.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">10. Nenhum estado de espera ou de erro</h3>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#3d4653">Três operações dependem de IA e demoram: "Analisar Refeição", o resumo do Coach e a geração de plano. Nos mocks aparecem sempre resolvidas. Falta o que o atleta vê enquanto espera e o que vê quando falha — sobretudo na análise de fotografia, onde o resultado pode vir errado e ele tem de poder corrigir.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">11. Nenhum estado de foco</h3>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#3d4653">É uma PWA e corre em browser. Nenhum controlo dos 24 ecrãs tem anel de foco visível, e os campos de formulário estão desenhados como <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">div</code> em vez de <code style="font-family:'JetBrains Mono',monospace; font-size:11.5px">input</code> — nos mocks é aceitável, em produção significa que nada é navegável por teclado.</p>
+    </div>
+
+    <div style="margin-bottom:20px; break-inside:avoid">
+      <h3 style="margin:0 0 7px; font-size:15px; font-weight:800; color:#1a1f26">12. O header ocupa 85px em todos os ecrãs</h3>
+      <p style="margin:0; font-size:12.5px; line-height:1.6; color:#3d4653">"IronCoach + data + Perfil" repete-se em 18 dos 24 ecrãs. Nos registos já cedeste o espaço a um título contextual, e funciona melhor. Nos dashboards e no Calendário o nome da app não acrescenta nada — são 85px que podiam ser conteúdo, no formato onde a altura é o recurso mais escasso.</p>
+    </div>
+
+    <div style="margin-top:30px; padding:16px 18px; background:#1a1f26; border-radius:10px; break-inside:avoid">
+      <div style="font-size:10px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#7fb3c7">Ordem de trabalho sugerida</div>
+      <p style="margin:11px 0 0; font-size:12.5px; line-height:1.7; color:#e8e4dc">Primeiro os três erros — são mecânicos e não obrigam a redesenhar nada: piso de 11px, 44px nas ações, barra de ação fixa nos ecrãs de edição. Depois decide o âmbar (ponto 4), porque muda tokens em todos os ecrãs e é mais barato agora do que depois. Os estados vazios (ponto 9) precisam de desenho novo e devem entrar antes do lançamento, não depois. O resto pode seguir por iteração.</p>
+    </div>
+
+    <p style="margin:20px 0 0; font-size:10.5px; line-height:1.6; color:#8a8378">Medições tiradas do DOM dos 24 ecrãs a 390×844. Contraste calculado em WCAG 2.1 contra o fundo opaco efetivo — todos os ecrãs passam; os alarmes iniciais eram falsos positivos de gradientes e de <code style="font-family:'JetBrains Mono',monospace; font-size:10px">fill</code> em SVG. Referências de código: <code style="font-family:'JetBrains Mono',monospace; font-size:10px">Layout.jsx</code>, <code style="font-family:'JetBrains Mono',monospace; font-size:10px">Perfil.jsx</code>, <code style="font-family:'JetBrains Mono',monospace; font-size:10px">useElasticPillIndicator</code>.</p>
+
+  </div>
+
+</doc-page>
+</x-dc>
+</body>
+</html>
