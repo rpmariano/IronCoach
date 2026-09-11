@@ -151,7 +151,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
       {
         label: weightTrendData.isEWMASmoothing ? 'EWMA (Tendência)' : 'Evolução (Raw)',
         data: weightTrendData.movingAverage.map(p => p.weight),
-        borderColor: '#6366f1',
+        borderColor: '#ff5fa8', // --body
         borderWidth: 3,
         pointRadius: 0,
         tension: 0.4,
@@ -177,6 +177,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
       <TimeFilterBar
         activeRange={timeRange}
         onChange={setTimeRange}
+        module="corpo"
       />
 
       <div className="grid grid-cols-3 gap-2 px-1">

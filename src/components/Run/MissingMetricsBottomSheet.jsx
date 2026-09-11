@@ -5,9 +5,9 @@ import PremiumModal from '../shared/PremiumModal';
 
 export const METRIC_CONFIGS = {
   distance_km: { label: 'Distância da Corrida (km)', icon: <Navigation className="w-4 h-4 text-emerald-500" /> },
-  duration_seconds: { label: 'Duração Total da Corrida', icon: <Zap className="w-4 h-4 text-amber-500" /> },
+  duration_seconds: { label: 'Duração Total da Corrida', icon: <Zap className="w-4 h-4" style={{ color: 'var(--warn)' }} /> },
   avg_heart_rate_bpm: { label: 'Frequência Cardíaca (Média / Máxima)', icon: <HeartPulse className="w-4 h-4 text-rose-500" /> },
-  cadence_spm: { label: 'Cadência de Corrida (spm)', icon: <Zap className="w-4 h-4 text-amber-500" /> },
+  cadence_spm: { label: 'Cadência de Corrida (spm)', icon: <Zap className="w-4 h-4" style={{ color: 'var(--warn)' }} /> },
   elevation_gain_m: { label: 'Desnível Acumulado (m)', icon: <Navigation className="w-4 h-4 text-teal-500" /> },
   sweat_loss_ml: { label: 'Perda por Transpiração (ml)', icon: <Droplet className="w-4 h-4 text-sky-500" /> },
   biomechanics: { label: 'Métricas Biomecânicas (Contacto solo, Oscilação, Assimetria)', icon: <Activity className="w-4 h-4 text-indigo-500" /> },

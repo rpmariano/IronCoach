@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { Trophy, Flag, ChevronRight } from 'lucide-react';
+import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
 
+/* Ponto 3 do redesenho: os pilares tinham emoji (🏃 ⚡ 🥗 📈 🎯). Passam a
+   lucide, cada um na cor do que mede — os dois de nutrição/energia no roxo
+   da nutrição, os de corrida no ciano da corrida. A tática é da prova. */
 const PILLAR_ICONS = {
-  acwr: '🏃',
-  ea: '⚡',
-  calories: '🥗',
-  vdot: '📈',
-  tactic: '🎯',
+  acwr: <Footprints size={13} style={{ color: 'var(--run)' }} />,
+  ea: <Zap size={13} style={{ color: 'var(--nutrition)' }} />,
+  calories: <Utensils size={13} style={{ color: 'var(--nutrition)' }} />,
+  vdot: <TrendingUp size={13} style={{ color: 'var(--run)' }} />,
+  tactic: <Target size={13} style={{ color: 'var(--race)' }} />,
 };
 
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
@@ -28,10 +31,12 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
 
   const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;
 
+  /* Prontidão alta/média/baixa = dentro do alvo / atenção / erro. A média
+     era âmbar (#f59e0b) — o âmbar é da prova; atenção é o coral --warn. */
   const LEVEL_CONFIG = {
-    high: { color: '#10b981', bg: 'bg-emerald-500', ring: 'stroke-emerald-500', label: 'Alta', textColor: 'text-emerald-400' },
-    medium: { color: '#f59e0b', bg: 'bg-amber-500', ring: 'stroke-amber-500', label: 'Média', textColor: 'text-amber-400' },
-    low: { color: '#ef4444', bg: 'bg-rose-500', ring: 'stroke-rose-500', label: 'Baixa', textColor: 'text-rose-400' },
+    high: { color: 'var(--ok)', label: 'Alta' },
+    medium: { color: 'var(--warn)', label: 'Média' },
+    low: { color: 'var(--danger)', label: 'Baixa' },
   };
   const cfg = LEVEL_CONFIG[readiness.level] || LEVEL_CONFIG.low;
 
@@ -59,7 +64,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             <circle
               cx="44" cy="44" r={radius}
               fill="none"
-              className={cfg.ring}
+              stroke={cfg.color}
               strokeWidth="8"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -68,7 +73,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className={`text-xl font-black leading-none ${cfg.textColor}`}>{readiness.score}%</span>
+            <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{readiness.score}%</span>
             <span className="text-[11px] text-slate-400 font-semibold mt-0.5">Prontidão</span>
           </div>
         </div>
@@ -83,7 +88,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               </div>
               <p className="text-sm font-bold text-white leading-tight truncate">{nextRace.name || nextRace.race_name || 'Prova'}</p>
               <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                {daysLeft === 0 ? 'É hoje! 🏁' : daysLeft === 1 ? 'Amanhã!' : `Faltam ${daysLeft} dias`}
+                {daysLeft === 0 ? 'É hoje!' : daysLeft === 1 ? 'Amanhã!' : `Faltam ${daysLeft} dias`}
               </p>
             </>
           ) : (
@@ -98,7 +103,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           )}
           <div className="mt-2 flex items-center justify-between">
             <div>
-              <span className={`text-[11px] font-bold ${cfg.textColor}`}>
+              <span className="text-[11px] font-bold" style={{ color: cfg.color }}>
                 Prontidão {cfg.label}
               </span>
               {nextRace && (
@@ -126,16 +131,19 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               className="bg-white/5 rounded-xl p-2.5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-slate-400 font-semibold truncate pr-1">{PILLAR_ICONS[pillar.key]} {pillar.label}</span>
+                <span className="text-[11px] text-slate-400 font-semibold truncate pr-1 flex items-center gap-1.5">
+                  <span className="flex shrink-0" aria-hidden="true">{PILLAR_ICONS[pillar.key]}</span>
+                  <span className="truncate">{pillar.label}</span>
+                </span>
                 {/* 12,5px: é um número que o atleta lê de relance, não uma
                     etiqueta — o handoff manda subir acima do piso nesses
                     casos (ponto 2, "12px para dados lidos em movimento"). */}
-                <span className={`text-[12.5px] font-bold ${pCfg.textColor} shrink-0`}>{pillar.score}%</span>
+                <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{pillar.score}%</span>
               </div>
               <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${pCfg.bg}`}
-                  style={{ width: `${pillar.score}%`, transition: 'width 0.8s ease' }}
+                  className="h-full rounded-full"
+                  style={{ width: `${pillar.score}%`, background: pCfg.color, transition: 'width 0.8s ease' }}
                 />
               </div>
             </div>
@@ -157,13 +165,13 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-xl">{PILLAR_ICONS[selectedPillar.key]}</span>
+                <span className="flex" aria-hidden="true">{PILLAR_ICONS[selectedPillar.key]}</span>
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">{selectedPillar.label}</h3>
               </div>
-              <span className={`text-sm font-bold ${
-                selectedPillar.score >= 75 ? 'text-emerald-400' : 
-                selectedPillar.score >= 45 ? 'text-amber-400' : 'text-rose-400'
-              }`}>{selectedPillar.score}%</span>
+              <span className="text-sm font-bold" style={{
+                color: selectedPillar.score >= 75 ? 'var(--ok)'
+                  : selectedPillar.score >= 45 ? 'var(--warn)' : 'var(--danger)',
+              }}>{selectedPillar.score}%</span>
             </div>
             
             <p className="text-sm text-slate-300 leading-relaxed mb-6">

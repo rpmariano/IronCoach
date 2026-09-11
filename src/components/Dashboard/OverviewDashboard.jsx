@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Footprints, Dumbbell, Utensils, Scale } from 'lucide-react';
 import { useAppStore } from '../../store';
 import SmartInsightsBanner from '../BI/SmartInsightsBanner';
 import RaceReadinessCard from '../BI/RaceReadinessCard';
@@ -14,6 +15,18 @@ import {
   acwrStatusLabel,
 } from '../../utils/biEngine';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
+
+/* Ponto 3 do redesenho ("cor com significado"): os pilares tinham um emoji
+   por ícone (🏃 🏋️ 🥗 👤) e os badges traziam bolinhas 🟢🟡🔴⚪ à frente do
+   texto. Saem os dois — o ícone passa a lucide na cor do módulo e o estado
+   já é dito pela cor do badge (verde dentro do alvo, coral atenção,
+   vermelho crítico). O texto das etiquetas não muda. */
+const PILLAR_ICONS = {
+  corrida: <Footprints size={15} style={{ color: 'var(--run)' }} />,
+  ginasio: <Dumbbell size={15} style={{ color: 'var(--gym)' }} />,
+  nutricao: <Utensils size={15} style={{ color: 'var(--nutrition)' }} />,
+  corpo: <Scale size={15} style={{ color: 'var(--body)' }} />,
+};
 
 export default function OverviewDashboard({ scrollToTab }) {
   const {
@@ -46,9 +59,8 @@ export default function OverviewDashboard({ scrollToTab }) {
   // abaixo de 0.8 (incl. carga baixa real, com dados) caía em "Sem dados".
   const runBadge = useMemo(() => {
     const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
-    const EMOJI = { safe: '🟢', caution: '🟡', danger: '🔴', neutral: '⚪' };
     const COLOR = { safe: 'green', caution: 'yellow', danger: 'red', neutral: 'neutral' };
-    return { label: `${EMOJI[tone]} ${label === 'Sem dados' ? label : `ACWR ${label}`}`, color: COLOR[tone] };
+    return { label: label === 'Sem dados' ? label : `ACWR ${label}`, color: COLOR[tone] };
   }, [acwr]);
 
   // ── Ginásio ───────────────────────────────────────────
@@ -98,11 +110,11 @@ export default function OverviewDashboard({ scrollToTab }) {
   // utilizador (specs/formulas-checklist.md).
   const nutriBadge = useMemo(() => {
     const zone = classifyCalorieCompliance(calPct);
-    if (zone === 'over') return { label: '🟡 Acima do alvo', color: 'yellow' };
-    if (zone === 'ok') return { label: '🟢 Calorias OK', color: 'green' };
-    if (zone === 'low') return { label: '🟡 Baixa ingestão', color: 'yellow' };
-    if (zone === 'critical') return { label: '🔴 Deficit crítico', color: 'red' };
-    return { label: '⚪ Sem dados', color: 'neutral' };
+    if (zone === 'over') return { label: 'Acima do alvo', color: 'yellow' };
+    if (zone === 'ok') return { label: 'Calorias OK', color: 'green' };
+    if (zone === 'low') return { label: 'Baixa ingestão', color: 'yellow' };
+    if (zone === 'critical') return { label: 'Deficit crítico', color: 'red' };
+    return { label: 'Sem dados', color: 'neutral' };
   }, [calPct]);
   const eaAvg = eaData?.average ?? 0;
   const nutriSubtitle = eaAvg > 0 ? `EA: ${eaAvg} kcal/kg` : 'Regista refeições';
@@ -116,10 +128,10 @@ export default function OverviewDashboard({ scrollToTab }) {
     ? `${weightTrend.weeklyRate > 0 ? '+' : ''}${weightTrend.weeklyRate} kg/sem`
     : null;
   const bodyBadge = useMemo(() => {
-    if (!weightTrend?.trend) return { label: '⚪ Sem dados', color: 'neutral' };
-    if (weightTrend.trend === 'descendo') return { label: '📉 Em perda', color: 'blue' };
-    if (weightTrend.trend === 'subindo') return { label: '📈 Em ganho', color: 'yellow' };
-    return { label: '➡️ Estável', color: 'green' };
+    if (!weightTrend?.trend) return { label: 'Sem dados', color: 'neutral' };
+    if (weightTrend.trend === 'descendo') return { label: 'Em perda', color: 'blue' };
+    if (weightTrend.trend === 'subindo') return { label: 'Em ganho', color: 'yellow' };
+    return { label: 'Estável', color: 'green' };
   }, [weightTrend]);
   const weekBodyAssessments = useMemo(() =>
     filterByDateRange(bodyAssessments || [], 'semana'), [bodyAssessments]
@@ -155,7 +167,7 @@ export default function OverviewDashboard({ scrollToTab }) {
       <div className="grid grid-cols-2 gap-3">
         <PillarSummaryCard
           title="Corrida"
-          icon="🏃"
+          icon={PILLAR_ICONS.corrida}
           kpi={weekDist > 0 ? `${weekDist.toFixed(1)}` : '—'}
           kpiUnit={weekDist > 0 ? 'km esta sem.' : ''}
           badge={runBadge}
@@ -164,7 +176,7 @@ export default function OverviewDashboard({ scrollToTab }) {
         />
         <PillarSummaryCard
           title="Ginásio"
-          icon="🏋️"
+          icon={PILLAR_ICONS.ginasio}
           kpi={gymStats?.totalVolumeLoad > 0
             ? `${Math.round(gymStats.totalVolumeLoad / 1000) >= 1
                 ? (gymStats.totalVolumeLoad / 1000).toFixed(1) + 'k'
@@ -177,7 +189,7 @@ export default function OverviewDashboard({ scrollToTab }) {
         />
         <PillarSummaryCard
           title="Nutrição"
-          icon="🥗"
+          icon={PILLAR_ICONS.nutricao}
           kpi={calPct > 0 ? `${calPct}%` : '—'}
           kpiUnit={calPct > 0 ? 'calorias' : ''}
           badge={nutriBadge}
@@ -186,7 +198,7 @@ export default function OverviewDashboard({ scrollToTab }) {
         />
         <PillarSummaryCard
           title="Corpo"
-          icon="👤"
+          icon={PILLAR_ICONS.corpo}
           kpi={currentWeight}
           kpiUnit={currentWeight !== '—' ? 'kg' : ''}
           badge={bodyBadge}

@@ -105,9 +105,14 @@ export default function ExperienceLevelHelp({
       >
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-slate-50/30">
 
-          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 flex gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <p className="text-[11px] leading-relaxed text-amber-800">
+          {/* Era âmbar: a caixa da dica não é a prova nem um aviso — é a
+              Carol a explicar, por isso fica no ciano dela (ponto 3). */}
+          <div
+            className="rounded-xl p-3 flex gap-2"
+            style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}
+          >
+            <Sparkles className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--coach)' }} />
+            <p className="text-[11px] leading-relaxed" style={{ color: 'var(--coach-soft)' }}>
               {EXPERIENCE_TIEBREAK_HINT}
             </p>
           </div>

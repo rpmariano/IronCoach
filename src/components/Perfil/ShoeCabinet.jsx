@@ -12,12 +12,16 @@ import {
 
 // Tom de cada nível de desgaste. 'ok' é deliberadamente discreto — a maior
 // parte dos pares está em bom estado e não precisa de chamar a atenção.
+/* Ponto 3 do redesenho: 'atencao' era âmbar e 'substituir' laranja — duas
+   cores só para dizer a mesma coisa (aviso), e uma delas era a da prova.
+   Passam as duas ao coral --warn e distinguem-se pela força da tinta;
+   'excedida' é o vermelho do erro, 'ok' o verde do dentro-do-alvo. */
 const LEVEL_STYLES = {
-  sem_estimativa: { bar: '#64748b', text: 'text-slate-400', chip: 'bg-slate-800 text-slate-400 border-slate-700' },
-  ok:             { bar: '#10b981', text: 'text-emerald-400', chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
-  atencao:        { bar: '#f59e0b', text: 'text-amber-400', chip: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-  substituir:     { bar: '#f97316', text: 'text-orange-400', chip: 'bg-orange-500/15 text-orange-300 border-orange-500/30' },
-  excedida:       { bar: '#ef4444', text: 'text-red-400', chip: 'bg-red-500/15 text-red-300 border-red-500/30' },
+  sem_estimativa: { bar: 'var(--text-muted)', color: 'var(--text-4)', chipBg: 'rgba(255,255,255,.05)', chipBd: 'rgba(255,255,255,.10)' },
+  ok:             { bar: 'var(--ok)',     color: 'var(--ok)',     chipBg: 'var(--tint-ok-bg)',     chipBd: 'var(--tint-ok-bd)' },
+  atencao:        { bar: 'var(--warn)',   color: 'var(--warn)',   chipBg: 'var(--tint-warn-bg)',   chipBd: 'var(--tint-warn-bd)' },
+  substituir:     { bar: 'var(--warn)',   color: 'var(--warn)',   chipBg: 'rgba(251,124,77,.22)',  chipBd: 'rgba(251,124,77,.55)' },
+  excedida:       { bar: 'var(--danger)', color: 'var(--danger)', chipBg: 'var(--tint-danger-bg)', chipBd: 'var(--tint-danger-bd)' },
 };
 
 const MONTHS = [
@@ -451,7 +455,10 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
         {/* Mesmo aposentado, o chip mostra o desgaste com que o par ficou —
             que estão aposentados já se percebe pelo cabeçalho da secção e
             pela opacidade; repetir isso aqui não acrescentava nada. */}
-        <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded border ${style.chip}`}>
+        <span
+          className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded border"
+          style={{ background: style.chipBg, borderColor: style.chipBd, color: style.color }}
+        >
           {WEAR_LEVEL_LABELS[wear.level]}
         </span>
       </div>
@@ -467,7 +474,7 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
             <span className="text-slate-300">
               <span className="font-bold text-slate-100">{wear.km}</span> / {wear.lifespanKm} km
             </span>
-            <span className={`font-bold ${style.text}`}>{wear.pct}%</span>
+            <span className="font-bold" style={{ color: style.color }}>{wear.pct}%</span>
           </div>
           <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
             <div
@@ -476,7 +483,7 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
             />
           </div>
           {!retired && (wear.level === 'substituir' || wear.level === 'excedida') && (
-            <p className={`flex items-start gap-1.5 text-[11px] leading-relaxed ${style.text}`}>
+            <p className="flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: style.color }}>
               <AlertTriangle size={12} className="shrink-0 mt-px" />
               {wear.level === 'excedida'
                 ? `Já passaste a vida útil estimada em ${Math.abs(wear.remainingKm)} km. Correr com a entressola gasta aumenta o risco de lesão — está na hora de trocar.`

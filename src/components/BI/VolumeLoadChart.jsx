@@ -15,7 +15,7 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
     if (chart) {
       const ctx = chart.ctx;
       const bg = ctx.createLinearGradient(0, 0, 0, 400);
-      bg.addColorStop(0, '#d97706'); // --mod-ginasio
+      bg.addColorStop(0, '#9ec3d2'); // --gym (ardósia). Era #d97706, âmbar da prova.
       bg.addColorStop(1, 'rgba(217, 119, 6, 0.2)');
       setGradient(bg);
     }

@@ -2,42 +2,51 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
+/* Ponto 3 do redesenho: cada tema passa à cor do seu significado. O 'gym'
+   era âmbar (#a16207 → #eab308) — o âmbar é da prova; o 'warning' era
+   laranja e passa ao coral; o 'run' era roxo e o 'nutri' verde (que é o
+   --ok), ambos fora do esquema. O subtítulo lê-se sobre a cor cheia, por
+   isso é a tinta escura do tom em vez de um branco esbatido. */
 const THEMES = {
   coach: {
-    bg: 'linear-gradient(135deg, var(--mod-coach-from, #155e75), var(--mod-coach-to, #06b6d4))',
-    sub: 'text-cyan-100'
+    bg: 'var(--grad-coach)',
+    subColor: 'var(--coach-ink)'
+  },
+  race: {
+    bg: 'var(--grad-race)',
+    subColor: 'var(--race-ink)'
   },
   run: {
-    bg: 'linear-gradient(135deg, #7e22ce, #c026d3)',
-    sub: 'text-purple-100'
+    bg: 'linear-gradient(135deg, var(--mod-corrida-from), var(--run))',
+    subColor: 'var(--run-ink)'
   },
   gym: {
-    bg: 'linear-gradient(135deg, #a16207, #eab308)',
-    sub: 'text-yellow-100'
+    bg: 'linear-gradient(135deg, var(--mod-ginasio-from), var(--gym))',
+    subColor: 'var(--gym-ink)'
   },
   nutri: {
-    bg: 'linear-gradient(135deg, #047857, #10b981)',
-    sub: 'text-green-100'
+    bg: 'linear-gradient(135deg, var(--mod-nutricao-from), var(--nutrition))',
+    subColor: 'var(--nutrition-ink)'
   },
   body: {
-    bg: 'linear-gradient(135deg, #be123c, #f43f5e)',
-    sub: 'text-rose-100'
+    bg: 'linear-gradient(135deg, var(--mod-corpo-from), var(--body))',
+    subColor: 'var(--body-ink)'
   },
   danger: {
-    bg: 'linear-gradient(135deg, #991b1b, #ef4444)',
-    sub: 'text-red-100'
+    bg: 'linear-gradient(135deg, color-mix(in srgb, var(--danger) 55%, var(--bg-app)), var(--danger))',
+    subColor: 'var(--danger-ink)'
   },
   warning: {
-    bg: 'linear-gradient(135deg, #c2410c, #f97316)',
-    sub: 'text-orange-100'
+    bg: 'linear-gradient(135deg, color-mix(in srgb, var(--warn) 55%, var(--bg-app)), var(--warn))',
+    subColor: 'var(--warn-ink)'
   },
   info: {
-    bg: 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
-    sub: 'text-blue-100'
+    bg: 'var(--grad-coach)',
+    subColor: 'var(--coach-ink)'
   },
   neutral: {
     bg: 'linear-gradient(135deg, #334155, #64748b)',
-    sub: 'text-slate-200'
+    subColor: '#e2e8f0'
   }
 };
 
@@ -219,12 +228,12 @@ export default function PremiumModal({
           <div className="flex items-center gap-3 pr-2">
             {Icon && (
               <div className="w-10 h-10 shrink-0 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 shadow-sm">
-                <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                <Icon className="w-5 h-5" style={{ color: activeTheme.subColor }} strokeWidth={2.5} />
               </div>
             )}
             <div className="flex-1 min-w-0 pr-4">
-              {title && <h3 id="modal-title" className={`text-base font-bold leading-tight truncate ${activeTheme.sub.replace('100', '50')}`}>{title}</h3>}
-              {subtitle && <p className={`text-[12.5px] mt-0.5 leading-snug font-medium ${activeTheme.sub}`}>{subtitle}</p>}
+              {title && <h3 id="modal-title" className="text-base font-bold leading-tight truncate" style={{ color: activeTheme.subColor }}>{title}</h3>}
+              {subtitle && <p className="text-[12.5px] mt-0.5 leading-snug font-medium" style={{ color: activeTheme.subColor, opacity: .82 }}>{subtitle}</p>}
             </div>
           </div>
           <button

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Sparkles, Check, X, Target } from 'lucide-react';
+import { Sparkles, Check, X, Target, Lightbulb } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
@@ -82,13 +82,19 @@ export function PlanProposalBottomSheet({
           <div className="space-y-3">
             <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <Target className="w-5 h-5 text-amber-500 shrink-0" />
+                {/* A proposta de objetivos vem da Carol — era âmbar (a cor
+                    da prova). Passa ao ciano dela (ponto 3). */}
+                <Target className="w-5 h-5 shrink-0" style={{ color: 'var(--coach)' }} />
                 <h4 className="text-sm font-bold text-slate-800">Alteração de Objetivos</h4>
               </div>
 
               {goalProposal.rationale && (
-                <p className="text-xs text-slate-600 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
-                  💡 {goalProposal.rationale}
+                <p
+                  className="text-xs text-slate-600 p-2.5 rounded-xl flex items-start gap-1.5"
+                  style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}
+                >
+                  <Lightbulb size={13} className="shrink-0 mt-0.5" style={{ color: 'var(--coach)' }} />
+                  <span>{goalProposal.rationale}</span>
                 </p>
               )}
 
@@ -114,7 +120,7 @@ export function PlanProposalBottomSheet({
             <div className="flex items-center gap-3">
               <Button
                 variant="module"
-                moduleColor="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                moduleColor="var(--grad-coach)"
                 onClick={() => handleRespondGoalAction(true)}
                 className="flex-1 text-sm py-3.5"
                 icon={<Check size={18} />}
@@ -149,7 +155,7 @@ export function PlanProposalBottomSheet({
               >
                 {planItems?.length > 0 && (
                   <p className="flex items-start gap-1.5 font-bold">
-                    <span>✨</span>
+                    <Sparkles size={13} className="shrink-0 mt-0.5" />
                     <span>
                       Plano de {diffDaysISO(plan.period_start, plan.period_end) + 1} dias com{' '}
                       {(() => {

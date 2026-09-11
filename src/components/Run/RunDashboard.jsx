@@ -198,7 +198,10 @@ export default function RunDashboard() {
               <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
             )}
             {b.source === 'split' && (
-              <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[11px] font-bold uppercase tracking-wide">split</span>
+              <span
+                className="px-1 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide"
+                style={{ background: 'var(--tint-run-bg)', color: 'var(--run)' }}
+              >split</span>
             )}
           </p>
         </div>
@@ -213,6 +216,7 @@ export default function RunDashboard() {
       <TimeFilterBar
         activeRange={activeRange}
         onChange={setActiveRange}
+        module="corrida"
       />
 
 

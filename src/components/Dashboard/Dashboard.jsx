@@ -15,11 +15,11 @@ import CoachInsightModal from '../BI/CoachInsightModal';
 import { detectCoachInsights } from '../../utils/biEngine';
 
 const TABS = [
-  { key: 'hub', label: 'Visão Geral', icon: <LayoutDashboard size={14} />, color: '#0ea5e9' },
-  { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #c026d3)' },
-  { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #facc15)' },
-  { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #059669)' },
-  { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #e11d48)' },
+  { key: 'hub', label: 'Visão Geral', icon: <LayoutDashboard size={14} />, color: 'var(--coach)' },
+  { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #2ee0ff)' },
+  { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #9ec3d2)' },
+  { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #c77dff)' },
+  { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #ff5fa8)' },
 ];
 
 export default function Dashboard({ activeModule }) {

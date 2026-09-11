@@ -56,7 +56,12 @@ function formatDatePT(isoStr) {
 
 export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false, hideActions = false }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
+  /* Escala de esforço (RPE 1-10). Tinha três degraus amarelo/âmbar/laranja
+     (bg-yellow-400, bg-amber-400 = exatamente o âmbar da prova) — ponto 3 do
+     redesenho: o âmbar é da prova e mais nada. A rampa passa a ir do ciano da
+     corrida ao verde do "dentro do alvo" e daí ao coral do aviso e ao vermelho,
+     sem tocar no âmbar. */
+  const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
 
   const { profile, loadInitialData, runs, setRuns } = useAppStore();
   const { showToast } = useToast();
@@ -378,7 +383,9 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? effortColors[i] : 'bg-white/10'}`} 
+                    className="flex-1 h-2 rounded-full"
+                    style={{ background: i < run.effort_rpe ? effortColors[i] : 'rgba(255,255,255,.10)' }}
+                    
                   />
                 ))}
               </div>

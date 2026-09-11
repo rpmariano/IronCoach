@@ -12,7 +12,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     if (chart) {
       const ctx = chart.ctx;
       const gradientBg = ctx.createLinearGradient(0, 0, 0, 400);
-      gradientBg.addColorStop(0, '#3b82f6');
+      gradientBg.addColorStop(0, '#2ee0ff'); // --run
       gradientBg.addColorStop(1, 'rgba(59, 130, 246, 0.2)');
       setGradient(gradientBg);
     }
@@ -69,7 +69,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         type: 'bar',
         label: 'Carga Aguda',
         data: weeklyData.map(d => d.acuteLoad),
-        backgroundColor: gradient || '#3b82f6',
+        backgroundColor: gradient || '#2ee0ff', // --run
         borderRadius: 6,
         yAxisID: 'load',
         order: 2

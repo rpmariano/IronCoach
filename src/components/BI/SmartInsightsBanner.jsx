@@ -1,12 +1,16 @@
 import React, { useMemo } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { useAppStore } from '../../store';
-import { AlertCircle, Zap, ShieldAlert, TrendingDown } from 'lucide-react';
+import { AlertCircle, Zap, ShieldAlert } from 'lucide-react';
+import Warning from '../shared/Warning';
 
+/* Ponto 3 do redesenho: o aviso era âmbar (bg-amber-100) — o âmbar é da
+   prova. Coral para aviso, vermelho para crítico, ciano da Carol para o
+   informativo (era azul genérico). Ver src/components/shared/Warning.jsx. */
 const SEVERITY_CONFIG = {
-  critical: { bg: 'bg-rose-100', border: 'border-rose-300', text: 'text-rose-900', icon: ShieldAlert, iconColor: 'text-rose-600' },
-  warning: { bg: 'bg-amber-100', border: 'border-amber-300', text: 'text-amber-900', icon: AlertCircle, iconColor: 'text-amber-600' },
-  info: { bg: 'bg-blue-100', border: 'border-blue-300', text: 'text-blue-900', icon: Zap, iconColor: 'text-blue-600' }
+  critical: { tone: 'danger', Icon: ShieldAlert },
+  warning: { tone: 'warn', Icon: AlertCircle },
+  info: { tone: 'coach', Icon: Zap }
 };
 
 export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) {
@@ -30,20 +34,17 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) 
     <div className="space-y-3">
       {topInsights.map(insight => {
         const config = SEVERITY_CONFIG[insight.severity] || SEVERITY_CONFIG.info;
-        const Icon = config.icon;
-        
+        const { Icon } = config;
+
         return (
-          <div key={insight.id} className={`flex items-start gap-3 p-4 rounded-2xl border backdrop-blur-md shadow-sm ${config.bg} ${config.border}`}>
-            <Icon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${config.iconColor}`} />
-            <div>
-              <h4 className={`text-sm font-bold ${config.text} mb-0.5`}>
-                {insight.title}
-              </h4>
-              <p className={`text-[13px] font-medium leading-snug opacity-90 ${config.text}`}>
-                {insight.message}
-              </p>
-            </div>
-          </div>
+          <Warning
+            key={insight.id}
+            tone={config.tone}
+            title={insight.title}
+            icon={<Icon size={14} />}
+          >
+            {insight.message}
+          </Warning>
         );
       })}
     </div>

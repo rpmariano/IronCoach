@@ -45,6 +45,17 @@
   --warn-soft: #fed7c3;
   --danger: #f87171;           /* erro, admin */
 
+  /* Tinta (texto sobre a cor cheia) de cada significado — os mesmos valores
+     que design-system/components/core/Button.jsx usa. Sobre a cor cheia o
+     texto é sempre escuro; sobre a tinta a 16% é a própria cor. */
+  --run-ink: #04252b;
+  --gym-ink: #0b2129;
+  --nutrition-ink: #22103a;
+  --body-ink: #3a0a22;
+  --ok-ink: #052e22;
+  --warn-ink: #2a1006;
+  --danger-ink: #2e0707;
+
   /* tintas (fundo + borda) para cada significado */
   --tint-race-bg: rgba(251, 191, 36, .16);   --tint-race-bd: rgba(251, 191, 36, .40);
   --tint-coach-bg: rgba(34, 211, 238, .07);  --tint-coach-bd: rgba(34, 211, 238, .30);

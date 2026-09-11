@@ -50,7 +50,12 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
     : (volume > 0 ? `${Math.round(volume).toLocaleString('pt-PT')} kg` : '');
 
   const dateParts = session.date ? session.date.split('-') : [];
-  const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-400', 'bg-rose-500'];
+  /* Escala de esforço (RPE 1-10). Tinha três degraus amarelo/âmbar/laranja
+     (bg-yellow-400, bg-amber-400 = exatamente o âmbar da prova) — ponto 3 do
+     redesenho: o âmbar é da prova e mais nada. A rampa passa a ir do ciano da
+     corrida ao verde do "dentro do alvo" e daí ao coral do aviso e ao vermelho,
+     sem tocar no âmbar. */
+  const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
     const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : session.date;
 
   const handleExpandToggle = async () => {
@@ -189,7 +194,8 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < session.exertion ? effortColors[i] : 'bg-white/10'}`} 
+                    className="flex-1 h-2 rounded-full"
+                    style={{ background: i < session.exertion ? effortColors[i] : 'rgba(255,255,255,.10)' }} 
                   />
                 ))}
               </div>

@@ -5,7 +5,9 @@ import { ChevronRight } from 'lucide-react';
  * PillarSummaryCard — Card compacto para os 4 pilares do dashboard.
  * Props:
  *   title: string
- *   icon: string (emoji)
+ *   icon: nó React — o ícone lucide do módulo, já na cor do módulo.
+ *     Era um emoji (🏃 🏋️ 🥗 👤); saiu no ponto 3 do redesenho, que pede
+ *     "remover emoji dos pilares do Dashboard".
  *   kpi: string — valor principal (ex: "32.4 km", "74.2 kg")
  *   kpiUnit: string — unidade opcional
  *   badge: { label: string, color: 'green'|'yellow'|'red'|'blue'|'neutral' }
@@ -21,12 +23,15 @@ import { ChevronRight } from 'lucide-react';
  * agora esse espaço com uma frase concreta em vez de um desenho.
  */
 
+/* Cor do badge por significado (ponto 3). O "yellow" era âmbar
+   (bg-amber-100/text-amber-800) — o âmbar é da prova; atenção é coral.
+   Sobre a tinta a 16% o texto é a própria cor. */
 const BADGE_COLORS = {
-  green: 'bg-emerald-100 text-emerald-800',
-  yellow: 'bg-amber-100 text-amber-800',
-  red: 'bg-rose-100 text-rose-800',
-  blue: 'bg-sky-100 text-sky-800',
-  neutral: 'bg-slate-100 text-slate-600',
+  green: { background: 'var(--tint-ok-bg)', color: 'var(--ok)' },
+  yellow: { background: 'var(--tint-warn-bg)', color: 'var(--warn)' },
+  red: { background: 'var(--tint-danger-bg)', color: 'var(--danger)' },
+  blue: { background: 'var(--tint-coach-bg)', color: 'var(--coach)' },
+  neutral: { background: 'rgba(255,255,255,.06)', color: 'var(--text-4)' },
 };
 
 export default function PillarSummaryCard({
@@ -39,7 +44,7 @@ export default function PillarSummaryCard({
   subtitle,
   onClick,
 }) {
-  const badgeCls = BADGE_COLORS[badge?.color || 'neutral'];
+  const badgeStyle = BADGE_COLORS[badge?.color] || BADGE_COLORS.neutral;
 
   return (
     <button
@@ -49,7 +54,7 @@ export default function PillarSummaryCard({
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <span className="text-base leading-none">{icon}</span>
+          <span className="flex items-center leading-none shrink-0">{icon}</span>
           <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">{title}</span>
         </div>
         <ChevronRight size={12} className="text-slate-500" />
@@ -64,7 +69,7 @@ export default function PillarSummaryCard({
       {/* Badge + delta */}
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         {badge && (
-          <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${badgeCls}`}>
+          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md" style={badgeStyle}>
             {badge.label}
           </span>
         )}

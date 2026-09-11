@@ -71,13 +71,13 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   leftData={{
                     label: 'Peso (kg)',
                     data: vdotVsWeightData.map(d => ({ x: d.date, y: d.left })),
-                    color: '#6366f1',
+                    color: '#ff5fa8', // --body
                     unit: 'kg'
                   }}
                   rightData={{
                     label: 'VDOT',
                     data: vdotVsWeightData.map(d => ({ x: d.date, y: d.right })),
-                    color: '#c026d3',
+                    color: '#2ee0ff', // --run
                     unit: ''
                   }}
                 />
@@ -97,13 +97,13 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   leftData={{
                     label: 'Volume Ginásio (kg)',
                     data: crossData.gymLoadVsRunRPE.map(d => ({ x: d.date, y: d.gymVolume })),
-                    color: '#facc15',
+                    color: '#9ec3d2', // --gym (era #facc15, amarelo reservado ao âmbar da prova)
                     unit: 'kg'
                   }}
                   rightData={{
                     label: 'Esforço Corrida (RPE)',
                     data: crossData.gymLoadVsRunRPE.map(d => ({ x: d.date, y: d.runRPE })),
-                    color: '#3b82f6',
+                    color: '#2ee0ff', // --run
                     unit: 'RPE'
                   }}
                 />

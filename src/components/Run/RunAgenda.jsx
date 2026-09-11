@@ -5,6 +5,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import Warning from '../shared/Warning';
 import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw, Sliders, Trophy } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -967,11 +968,16 @@ export default function RunAgenda({ onClose }) {
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
                 </p>
+                {/* Era âmbar dentro do ecrã da prova (que é todo âmbar):
+                    um aviso passa a coral, no bloco Warning. */}
                 {experienceLevelStale && (
-                  <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1.5">
-                    <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                    <span>Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.</span>
-                  </p>
+                  <Warning
+                    title="Nível por confirmar"
+                    icon={<AlertTriangle size={12} />}
+                    className="mt-1.5"
+                  >
+                    Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.
+                  </Warning>
                 )}
                 {/* Nível medido a partir do histórico de treino — proposta,
                     nunca substituição (Bloco 8, specs/nivel-por-prova.md). */}

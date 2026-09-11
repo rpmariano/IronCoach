@@ -188,9 +188,10 @@ export default function NutritionDashboard() {
 
   return (
     <div className="space-y-4 fade-in pb-20">
-      <TimeFilterBar 
-        activeRange={activeFilter} 
-        onChange={setActiveFilter} 
+      <TimeFilterBar
+        activeRange={activeFilter}
+        onChange={setActiveFilter}
+        module="nutricao"
       />
       {/* 2x2 KPI Grid */}
       <div className="grid grid-cols-2 gap-3 px-1">

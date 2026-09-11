@@ -120,7 +120,7 @@ export default function GymDashboard() {
 
   return (
     <div className="space-y-4 fade-in">
-      <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} />
+      <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="ginasio" />
       
       <div className="grid grid-cols-3 gap-3">
         <KPICard label="Treinos de Força" value={strengthSessions.length} icon={Dumbbell} moduleColor="var(--mod-ginasio)" />
@@ -163,7 +163,7 @@ export default function GymDashboard() {
           <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-500" />
+                <Users className="w-4 h-4" style={{ color: 'var(--gym)' }} />
                 <h3 className="text-[12px] font-bold text-slate-200 uppercase tracking-wider">Aulas & Modalidades</h3>
               </div>
               <MetricInfo text="Registo das tuas aulas de grupo e modalidades (HIIT, Cycling, Pilates, CrossFit, etc.). Monitoriza a frequência semanal, tempo total investido e o nível de esforço percebido (RPE)." />
@@ -184,7 +184,7 @@ export default function GymDashboard() {
                     <p className="text-[11px] text-slate-400 mt-1">Tempo Total</p>
                   </div>
                   <div>
-                    <p className="text-base font-extrabold text-amber-400 leading-none">
+                    <p className="text-base font-extrabold leading-none" style={{ color: 'var(--gym)' }}>
                       {classAnalytics.avgRpe ? `${classAnalytics.avgRpe} / 10` : '-'}
                     </p>
                     <p className="text-[11px] text-slate-400 mt-1">Esforço Médio (RPE)</p>
@@ -198,7 +198,7 @@ export default function GymDashboard() {
                     return (
                       <div key={c.name} className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-white/5 border border-white/5">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                          <div className="w-2 h-2 rounded-full" style={{ background: 'var(--gym)' }}></div>
                           <div>
                             <p className="text-xs font-semibold text-slate-200">{c.name}</p>
                             <p className="text-[11px] text-slate-400">

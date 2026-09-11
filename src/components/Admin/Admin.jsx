@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw, Send } from 'lucide-react';
+import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, AlertCircle, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, X, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
@@ -434,8 +434,9 @@ export default function Admin() {
       {/* Banner para Bug Reviewer */}
       {isBugReviewer && (
         <div className="bg-blue-500/15 border border-blue-500/30 rounded-2xl p-3 text-center">
-          <p className="text-xs font-semibold text-blue-300">
-            👤 Modo Revisor de Bugs — Acesso limitado a relatórios de erros apenas
+          <p className="text-xs font-semibold text-blue-300 flex items-center justify-center gap-1.5">
+            <User size={13} className="shrink-0" />
+            Modo Revisor de Bugs — Acesso limitado a relatórios de erros apenas
           </p>
         </div>
       )}
@@ -561,7 +562,7 @@ export default function Admin() {
                   key={s.key}
                   onClick={() => setBugReportsStatusFilter(s.key)}
                   className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
-                    bugReportsStatusFilter === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                    bugReportsStatusFilter === s.key ? 'bg-neutral-800 text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
                   }`}
                 >
                   {s.label}
@@ -592,7 +593,7 @@ export default function Admin() {
                         </p>
                       </div>
                       <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded border ${
-                        item.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        item.status === 'resolved' ? 'bg-[var(--tint-ok-bg)] text-[var(--ok)] border-[var(--tint-ok-bd)]' : 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]'
                       }`}>
                         {item.status === 'resolved' ? 'Resolvido' : 'Aberto'}
                       </span>
@@ -694,7 +695,7 @@ export default function Admin() {
                           <div key={notif.id} className="bg-neutral-950 rounded-lg p-2.5 border border-neutral-800 space-y-1.5 text-[11px]">
                             {/* Notificação Enviada */}
                             <div className="space-y-1">
-                              <p className="text-slate-400 font-semibold">📤 Notificação Enviada:</p>
+                              <p className="text-slate-400 font-semibold flex items-center gap-1.5"><Send size={11} className="shrink-0" /> Notificação Enviada:</p>
                               <p className="text-slate-300 italic">{notif.message}</p>
                               <p className="text-slate-500 text-[11px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
                             </div>
@@ -702,8 +703,10 @@ export default function Admin() {
                             {/* Resposta do Utilizador */}
                             {notif.response_status && (
                               <div className="space-y-1 border-t border-neutral-700 pt-1.5">
-                                <p className={`font-semibold ${notif.response_status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                  {notif.response_status === 'ok' ? '✅ OK - Funciona' : '❌ Não Funciona'}
+                                <p className={`font-semibold flex items-center gap-1.5 ${notif.response_status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {notif.response_status === 'ok'
+                                    ? <><CheckCircle2 size={11} className="shrink-0" /> OK - Funciona</>
+                                    : <><XCircle size={11} className="shrink-0" /> Não Funciona</>}
                                 </p>
                                 {notif.response_message && (
                                   <p className="text-slate-300">{notif.response_message}</p>
@@ -712,7 +715,7 @@ export default function Admin() {
                               </div>
                             )}
                             {!notif.response_status && (
-                              <div className="text-slate-500 italic">⏳ À espera de resposta...</div>
+                              <div className="text-slate-500 italic flex items-center gap-1.5"><Hourglass size={11} className="shrink-0" /> À espera de resposta...</div>
                             )}
                           </div>
                         ))}
@@ -775,7 +778,7 @@ export default function Admin() {
         const categoryLabels = { run: 'Corrida', gym: 'Ginásio', body: 'Corpo' };
         const statusLabels = { pending: 'Pendente', reviewed: 'Revisado', mapped: 'Mapeado', ignored: 'Ignorado' };
         const statusBadgeColors = {
-          pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+          pending: 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]',
           reviewed: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
           mapped: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
           ignored: 'bg-slate-800 text-slate-400 border-slate-700'
@@ -816,7 +819,7 @@ export default function Admin() {
                   key={s.key}
                   onClick={() => setUnknownStatus(s.key)}
                   className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
-                    unknownStatus === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                    unknownStatus === s.key ? 'bg-neutral-800 text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
                   }`}
                 >
                   {s.label}
@@ -866,7 +869,7 @@ export default function Admin() {
                               {new Date(item.created_at).toLocaleString('pt-PT')}
                             </p>
                             {item.admin_notes && (
-                              <p className="text-[11px] text-amber-300/80 italic mt-1 line-clamp-1">
+                              <p className="text-[11px] italic mt-1 line-clamp-1" style={{ color: 'var(--warn)', opacity: .8 }}>
                                 Nota: {item.admin_notes}
                               </p>
                             )}
@@ -1100,7 +1103,7 @@ export default function Admin() {
         const CACHE_SIGNAL_STYLES = {
           insuficiente: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
           ja_poupa: { badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30', text: 'text-blue-300' },
-          vale_a_pena: { badge: 'bg-amber-500/20 text-amber-300 border-amber-500/30', text: 'text-amber-300' },
+          vale_a_pena: { badge: 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]', text: 'text-[var(--warn)]' },
           ainda_nao: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
         };
         const cacheStyle = CACHE_SIGNAL_STYLES[cacheSignal.level];

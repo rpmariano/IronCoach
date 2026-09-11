@@ -20,8 +20,10 @@ import {
   Flame,
   Zap,
   Info,
+  Star,
 } from 'lucide-react';
 import Button from '../shared/Button';
+import Warning from '../shared/Warning';
 import RunIcon from '../shared/RunIcon';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
@@ -277,13 +279,20 @@ export default function RaceHubView({
             <CoachAvatar size={28} />
             <span>Evolução & Prontidão</span>
           </div>
-          <span className={`rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
-            readiness.level === 'high'
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-              : readiness.level === 'medium'
-              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-          }`}>
+          {/* Ponto 3: a prontidão "média" era âmbar — o âmbar é da prova, e
+              esta pílula está dentro do ecrã da prova, onde a confusão era
+              maior. Atenção é coral. */}
+          <span
+            className="rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full border"
+            style={{
+              background: readiness.level === 'high' ? 'var(--tint-ok-bg)'
+                : readiness.level === 'medium' ? 'var(--tint-warn-bg)' : 'var(--tint-danger-bg)',
+              borderColor: readiness.level === 'high' ? 'var(--tint-ok-bd)'
+                : readiness.level === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
+              color: readiness.level === 'high' ? 'var(--ok)'
+                : readiness.level === 'medium' ? 'var(--warn)' : 'var(--danger)',
+            }}
+          >
             Prontidão {readinessTitle} ({readiness.score}%)
           </span>
         </div>
@@ -292,19 +301,23 @@ export default function RaceHubView({
           {carolAnalysis.overviewText}
         </p>
 
+        {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
+            tudo o resto também é âmbar — não se distinguiam do cenário. Coral
+            (Warning), o bloco de aviso do sistema. Texto inalterado. */}
         {plan.viability.flags.length > 0 && (
-          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-            <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-              <AlertTriangle size={12} className="shrink-0" /> Alertas de Viabilidade
-            </span>
+          <Warning
+            title="Alertas de Viabilidade"
+            icon={<AlertTriangle size={12} />}
+            className="mt-4"
+          >
             {plan.viability.flags.map((flag) => (
-              <p key={flag} className="text-xs text-amber-200 leading-relaxed">
+              <span key={flag} className="block">
                 {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
                 {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
                 {flag === 'volume_insuficiente' && `• O teu volume médio recente (${carolAnalysis.weeklyVolumeKm} km/sem) está abaixo do recomendado para esta distância.`}
-              </p>
+              </span>
             ))}
-          </div>
+          </Warning>
         )}
       </div>
 
@@ -393,7 +406,16 @@ export default function RaceHubView({
                         </span>
                         {evalData?.stars > 0 && (
                           <span className="rh-eval-stars" title={`${evalData.stars} de 5 estrelas`}>
-                            {'★'.repeat(evalData.stars)}{'☆'.repeat(5 - evalData.stars)}
+                            {/* Eram os caracteres ★/☆ usados como ícone. */}
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <Star
+                                key={n}
+                                size={11}
+                                className="inline-block"
+                                fill={n <= evalData.stars ? 'currentColor' : 'none'}
+                                strokeWidth={n <= evalData.stars ? 0 : 2}
+                              />
+                            ))}
                           </span>
                         )}
                       </div>

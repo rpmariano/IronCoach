@@ -33,20 +33,30 @@
   --surf-detail: #f8fafc;
   --surf-success-soft: #e6f4ea;
   --text-main: #0f172a;
-  --color-error: #ef4444;
-  --color-alert: #f97316;
-  --color-warn: #eab308;
-  --color-success: #047857;
+  /* Aliases de compatibilidade — ponto 3 do redesenho ("cor com significado").
+     Não são cores próprias: apontam para os tokens de significado em
+     tokens/colors.css. Aviso e alerta são a MESMA coisa (coral --warn); o
+     âmbar que --color-warn tinha passou a ser exclusivo da prova. */
+  --color-error: var(--danger);
+  --color-alert: var(--warn);
+  --color-warn: var(--warn);
+  --color-success: var(--ok);
   --card-shadow: var(--shadow-card);
   --groove-shadow: inset 0 1px 3px rgba(15,23,42,.1);
   --thumb-shadow: 0 2px 5px rgba(15,23,42,.18), 0 1px 0 rgba(255,255,255,.5) inset;
 
   /* Cores unificadas de Módulo para ícones e calendário (pequenos toques de cor) */
+  /* Aliases de compatibilidade: os quatro módulos passam a ser exatamente os
+     tokens do handoff (--run/--gym/--nutrition/--body). O --mod-ginasio era
+     âmbar (#d97706) e o --mod-corrida um azul genérico — ambos fora do
+     esquema de oito cores/oito significados. O nome legado fica porque 113
+     sítios em src/components ainda lhe chamam assim (calendários, chips,
+     --focus-ring dos registos, botões "module"). */
   --mod-prova: var(--race);
-  --mod-corrida: #3b82f6;
-  --mod-ginasio: #d97706;
-  --mod-nutricao: #059669;
-  --mod-corpo: #6366f1;
+  --mod-corrida: var(--run);
+  --mod-ginasio: var(--gym);
+  --mod-nutricao: var(--nutrition);
+  --mod-corpo: var(--body);
   --mod-descanso: #64748b;
 
   /* Gradiente de identidade de cada módulo (ecrãs de criar/editar/visualizar
@@ -56,11 +66,17 @@
      (--race-from/-to). Antes as quatro estavam todas mapeadas para o mesmo
      --green partilhado ("estética monocromática"), o que fazia os ecrãs de
      registo de Corrida/Ginásio/Corpo/Nutrição ficarem todos com o mesmo tom
-     neutro em vez da cor própria de cada módulo. */
-  --mod-nutricao-from:#065f46; --mod-nutricao-to:var(--mod-nutricao);
-  --mod-corpo-from:#3730a3;    --mod-corpo-to:var(--mod-corpo);
-  --mod-ginasio-from:#92400e;  --mod-ginasio-to:var(--mod-ginasio);
-  --mod-corrida-from:#1e40af;  --mod-corrida-to:var(--mod-corrida);
+     neutro em vez da cor própria de cada módulo.
+     O -from deixou de ser um hex à parte: é a mesma matiz misturada com o
+     fundo da app, para o gradiente escurecer sem mudar de cor. */
+  --mod-nutricao-from:color-mix(in srgb, var(--nutrition) 55%, var(--bg-app));
+  --mod-nutricao-to:var(--mod-nutricao);
+  --mod-corpo-from:color-mix(in srgb, var(--body) 55%, var(--bg-app));
+  --mod-corpo-to:var(--mod-corpo);
+  --mod-ginasio-from:color-mix(in srgb, var(--gym) 55%, var(--bg-app));
+  --mod-ginasio-to:var(--mod-ginasio);
+  --mod-corrida-from:color-mix(in srgb, var(--run) 55%, var(--bg-app));
+  --mod-corrida-to:var(--mod-corrida);
 
   /* Coach permanece com a sua cor única de destaque */
   --mod-coach-from:var(--coach-deep);    --mod-coach-to:var(--coach);
@@ -70,7 +86,10 @@
   --race-to: var(--race);
   --race-glow: rgba(251, 191, 36, 0.35);
 
-  /* Cores de dados (macros + métricas) */
+  /* Cores de dados (macros + métricas). NÃO são módulos nem significados:
+     são séries de gráfico. Verificadas contra o âmbar da prova (#fbbf24 /
+     #f59e0b / #d97706) — nenhuma lá cai; os hidratos são um ocre-azeitona
+     (#8b8118) claramente distinto, por isso ficam como estão. */
   --data-calorias:#dd3c4f;
   --data-proteina:#3c6cdd;
   --data-hidratos:#8b8118;
@@ -83,7 +102,10 @@
   --data-proteina-ink: #7295ec;
   --data-hidratos-ink: #c9bb3a;
   --data-gordura-ink:  #e879c5;
-  --mod-nutricao-ink:  #34d399;
+  /* "ink" das macros = a própria cor, lida sobre a tinta a 16% (handoff:
+     "texto sobre tinta a 16% é a própria cor"). O da nutrição estava a
+     apontar para o verde do --ok, que é outro significado. */
+  --mod-nutricao-ink:  var(--nutrition);
 }
 
 html, body {
