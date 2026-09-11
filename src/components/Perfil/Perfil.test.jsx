@@ -191,8 +191,12 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(mocks.updates.length).toBe(1));
 
-    expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--mod-prova)' });
-    expect(screen.getByRole('button', { name: /Metas/ })).not.toHaveStyle({ color: 'var(--mod-prova)' });
+    // O separador ativo pinta-se no tom do seu assunto (ponto 4 do handoff, e
+    // o mock "Perfil"): Pessoal em --gym, Metas em --race. Antes eram os
+    // quatro em --mod-prova. O que importa aqui continua a ser o mesmo — só
+    // um separador fica aceso, e é o que o aviso mandou abrir.
+    expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--gym)' });
+    expect(screen.getByRole('button', { name: /Metas/ })).toHaveStyle({ color: 'var(--text-muted)' });
   });
 });
 

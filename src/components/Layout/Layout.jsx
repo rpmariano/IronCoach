@@ -7,18 +7,23 @@ import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import AppBackground from './AppBackground';
 import WaterSheet from '../Home/WaterSheet';
+import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
+import { useTabEnter } from '../../utils/useTabEnter';
 
-const TAB_MODULE_COLORS = {
-  home: 'var(--green)',
-  calendario: 'var(--green)',
-  dashboard: 'var(--green)',
-  nutricao: 'var(--green)',
-  ginasio: 'var(--green)',
-  corpo: 'var(--green)',
-  corrida: 'var(--green)',
-  coach: 'var(--mod-coach-to, #06b6d4)',
-  perfil: 'var(--green)',
-};
+/* Os separadores do Dashboard: qualquer um deles acende a coluna "Dashboard"
+   da barra inferior. */
+const DASHBOARD_TABS = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'];
+
+/* Índice de cada separador na minhoca da barra (0–3). Os ecrãs sem coluna
+   própria (Perfil, Admin, registos) devolvem -1 e escondem a pílula em vez de
+   a deixarem a apontar para um separador onde o atleta já não está. */
+function navIndexFor(activeTab) {
+  if (activeTab === 'home') return 0;
+  if (activeTab === 'calendario') return 1;
+  if (DASHBOARD_TABS.includes(activeTab)) return 2;
+  if (activeTab === 'coach') return 3;
+  return -1;
+}
 
 // Círculo de ícone com glifo branco: usa o mesmo gradiente -from → -to dos
 // dashboards de cada módulo. O tom -to sozinho é demasiado claro para o
@@ -33,6 +38,20 @@ export default function Layout({ children }) {
   const fabBtnRef = useRef(null);
   const mainRef = useRef(null);
   const lastLogoClickAt = useRef(0);
+
+  // Minhoca da barra inferior — uma só pílula de 4px em gradiente, absoluta
+  // no topo da nav, a deslizar entre os quatro separadores (ponto 4 do
+  // handoff). Substitui o tracinho de 3px que cada botão pintava por baixo
+  // de si. A duração é a da nav: min(950, 420 + 130·distância) ms, o valor
+  // por omissão do hook.
+  const navRef = useRef(null);
+  const navIndex = navIndexFor(activeTab);
+  const { indicatorStyle: navPill, setItemRef: setNavItemRef } =
+    useElasticPillIndicator(navRef, navIndex);
+
+  // "O conteúdo segue a pílula": o ecrã do separador novo entra com
+  // translateX(±14px) → 0 em --dur-tab-content.
+  const setContentRef = useTabEnter(navIndex);
 
   useEffect(() => {
     if (activeTab !== 'coach') {
@@ -163,7 +182,9 @@ export default function Layout({ children }) {
       {/* padding-top = --header-h (85px) e padding-bottom = --scroll-pad-bottom
           (112px), os mesmos da moldura dos mocks. */}
       <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)' }}>
-        {children}
+        {/* Contentor do conteúdo: existe para o "conteúdo segue a pílula"
+            (useTabEnter) ter onde reiniciar a animação sem remontar o ecrã. */}
+        <div ref={setContentRef(navIndex)}>{children}</div>
       </main>
 
       {/* Botão discreto de report de erro — presente em todos os ecrãs,
@@ -271,22 +292,50 @@ export default function Layout({ children }) {
 
       {/* Barra inferior — 5 colunas + "+" central elevado */}
       <nav
+        ref={navRef}
+        data-testid="bottom-nav"
         className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 pb-2 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
         style={{
+          // --nav-h (76px): a barra tem de medir o que a moldura dos mocks
+          // reserva para ela, senão a ActionBar — que assenta a
+          // --actionbar-bottom (76px) do fundo — flutua sobre um vão. Só com
+          // os 44px do botão mais o padding a barra dava ~59px.
+          minHeight: 'var(--nav-h)',
           background: 'var(--bg-nav)',
           backdropFilter: 'blur(var(--blur-chrome))',
           WebkitBackdropFilter: 'blur(var(--blur-chrome))',
           borderColor: 'var(--border-glass-strong)',
         }}
       >
-        <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} />
-        <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} />
+        {/* A minhoca: uma só pílula de 4px, em gradiente e com brilho, no topo
+            da barra. O tracinho de 3px por botão saiu — a pílula é a pista
+            não-cromática do estado ativo (posição, não cor), e o aria-current
+            de cada botão continua a dizê-lo a quem usa leitor de ecrã. */}
+        <span
+          aria-hidden="true"
+          data-testid="nav-pill"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: navPill?.left ?? 0,
+            width: navPill?.width ?? 0,
+            height: 4,
+            borderRadius: 'var(--radius-pill)',
+            background: 'var(--grad-nav-pill)',
+            boxShadow: 'var(--glow-pill)',
+            opacity: navPill && navIndex >= 0 ? 1 : 0,
+            pointerEvents: 'none',
+          }}
+        />
+
+        <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(0)} />
+        <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
-        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} lastDashboardTab={lastDashboardTab} />
-        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} />
+        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
+        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button
@@ -317,9 +366,22 @@ export default function Layout({ children }) {
   );
 }
 
-function VBarBtn({ tab, icon, label, activeTab, setTab }) {
+/* Âncora de 26×4 no topo do botão: é o que a minhoca mede. A pílula dos mocks
+   tem 26px (não a largura do botão), por isso o hook precisa de uma caixa
+   real com essa medida em vez de se calcular a partir do botão. */
+function NavPillAnchor({ pillRef }) {
+  return (
+    <span
+      ref={pillRef}
+      aria-hidden="true"
+      className="absolute top-0 left-1/2 -translate-x-1/2 w-[26px] h-[4px]"
+      style={{ pointerEvents: 'none' }}
+    />
+  );
+}
+
+function VBarBtn({ tab, icon, label, activeTab, setTab, pillRef }) {
   const active = activeTab === tab;
-  const activeColor = TAB_MODULE_COLORS[tab] || 'var(--accent)';
 
   return (
     <button
@@ -328,27 +390,20 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
-      style={{ color: active ? activeColor : '#64748b', fontWeight: active ? 700 : 500 }}
+      // Todos os separadores em --brand, ativo incluído — é o que os 24
+      // ecrãs dos mocks mostram. O estado ativo lê-se pela minhoca (posição
+      // e forma, não cor) e pelo aria-current.
+      style={{ color: 'var(--brand)', fontWeight: active ? 700 : 500 }}
     >
-      {/* Pista não-cromática do estado ativo: as cores de módulo em texto de
-          10px não chegam ao contraste AA sobre o branco da barra, por isso o
-          estado não pode depender só da cor. Ver PRD 5.2. */}
-      {active && (
-        <span
-          aria-hidden="true"
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
-          style={{ background: activeColor }}
-        />
-      )}
+      <NavPillAnchor pillRef={pillRef} />
       {icon}
       <span className="text-[11px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 }
 
-function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
-  const active = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'].includes(activeTab);
-  const activeColor = 'var(--accent)';
+function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
+  const active = DASHBOARD_TABS.includes(activeTab);
 
   return (
     <button
@@ -357,15 +412,9 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
       aria-label="Dashboard"
       aria-current={active ? 'page' : undefined}
       className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
-      style={{ color: active ? activeColor : '#64748b', fontWeight: active ? 700 : 500 }}
+      style={{ color: 'var(--brand)', fontWeight: active ? 700 : 500 }}
     >
-      {active && (
-        <span
-          aria-hidden="true"
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
-          style={{ background: activeColor }}
-        />
-      )}
+      <NavPillAnchor pillRef={pillRef} />
       <LayoutDashboard size={20} />
       <span className="text-[11px] leading-none whitespace-nowrap">Dashboard</span>
     </button>

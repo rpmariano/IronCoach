@@ -42,8 +42,8 @@
   --color-warn: var(--warn);
   --color-success: var(--ok);
   --card-shadow: var(--shadow-card);
-  --groove-shadow: inset 0 1px 3px rgba(15,23,42,.1);
-  --thumb-shadow: 0 2px 5px rgba(15,23,42,.18), 0 1px 0 rgba(255,255,255,.5) inset;
+  /* --groove-shadow/--thumb-shadow saíram com o .seg-nav (ponto 4): eram
+     sombras claras, herdadas do UI anterior, e só o antigo subnav as usava. */
 
   /* Cores unificadas de Módulo para ícones e calendário (pequenos toques de cor) */
   /* Aliases de compatibilidade: os quatro módulos passam a ser exatamente os
@@ -224,6 +224,23 @@ body {
 .fade-in { animation: fadeIn .25s ease-out; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
 
+/* "O conteúdo segue a pílula" — ponto 4 do handoff, animação 8 de
+   `IronCoach - Animacoes.dc.html`. O painel do separador que fica ativo entra
+   do lado de onde veio (--tab-enter-from, ±14px) em --dur-tab-content
+   (280ms). Aplicada/reiniciada por useTabEnter.js; a regra global de
+   prefers-reduced-motion, mais abaixo, encurta-a para .01ms.
+
+   A animação vai nos FILHOS do painel, não no painel: os painéis são as
+   células de um carrossel com scroll-snap (.tab-swipe-page) e o snap lê a
+   caixa já transformada — animar a própria célula punha o transform a
+   discutir com o scroll suave que a troca de separador dispara ao mesmo
+   tempo. */
+.tab-enter > * { animation: tabEnter var(--dur-tab-content) var(--ease-out); }
+@keyframes tabEnter {
+  from { transform: translateX(var(--tab-enter-from, 14px)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
 .animate-bottom-sheet-overlay { animation: bottomSheetOverlayFade .28s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
 @keyframes bottomSheetOverlayFade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -250,24 +267,18 @@ body {
   100% { transform: scale(2.1); opacity: 0; }
 }
 
-/* ===== Seg-nav (sub-navegação deslizante) ===== */
-.seg-nav { box-shadow: var(--groove-shadow); }
-.seg-thumb {
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
-  box-shadow: var(--thumb-shadow);
-}
-/* Posições do thumb: tab 1=0%, tab 2=100%, tab 3=200% */
-.seg-nav.at-1 .seg-thumb { transform: translateX(0%); }
-.seg-nav.at-2 .seg-thumb { transform: translateX(100%); }
-.seg-nav.at-3 .seg-thumb { transform: translateX(200%); }
-
-.seg-btn.active { color:#09090b !important; }
-.seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
+/* O antigo .seg-nav/.seg-thumb/.seg-btn (thumb a saltar de 100% em 100% com
+   uma transição CSS) saiu no ponto 4 do handoff: os subnavs passaram todos
+   pelo componente SubNav.jsx, com a minhoca do useElasticPillIndicator. */
 
 /* ===== Barra inferior (vbar) ===== */
 .vbar-btn { min-height:44px; }
-.vbar-btn.active { color:var(--chrome-dark) !important; }
-.vbar-btn:not(.active) { color:var(--green) !important; }
+/* As regras `.vbar-btn.active` / `:not(.active)` saíram no ponto 4: nenhum
+   botão da barra chegou a ter a classe `.active`, por isso o
+   `:not(.active) { color: var(--green) !important }` aplicava-se a todos e
+   ganhava ao style inline — a barra ficava #5a8fa3 em vez do --brand
+   (#7fb3c7) dos mocks, e o estado ativo não se via mesmo quando pintado.
+   A cor passa a vir do inline de VBarBtn e o estado da minhoca. */
 
 /* ===== FAB menu ===== */
 .fab-open .fab-icon { transform: rotate(45deg); }

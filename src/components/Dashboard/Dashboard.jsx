@@ -3,7 +3,8 @@ import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
-import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
+import SubNav from '../shared/SubNav';
+import { useTabEnter } from '../../utils/useTabEnter';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -14,12 +15,17 @@ import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import { detectCoachInsights } from '../../utils/biEngine';
 
+/* Cinco separadores em 390px não cabem com "Visão Geral" por extenso a 11px
+   (auditoria, achado 1) — o mock "Dashboard · Visão Geral" resolve-o a
+   encurtar o rótulo para "Geral" e a manter ícone + rótulo em todos, sem
+   scroll horizontal. `srLabel` guarda o nome por extenso para o leitor de
+   ecrã. O tom é o do módulo: Geral e Corrida em ciano (--run), como o mock. */
 const TABS = [
-  { key: 'hub', label: 'Visão Geral', icon: <LayoutDashboard size={14} />, color: 'var(--coach)' },
-  { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-3.5 h-3.5" />, color: 'var(--mod-corrida-to, #2ee0ff)' },
-  { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={14} />, color: 'var(--mod-ginasio-to, #9ec3d2)' },
-  { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={14} />, color: 'var(--mod-nutricao-to, #c77dff)' },
-  { key: 'corpo', label: 'Corpo', icon: <User size={14} />, color: 'var(--mod-corpo-to, #ff5fa8)' },
+  { key: 'hub', label: 'Geral', srLabel: 'Visão Geral', icon: <LayoutDashboard size={15} />, tone: 'run' },
+  { key: 'corrida', label: 'Corrida', icon: <RunIcon className="w-[15px] h-[15px]" />, tone: 'run' },
+  { key: 'ginasio', label: 'Ginásio', icon: <Dumbbell size={15} />, tone: 'gym' },
+  { key: 'nutricao', label: 'Nutrição', icon: <Utensils size={15} />, tone: 'nutrition' },
+  { key: 'corpo', label: 'Corpo', icon: <User size={15} />, tone: 'body' },
 ];
 
 export default function Dashboard({ activeModule }) {
@@ -35,7 +41,6 @@ export default function Dashboard({ activeModule }) {
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);
-  const subnavRef = useRef(null);
   // scrollTo só existe depois de chamar o hook, mas o setter que lhe passamos
   // (handleIndexChange) precisa de lhe chamar quando o navGuard recusa a
   // troca — guarda-se numa ref para partir o ciclo sem duplicar a lógica do
@@ -59,8 +64,9 @@ export default function Dashboard({ activeModule }) {
   );
   scrollToRef.current = scrollTo;
 
-  // Indicador do subnav em "pílula elástica" — ver useElasticPillIndicator.
-  const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, currentIndex);
+  // "O conteúdo segue a pílula": o módulo que fica ativo entra do lado de
+  // onde veio, 14px e uma pitada de opacidade, em 280ms.
+  const setPageRef = useTabEnter(currentIndex);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {
@@ -122,46 +128,14 @@ export default function Dashboard({ activeModule }) {
 
   return (
     <div className="space-y-4 fade-in">
-      {/* Subnav com estética clara da Homepage (Glassmorphism) */}
-      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] mb-4 overflow-hidden">
-        {/* Indicador "pílula elástica" — tint translúcido da cor do módulo em
-            vez de preenchimento sólido, a condizer com o glassmorphism escuro
-            do resto da app; o texto ativo fica na própria cor em vez de
-            branco. Sem shadow-md: dentro de um contentor overflow-hidden a
-            sombra fica cortada a direito mesmo junto ao canto arredondado do
-            separador, em vez de esbater — mais visível na pílula da direita
-            porque é onde o canto do indicador fica mais perto do canto do
-            contentor. Posição/largura em px medidos (ver measureTab acima),
-            não % fixas — é o que permite esticar o indicador a cobrir
-            qualquer par de separadores antes de contrair no novo. */}
-        {indicatorStyle && (
-          <div
-            aria-hidden="true"
-            className="absolute top-[6px] bottom-[6px] rounded-lg border"
-            style={{
-              left: indicatorStyle.left,
-              width: indicatorStyle.width,
-              transition: indicatorStyle.transition,
-              background: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 32%, transparent)`,
-              borderColor: `color-mix(in srgb, ${TABS.find(t => t.key === activeModule)?.color || 'var(--accent)'} 55%, transparent)`,
-            }}
-          />
-        )}
-        {TABS.map((t, i) => (
-          <button
-            key={t.key}
-            ref={setItemRef(i)}
-            onClick={() => scrollTo(i)}
-            style={activeModule === t.key ? { color: t.color } : undefined}
-            className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 min-h-[44px] text-xs font-semibold rounded-lg transition-colors duration-300 ${
-              activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-200 hover:bg-white/50'
-            }`}
-          >
-            {t.icon}
-            <span className="text-[11px]">{t.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
+          módulo ativo, ícone + rótulo em cada um dos cinco separadores. */}
+      <SubNav
+        items={TABS}
+        activeIndex={currentIndex}
+        onChange={(i) => scrollTo(i)}
+        className="mb-4"
+      />
 
       {/* Módulos lado a lado num carrossel — desliza tal como os do Início,
           em vez de só ser possível trocar tocando no separador. Os 5 ficam
@@ -174,11 +148,11 @@ export default function Dashboard({ activeModule }) {
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
       >
-        <div className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
-        <div className="tab-swipe-page"><Run /></div>
-        <div className="tab-swipe-page"><Gym /></div>
-        <div className="tab-swipe-page"><Nutrition /></div>
-        <div className="tab-swipe-page"><Body /></div>
+        <div ref={setPageRef(0)} className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
+        <div ref={setPageRef(1)} className="tab-swipe-page"><Run /></div>
+        <div ref={setPageRef(2)} className="tab-swipe-page"><Gym /></div>
+        <div ref={setPageRef(3)} className="tab-swipe-page"><Nutrition /></div>
+        <div ref={setPageRef(4)} className="tab-swipe-page"><Body /></div>
       </div>
 
       <CoachInsightButton insights={insights} onClick={() => setShowInsights(true)} />

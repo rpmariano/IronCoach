@@ -14,10 +14,24 @@ import CoachMemoryCard from './CoachMemoryCard';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { useCarouselHaptics } from '../../utils/haptics';
-import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
+import SubNav from '../shared/SubNav';
+import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
 
 const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
+
+/* Os quatro separadores do Perfil no SubNav (ponto 4 do handoff). O tom é o do
+   assunto de cada um — Pessoal ginásio, Metas a prova, Equipamento corrida,
+   Coach a Carol — como o mock "Perfil" e os três "Submenus do Perfil" mostram,
+   em vez de o âmbar da prova em todos. "Equipa." é a abreviatura do mock:
+   quatro rótulos por extenso em 348px cairiam abaixo dos 11px (auditoria,
+   achado 1). */
+const TABS = [
+  { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
+  { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
+  { key: 'equipamento', label: 'Equipa.', icon: <Footprints size={14} />, tone: 'run' },
+  { key: 'coach', label: 'Coach', icon: <Bot size={14} />, tone: 'coach' },
+];
 
 // Apenas os 4 objetivos corporais com intervenção direta via treino + nutrição.
 // Os restantes (IMC, BMR, água corporal, etc.) são métricas derivadas — foram
@@ -122,10 +136,9 @@ export default function Perfil() {
   );
   scrollToRef.current = scrollTo;
 
-  // Indicador do subnav em "pílula elástica" — ver useElasticPillIndicator
-  // (mesma mecânica do Dashboard.jsx, que usa o mesmo hook partilhado).
-  const subnavRef = useRef(null);
-  const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, tabIndex);
+  // "O conteúdo segue a pílula": o separador que fica ativo entra do lado de
+  // onde veio, 14px e uma pitada de opacidade, em 280ms.
+  const setPageRef = useTabEnter(tabIndex);
 
   // O armário de sapatilhas grava-se a si próprio; a barra do separador
   // Equipamento só lhe pede para abrir o formulário de um par novo.
@@ -404,47 +417,14 @@ export default function Perfil() {
     // O Perfil é dourado como a prova — a mesma cor do indicador dos
     // separadores e do "Guardar alterações".
     <div className="space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
-      {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
-      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
-        {/* Indicador "pílula elástica" — tint translúcido em vez de
-            preenchimento sólido, a condizer com o resto da app (ver
-            useElasticPillIndicator e Dashboard.jsx, que usa o mesmo hook).
-            rounded-lg (não -xl) e p-2 (não -1.5): com o contentor a
-            rounded-2xl (16px), uma pílula com raio maior do que sobra depois
-            do preenchimento ficava com o canto cortado pelo overflow-hidden,
-            mais visível na pílula da direita. */}
-        {indicatorStyle && (
-          <div
-            aria-hidden="true"
-            className="absolute top-1 bottom-1 rounded-lg border"
-            style={{
-              left: indicatorStyle.left,
-              width: indicatorStyle.width,
-              transition: indicatorStyle.transition,
-              background: 'color-mix(in srgb, var(--mod-prova) 32%, transparent)',
-              borderColor: 'color-mix(in srgb, var(--mod-prova) 55%, transparent)',
-            }}
-          />
-        )}
-        {[
-          { key: 'perfil', label: 'Pessoal', icon: User },
-          { key: 'metas', label: 'Metas', icon: Target },
-          { key: 'equipamento', label: 'Equipa.', icon: Footprints },
-          { key: 'coach', label: 'Coach', icon: Bot },
-        ].map((t, i) => (
-          <button
-            key={t.key}
-            ref={setItemRef(i)}
-            onClick={() => requestTabChange(t.key)}
-            style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
-            className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 min-h-[44px] text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
-              tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-            }`}
-          >
-            <t.icon size={13} /> {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
+          separador ativo, ícone + rótulo nos quatro. */}
+      <SubNav
+        items={TABS}
+        activeIndex={tabIndex}
+        onChange={(i, item) => requestTabChange(item.key)}
+        className="mb-4"
+      />
 
       {leaveModal}
 
@@ -457,7 +437,7 @@ export default function Perfil() {
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
       >
-      <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[0] = el; setPageRef(0)(el); }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
@@ -568,7 +548,7 @@ export default function Perfil() {
           </div>
       </div>
 
-      <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[1] = el; setPageRef(1)(el); }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
@@ -762,11 +742,11 @@ export default function Perfil() {
           no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
-      <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
           <ShoeCabinet ref={shoeCabinetRef} />
       </div>
 
-      <div ref={(el) => { pageRefs.current[3] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
