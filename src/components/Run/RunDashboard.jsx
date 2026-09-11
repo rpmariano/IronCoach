@@ -208,17 +208,17 @@ export default function RunDashboard() {
   const renderBucket = (label, b) => {
     if (!b) {
       return (
-        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
-          <p className="text-xs text-slate-400 font-medium">{label}</p>
-          <p className="text-xs text-slate-500">Sem dados</p>
+        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-xs text-[var(--text-3)]">Sem dados</p>
         </div>
       );
     }
     return (
-      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
+      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
         <div>
-          <p className="text-xs text-slate-300 font-medium">{label}</p>
-          <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5 flex items-center gap-1.5">
             {formatDatePT(b.date)}
             {b.source === 'run' && b.runCount > 0 && (
               <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
@@ -324,18 +324,18 @@ export default function RunDashboard() {
       {(distribution.lowIntensityPct > 0 || distribution.highIntensityPct > 0) ? (
         <IntensityDonut distribution={distribution} />
       ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <Activity className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-xs font-medium text-slate-500">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <Activity className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
         </div>
       )}
 
       {scatterData.length > 0 ? (
         <ScatterTrendChart data={scatterData} />
       ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <HeartPulse className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-xs font-medium text-slate-500">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <HeartPulse className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
         </div>
       )}
 
@@ -375,8 +375,8 @@ export default function RunDashboard() {
       )}
 
       {/* 8. Recordes: Melhor pace de sempre */}
-      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <h2 className="text-[11px] font-semibold text-slate-200 mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
+      <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
         <div className="space-y-1">
           {renderBucket('5 km+', b5)}
           {renderBucket('10 km+', b10)}
@@ -386,12 +386,12 @@ export default function RunDashboard() {
 
       {/* 9. Watch Metrics Card (if any data) */}
       {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
-              <Mountain className="w-3.5 h-3.5 text-slate-400" /> Desnível, calorias e cadência
+            <h2 className="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 uppercase tracking-wider">
+              <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" /> Desnível, calorias e cadência
             </h2>
-            <p className="text-[11px] text-slate-400 capitalize">
+            <p className="text-[11px] text-[var(--text-3)] capitalize">
               {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
             </p>
           </div>
@@ -400,19 +400,19 @@ export default function RunDashboard() {
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalElevation > 0 ? Math.round(watchMetrics.totalElevation) : '-'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Desnível (m)</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Desnível (m)</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalCalories > 0 ? Math.round(watchMetrics.totalCalories) : '-'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Calorias</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Calorias</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.avgCadence !== null ? watchMetrics.avgCadence : '-'}
               </p>
-              <p className="text-[11px] text-slate-400 mt-1">Cadência (spm)</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Cadência (spm)</p>
             </div>
           </div>
         </div>

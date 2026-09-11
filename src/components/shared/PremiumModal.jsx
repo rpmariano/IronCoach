@@ -45,8 +45,8 @@ const THEMES = {
     subColor: 'var(--coach-ink)'
   },
   neutral: {
-    bg: 'linear-gradient(135deg, #334155, #64748b)',
-    subColor: '#e2e8f0'
+    bg: 'linear-gradient(135deg, var(--brand-deep-1), var(--brand-deep-2))',
+    subColor: 'var(--text-2)'
   }
 };
 
@@ -194,7 +194,7 @@ export default function PremiumModal({
     <div className={`fixed inset-0 z-[100] flex ${isDialog ? 'items-center justify-center p-4' : 'flex-col justify-end'}`}>
       {/* Backdrop */}
       <div 
-        className={`fixed inset-0 bg-slate-900/40 transition-all duration-400 ease-in-out ${overlayAnimation}`}
+        className={`fixed inset-0 bg-[var(--bg-scrim)] transition-all duration-400 ease-in-out ${overlayAnimation}`}
         onClick={handleDismiss}
         aria-hidden="true"
       />
@@ -206,7 +206,7 @@ export default function PremiumModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
-        className={`relative z-10 w-full ${maxWidth} bg-neutral-900/80 backdrop-blur-[20px] border border-white/10 flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
+        className={`relative z-10 w-full ${maxWidth} bg-[var(--bg-sheet)] backdrop-blur-[20px] border border-[var(--border-glass)] flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
           isDialog ? 'rounded-2xl max-h-[90vh]' : 'rounded-t-[28px] max-h-[90vh] pb-safe'
         }`}
         style={transformStyle}
@@ -216,7 +216,7 @@ export default function PremiumModal({
           <div 
             title="Toca para fechar persiana" 
             onClick={handleDismiss}
-            className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-white/40 z-20 cursor-pointer" 
+            className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-[var(--surface-dim)] z-20 cursor-pointer" 
           />
         )}
 
@@ -251,7 +251,7 @@ export default function PremiumModal({
         {/* Content */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto overscroll-contain bg-slate-50"
+          className="flex-1 overflow-y-auto overscroll-contain bg-[var(--surface-soft)]"
         >
           {children}
         </div>

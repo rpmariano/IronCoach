@@ -49,21 +49,21 @@ export default function PillarSummaryCard({
   return (
     <button
       onClick={onClick}
-      className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-3 min-h-[44px] shadow-[0_8px_20px_rgba(0,0,0,0.2),inset_0_1px_6px_rgba(255,255,255,0.4)] text-left w-full active:scale-[0.97] transition-transform"
+      className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-3 min-h-[44px] shadow-[0_8px_20px_rgba(0,0,0,0.2),inset_0_1px_6px_rgba(255,255,255,0.4)] text-left w-full active:scale-[0.97] transition-transform"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <span className="flex items-center leading-none shrink-0">{icon}</span>
-          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">{title}</span>
+          <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider">{title}</span>
         </div>
-        <ChevronRight size={12} className="text-slate-500" />
+        <ChevronRight size={12} className="text-[var(--text-3)]" />
       </div>
 
       {/* KPI */}
       <div className="flex items-baseline gap-1 mb-1">
         <span className="text-xl font-black text-white leading-none">{kpi}</span>
-        {kpiUnit && <span className="text-[11px] text-slate-400 font-semibold">{kpiUnit}</span>}
+        {kpiUnit && <span className="text-[11px] text-[var(--text-3)] font-semibold">{kpiUnit}</span>}
       </div>
 
       {/* Badge + delta */}
@@ -76,13 +76,13 @@ export default function PillarSummaryCard({
         {/* 12,5px: ver nota em RaceReadinessCard — a variação é um dado que
             se lê de relance, não uma etiqueta. */}
         {delta && (
-          <span className="text-[12.5px] text-slate-400 font-medium">{delta}</span>
+          <span className="text-[12.5px] text-[var(--text-3)] font-medium">{delta}</span>
         )}
       </div>
 
       {/* Subtítulo — sempre visível, ocupa o espaço que era do sparkline */}
       {subtitle && (
-        <p className="text-[11px] text-slate-500 font-medium leading-snug">{subtitle}</p>
+        <p className="text-[11px] text-[var(--text-3)] font-medium leading-snug">{subtitle}</p>
       )}
     </button>
   );

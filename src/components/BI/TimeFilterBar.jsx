@@ -33,7 +33,7 @@ export default function TimeFilterBar({ activeRange, onChange, className = '', m
             key={option.value}
             onClick={() => onChange?.(option.value)}
             className={`whitespace-nowrap min-h-[44px] min-w-[44px] justify-center inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
-              isActive ? 'shadow-sm' : 'bg-white/5 backdrop-blur text-slate-300 hover:bg-white/5'
+              isActive ? 'shadow-sm' : 'bg-[var(--surface-glass)] backdrop-blur text-[var(--text-3)] hover:bg-[var(--surface-glass-hover)]'
             }`}
             style={isActive ? { background: tone.bg, color: tone.ink } : undefined}
           >

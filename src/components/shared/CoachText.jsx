@@ -58,7 +58,7 @@ export default function CoachText({ children }) {
         // Listas com marcas
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           return (
-            <li key={lineIdx} className="ml-4 list-disc my-1 marker:text-emerald-500">
+            <li key={lineIdx} className="ml-4 list-disc my-1 marker:text-[var(--ok)]">
               {formattedLine}
             </li>
           );

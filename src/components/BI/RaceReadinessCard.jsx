@@ -75,7 +75,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   };
 
   return (
-    <div className="w-full bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+    <div className="w-full bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
       {/* Header */}
       <HeaderComponent {...headerProps}>
         {/* Ring */}
@@ -95,7 +95,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{readiness.score}%</span>
-            <span className="text-[11px] text-slate-400 font-semibold mt-0.5">Prontidão</span>
+            <span className="text-[11px] text-[var(--text-3)] font-semibold mt-0.5">Prontidão</span>
           </div>
         </div>
 
@@ -104,8 +104,8 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           {nextRace ? (
             <>
               <div className="flex items-center gap-1.5 mb-1">
-                <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="text-[11px] text-amber-400 font-bold uppercase tracking-wider">Próxima Prova</span>
+                <Trophy className="w-3.5 h-3.5 text-[var(--race)] shrink-0" />
+                <span className="text-[11px] text-[var(--race)] font-bold uppercase tracking-wider">Próxima Prova</span>
               </div>
               <p className="text-sm font-bold text-white leading-tight truncate">{nextRace.name || nextRace.race_name || 'Prova'}</p>
               {trail?.phaseName && (
@@ -118,18 +118,18 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                   {trail.weekLabel ? ` · ${trail.weekLabel}` : ''}
                 </p>
               )}
-              <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+              <p className="text-[11px] text-[var(--text-3)] font-medium mt-0.5">
                 {daysLeft === 0 ? 'É hoje' : daysLeft === 1 ? 'Amanhã' : `Faltam ${daysLeft} dias`}
               </p>
             </>
           ) : (
             <>
               <div className="flex items-center gap-1.5 mb-1">
-                <Flag className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Forma Geral</span>
+                <Flag className="w-3.5 h-3.5 text-[var(--text-3)] shrink-0" />
+                <span className="text-[11px] text-[var(--text-3)] font-bold uppercase tracking-wider">Forma Geral</span>
               </div>
               <p className="text-sm font-bold text-white leading-tight">Nenhuma prova agendada</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Adiciona uma prova para ver a prontidão direcionada</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-0.5">Adiciona uma prova para ver a prontidão direcionada</p>
             </>
           )}
           <div className="mt-2 flex items-center justify-between">
@@ -138,11 +138,11 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 Prontidão {cfg.label}
               </span>
               {nextRace && (
-                <span className="text-[11px] text-slate-400 font-medium"> — {nextRace.distance_km || '?'}km</span>
+                <span className="text-[11px] text-[var(--text-3)] font-medium"> — {nextRace.distance_km || '?'}km</span>
               )}
             </div>
             {HeaderComponent === 'button' && (
-              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <ChevronRight className="w-4 h-4 text-[var(--text-3)]" />
             )}
           </div>
         </div>
@@ -159,10 +159,10 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 e.stopPropagation();
                 setSelectedPillar(pillar);
               }}
-              className="bg-white/5 rounded-xl p-2.5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
+              className="bg-[var(--surface-glass)] rounded-xl p-2.5 border border-[var(--border-glass)] cursor-pointer hover:bg-[var(--surface-strong)] transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] text-slate-400 font-semibold truncate pr-1 flex items-center gap-1.5">
+                <span className="text-[11px] text-[var(--text-3)] font-semibold truncate pr-1 flex items-center gap-1.5">
                   <span className="flex shrink-0" aria-hidden="true">{PILLAR_ICONS[pillar.key]}</span>
                   <span className="truncate">{pillar.label}</span>
                 </span>
@@ -177,7 +177,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                   esquerda dá o mesmo desenho e fica no compositor.
                   --dur-bars/--ease-out em vez de 0.8s ease: é a mesma
                   barra a crescer que o resto do redesenho. */}
-              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-1 bg-[var(--surface-strong)] rounded-full overflow-hidden">
                 <div
                   className="h-full w-full rounded-full"
                   style={{
@@ -202,7 +202,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           }}
         >
           <div 
-            className="bg-[#1a1f2e] border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl scale-in"
+            className="bg-[var(--bg-sheet)] border border-[var(--border-glass)] rounded-3xl p-6 w-full max-w-sm shadow-2xl scale-in"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -216,7 +216,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               }}>{selectedPillar.score}%</span>
             </div>
             
-            <p className="text-sm text-slate-300 leading-relaxed mb-6">
+            <p className="text-sm text-[var(--text-3)] leading-relaxed mb-6">
               {selectedPillar.desc}
             </p>
             
@@ -225,7 +225,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 e.stopPropagation();
                 setSelectedPillar(null);
               }}
-              className="w-full py-3 bg-white/10 hover:bg-white/20 active:bg-white/5 text-white text-sm font-bold rounded-2xl transition-colors"
+              className="w-full py-3 bg-[var(--surface-strong)] hover:bg-white/20 active:bg-[var(--surface-glass)] text-white text-sm font-bold rounded-2xl transition-colors"
             >
               Fechar
             </button>

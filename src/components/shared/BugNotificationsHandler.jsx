@@ -126,8 +126,8 @@ export default function BugNotificationsHandler() {
         onClick={handleOpen}
         aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
         title="Notificações"
-        className="tap-h-44 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(185,28,28,0.45)]"
-        style={{ background: '#b91c1c' }}
+        className="tap-h-44 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(185,28,28,.45)]"
+        style={{ background: 'var(--danger-deep)' }}
       >
         {/* Ícone e contador lado a lado, não sobrepostos: num botão redondo
             de 44px não há canto que chegue para um badge de 20px — ficava
@@ -153,26 +153,26 @@ export default function BugNotificationsHandler() {
           variant="dialog"
           maxWidth="max-w-lg"
         >
-          <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
+          <div className="p-6 space-y-5 bg-[var(--bg-sheet)] text-[var(--text-2)]">
             {/* Navegação entre notificações — só aparece com mais do que uma */}
             {notifications.length > 1 && (
-              <div className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-xl px-2 py-1.5">
+              <div className="flex items-center justify-between bg-[var(--bg-app)] border border-[var(--border-glass)] rounded-xl px-2 py-1.5">
                 <button
                   onClick={handlePrev}
                   disabled={!hasPrev || submitting}
                   aria-label="Notificação anterior"
-                  className="tap-44 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                  className="tap-44 rounded-lg text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--surface-glass)] disabled:opacity-30 disabled:hover:bg-transparent transition"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <span className="text-[11px] font-semibold text-slate-400">
+                <span className="text-[11px] font-semibold text-[var(--text-3)]">
                   {selectedIndex + 1} de {notifications.length}
                 </span>
                 <button
                   onClick={handleNext}
                   disabled={!hasNext || submitting}
                   aria-label="Notificação seguinte"
-                  className="tap-44 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                  className="tap-44 rounded-lg text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-[var(--surface-glass)] disabled:opacity-30 disabled:hover:bg-transparent transition"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -182,9 +182,9 @@ export default function BugNotificationsHandler() {
             {/* Bug a que a notificação se refere — título + id acompanham
                 sempre a mensagem, para não haver dúvida de qual bug se trata */}
             <div className="flex items-center gap-1.5 min-w-0">
-              <p className="text-sm font-bold text-slate-100 truncate">{bugTitle || 'Bug sem título'}</p>
+              <p className="text-sm font-bold text-[var(--text-1)] truncate">{bugTitle || 'Bug sem título'}</p>
               {bugNumber != null && (
-                <span className="shrink-0 text-[11px] font-mono text-slate-500">
+                <span className="shrink-0 text-[11px] font-mono text-[var(--text-3)]">
                   Bug-{String(bugNumber).padStart(3, '0')}
                 </span>
               )}
@@ -192,28 +192,28 @@ export default function BugNotificationsHandler() {
 
             {/* Mensagem da Equipa */}
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Mensagem</label>
-              <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 text-sm text-slate-200 whitespace-pre-wrap break-words">
+              <label className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">Mensagem</label>
+              <div className="bg-[var(--bg-app)] rounded-2xl p-3 border border-[var(--border-glass)] text-sm text-[var(--text-2)] whitespace-pre-wrap break-words">
                 {selectedNotification.message}
               </div>
             </div>
 
             {/* Data da Notificação */}
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-[var(--text-3)]">
               Recebido a {new Date(selectedNotification.created_at).toLocaleString('pt-PT')}
             </p>
 
             {/* Opções de Resposta */}
-            <div className="space-y-3 border-t border-neutral-800 pt-4">
-              <label className="text-xs font-semibold text-slate-300">A tua resposta:</label>
+            <div className="space-y-3 border-t border-[var(--border-glass)] pt-4">
+              <label className="text-xs font-semibold text-[var(--text-3)]">A tua resposta:</label>
 
               <div className="space-y-2">
                 <button
                   onClick={() => setResponseStatus('ok')}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition ${
                     responseStatus === 'ok'
-                      ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                      : 'bg-neutral-950 border-neutral-700 text-slate-400 hover:border-emerald-500/30'
+                      ? 'bg-[var(--tint-ok-bg)] border-[var(--tint-ok-bd)] text-[var(--ok-soft)]'
+                      : 'bg-[var(--bg-app)] border-[var(--border-glass-strong)] text-[var(--text-3)] hover:border-[var(--tint-ok-bd)]'
                   }`}
                   disabled={submitting}
                 >
@@ -225,8 +225,8 @@ export default function BugNotificationsHandler() {
                   onClick={() => setResponseStatus('not_ok')}
                   className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 transition ${
                     responseStatus === 'not_ok'
-                      ? 'bg-red-500/20 border-red-500/50 text-red-300'
-                      : 'bg-neutral-950 border-neutral-700 text-slate-400 hover:border-red-500/30'
+                      ? 'bg-[var(--tint-danger-bg)] border-[var(--tint-danger-bd)] text-[var(--danger)]'
+                      : 'bg-[var(--bg-app)] border-[var(--border-glass-strong)] text-[var(--text-3)] hover:border-[var(--tint-danger-bd)]'
                   }`}
                   disabled={submitting}
                 >
@@ -238,13 +238,13 @@ export default function BugNotificationsHandler() {
               {/* Campo de Mensagem para Not OK */}
               {responseStatus === 'not_ok' && (
                 <div className="space-y-1 pt-2">
-                  <label className="text-xs font-semibold text-red-300">Descreve o problema (obrigatório):</label>
+                  <label className="text-xs font-semibold text-[var(--danger)]">Descreve o problema (obrigatório):</label>
                   <textarea
                     rows={2}
                     value={responseMessage}
                     onChange={(e) => setResponseMessage(e.target.value)}
                     placeholder="O que continua a não funcionar..."
-                    className="w-full bg-neutral-950 border border-red-500/30 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                    className="w-full bg-[var(--bg-app)] border border-[var(--tint-danger-bd)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                     disabled={submitting}
                   />
                 </div>
@@ -253,13 +253,13 @@ export default function BugNotificationsHandler() {
               {/* Campo de Mensagem Opcional para OK */}
               {responseStatus === 'ok' && (
                 <div className="space-y-1 pt-2">
-                  <label className="text-xs font-semibold text-emerald-300">Mensagem (opcional):</label>
+                  <label className="text-xs font-semibold text-[var(--ok-soft)]">Mensagem (opcional):</label>
                   <textarea
                     rows={2}
                     value={responseMessage}
                     onChange={(e) => setResponseMessage(e.target.value)}
                     placeholder="Deixa um comentário se quiser..."
-                    className="w-full bg-neutral-950 border border-emerald-500/30 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                    className="w-full bg-[var(--bg-app)] border border-[var(--tint-ok-bd)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                     disabled={submitting}
                   />
                 </div>
@@ -282,7 +282,7 @@ export default function BugNotificationsHandler() {
                 onClick={handleSubmitResponse}
                 disabled={submitting || !responseStatus}
                 className="flex-1"
-                icon={submitting ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : undefined}
+                icon={submitting ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : undefined}
               >
                 {submitting ? 'A responder...' : 'Responder'}
               </Button>

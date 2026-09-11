@@ -12,7 +12,7 @@
 .rh-hero-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-raised);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
@@ -52,15 +52,15 @@
 }
 
 .rh-tag {
-  background: linear-gradient(135deg, #d97706, #fbbf24);
-  color: #fff;
+  background: linear-gradient(135deg, var(--race-deep), var(--race));
+  color: var(--race-ink);
   font-size: 11px;
   font-weight: 800;
   padding: 2px 10px;
   border-radius: 8px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--race-deep) 30%, transparent);
 }
 
 .rh-priority-pill {
@@ -76,33 +76,33 @@
 .rh-priority-a {
   background: rgba(251, 191, 36, 0.15);
   border-color: rgba(251, 191, 36, 0.5);
-  color: #fbbf24;
+  color: var(--race);
 }
 
 .rh-priority-b {
   background: rgba(59, 130, 246, 0.15);
   border-color: rgba(59, 130, 246, 0.5);
-  color: #60a5fa;
+  color: var(--run);
 }
 
 .rh-priority-c {
-  background: rgba(148, 163, 184, 0.15);
-  border-color: rgba(148, 163, 184, 0.4);
-  color: #cbd5e1;
+  background: color-mix(in srgb, var(--text-4) 15%, transparent);
+  border-color: color-mix(in srgb, var(--text-4) 40%, transparent);
+  color: var(--text-3);
 }
 
 /* Distância — mais estilizada que o texto simples de antes: badge em vidro
    escuro, harmonizado com o mesmo trio de pílulas do NextRaceCard do Início
    (piso preenchido + prioridade em contorno + distância em badge). */
 .rh-distance-badge {
-  background: rgba(15, 23, 42, 0.55);
+  background: color-mix(in srgb, var(--bg-app) 55%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #e2e8f0;
+  color: var(--text-2);
   font-size: 11px;
   font-weight: 800;
   padding: 3px 10px;
   border-radius: 8px;
-  box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 3px var(--surface-raised);
 }
 
 /* Semáforo luminoso */
@@ -110,7 +110,7 @@
   display: flex;
   gap: 5px;
   padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--border-hairline);
   border-radius: 12px;
   align-items: center;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -125,24 +125,24 @@
 }
 
 .rh-light.on { opacity: 1; }
-.rh-light-red { background: #ef4444; }
-.rh-light-red.on { box-shadow: 0 0 8px #ef4444; }
-.rh-light-yellow { background: #f59e0b; }
-.rh-light-yellow.on { box-shadow: 0 0 8px #f59e0b; }
-.rh-light-green { background: #10b981; }
-.rh-light-green.on { box-shadow: 0 0 8px #10b981; }
+.rh-light-red { background: var(--danger); }
+.rh-light-red.on { box-shadow: 0 0 8px var(--danger); }
+.rh-light-yellow { background: var(--race); }
+.rh-light-yellow.on { box-shadow: 0 0 8px var(--race); }
+.rh-light-green { background: var(--ok); }
+.rh-light-green.on { box-shadow: 0 0 8px var(--ok); }
 
 .rh-title {
   font-size: 1.45rem;
   font-weight: 900;
-  color: #f8fafc;
+  color: var(--text-1);
   line-height: 1.2;
   margin-top: 4px;
 }
 
 .rh-sub-info {
   font-size: 0.8rem;
-  color: #cbd5e1;
+  color: var(--text-3);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -168,7 +168,7 @@
 }
 
 .rh-countdown-box {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   padding: 12px 14px;
@@ -184,13 +184,13 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #94a3b8;
+  color: var(--text-4);
 }
 
 .rh-cd-num {
   font-size: 1.8rem;
   font-weight: 900;
-  color: #fbbf24;
+  color: var(--race);
   line-height: 1.1;
   margin-top: 2px;
 }
@@ -206,7 +206,7 @@
 .rh-cd-desc {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--text-2);
   margin-top: 2px;
 }
 
@@ -234,7 +234,7 @@
 .rh-track-fill {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #fbbf24 0%, #d97706 100%);
+  background: linear-gradient(90deg, var(--race) 0%, var(--race-deep) 100%);
   border-radius: 8px;
   transform: scaleX(var(--rh-track-scale, 0));
   transform-origin: left;
@@ -247,8 +247,8 @@
   transform: translate(-50%, -50%);
   width: 26px;
   height: 26px;
-  background: #ffffff;
-  border: 3px solid #d97706;
+  background: var(--text-1);
+  border: 3px solid var(--race-deep);
   border-radius: 50%;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
   display: flex;
@@ -263,7 +263,7 @@
   align-items: center;
   font-size: 0.7rem;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--text-4);
 }
 
 .rh-track-labels > span:first-child {
@@ -291,7 +291,7 @@
 
 .rh-spec-card {
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-glass);
   border-radius: 14px;
   padding: 8px 12px;
   display: flex;
@@ -314,20 +314,20 @@
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: var(--text-4);
   letter-spacing: 0.05em;
 }
 
 .rh-spec-val {
   font-size: 0.85rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--text-1);
   margin-top: 2px;
 }
 
 /* ─── Carol Analysis Box ──────────────────────────────────────────────────── */
 .rh-carol-box {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-raised);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-glass);
@@ -357,7 +357,7 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   line-height: 1.35;
-  color: #fbbf24;
+  color: var(--race);
   flex: 1 1 auto;
   min-width: 170px;
   white-space: nowrap;
@@ -390,7 +390,7 @@
 .rh-carol-body {
   font-size: 0.85rem;
   line-height: 1.5;
-  color: #e2e8f0;
+  color: var(--text-2);
   font-weight: 500;
 }
 
@@ -406,14 +406,14 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #94a3b8;
+  color: var(--text-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .rh-phase-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -425,9 +425,9 @@
 }
 
 .rh-phase-card.active-phase {
-  border-color: rgba(251, 191, 36, 0.6);
-  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(255, 255, 255, 0.06));
-  box-shadow: 0 8px 30px -5px rgba(217, 119, 6, 0.2);
+  border-color: color-mix(in srgb, var(--race) 60%, transparent);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), var(--surface-raised));
+  box-shadow: 0 8px 30px -5px color-mix(in srgb, var(--race-deep) 20%, transparent);
 }
 
 .rh-phase-card.completed-phase {
@@ -457,18 +457,18 @@
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 900;
-  background: rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
+  background: var(--border-glass);
+  color: var(--text-3);
 }
 
 .active-phase .rh-phase-num-badge {
-  background: #fbbf24;
-  color: #78350f;
+  background: var(--race);
+  color: var(--race-ink);
 }
 
 .completed-phase .rh-phase-num-badge {
-  background: #10b981;
-  color: #fff;
+  background: var(--ok);
+  color: var(--ok-ink);
 }
 
 .rh-phase-title-wrap {
@@ -478,13 +478,13 @@
 .rh-phase-name {
   font-size: 0.95rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--text-1);
 }
 
 .rh-phase-dates {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--text-4);
   margin-top: 1px;
 }
 
@@ -503,35 +503,35 @@
 }
 
 .rh-pill-active {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--race), var(--race-deep));
+  color: var(--race-ink);
   box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
-  border: 1px solid rgba(251, 191, 36, 0.6);
+  border: 1px solid color-mix(in srgb, var(--race) 60%, transparent);
 }
 
 .rh-pill-completed {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
 }
 
 .rh-pill-upcoming {
-  background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: color-mix(in srgb, var(--text-4) 15%, transparent);
+  color: var(--text-4);
+  border: 1px solid color-mix(in srgb, var(--text-4) 25%, transparent);
 }
 
 .rh-pill-skipped {
-  background: rgba(100, 116, 139, 0.15);
-  color: #64748b;
-  border: 1px solid rgba(100, 116, 139, 0.25);
+  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 25%, transparent);
 }
 
 /* Classificação da Carol por Fase */
 .rh-phase-eval {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-hairline);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -547,14 +547,14 @@
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
-  color: #fbbf24;
+  color: var(--race);
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
 .rh-eval-stars {
-  color: #fbbf24;
+  color: var(--race);
   font-size: 0.8rem;
   letter-spacing: 2px;
 }
@@ -575,20 +575,20 @@
   border: 1px solid transparent;
 }
 
-.rh-eval-emerald { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.4); }
-.rh-eval-amber { background: rgba(245, 158, 11, 0.2); color: #fcd34d; border-color: rgba(245, 158, 11, 0.4); }
-.rh-eval-rose { background: rgba(244, 63, 94, 0.2); color: #fda4af; border-color: rgba(244, 63, 94, 0.4); }
-.rh-eval-slate { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.4); }
+.rh-eval-emerald { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.rh-eval-amber { background: rgba(245, 158, 11, 0.2); color: var(--race); border-color: rgba(245, 158, 11, 0.4); }
+.rh-eval-rose { background: rgba(244, 63, 94, 0.2); color: var(--danger-soft); border-color: rgba(244, 63, 94, 0.4); }
+.rh-eval-slate { background: color-mix(in srgb, var(--text-4) 20%, transparent); color: var(--text-3); border-color: color-mix(in srgb, var(--text-4) 40%, transparent); }
 
 .rh-eval-summary {
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: var(--text-3);
   line-height: 1.4;
 }
 
 /* ─── Web Info Glass Cards ────────────────────────────────────────────────── */
 .rh-web-info-card {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);

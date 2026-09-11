@@ -278,7 +278,7 @@ export default function OverviewDashboard({ scrollToTab }) {
     <div className="space-y-4 fade-in pb-8 pt-2">
       {/* ─── Secção 1: Visão Estratégica ──────────────── */}
       <div className="px-1">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">Visão Estratégica</p>
+        <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Visão Estratégica</p>
       </div>
 
       <RaceReadinessCard
@@ -295,7 +295,7 @@ export default function OverviewDashboard({ scrollToTab }) {
 
       {/* ─── Secção 2: Estado Atual dos 4 Pilares ──────── */}
       <div className="px-1 mt-2">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">Estado Atual</p>
+        <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Estado Atual</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -344,7 +344,7 @@ export default function OverviewDashboard({ scrollToTab }) {
 
       {/* ─── Secção 3: Análise Cruzada (colapsada) ───── */}
       <div className="px-1 mt-2">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2">Análise Cruzada</p>
+        <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Análise Cruzada</p>
       </div>
 
       <CrossAnalysisSection

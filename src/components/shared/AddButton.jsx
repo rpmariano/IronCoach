@@ -17,7 +17,7 @@ export function AddButton({
   const baseClasses = 'inline-flex items-center gap-1 font-bold text-[11px] uppercase tracking-wide transition-opacity hover:opacity-70 tap-44 active:scale-95';
   
   const variants = {
-    accent: 'text-[var(--accent)]',
+    accent: 'text-[var(--coach)]',
     gym: 'text-[var(--mod-ginasio-to)]',
     run: 'text-[var(--mod-corrida-to)]',
     nutrition: 'text-[var(--mod-nutricao-to)]',

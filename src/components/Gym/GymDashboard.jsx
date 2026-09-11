@@ -229,11 +229,11 @@ export default function GymDashboard() {
           </div>
 
           {/* Secção de Aulas e Modalidades de Grupo */}
-          <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4" style={{ color: 'var(--gym)' }} />
-                <h3 className="text-[12px] font-bold text-slate-200 uppercase tracking-wider">Aulas & Modalidades</h3>
+                <h3 className="text-[12px] font-bold text-[var(--text-2)] uppercase tracking-wider">Aulas & Modalidades</h3>
               </div>
               <MetricInfo text="Registo das tuas aulas de grupo e modalidades (HIIT, Cycling, Pilates, CrossFit, etc.). Monitoriza a frequência semanal, tempo total investido e o nível de esforço percebido (RPE)." />
             </div>
@@ -241,22 +241,22 @@ export default function GymDashboard() {
             {classAnalytics.totalClasses > 0 ? (
               <div className="space-y-3">
                 {/* Mini KPIs de Aulas */}
-                <div className="grid grid-cols-3 gap-2 bg-white/5 rounded-xl p-3 border border-white/10 text-center">
+                <div className="grid grid-cols-3 gap-2 bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-center">
                   <div>
                     <p className="text-base font-extrabold text-white leading-none">{classAnalytics.totalClasses}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Aulas</p>
+                    <p className="text-[11px] text-[var(--text-3)] mt-1">Aulas</p>
                   </div>
                   <div>
                     <p className="text-base font-extrabold text-white leading-none">
                       {formatDurationMinutes(classAnalytics.totalClassSeconds)}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-1">Tempo Total</p>
+                    <p className="text-[11px] text-[var(--text-3)] mt-1">Tempo Total</p>
                   </div>
                   <div>
                     <p className="text-base font-extrabold leading-none" style={{ color: 'var(--gym)' }}>
                       {classAnalytics.avgRpe ? `${classAnalytics.avgRpe} / 10` : '-'}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-1">Esforço Médio (RPE)</p>
+                    <p className="text-[11px] text-[var(--text-3)] mt-1">Esforço Médio (RPE)</p>
                   </div>
                 </div>
 
@@ -265,12 +265,12 @@ export default function GymDashboard() {
                   {classAnalytics.classList.map(c => {
                     const avgClassRpe = c.rpeCount > 0 ? (c.rpeSum / c.rpeCount).toFixed(1) : null;
                     return (
-                      <div key={c.name} className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-white/5 border border-white/5">
+                      <div key={c.name} className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-[var(--surface-glass)] border border-[var(--border-faint)]">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 rounded-full" style={{ background: 'var(--gym)' }}></div>
                           <div>
-                            <p className="text-xs font-semibold text-slate-200">{c.name}</p>
-                            <p className="text-[11px] text-slate-400">
+                            <p className="text-xs font-semibold text-[var(--text-2)]">{c.name}</p>
+                            <p className="text-[11px] text-[var(--text-3)]">
                               {c.count} aula{c.count > 1 ? 's' : ''}
                               {c.totalSeconds > 0 ? ` · ${formatDurationMinutes(c.totalSeconds)}` : ''}
                             </p>
@@ -278,7 +278,7 @@ export default function GymDashboard() {
                         </div>
                         {avgClassRpe && (
                           <div className="text-right">
-                            <span className="text-[11px] font-bold text-slate-300">RPE {avgClassRpe}</span>
+                            <span className="text-[11px] font-bold text-[var(--text-3)]">RPE {avgClassRpe}</span>
                           </div>
                         )}
                       </div>
@@ -288,8 +288,8 @@ export default function GymDashboard() {
               </div>
             ) : (
               <div className="py-6 flex flex-col items-center justify-center text-center">
-                <Users className="w-8 h-8 text-slate-500 mb-2 opacity-50" />
-                <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                <Users className="w-8 h-8 text-[var(--text-3)] mb-2 opacity-50" />
+                <p className="text-xs text-[var(--text-3)] max-w-xs leading-relaxed">
                   Sem aulas registadas neste período. Ao registares aulas (HIIT, Cycling, Pilates, etc.), verás aqui o resumo e o esforço.
                 </p>
               </div>

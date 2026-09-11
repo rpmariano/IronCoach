@@ -64,8 +64,8 @@ export default function ExperienceLevelHelp({
   const [isOpen, setIsOpen] = useState(false);
   const dark = variant === 'dark';
   const labelClass = dark
-    ? 'text-[11px] text-slate-500' // O perfil dark usa texto slate-500 na label
-    : 'text-[11px] text-slate-500';
+    ? 'text-[11px] text-[var(--text-3)]' // O perfil dark usa texto slate-500 na label
+    : 'text-[11px] text-[var(--text-3)]';
 
   const isProva = context === 'prova';
   const isTrail = isProva && raceType === 'trail';
@@ -107,7 +107,7 @@ export default function ExperienceLevelHelp({
         theme="info"
         variant="bottom-sheet"
       >
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-slate-50/30">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-[var(--surface-soft)]">
 
           {/* Era âmbar: a caixa da dica não é a prova nem um aviso — é a
               Carol a explicar, por isso fica no ciano dela (ponto 3). */}
@@ -124,7 +124,7 @@ export default function ExperienceLevelHelp({
           {isProva ? (
             <div>
               {isTrail && elevCat && (
-                <p className="text-[11px] text-slate-500 mb-2">
+                <p className="text-[11px] text-[var(--text-3)] mb-2">
                   Esta prova cai na banda <strong>{elevationRatioLabel(elevCat)}</strong>
                   {' '}({Math.round(elevationGainM / distanceKm)} m de D+ por km).
                 </p>
@@ -135,7 +135,7 @@ export default function ExperienceLevelHelp({
                   <div className="overflow-x-auto -mx-1 px-1">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
-                        <tr className="text-slate-400 text-left">
+                        <tr className="text-[var(--text-3)] text-left">
                           <th className="pb-1.5 font-semibold">Nível</th>
                           <th className="pb-1.5 font-semibold">Tempo em Pé/semana</th>
                           <th className="pb-1.5 font-semibold">D+/semana</th>
@@ -143,16 +143,16 @@ export default function ExperienceLevelHelp({
                       </thead>
                       <tbody>
                         {LEVEL_KEYS.map((lvl) => (
-                          <tr key={lvl} className="border-t border-slate-100">
-                            <td className="py-1.5 font-semibold text-slate-700 whitespace-nowrap">{experienceLevelLabel(lvl)}</td>
-                            <td className="py-1.5 text-slate-600">{pctRangeLabel(TIME_ON_FEET_FLOORS_PCT, lvl)} do previsto</td>
-                            <td className="py-1.5 text-slate-600">{pctRangeLabel(ELEVATION_FLOORS_PCT, lvl)} do D+ da prova</td>
+                          <tr key={lvl} className="border-t border-[var(--border-faint)]">
+                            <td className="py-1.5 font-semibold text-[var(--text-2)] whitespace-nowrap">{experienceLevelLabel(lvl)}</td>
+                            <td className="py-1.5 text-[var(--text-3)]">{pctRangeLabel(TIME_ON_FEET_FLOORS_PCT, lvl)} do previsto</td>
+                            <td className="py-1.5 text-[var(--text-3)]">{pctRangeLabel(ELEVATION_FLOORS_PCT, lvl)} do D+ da prova</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
+                  <p className="text-[11px] leading-relaxed text-[var(--text-3)] mt-3">
                     Percentagens relativas a ESTA prova (tempo previsto e D+), não valores absolutos —
                     quanto mais perto de 100%, mais o teu treino recente se parece com o esforço da prova.
                     As duas colunas são independentes: o teu nível é o mais baixo das duas.
@@ -163,7 +163,7 @@ export default function ExperienceLevelHelp({
                   <div className="overflow-x-auto -mx-1 px-1">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
-                        <tr className="text-slate-400 text-left">
+                        <tr className="text-[var(--text-3)] text-left">
                           <th className="pb-1.5 font-semibold">Nível</th>
                           <th className="pb-1.5 font-semibold">Prep. mínima</th>
                           <th className="pb-1.5 font-semibold">Volume semanal mín.</th>
@@ -174,23 +174,23 @@ export default function ExperienceLevelHelp({
                           const weeks = MIN_PREP_WEEKS[lvl]?.[distCat];
                           const vol = MIN_VOLUME_KM[lvl]?.[distCat];
                           return (
-                            <tr key={lvl} className="border-t border-slate-100">
-                              <td className="py-1.5 font-semibold text-slate-700 whitespace-nowrap">{experienceLevelLabel(lvl)}</td>
-                              <td className="py-1.5 text-slate-600">{weeks == null ? 'Desaconselhado' : `${weeks} semanas`}</td>
-                              <td className="py-1.5 text-slate-600">{vol == null ? '—' : `${vol} km/semana`}</td>
+                            <tr key={lvl} className="border-t border-[var(--border-faint)]">
+                              <td className="py-1.5 font-semibold text-[var(--text-2)] whitespace-nowrap">{experienceLevelLabel(lvl)}</td>
+                              <td className="py-1.5 text-[var(--text-3)]">{weeks == null ? 'Desaconselhado' : `${weeks} semanas`}</td>
+                              <td className="py-1.5 text-[var(--text-3)]">{vol == null ? '—' : `${vol} km/semana`}</td>
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
+                  <p className="text-[11px] leading-relaxed text-[var(--text-3)] mt-3">
                     Valores para {DISTANCE_CATEGORY_LABELS[distCat]}. Pré-requisitos cumulativos —
                     as duas colunas somam-se, não se substituem.
                   </p>
                 </>
               ) : (
-                <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
+                <p className="text-[11px] leading-relaxed text-[var(--text-3)] mt-3">
                   Escolhe a distância da prova para veres os valores de referência.
                 </p>
               )}
@@ -199,12 +199,12 @@ export default function ExperienceLevelHelp({
             <>
               <div className="space-y-4">
                 {EXPERIENCE_LEVELS.map(level => (
-                  <div key={level.key} className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-                    <p className="text-[12px] font-bold text-slate-700 mb-1.5">{level.label}</p>
+                  <div key={level.key} className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-sm">
+                    <p className="text-[12px] font-bold text-[var(--text-2)] mb-1.5">{level.label}</p>
                     <ul className="space-y-1">
                       {level.criteria.map((c, i) => (
-                        <li key={i} className="text-[11px] leading-snug flex gap-1.5 text-slate-600">
-                          <span aria-hidden="true" className="font-bold text-slate-400">·</span>
+                        <li key={i} className="text-[11px] leading-snug flex gap-1.5 text-[var(--text-3)]">
+                          <span aria-hidden="true" className="font-bold text-[var(--text-3)]">·</span>
                           <span>{c}</span>
                         </li>
                       ))}
@@ -213,7 +213,7 @@ export default function ExperienceLevelHelp({
                 ))}
               </div>
 
-              <p className="text-[11px] leading-relaxed text-slate-400 text-center pb-2">
+              <p className="text-[11px] leading-relaxed text-[var(--text-3)] text-center pb-2">
                 Valores de referência para provas de 10 km a meia maratona. Com objetivo de maratona, o volume semanal sobe. O Coach ajusta.
               </p>
             </>

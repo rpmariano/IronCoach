@@ -15,7 +15,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
       maxWidth="max-w-sm"
     >
       <div className="p-6">
-        <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
+        <p className="text-[13px] text-[var(--text-3)] mb-6 leading-relaxed">
           {message || 'Tem a certeza que deseja eliminar este registo? Esta ação não pode ser desfeita.'}
         </p>
         <div className="space-y-3">

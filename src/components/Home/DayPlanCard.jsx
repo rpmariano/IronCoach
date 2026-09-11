@@ -123,7 +123,7 @@ export default function DayPlanCard({ plans = [], planItems = [], onComplete, on
                 <Utensils size={16} style={{ color: 'var(--gym)' }} />
                 <span className="text-[13px] font-bold whitespace-nowrap" style={{ color: 'var(--text-2)' }}>Refeições sugeridas</span>
               </span>
-              <span className="inline-flex items-center gap-[3px] text-[11.5px] font-bold whitespace-nowrap" style={{ color: '#7dd3fc' }}>
+              <span className="inline-flex items-center gap-[3px] text-[11.5px] font-bold whitespace-nowrap" style={{ color: 'var(--coach)' }}>
                 {meals.meals.length > 1 ? `Ver as ${meals.meals.length}` : 'Ver'} <ChevronDown size={13} />
               </span>
             </button>

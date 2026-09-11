@@ -485,7 +485,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-[var(--surface-strong)] border border-[var(--border-faint)] shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
@@ -532,7 +532,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
           <div className="wpc-glow-coach"></div>
           <div className="wpc-content">
             <h2 className="wpc-proposal-title">Plano</h2>
-            <p className="text-xs font-semibold text-slate-600 mt-1">
+            <p className="text-xs font-semibold text-[var(--text-3)] mt-1">
               Sem treinos acordados. Pede ao Coach um plano — as sugestões aparecem no chat para aceitares ou recusares.
             </p>
           </div>
@@ -616,7 +616,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-[var(--surface-strong)] border border-[var(--border-faint)] shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>

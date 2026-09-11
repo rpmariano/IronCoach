@@ -22,12 +22,12 @@ export function Card({
   ...props
 }) {
   // rounded-3xl é 24px no tailwind
-  const baseClasses = 'relative overflow-hidden bg-white/5 backdrop-blur-[20px] border border-white/10 rounded-3xl shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_8px_30px_rgba(0,0,0,0.2)]';
+  const baseClasses = 'relative overflow-hidden bg-[var(--surface-glass)] backdrop-blur-[20px] border border-[var(--border-glass)] rounded-3xl shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_8px_30px_rgba(0,0,0,0.2)]';
   
   const paddingClasses = noPadding ? '' : 'p-5 md:p-6';
   
   const interactiveClasses = interactive || onClick 
-    ? 'cursor-pointer hover:bg-white/10 active:scale-[0.98] transition-all duration-300' 
+    ? 'cursor-pointer hover:bg-[var(--surface-strong)] active:scale-[0.98] transition-all duration-300' 
     : '';
 
   return (

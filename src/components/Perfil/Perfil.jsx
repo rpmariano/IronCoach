@@ -393,7 +393,7 @@ export default function Perfil() {
       // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
       // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
       // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
-      className="w-full text-xs text-amber-950"
+      className="w-full text-xs text-[var(--race-ink)]"
     >
       Guardar alterações
     </Button>
@@ -407,7 +407,10 @@ export default function Perfil() {
       variant="module"
       moduleColor="var(--mod-corrida)"
       onClick={() => shoeCabinetRef.current?.openNew()}
-      className="w-full text-xs text-white"
+      // Mesma razão do "Guardar alterações" acima: sobre a cor cheia do
+      // módulo (--mod-corrida, #2ee0ff) o branco dava 1,59:1. A tinta escura
+      // do módulo (--run-ink) é o que o handoff manda pôr sobre a cor cheia.
+      className="w-full text-xs text-[var(--run-ink)]"
     >
       <Plus size={14} /> Adicionar sapatilhas
     </Button>
@@ -442,27 +445,27 @@ export default function Perfil() {
           <h2 className="sr-only">Pessoal</h2>
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
-              <User size={16} className="text-[var(--accent)]" />
+              <User size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Pessoal</h3>
             </div>
             <div className="space-y-3">
               <div>
-                <label htmlFor="perfil-nome" className="text-[11px] text-slate-500 block mb-1">Nome</label>
+                <label htmlFor="perfil-nome" className="text-[11px] text-[var(--text-3)] block mb-1">Nome</label>
                 <input
                   id="perfil-nome"
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
               </div>
               <div>
-                <label htmlFor="perfil-genero" className="text-[11px] text-slate-500 block mb-1">Género</label>
+                <label htmlFor="perfil-genero" className="text-[11px] text-[var(--text-3)] block mb-1">Género</label>
                 <select
                   id="perfil-genero"
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -470,10 +473,10 @@ export default function Perfil() {
                 </select>
               </div>
               <div>
-                <label htmlFor="perfil-nascimento" className="text-[11px] text-slate-500 block mb-1">
+                <label htmlFor="perfil-nascimento" className="text-[11px] text-[var(--text-3)] block mb-1">
                   Data de nascimento
                   {ageFromBirthDate(draft.birth_date) != null && (
-                    <span className="text-slate-400"> · {ageFromBirthDate(draft.birth_date)} anos</span>
+                    <span className="text-[var(--text-3)]"> · {ageFromBirthDate(draft.birth_date)} anos</span>
                   )}
                 </label>
                 <input
@@ -482,9 +485,9 @@ export default function Perfil() {
                   max={todayISO()}
                   value={draft.birth_date || ''}
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
-                <p className="text-[11px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
@@ -494,12 +497,12 @@ export default function Perfil() {
                   id="perfil-nivel"
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 >
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[11px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Calibra a linguagem e os limiares de treino do Coach.'}
@@ -515,17 +518,17 @@ export default function Perfil() {
               <button
                 type="button"
                 onClick={() => requestTabChange('coach')}
-                className="w-full min-h-[44px] flex items-center justify-between gap-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50/70 transition"
+                className="w-full min-h-[44px] flex items-center justify-between gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-left hover:bg-[var(--surface-glass)] transition"
               >
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-[var(--text-3)]">
                   Restrições alimentares e alergias agora vivem na aba{' '}
                   <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Coach</span>
                   , junto da Memória do Coach.
                 </span>
-                <ChevronRight size={14} className="text-slate-500 shrink-0" />
+                <ChevronRight size={14} className="text-[var(--text-3)] shrink-0" />
               </button>
               <div>
-                <label htmlFor="perfil-fc-repouso" className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
+                <label htmlFor="perfil-fc-repouso" className="text-[11px] text-[var(--text-3)] block mb-1">FC em repouso (bpm)</label>
                 <input
                   id="perfil-fc-repouso"
                   type="number"
@@ -535,9 +538,9 @@ export default function Perfil() {
                   placeholder="Ex.: 52"
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
-                <p className="text-[11px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
                   frequência cardíaca mais precisas e permite ao Coach detetar
                   fadiga acumulada — uma subida sustentada face ao teu normal é
@@ -548,8 +551,8 @@ export default function Perfil() {
           </div>
           
           <div className="module-card-contrast">
-            <p className="text-[11px] text-slate-500 mb-3">Sessão iniciada como <b className="text-slate-300">{session?.user?.email}</b></p>
-            <button onClick={handleSignOut} className="w-full min-h-[44px] border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-red-500/10 transition">
+            <p className="text-[11px] text-[var(--text-3)] mb-3">Sessão iniciada como <b className="text-[var(--text-3)]">{session?.user?.email}</b></p>
+            <button onClick={handleSignOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition">
               <LogOut size={14} /> Terminar sessão
             </button>
           </div>
@@ -559,25 +562,25 @@ export default function Perfil() {
           <h2 className="sr-only">Metas</h2>
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
-              <User size={16} className="text-[var(--accent)]" />
+              <User size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Avaliação Corporal</h3>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label htmlFor="perfil-altura" className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
+                <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
                 <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
               <div>
-                <label htmlFor="perfil-peso" className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
+                <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
                 <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
             </div>
             
             <div className="flex items-center gap-2 mb-3 mt-1">
-              <Target size={14} className="text-[var(--accent)]" />
-              <h4 className="text-xs font-semibold text-slate-300">Objetivos corporais</h4>
+              <Target size={14} className="text-[var(--gym)]" />
+              <h4 className="text-xs font-semibold text-[var(--text-3)]">Objetivos corporais</h4>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BODY_METRICS.map(m => {
@@ -585,7 +588,7 @@ export default function Perfil() {
                 const isCoach = flagKey && draft[flagKey];
                 return (
                   <div key={m.key}>
-                    <label htmlFor={`perfil-goal-${m.key}`} className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                    <label htmlFor={`perfil-goal-${m.key}`} className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                       {m.label}{m.unit ? ` (${m.unit})` : ''}
                       {isCoach && <CoachBadge />}
                     </label>
@@ -594,7 +597,7 @@ export default function Perfil() {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
                       }}
-                      className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                      className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                       style={isCoach ? coachFieldStyle : plainFieldStyle} />
                   </div>
                 );
@@ -604,58 +607,58 @@ export default function Perfil() {
 
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
-              <Target size={16} className="text-[var(--accent)]" />
+              <Target size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Nutrição &amp; Água</h3>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="perfil-calorias" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-calorias" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Calorias (kcal/dia)
                   {draft.calorie_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input id="perfil-calorias" type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label htmlFor="perfil-proteina" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-proteina" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Proteína (g/dia)
                   {draft.protein_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input id="perfil-proteina" type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label htmlFor="perfil-hidratos" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-hidratos" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Hidratos (g/dia)
                   {draft.carbs_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input id="perfil-hidratos" type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label htmlFor="perfil-gordura" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-gordura" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Gordura (g/dia)
                   {draft.fat_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input id="perfil-gordura" type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
-                <label htmlFor="perfil-agua" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-agua" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Meta água (ml/dia)
                   {draft.water_goal_set_by_coach && <CoachBadge />}
                 </label>
                 <input id="perfil-agua" type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
             </div>
@@ -663,12 +666,12 @@ export default function Perfil() {
             {/* Toggle global de autorização — cobre todos os objetivos (nutrição,
                 água, corpo). O Coach propõe sempre em texto primeiro e pede
                 confirmação; só grava quando o atleta diz que sim. */}
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5">
                   <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Permite que o Coach grave metas diretamente no teu perfil (nutrição, água e objetivos corporais)
                   quando concordares com a sugestão dele no chat. Os campos alterados pelo Coach ficam marcados com
                   "Coach"; editá-los à mão devolve o controlo a ti.
@@ -678,19 +681,19 @@ export default function Perfil() {
                 aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
                 aria-pressed={!!draft.coach_can_set_nutrition_goals}
                 className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
-                  draft.coach_can_set_nutrition_goals ? '' : 'bg-slate-200 dark:bg-neutral-800'
+                  draft.coach_can_set_nutrition_goals ? '' : 'bg-[var(--surface-strong)]'
                 }`}
                 style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.coach_can_set_nutrition_goals ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: '#ffffff' }}></span>
+                }`} style={{ backgroundColor: 'var(--text-1)' }}></span>
               </button>
             </div>
 
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
               <div className="pr-4">
-                <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--run)]" /> Lembretes de água</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
                 </p>
               </div>
@@ -699,20 +702,20 @@ export default function Perfil() {
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
                 className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
-                  draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-slate-200 dark:bg-neutral-800'
+                  draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-[var(--surface-strong)]'
                 }`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.water_reminder_enabled ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: '#ffffff' }}></span>
+                }`} style={{ backgroundColor: 'var(--text-1)' }}></span>
               </button>
             </div>
 
             {draft.water_reminder_enabled && (
               <div className="mt-3 space-y-3 fade-in">
                 <div>
-                  <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
+                  <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-[var(--text-3)] block mb-1">Frequência (minutos)</label>
                   <select id="perfil-lembrete-intervalo" value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -720,21 +723,21 @@ export default function Perfil() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-slate-500 block mb-1">Início</label>
+                    <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">Início</label>
                     <select id="perfil-lembrete-inicio" value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-slate-500 block mb-1">Fim</label>
+                    <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Fim</label>
                     <select id="perfil-lembrete-fim" value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
+                <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                   {reminderStartHour === reminderEndHour
                     ? 'Início igual ao fim: lembretes durante as 24 horas.'
                     : reminderStartHour > reminderEndHour
@@ -807,7 +810,7 @@ export default function Perfil() {
               <Utensils size={16} className="text-[var(--mod-coach-to)]" />
               <h3 className="text-sm font-semibold">Restrições Alimentares</h3>
             </div>
-            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+            <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
               Regra absoluta que o Coach nunca contraria — ao contrário da Memória, aqui é a
               Carol que calcula por trás as metas de nutrientes certas para cada restrição.
             </p>
@@ -826,7 +829,7 @@ export default function Perfil() {
                     className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
                       ativa
                         ? 'bg-[var(--mod-coach-to)]/20 border-[var(--mod-coach-to)]/60 text-[var(--mod-coach-to)]'
-                        : 'bg-slate-50/50 border-slate-200 text-slate-400'
+                        : 'bg-[var(--surface-soft)] border-[var(--border-glass)] text-[var(--text-3)]'
                     }`}
                   >
                     {r.label}
@@ -834,7 +837,7 @@ export default function Perfil() {
                 );
               })}
             </div>
-            <p className="text-[11px] text-slate-600 mt-1">
+            <p className="text-[11px] text-[var(--text-3)] mt-1">
               Podes escolher mais que uma. Vegetariano e vegano excluem-se —
               escolher um desliga o outro. Sem nada selecionado, o Coach
               assume que comes de tudo.
@@ -845,9 +848,9 @@ export default function Perfil() {
               placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
               value={draft.dietary_notes || ''}
               onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
-              className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
+              className="w-full mt-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
             />
-            <p className="text-[11px] text-slate-600 mt-1">
+            <p className="text-[11px] text-[var(--text-3)] mt-1">
               O Coach trata isto como regra absoluta e nunca sugere nada que
               a contrarie.
             </p>

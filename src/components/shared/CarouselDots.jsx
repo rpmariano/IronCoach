@@ -31,7 +31,7 @@ export default function CarouselDots({ count, currentIndex, onSelect, ariaLabelP
         <div key={idx} className="relative w-4 h-1.5 flex items-center justify-center">
           {/* A caixa que a minhoca mede — o traço visível, 16×6. */}
           <span ref={setItemRef(idx)} aria-hidden="true" className="absolute inset-0" />
-          <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-slate-300 opacity-40" />
+          <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-[var(--text-3)] opacity-40" />
           {/* O alvo: 44×44 invisível, centrado no traço, fora do fluxo (não
               mexe no layout nem no que a minhoca mede). `no-tap-scale`
               porque encolher um alvo invisível não se vê e ainda mexia na
@@ -49,7 +49,7 @@ export default function CarouselDots({ count, currentIndex, onSelect, ariaLabelP
       {indicatorStyle && (
         <div
           aria-hidden="true"
-          className="absolute top-0 h-1.5 rounded-full bg-slate-300"
+          className="absolute top-0 h-1.5 rounded-full bg-[var(--text-3)]"
           style={{ left: indicatorStyle.left, width: indicatorStyle.width, transition: indicatorStyle.transition }}
         />
       )}

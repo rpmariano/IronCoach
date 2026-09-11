@@ -102,18 +102,18 @@ export default function RunCalendar({ onNewRun }) {
 
       <div className="card rounded-2xl p-4">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => changeMonth(-1)} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-700">
+          <button onClick={() => changeMonth(-1)} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-2)]">
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <h2 className="text-sm font-bold text-slate-800 capitalize">{monthLabel}</h2>
-          <button onClick={() => changeMonth(1)} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-700">
+          <h2 className="text-sm font-bold text-[var(--text-1)] capitalize">{monthLabel}</h2>
+          <button onClick={() => changeMonth(1)} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-2)]">
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(d => (
-            <div key={d} className="text-center text-[11px] text-slate-400 font-semibold">{d}</div>
+            <div key={d} className="text-center text-[11px] text-[var(--text-3)] font-semibold">{d}</div>
           ))}
         </div>
 
@@ -129,9 +129,9 @@ export default function RunCalendar({ onNewRun }) {
             if (isSelected) {
               btnClass += "font-bold";
             } else if (isToday) {
-              btnClass += "text-slate-800 font-bold border border-slate-300";
+              btnClass += "text-[var(--text-1)] font-bold border border-[var(--border-glass-strong)]";
             } else {
-              btnClass += "text-slate-500 hover:bg-slate-100";
+              btnClass += "text-[var(--text-3)] hover:bg-[var(--surface-glass)]";
             }
 
             return (
@@ -143,7 +143,7 @@ export default function RunCalendar({ onNewRun }) {
               >
                 {dayNum}
                 {/* Dia selecionado tem fundo Coral, onde o cinzento não lê bem. */}
-                <span className={`w-1 h-1 rounded-full mt-1 ${hasRun ? 'bg-emerald-500' : (isSelected ? 'bg-white/30' : CALENDAR_NO_DATA_DOT)}`}></span>
+                <span className={`w-1 h-1 rounded-full mt-1 ${hasRun ? 'bg-[var(--ok)]' : (isSelected ? 'bg-white/30' : CALENDAR_NO_DATA_DOT)}`}></span>
               </button>
             );
           })}
@@ -153,7 +153,7 @@ export default function RunCalendar({ onNewRun }) {
       {/* Selected Date Summary */}
       {runsByDate[selectedDate] && runsByDate[selectedDate].length > 0 ? (
         <div className="space-y-3 mt-4">
-          <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1">Corridas a {selectedDate === todayIso ? 'Hoje' : selectedDate}</h3>
+          <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide px-1">Corridas a {selectedDate === todayIso ? 'Hoje' : selectedDate}</h3>
           {runsByDate[selectedDate].map(run => (
             <RunCard 
               key={run.id} 
@@ -165,7 +165,7 @@ export default function RunCalendar({ onNewRun }) {
         </div>
       ) : (
         <div className="text-center py-6">
-          <p className="text-xs text-slate-400">Sem corridas neste dia.</p>
+          <p className="text-xs text-[var(--text-3)]">Sem corridas neste dia.</p>
         </div>
       )}
     </div>

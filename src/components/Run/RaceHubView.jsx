@@ -327,15 +327,15 @@ export default function RaceHubView({
             <h1 className="rh-title">{race?.name || 'Nova Prova'}</h1>
             <div className="rh-sub-info">
               <div className="rh-sub-item">
-                <Calendar size={13} className="text-amber-400" />
+                <Calendar size={13} className="text-[var(--race)]" />
                 <span>{formattedRaceDate}</span>
               </div>
               <div className="rh-sub-item">
-                <MapPin size={13} className="text-amber-400" />
+                <MapPin size={13} className="text-[var(--race)]" />
                 <span>{race?.location || 'Local a definir'}</span>
               </div>
               {race?.experience_level && (
-                <div className="rh-sub-item text-slate-300">
+                <div className="rh-sub-item text-[var(--text-3)]">
                   <span>· {experienceLevelLabel(race.experience_level)}</span>
                 </div>
               )}
@@ -391,12 +391,12 @@ export default function RaceHubView({
           <div className="rh-track-bar">
             <div className="rh-track-fill" style={{ '--rh-track-scale': Math.max(0, Math.min(100, progressPercentage)) / 100 }} />
             <div className="rh-runner-dot" style={{ left: `${progressPercentage}%` }}>
-              <RunIcon size={14} strokeWidth={2.5} color="#d97706" />
+              <RunIcon size={14} strokeWidth={2.5} color="var(--race-deep)" />
             </div>
           </div>
           <div className="rh-track-labels">
             <span>Início ({formatDateDayMonth(planStartDate)})</span>
-            <span className="text-amber-400 font-extrabold">
+            <span className="text-[var(--race)] font-extrabold">
               {trainingStatus === 'not_started'
                 ? `Início em ${daysToStart} dias`
                 : trainingStatus === 'completed'
@@ -451,8 +451,8 @@ export default function RaceHubView({
                   // tap-area-44: o glifo mantem-se pequeno, a area tocavel e de 44.
                   className={`tap-area-44 absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1 transition-all ${
                     showVdotHelp
-                      ? 'text-cyan-400 bg-cyan-500/20'
-                      : 'text-slate-400 hover:text-cyan-300 active:bg-white/10'
+                      ? 'text-[var(--coach)] bg-[var(--surface-strong)]'
+                      : 'text-[var(--text-3)] hover:text-[var(--coach-soft)] active:bg-[var(--surface-strong)]'
                   }`}
                   aria-label="Mais informações sobre Previsão VDOT"
                 >
@@ -471,9 +471,9 @@ export default function RaceHubView({
 
               {/* Texto explicativo in-flow: expande naturalmente o cartão sem ficar cortado */}
               {showVdotHelp && (
-                <div className="w-full mt-2.5 pt-2.5 border-t border-white/10 text-left fade-in">
-                  <div className="bg-cyan-950/70 border border-cyan-500/30 text-cyan-100 text-[11px] leading-relaxed p-3 rounded-xl flex items-start gap-2.5 shadow-lg">
-                    <Info className="w-4 h-4 mt-0.5 shrink-0 text-cyan-400" />
+                <div className="w-full mt-2.5 pt-2.5 border-t border-[var(--border-glass)] text-left fade-in">
+                  <div className="bg-[var(--tint-coach-bg)] border border-[var(--tint-coach-bd)] text-[var(--coach-soft)] text-[11px] leading-relaxed p-3 rounded-xl flex items-start gap-2.5 shadow-lg">
+                    <Info className="w-4 h-4 mt-0.5 shrink-0 text-[var(--coach)]" />
                     <p className="flex-1 font-medium">
                       Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência{race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.
                     </p>
@@ -537,8 +537,8 @@ export default function RaceHubView({
       {/* ─── 3. Fases do Treino & Classificação da Carol por Fase ──────────── */}
       <div className="rh-phases-section">
         <div className="flex items-center justify-between gap-2 pt-1 pb-1">
-          <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-2">
-            <span className="w-1.5 h-3.5 rounded-full bg-amber-400 inline-block shrink-0" />
+          <span className="text-xs font-black uppercase tracking-wider text-[var(--text-3)] flex items-center gap-2">
+            <span className="w-1.5 h-3.5 rounded-full bg-[var(--race)] inline-block shrink-0" />
             Macrociclo de Treino ({totalWeeks} Semanas)
           </span>
         </div>
@@ -572,7 +572,7 @@ export default function RaceHubView({
                       <div className="rh-phase-num-badge shrink-0">
                         {isCompleted ? <CheckCircle2 size={13} /> : phase.number}
                       </div>
-                      <span className="rh-phase-name truncate font-bold text-slate-100 text-sm">
+                      <span className="rh-phase-name truncate font-bold text-[var(--text-1)] text-sm">
                         {phase.name}
                       </span>
                     </div>
@@ -581,14 +581,14 @@ export default function RaceHubView({
                       <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
                         {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : phase.state === 'skipped' ? 'Não Realizada' : 'Planeada'}
                       </span>
-                      <div className="text-slate-400 pl-0.5">
+                      <div className="text-[var(--text-3)] pl-0.5">
                         {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </div>
                     </div>
                   </div>
 
                   {/* Linha 2: Datas & Semanas, alinhadas sob o título (pl-8). */}
-                  <p className="rh-phase-dates text-[11px] font-medium text-slate-400 pl-8">
+                  <p className="rh-phase-dates text-[11px] font-medium text-[var(--text-3)] pl-8">
                     {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
                   </p>
 
@@ -607,12 +607,12 @@ export default function RaceHubView({
                 {/* Conteúdo Expandido da Fase */}
                 {isExpanded && (
                   <div className="rh-phase-eval fade-in" onClick={(e) => e.stopPropagation()}>
-                    <p className="text-xs text-slate-300 font-medium">
-                      <span className="text-amber-400 font-bold">Foco da Fase:</span> {phase.focus}
+                    <p className="text-xs text-[var(--text-3)] font-medium">
+                      <span className="text-[var(--race)] font-bold">Foco da Fase:</span> {phase.focus}
                     </p>
 
                     {/* Classificação da Carol */}
-                    <div className="p-2.5 rounded-xl bg-black/20 border border-white/5 space-y-1.5 mt-1">
+                    <div className="p-2.5 rounded-xl bg-black/20 border border-[var(--border-faint)] space-y-1.5 mt-1">
                       <div className="rh-eval-header">
                         <span className="rh-eval-carol-lbl">
                           <Sparkles size={11} /> Avaliação da Carol
@@ -638,14 +638,14 @@ export default function RaceHubView({
                       </p>
 
                       {evalData?.metrics?.runsCount > 0 && (
-                        <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-slate-400 flex-wrap">
-                          <span>Corridas: <strong className="text-slate-200">{evalData.metrics.runsCount}</strong></span>
-                          <span>Volume: <strong className="text-slate-200">{evalData.metrics.totalKm} km</strong></span>
+                        <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-[var(--text-3)] flex-wrap">
+                          <span>Corridas: <strong className="text-[var(--text-2)]">{evalData.metrics.runsCount}</strong></span>
+                          <span>Volume: <strong className="text-[var(--text-2)]">{evalData.metrics.totalKm} km</strong></span>
                           {evalData.metrics.polarizedZ1Z2Pct !== null && (
-                            <span>Z1/Z2: <strong className="text-emerald-400">{evalData.metrics.polarizedZ1Z2Pct}%</strong></span>
+                            <span>Z1/Z2: <strong className="text-[var(--ok)]">{evalData.metrics.polarizedZ1Z2Pct}%</strong></span>
                           )}
                           {evalData.metrics.avgPace && (
-                            <span>Ritmo médio: <strong className="text-slate-200">{evalData.metrics.avgPace} /km</strong></span>
+                            <span>Ritmo médio: <strong className="text-[var(--text-2)]">{evalData.metrics.avgPace} /km</strong></span>
                           )}
                         </div>
                       )}
@@ -662,10 +662,10 @@ export default function RaceHubView({
       <div className="rh-web-info-card mb-4">
         <div className="rh-web-header">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400">
+            <div className="w-6 h-6 rounded-lg bg-[var(--tint-race-bg)] flex items-center justify-center text-[var(--race)]">
               <Globe size={14} />
             </div>
-            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+            <span className="text-xs font-bold text-[var(--text-2)] uppercase tracking-wider">
               Informação do Site Oficial
             </span>
           </div>
@@ -688,12 +688,12 @@ export default function RaceHubView({
           <div className="space-y-3">
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <LinkIcon size={13} className="text-amber-400 shrink-0" />
+                <LinkIcon size={13} className="text-[var(--race)] shrink-0" />
                 <a
                   href={race.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs font-semibold text-slate-200 underline hover:text-amber-400 transition truncate"
+                  className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
                 >
                   {race.website}
                 </a>
@@ -704,15 +704,15 @@ export default function RaceHubView({
               <RaceWebInfoSections info={info} variant="dark" />
             ) : (
               <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center space-y-2">
-                <p className="text-xs text-slate-300 font-medium">
-                  Clica em <span className="text-amber-400 font-bold">"Obter Informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
+                <p className="text-xs text-[var(--text-3)] font-medium">
+                  Clica em <span className="text-[var(--race)] font-bold">"Obter Informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
                 </p>
               </div>
             )}
           </div>
         ) : (
           <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col items-center justify-center text-center gap-2.5">
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-[var(--text-3)]">
               Ainda não adicionaste o site oficial desta prova.
             </p>
             {onGoToEdit && (

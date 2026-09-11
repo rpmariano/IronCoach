@@ -8,7 +8,7 @@ import { Dialog } from '../shared/Sheet';
    para o que está bem — cada um com o seu "Entendido". Em baixo, "Falar
    com o Coach" e "Ignorar" para o conjunto. */
 const TONE = {
-  critical: { Icon: AlertTriangle, color: 'var(--danger)', bg: 'var(--tint-danger-bg)', bd: 'var(--tint-danger-bd)', text: '#fecaca', btnBg: 'rgba(248,113,113,.18)', btnColor: 'var(--danger)' },
+  critical: { Icon: AlertTriangle, color: 'var(--danger)', bg: 'var(--tint-danger-bg)', bd: 'var(--tint-danger-bd)', text: 'var(--danger-soft)', btnBg: 'rgba(248,113,113,.18)', btnColor: 'var(--danger)' },
   warning: { Icon: AlertTriangle, color: 'var(--warn)', bg: 'var(--tint-warn-bg)', bd: 'var(--tint-warn-bd)', text: 'var(--warn-soft)', btnBg: 'rgba(251,124,77,.18)', btnColor: 'var(--warn)' },
   info: { Icon: TrendingUp, color: 'var(--ok)', bg: 'rgba(52,211,153,.07)', bd: 'rgba(52,211,153,.26)', text: 'var(--ok-soft)', btnBg: 'rgba(52,211,153,.18)', btnColor: 'var(--ok)' },
 };

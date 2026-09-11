@@ -388,8 +388,8 @@ export default function Admin() {
 
   if (!canAccessAdmin) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-500 mt-20 fade-in">
-        <ShieldAlert size={48} className="text-red-500/50 mb-4" />
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text-3)] mt-20 fade-in">
+        <ShieldAlert size={48} className="text-[var(--danger)] mb-4" />
         <p>Acesso negado. Esta área é reservada a administradores e revisores.</p>
       </div>
     );
@@ -400,8 +400,8 @@ export default function Admin() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-slate-500 mt-20 fade-in">
-        <div className="w-8 h-8 border-4 border-slate-700 border-t-slate-400 rounded-full animate-spin mb-4" />
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text-3)] mt-20 fade-in">
+        <div className="w-8 h-8 border-4 border-[var(--border-glass)] border-t-slate-400 rounded-full animate-spin mb-4" />
         <p className="text-xs">A carregar dados de administração...</p>
       </div>
     );
@@ -409,9 +409,9 @@ export default function Admin() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center space-y-3 m-4 fade-in">
-        <p className="text-xs text-red-300">{error}</p>
-        <button onClick={loadAdminData} className="tap-h-44 text-[11px] text-red-200 underline">Tentar novamente</button>
+      <div className="rounded-2xl border border-[var(--tint-danger-bd)] bg-[var(--tint-danger-bg)] p-4 text-center space-y-3 m-4 fade-in">
+        <p className="text-xs text-[var(--danger)]">{error}</p>
+        <button onClick={loadAdminData} className="tap-h-44 text-[11px] text-[var(--danger)] underline">Tentar novamente</button>
       </div>
     );
   }
@@ -433,8 +433,8 @@ export default function Admin() {
     <div className="space-y-4 fade-in pb-8">
       {/* Banner para Bug Reviewer */}
       {isBugReviewer && (
-        <div className="bg-blue-500/15 border border-blue-500/30 rounded-2xl p-3 text-center">
-          <p className="text-xs font-semibold text-blue-300 flex items-center justify-center gap-1.5">
+        <div className="bg-[var(--tint-run-bg)] border border-[var(--tint-run-bd)] rounded-2xl p-3 text-center">
+          <p className="text-xs font-semibold text-[var(--run)] flex items-center justify-center gap-1.5">
             <User size={13} className="shrink-0" />
             Modo Revisor de Bugs — Acesso limitado a relatórios de erros apenas
           </p>
@@ -448,8 +448,8 @@ export default function Admin() {
             key={t.key}
             onClick={() => !isBugReviewer && setActiveTab(t.key)}
             disabled={isBugReviewer}
-            className={`shrink-0 flex items-center gap-1.5 min-h-[44px] border border-neutral-700 rounded-xl py-2 px-3 text-xs font-semibold transition ${
-              displayedTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
+            className={`shrink-0 flex items-center gap-1.5 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs font-semibold transition ${
+              displayedTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-[var(--text-3)] hover:text-[var(--text-2)] bg-[var(--surface-glass)]'
             } ${isBugReviewer ? 'cursor-default' : ''}`}
             style={displayedTab === t.key ? { color: '#fff' } : undefined}
           >
@@ -461,48 +461,48 @@ export default function Admin() {
       {displayedTab === 'overview' && (
         <div className="space-y-3 fade-in">
           <div className="grid grid-cols-2 gap-3">
-            <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
-              <div className="flex items-center gap-2 mb-1.5 text-slate-400">
+            <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
+              <div className="flex items-center gap-2 mb-1.5 text-[var(--text-3)]">
                 <Users size={16} />
                 <span className="text-xs">Utilizadores registados</span>
               </div>
               <p className="text-2xl font-bold leading-none">{users.length}</p>
             </div>
             
-            <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
-              <div className="flex items-center gap-2 mb-1.5 text-slate-400">
+            <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
+              <div className="flex items-center gap-2 mb-1.5 text-[var(--text-3)]">
                 <Utensils size={16} />
                 <span className="text-xs">Refeições registadas</span>
               </div>
               <p className="text-2xl font-bold leading-none">{meals.length}</p>
             </div>
 
-            <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
-              <div className="flex items-center gap-2 mb-1.5 text-slate-400">
+            <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
+              <div className="flex items-center gap-2 mb-1.5 text-[var(--text-3)]">
                 <Bot size={16} />
                 <span className="text-xs">Mensagens ao Coach</span>
               </div>
               <p className="text-2xl font-bold leading-none">{coachMsgs.filter(m => m.role === 'user').length}</p>
             </div>
 
-            <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
-              <div className="flex items-center gap-2 mb-1.5 text-slate-400">
+            <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
+              <div className="flex items-center gap-2 mb-1.5 text-[var(--text-3)]">
                 <Activity size={16} />
                 <span className="text-xs">Eventos hoje</span>
               </div>
               <p className="text-2xl font-bold leading-none">{logsToday.length}</p>
-              <p className="text-[11px] text-slate-500 mt-1">{successToday} sucesso · {errorsToday} erro</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">{successToday} sucesso · {errorsToday} erro</p>
             </div>
           </div>
           
-          <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 flex items-center justify-between">
+          <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] flex items-center justify-between">
             <div>
-              <p className="text-[11px] uppercase font-bold text-slate-500 mb-1">Estado do Sistema</p>
-              <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-400">
+              <p className="text-[11px] uppercase font-bold text-[var(--text-3)] mb-1">Estado do Sistema</p>
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-[var(--ok)]">
                 <CheckCircle2 size={16} /> Operacional
               </div>
             </div>
-            <button onClick={loadAdminData} className="tap-h-44 text-[11px] bg-neutral-800 px-3 py-1.5 rounded-lg text-slate-300 font-semibold active:scale-95">
+            <button onClick={loadAdminData} className="tap-h-44 text-[11px] bg-[var(--surface-strong)] px-3 py-1.5 rounded-lg text-[var(--text-3)] font-semibold active:scale-95">
               Atualizar
             </button>
           </div>
@@ -516,25 +516,25 @@ export default function Admin() {
             const msgCount = coachMsgs.filter(m => m.user_id === u.id && m.role === 'user').length;
             
             return (
-              <div key={u.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 flex justify-between items-center">
+              <div key={u.id} className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] flex justify-between items-center">
                 <div className="min-w-0 pr-3">
                   <p className="text-sm font-bold truncate">{u.display_name || u.email}</p>
-                  <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
-                  <p className="text-[11px] text-slate-600 mt-1.5">
+                  <p className="text-[11px] text-[var(--text-3)] truncate">{u.email}</p>
+                  <p className="text-[11px] text-[var(--text-3)] mt-1.5">
                     Criado a {new Date(u.created_at).toLocaleDateString('pt-PT')}
                   </p>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1.5">
                   <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                    u.tier === 'pro' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                    u.tier === 'pro' ? 'bg-[var(--tint-ok-bg)] text-[var(--ok)] border border-[var(--tint-ok-bd)]' : 'bg-[var(--surface-strong)] text-[var(--text-3)]'
                   }`}>
                     {u.tier?.toUpperCase() || 'FREE'}
                   </span>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="flex items-center gap-1 text-[11px] text-slate-400" title="Refeições">
+                    <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]" title="Refeições">
                       <Utensils size={10} /> {mealCount}
                     </span>
-                    <span className="flex items-center gap-1 text-[11px] text-slate-400" title="Mensagens Coach">
+                    <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]" title="Mensagens Coach">
                       <Bot size={10} /> {msgCount}
                     </span>
                   </div>
@@ -542,7 +542,7 @@ export default function Admin() {
               </div>
             );
           })}
-          {users.length === 0 && <p className="text-xs text-slate-500 text-center py-4">Nenhum utilizador encontrado.</p>}
+          {users.length === 0 && <p className="text-xs text-[var(--text-3)] text-center py-4">Nenhum utilizador encontrado.</p>}
         </div>
       )}
 
@@ -562,7 +562,7 @@ export default function Admin() {
                   key={s.key}
                   onClick={() => setBugReportsStatusFilter(s.key)}
                   className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
-                    bugReportsStatusFilter === s.key ? 'bg-neutral-800 text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                    bugReportsStatusFilter === s.key ? 'bg-[var(--surface-strong)] text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-[var(--text-3)] border-[var(--border-glass)] hover:border-[var(--border-glass-strong)]'
                   }`}
                 >
                   {s.label}
@@ -571,24 +571,24 @@ export default function Admin() {
             </div>
 
             {bugReportsLoading ? (
-              <div className="flex items-center justify-center py-12 text-slate-500 text-xs gap-2">
-                <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" /> A carregar reports...
+              <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-xs gap-2">
+                <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-slate-400 rounded-full animate-spin" /> A carregar reports...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="card rounded-2xl p-8 text-center bg-neutral-900/40 border border-neutral-800 text-slate-500 text-xs">
+              <div className="card rounded-2xl p-8 text-center bg-[var(--surface-soft)] border border-[var(--border-glass)] text-[var(--text-3)] text-xs">
                 Nenhum report de erro com o filtro selecionado.
               </div>
             ) : (
               <div className="space-y-2.5">
                 {filtered.map(item => (
-                  <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3">
+                  <div key={item.id} className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <p className="text-xs font-semibold text-slate-100 truncate">{item.title}</p>
-                          <span className="shrink-0 text-[11px] font-mono text-slate-500">{formatBugNumber(item.bug_number)}</span>
+                          <p className="text-xs font-semibold text-[var(--text-1)] truncate">{item.title}</p>
+                          <span className="shrink-0 text-[11px] font-mono text-[var(--text-3)]">{formatBugNumber(item.bug_number)}</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 truncate">
+                        <p className="text-[11px] text-[var(--text-3)] truncate">
                           {item.user_name || item.user_email || 'Utilizador desconhecido'} · {item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}
                         </p>
                       </div>
@@ -599,7 +599,7 @@ export default function Admin() {
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-300 line-clamp-3">{item.description}</p>
+                    <p className="text-xs text-[var(--text-3)] line-clamp-3">{item.description}</p>
 
                     <div className="flex gap-2">
                       <button
@@ -608,7 +608,7 @@ export default function Admin() {
                           loadBugNotifications(item.id);
                           loadBugAttachments(item.attachment_urls);
                         }}
-                        className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                        className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] bg-[var(--surface-strong)] hover:bg-[var(--surface-glass-hover)] active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-[var(--text-2)] transition border border-[var(--border-glass-strong)]"
                       >
                         <Eye size={14} /> Ver Detalhes
                       </button>
@@ -617,8 +617,8 @@ export default function Admin() {
                         disabled={bugReportUpdating}
                         className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl transition border disabled:opacity-50 ${
                           item.status === 'resolved'
-                            ? 'bg-neutral-800 hover:bg-neutral-700 text-slate-300 border-neutral-700'
-                            : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                            ? 'bg-[var(--surface-strong)] hover:bg-[var(--surface-glass-hover)] text-[var(--text-3)] border-[var(--border-glass-strong)]'
+                            : 'bg-[var(--tint-ok-bg)] hover:bg-[var(--tint-ok-bg-hover)] text-[var(--ok-soft)] border-[var(--tint-ok-bd)]'
                         }`}
                       >
                         {item.status === 'resolved' ? <><RotateCcw size={14} /> Reabrir</> : <><Check size={14} /> Marcar Resolvido</>}
@@ -649,20 +649,20 @@ export default function Admin() {
                 variant="dialog"
                 maxWidth="max-w-lg"
               >
-                <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
+                <div className="p-6 space-y-5 bg-[var(--bg-sheet)] text-[var(--text-2)]">
                   <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Descrição</label>
-                    <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 text-xs text-slate-200 whitespace-pre-wrap break-words">
+                    <label className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">Descrição</label>
+                    <div className="bg-[var(--bg-app)] rounded-2xl p-3 border border-[var(--border-glass)] text-xs text-[var(--text-2)] whitespace-pre-wrap break-words">
                       {selectedBugReport.description}
                     </div>
                   </div>
 
                   {selectedBugReport.attachment_urls && selectedBugReport.attachment_urls.length > 0 && (
                     <div className="space-y-1">
-                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Anexos ({selectedBugReport.attachment_urls.length})</label>
+                      <label className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">Anexos ({selectedBugReport.attachment_urls.length})</label>
                       <div className="space-y-2">
                         {bugAttachmentUrls.length === 0 ? (
-                          <p className="text-[11px] text-slate-500">A gerar links de acesso...</p>
+                          <p className="text-[11px] text-[var(--text-3)]">A gerar links de acesso...</p>
                         ) : (
                           bugAttachmentUrls.map((url, idx) => (
                             <a
@@ -670,7 +670,7 @@ export default function Admin() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[11px] text-blue-400 hover:text-blue-300 break-all truncate block"
+                              className="text-[11px] text-[var(--run)] hover:text-[var(--coach-soft)] break-all truncate block"
                             >
                               Ver anexo {idx + 1}
                             </a>
@@ -681,41 +681,41 @@ export default function Admin() {
                   )}
 
                   {selectedBugReport.status === 'resolved' && selectedBugReport.resolved_at && (
-                    <p className="text-[11px] text-emerald-400/80 text-center">
+                    <p className="text-[11px] text-[var(--ok)] text-center">
                       Resolvido a {new Date(selectedBugReport.resolved_at).toLocaleString('pt-PT')}
                     </p>
                   )}
 
                   {/* Notificações Enviadas e Respostas */}
                   {bugNotifications.length > 0 && (
-                    <div className="space-y-2 border-t border-neutral-800 pt-4">
-                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Histórico de Notificações e Respostas</label>
+                    <div className="space-y-2 border-t border-[var(--border-glass)] pt-4">
+                      <label className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">Histórico de Notificações e Respostas</label>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
                         {bugNotifications.map(notif => (
-                          <div key={notif.id} className="bg-neutral-950 rounded-lg p-2.5 border border-neutral-800 space-y-1.5 text-[11px]">
+                          <div key={notif.id} className="bg-[var(--bg-app)] rounded-lg p-2.5 border border-[var(--border-glass)] space-y-1.5 text-[11px]">
                             {/* Notificação Enviada */}
                             <div className="space-y-1">
-                              <p className="text-slate-400 font-semibold flex items-center gap-1.5"><Send size={11} className="shrink-0" /> Notificação Enviada:</p>
-                              <p className="text-slate-300 italic">{notif.message}</p>
-                              <p className="text-slate-500 text-[11px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
+                              <p className="text-[var(--text-3)] font-semibold flex items-center gap-1.5"><Send size={11} className="shrink-0" /> Notificação Enviada:</p>
+                              <p className="text-[var(--text-3)] italic">{notif.message}</p>
+                              <p className="text-[var(--text-3)] text-[11px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
                             </div>
 
                             {/* Resposta do Utilizador */}
                             {notif.response_status && (
-                              <div className="space-y-1 border-t border-neutral-700 pt-1.5">
-                                <p className={`font-semibold flex items-center gap-1.5 ${notif.response_status === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <div className="space-y-1 border-t border-[var(--border-glass-strong)] pt-1.5">
+                                <p className={`font-semibold flex items-center gap-1.5 ${notif.response_status === 'ok' ? 'text-[var(--ok)]' : 'text-[var(--danger)]'}`}>
                                   {notif.response_status === 'ok'
                                     ? <><CheckCircle2 size={11} className="shrink-0" /> OK - Funciona</>
                                     : <><XCircle size={11} className="shrink-0" /> Não Funciona</>}
                                 </p>
                                 {notif.response_message && (
-                                  <p className="text-slate-300">{notif.response_message}</p>
+                                  <p className="text-[var(--text-3)]">{notif.response_message}</p>
                                 )}
-                                <p className="text-slate-500 text-[11px]">{new Date(notif.responded_at).toLocaleString('pt-PT')}</p>
+                                <p className="text-[var(--text-3)] text-[11px]">{new Date(notif.responded_at).toLocaleString('pt-PT')}</p>
                               </div>
                             )}
                             {!notif.response_status && (
-                              <div className="text-slate-500 italic flex items-center gap-1.5"><Hourglass size={11} className="shrink-0" /> À espera de resposta...</div>
+                              <div className="text-[var(--text-3)] italic flex items-center gap-1.5"><Hourglass size={11} className="shrink-0" /> À espera de resposta...</div>
                             )}
                           </div>
                         ))}
@@ -723,18 +723,18 @@ export default function Admin() {
                     </div>
                   )}
 
-                  <div className="space-y-2 border-t border-neutral-800 pt-4">
-                    <label className="text-xs font-semibold text-slate-300">Notificar utilizador para testar novamente</label>
+                  <div className="space-y-2 border-t border-[var(--border-glass)] pt-4">
+                    <label className="text-xs font-semibold text-[var(--text-3)]">Notificar utilizador para testar novamente</label>
                     <textarea
                       rows={2}
                       value={bugNotificationMessage}
                       onChange={(e) => setBugNotificationMessage(e.target.value)}
                       placeholder="Ex: Já corrigimos o problema. Podes testar novamente?"
-                      className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                      className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                       disabled={bugNotificationSending || !selectedBugReport.user_id}
                     />
                     {!selectedBugReport.user_id && (
-                      <p className="text-[11px] text-red-400">Utilizador eliminado — não é possível enviar notificação.</p>
+                      <p className="text-[11px] text-[var(--danger)]">Utilizador eliminado — não é possível enviar notificação.</p>
                     )}
                   </div>
 
@@ -746,7 +746,7 @@ export default function Admin() {
                       disabled={bugReportUpdating}
                       className="flex-1"
                       icon={bugReportUpdating
-                        ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" />
+                        ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" />
                         : (selectedBugReport.status === 'resolved' ? <RotateCcw size={16} /> : <Check size={16} />)}
                     >
                       {bugReportUpdating ? 'A atualizar...' : (selectedBugReport.status === 'resolved' ? 'Reabrir' : 'Resolvido')}
@@ -756,7 +756,7 @@ export default function Admin() {
                       onClick={() => handleSendBugNotification(selectedBugReport)}
                       disabled={bugNotificationSending || !selectedBugReport.user_id || !bugNotificationMessage.trim()}
                       className="flex-1"
-                      icon={bugNotificationSending ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : <Send size={16} />}
+                      icon={bugNotificationSending ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : <Send size={16} />}
                     >
                       {bugNotificationSending ? 'A enviar...' : 'Notificar'}
                     </Button>
@@ -779,9 +779,9 @@ export default function Admin() {
         const statusLabels = { pending: 'Pendente', reviewed: 'Revisado', mapped: 'Mapeado', ignored: 'Ignorado' };
         const statusBadgeColors = {
           pending: 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]',
-          reviewed: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-          mapped: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-          ignored: 'bg-slate-800 text-slate-400 border-slate-700'
+          reviewed: 'bg-[var(--tint-run-bg)] text-[var(--run)] border-[var(--tint-run-bd)]',
+          mapped: 'bg-[var(--tint-ok-bg)] text-[var(--ok-soft)] border-[var(--tint-ok-bd)]',
+          ignored: 'bg-[var(--surface-strong)] text-[var(--text-3)] border-[var(--border-glass)]'
         };
 
         return (
@@ -798,7 +798,7 @@ export default function Admin() {
                   key={c.key}
                   onClick={() => setUnknownCategory(c.key)}
                   className={`shrink-0 min-h-[44px] text-xs px-3 py-1.5 rounded-xl border transition ${
-                    unknownCategory === c.key ? 'bg-neutral-800 text-white border-neutral-600 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                    unknownCategory === c.key ? 'bg-[var(--surface-strong)] text-white border-[var(--border-glass-strong)] font-semibold' : 'text-[var(--text-3)] border-[var(--border-glass)] hover:border-[var(--border-glass-strong)]'
                   }`}
                 >
                   {c.label}
@@ -819,7 +819,7 @@ export default function Admin() {
                   key={s.key}
                   onClick={() => setUnknownStatus(s.key)}
                   className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
-                    unknownStatus === s.key ? 'bg-neutral-800 text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
+                    unknownStatus === s.key ? 'bg-[var(--surface-strong)] text-[var(--danger)] border-[var(--tint-danger-bd)] font-semibold' : 'text-[var(--text-3)] border-[var(--border-glass)] hover:border-[var(--border-glass-strong)]'
                   }`}
                 >
                   {s.label}
@@ -828,11 +828,11 @@ export default function Admin() {
             </div>
 
             {unknownLoading ? (
-              <div className="flex items-center justify-center py-12 text-slate-500 text-xs gap-2">
-                <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" /> Carregando imagens de apps desconhecidas...
+              <div className="flex items-center justify-center py-12 text-[var(--text-3)] text-xs gap-2">
+                <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-slate-400 rounded-full animate-spin" /> Carregando imagens de apps desconhecidas...
               </div>
             ) : filtered.length === 0 ? (
-              <div className="card rounded-2xl p-8 text-center bg-neutral-900/40 border border-neutral-800 text-slate-500 text-xs">
+              <div className="card rounded-2xl p-8 text-center bg-[var(--surface-soft)] border border-[var(--border-glass)] text-[var(--text-3)] text-xs">
                 Nenhum screenshot de app desconhecida registado com os filtros selecionados.
               </div>
             ) : (
@@ -841,10 +841,10 @@ export default function Admin() {
                   const imageUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(item.image_path).data?.publicUrl;
 
                   return (
-                    <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3 flex flex-col justify-between">
+                    <div key={item.id} className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-3 flex flex-col justify-between">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neutral-800 text-slate-300">
+                          <span className="text-[11px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-[var(--surface-strong)] text-[var(--text-3)]">
                             {categoryLabels[item.category] || item.category}
                           </span>
                           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${statusBadgeColors[item.status] || statusBadgeColors.pending}`}>
@@ -857,15 +857,15 @@ export default function Admin() {
                             <img
                               src={imageUrl}
                               alt="Screenshot da app"
-                              className="w-16 h-16 object-cover rounded-xl border border-neutral-700 shrink-0 bg-neutral-950"
+                              className="w-16 h-16 object-cover rounded-xl border border-[var(--border-glass-strong)] shrink-0 bg-[var(--bg-app)]"
                               onError={(e) => { e.target.style.display = 'none'; }}
                             />
                           )}
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-slate-200 truncate">
+                            <p className="text-xs font-semibold text-[var(--text-2)] truncate">
                               {item.detected_app_guess ? `Palpite: ${item.detected_app_guess}` : 'App não identificada'}
                             </p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
+                            <p className="text-[11px] text-[var(--text-3)] mt-0.5">
                               {new Date(item.created_at).toLocaleString('pt-PT')}
                             </p>
                             {item.admin_notes && (
@@ -879,7 +879,7 @@ export default function Admin() {
 
                       <button
                         onClick={() => handleOpenUnknownModal(item)}
-                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] bg-[var(--surface-strong)] hover:bg-[var(--surface-glass-hover)] active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-[var(--text-2)] transition border border-[var(--border-glass-strong)]"
                       >
                         <Eye size={14} /> Consultar Imagem & Detalhes
                       </button>
@@ -904,9 +904,9 @@ export default function Admin() {
                   variant="dialog"
                   maxWidth="max-w-lg"
                 >
-                  <div className="p-6 space-y-5 bg-neutral-900 text-slate-200">
+                  <div className="p-6 space-y-5 bg-[var(--bg-sheet)] text-[var(--text-2)]">
                     {/* Screenshot Preview */}
-                    <div className="flex justify-center bg-neutral-950 rounded-2xl p-2 border border-neutral-800 max-h-72 overflow-hidden">
+                    <div className="flex justify-center bg-[var(--bg-app)] rounded-2xl p-2 border border-[var(--border-glass)] max-h-72 overflow-hidden">
                       {modalImgUrl ? (
                         <img
                           src={modalImgUrl}
@@ -914,16 +914,16 @@ export default function Admin() {
                           className="max-h-68 object-contain rounded-xl"
                         />
                       ) : (
-                        <p className="text-xs text-slate-500 py-8">Imagem não disponível no storage.</p>
+                        <p className="text-xs text-[var(--text-3)] py-8">Imagem não disponível no storage.</p>
                       )}
                     </div>
 
                     {/* Extracted Best Effort Result */}
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                      <label className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">
                         Resultado Extraído (Best Effort)
                       </label>
-                      <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 max-h-40 overflow-y-auto text-[11px] font-mono text-emerald-400">
+                      <div className="bg-[var(--bg-app)] rounded-2xl p-3 border border-[var(--border-glass)] max-h-40 overflow-y-auto text-[11px] font-mono text-[var(--ok)]">
                         <pre className="whitespace-pre-wrap break-words">
                           {JSON.stringify(selectedUnknownLog.best_effort_result, null, 2)}
                         </pre>
@@ -931,13 +931,13 @@ export default function Admin() {
                     </div>
 
                     {/* Admin Status & Notes Form */}
-                    <div className="space-y-3 pt-2 border-t border-neutral-800">
+                    <div className="space-y-3 pt-2 border-t border-[var(--border-glass)]">
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-300">Estado de Mapeamento</label>
+                        <label className="text-xs font-semibold text-[var(--text-3)]">Estado de Mapeamento</label>
                         <select
                           value={modalStatus}
                           onChange={(e) => setModalStatus(e.target.value)}
-                          className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none"
+                          className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none"
                         >
                           <option value="pending">Pendente (a aguardar revisão)</option>
                           <option value="reviewed">Revisado (analisado por admin)</option>
@@ -947,13 +947,13 @@ export default function Admin() {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-xs font-semibold text-slate-300">Notas de Administração</label>
+                        <label className="text-xs font-semibold text-[var(--text-3)]">Notas de Administração</label>
                         <textarea
                           rows={2}
                           value={modalNotes}
                           onChange={(e) => setModalNotes(e.target.value)}
                           placeholder="Ex: Identificado como Suunto App ecrã de resumo..."
-                          className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2 px-3 text-xs text-slate-200 outline-none resize-none"
+                          className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                         />
                       </div>
 
@@ -971,7 +971,7 @@ export default function Admin() {
                           onClick={handleSaveUnknownLog}
                           disabled={savingLog}
                           className="flex-1"
-                          icon={savingLog ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : <Check size={16} />}
+                          icon={savingLog ? <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-white rounded-full animate-spin" /> : <Check size={16} />}
                         >
                           {savingLog ? 'A Guardar...' : 'Guardar Alterações'}
                         </Button>
@@ -996,7 +996,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setMetricsRange(r)}
-                  className={`flex-1 min-h-[44px] border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
+                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-[var(--text-1)]' : 'text-[var(--text-3)]'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -1004,7 +1004,7 @@ export default function Admin() {
             </div>
 
             <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-slate-200 outline-none">
+              className="w-full bg-[var(--bg-sheet)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none">
               <option value="">Todos os utilizadores</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>{u.display_name || u.email}</option>
@@ -1012,26 +1012,26 @@ export default function Admin() {
             </select>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
+              <div className="card rounded-2xl p-3 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                 <p className="text-lg font-bold">{scopeMeals.length}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Refeições</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-0.5">Refeições</p>
               </div>
-              <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
+              <div className="card rounded-2xl p-3 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                 <p className="text-lg font-bold">{scopeMsgs.length}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Msgs Coach</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-0.5">Msgs Coach</p>
               </div>
-              <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
+              <div className="card rounded-2xl p-3 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                 <p className="text-lg font-bold">{selectedUserId ? 1 : activeUsers}</p>
-                <p className="text-[11px] text-slate-500 mt-0.5">Utiliz. ativos</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-0.5">Utiliz. ativos</p>
               </div>
             </div>
 
-            <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800">
+            <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
               <div className="flex items-center gap-2 mb-3">
-                <BarChart3 size={16} className="text-[var(--accent)]" />
+                <BarChart3 size={16} className="text-[var(--coach)]" />
                 <h2 className="text-sm font-semibold">Atividade por Dia</h2>
               </div>
-              <p className="text-xs text-slate-500 text-center py-6">Os gráficos detalhados requerem a biblioteca chart.js.<br/>Por agora, consulta os totais acima.</p>
+              <p className="text-xs text-[var(--text-3)] text-center py-6">Os gráficos detalhados requerem a biblioteca chart.js.<br/>Por agora, consulta os totais acima.</p>
             </div>
           </div>
         );
@@ -1101,10 +1101,10 @@ export default function Admin() {
           };
         }
         const CACHE_SIGNAL_STYLES = {
-          insuficiente: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
-          ja_poupa: { badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30', text: 'text-blue-300' },
+          insuficiente: { badge: 'bg-[var(--surface-strong)] text-[var(--text-3)] border-[var(--border-glass)]', text: 'text-[var(--text-3)]' },
+          ja_poupa: { badge: 'bg-[var(--tint-run-bg)] text-[var(--run)] border-[var(--tint-run-bd)]', text: 'text-[var(--run)]' },
           vale_a_pena: { badge: 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]', text: 'text-[var(--warn)]' },
-          ainda_nao: { badge: 'bg-slate-800 text-slate-400 border-slate-700', text: 'text-slate-300' },
+          ainda_nao: { badge: 'bg-[var(--surface-strong)] text-[var(--text-3)] border-[var(--border-glass)]', text: 'text-[var(--text-3)]' },
         };
         const cacheStyle = CACHE_SIGNAL_STYLES[cacheSignal.level];
 
@@ -1113,7 +1113,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 min-h-[44px] border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
+                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-[var(--text-1)]' : 'text-[var(--text-3)]'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -1121,27 +1121,27 @@ export default function Admin() {
             </div>
 
             {costLoading ? (
-              <div className="flex items-center justify-center py-10 text-slate-500 text-xs gap-2">
-                <div className="w-4 h-4 border-2 border-slate-700 border-t-slate-400 rounded-full animate-spin" /> A carregar...
+              <div className="flex items-center justify-center py-10 text-[var(--text-3)] text-xs gap-2">
+                <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-slate-400 rounded-full animate-spin" /> A carregar...
               </div>
             ) : (
               <>
-                <div className="card rounded-2xl p-4 text-center bg-neutral-900/50 border border-neutral-800">
-                  <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
+                <div className="card rounded-2xl p-4 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
+                  <p className="text-[11px] text-[var(--text-3)] uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
                   <p className="text-3xl font-extrabold">${totalCost.toFixed(4)}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{totalCalls} chamada(s) · {(totalIn + totalOut).toLocaleString('pt-PT')} tokens</p>
+                  <p className="text-[11px] text-[var(--text-3)] mt-1">{totalCalls} chamada(s) · {(totalIn + totalOut).toLocaleString('pt-PT')} tokens</p>
                 </div>
 
                 <div className="space-y-2">
                   {modules.length === 0 ? (
-                    <p className="text-xs text-slate-500 text-center py-6">Sem chamadas com dados de tokens neste período.</p>
+                    <p className="text-xs text-[var(--text-3)] text-center py-6">Sem chamadas com dados de tokens neste período.</p>
                   ) : modules.map(([mod, v]) => (
-                    <div key={mod} className="card rounded-xl p-3 bg-neutral-900/50 border border-neutral-800">
+                    <div key={mod} className="card rounded-xl p-3 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                       <div className="flex items-center justify-between mb-1.5">
                         <p className="text-xs font-semibold">{mod}</p>
-                        <p className="text-xs font-bold text-[var(--accent)]">${geminiCost(v.input, v.output).toFixed(4)}</p>
+                        <p className="text-xs font-bold text-[var(--coach)]">${geminiCost(v.input, v.output).toFixed(4)}</p>
                       </div>
-                      <p className="text-[11px] text-slate-500">{v.calls} chamada(s) · {v.input.toLocaleString('pt-PT')} in / {v.output.toLocaleString('pt-PT')} out tokens</p>
+                      <p className="text-[11px] text-[var(--text-3)]">{v.calls} chamada(s) · {v.input.toLocaleString('pt-PT')} in / {v.output.toLocaleString('pt-PT')} out tokens</p>
                     </div>
                   ))}
                 </div>
@@ -1153,7 +1153,7 @@ export default function Admin() {
                     reestruturação do prompt. Nos outros módulos o prompt é
                     pequeno e específico de cada pedido — caching não se
                     aplica. */}
-                <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-2.5">
+                <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold flex items-center gap-1.5">
                       <Bot size={14} className="text-[var(--mod-coach-to)]" /> Cache do Coach
@@ -1166,20 +1166,20 @@ export default function Admin() {
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <div className="text-center">
                       <p className="text-sm font-bold">{coachCalls}</p>
-                      <p className="text-[11px] text-slate-500">chamadas</p>
+                      <p className="text-[11px] text-[var(--text-3)]">chamadas</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-bold">{cacheHitPct}%</p>
-                      <p className="text-[11px] text-slate-500">já em cache</p>
+                      <p className="text-[11px] text-[var(--text-3)]">já em cache</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold">{sustainedHours}<span className="text-slate-600">/{activeHourCounts.length}</span></p>
-                      <p className="text-[11px] text-slate-500">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
+                      <p className="text-sm font-bold">{sustainedHours}<span className="text-[var(--text-3)]">/{activeHourCounts.length}</span></p>
+                      <p className="text-[11px] text-[var(--text-3)]">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-[11px] text-slate-600 text-center px-2">
+                <p className="text-[11px] text-[var(--text-3)] text-center px-2">
                   Preços de referência: ${GEMINI_PRICE_PER_M_INPUT.toFixed(2)} / milhão tokens input,
                   ${GEMINI_PRICE_PER_M_OUTPUT.toFixed(2)} / milhão output (gemini-flash-latest).
                   Tarifa promocional até 31-12-2026 — duplica a 01-01-2027.
@@ -1194,9 +1194,9 @@ export default function Admin() {
         <div className="space-y-2 fade-in">
           {logs.map(l => (
             <div key={l.id} className={`rounded-lg p-2.5 text-[11px] font-mono border ${
-              l.level === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-300' :
-              l.level === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
-              'bg-neutral-900 border-neutral-800 text-slate-400'
+              l.level === 'error' ? 'bg-[var(--tint-danger-bg)] border-[var(--tint-danger-bd)] text-[var(--danger)]' :
+              l.level === 'success' ? 'bg-[var(--tint-ok-bg)] border-[var(--tint-ok-bd)] text-[var(--ok-soft)]' :
+              'bg-[var(--bg-sheet)] border-[var(--border-glass)] text-[var(--text-3)]'
             }`}>
               <div className="flex justify-between items-start gap-2 mb-1">
                 <span className="font-bold opacity-75">[{l.module?.toUpperCase()}]</span>
@@ -1206,7 +1206,7 @@ export default function Admin() {
               {l.meta && <p className="mt-1 opacity-50 break-words">{JSON.stringify(l.meta)}</p>}
             </div>
           ))}
-          {logs.length === 0 && <p className="text-xs text-slate-500 text-center py-4">Sem logs recentes.</p>}
+          {logs.length === 0 && <p className="text-xs text-[var(--text-3)] text-center py-4">Sem logs recentes.</p>}
         </div>
       )}
     </div>

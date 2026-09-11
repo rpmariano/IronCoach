@@ -621,7 +621,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             title="Fechar"
             aria-label="Fechar"
           >
-            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
               <X size={16} />
             </span>
           </button>
@@ -649,7 +649,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           aria-busy={isAnalyzing || undefined}
           style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
-        <label className="text-[11px] text-slate-500 mb-1.5 block">Tipo de sessão</label>
+        <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
         <div className="flex gap-1.5 mb-4">
           {GYM_KINDS.map(k => {
             const Icon = k.icon;
@@ -677,13 +677,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
           />
-          <div className="flex items-center justify-center text-[11px] text-slate-500">Data do treino</div>
+          <div className="flex items-center justify-center text-[11px] text-[var(--text-3)]">Data do treino</div>
         </div>
 
         <div className="mb-4">
-          <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-slate-500 mb-1.5 block">
+          <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Nome da sessão (opcional) — ex.: "{kind === 'aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"
           </label>
           <input id="gr-nome-da-sessao-opcional-ex"
@@ -692,12 +692,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             value={name}
             onChange={e => { setName(e.target.value); setIsFormDirty(true); }}
             placeholder="Nome do treino"
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)]"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-ginasio-to)]"
           />
         </div>
 
         <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">
+          <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             {kind === 'aula' ? 'Tipo de aula' : 'Grupos musculares'} — podes escolher vários
           </label>
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -717,7 +717,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               <button
                 onClick={() => setCategoriesExpanded(true)}
                 type="button"
-                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
+                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
               >
                 +{hiddenCount} mais
               </button>
@@ -726,7 +726,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               <button
                 onClick={() => setCategoriesExpanded(false)}
                 type="button"
-                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
+                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
               >
                 Mostrar menos
               </button>
@@ -751,7 +751,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
         {!isEditing && (
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
             <div className="flex gap-1.5">
               <Chip
                 active={entryMethod === 'foto'}
@@ -784,13 +784,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
                     <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
                       <button
                         onClick={() => removePhoto(i)}
                         aria-label={`Remover print ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-slate-500 hover:text-red-500 transition"
+                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
                       >
-                        <span className="bg-white/90 border border-slate-200 rounded-full p-1 shadow-sm flex items-center justify-center">
+                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
                           <X size={14} />
                         </span>
                       </button>
@@ -798,7 +798,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                   ))}
                 </div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-slate-500">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
+                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
                 </div>
                 {photos.length < MAX_PHOTOS && (
                   <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-ginasio-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-ginasio-to)]/5 transition mb-4">
@@ -809,31 +809,31 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 )}
               </>
             ) : (
-              <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-4 bg-white/50">
+              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                <p className="text-xs text-slate-600 font-semibold">Escolhe os prints da app de treino (Hevy, Strong...)</p>
-                <p className="text-[11px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma sessão — a IA lê exercícios, séries e cargas automaticamente</p>
+                <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+                <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app de treino (Hevy, Strong...)</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma sessão — a IA lê exercícios, séries e cargas automaticamente</p>
               </label>
             )}
           </>
         ) : (
           <>
-            <label className="text-[11px] text-slate-500 mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
+            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <div>
-                <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-slate-500 block mb-1">Duração (ex.: 43m)</label>
+                <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
                 <input id="gr-duracao-ex-43m"
                   type="text"
                   inputMode="text"
                   value={durationStr}
                   onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 45m"
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
-                <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
+                <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
                 <input id="gr-calorias-kcal"
                   type="number"
                   min="0"
@@ -841,11 +841,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                   value={calories}
                   onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 350"
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
-                <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
+                <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
                 <input id="gr-fc-media-bpm"
                   type="number"
                   min="0"
@@ -853,11 +853,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                   value={avgHr}
                   onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 135"
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
               <div>
-                <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
+                <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
                 <input id="gr-fc-maxima-bpm"
                   type="number"
                   min="0"
@@ -865,13 +865,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                   value={maxHr}
                   onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
                   placeholder="Ex: 168"
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
                 />
               </div>
             </div>
             
             <div className="mb-4">
-              <label className="text-[12px] text-slate-500 mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+              <label className="text-[12px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
               <div className="flex gap-1.5">
                 {Array.from({ length: 10 }).map((_, i) => (
                   <button
@@ -881,18 +881,18 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                     // min-h-[44px] em vez de aspect-square: dez celulas de 44px de LARGURA nao
                     // cabem em 358px, e o piso do handoff e de altura (44 de largura so
                     // se exige a botoes que sao so icone).
-                    className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
+                    className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
                   >
                     {i + 1}
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
             </div>
             {isEditing ? (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] text-slate-500">Exercícios e séries</label>
+                  <label className="text-[11px] text-[var(--text-3)]">Exercícios e séries</label>
                   <AddButton
                     onClick={handleAddExercise}
                     type="button"
@@ -902,11 +902,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                   </AddButton>
                 </div>
                 {exercises.length === 0 ? (
-                  <p className="text-[11px] text-slate-400">Sem exercícios ainda.</p>
+                  <p className="text-[11px] text-[var(--text-3)]">Sem exercícios ainda.</p>
                 ) : (
                   <div className="space-y-2">
                     {exercises.map(ex => (
-                      <div key={ex.key} className="bg-white/5 border border-white/10 text-white rounded-xl p-3">
+                      <div key={ex.key} className="bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
                         <div className="flex items-center gap-2 mb-2">
                           <input
                             type="text"
@@ -914,23 +914,23 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                             value={ex.name}
                             onChange={e => { updateExercise(ex.key, { name: e.target.value }); setIsFormDirty(true); }}
                             placeholder="Nome do exercício"
-                            className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
+                            className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-[var(--border-glass)] focus:border-[var(--border-control)] pb-1"
                           />
-                          <button onClick={() => removeExercise(ex.key)} type="button" aria-label="Remover exercicio" className="tap-44 text-slate-400 hover:text-red-500 shrink-0">
+                          <button onClick={() => removeExercise(ex.key)} type="button" aria-label="Remover exercicio" className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
                             <Trash2 size={14} />
                           </button>
                         </div>
                         <div className="space-y-1.5">
                           {ex.sets.map((s, idx) => (
                             <div key={s.key} className="flex items-center gap-2">
-                              <span className="text-[11px] text-slate-400 w-14 shrink-0">Série {idx + 1}</span>
+                              <span className="text-[11px] text-[var(--text-3)] w-14 shrink-0">Série {idx + 1}</span>
                               <input
                                 type="number"
                                 aria-label={`Repetições da série ${idx + 1}`}
                                 value={s.reps}
                                 onChange={e => { updateSet(ex.key, s.key, { reps: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="Reps"
-                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
                               <input
                                 type="number"
@@ -939,9 +939,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                                 value={s.weight}
                                 onChange={e => { updateSet(ex.key, s.key, { weight: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="kg"
-                                className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
+                                className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
-                              <button onClick={() => removeSet(ex.key, s.key)} type="button" aria-label={`Remover serie ${idx + 1}`} className="tap-44 text-slate-400 hover:text-red-500 shrink-0">
+                              <button onClick={() => removeSet(ex.key, s.key)} type="button" aria-label={`Remover serie ${idx + 1}`} className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
                                 <X size={13} />
                               </button>
                             </div>
@@ -960,13 +960,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-slate-500 -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
+              <p className="text-[11px] text-[var(--text-3)] -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
             )}
           </>
         )}
 
         <div className="mb-4">
-          <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-slate-500 mb-1.5 block">
+          <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Observações (opcional) — ex.: "{kind === 'aula' ? 'aula puxada, professor novo' : 'treino de força, peso corporal'}"
           </label>
           <textarea id="gr-observacoes-opcional-ex"
@@ -975,7 +975,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto do treino..."
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
           />
         </div>
 

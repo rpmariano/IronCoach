@@ -23,7 +23,7 @@ export function Chip({
   const roundedClass = rounded === 'xl' ? 'rounded-xl' : 'rounded-full';
 
   // Estilo por defeito para estado não ativo
-  const inactiveClass = 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700';
+  const inactiveClass = 'bg-[var(--surface-faint)] border border-[var(--border-glass)] text-[var(--text-3)] hover:bg-[var(--surface-soft)] hover:text-[var(--text-2)]';
 
   // Estilos para estado ativo consoante a variante/módulo — pílula de vidro
   // (fundo e borda como tint translúcido da cor, texto na própria cor) em
@@ -37,7 +37,7 @@ export function Chip({
     nutrition: 'bg-[var(--mod-nutricao-to)]/15 text-[var(--mod-nutricao-to)] border-[var(--mod-nutricao-to)]/40 shadow-sm',
     body: 'bg-[var(--mod-corpo-to)]/15 text-[var(--mod-corpo-to)] border-[var(--mod-corpo-to)]/40 shadow-sm',
     coach: 'bg-[var(--mod-coach-to)]/15 text-[var(--mod-coach-to)] border-[var(--mod-coach-to)]/40 shadow-sm',
-    light: 'bg-slate-800 text-neutral-50 border-transparent shadow-sm'
+    light: 'bg-[var(--surface-strong)] text-[var(--text-1)] border-transparent shadow-sm'
   };
 
   return (

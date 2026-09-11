@@ -21,7 +21,7 @@ export function lisbonTodayISO() {
 
 // Ponto de "sem registo" nos calendários históricos — tom único partilhado
 // pelos 4 módulos (Nutrição, Ginásio, Corrida, Corpo), sem legenda própria.
-export const CALENDAR_NO_DATA_DOT = 'bg-slate-300';
+export const CALENDAR_NO_DATA_DOT = 'bg-[var(--text-3)]';
 
 /* URL de um ficheiro da pasta public/. O Vite prefixa o base nos caminhos
    absolutos do index.html, mas não nos que estão dentro do JSX — por isso

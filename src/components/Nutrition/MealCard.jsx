@@ -86,21 +86,21 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-nutricao)] shrink-0">
+          <div className="w-10 h-10 rounded-full bg-[var(--surface-soft)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--mod-nutricao)] shrink-0">
             <IconComponent size={20} />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-slate-800 leading-tight">
+            <h4 className="text-sm font-bold text-[var(--text-1)] leading-tight">
               {mealTypeLabel(meal.meal_type)}
             </h4>
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-[var(--text-3)] font-medium">
               {formattedDate} · {items.length} item(s)
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-slate-800">
+          <span className="text-sm font-bold text-[var(--text-1)]">
             {n.calories.toFixed(0)} kcal
           </span>
           {/* A linha inteira é clicável, mas o chevron é o controlo real —
@@ -110,7 +110,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             type="button"
             aria-label={expanded ? 'Fechar detalhes da refeição' : 'Ver detalhes da refeição'}
             aria-expanded={expanded}
-            className="tap-44 text-slate-400 hover:text-slate-600 shrink-0"
+            className="tap-44 text-[var(--text-3)] hover:text-[var(--text-1)] shrink-0"
           >
             {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -119,23 +119,23 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="space-y-3 pt-2 border-t border-slate-200/60 fade-in">
+        <div className="space-y-3 pt-2 border-t border-[var(--border-glass)] fade-in">
           {/* Pílulas Coloridas com Ícones + Valores Reais */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
-              <Flame size={14} className="text-slate-500" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
+              <Flame size={14} className="text-[var(--text-3)]" />
               {n.calories.toFixed(0)} kcal
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
-              <Beef size={14} className="text-slate-500" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
+              <Beef size={14} className="text-[var(--text-3)]" />
               {n.protein.toFixed(1)}g Proteína
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
-              <Wheat size={14} className="text-slate-500" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
+              <Wheat size={14} className="text-[var(--text-3)]" />
               {n.carbs.toFixed(1)}g Hidratos
             </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 border border-slate-200 text-slate-800 shadow-xs flex items-center gap-1.5">
-              <Droplet size={14} className="text-slate-500" />
+            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
+              <Droplet size={14} className="text-[var(--text-3)]" />
               {n.fat.toFixed(1)}g Gordura
             </span>
           </div>
@@ -143,16 +143,16 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           {/* Photos if present */}
           {meal.photo_paths?.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Fotografias</span>
+              <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider">Fotografias</span>
               {photosLoading ? (
-                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-3)] py-2">
                   <Loader2 size={14} className="animate-spin" /> A carregar fotos...
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {photos.map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                      <img src={url} alt="Refeição" className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-xs hover:opacity-95 transition" />
+                      <img src={url} alt="Refeição" className="w-20 h-20 object-cover rounded-xl border border-[var(--border-glass)] shadow-xs hover:opacity-95 transition" />
                     </a>
                   ))}
                 </div>
@@ -161,11 +161,11 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           )}
 
           {/* Observações — só leitura; alterar é pelo botão "Editar" */}
-          <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-              <MessageSquare size={14} className="text-slate-400" /> Observações
+          <div className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-2)]">
+              <MessageSquare size={14} className="text-[var(--text-3)]" /> Observações
             </div>
-            <p className="text-xs text-slate-500 italic mt-1">
+            <p className="text-xs text-[var(--text-3)] italic mt-1">
               {meal.notes || 'Sem observações.'}
             </p>
           </div>
@@ -175,17 +175,17 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             const ni = itemNutrients(item);
 
             return (
-              <div key={item.id} className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs space-y-2">
-                <span className="text-xs font-bold text-slate-800 capitalize block">{item.name || item.food_item?.name || 'Alimento'}</span>
+              <div key={item.id} className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs space-y-2">
+                <span className="text-xs font-bold text-[var(--text-1)] capitalize block">{item.name || item.food_item?.name || 'Alimento'}</span>
 
                 <div className="flex items-center gap-2">
-                  <div className="bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800">
+                  <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-lg px-2.5 py-1 text-xs font-bold text-[var(--text-1)]">
                     {item.amount_g || item.quantity_grams || item.quantity || 100}
                   </div>
-                  <span className="text-xs text-slate-400 font-medium">gramas</span>
+                  <span className="text-xs text-[var(--text-3)] font-medium">gramas</span>
                 </div>
 
-                <p className="text-[11px] text-slate-400 font-medium">
+                <p className="text-[11px] text-[var(--text-3)] font-medium">
                   {ni.calories.toFixed(0)} kcal · P {ni.protein.toFixed(1)}g · H {ni.carbs.toFixed(1)}g · G {ni.fat.toFixed(1)}g
                 </p>
               </div>
@@ -194,12 +194,12 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
 
           {/* Análise do Coach */}
           {coachCommentary && (
-            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <div className="bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
-              <div className="text-xs text-slate-700 font-normal">
+              <div className="text-xs text-[var(--text-2)] font-normal">
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>

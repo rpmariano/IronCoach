@@ -93,7 +93,7 @@ export default function RaceLevelSuggestion({
 
   if (result.level == null) {
     return (
-      <p className="text-[11px] text-slate-400 mt-1.5 flex items-start gap-1.5">
+      <p className="text-[11px] text-[var(--text-3)] mt-1.5 flex items-start gap-1.5">
         <Sparkles size={12} className="shrink-0 mt-0.5 opacity-60" />
         <span>Ainda sem dados suficientes dos últimos treinos (menos de 3 das últimas 4 semanas com registo) para sugerir automaticamente o teu nível para esta prova.</span>
       </p>

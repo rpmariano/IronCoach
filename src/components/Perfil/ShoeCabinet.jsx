@@ -228,13 +228,13 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
         </div>
         <button
           onClick={openNew}
-          className="tap-h-44 flex items-center gap-1 text-[11px] font-bold px-3 rounded-full bg-white/10 border border-white/10 text-slate-200 hover:bg-white/20 active:scale-95 transition"
+          className="tap-h-44 flex items-center gap-1 text-[11px] font-bold px-3 rounded-full bg-[var(--surface-strong)] border border-[var(--border-glass)] text-[var(--text-2)] hover:bg-white/20 active:scale-95 transition"
         >
           <Plus size={13} /> Adicionar
         </button>
       </div>
 
-      <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+      <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
         Os km de cada par somam-se sozinhos a partir das corridas em que o
         escolheres. A vida útil mostrada já está ajustada ao teu peso
         {weightKg ? ` (${weightKg} kg)` : ''} — um corredor mais pesado gasta
@@ -242,9 +242,9 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
       </p>
 
       {active.length === 0 && retired.length === 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
-          <Footprints size={24} className="mx-auto mb-2 text-slate-600" />
-          <p className="text-[11px] text-slate-500">
+        <div className="rounded-2xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-6 text-center">
+          <Footprints size={24} className="mx-auto mb-2 text-[var(--text-3)]" />
+          <p className="text-[11px] text-[var(--text-3)]">
             Ainda não tens sapatilhas no armário. Adiciona um par para
             começares a contar os km.
           </p>
@@ -266,7 +266,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
 
       {retired.length > 0 && (
         <div className="mt-4">
-          <p className="text-[11px] uppercase font-bold tracking-wide text-slate-600 mb-2">
+          <p className="text-[11px] uppercase font-bold tracking-wide text-[var(--text-3)] mb-2">
             Aposentadas
           </p>
           <div className="space-y-2.5 opacity-60">
@@ -295,7 +295,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
         variant="dialog"
         maxWidth="max-w-lg"
       >
-        <div className="p-6 space-y-4 bg-neutral-900 text-slate-200">
+        <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Marca" htmlFor="shoe-marca">
               <input
@@ -356,9 +356,9 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
             />
           </Field>
 
-          <div className="space-y-1.5 pt-1 border-t border-neutral-800">
+          <div className="space-y-1.5 pt-1 border-t border-[var(--border-glass)]">
             <div className="flex items-center justify-between pt-3">
-              <label htmlFor="shoe-vida-util" className="text-xs font-semibold text-slate-300">
+              <label htmlFor="shoe-vida-util" className="text-xs font-semibold text-[var(--text-3)]">
                 Vida útil (km)
               </label>
               <button
@@ -372,7 +372,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
                 }}
               >
                 {askingCarol
-                  ? <><div className="w-3 h-3 border-2 border-slate-600 border-t-current rounded-full animate-spin" /> A perguntar...</>
+                  ? <><div className="w-3 h-3 border-2 border-[var(--border-glass-strong)] border-t-current rounded-full animate-spin" /> A perguntar...</>
                   : <><Sparkles size={12} /> Perguntar à Carol</>}
               </button>
             </div>
@@ -384,7 +384,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
               placeholder="Ex.: 700"
               className={inputClass}
             />
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
               Valor de referência para um corredor de {REFERENCE_WEIGHT_KG} kg — a app
               ajusta-o ao teu peso. A Carol consegue estimá-lo a partir da marca e
               modelo; se não conhecer o par, escreve-o à mão.
@@ -432,7 +432,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
 
 export default ShoeCabinet;
 
-const inputClass = 'w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-[var(--mod-corrida)]/60';
+const inputClass = 'w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-sm text-[var(--text-2)] outline-none focus:border-[var(--mod-corrida)]/60';
 
 /* `htmlFor` liga a etiqueta ao campo que o Field embrulha — sem isto a
    etiqueta é só visual e o campo chega ao leitor de ecrã sem nome
@@ -440,9 +440,9 @@ const inputClass = 'w-full bg-neutral-950 border border-neutral-700 rounded-xl p
 function Field({ label, hint, htmlFor, children }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-slate-300" htmlFor={htmlFor}>{label}</label>
+      <label className="text-xs font-semibold text-[var(--text-3)]" htmlFor={htmlFor}>{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
+      {hint && <p className="text-[11px] text-[var(--text-3)]">{hint}</p>}
     </div>
   );
 }
@@ -455,11 +455,11 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
   const barPct = wear.pct == null ? 0 : Math.min(100, wear.pct);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3.5 space-y-2.5">
+    <div className="rounded-2xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3.5 space-y-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13px] font-bold text-slate-100 truncate">{shoeLabel(shoe)}</p>
-          <p className="text-[11px] text-slate-500 truncate">
+          <p className="text-[13px] font-bold text-[var(--text-1)] truncate">{shoeLabel(shoe)}</p>
+          <p className="text-[11px] text-[var(--text-3)] truncate">
             {[startedOnLabel(shoe.started_on), shoe.shoe_category].filter(Boolean).join(' · ') || '—'}
           </p>
         </div>
@@ -475,19 +475,19 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
       </div>
 
       {wear.level === 'sem_estimativa' ? (
-        <p className="text-[11px] text-slate-400">
-          <span className="font-bold text-slate-200">{wear.km} km</span> acumulados ·
-          <span className="text-slate-500"> sem vida útil definida</span>
+        <p className="text-[11px] text-[var(--text-3)]">
+          <span className="font-bold text-[var(--text-2)]">{wear.km} km</span> acumulados ·
+          <span className="text-[var(--text-3)]"> sem vida útil definida</span>
         </p>
       ) : (
         <>
           <div className="flex items-baseline justify-between text-[11px]">
-            <span className="text-slate-300">
-              <span className="font-bold text-slate-100">{wear.km}</span> / {wear.lifespanKm} km
+            <span className="text-[var(--text-3)]">
+              <span className="font-bold text-[var(--text-1)]">{wear.km}</span> / {wear.lifespanKm} km
             </span>
             <span className="font-bold" style={{ color: style.color }}>{wear.pct}%</span>
           </div>
-          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div className="h-1.5 rounded-full bg-[var(--surface-strong)] overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{ width: `${barPct}%`, background: style.bar }}
@@ -523,8 +523,8 @@ function RowAction({ icon: Icon, label, onClick, danger }) {
       onClick={onClick}
       className={`flex-1 flex items-center justify-center gap-1 min-h-[44px] text-[11px] font-semibold py-1.5 rounded-lg border transition active:scale-95 ${
         danger
-          ? 'border-red-500/25 text-red-400/90 hover:bg-red-500/10'
-          : 'border-white/10 text-slate-300 hover:bg-white/10'
+          ? 'border-[var(--tint-danger-bd)] text-[var(--danger)] hover:bg-[var(--tint-danger-bg)]'
+          : 'border-[var(--border-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)]'
       }`}
     >
       <Icon size={11} /> {label}

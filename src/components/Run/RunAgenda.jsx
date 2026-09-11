@@ -741,7 +741,7 @@ export default function RunAgenda({ onClose }) {
       variant="dialog"
     >
       <div className="p-6 space-y-6">
-        <p className="text-sm text-slate-600 leading-relaxed text-center">
+        <p className="text-sm text-[var(--text-3)] leading-relaxed text-center">
           {validationError}
         </p>
         <div className="flex justify-center">
@@ -792,7 +792,7 @@ export default function RunAgenda({ onClose }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <CalendarPlus size={16} style={{ color: 'var(--mod-prova)' }} />
-              <h2 className="text-sm font-semibold text-slate-800">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
+              <h2 className="text-sm font-semibold text-[var(--text-1)]">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
             </div>
             <button
               onClick={attemptCloseForm}
@@ -803,14 +803,14 @@ export default function RunAgenda({ onClose }) {
               title="Fechar"
               aria-label="Fechar"
             >
-              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
                 <X size={16} />
               </span>
             </button>
           </div>
 
           {/* Subnav AAA — idêntico ao Perfil / Dashboard */}
-          <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+          <div className="relative flex gap-2 p-1.5 bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
             {/* Sliding indicator com tint translúcido e borda âmbar */}
             <div
               className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
@@ -835,7 +835,7 @@ export default function RunAgenda({ onClose }) {
                 }}
                 style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
                 className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 min-h-[44px] text-xs font-bold rounded-xl transition-colors duration-300 ${
-                  activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
+                  activePage === t.key ? '' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'
                 }`}
               >
                 <t.icon size={14} /> {t.label}
@@ -898,23 +898,23 @@ export default function RunAgenda({ onClose }) {
               {/* 1.1 Data · 1.2 Local */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label htmlFor="ra-data" className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-data" className="text-[11px] text-[var(--text-3)] mb-1 block">Data <span className="text-[var(--danger)]">*</span></label>
                   <input id="ra-data"
                     type="date"
                     value={draft.date}
                     onChange={e => { updateDraft('date', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label htmlFor="ra-local" className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-local" className="text-[11px] text-[var(--text-3)] mb-1 block">Local <span className="text-[var(--danger)]">*</span></label>
                   <input id="ra-local"
                     type="text"
                     maxLength={120}
                     placeholder="Ex.: Lisboa"
                     value={draft.location}
                     onChange={e => { updateDraft('location', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
               </div>
@@ -922,22 +922,22 @@ export default function RunAgenda({ onClose }) {
               {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label htmlFor="ra-nome-da-prova" className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-nome-da-prova" className="text-[11px] text-[var(--text-3)] mb-1 block">Nome da prova <span className="text-[var(--danger)]">*</span></label>
                   <input id="ra-nome-da-prova"
                     type="text"
                     maxLength={120}
                     placeholder="Ex.: Meia Maratona de Lisboa"
                     value={draft.name}
                     onChange={e => { updateDraft('name', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label htmlFor="ra-tipo" className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-tipo" className="text-[11px] text-[var(--text-3)] mb-1 block">Tipo <span className="text-[var(--danger)]">*</span></label>
                   <select id="ra-tipo"
                     value={draft.race_type}
                     onChange={e => { updateTerrain(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   >
                     {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                   </select>
@@ -947,11 +947,11 @@ export default function RunAgenda({ onClose }) {
               {/* Distância · D+ (só em Trail) */}
               <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div className="min-w-0">
-                  <label htmlFor="ra-distancia" className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-distancia" className="text-[11px] text-[var(--text-3)] mb-1 block">Distância <span className="text-[var(--danger)]">*</span></label>
                   <select id="ra-distancia"
                     value={draft.distance_km}
                     onChange={e => { updateDistance(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   >
                     {RACE_DISTANCE_OPTIONS.map(opt => (
                       <option key={opt.km} value={opt.km}>{opt.label}</option>
@@ -960,7 +960,7 @@ export default function RunAgenda({ onClose }) {
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">
-                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
+                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">D+ (desnível, m) <span className="text-[var(--danger)]">*</span></label>
                     <input id="ra-d-desnivel-m"
                       type="number"
                       min="0"
@@ -969,7 +969,7 @@ export default function RunAgenda({ onClose }) {
                       placeholder="Ex.: 1200"
                       value={draft.elevation_gain_m}
                       onChange={e => { updateElevation(e.target.value) }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                     />
                   </div>
                 )}
@@ -977,7 +977,7 @@ export default function RunAgenda({ onClose }) {
 
               {/* Nível do atleta para esta prova */}
               <ExperienceLevelHelp
-                label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
+                label={<>O teu nível para esta prova <span className="text-[var(--danger)]">*</span></>}
                 variant="dark"
                 context="prova"
                 raceType={draft.race_type}
@@ -989,12 +989,12 @@ export default function RunAgenda({ onClose }) {
                   id="ra-nivel-para-esta-prova"
                   value={draft.experience_level}
                   onChange={e => handleChooseExperienceLevel(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                 >
                   <option value="">Escolhe...</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
@@ -1026,15 +1026,15 @@ export default function RunAgenda({ onClose }) {
 
               {/* Prioridade da prova */}
               <div>
-                <label htmlFor="ra-prioridade-desta-prova" className="text-[11px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
+                <label htmlFor="ra-prioridade-desta-prova" className="text-[11px] text-[var(--text-3)] mb-1 block">Prioridade desta prova <span className="text-[var(--danger)]">*</span></label>
                 <select id="ra-prioridade-desta-prova"
                   value={draft.race_priority}
                   onChange={e => { updateDraft('race_priority', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                 >
                   {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {racePriorityDescription(draft.race_priority)}
                 </p>
               </div>
@@ -1042,7 +1042,7 @@ export default function RunAgenda({ onClose }) {
               {/* Objetivo de tempo total · Objetivo de pace */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label htmlFor="ra-objetivo-tempo-total" className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-objetivo-tempo-total" className="text-[11px] text-[var(--text-3)] mb-1 block">Objetivo tempo total <span className="text-[var(--danger)]">*</span></label>
                   <input id="ra-objetivo-tempo-total"
                     type="text"
                     maxLength={60}
@@ -1050,52 +1050,52 @@ export default function RunAgenda({ onClose }) {
                     value={draft.target_time}
                     onChange={e => { handleTargetTimeChange(e.target.value) }}
                     onBlur={normalizeTargetTimeOnBlur}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label htmlFor="ra-objetivo-pace" className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
+                  <label htmlFor="ra-objetivo-pace" className="text-[11px] text-[var(--text-3)] mb-1 block">Objetivo pace <span className="text-[var(--danger)]">*</span></label>
                   <input id="ra-objetivo-pace"
                     type="text"
                     maxLength={20}
                     placeholder="Ex.: 5.20 /km"
                     value={draft.target_pace}
                     onChange={e => { handleTargetPaceChange(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
+              <p className="text-[11px] text-[var(--text-3)] -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
 
               {/* Site da prova (opcional) */}
               <div>
-                <label htmlFor="ra-site-da-prova-opcional" className="text-[11px] text-slate-500 mb-1 block">Site da prova (opcional)</label>
+                <label htmlFor="ra-site-da-prova-opcional" className="text-[11px] text-[var(--text-3)] mb-1 block">Site da prova (opcional)</label>
                 <input id="ra-site-da-prova-opcional"
                   type="url"
                   maxLength={200}
                   placeholder="https://..."
                   value={draft.website}
                   onChange={e => { updateDraft('website', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                 />
               </div>
 
               {/* Notas (opcional) */}
               <div>
-                <label htmlFor="ra-notas-opcional" className="text-[11px] text-slate-500 mb-1 block">Notas (opcional)</label>
+                <label htmlFor="ra-notas-opcional" className="text-[11px] text-[var(--text-3)] mb-1 block">Notas (opcional)</label>
                 <textarea id="ra-notas-opcional"
                   rows={2}
                   maxLength={300}
                   placeholder="Logística, nutrição planeada..."
                   value={draft.notes}
                   onChange={e => { updateDraft('notes', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)] resize-none"
                 />
               </div>
 
               {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] flex flex-col gap-1.5 mt-1">
+                  <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação do Coach
                   </span>
                   {viability.flags.length > 0 ? (
@@ -1106,7 +1106,7 @@ export default function RunAgenda({ onClose }) {
                       </p>
                     ))
                   ) : (
-                    <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
+                    <p className="text-[11px] font-medium flex items-center gap-1.5 text-[var(--ok)]">
                       <CheckCircle size={12} />
                       Preparação adequada para a prova
                     </p>
@@ -1154,7 +1154,7 @@ export default function RunAgenda({ onClose }) {
           onClick={handleSaveForm}
           disabled={isSubmitting || !draft.name.trim()}
           type="button"
-          className="w-full text-xs text-amber-950"
+          className="w-full text-xs text-[var(--race-ink)]"
           icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
         >
           Guardar Prova

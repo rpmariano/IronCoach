@@ -10,7 +10,7 @@
 @import "./tokens/motion.css";
 
 :root {
-  color-scheme: only light;
+  color-scheme: dark;
 
   /* Brand Colors — Monocromático (Accent mapeado para Green-dark) */
   --accent:#38bdf8; --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:#7dd3fc;
@@ -144,29 +144,65 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ===== Overrides de cor — portados do legado ===== */
-/* [class~="text-white"] { color:#0f172a !important; } */
-/* [class~="text-slate-200"] { color:#1e293b !important; } */
-/* [class~="text-slate-300"] { color:#e2e8f0 !important; } */
-/* [class~="text-slate-400"] { color:#475569 !important; } */
-/* [class~="text-slate-500"] { color:#516071 !important; } */
-[class~="text-slate-600"] { color:#5c6b7d !important; }
-[class~="text-emerald-400"] { color:#047857 !important; }
-[class~="text-red-400"] { color:#b91c1c !important; }
-[class~="text-[var(--accent)]"] { color: var(--accent-ink) !important; }
+/* ===== Os overrides de cor saíram daqui (impeccable colorize, 2026-09-11) =====
+   Havia dois blocos de `[class~="…"] { … !important }` — "Overrides de cor —
+   portados do legado" (aqui) e "OVERRIDES DARK MODE (PREMIUM)" (no fim do
+   ficheiro) — que reescreviam ~1 800 classes de paleta Tailwind espalhadas por
+   src/components. Era uma segunda camada de tema invisível a quem lê o JSX: um
+   `text-slate-800` era claro, não escuro, e um `text-emerald-400` saía verde
+   ESCURO sobre fundo escuro. Os ecrãs passaram a pedir os tokens pelo nome
+   (`text-[var(--text-1)]`, `bg-[var(--surface-glass)]`, …) e os overrides
+   desapareceram.
 
-/* [class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; } */
-/* [class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; } */
-/* [class~="bg-neutral-800"] { background-color:var(--surf-800) !important; } */
-[class~="bg-neutral-700"] { background-color:var(--surf-700) !important; }
-[class~="border-neutral-800"] { border-color:var(--brd-800) !important; }
-[class~="border-neutral-700"] { border-color:var(--brd-700) !important; }
+   Tabela de mapeamento — coluna do meio é o que o override produzia até aqui,
+   logo o que a migração tinha de preservar:
+
+     CLASSE LEGADA              O QUE DAVA ATÉ AQUI            TOKEN NOVO
+     text-slate-900 e 800       #f8fafc, #f1f5f9               --text-1 (#f8fafc)
+     text-slate-100             #f1f5f9 (Tailwind)             --text-1
+     text-neutral-50            #fafafa (Tailwind)             --text-1
+     text-slate-700 e 200       #e2e8f0                        --text-2 (#e2e8f0)
+     text-slate-600, 500 e 400  #cbd5e1                        --text-3 (#cbd5e1)
+     text-slate-300             #cbd5e1 (Tailwind)             --text-3
+     placeholder de slate-N     #94a3b8 (Tailwind)             --text-muted (o placeholder
+                                                               não pode pesar como valor)
+     text-emerald-N             #047857 (ERRADO: verde escuro) --ok (#34d399)
+     text-red-N e text-rose-N   #b91c1c (ERRADO: vermelho escuro) --danger (#f87171)
+     text-amber-N               Tailwind                       --race e --race-ink
+     text-cyan-N                Tailwind                       --coach e --coach-soft
+     text-sky-N e text-blue-N   Tailwind                       --run (água e corrida)
+     text-var(--accent)         var(--accent-ink) #7dd3fc      cor do módulo do ecrã
+
+     bg-white                   rgba(255,255,255,.02)          --surface-faint
+     bg-slate-50 e variantes    rgba(255,255,255,.03)          --surface-soft
+     bg-white a 40%             rgba(255,255,255,.04)          --surface-dim
+     bg-slate-100, bg-white 5%  rgba(255,255,255,.05)          --surface-glass
+     bg-white a 60%             rgba(255,255,255,.06)          --surface-raised
+     bg-white a 80%             rgba(255,255,255,.08)          --surface-glass-hover
+     bg-slate-200, bg-white 10% rgba(255,255,255,.10)          --surface-strong
+     bg-neutral-950, 900 e 800  #0a0a0a, #171717, #262626      --bg-app, --bg-sheet, --surface-strong
+     bg-neutral-700             var(--surf-700) #dbe2ec        --surface-glass-hover
+                                (ERRADO: caixa clara sobre escuro)
+     bg de emerald/red/amber/   Tailwind                       --tint-SIGNIFICADO-bg
+       cyan/sky
+
+     border-slate-50 e 100      rgba(255,255,255,.03 e .05)    --border-faint (.05)
+     border-slate-200 e vars    rgba(255,255,255,.10)          --border-glass
+     border-slate-300           rgba(255,255,255,.15)          --border-glass-strong (.14)
+     border-slate-400 e 500     #94a3b8 (Tailwind)             --border-control (tem de se ver)
+     border-slate-600 e 700     Tailwind                       --border-glass e -strong
+     border-neutral-800 e 700   var(--brd-800) #d3dae4         --border-glass e -strong
+                                (ERRADO: moldura clara do tema antigo)
+     border dos significados    Tailwind                       --tint-SIGNIFICADO-bd
+
+   As classes de paleta que sobram em src/components estão (a) dentro de
+   comentários que contam esta história e (b) em DesignSystem, que é bancada. */
 
 /* ===== Carta / card =====
    Fundo alinhado com .module-card-contrast e com o glass premium inline
    (bg-white/5) usado nos cartões BI — a passagem para o dark mode "deep-teal"
    (ver commit 91a4411) atualizou essa classe e as utilities Tailwind via
-   overrides acima, mas deixou esta por migrar: o branco a 40% ainda vinha do
+   os overrides que entretanto saíram (tabela acima), mas deixou esta por migrar: o branco a 40% ainda vinha do
    tema claro original, o que dava um retângulo cinzento "lavado" por cima do
    fundo escuro em todos os ecrãs que usam className="card" sem uma cor de
    fundo própria (Login, Corrida/Ginásio/Corpo BI, calendários, Água). */
@@ -546,26 +582,3 @@ html[data-page-hidden] .coach-breathing {
   .water-wave-svg,
   .animate-pulse { animation: none !important; }
 }
-
-
-/* ===== OVERRIDES DARK MODE (PREMIUM) ===== */
-[class~="text-slate-900"], [class*="text-slate-900/"] { color: #f8fafc !important; }
-[class~="text-slate-800"], [class*="text-slate-800/"] { color: #f1f5f9 !important; }
-[class~="text-slate-700"], [class*="text-slate-700/"] { color: #e2e8f0 !important; }
-[class~="text-slate-600"], [class*="text-slate-600/"] { color: #cbd5e1 !important; }
-[class~="text-slate-500"], [class*="text-slate-500/"] { color: #cbd5e1 !important; }
-[class~="text-slate-400"], [class*="text-slate-400/"] { color: #cbd5e1 !important; }
-
-[class~="bg-slate-50"], [class*="bg-slate-50/"] { background-color: rgba(255, 255, 255, 0.03) !important; }
-[class~="bg-slate-100"], [class*="bg-slate-100/"] { background-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="bg-slate-200"], [class*="bg-slate-200/"] { background-color: rgba(255, 255, 255, 0.1) !important; }
-[class~="bg-white"] { background-color: rgba(255, 255, 255, 0.02) !important; }
-[class~="bg-white/80"] { background-color: rgba(255, 255, 255, 0.08) !important; }
-[class~="bg-white/60"] { background-color: rgba(255, 255, 255, 0.06) !important; }
-[class~="bg-white/50"] { background-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="bg-white/40"] { background-color: rgba(255, 255, 255, 0.04) !important; }
-
-[class~="border-slate-50"], [class*="border-slate-50/"] { border-color: rgba(255, 255, 255, 0.03) !important; }
-[class~="border-slate-100"], [class*="border-slate-100/"] { border-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="border-slate-200"], [class*="border-slate-200/"] { border-color: rgba(255, 255, 255, 0.1) !important; }
-[class~="border-slate-300"], [class*="border-slate-300/"] { border-color: rgba(255, 255, 255, 0.15) !important; }

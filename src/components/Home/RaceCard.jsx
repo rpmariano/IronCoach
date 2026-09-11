@@ -77,8 +77,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
             {model.weekLabel && <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>}
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[26px] font-black leading-none" style={{ color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
-            <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: '#e2932a', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
+            <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
+            <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
           </div>
         </div>
         <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />

@@ -208,13 +208,13 @@ export default function Calendar() {
     <div className="space-y-4 fade-in pb-8">
       
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
-      <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
+      <div className="rounded-[28px] p-5 bg-[var(--surface-dim)] backdrop-blur-[20px] border border-[var(--border-glass)] shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-between mb-5">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronLeft size={16} />
           </button>
-          <span className="text-[15px] font-bold capitalize text-slate-900 tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <span className="text-[15px] font-bold capitalize text-[var(--text-1)] tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
+          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronRight size={16} />
           </button>
         </div>
@@ -225,7 +225,7 @@ export default function Calendar() {
             dar 333. O cabeçalho dos dias sai com ela, senão desalinhava. */}
         <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4 -mx-4">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
+            <span className="text-[11px] font-extrabold text-[var(--text-2)] uppercase tracking-wide" key={i}>{d}</span>
           ))}
         </div>
 
@@ -251,10 +251,10 @@ export default function Calendar() {
                   onClick={() => setSelectedDate(date)}
                   className={`w-[44px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
-                      ? 'bg-white border-[var(--green)] text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
+                      ? 'bg-[var(--surface-faint)] border-[var(--green)] text-[var(--text-1)] shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : dayRaces.length > 0
                         ? 'bg-[linear-gradient(135deg,var(--race-from),var(--race-to))] border-transparent text-white shadow-[0_2px_8px_var(--race-glow)] hover:opacity-90'
-                        : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
+                        : 'bg-[var(--surface-faint)] border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-[var(--text-2)] hover:bg-[var(--surface-soft)]'
                   }`}
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
@@ -266,7 +266,7 @@ export default function Calendar() {
                     {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corpo)]" />}
                     
                     {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
-                       <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
+                       <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-[var(--text-3)] opacity-50" />
                     )}
                   </div>
                 </button>
@@ -276,7 +276,7 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[11px] font-semibold text-slate-600 shadow-sm">
+        <div className="mt-6 p-3 bg-[var(--surface-glass)] rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[11px] font-semibold text-[var(--text-3)] shadow-sm">
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-prova)]"></span>
             <span>Prova</span>
@@ -302,12 +302,12 @@ export default function Calendar() {
 
       {/* Selected Date Details */}
       <div className="space-y-3">
-        <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1 pt-2">
+        <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide px-1 pt-2">
           {format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
         </h3>
 
         {!hasRecords && (
-          <div className="rounded-2xl p-6 bg-white/40 border border-white/15 border-dashed flex flex-col items-center justify-center text-slate-500">
+          <div className="rounded-2xl p-6 bg-[var(--surface-dim)] border border-white/15 border-dashed flex flex-col items-center justify-center text-[var(--text-3)]">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
             <p className="text-[11px]">Sem registos neste dia</p>
           </div>

@@ -61,31 +61,31 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-bold text-[var(--text-1)] flex items-center gap-1.5 flex-wrap">
             {ev.name}
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-faint)] border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
               {distanceLabel}
             </span>
             {ev.race_type && (
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-faint)] border border-[var(--border-glass)] text-[var(--text-3)]">
                 {raceTerrainLabel(ev.race_type)}
               </span>
             )}
-            {done && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
+            {done && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--tint-ok-bg)] text-[var(--ok)] border border-[var(--tint-ok-bd)]">Concluída</span>}
             {ev.race_priority && (
               <span className={[
                 'text-[11px] font-bold px-2 py-0.5 rounded-full border',
                 ev.race_priority === 'a'
-                  ? 'bg-amber-50 border-amber-300 text-amber-700'
+                  ? 'bg-[var(--tint-race-bg)] border-[var(--tint-race-bd)] text-[var(--race)]'
                   : ev.race_priority === 'b'
-                  ? 'bg-blue-50 border-blue-300 text-blue-700'
-                  : 'bg-slate-50 border-slate-300 text-slate-500',
+                  ? 'bg-[var(--tint-run-bg)] border-[var(--tint-run-bd)] text-[var(--run)]'
+                  : 'bg-[var(--surface-soft)] border-[var(--border-glass-strong)] text-[var(--text-3)]',
               ].join(' ')}>
                 {racePriorityLabel(ev.race_priority)}
               </span>
             )}
           </p>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-[11px] text-[var(--text-3)] mt-1">
             {formatDatePT(ev.date)}
             {isPast && !done ? ' · já passou' : ''}
             {ev.location ? ` · ${ev.location}` : ''}
@@ -97,7 +97,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
             type="button"
             aria-label={expanded ? 'Fechar detalhes da prova' : 'Ver detalhes da prova'}
             aria-expanded={expanded}
-            className="tap-44 text-slate-400 hover:text-slate-600"
+            className="tap-44 text-[var(--text-3)] hover:text-[var(--text-1)]"
           >
             {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -106,60 +106,60 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="space-y-3 pt-2.5 mt-2.5 border-t border-slate-200/60 fade-in">
+        <div className="space-y-3 pt-2.5 mt-2.5 border-t border-[var(--border-glass)] fade-in">
           {/* Grelha de Dados Essenciais */}
           <div className="grid grid-cols-2 gap-2">
             {/* 1. Localização & Distância */}
-            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <MapPin size={11} className="text-amber-500" /> Local & Distância
+            <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-0.5">
+              <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1">
+                <MapPin size={11} className="text-[var(--race)]" /> Local & Distância
               </span>
-              <span className="text-xs font-bold text-slate-800 truncate">
+              <span className="text-xs font-bold text-[var(--text-1)] truncate">
                 {ev.location || 'Local a definir'}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 truncate">
+              <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
                 {distanceLabel} {ev.elevation_gain_m != null ? `· ${ev.elevation_gain_m}m D+` : ''} {ev.race_type === 'trail' ? '· Trail' : ''}
               </span>
             </div>
 
             {/* 2. Objetivo */}
-            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Target size={11} className="text-amber-500" /> Objetivo
+            <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-0.5">
+              <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1">
+                <Target size={11} className="text-[var(--race)]" /> Objetivo
               </span>
-              <span className="text-xs font-bold text-slate-800 truncate">
+              <span className="text-xs font-bold text-[var(--text-1)] truncate">
                 {ev.target_time ? `Tempo: ${formatTargetTimeLabel(ev.target_time)}` : (ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : 'Sem meta')}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 truncate">
+              <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
                 {ev.target_time && ev.target_pace_seconds_per_km ? `Ritmo: ${formatPace(ev.target_pace_seconds_per_km)}/km` : (ev.race_priority ? `Prioridade ${racePriorityLabel(ev.race_priority)}` : 'Treino contínuo')}
               </span>
             </div>
 
             {/* 3. Tempo que Falta */}
-            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Calendar size={11} className="text-amber-500" /> Contagem
+            <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-0.5">
+              <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={11} className="text-[var(--race)]" /> Contagem
               </span>
-              <span className="text-xs font-bold text-slate-800">
+              <span className="text-xs font-bold text-[var(--text-1)]">
                 {done ? 'Concluída' : plan.daysToRace === 0 ? 'É HOJE!' : plan.daysToRace > 0 ? `Faltam ${plan.daysToRace} dias` : `${Math.abs(plan.daysToRace)} dias atrás`}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 truncate">
+              <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
                 {plan.trainingStatus === 'in_progress' ? `Semana ${plan.currentWeek} de ${plan.totalWeeks}` : `${plan.totalWeeks} semanas total`}
               </span>
             </div>
 
             {/* 4. Fase Atual ou Contagem para Início */}
-            <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <Activity size={11} className="text-amber-500" />
+            <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-0.5">
+              <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1">
+                <Activity size={11} className="text-[var(--race)]" />
                 {plan.trainingStatus === 'not_started' ? 'Início do Treino' : 'Fase do Treino'}
               </span>
-              <span className="text-xs font-bold text-amber-600 truncate">
+              <span className="text-xs font-bold text-[var(--race)] truncate">
                 {plan.trainingStatus === 'not_started'
                   ? `Faltam ${plan.daysToStart} dias`
                   : (plan.currentPhase?.name || 'Base Aeróbica')}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 truncate">
+              <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
                 {plan.trainingStatus === 'not_started'
                   ? 'Início da 1ª Fase (Base)'
                   : (plan.currentPhase?.weeksLabel || `Sem. 1-${plan.totalWeeks}`)}
@@ -169,35 +169,35 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
           {/* Como Corre a Preparação (Parecer da Carol) */}
           {!done && (
-            <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/70 flex flex-col gap-1.5">
+            <div className="p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles size={12} className="text-amber-500" />
+                <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} className="text-[var(--race)]" />
                   {plan.trainingStatus === 'not_started' ? 'Recomendações Prévias da Carol' : 'Evolução da Preparação'}
                 </span>
                 {plan.trainingStatus !== 'not_started' && (
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
                     plan.readinessLevel === 'green'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      ? 'bg-[var(--tint-ok-bg)] border-[var(--tint-ok-bd)] text-[var(--ok)]'
                       : plan.readinessLevel === 'yellow'
-                      ? 'bg-amber-50 border-amber-200 text-amber-700'
-                      : 'bg-rose-50 border-rose-200 text-rose-700'
+                      ? 'bg-[var(--tint-race-bg)] border-[var(--tint-race-bd)] text-[var(--race)]'
+                      : 'bg-[var(--tint-danger-bg)] border-[var(--tint-danger-bd)] text-[var(--danger)]'
                   }`}>
                     {plan.carolAnalysis.readinessLabel}
                   </span>
                 )}
               </div>
 
-              <p className="text-[11px] text-slate-600 leading-relaxed">
+              <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                 {plan.trainingStatus === 'not_started'
                   ? plan.carolAnalysis.overviewText
                   : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)}
               </p>
 
               {plan.trainingStatus !== 'not_started' && plan.currentPhase?.evaluation?.score != null && (
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/50 text-[11px] text-slate-500">
+                <div className="flex items-center justify-between pt-1 border-t border-[var(--border-glass)] text-[11px] text-[var(--text-3)]">
                   <span>Classificação da Fase:</span>
-                  <span className="font-bold text-slate-700">
+                  <span className="font-bold text-[var(--text-2)]">
                     {plan.currentPhase.evaluation.gradeLabel} · {plan.currentPhase.evaluation.score}%
                   </span>
                 </div>
@@ -207,8 +207,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
           {/* Link para o site da prova se existir */}
           {ev.website && (
-            <div className="text-[11px] text-slate-500 flex items-center gap-1 px-0.5 truncate">
-              <LinkIcon size={11} className="shrink-0 text-slate-400" />
+            <div className="text-[11px] text-[var(--text-3)] flex items-center gap-1 px-0.5 truncate">
+              <LinkIcon size={11} className="shrink-0 text-[var(--text-3)]" />
               <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
                 {ev.website}
               </a>
@@ -216,14 +216,14 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
           )}
 
           {/* Notas adicionais */}
-          {ev.notes && <p className="text-[11px] text-slate-500 italic px-0.5">"{ev.notes}"</p>}
+          {ev.notes && <p className="text-[11px] text-[var(--text-3)] italic px-0.5">"{ev.notes}"</p>}
 
           {/* Botões de Ação */}
           <div className="flex items-center gap-2 pt-1">
             <Button
               variant="light"
               onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
-              className={`flex-1 text-xs ${done ? 'text-amber-600' : 'text-emerald-600'}`}
+              className={`flex-1 text-xs ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
               icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
             >
               {done ? 'Repor' : 'Concluída'}

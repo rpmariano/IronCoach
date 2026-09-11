@@ -240,7 +240,7 @@ export default function NutritionDashboard() {
       <div className="grid grid-cols-2 gap-3 px-1">
         <div 
           onClick={() => setSelectedMacro('calories')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-emerald-500/80' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-[var(--ok)]' : ''}`}
         >
           <KPICard 
             label="Calorias"
@@ -255,7 +255,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('protein')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-emerald-500/80' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-[var(--ok)]' : ''}`}
         >
           <KPICard 
             label="Proteína"
@@ -270,7 +270,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('carbs')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-emerald-500/80' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-[var(--ok)]' : ''}`}
         >
           <KPICard 
             label="Hidratos"
@@ -285,7 +285,7 @@ export default function NutritionDashboard() {
         </div>
         <div 
           onClick={() => setSelectedMacro('fat')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-emerald-500/80' : ''}`}
+          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-[var(--ok)]' : ''}`}
         >
           <KPICard 
             label="Gordura"
@@ -332,24 +332,24 @@ export default function NutritionDashboard() {
       )}
 
       {/* Micronutrients */}
-      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+      <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
         <button
           onClick={() => setMicrosExpanded(!microsExpanded)}
-          className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-white/10 transition"
+          className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-[var(--surface-strong)] transition"
         >
           <div className="flex items-center gap-2">
             <FlaskConical size={14} className="text-[var(--mod-nutricao)]" />
-            <h2 className="text-[11px] font-semibold text-slate-200 uppercase tracking-wider">Micronutrientes · {activeFilter}</h2>
+            <h2 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider">Micronutrientes · {activeFilter}</h2>
           </div>
-          {microsExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+          {microsExpanded ? <ChevronUp size={16} className="text-[var(--text-3)]" /> : <ChevronDown size={16} className="text-[var(--text-3)]" />}
         </button>
         {microsExpanded && (
           <div className="px-4 pb-4">
             <div className="space-y-3 pt-2">
               {MICROS.map(micro => (
-                <div key={micro.key} className="flex justify-between items-center text-sm border-b border-white/10 last:border-0 pb-2 last:pb-0">
-                  <span className="text-slate-400 text-xs">{micro.label}</span>
-                  <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-slate-400">{micro.unit}</span></span>
+                <div key={micro.key} className="flex justify-between items-center text-sm border-b border-[var(--border-glass)] last:border-0 pb-2 last:pb-0">
+                  <span className="text-[var(--text-3)] text-xs">{micro.label}</span>
+                  <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-[var(--text-3)]">{micro.unit}</span></span>
                 </div>
               ))}
             </div>

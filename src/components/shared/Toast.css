@@ -31,8 +31,8 @@
 }
 
 .toast-success {
-  background: var(--color-success);
-  color: #fff;
+  background: var(--ok);
+  color: var(--ok-ink);
 }
 
 .toast-success::before {
@@ -40,8 +40,8 @@
 }
 
 .toast-error {
-  background: rgba(239, 68, 68, 0.95);
-  color: #fff;
+  background: var(--danger);
+  color: var(--danger-ink);
 }
 
 .toast-error::before {
@@ -49,8 +49,8 @@
 }
 
 .toast-info {
-  background: rgba(59, 130, 246, 0.95);
-  color: #fff;
+  background: var(--coach);
+  color: var(--coach-ink);
 }
 
 .toast-info::before {

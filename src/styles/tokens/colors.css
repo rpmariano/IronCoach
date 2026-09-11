@@ -12,6 +12,20 @@
   --border-glass: rgba(255, 255, 255, .10);
   --border-glass-strong: rgba(255, 255, 255, .14);
   --border-hairline: rgba(255, 255, 255, .08);
+  /* Degraus de branco que faltavam à escala. Não são superfícies novas: são
+     exatamente os valores que os overrides `[class~="bg-…"]` de globals.css
+     davam às classes de paleta do legado (bg-white, bg-slate-50/100/200), e
+     que os ecrãs portados agora pedem pelo nome. Ver a tabela de mapeamento
+     no topo de globals.css. */
+  --surface-faint: rgba(255, 255, 255, .02);   /* ex-bg-white */
+  --surface-soft: rgba(255, 255, 255, .03);    /* ex-bg-slate-50, campos de formulário */
+  --surface-dim: rgba(255, 255, 255, .04);     /* ex-bg-white/40 */
+  --surface-strong: rgba(255, 255, 255, .10);  /* ex-bg-slate-200, ex-bg-white/10 */
+  --border-faint: rgba(255, 255, 255, .05);    /* ex-border-slate-50/100 */
+  /* Borda de controlo — a única que tem de se VER (foco de campo, área de
+     upload tracejada): 3:1 contra o fundo, ao contrário das bordas de vidro
+     acima, que são decorativas. É a mesma cor do --text-4 de propósito. */
+  --border-control: var(--text-4);
 
   /* texto */
   --text-1: #f8fafc;
@@ -44,6 +58,10 @@
   --warn: #fb7c4d;             /* aviso. Nunca âmbar. */
   --warn-soft: #fed7c3;
   --danger: #f87171;           /* erro, admin */
+  --danger-soft: #fecaca;      /* texto secundário sobre a tinta de erro */
+  --danger-deep: #b91c1c;      /* vermelho cheio que aceita texto claro por cima
+                                  (badge de notificações) — o par -deep que o
+                                  --race e o --coach já tinham */
 
   /* Tinta (texto sobre a cor cheia) de cada significado — os mesmos valores
      que design-system/components/core/Button.jsx usa. Sobre a cor cheia o
@@ -66,6 +84,10 @@
   --tint-ok-bg: rgba(52, 211, 153, .16);     --tint-ok-bd: rgba(52, 211, 153, .40);
   --tint-warn-bg: rgba(251, 124, 77, .10);   --tint-warn-bd: rgba(251, 124, 77, .34);
   --tint-danger-bg: rgba(248, 113, 113, .12); --tint-danger-bd: rgba(248, 113, 113, .34);
+  /* Um degrau acima da tinta, só para o hover/press de botões que já estão
+     pintados com ela — sem isto o hover ficava igual ao repouso. */
+  --tint-danger-bg-hover: rgba(248, 113, 113, .22);
+  --tint-ok-bg-hover: rgba(52, 211, 153, .26);
 
   /* gradientes */
   --grad-race: linear-gradient(135deg, #d97706, #fbbf24);

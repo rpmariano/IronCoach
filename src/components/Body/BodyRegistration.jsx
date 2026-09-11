@@ -425,7 +425,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             title="Fechar"
             aria-label="Fechar"
           >
-            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
               <X size={16} />
             </span>
           </button>
@@ -457,16 +457,16 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
           />
-          <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
+          <div className="flex items-center justify-center text-[11px] text-[var(--text-3)]">Data da pesagem</div>
         </div>
 
         {/* Como queres registar? — escondido a editar: editar é sempre pelos
             campos, sem foto nova (mesmo padrão da Nutrição/Ginásio). */}
         {!isEditing && (
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
             <div className="flex gap-1.5">
               <Chip
                 active={entryMethod === 'foto'}
@@ -499,13 +499,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
                     <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
                       <button
                         onClick={() => removePhoto(i)}
                         aria-label={`Remover print ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-slate-500 hover:text-red-500 transition"
+                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
                       >
-                        <span className="bg-white/90 border border-slate-200 rounded-full p-1 shadow-sm flex items-center justify-center">
+                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
                           <X size={14} />
                         </span>
                       </button>
@@ -513,7 +513,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                   ))}
                 </div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-slate-500">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
+                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
                 </div>
                 {photos.length < MAX_PHOTOS && (
                   <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corpo-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corpo-to)]/5 transition mb-4">
@@ -524,11 +524,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 )}
               </>
             ) : (
-              <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-4 bg-white/50">
+              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                <p className="text-xs text-slate-600 font-semibold">Escolhe os prints da app Renpho Health</p>
-                <p className="text-[11px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+                <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app Renpho Health</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
               </label>
             )}
           </>
@@ -536,13 +536,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           <div className="grid grid-cols-2 gap-2 mb-4">
             {BODY_METRICS.map(m => (
               <label key={m.key} className="block">
-                <span className="text-[11px] text-slate-500 block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
+                <span className="text-[11px] text-[var(--text-3)] block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
                 <input
                   type="number"
                   step={m.dec > 0 ? '0.1' : '1'}
                   value={metrics[m.key] ?? ''}
                   onChange={e => { handleMetricChange(m.key, e.target.value); setIsFormDirty(true); }}
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
                 />
               </label>
             ))}
@@ -550,14 +550,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         )}
 
         <div className="mb-4">
-          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-slate-500 mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
+          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
           <textarea id="br-observacoes-opcional-ex-em-jejum-a"
             rows={2}
             maxLength={500}
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto da pesagem..."
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-corpo-to)] resize-none"
           />
         </div>
 

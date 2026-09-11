@@ -232,7 +232,7 @@ export default function Layout({ children }) {
             <FabItem delayIndex={4}
               label="Registar refeição"
               tone="nutrition"
-              ink="#22103a"
+              ink="var(--nutrition-ink)"
               icon={<Camera size={14} />}
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -243,7 +243,7 @@ export default function Layout({ children }) {
             <FabItem delayIndex={3} 
               label="Nova avaliação"
               tone="body"
-              ink="#3a0a22"
+              ink="var(--body-ink)"
               icon={<User size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -254,7 +254,7 @@ export default function Layout({ children }) {
             <FabItem delayIndex={2} 
               label="Nova corrida"
               tone="run"
-              ink="#04252b"
+              ink="var(--run-ink)"
               icon={<Footprints size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -265,7 +265,7 @@ export default function Layout({ children }) {
             <FabItem delayIndex={1} 
               label="Novo treino"
               tone="gym"
-              ink="#0b2129"
+              ink="var(--gym-ink)"
               icon={<Dumbbell size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -278,7 +278,7 @@ export default function Layout({ children }) {
             <FabItem delayIndex={0}
               label="Registar água"
               tone="run"
-              ink="#04252b"
+              ink="var(--run-ink)"
               icon={<Droplets size={14} />}
               onClick={(e) => {
                 e.stopPropagation();

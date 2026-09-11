@@ -144,14 +144,14 @@ export default function WaterTracker() {
       {/* Progress Circle & Totals */}
       <div className="card rounded-2xl p-6 flex flex-col items-center justify-center text-center">
         <Droplets size={32} style={{ color: 'var(--blue)' }} className="mb-3" />
-        <h2 className="text-sm font-semibold text-slate-500 mb-1">Água consumida hoje</h2>
+        <h2 className="text-sm font-semibold text-[var(--text-3)] mb-1">Água consumida hoje</h2>
         <div className="flex items-baseline gap-1 mb-2">
-          <span className="text-4xl font-black text-slate-800">{consumed}</span>
-          <span className="text-sm font-bold text-slate-500">/ {goal} ml</span>
+          <span className="text-4xl font-black text-[var(--text-1)]">{consumed}</span>
+          <span className="text-sm font-bold text-[var(--text-3)]">/ {goal} ml</span>
         </div>
         
         {/* Simple Progress Bar */}
-        <div className="w-full max-w-xs h-3 bg-slate-200 rounded-full mt-4 overflow-hidden relative">
+        <div className="w-full max-w-xs h-3 bg-[var(--surface-strong)] rounded-full mt-4 overflow-hidden relative">
           <div 
             className="absolute top-0 left-0 bottom-0 rounded-full transition-all duration-500"
             style={{ width: `${percentage}%`, backgroundColor: 'var(--blue)' }}
@@ -167,10 +167,10 @@ export default function WaterTracker() {
             key={preset}
             onClick={() => addWater(preset)}
             disabled={isUpdating}
-            className="card flex flex-col items-center justify-center rounded-2xl py-4 active:scale-95 transition disabled:opacity-50 border border-transparent hover:border-blue-500/30"
+            className="card flex flex-col items-center justify-center rounded-2xl py-4 active:scale-95 transition disabled:opacity-50 border border-transparent hover:border-[var(--tint-run-bd)]"
           >
             <Droplets size={20} style={{ color: 'var(--blue)' }} className="mb-1" />
-            <span className="text-sm font-bold text-slate-700">{preset} ml</span>
+            <span className="text-sm font-bold text-[var(--text-2)]">{preset} ml</span>
           </button>
         ))}
       </div>
@@ -178,20 +178,20 @@ export default function WaterTracker() {
       {/* History List */}
       {todayLogs.length > 0 && (
         <div className="card rounded-2xl p-4">
-          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Registos de hoje</h2>
+          <h2 className="text-xs font-semibold text-[var(--text-3)] uppercase tracking-wide mb-3">Registos de hoje</h2>
           <div className="space-y-1.5">
             {[...todayLogs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(w => (
-              <div key={w.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
-                <span className="text-xs font-semibold text-slate-700">{w.amount_ml} ml</span>
+              <div key={w.id} className="flex items-center justify-between bg-[var(--surface-soft)] border border-[var(--border-faint)] rounded-xl px-3 py-2">
+                <span className="text-xs font-semibold text-[var(--text-2)]">{w.amount_ml} ml</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-[var(--text-3)]">
                     {new Date(w.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}
                   </span>
                   <button 
                     onClick={() => removeWater(w.id)}
                     disabled={isUpdating}
                     aria-label={`Remover registo de ${w.amount_ml} ml`}
-                    className="tap-44 -mr-2 flex items-center justify-center text-slate-400 active:text-red-500 hover:text-red-500 disabled:opacity-50 transition"
+                    className="tap-44 -mr-2 flex items-center justify-center text-[var(--text-3)] active:text-[var(--danger)] hover:text-[var(--danger)] disabled:opacity-50 transition"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -208,8 +208,8 @@ export default function WaterTracker() {
         <div className="card rounded-xl p-3">
           {mutedToday ? (
             <div className="flex items-center justify-between gap-3">
-              <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                <BellOff size={14} className="shrink-0 text-slate-400" /> Lembretes silenciados até amanhã.
+              <p className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5">
+                <BellOff size={14} className="shrink-0 text-[var(--text-3)]" /> Lembretes silenciados até amanhã.
               </p>
               <button onClick={unmuteToday} disabled={isUpdating} type="button"
                 className="tap-h-44 px-3 rounded-xl text-[11px] font-bold shrink-0 disabled:opacity-50 transition active:scale-95"
@@ -219,16 +219,16 @@ export default function WaterTracker() {
             </div>
           ) : (
             <>
-              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-2.5">
-                <Bell size={14} className="shrink-0 text-slate-400" /> Lembretes de água ativos.
+              <p className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-2.5">
+                <Bell size={14} className="shrink-0 text-[var(--text-3)]" /> Lembretes de água ativos.
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => snoozeReminder('next')} disabled={isUpdating} type="button"
-                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-slate-600 border border-slate-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
+                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-[var(--text-3)] border border-[var(--border-glass)] flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
                   <Clock size={14} /> Adiar próximo
                 </button>
                 <button onClick={() => snoozeReminder('day')} disabled={isUpdating} type="button"
-                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-slate-600 border border-slate-200 flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
+                  className="tap-h-44 px-3 rounded-xl text-[11px] font-semibold text-[var(--text-3)] border border-[var(--border-glass)] flex items-center justify-center gap-1.5 disabled:opacity-50 transition active:scale-95">
                   <BellOff size={14} /> Silenciar hoje
                 </button>
               </div>
@@ -237,9 +237,9 @@ export default function WaterTracker() {
         </div>
       )}
 
-      <div className="card rounded-xl p-3 bg-blue-50/50 border border-blue-100 flex gap-2">
+      <div className="card rounded-xl p-3 bg-[var(--tint-run-bg)] border border-[var(--tint-run-bd)] flex gap-2">
         <Info size={16} style={{ color: 'var(--blue)' }} className="shrink-0 mt-0.5" />
-        <p className="text-[11px] text-slate-500 leading-relaxed">
+        <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
           Para atingires a tua meta de <b>{goal} ml</b>, precisas de beber <b>{totalGlassesGoal} copos</b> de 250ml ao longo do dia.
         </p>
       </div>

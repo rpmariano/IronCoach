@@ -40,7 +40,7 @@ export default function MealSheet({ day, onClose }) {
                 <span className="flex shrink-0 mt-px" style={{ width: 22, color: main ? 'var(--run)' : 'var(--text-muted)' }}><Icon size={18} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{m.label}</div>
-                  <p className="text-[12.5px] leading-[1.5] mt-[3px]" style={{ color: '#b9c3d1' }}>{m.texto}</p>
+                  <p className="text-[12.5px] leading-[1.5] mt-[3px]" style={{ color: 'var(--text-3)' }}>{m.texto}</p>
                 </div>
               </div>
             );

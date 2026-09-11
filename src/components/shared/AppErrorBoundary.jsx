@@ -34,7 +34,7 @@ export default class AppErrorBoundary extends Component {
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6" style={{ background: '#0f172a' }}>
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6" style={{ background: 'var(--bg-app)' }}>
         {/* Ponto 3: erro é vermelho (--danger) do princípio ao fim. O botão
             "Recarregar" estava no gradiente âmbar da prova, com texto branco
             por cima (nem a cor nem o contraste estavam certos). */}
@@ -45,7 +45,7 @@ export default class AppErrorBoundary extends Component {
           <AlertTriangle className="w-7 h-7" style={{ color: 'var(--danger)' }} />
         </div>
         <h1 className="text-base font-bold text-white mb-1">Algo correu mal</h1>
-        <p className="text-xs text-slate-400 max-w-xs leading-relaxed mb-5">
+        <p className="text-xs text-[var(--text-3)] max-w-xs leading-relaxed mb-5">
           A app encontrou um erro inesperado. O que já tinhas gravado não é afetado — só é
           preciso recarregar.
         </p>

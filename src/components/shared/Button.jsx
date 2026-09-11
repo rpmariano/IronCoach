@@ -40,23 +40,23 @@ export function Button({
 
   // Variants (Colors & Styles)
   const variants = {
-    primary: 'bg-[var(--accent)] text-neutral-50 hover:bg-[var(--accent-dark)] shadow-sm',
-    secondary: 'bg-neutral-800 text-slate-200 hover:bg-neutral-700',
-    outline: 'border-2 border-neutral-700 text-slate-300 hover:bg-neutral-800 hover:text-white',
-    ghost: 'bg-transparent text-slate-400 hover:text-slate-200 hover:bg-white/5',
-    danger: 'bg-red-500/10 text-red-500 hover:bg-red-500/20',
-    'danger-ghost': 'bg-transparent text-red-400 hover:text-red-500 hover:bg-red-500/10',
-    'danger-outline': 'border border-red-500/40 text-red-400 hover:bg-red-500/10',
-    light: 'bg-white hover:bg-slate-50 text-slate-700 font-semibold border border-slate-200',
+    primary: 'bg-[var(--accent)] text-[var(--text-1)] hover:bg-[var(--accent-dark)] shadow-sm',
+    secondary: 'bg-[var(--surface-strong)] text-[var(--text-2)] hover:bg-[var(--surface-glass-hover)]',
+    outline: 'border-2 border-[var(--border-glass-strong)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] hover:text-white',
+    ghost: 'bg-transparent text-[var(--text-3)] hover:text-[var(--text-2)] hover:bg-[var(--surface-glass)]',
+    danger: 'bg-[var(--tint-danger-bg)] text-[var(--danger)] hover:bg-[var(--tint-danger-bg-hover)]',
+    'danger-ghost': 'bg-transparent text-[var(--danger)] hover:bg-[var(--tint-danger-bg)]',
+    'danger-outline': 'border border-[var(--tint-danger-bd)] text-[var(--danger)] hover:bg-[var(--tint-danger-bg)]',
+    light: 'bg-[var(--surface-faint)] hover:bg-[var(--surface-soft)] text-[var(--text-2)] font-semibold border border-[var(--border-glass)]',
     // bg-red-50/border-red-200 eram cores do tema claro original — só o
     // "light" (bg-white/border-slate-200) tem um override global para dark
     // mode (globals.css), por isso este "light-danger" ficava sempre um
     // bloco rosa-claro opaco ao lado do "Editar" já adaptado. Direto em
     // rgba (não depende de nenhum override) e no mesmo espírito translúcido
     // do "danger", mas com borda para pesar visualmente como o "light" ao lado.
-    'light-danger': 'bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold border border-red-500/30',
+    'light-danger': 'bg-[var(--tint-danger-bg)] hover:bg-[var(--tint-danger-bg-hover)] text-[var(--danger)] font-bold border border-[var(--tint-danger-bd)]',
     module: 'text-white shadow-sm', // O bg é setado via style
-    icon: 'bg-white/10 text-slate-400 hover:bg-white/20 hover:text-white rounded-full'
+    icon: 'bg-[var(--surface-strong)] text-[var(--text-3)] hover:bg-white/20 hover:text-white rounded-full'
   };
 
   // Sizes

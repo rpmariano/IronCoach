@@ -601,7 +601,7 @@ export default function Coach() {
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
             <CoachAvatar size={64} radius={24} className="mb-4" />
             <h3 className="text-sm font-bold text-white mb-1">Sou a Carol, a tua treinadora.</h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-5 max-w-xs">
+            <p className="text-xs text-[var(--text-3)] leading-relaxed mb-5 max-w-xs">
               Tenho os teus dados de hoje e o teu perfil à frente. Pergunta-me sobre o treino, a alimentação ou a prova.
             </p>
             <div className="space-y-2 w-full max-w-xs text-left">
@@ -720,7 +720,7 @@ export default function Coach() {
       </div>
 
       {/* Input Box Footer */}
-      <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
+      <div className="shrink-0 border-t border-[var(--border-glass)] pt-3 mt-1 relative">
         {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
@@ -766,7 +766,7 @@ export default function Coach() {
             // querer ao carregar em Enter para mudar de linha.
             aria-label="Mensagem para a Carol"
             placeholder="Escreve a tua pergunta..."
-            className="flex-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-3 text-sm text-slate-300 placeholder-slate-600 outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
+            className="flex-1 bg-[var(--bg-sheet)] border border-[var(--border-glass)] rounded-2xl px-4 py-3 text-sm text-[var(--text-3)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
             style={{ minHeight: '44px' }}
           />
           <button
@@ -775,8 +775,8 @@ export default function Coach() {
             aria-label="Enviar pergunta ao Coach"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
-                ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
-                : 'text-slate-950 font-bold'
+                ? 'bg-[var(--surface-strong)] text-[var(--text-3)] cursor-not-allowed'
+                : 'text-[var(--coach-ink)] font-bold'
             }`}
             style={{
               background: !inputStr.trim() || coachLoading ? undefined : 'var(--mod-coach-to)'
