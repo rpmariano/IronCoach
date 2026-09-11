@@ -26,7 +26,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
 
   const titleClass = isDark
     ? 'text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5'
-    : 'text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5';
+    : 'text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5';
 
   const textClass = isDark
     ? 'text-xs text-slate-200 leading-relaxed'
@@ -141,7 +141,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
         </div>
       )}
 
-      <p className="text-[10px] text-slate-400 pt-1">
+      <p className="text-[11px] text-slate-400 pt-1">
         Obtido de <span className="text-slate-300 font-medium">{info.source_url}</span> · {formatFetchedAt(info.fetched_at)}
       </p>
     </div>

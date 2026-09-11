@@ -42,7 +42,9 @@ export default function RunTrainingTypeHelp({ label, children }) {
           aria-expanded={isOpen}
           aria-label="O que significa cada tipo de treino?"
           title="O que significa cada tipo de treino?"
-          className="inline-flex items-center justify-center rounded-full active:scale-90 transition"
+          // tap-area-44: o botao continua a desenhar-se com 18px e ganha,
+          // por cima, uma area de toque invisivel de 44 (ver globals.css).
+          className="tap-area-44 inline-flex items-center justify-center rounded-full active:scale-90 transition"
           style={{
             color: 'var(--mod-corrida-to)',
             background: 'color-mix(in srgb, var(--mod-corrida-to) 15%, transparent)',

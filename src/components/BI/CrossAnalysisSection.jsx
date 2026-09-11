@@ -50,7 +50,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
         <div className="flex items-center gap-2">
           <BarChart2 className="w-4 h-4 text-indigo-400" />
           <span className="text-sm font-bold text-white">Análise Cruzada</span>
-          <span className="text-[10px] text-slate-400 font-medium ml-1">Interações entre pilares</span>
+          <span className="text-[11px] text-slate-400 font-medium ml-1">Interações entre pilares</span>
         </div>
         <ChevronDown
           className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}

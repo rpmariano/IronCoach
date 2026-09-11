@@ -126,7 +126,7 @@ export default function BugNotificationsHandler() {
         onClick={handleOpen}
         aria-label={`${notifications.length} ${notifications.length === 1 ? 'notificação' : 'notificações'} por ler`}
         title="Notificações"
-        className="h-9 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(185,28,28,0.45)]"
+        className="tap-h-44 pl-2.5 pr-2 rounded-full flex items-center gap-1.5 active:scale-95 transition shadow-[0_2px_10px_rgba(185,28,28,0.45)]"
         style={{ background: '#b91c1c' }}
       >
         {/* Ícone e contador lado a lado, não sobrepostos: num botão redondo
@@ -161,7 +161,7 @@ export default function BugNotificationsHandler() {
                   onClick={handlePrev}
                   disabled={!hasPrev || submitting}
                   aria-label="Notificação anterior"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                  className="tap-44 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
                 >
                   <ChevronLeft size={16} />
                 </button>
@@ -172,7 +172,7 @@ export default function BugNotificationsHandler() {
                   onClick={handleNext}
                   disabled={!hasNext || submitting}
                   aria-label="Notificação seguinte"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
+                  className="tap-44 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-white/5 disabled:opacity-30 disabled:hover:bg-transparent transition"
                 >
                   <ChevronRight size={16} />
                 </button>
@@ -184,7 +184,7 @@ export default function BugNotificationsHandler() {
             <div className="flex items-center gap-1.5 min-w-0">
               <p className="text-sm font-bold text-slate-100 truncate">{bugTitle || 'Bug sem título'}</p>
               {bugNumber != null && (
-                <span className="shrink-0 text-[10px] font-mono text-slate-500">
+                <span className="shrink-0 text-[11px] font-mono text-slate-500">
                   Bug-{String(bugNumber).padStart(3, '0')}
                 </span>
               )}
@@ -199,7 +199,7 @@ export default function BugNotificationsHandler() {
             </div>
 
             {/* Data da Notificação */}
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[11px] text-slate-500">
               Recebido a {new Date(selectedNotification.created_at).toLocaleString('pt-PT')}
             </p>
 

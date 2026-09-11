@@ -61,7 +61,7 @@ export default function ExperienceLevelHelp({
   const dark = variant === 'dark';
   const labelClass = dark
     ? 'text-[11px] text-slate-500' // O perfil dark usa texto slate-500 na label
-    : 'text-[10px] text-slate-500';
+    : 'text-[11px] text-slate-500';
 
   const isProva = context === 'prova';
   const isTrail = isProva && raceType === 'trail';
@@ -78,7 +78,9 @@ export default function ExperienceLevelHelp({
           aria-expanded={isOpen}
           aria-label="O que significa cada nível?"
           title="O que significa cada nível?"
-          className="inline-flex items-center justify-center rounded-full active:scale-90 transition"
+          // tap-area-44: o botao continua a desenhar-se com 18px e ganha,
+          // por cima, uma area de toque invisivel de 44 (ver globals.css).
+          className="tap-area-44 inline-flex items-center justify-center rounded-full active:scale-90 transition"
           style={{
             color: 'var(--mod-coach-to)',
             background: 'color-mix(in srgb, var(--mod-coach-to) 15%, transparent)',
@@ -141,7 +143,7 @@ export default function ExperienceLevelHelp({
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-slate-400 mt-3">
+                  <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
                     Percentagens relativas a ESTA prova (tempo previsto e D+), não valores absolutos —
                     quanto mais perto de 100%, mais o teu treino recente se parece com o esforço da prova.
                     As duas colunas são independentes: o teu nível é o mais baixo das duas.
@@ -173,13 +175,13 @@ export default function ExperienceLevelHelp({
                       </tbody>
                     </table>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-slate-400 mt-3">
+                  <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
                     Valores para {DISTANCE_CATEGORY_LABELS[distCat]}. Pré-requisitos cumulativos —
                     as duas colunas somam-se, não se substituem.
                   </p>
                 </>
               ) : (
-                <p className="text-[10px] leading-relaxed text-slate-400 mt-3">
+                <p className="text-[11px] leading-relaxed text-slate-400 mt-3">
                   Escolhe a distância da prova para veres os valores de referência.
                 </p>
               )}
@@ -202,7 +204,7 @@ export default function ExperienceLevelHelp({
                 ))}
               </div>
 
-              <p className="text-[10px] leading-relaxed text-slate-400 text-center pb-2">
+              <p className="text-[11px] leading-relaxed text-slate-400 text-center pb-2">
                 Valores de referência para provas de 10 km a meia maratona. Com objetivo de maratona, o volume semanal sobe. O Coach ajusta.
               </p>
             </>

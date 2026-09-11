@@ -44,7 +44,7 @@ export default function PillarSummaryCard({
   return (
     <button
       onClick={onClick}
-      className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-3 shadow-[0_8px_20px_rgba(0,0,0,0.2),inset_0_1px_6px_rgba(255,255,255,0.4)] text-left w-full active:scale-[0.97] transition-transform"
+      className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-3 min-h-[44px] shadow-[0_8px_20px_rgba(0,0,0,0.2),inset_0_1px_6px_rgba(255,255,255,0.4)] text-left w-full active:scale-[0.97] transition-transform"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
@@ -64,18 +64,20 @@ export default function PillarSummaryCard({
       {/* Badge + delta */}
       <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
         {badge && (
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${badgeCls}`}>
+          <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${badgeCls}`}>
             {badge.label}
           </span>
         )}
+        {/* 12,5px: ver nota em RaceReadinessCard — a variação é um dado que
+            se lê de relance, não uma etiqueta. */}
         {delta && (
-          <span className="text-[10px] text-slate-400 font-medium">{delta}</span>
+          <span className="text-[12.5px] text-slate-400 font-medium">{delta}</span>
         )}
       </div>
 
       {/* Subtítulo — sempre visível, ocupa o espaço que era do sparkline */}
       {subtitle && (
-        <p className="text-[10px] text-slate-500 font-medium leading-snug">{subtitle}</p>
+        <p className="text-[11px] text-slate-500 font-medium leading-snug">{subtitle}</p>
       )}
     </button>
   );

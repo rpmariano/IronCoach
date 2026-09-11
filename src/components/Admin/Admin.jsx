@@ -411,7 +411,7 @@ export default function Admin() {
     return (
       <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-center space-y-3 m-4 fade-in">
         <p className="text-xs text-red-300">{error}</p>
-        <button onClick={loadAdminData} className="text-[11px] text-red-200 underline">Tentar novamente</button>
+        <button onClick={loadAdminData} className="tap-h-44 text-[11px] text-red-200 underline">Tentar novamente</button>
       </div>
     );
   }
@@ -447,7 +447,7 @@ export default function Admin() {
             key={t.key}
             onClick={() => !isBugReviewer && setActiveTab(t.key)}
             disabled={isBugReviewer}
-            className={`shrink-0 flex items-center gap-1.5 border border-neutral-700 rounded-xl py-2 px-3 text-xs font-semibold transition ${
+            className={`shrink-0 flex items-center gap-1.5 min-h-[44px] border border-neutral-700 rounded-xl py-2 px-3 text-xs font-semibold transition ${
               displayedTab === t.key ? 'bg-[var(--accent)] shadow-md' : 'text-slate-400 hover:text-slate-200 bg-neutral-900/50'
             } ${isBugReviewer ? 'cursor-default' : ''}`}
             style={displayedTab === t.key ? { color: '#fff' } : undefined}
@@ -496,12 +496,12 @@ export default function Admin() {
           
           <div className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 flex items-center justify-between">
             <div>
-              <p className="text-[10px] uppercase font-bold text-slate-500 mb-1">Estado do Sistema</p>
+              <p className="text-[11px] uppercase font-bold text-slate-500 mb-1">Estado do Sistema</p>
               <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-400">
                 <CheckCircle2 size={16} /> Operacional
               </div>
             </div>
-            <button onClick={loadAdminData} className="text-[10px] bg-neutral-800 px-3 py-1.5 rounded-lg text-slate-300 font-semibold active:scale-95">
+            <button onClick={loadAdminData} className="tap-h-44 text-[11px] bg-neutral-800 px-3 py-1.5 rounded-lg text-slate-300 font-semibold active:scale-95">
               Atualizar
             </button>
           </div>
@@ -518,22 +518,22 @@ export default function Admin() {
               <div key={u.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 flex justify-between items-center">
                 <div className="min-w-0 pr-3">
                   <p className="text-sm font-bold truncate">{u.display_name || u.email}</p>
-                  <p className="text-[10px] text-slate-500 truncate">{u.email}</p>
-                  <p className="text-[9px] text-slate-600 mt-1.5">
+                  <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                  <p className="text-[11px] text-slate-600 mt-1.5">
                     Criado a {new Date(u.created_at).toLocaleDateString('pt-PT')}
                   </p>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1.5">
-                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
                     u.tier === 'pro' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
                   }`}>
                     {u.tier?.toUpperCase() || 'FREE'}
                   </span>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="flex items-center gap-1 text-[10px] text-slate-400" title="Refeições">
+                    <span className="flex items-center gap-1 text-[11px] text-slate-400" title="Refeições">
                       <Utensils size={10} /> {mealCount}
                     </span>
-                    <span className="flex items-center gap-1 text-[10px] text-slate-400" title="Mensagens Coach">
+                    <span className="flex items-center gap-1 text-[11px] text-slate-400" title="Mensagens Coach">
                       <Bot size={10} /> {msgCount}
                     </span>
                   </div>
@@ -560,7 +560,7 @@ export default function Admin() {
                 <button
                   key={s.key}
                   onClick={() => setBugReportsStatusFilter(s.key)}
-                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                  className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
                     bugReportsStatusFilter === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
                   }`}
                 >
@@ -585,13 +585,13 @@ export default function Admin() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <p className="text-xs font-semibold text-slate-100 truncate">{item.title}</p>
-                          <span className="shrink-0 text-[9px] font-mono text-slate-500">{formatBugNumber(item.bug_number)}</span>
+                          <span className="shrink-0 text-[11px] font-mono text-slate-500">{formatBugNumber(item.bug_number)}</span>
                         </div>
-                        <p className="text-[10px] text-slate-500 truncate">
+                        <p className="text-[11px] text-slate-500 truncate">
                           {item.user_name || item.user_email || 'Utilizador desconhecido'} · {item.page} · {new Date(item.created_at).toLocaleString('pt-PT')}
                         </p>
                       </div>
-                      <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                      <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded border ${
                         item.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                       }`}>
                         {item.status === 'resolved' ? 'Resolvido' : 'Aberto'}
@@ -607,14 +607,14 @@ export default function Admin() {
                           loadBugNotifications(item.id);
                           loadBugAttachments(item.attachment_urls);
                         }}
-                        className="flex-1 flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                        className="flex-1 flex items-center justify-center gap-1.5 min-h-[44px] bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
                       >
                         <Eye size={14} /> Ver Detalhes
                       </button>
                       <button
                         onClick={() => handleToggleBugReportStatus(item)}
                         disabled={bugReportUpdating}
-                        className={`flex-1 flex items-center justify-center gap-1.5 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl transition border disabled:opacity-50 ${
+                        className={`flex-1 flex items-center justify-center gap-1.5 min-h-[44px] active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl transition border disabled:opacity-50 ${
                           item.status === 'resolved'
                             ? 'bg-neutral-800 hover:bg-neutral-700 text-slate-300 border-neutral-700'
                             : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
@@ -661,7 +661,7 @@ export default function Admin() {
                       <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Anexos ({selectedBugReport.attachment_urls.length})</label>
                       <div className="space-y-2">
                         {bugAttachmentUrls.length === 0 ? (
-                          <p className="text-[10px] text-slate-500">A gerar links de acesso...</p>
+                          <p className="text-[11px] text-slate-500">A gerar links de acesso...</p>
                         ) : (
                           bugAttachmentUrls.map((url, idx) => (
                             <a
@@ -669,7 +669,7 @@ export default function Admin() {
                               href={url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[10px] text-blue-400 hover:text-blue-300 break-all truncate block"
+                              className="text-[11px] text-blue-400 hover:text-blue-300 break-all truncate block"
                             >
                               Ver anexo {idx + 1}
                             </a>
@@ -680,7 +680,7 @@ export default function Admin() {
                   )}
 
                   {selectedBugReport.status === 'resolved' && selectedBugReport.resolved_at && (
-                    <p className="text-[10px] text-emerald-400/80 text-center">
+                    <p className="text-[11px] text-emerald-400/80 text-center">
                       Resolvido a {new Date(selectedBugReport.resolved_at).toLocaleString('pt-PT')}
                     </p>
                   )}
@@ -691,12 +691,12 @@ export default function Admin() {
                       <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Histórico de Notificações e Respostas</label>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
                         {bugNotifications.map(notif => (
-                          <div key={notif.id} className="bg-neutral-950 rounded-lg p-2.5 border border-neutral-800 space-y-1.5 text-[10px]">
+                          <div key={notif.id} className="bg-neutral-950 rounded-lg p-2.5 border border-neutral-800 space-y-1.5 text-[11px]">
                             {/* Notificação Enviada */}
                             <div className="space-y-1">
                               <p className="text-slate-400 font-semibold">📤 Notificação Enviada:</p>
                               <p className="text-slate-300 italic">{notif.message}</p>
-                              <p className="text-slate-500 text-[9px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
+                              <p className="text-slate-500 text-[11px]">{new Date(notif.created_at).toLocaleString('pt-PT')}</p>
                             </div>
 
                             {/* Resposta do Utilizador */}
@@ -708,7 +708,7 @@ export default function Admin() {
                                 {notif.response_message && (
                                   <p className="text-slate-300">{notif.response_message}</p>
                                 )}
-                                <p className="text-slate-500 text-[9px]">{new Date(notif.responded_at).toLocaleString('pt-PT')}</p>
+                                <p className="text-slate-500 text-[11px]">{new Date(notif.responded_at).toLocaleString('pt-PT')}</p>
                               </div>
                             )}
                             {!notif.response_status && (
@@ -731,7 +731,7 @@ export default function Admin() {
                       disabled={bugNotificationSending || !selectedBugReport.user_id}
                     />
                     {!selectedBugReport.user_id && (
-                      <p className="text-[10px] text-red-400">Utilizador eliminado — não é possível enviar notificação.</p>
+                      <p className="text-[11px] text-red-400">Utilizador eliminado — não é possível enviar notificação.</p>
                     )}
                   </div>
 
@@ -794,7 +794,7 @@ export default function Admin() {
                 <button
                   key={c.key}
                   onClick={() => setUnknownCategory(c.key)}
-                  className={`shrink-0 text-xs px-3 py-1.5 rounded-xl border transition ${
+                  className={`shrink-0 min-h-[44px] text-xs px-3 py-1.5 rounded-xl border transition ${
                     unknownCategory === c.key ? 'bg-neutral-800 text-white border-neutral-600 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
                   }`}
                 >
@@ -815,7 +815,7 @@ export default function Admin() {
                 <button
                   key={s.key}
                   onClick={() => setUnknownStatus(s.key)}
-                  className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition ${
+                  className={`shrink-0 min-h-[44px] text-[11px] px-2.5 py-1 rounded-lg border transition ${
                     unknownStatus === s.key ? 'bg-neutral-800 text-amber-400 border-amber-500/40 font-semibold' : 'text-slate-400 border-neutral-800 hover:border-neutral-700'
                   }`}
                 >
@@ -841,10 +841,10 @@ export default function Admin() {
                     <div key={item.id} className="card rounded-2xl p-4 bg-neutral-900/50 border border-neutral-800 space-y-3 flex flex-col justify-between">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neutral-800 text-slate-300">
+                          <span className="text-[11px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-neutral-800 text-slate-300">
                             {categoryLabels[item.category] || item.category}
                           </span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${statusBadgeColors[item.status] || statusBadgeColors.pending}`}>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded border ${statusBadgeColors[item.status] || statusBadgeColors.pending}`}>
                             {statusLabels[item.status] || item.status}
                           </span>
                         </div>
@@ -862,11 +862,11 @@ export default function Admin() {
                             <p className="text-xs font-semibold text-slate-200 truncate">
                               {item.detected_app_guess ? `Palpite: ${item.detected_app_guess}` : 'App não identificada'}
                             </p>
-                            <p className="text-[10px] text-slate-500 mt-0.5">
+                            <p className="text-[11px] text-slate-500 mt-0.5">
                               {new Date(item.created_at).toLocaleString('pt-PT')}
                             </p>
                             {item.admin_notes && (
-                              <p className="text-[10px] text-amber-300/80 italic mt-1 line-clamp-1">
+                              <p className="text-[11px] text-amber-300/80 italic mt-1 line-clamp-1">
                                 Nota: {item.admin_notes}
                               </p>
                             )}
@@ -876,7 +876,7 @@ export default function Admin() {
 
                       <button
                         onClick={() => handleOpenUnknownModal(item)}
-                        className="w-full flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] bg-neutral-800 hover:bg-neutral-700 active:scale-98 text-xs font-semibold py-2 px-3 rounded-xl text-slate-200 transition border border-neutral-700"
                       >
                         <Eye size={14} /> Consultar Imagem & Detalhes
                       </button>
@@ -920,7 +920,7 @@ export default function Admin() {
                       <label className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
                         Resultado Extraído (Best Effort)
                       </label>
-                      <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 max-h-40 overflow-y-auto text-[10px] font-mono text-emerald-400">
+                      <div className="bg-neutral-950 rounded-2xl p-3 border border-neutral-800 max-h-40 overflow-y-auto text-[11px] font-mono text-emerald-400">
                         <pre className="whitespace-pre-wrap break-words">
                           {JSON.stringify(selectedUnknownLog.best_effort_result, null, 2)}
                         </pre>
@@ -993,7 +993,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setMetricsRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
+                  className={`flex-1 min-h-[44px] border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${metricsRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -1011,15 +1011,15 @@ export default function Admin() {
             <div className="grid grid-cols-3 gap-3">
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
                 <p className="text-lg font-bold">{scopeMeals.length}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Refeições</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Refeições</p>
               </div>
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
                 <p className="text-lg font-bold">{scopeMsgs.length}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Msgs Coach</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Msgs Coach</p>
               </div>
               <div className="card rounded-2xl p-3 text-center bg-neutral-900/50 border border-neutral-800">
                 <p className="text-lg font-bold">{selectedUserId ? 1 : activeUsers}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Utiliz. ativos</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Utiliz. ativos</p>
               </div>
             </div>
 
@@ -1110,7 +1110,7 @@ export default function Admin() {
             <div className="flex gap-2">
               {['hoje', 'semana', 'mes'].map(r => (
                 <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
+                  className={`flex-1 min-h-[44px] border border-neutral-700 rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--accent)] text-neutral-50' : 'text-slate-300'}`}
                 >
                   {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
                 </button>
@@ -1124,7 +1124,7 @@ export default function Admin() {
             ) : (
               <>
                 <div className="card rounded-2xl p-4 text-center bg-neutral-900/50 border border-neutral-800">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
+                  <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
                   <p className="text-3xl font-extrabold">${totalCost.toFixed(4)}</p>
                   <p className="text-[11px] text-slate-500 mt-1">{totalCalls} chamada(s) · {(totalIn + totalOut).toLocaleString('pt-PT')} tokens</p>
                 </div>
@@ -1155,7 +1155,7 @@ export default function Admin() {
                     <p className="text-xs font-semibold flex items-center gap-1.5">
                       <Bot size={14} className="text-[var(--mod-coach-to)]" /> Cache do Coach
                     </p>
-                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cacheStyle.badge}`}>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cacheStyle.badge}`}>
                       {cacheSignal.label}
                     </span>
                   </div>
@@ -1163,20 +1163,20 @@ export default function Admin() {
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     <div className="text-center">
                       <p className="text-sm font-bold">{coachCalls}</p>
-                      <p className="text-[9px] text-slate-500">chamadas</p>
+                      <p className="text-[11px] text-slate-500">chamadas</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-bold">{cacheHitPct}%</p>
-                      <p className="text-[9px] text-slate-500">já em cache</p>
+                      <p className="text-[11px] text-slate-500">já em cache</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-bold">{sustainedHours}<span className="text-slate-600">/{activeHourCounts.length}</span></p>
-                      <p className="text-[9px] text-slate-500">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
+                      <p className="text-[11px] text-slate-500">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
                     </div>
                   </div>
                 </div>
 
-                <p className="text-[10px] text-slate-600 text-center px-2">
+                <p className="text-[11px] text-slate-600 text-center px-2">
                   Preços de referência: ${GEMINI_PRICE_PER_M_INPUT.toFixed(2)} / milhão tokens input,
                   ${GEMINI_PRICE_PER_M_OUTPUT.toFixed(2)} / milhão output (gemini-flash-latest).
                   Tarifa promocional até 31-12-2026 — duplica a 01-01-2027.
@@ -1190,7 +1190,7 @@ export default function Admin() {
       {displayedTab === 'logs' && (
         <div className="space-y-2 fade-in">
           {logs.map(l => (
-            <div key={l.id} className={`rounded-lg p-2.5 text-[10px] font-mono border ${
+            <div key={l.id} className={`rounded-lg p-2.5 text-[11px] font-mono border ${
               l.level === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-300' :
               l.level === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' :
               'bg-neutral-900 border-neutral-800 text-slate-400'

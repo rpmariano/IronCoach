@@ -125,7 +125,7 @@ export default function Auth() {
         {/* Divider */}
         <div className="relative flex py-1 items-center">
           <div className="flex-grow border-t border-slate-200"></div>
-          <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase tracking-wider">ou</span>
+          <span className="flex-shrink mx-3 text-[11px] text-slate-400 uppercase tracking-wider">ou</span>
           <div className="flex-grow border-t border-slate-200"></div>
         </div>
 
@@ -155,7 +155,7 @@ export default function Auth() {
             setErrorMsg(null);
             setInfoMsg(null);
           }}
-          className="w-full text-center font-medium text-xs text-slate-500 hover:text-slate-700 transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--accent)] outline-none"
+          className="w-full min-h-[44px] text-center font-medium text-xs text-slate-500 hover:text-slate-700 transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--accent)] outline-none"
         >
           {authMode === 'signin' ? 'Ainda não tens conta? Criar conta' : 'Já tens conta? Entrar'}
         </button>

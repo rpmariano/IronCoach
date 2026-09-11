@@ -106,7 +106,7 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
           const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
           return (
             <div className="text-right">
-              <span className="text-[10px] text-slate-500 block">ACWR</span>
+              <span className="text-[11px] text-slate-500 block">ACWR</span>
               <span className={`text-xs font-bold ${ACWR_TONE_COLOR[tone]}`}>
                 {acwr.hasEnoughData ? acwr.ratio.toFixed(2) : label}
               </span>

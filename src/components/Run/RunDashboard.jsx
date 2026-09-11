@@ -192,13 +192,13 @@ export default function RunDashboard() {
       <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
         <div>
           <p className="text-xs text-slate-300 font-medium">{label}</p>
-          <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+          <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1.5">
             {formatDatePT(b.date)}
             {b.source === 'run' && b.runCount > 0 && (
               <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
             )}
             {b.source === 'split' && (
-              <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold uppercase tracking-wide">split</span>
+              <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[11px] font-bold uppercase tracking-wide">split</span>
             )}
           </p>
         </div>
@@ -332,7 +332,7 @@ export default function RunDashboard() {
             <h2 className="text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
               <Mountain className="w-3.5 h-3.5 text-slate-400" /> Desnível, calorias e cadência
             </h2>
-            <p className="text-[10px] text-slate-400 capitalize">
+            <p className="text-[11px] text-slate-400 capitalize">
               {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
             </p>
           </div>
@@ -341,19 +341,19 @@ export default function RunDashboard() {
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalElevation > 0 ? Math.round(watchMetrics.totalElevation) : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Desnível (m)</p>
+              <p className="text-[11px] text-slate-400 mt-1">Desnível (m)</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalCalories > 0 ? Math.round(watchMetrics.totalCalories) : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Calorias</p>
+              <p className="text-[11px] text-slate-400 mt-1">Calorias</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.avgCadence !== null ? watchMetrics.avgCadence : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Cadência (spm)</p>
+              <p className="text-[11px] text-slate-400 mt-1">Cadência (spm)</p>
             </div>
           </div>
         </div>

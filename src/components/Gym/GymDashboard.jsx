@@ -175,19 +175,19 @@ export default function GymDashboard() {
                 <div className="grid grid-cols-3 gap-2 bg-white/5 rounded-xl p-3 border border-white/10 text-center">
                   <div>
                     <p className="text-base font-extrabold text-white leading-none">{classAnalytics.totalClasses}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Aulas</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Aulas</p>
                   </div>
                   <div>
                     <p className="text-base font-extrabold text-white leading-none">
                       {formatDurationMinutes(classAnalytics.totalClassSeconds)}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-1">Tempo Total</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Tempo Total</p>
                   </div>
                   <div>
                     <p className="text-base font-extrabold text-amber-400 leading-none">
                       {classAnalytics.avgRpe ? `${classAnalytics.avgRpe} / 10` : '-'}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-1">Esforço Médio (RPE)</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Esforço Médio (RPE)</p>
                   </div>
                 </div>
 
@@ -201,7 +201,7 @@ export default function GymDashboard() {
                           <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                           <div>
                             <p className="text-xs font-semibold text-slate-200">{c.name}</p>
-                            <p className="text-[10px] text-slate-400">
+                            <p className="text-[11px] text-slate-400">
                               {c.count} aula{c.count > 1 ? 's' : ''}
                               {c.totalSeconds > 0 ? ` · ${formatDurationMinutes(c.totalSeconds)}` : ''}
                             </p>

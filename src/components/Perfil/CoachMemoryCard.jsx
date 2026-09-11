@@ -134,7 +134,9 @@ export default function CoachMemoryCard() {
           onClick={() => setShowCategoryHelp(true)}
           aria-label="O que colocar em cada categoria?"
           title="O que colocar em cada categoria?"
-          className="inline-flex items-center justify-center rounded-full active:scale-90 transition"
+          // tap-area-44: o botao continua a desenhar-se com 18px e ganha,
+          // por cima, uma area de toque invisivel de 44 (ver globals.css).
+          className="tap-area-44 inline-flex items-center justify-center rounded-full active:scale-90 transition"
           style={{
             color: 'var(--mod-coach-to)',
             background: 'color-mix(in srgb, var(--mod-coach-to) 15%, transparent)',
@@ -145,7 +147,7 @@ export default function CoachMemoryCard() {
           <HelpCircle size={12} />
         </button>
         {notes.length > 0 && (
-          <span className="text-[10px] text-slate-500 font-mono ml-auto">{notes.length}/40</span>
+          <span className="text-[11px] text-slate-500 font-mono ml-auto">{notes.length}/40</span>
         )}
       </div>
 
@@ -184,7 +186,7 @@ export default function CoachMemoryCard() {
           >
             <div className="flex items-center gap-2 mb-1.5">
               <span
-                className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                className="text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
                 style={{
                   background: byCoach
                     ? 'color-mix(in srgb, var(--mod-coach-to) 12%, transparent)'
@@ -195,7 +197,7 @@ export default function CoachMemoryCard() {
                 {categoryLabel(n.category)}
               </span>
               <span
-                className="text-[9px]"
+                className="text-[11px]"
                 style={{ color: byCoach ? 'var(--mod-coach-to)' : 'rgb(100 116 139)', opacity: byCoach ? 0.8 : 1 }}
               >
                 {byCoach ? 'registado pela Carol' : 'escrito por ti'}
@@ -272,7 +274,7 @@ export default function CoachMemoryCard() {
                   <button
                     type="button"
                     onClick={() => setEditingId(null)}
-                    className="text-[11px] text-slate-500 hover:text-slate-300 px-2"
+                    className="tap-h-44 text-[11px] text-slate-500 hover:text-slate-300 px-2"
                   >
                     Cancelar
                   </button>
@@ -316,10 +318,10 @@ export default function CoachMemoryCard() {
             <Button variant="module" moduleColor="var(--mod-coach-to)" className="text-[11px] py-2 px-3" onClick={handleAdd} disabled={busy || !draftNote.trim()} icon={busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}>
               Guardar
             </Button>
-            <button type="button" onClick={resetAdd} className="text-[11px] text-slate-500 hover:text-slate-300 px-2">
+            <button type="button" onClick={resetAdd} className="tap-h-44 text-[11px] text-slate-500 hover:text-slate-300 px-2">
               Cancelar
             </button>
-            <span className="ml-auto text-[10px] text-slate-600 font-mono">
+            <span className="ml-auto text-[11px] text-slate-600 font-mono">
               {draftNote.length}/{MAX_NOTE_LEN}
             </span>
           </div>
@@ -329,7 +331,7 @@ export default function CoachMemoryCard() {
           type="button"
           onClick={() => setAdding(true)}
           disabled={notes.length >= 40}
-          className="w-full border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full min-h-[44px] border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Plus size={15} />
           {notes.length >= 40 ? 'Memória cheia — remove uma nota primeiro' : 'Acrescentar um facto'}
@@ -364,7 +366,7 @@ export default function CoachMemoryCard() {
               </ul>
             </div>
           ))}
-          <p className="text-[10px] leading-relaxed text-slate-400 text-center pb-2">
+          <p className="text-[11px] leading-relaxed text-slate-400 text-center pb-2">
             Não encaixa em nenhuma? Usa "Outro" — a Carol lê à mesma.
           </p>
         </div>

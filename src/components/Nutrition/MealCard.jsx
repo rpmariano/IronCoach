@@ -143,7 +143,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           {/* Photos if present */}
           {meal.photo_paths?.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fotografias</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Fotografias</span>
               {photosLoading ? (
                 <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
                   <Loader2 size={14} className="animate-spin" /> A carregar fotos...

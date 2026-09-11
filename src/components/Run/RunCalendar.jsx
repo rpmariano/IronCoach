@@ -113,7 +113,7 @@ export default function RunCalendar({ onNewRun }) {
 
         <div className="grid grid-cols-7 gap-1 mb-1">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(d => (
-            <div key={d} className="text-center text-[10px] text-slate-400 font-semibold">{d}</div>
+            <div key={d} className="text-center text-[11px] text-slate-400 font-semibold">{d}</div>
           ))}
         </div>
 
@@ -125,7 +125,7 @@ export default function RunCalendar({ onNewRun }) {
             const isSelected = dateIso === selectedDate;
             const dayNum = Number(dateIso.slice(8, 10));
             
-            let btnClass = "aspect-square flex flex-col items-center justify-center rounded-xl text-xs transition ";
+            let btnClass = "aspect-square min-w-[44px] min-h-[44px] flex flex-col items-center justify-center rounded-xl text-xs transition ";
             if (isSelected) {
               btnClass += "font-bold";
             } else if (isToday) {

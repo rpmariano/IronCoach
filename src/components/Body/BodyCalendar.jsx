@@ -69,7 +69,7 @@ export default function BodyCalendar() {
 
         <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center mb-1">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <div key={i} className="text-[10px] text-slate-500">{d}</div>
+            <div key={i} className="text-[11px] text-slate-500">{d}</div>
           ))}
         </div>
 
@@ -90,7 +90,7 @@ export default function BodyCalendar() {
               <div key={date.toString()} className="flex justify-center">
                 <button
                   onClick={() => setSelectedDate(date)}
-                  className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl text-xs transition ${
+                  className={`relative flex flex-col items-center justify-center w-11 h-11 rounded-xl text-xs transition ${
                     isSelected ? 'bg-neutral-900 shadow-md' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                   style={isSelected ? { color: '#0f172a' } : undefined}
@@ -105,7 +105,7 @@ export default function BodyCalendar() {
 
         {/* Legenda */}
         <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-100 px-1">
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Avaliação registada
           </span>
         </div>

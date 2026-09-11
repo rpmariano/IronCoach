@@ -605,7 +605,7 @@ export default function Coach() {
                 <button
                   key={idx}
                   onClick={() => handleSend(s)}
-                  className="w-full text-left text-xs rounded-xl px-3.5 py-2.5 transition font-medium"
+                  className="w-full min-h-[44px] text-left text-xs rounded-xl px-3.5 py-2.5 transition font-medium"
                   style={{
                     color: 'var(--mod-coach-to)',
                     border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -624,7 +624,7 @@ export default function Coach() {
           <div className="flex justify-center mb-4 mt-2">
             <button
               onClick={() => setHoursToShow(prev => prev + 24)}
-              className="text-xs rounded-xl px-4 py-2.5 transition font-medium"
+              className="tap-h-44 text-xs rounded-xl px-4 py-2.5 transition font-medium"
               style={{
                 color: 'var(--mod-coach-to)',
                 border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -699,7 +699,7 @@ export default function Coach() {
               <button
                 key={idx}
                 onClick={() => handleSend(s)}
-                className="text-left text-xs rounded-xl px-3 py-2 transition font-medium"
+                className="min-h-[44px] text-left text-xs rounded-xl px-3 py-2 transition font-medium"
                 style={{
                   color: 'var(--mod-coach-to)',
                   border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -736,7 +736,7 @@ export default function Coach() {
                 setActiveProposalSheetPlan(pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
-              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
+              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 min-h-[44px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
               style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
             >
               <Sparkles className="w-4 h-4 text-white" />

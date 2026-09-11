@@ -426,3 +426,20 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(null);
   });
 });
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('BodyRegistration — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    render(<BodyRegistration onClose={() => {}} />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+  });
+});

@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints, Plus } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -12,6 +12,7 @@ import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
 import ShoeCabinet from './ShoeCabinet';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { todayISO } from '../../lib/utils';
@@ -52,7 +53,7 @@ const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 function CoachBadge() {
   return (
     <span title="Meta definida pelo Coach"
-      className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-white"
+      className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-white"
       style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}>
       Coach
     </span>
@@ -126,6 +127,10 @@ export default function Perfil() {
   const subnavRef = useRef(null);
   const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, tabIndex);
 
+  // O armário de sapatilhas grava-se a si próprio; a barra do separador
+  // Equipamento só lhe pede para abrir o formulário de um par novo.
+  const shoeCabinetRef = useRef(null);
+
   // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
   // sincroniza o scroll nesses casos.
   useEffect(() => {
@@ -133,31 +138,15 @@ export default function Perfil() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabIndex]);
 
-  // O carrossel (tab-swipe-carousel, align-items:flex-start) fica sempre com
-  // a altura do separador mais alto dos 4 — "Guardar alterações" ficava
-  // sempre a essa distância fixa do topo, mesmo num separador bem mais curto
-  // (ex.: "Metas"), com um vão enorme e vazio até ao botão. Aqui só se
-  // ajusta a ALTURA do próprio carrossel à do separador atualmente visível —
-  // não mexe na classe partilhada tab-swipe-carousel (o Dashboard usa a
-  // mesma), só num estilo inline específico deste componente.
+  // A ação de cada separador vive agora na ActionBar fixa (ponto 2 do
+  // handoff). Antes ficava no fim do carrossel e, como o carrossel
+  // (tab-swipe-carousel, align-items:flex-start) tem sempre a altura do
+  // separador mais alto dos 4, "Guardar alterações" aparecia à mesma
+  // distância fixa do topo mesmo num separador curto — com um vão enorme
+  // até lá, e muitas vezes abaixo da dobra. Media-se então a altura do
+  // separador visível para encolher o carrossel; com o botão fora do
+  // scroll, essa medição deixou de ter razão de ser.
   const pageRefs = useRef([]);
-  const [carouselHeight, setCarouselHeight] = useState(null);
-  useEffect(() => {
-    const el = pageRefs.current[tabIndex];
-    if (!el) return;
-    setCarouselHeight(el.offsetHeight);
-    // jsdom (testes) não implementa ResizeObserver — sem ele só perde-se o
-    // acompanhamento de alterações de altura dentro do separador (ex.: abrir
-    // os campos extra dos lembretes de água), a medição inicial acima já
-    // corre sempre.
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setCarouselHeight(entry.contentRect.height);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tabIndex]);
 
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
      por gravar. Depender da identidade do objeto `profile` não servia: o
@@ -390,14 +379,31 @@ export default function Perfil() {
       // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
       // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
       // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
-      className="w-full mt-4 text-xs py-3 text-amber-950"
+      className="w-full text-xs text-amber-950"
     >
       Guardar alterações
     </Button>
   );
 
+  // Equipamento não escreve no rascunho partilhado (o armário grava-se a si
+  // próprio, par a par) — a ação da barra nesse separador é a do mock:
+  // abrir o formulário de um par novo.
+  const addShoesButton = (
+    <Button
+      variant="module"
+      moduleColor="var(--mod-corrida)"
+      onClick={() => shoeCabinetRef.current?.openNew()}
+      className="w-full text-xs text-white"
+    >
+      <Plus size={14} /> Adicionar sapatilhas
+    </Button>
+  );
+
   return (
-    <div className="space-y-4 fade-in pb-8">
+    // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
+    // O Perfil é dourado como a prova — a mesma cor do indicador dos
+    // separadores e do "Guardar alterações".
+    <div className="space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
       {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
       <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
         {/* Indicador "pílula elástica" — tint translúcido em vez de
@@ -431,7 +437,7 @@ export default function Perfil() {
             ref={setItemRef(i)}
             onClick={() => requestTabChange(t.key)}
             style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
-            className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
+            className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 min-h-[44px] text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
               tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
             }`}
           >
@@ -450,7 +456,6 @@ export default function Perfil() {
         onScroll={handleScroll}
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
-        style={carouselHeight != null ? { height: carouselHeight, overflowY: 'hidden', transition: 'height 0.2s ease' } : undefined}
       >
       <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
           <div className="module-card-contrast">
@@ -494,7 +499,7 @@ export default function Perfil() {
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-slate-600 mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
@@ -508,7 +513,7 @@ export default function Perfil() {
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-slate-600 mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Calibra a linguagem e os limiares de treino do Coach.'}
@@ -524,7 +529,7 @@ export default function Perfil() {
               <button
                 type="button"
                 onClick={() => requestTabChange('coach')}
-                className="w-full flex items-center justify-between gap-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50/70 transition"
+                className="w-full min-h-[44px] flex items-center justify-between gap-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50/70 transition"
               >
                 <span className="text-[11px] text-slate-500">
                   Restrições alimentares e alergias agora vivem na aba{' '}
@@ -545,7 +550,7 @@ export default function Perfil() {
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
                 />
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-slate-600 mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
                   frequência cardíaca mais precisas e permite ao Coach detetar
                   fadiga acumulada — uma subida sustentada face ao teu normal é
@@ -557,7 +562,7 @@ export default function Perfil() {
           
           <div className="module-card-contrast">
             <p className="text-[11px] text-slate-500 mb-3">Sessão iniciada como <b className="text-slate-300">{session?.user?.email}</b></p>
-            <button onClick={handleSignOut} className="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-red-500/10 transition">
+            <button onClick={handleSignOut} className="w-full min-h-[44px] border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-red-500/10 transition">
               <LogOut size={14} /> Terminar sessão
             </button>
           </div>
@@ -684,7 +689,7 @@ export default function Perfil() {
               <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
                 aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
                 aria-pressed={!!draft.coach_can_set_nutrition_goals}
-                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
                   draft.coach_can_set_nutrition_goals ? '' : 'bg-slate-200 dark:bg-neutral-800'
                 }`}
                 style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
@@ -705,7 +710,7 @@ export default function Perfil() {
                 aria-label={draft.water_reminder_enabled ? 'Desativar lembretes de água' : 'Ativar lembretes de água'}
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
-                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
                   draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-slate-200 dark:bg-neutral-800'
                 }`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
@@ -758,7 +763,7 @@ export default function Perfil() {
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
-          <ShoeCabinet />
+          <ShoeCabinet ref={shoeCabinetRef} />
       </div>
 
       <div ref={(el) => { pageRefs.current[3] = el; }} className="tab-swipe-page space-y-4">
@@ -810,7 +815,7 @@ export default function Perfil() {
                 );
               })}
             </div>
-            <p className="text-[10px] text-slate-600 mt-1">
+            <p className="text-[11px] text-slate-600 mt-1">
               Podes escolher mais que uma. Vegetariano e vegano excluem-se —
               escolher um desliga o outro. Sem nada selecionado, o Coach
               assume que comes de tudo.
@@ -822,7 +827,7 @@ export default function Perfil() {
               onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
               className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
             />
-            <p className="text-[10px] text-slate-600 mt-1">
+            <p className="text-[11px] text-slate-600 mt-1">
               O Coach trata isto como regra absoluta e nunca sugere nada que
               a contrarie.
             </p>
@@ -838,11 +843,15 @@ export default function Perfil() {
       </div>
       </div>
 
-      {/* Um só botão, fora do carrossel — Pessoal/Metas/Coach partilham o
-          mesmo rascunho, por isso "Guardar alterações" já grava tudo o
-          que estiver por gravar em qualquer um deles, não só no visível.
-          O Equipamento é a exceção: grava-se a si próprio, par a par. */}
-      {saveButton}
+      {/* Barra de ação fixa (ponto 2 do handoff) — um só botão, fora do
+          scroll. Pessoal/Metas/Coach partilham o mesmo rascunho, por isso
+          "Guardar alterações" grava tudo o que estiver por gravar em
+          qualquer um deles, não só no separador visível. O Equipamento é a
+          exceção: grava-se a si próprio, par a par, e a barra passa a ser
+          "Adicionar sapatilhas" (mock "Perfil · Equipamento"). */}
+      <ActionBar>
+        {tab === 'equipamento' ? addShoesButton : saveButton}
+      </ActionBar>
     </div>
   );
 }

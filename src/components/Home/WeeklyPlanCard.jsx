@@ -580,7 +580,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
                 useAppStore.getState().setCoachIntent('adapt_plan');
                 onNav('coach');
               }}
-              className="text-xs font-semibold px-2 py-1 rounded-md"
+              className="tap-h-44 text-xs font-semibold px-2 py-1 rounded-md"
               style={{ color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 15%, transparent)' }}
             >
               Adaptar Plano

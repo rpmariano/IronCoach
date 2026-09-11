@@ -552,3 +552,20 @@ describe('RunRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     expect(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...').value).toBe('');
   });
 });
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('RunRegistration — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    render(<RunRegistration onClose={() => {}} />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar Corrida/i }));
+  });
+});

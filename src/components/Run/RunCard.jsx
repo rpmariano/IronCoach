@@ -180,11 +180,11 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
               <h4 className="text-sm font-bold text-slate-800 leading-tight">
                 {run.title || run.name || 'Corrida'}
               </h4>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
                 {kindLabel}
               </span>
               {run.photo_paths?.length > 0 && (
-                <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+                <span className="text-[11px] text-slate-400 font-medium flex items-center gap-0.5">
                   <ImageIcon size={12} /> {run.photo_paths.length}
                 </span>
               )}
@@ -299,31 +299,31 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.ground_contact_time_ms && (
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Contacto Solo</span>
+                    <span className="text-[11px] text-slate-400 block">Contacto Solo</span>
                     <span className="font-bold text-slate-700">{details.ground_contact_time_ms} ms</span>
                   </div>
                 )}
                 {details.flight_time_ms && (
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Tempo Voo</span>
+                    <span className="text-[11px] text-slate-400 block">Tempo Voo</span>
                     <span className="font-bold text-slate-700">{details.flight_time_ms} ms</span>
                   </div>
                 )}
                 {details.vertical_oscillation_cm && (
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Oscilação Vertical</span>
+                    <span className="text-[11px] text-slate-400 block">Oscilação Vertical</span>
                     <span className="font-bold text-slate-700">{details.vertical_oscillation_cm} cm</span>
                   </div>
                 )}
                 {details.asymmetry_pct !== undefined && details.asymmetry_pct !== null && (
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Assimetria</span>
+                    <span className="text-[11px] text-slate-400 block">Assimetria</span>
                     <span className="font-bold text-slate-700">{details.asymmetry_pct}%</span>
                   </div>
                 )}
                 {details.leg_stiffness_kn_m && (
                   <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Rigidez (Stiffness)</span>
+                    <span className="text-[11px] text-slate-400 block">Rigidez (Stiffness)</span>
                     <span className="font-bold text-slate-700">{details.leg_stiffness_kn_m} kN/m</span>
                   </div>
                 )}
@@ -338,13 +338,13 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.aerobic_threshold_bpm && (
                   <div className="bg-emerald-50/60 border border-emerald-100 p-2 rounded-lg">
-                    <span className="text-[10px] text-emerald-700 font-medium block">Limiar Aeróbio (FC LA)</span>
+                    <span className="text-[11px] text-emerald-700 font-medium block">Limiar Aeróbio (FC LA)</span>
                     <span className="font-bold text-emerald-900">{details.aerobic_threshold_bpm} bpm</span>
                   </div>
                 )}
                 {details.anaerobic_threshold_bpm && (
                   <div className="bg-rose-50/60 border border-rose-100 p-2 rounded-lg">
-                    <span className="text-[10px] text-rose-700 font-medium block">Limiar Anaeróbio (FC LAn)</span>
+                    <span className="text-[11px] text-rose-700 font-medium block">Limiar Anaeróbio (FC LAn)</span>
                     <span className="font-bold text-rose-900">{details.anaerobic_threshold_bpm} bpm</span>
                   </div>
                 )}
@@ -364,7 +364,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
                   <span className="text-[11px] text-sky-700">Estimado: <strong>{details.sweat_loss_ml} ml</strong></span>
                 </div>
               </div>
-              <span className="text-[10px] font-semibold bg-sky-200/70 text-sky-800 px-2 py-1 rounded-full">
+              <span className="text-[11px] font-semibold bg-sky-200/70 text-sky-800 px-2 py-1 rounded-full">
                 Repor ~{Math.round(details.sweat_loss_ml * 1.5)} ml
               </span>
             </div>

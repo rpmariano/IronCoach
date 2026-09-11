@@ -229,10 +229,13 @@ export default function PremiumModal({
           </div>
           <button
             onClick={handleDismiss}
-            className="w-8 h-8 shrink-0 rounded-full bg-black/15 flex items-center justify-center text-white active:scale-95 transition-transform hover:bg-black/25"
+            // O circulo mantem os 32px de desenho; a area tocavel e de 44.
+            className="tap-44 shrink-0 active:scale-95 transition-transform"
             aria-label="Fechar"
           >
-            <X size={18} strokeWidth={2.5} />
+            <span className="w-8 h-8 rounded-full bg-black/15 flex items-center justify-center text-white hover:bg-black/25">
+              <X size={18} strokeWidth={2.5} />
+            </span>
           </button>
         </div>
 

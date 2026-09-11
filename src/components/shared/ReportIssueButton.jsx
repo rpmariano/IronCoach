@@ -211,7 +211,7 @@ export default function ReportIssueButton() {
             <label className="flex flex-col items-center justify-center gap-2 w-full bg-neutral-950 border-2 border-dashed border-neutral-700 rounded-xl py-6 px-3 cursor-pointer hover:border-slate-500 transition">
               <Upload size={18} className="text-slate-400" />
               <span className="text-xs text-slate-400">Clica para selecionar ficheiros</span>
-              <span className="text-[10px] text-slate-500">PNG, JPG, GIF, MP4, WebM (máx. 50MB cada)</span>
+              <span className="text-[11px] text-slate-500">PNG, JPG, GIF, MP4, WebM (máx. 50MB cada)</span>
               <input
                 type="file"
                 multiple
@@ -236,7 +236,8 @@ export default function ReportIssueButton() {
                       <button
                         onClick={() => handleRemoveFile(index)}
                         disabled={submitting}
-                        className="shrink-0 p-1 text-slate-400 hover:text-red-400 disabled:opacity-50"
+                        aria-label={`Remover ${file.name}`}
+                        className="tap-44 shrink-0 text-slate-400 hover:text-red-400 disabled:opacity-50"
                       >
                         <X size={14} />
                       </button>

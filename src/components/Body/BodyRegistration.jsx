@@ -9,6 +9,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
@@ -358,8 +359,37 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
+  const primaryAction = isEditing ? (
+    <CoachAnalyzeButton
+      onClick={handleSaveEdit}
+      disabled={isSaving}
+      busy={isSaving}
+      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+    />
+  ) : entryMethod === 'foto' ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzePhotos}
+      disabled={!photos.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar Avaliação"
+    />
+  ) : (
+    <CoachAnalyzeButton
+      onClick={handleSaveManual}
+      disabled={isSaving}
+      busy={isSaving}
+      label="Analisar Avaliação"
+    />
+  );
+
   return (
-    <div className="space-y-4 fade-in">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    <div
+      className="space-y-4 fade-in"
+      style={{ '--focus-ring': 'var(--mod-corpo-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       <div
         className="module-card-contrast"
         // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
@@ -379,11 +409,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            // O circulo continua a desenhar-se com 32px; o que cresce para
+            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+            className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <X size={16} />
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+              <X size={16} />
+            </span>
           </button>
         </div>
 
@@ -464,7 +498,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
                 <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                 <p className="text-xs text-slate-600 font-semibold">Escolhe os prints da app Renpho Health</p>
-                <p className="text-[10px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                <p className="text-[11px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
               </label>
             )}
           </>
@@ -472,7 +506,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           <div className="grid grid-cols-2 gap-2 mb-4">
             {BODY_METRICS.map(m => (
               <label key={m.key} className="block">
-                <span className="text-[10px] text-slate-500 block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
+                <span className="text-[11px] text-slate-500 block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
                 <input
                   type="number"
                   step={m.dec > 0 ? '0.1' : '1'}
@@ -532,30 +566,6 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           );
         })()}
 
-        {/* Ação */}
-        {isEditing ? (
-          <CoachAnalyzeButton
-            onClick={handleSaveEdit}
-            disabled={isSaving}
-            busy={isSaving}
-            label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-          />
-        ) : entryMethod === 'foto' ? (
-          <CoachAnalyzeButton
-            onClick={handleAnalyzePhotos}
-            disabled={!photos.length || isAnalyzing}
-            busy={isAnalyzing}
-            label="Analisar Avaliação"
-          />
-        ) : (
-          <CoachAnalyzeButton
-            onClick={handleSaveManual}
-            disabled={isSaving}
-            busy={isSaving}
-            label="Analisar Avaliação"
-          />
-        )}
-
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
 
@@ -567,6 +577,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      <ActionBar>{primaryAction}</ActionBar>
     </div>
   );
 }

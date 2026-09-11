@@ -85,7 +85,7 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         ticks: { 
           color: 'rgba(255, 255, 255, 0.6)',
           callback: (v) => `${v} kg`,
-          font: { size: 10 }
+          font: { size: 11 }
         }
       }
     },

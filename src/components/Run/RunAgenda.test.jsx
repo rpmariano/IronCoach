@@ -192,7 +192,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fillRequiredFields();
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
 
     // O pedido usa o modo já persistido (race_event_id), tal como "Obter
     // Informação" numa prova existente — não bloqueia a navegação, que já
@@ -293,7 +293,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     renderAgenda();
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
-    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
@@ -315,7 +315,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     const dateInput = document.querySelector('input[type="date"]');
     const expectedDate = dateInput.value;
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
 
     await waitFor(() => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -329,7 +329,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
-    fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBeNull();
@@ -506,7 +506,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('Rascunho Antigo');
 
       fillRequiredFields();
-      fireEvent.click(screen.getAllByRole('button', { name: /Guardar Prova/i })[1]);
+      fireEvent.click(screen.getByRole('button', { name: /Guardar Prova/i }));
 
       await waitFor(() => {
         expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -521,5 +521,23 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
       expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa').value).toBe('');
     });
+  });
+});
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('RunAgenda — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({ raceEvents: [], runs: [], profile: { id: 'user-1' }, activeTab: 'holistica' });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    renderAgenda();
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar Prova/i }));
   });
 });

@@ -157,7 +157,7 @@ export default function WaterTracker() {
             style={{ width: `${percentage}%`, backgroundColor: 'var(--blue)' }}
           />
         </div>
-        <p className="text-[10px] font-bold mt-2" style={{ color: 'var(--blue)' }}>{percentage}% do objetivo diário</p>
+        <p className="text-[11px] font-bold mt-2" style={{ color: 'var(--blue)' }}>{percentage}% do objetivo diário</p>
       </div>
 
       {/* Quick Add Buttons */}
@@ -184,7 +184,7 @@ export default function WaterTracker() {
               <div key={w.id} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl px-3 py-2">
                 <span className="text-xs font-semibold text-slate-700">{w.amount_ml} ml</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-500">
+                  <span className="text-[11px] text-slate-500">
                     {new Date(w.created_at).toLocaleTimeString('pt-PT', {hour:'2-digit', minute:'2-digit'})}
                   </span>
                   <button 
@@ -239,7 +239,7 @@ export default function WaterTracker() {
 
       <div className="card rounded-xl p-3 bg-blue-50/50 border border-blue-100 flex gap-2">
         <Info size={16} style={{ color: 'var(--blue)' }} className="shrink-0 mt-0.5" />
-        <p className="text-[10px] text-slate-500 leading-relaxed">
+        <p className="text-[11px] text-slate-500 leading-relaxed">
           Para atingires a tua meta de <b>{goal} ml</b>, precisas de beber <b>{totalGlassesGoal} copos</b> de 250ml ao longo do dia.
         </p>
       </div>

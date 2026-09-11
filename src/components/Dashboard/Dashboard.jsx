@@ -153,12 +153,12 @@ export default function Dashboard({ activeModule }) {
             ref={setItemRef(i)}
             onClick={() => scrollTo(i)}
             style={activeModule === t.key ? { color: t.color } : undefined}
-            className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-300 ${
+            className={`relative z-10 flex-1 flex flex-col items-center justify-center gap-1 py-1.5 min-h-[44px] text-xs font-semibold rounded-lg transition-colors duration-300 ${
               activeModule === t.key ? '' : 'text-slate-500 hover:text-slate-200 hover:bg-white/50'
             }`}
           >
             {t.icon}
-            <span className="text-[10px]">{t.label}</span>
+            <span className="text-[11px]">{t.label}</span>
           </button>
         ))}
       </div>

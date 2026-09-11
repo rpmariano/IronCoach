@@ -233,7 +233,8 @@ export default function RaceHubView({
                 <button
                   type="button"
                   onClick={() => setShowVdotHelp(prev => !prev)}
-                  className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1 transition-all ${
+                  // tap-area-44: o glifo mantem-se pequeno, a area tocavel e de 44.
+                  className={`tap-area-44 absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1 transition-all ${
                     showVdotHelp
                       ? 'text-cyan-400 bg-cyan-500/20'
                       : 'text-slate-400 hover:text-cyan-300 active:bg-white/10'
@@ -276,7 +277,7 @@ export default function RaceHubView({
             <CoachAvatar size={28} />
             <span>Evolução & Prontidão</span>
           </div>
-          <span className={`rh-carol-readiness-pill text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
+          <span className={`rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full ${
             readiness.level === 'high'
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
               : readiness.level === 'medium'
@@ -293,7 +294,7 @@ export default function RaceHubView({
 
         {plan.viability.flags.length > 0 && (
           <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+            <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
               <AlertTriangle size={12} className="shrink-0" /> Alertas de Viabilidade
             </span>
             {plan.viability.flags.map((flag) => (

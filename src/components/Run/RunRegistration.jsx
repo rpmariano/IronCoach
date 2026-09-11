@@ -15,6 +15,7 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 // -------------------------------------
@@ -867,11 +868,41 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // ----------------------------------
   // RENDER CORRIDA (Runs)
   // ----------------------------------
+  const showToggle = !runIdToEdit;
+  const showFotoBlock = showToggle && entryMethod === 'foto';
+
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário: num ecrã de registo com este comprimento ficava
+     sempre abaixo da dobra. O rótulo é o mesmo de antes (os testes e o
+     atleta conhecem-no): "Analisar Corrida" a criar, "Guardar Alterações"
+     (ou "Guardar e Reanalisar") a editar. */
+  const primaryAction = showFotoBlock ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzeRun}
+      disabled={!runPhotos.length || analyzingRun}
+      busy={analyzingRun}
+      label="Analisar Corrida"
+    />
+  ) : runIdToEdit ? (
+    <CoachAnalyzeButton
+      onClick={() => handleSaveCorrida(false, needsReanalysis)}
+      disabled={isSubmitting}
+      busy={isSubmitting}
+      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+    />
+  ) : (
+    // Criar uma corrida manualmente também passa pelo Coach, por isso tem o
+    // mesmo botão do caminho por foto.
+    <CoachAnalyzeButton
+      onClick={handleSaveCorrida}
+      disabled={isSubmitting}
+      busy={isSubmitting}
+      label="Analisar Corrida"
+    />
+  );
+
   const renderCorridaForm = () => {
     const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
-
-    const showToggle = !runIdToEdit;
-    const showFotoBlock = showToggle && entryMethod === 'foto';
 
     return (
       <div className="space-y-4 fade-in pb-10">
@@ -896,11 +927,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
             <button
               onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+              // O circulo continua a desenhar-se com 32px; o que cresce para
+              // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+              className="tap-44 shrink-0"
               title="Fechar"
               aria-label="Fechar"
             >
-              <X size={16} />
+              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+                <X size={16} />
+              </span>
             </button>
           </div>
 
@@ -953,7 +988,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     <option value="tecnico">Técnico (trilho)</option>
                   </optgroup>
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+                <p className="text-[11px] text-slate-400 mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
               </RunTrainingTypeHelp>
             </div>
           ) : (
@@ -987,7 +1022,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <button
                   key={i}
                   onClick={() => { setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                  className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
+                  // min-h-[44px] em vez de aspect-square: ver a mesma nota em
+                  // GymRegistration - dez celulas de 44px de largura nao cabem.
+                  className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                 >
                   {i + 1}
                 </button>
@@ -1013,7 +1050,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <option key={s.id} value={s.id}>{shoeLabel(s)}</option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-400 mt-1.5">
+              <p className="text-[11px] text-slate-400 mt-1.5">
                 Os km desta corrida somam-se ao par escolhido.
               </p>
             </div>
@@ -1039,18 +1076,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
             />
-            <p className="text-[10px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
+            <p className="text-[11px] text-slate-400 mt-1.5">Sugestão automática — muda se quiseres.</p>
           </div>
 
           {/* Competition Specifics */}
           {runKind === 'competicao' && (
             <div className="grid grid-cols-2 gap-2 mb-4 bg-white/5 border border-white/10 text-white rounded-xl p-3">
               <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Tempo Oficial</label>
+                <label className="text-[11px] text-slate-500 block mb-1">Tempo Oficial</label>
                 <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
-                <label className="text-[10px] text-slate-500 block mb-1">Posição</label>
+                <label className="text-[11px] text-slate-500 block mb-1">Posição</label>
                 <input type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
             </div>
@@ -1120,7 +1157,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     {runPhotos.map((p, i) => (
                       <div key={i} className="relative aspect-square">
                         <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
-                        <button onClick={() => removePhoto(i)} style={{ color: '#fff' }} className="absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 hover:bg-red-500 transition">
+                        <button onClick={() => removePhoto(i)} style={{ color: '#fff' }} aria-label={`Remover print ${i + 1}`} className="tap-area-44 absolute top-1 right-1 bg-slate-900/80 rounded-full p-1 hover:bg-red-500 transition">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -1128,7 +1165,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   </div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] text-slate-500">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); }} className="text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
+                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); }} className="tap-h-44 text-[11px] text-slate-500 hover:text-red-400 flex items-center gap-1 transition">
                       <Trash2 className="w-3.5 h-3.5" /> Limpar todos
                     </button>
                   </div>
@@ -1145,16 +1182,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                   <ImagePlus className="w-7 h-7 text-slate-400 mx-auto mb-2" />
                   <p className="text-[11px] text-slate-500 font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
-                  <p className="text-[10px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
+                  <p className="text-[11px] text-slate-400 mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
                 </label>
               )}
-
-              <CoachAnalyzeButton
-                onClick={handleAnalyzeRun}
-                disabled={!runPhotos.length || analyzingRun}
-                busy={analyzingRun}
-                label="Analisar Corrida"
-              />
             </>
           ) : (
             <>
@@ -1177,7 +1207,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
               <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Fisiologia & Relógio</span>
-                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+                <span className="text-[11px] font-normal text-slate-400">opcional</span>
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
@@ -1267,7 +1297,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
               <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Biomecânica de Corrida</span>
-                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+                <span className="text-[11px] font-normal text-slate-400">opcional</span>
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
@@ -1325,7 +1355,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="rounded-xl border border-white/10 bg-white/5 text-white p-3">
               <p className="text-[12px] font-bold text-slate-300 mb-2.5 flex items-center justify-between">
                 <span>Hidratação & Atividade</span>
-                <span className="text-[10px] font-normal text-slate-400">opcional</span>
+                <span className="text-[11px] font-normal text-slate-400">opcional</span>
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
@@ -1382,7 +1412,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     <button 
                       onClick={() => { setHrZones(hrZones.filter((_, i) => i !== idx)); setIsFormDirty(true); }} 
                       type="button" 
-                      className="p-1 text-slate-400 hover:text-red-500"
+                      aria-label={`Remover zona ${idx + 1}`}
+                      className="tap-44 text-slate-400 hover:text-red-500"
                     >
                       <X className="w-3.5 h-3.5"/>
                     </button>
@@ -1397,11 +1428,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <p className="text-[12px] font-semibold text-slate-500 mb-2">Estrutura da Sessão</p>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Aquecimento (min)</label>
+                  <label className="text-[11px] text-slate-500 block mb-1">Aquecimento (min)</label>
                   <input type="number" value={warmupMinutes} onChange={e => { setWarmupMinutes(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 block mb-1">Recuperação (seg)</label>
+                  <label className="text-[11px] text-slate-500 block mb-1">Recuperação (seg)</label>
                   <input type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
@@ -1417,7 +1448,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
               {splits.map((s, i) => (
                 <div key={i} className="flex gap-1 mb-1.5 items-center">
-                  <span className="text-[10px] text-slate-400 w-3">{i+1}.</span>
+                  <span className="text-[11px] text-slate-400 w-3">{i+1}.</span>
                   <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
                   <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
                   <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
@@ -1463,22 +1494,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             );
           })()}
 
-          {runIdToEdit ? (
-            <CoachAnalyzeButton
-              onClick={() => handleSaveCorrida(false, needsReanalysis)}
-              disabled={isSubmitting}
-              busy={isSubmitting}
-              label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-            />
-          ) : (
-            // passam pelo Coach, por isso têm o mesmo botão.
-            <CoachAnalyzeButton
-              onClick={handleSaveCorrida}
-              disabled={isSubmitting}
-              busy={isSubmitting}
-              label="Analisar Corrida"
-            />
-          )}
             </>
           )}
 
@@ -1489,8 +1504,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-10">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    // paddingBottom: espaço para a ActionBar fixa não tapar o fim do form.
+    <div
+      className="w-full max-w-lg mx-auto"
+      style={{ '--focus-ring': 'var(--mod-corrida-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       {renderCorridaForm()}
+
+      <ActionBar>{primaryAction}</ActionBar>
 
       {/* Modal Bottom Sheet para métricas em falta */}
       <MissingMetricsBottomSheet
@@ -1516,7 +1538,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <button
           type="button"
           onClick={() => setShowMissingMetricsSheet(true)}
-          className="fixed bottom-20 right-5 z-[90] text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
+          className="fixed bottom-20 right-5 z-[90] min-h-[44px] text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90"
           style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
         >
           <Sparkles className="w-4 h-4 text-white" />

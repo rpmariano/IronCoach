@@ -35,27 +35,27 @@ export default function UIAuditSandbox() {
             <h2 className="text-xl font-bold text-white border-b border-white/10 pb-2">Tipografia & Títulos (Discrepâncias Encontradas)</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-3xl font-bold text-white (App.jsx, Home.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-3xl font-bold text-white (App.jsx, Home.jsx)</span>
                 <h1 className="text-3xl font-bold text-white">Título Principal H1</h1>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-2xl font-bold text-slate-800 (Dashboard.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-2xl font-bold text-slate-800 (Dashboard.jsx)</span>
                 <h2 className="text-2xl font-bold text-slate-800">Subtítulo H2 (Legado text-slate-800)</h2>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-xl font-bold text-slate-800 (RunDashboard.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-xl font-bold text-slate-800 (RunDashboard.jsx)</span>
                 <h2 className="text-xl font-bold text-slate-800">Subtítulo H2 Menor</h2>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-sm font-semibold text-slate-800 (Cards)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-sm font-semibold text-slate-800 (Cards)</span>
                 <h2 className="text-sm font-semibold text-slate-800">Cabeçalho de Cartão (text-sm)</h2>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-xs font-bold text-slate-500 (Labels de Registo)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-xs font-bold text-slate-500 (Labels de Registo)</span>
                 <label className="text-xs font-bold text-slate-500">Label de Formulário (text-xs)</label>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-[11px] font-semibold text-slate-500 (Labels de BI)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-[11px] font-semibold text-slate-500 (Labels de BI)</span>
                 <label className="text-[11px] font-semibold text-slate-500">Label Pequena (11px)</label>
               </div>
             </div>
@@ -76,22 +76,22 @@ export default function UIAuditSandbox() {
             <h2 className="text-xl font-bold text-white border-b border-white/10 pb-2">Caixas de Texto e Selects</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm (RunRegistration.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm (RunRegistration.jsx)</span>
                 <input placeholder="Exemplo de Input Legado" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--mod-corrida-to)]" />
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm (Coach.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm (Coach.jsx)</span>
                 <input placeholder="Input Menor (py-2 px-3)" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none" />
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border-b-2 border-slate-200 px-4 py-3 text-lg font-bold (Legacy Title Input)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full bg-slate-50 border-b-2 border-slate-200 px-4 py-3 text-lg font-bold (Legacy Title Input)</span>
                 <input placeholder="Input de Título sem borderRadius" className="w-full bg-slate-50 border-b-2 border-slate-200 px-4 py-3 text-lg font-bold text-slate-800 placeholder:text-slate-300 focus:outline-none" />
               </div>
             </div>
 
             <div className="bg-slate-900/50 border border-slate-700 p-5 rounded-2xl mt-6">
               <h3 className="font-bold text-[var(--accent)] mb-2">Sugestão de Padronização (Dark Glass):</h3>
-              <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[var(--accent)]</span>
+              <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-[var(--accent)]</span>
               <input placeholder="Input Glass Premium" className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" />
             </div>
           </div>
@@ -102,19 +102,19 @@ export default function UIAuditSandbox() {
             <h2 className="text-xl font-bold text-white border-b border-white/10 pb-2">Botões e CTAs</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full bg-[var(--mod-corrida-to)] text-white font-bold py-3 rounded-2xl (RunRegistration.jsx)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full bg-[var(--mod-corrida-to)] text-white font-bold py-3 rounded-2xl (RunRegistration.jsx)</span>
                 <button className="w-full bg-[var(--mod-corrida-to)] text-white font-bold py-3 rounded-2xl active:scale-95 transition-transform">Botão Primário Módulo</button>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">flex-1 bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl (Modals)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">flex-1 bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl (Modals)</span>
                 <button className="w-full bg-white border border-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl active:scale-95 transition-transform">Botão Cancelar (Legado Light)</button>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">w-full text-[13px] py-2.5 rounded-xl font-bold bg-slate-900 text-white (Modals Dark)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">w-full text-[13px] py-2.5 rounded-xl font-bold bg-slate-900 text-white (Modals Dark)</span>
                 <button className="w-full text-[13px] py-2.5 rounded-xl font-bold bg-slate-900 text-white active:scale-95 transition-transform">Ação Secundária Dark</button>
               </div>
               <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                <span className="text-[10px] text-slate-500 font-mono mb-2 block">text-[11px] text-slate-500 hover:text-red-500 (Legacy Delete)</span>
+                <span className="text-[11px] text-slate-500 font-mono mb-2 block">text-[11px] text-slate-500 hover:text-red-500 (Legacy Delete)</span>
                 <button className="text-[11px] text-slate-500 hover:text-red-500 flex items-center gap-1 transition">Eliminar Métrica</button>
               </div>
             </div>

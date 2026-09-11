@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { Footprints, Plus, Pencil, Trash2, Archive, RotateCcw, Sparkles, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -47,7 +47,10 @@ function startedOnLabel(iso) {
   return monthName ? `${monthName} de ${y}` : y;
 }
 
-export default function ShoeCabinet() {
+/* forwardRef: o "Adicionar sapatilhas" do separador Equipamento vive agora na
+   ActionBar fixa do Perfil (ponto 2 do handoff) e precisa de abrir o mesmo
+   formulário que o botão "Adicionar" do cabeçalho deste cartão. */
+const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
   const { shoes, runs, profile, addShoe, updateShoe, deleteShoe } = useAppStore();
   const { showToast } = useToast();
 
@@ -77,6 +80,8 @@ export default function ShoeCabinet() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useImperativeHandle(ref, () => ({ openNew }), []);
 
   const openEdit = (shoe) => {
     const [y, m] = (shoe.started_on || '').split('-');
@@ -257,7 +262,7 @@ export default function ShoeCabinet() {
 
       {retired.length > 0 && (
         <div className="mt-4">
-          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-600 mb-2">
+          <p className="text-[11px] uppercase font-bold tracking-wide text-slate-600 mb-2">
             Aposentadas
           </p>
           <div className="space-y-2.5 opacity-60">
@@ -348,7 +353,7 @@ export default function ShoeCabinet() {
               <button
                 onClick={handleAskCarol}
                 disabled={askingCarol || saving}
-                className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition disabled:opacity-50"
+                className="flex items-center gap-1.5 min-h-[44px] text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition disabled:opacity-50"
                 style={{
                   background: 'color-mix(in srgb, var(--mod-coach-to) 15%, transparent)',
                   borderColor: 'color-mix(in srgb, var(--mod-coach-to) 40%, transparent)',
@@ -367,13 +372,13 @@ export default function ShoeCabinet() {
               placeholder="Ex.: 700"
               className={inputClass}
             />
-            <p className="text-[10px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-slate-500 leading-relaxed">
               Valor de referência para um corredor de {REFERENCE_WEIGHT_KG} kg — a app
               ajusta-o ao teu peso. A Carol consegue estimá-lo a partir da marca e
               modelo; se não conhecer o par, escreve-o à mão.
             </p>
             {form.lifespan_notes && (
-              <p className="text-[10px] italic mt-1 leading-relaxed" style={{ color: 'var(--mod-coach-to)' }}>
+              <p className="text-[11px] italic mt-1 leading-relaxed" style={{ color: 'var(--mod-coach-to)' }}>
                 {form.lifespan_notes}
               </p>
             )}
@@ -411,7 +416,9 @@ export default function ShoeCabinet() {
       />
     </div>
   );
-}
+});
+
+export default ShoeCabinet;
 
 const inputClass = 'w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-[var(--mod-corrida)]/60';
 
@@ -420,7 +427,7 @@ function Field({ label, hint, children }) {
     <div className="space-y-1.5">
       <label className="text-xs font-semibold text-slate-300">{label}</label>
       {children}
-      {hint && <p className="text-[10px] text-slate-500">{hint}</p>}
+      {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
     </div>
   );
 }
@@ -437,14 +444,14 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[13px] font-bold text-slate-100 truncate">{shoeLabel(shoe)}</p>
-          <p className="text-[10px] text-slate-500 truncate">
+          <p className="text-[11px] text-slate-500 truncate">
             {[startedOnLabel(shoe.started_on), shoe.shoe_category].filter(Boolean).join(' · ') || '—'}
           </p>
         </div>
         {/* Mesmo aposentado, o chip mostra o desgaste com que o par ficou —
             que estão aposentados já se percebe pelo cabeçalho da secção e
             pela opacidade; repetir isso aqui não acrescentava nada. */}
-        <span className={`shrink-0 text-[9px] font-bold px-2 py-0.5 rounded border ${style.chip}`}>
+        <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded border ${style.chip}`}>
           {WEAR_LEVEL_LABELS[wear.level]}
         </span>
       </div>
@@ -469,7 +476,7 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
             />
           </div>
           {!retired && (wear.level === 'substituir' || wear.level === 'excedida') && (
-            <p className={`flex items-start gap-1.5 text-[10px] leading-relaxed ${style.text}`}>
+            <p className={`flex items-start gap-1.5 text-[11px] leading-relaxed ${style.text}`}>
               <AlertTriangle size={12} className="shrink-0 mt-px" />
               {wear.level === 'excedida'
                 ? `Já passaste a vida útil estimada em ${Math.abs(wear.remainingKm)} km. Correr com a entressola gasta aumenta o risco de lesão — está na hora de trocar.`
@@ -496,7 +503,7 @@ function RowAction({ icon: Icon, label, onClick, danger }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded-lg border transition active:scale-95 ${
+      className={`flex-1 flex items-center justify-center gap-1 min-h-[44px] text-[11px] font-semibold py-1.5 rounded-lg border transition active:scale-95 ${
         danger
           ? 'border-red-500/25 text-red-400/90 hover:bg-red-500/10'
           : 'border-white/10 text-slate-300 hover:bg-white/10'

@@ -134,7 +134,7 @@ export default function CarolCard({ pendingTopics = 0, onOpenCoach, onDismissTop
           )}
 
           {(canExpand || expanded) && !loading && (
-            <button type="button" onClick={() => setExpanded((e) => !e)} className="inline-flex items-center gap-0.5 min-h-[32px] mt-[3px] text-[11.5px] font-bold" style={{ color: '#7dd3fc' }}>
+            <button type="button" onClick={() => setExpanded((e) => !e)} className="inline-flex items-center gap-0.5 min-h-[44px] mt-[3px] text-[11.5px] font-bold" style={{ color: '#7dd3fc' }}>
               {expanded ? 'Ler menos' : 'Ler mais'} {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           )}

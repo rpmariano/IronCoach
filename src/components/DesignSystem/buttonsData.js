@@ -294,7 +294,7 @@ export const buttonsData = [
     "sampleText": "Tentar novamente"
   },
   {
-    "className": "text-[10px] bg-neutral-800 px-3 py-1.5 rounded-lg text-slate-300 font-semibold active:scale-95",
+    "className": "text-[11px] bg-neutral-800 px-3 py-1.5 rounded-lg text-slate-300 font-semibold active:scale-95",
     "count": 1,
     "files": [
       "\\components\\Admin\\Admin.jsx"
@@ -502,7 +502,7 @@ export const buttonsData = [
     "sampleText": "handleRespondPlanAction(false)}\n              className=\"py-3.5 px-4 rounded-2xl font-semibold text-sm text-slate-600 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 flex items-center justify-center gap-1.5 transition active:scale-95\"\n            >\n              \n              Recusar"
   },
   {
-    "className": "text-[10px]",
+    "className": "text-[11px]",
     "count": 1,
     "files": [
       "\\components\\Dashboard\\Dashboard.jsx"

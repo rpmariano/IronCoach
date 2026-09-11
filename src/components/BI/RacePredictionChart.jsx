@@ -125,7 +125,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
           display: true,
           text: 'VDOT',
           color: 'rgba(255, 255, 255, 0.35)',
-          font: { size: 10 }
+          font: { size: 11 }
         }
       }
     }
@@ -149,7 +149,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
             Regista mais corridas para veres a evolução do VDOT ao longo do tempo.
           </p>
           <div className="text-right shrink-0">
-            <p className="text-[10px] text-slate-500">Previsão → {prediction.raceName || 'Prova'}</p>
+            <p className="text-[11px] text-slate-500">Previsão → {prediction.raceName || 'Prova'}</p>
             <p className="text-lg font-bold text-amber-400">{formatTime(prediction.predictedSeconds)}</p>
           </div>
         </div>

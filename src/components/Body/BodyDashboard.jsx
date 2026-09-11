@@ -187,7 +187,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
               key={m.key}
               type="button"
               onClick={() => setSelectedMetricKey(m.key)}
-              className={`p-2.5 text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
+              className={`p-2.5 min-h-[44px] text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
                 isSelected 
                   ? 'bg-white/5 ring-2' 
                   : 'bg-white/5 border-white/20 hover:bg-white/10'
@@ -197,7 +197,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
               <div className="flex items-center justify-between gap-1 mb-1">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span style={{ color: m.color }}>{getBodyIcon(m.key, 12)}</span>
-                  <p className="text-[10px] font-medium text-slate-300 truncate">{m.label}</p>
+                  <p className="text-[11px] font-medium text-slate-300 truncate">{m.label}</p>
                 </div>
                 {isSelected && (
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
@@ -208,14 +208,14 @@ export default function BodyDashboard({ onGoToCalendar }) {
               </p>
               <div className="mt-1 flex items-center justify-between min-h-[14px]">
                 {deltaText ? (
-                  <span className={`text-[9px] font-semibold ${
+                  <span className={`text-[11px] font-semibold ${
                     deltaType === 'good' ? 'text-emerald-400' :
                     deltaType === 'bad' ? 'text-rose-400' : 'text-slate-400'
                   }`}>
                     {deltaText}
                   </span>
                 ) : (
-                  <span className="text-[9px] text-slate-500">—</span>
+                  <span className="text-[11px] text-slate-500">—</span>
                 )}
               </div>
             </button>

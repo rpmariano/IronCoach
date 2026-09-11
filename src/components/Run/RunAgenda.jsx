@@ -4,6 +4,7 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw, Sliders, Trophy } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -731,7 +732,12 @@ export default function RunAgenda({ onClose }) {
   if (!isFormOpen) return null;
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-10 fade-in">
+    // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
+    // A prova é dourada; paddingBottom abre espaço para a ActionBar fixa.
+    <div
+      className="w-full max-w-lg mx-auto fade-in"
+      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       {leaveModal}
       {validationModal}
       <ConfirmDeleteModal
@@ -761,11 +767,15 @@ export default function RunAgenda({ onClose }) {
             <button
               onClick={attemptCloseForm}
               type="button"
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+              // O circulo continua a desenhar-se com 32px; o que cresce para
+              // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+              className="tap-44 shrink-0"
               title="Fechar"
               aria-label="Fechar"
             >
-              <X size={16} />
+              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+                <X size={16} />
+              </span>
             </button>
           </div>
 
@@ -794,7 +804,7 @@ export default function RunAgenda({ onClose }) {
                   scrollTo(PAGE_KEYS.indexOf(t.key));
                 }}
                 style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-colors duration-300 ${
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 min-h-[44px] text-xs font-bold rounded-xl transition-colors duration-300 ${
                   activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
@@ -849,16 +859,6 @@ export default function RunAgenda({ onClose }) {
                   icon={<Sliders size={14} />}
                 >
                   Editar Detalhes
-                </Button>
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-prova)"
-                  onClick={handleSaveForm}
-                  disabled={isSubmitting || !draft.name.trim()}
-                  className="flex-1 text-xs"
-                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                >
-                  Guardar Prova
                 </Button>
               </div>
             </div>
@@ -962,7 +962,7 @@ export default function RunAgenda({ onClose }) {
                   <option value="">Escolhe...</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-400 mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
@@ -997,7 +997,7 @@ export default function RunAgenda({ onClose }) {
                 >
                   {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-400 mt-1">
                   {racePriorityDescription(draft.race_priority)}
                 </p>
               </div>
@@ -1028,7 +1028,7 @@ export default function RunAgenda({ onClose }) {
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
+              <p className="text-[11px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
 
               {/* Site da prova (opcional) */}
               <div>
@@ -1058,7 +1058,7 @@ export default function RunAgenda({ onClose }) {
 
               {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação do Coach
                   </span>
                   {viability.flags.length > 0 ? (
@@ -1077,7 +1077,9 @@ export default function RunAgenda({ onClose }) {
                 </div>
               )}
 
-              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {/* Menos uma coluna do que antes: "Guardar Prova" subiu para a
+                  ActionBar fixa, aqui só ficam as ações secundárias. */}
+              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 {editingEventId && (
                   <Button
                     variant="light-danger"
@@ -1098,22 +1100,29 @@ export default function RunAgenda({ onClose }) {
                 >
                   Cancelar
                 </Button>
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-prova)"
-                  onClick={handleSaveForm}
-                  disabled={isSubmitting || !draft.name.trim()}
-                  type="button"
-                  className="text-xs"
-                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                >
-                  Guardar Prova
-                </Button>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Barra de ação fixa (ponto 2 do handoff): "Guardar Prova" era o
+          terceiro botão de uma fila no fim de cada uma das duas páginas do
+          carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
+          é uma só, sempre visível, seja qual for a página. */}
+      <ActionBar>
+        <Button
+          variant="module"
+          moduleColor="var(--mod-prova)"
+          onClick={handleSaveForm}
+          disabled={isSubmitting || !draft.name.trim()}
+          type="button"
+          className="w-full text-xs text-amber-950"
+          icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+        >
+          Guardar Prova
+        </Button>
+      </ActionBar>
     </div>
   );
 }

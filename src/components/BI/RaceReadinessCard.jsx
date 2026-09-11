@@ -69,7 +69,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className={`text-xl font-black leading-none ${cfg.textColor}`}>{readiness.score}%</span>
-            <span className="text-[9px] text-slate-400 font-semibold mt-0.5">Prontidão</span>
+            <span className="text-[11px] text-slate-400 font-semibold mt-0.5">Prontidão</span>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             <>
               <div className="flex items-center gap-1.5 mb-1">
                 <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Próxima Prova</span>
+                <span className="text-[11px] text-amber-400 font-bold uppercase tracking-wider">Próxima Prova</span>
               </div>
               <p className="text-sm font-bold text-white leading-tight truncate">{nextRace.name || nextRace.race_name || 'Prova'}</p>
               <p className="text-[11px] text-slate-400 font-medium mt-0.5">
@@ -90,7 +90,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             <>
               <div className="flex items-center gap-1.5 mb-1">
                 <Flag className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Forma Geral</span>
+                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Forma Geral</span>
               </div>
               <p className="text-sm font-bold text-white leading-tight">Nenhuma prova agendada</p>
               <p className="text-[11px] text-slate-400 mt-0.5">Adiciona uma prova para ver a prontidão direcionada</p>
@@ -126,8 +126,11 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               className="bg-white/5 rounded-xl p-2.5 border border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] text-slate-400 font-semibold truncate pr-1">{PILLAR_ICONS[pillar.key]} {pillar.label}</span>
-                <span className={`text-[10px] font-bold ${pCfg.textColor} shrink-0`}>{pillar.score}%</span>
+                <span className="text-[11px] text-slate-400 font-semibold truncate pr-1">{PILLAR_ICONS[pillar.key]} {pillar.label}</span>
+                {/* 12,5px: é um número que o atleta lê de relance, não uma
+                    etiqueta — o handoff manda subir acima do piso nesses
+                    casos (ponto 2, "12px para dados lidos em movimento"). */}
+                <span className={`text-[12.5px] font-bold ${pCfg.textColor} shrink-0`}>{pillar.score}%</span>
               </div>
               <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                 <div

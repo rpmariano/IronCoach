@@ -110,7 +110,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
             <h4 className="text-sm font-bold text-slate-800 leading-tight flex items-center gap-1.5 flex-wrap">
               {session.name || (isAula ? 'Aula' : 'Treino de Força')}
               {isAula && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
                   Aula
                 </span>
               )}
@@ -164,7 +164,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
           {/* Prints / Photos se existirem */}
           {session.photo_paths?.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Prints do Treino</span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Prints do Treino</span>
               {photosLoading ? (
                 <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
                   <Loader2 size={14} className="animate-spin" /> A carregar fotos...

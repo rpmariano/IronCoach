@@ -63,18 +63,18 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
             {ev.name}
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border" style={{ color: 'var(--mod-prova)', borderColor: 'var(--mod-prova)' }}>
               {distanceLabel}
             </span>
             {ev.race_type && (
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-500">
                 {raceTerrainLabel(ev.race_type)}
               </span>
             )}
-            {done && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
+            {done && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Concluída</span>}
             {ev.race_priority && (
               <span className={[
-                'text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                'text-[11px] font-bold px-2 py-0.5 rounded-full border',
                 ev.race_priority === 'a'
                   ? 'bg-amber-50 border-amber-300 text-amber-700'
                   : ev.race_priority === 'b'
@@ -111,7 +111,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
           <div className="grid grid-cols-2 gap-2">
             {/* 1. Localização & Distância */}
             <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <MapPin size={11} className="text-amber-500" /> Local & Distância
               </span>
               <span className="text-xs font-bold text-slate-800 truncate">
@@ -124,7 +124,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
             {/* 2. Objetivo */}
             <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <Target size={11} className="text-amber-500" /> Objetivo
               </span>
               <span className="text-xs font-bold text-slate-800 truncate">
@@ -137,7 +137,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
             {/* 3. Tempo que Falta */}
             <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <Calendar size={11} className="text-amber-500" /> Contagem
               </span>
               <span className="text-xs font-bold text-slate-800">
@@ -150,7 +150,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
 
             {/* 4. Fase Atual ou Contagem para Início */}
             <div className="p-2.5 rounded-xl bg-slate-50/80 border border-slate-200/60 flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 <Activity size={11} className="text-amber-500" />
                 {plan.trainingStatus === 'not_started' ? 'Início do Treino' : 'Fase do Treino'}
               </span>
@@ -171,12 +171,12 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete }) {
           {!done && (
             <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/70 flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles size={12} className="text-amber-500" />
                   {plan.trainingStatus === 'not_started' ? 'Recomendações Prévias da Carol' : 'Evolução da Preparação'}
                 </span>
                 {plan.trainingStatus !== 'not_started' && (
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap ${
                     plan.readinessLevel === 'green'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                       : plan.readinessLevel === 'yellow'

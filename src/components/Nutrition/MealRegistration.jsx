@@ -10,6 +10,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -420,8 +421,38 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     }
   };
 
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário, onde ficava abaixo da dobra. Os rótulos são os de
+     sempre. */
+  const primaryAction = isEditing ? (
+    <CoachAnalyzeButton
+      onClick={handleSaveEdit}
+      disabled={isSaving || (needsReanalysis && !manualItems.length)}
+      busy={isSaving}
+      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+    />
+  ) : entryMethod === 'foto' ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzePhotos}
+      disabled={!photos.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar Refeição"
+    />
+  ) : (
+    <CoachAnalyzeButton
+      onClick={handleFinalizeManual}
+      disabled={!manualItems.length || isFinalizing}
+      busy={isFinalizing}
+      label="Analisar Refeição"
+    />
+  );
+
   return (
-    <div className="fade-in pb-8">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    <div
+      className="fade-in"
+      style={{ '--focus-ring': 'var(--mod-nutricao-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       <div
         className="module-card-contrast relative overflow-hidden"
         // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
@@ -441,11 +472,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            // O circulo continua a desenhar-se com 32px; o que cresce para
+            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+            className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <X size={16} />
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+              <X size={16} />
+            </span>
           </button>
         </div>
 
@@ -530,7 +565,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 </div>
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-[11px] text-slate-500">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
-                  <button onClick={clearPhotos} className="text-[11px] text-slate-500 hover:text-red-500 flex items-center gap-1 transition">
+                  <button onClick={clearPhotos} className="tap-h-44 text-[11px] text-slate-500 hover:text-red-500 flex items-center gap-1 transition">
                     <Trash2 size={14} /> Limpar todas
                   </button>
                 </div>
@@ -563,8 +598,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     <p className="text-xs text-slate-500 font-medium">Da galeria</p>
                   </label>
                 </div>
-                <p className="text-[10px] text-slate-500 text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
-                <p className="text-[10px] text-slate-500 text-center mb-5 leading-relaxed">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
+                <p className="text-[11px] text-slate-500 text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
+                <p className="text-[11px] text-slate-500 text-center mb-5 leading-relaxed">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
               </>
             )}
           </>
@@ -593,7 +628,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     />
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-500 mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
+                <p className="text-[11px] text-slate-500 mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
                 <AddButton
                   onClick={handleAddItem}
                   disabled={!itemName.trim()}
@@ -622,12 +657,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                           onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
                           className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
                         />
-                        <span className="text-[10px] text-slate-400">g</span>
+                        <span className="text-[11px] text-slate-400">g</span>
                       </>
                     ) : (
                       <div className="flex-1">
                         <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
+                        <p className="text-[11px] text-slate-400">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
                       </div>
                     )}
                     <button
@@ -640,7 +675,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   </div>
                 ))}
                 {(!isEditing || needsReanalysis) && (
-                  <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
+                  <p className="text-[11px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
                 )}
               </div>
             )}
@@ -694,30 +729,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           );
         })()}
 
-        {/* Ações */}
-        {isEditing ? (
-            <CoachAnalyzeButton
-              onClick={handleSaveEdit}
-              disabled={isSaving || (needsReanalysis && !manualItems.length)}
-              busy={isSaving}
-              label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-            />
-        ) : entryMethod === 'foto' ? (
-          <CoachAnalyzeButton
-            onClick={handleAnalyzePhotos}
-            disabled={!photos.length || isAnalyzing}
-            busy={isAnalyzing}
-            label="Analisar Refeição"
-          />
-        ) : (
-          <CoachAnalyzeButton
-            onClick={handleFinalizeManual}
-            disabled={!manualItems.length || isFinalizing}
-            busy={isFinalizing}
-            label="Analisar Refeição"
-          />
-        )}
-
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
 
@@ -729,6 +740,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      <ActionBar>{primaryAction}</ActionBar>
     </div>
   );
 }

@@ -92,7 +92,7 @@ export default function RaceLevelSuggestion({
 
   if (result.level == null) {
     return (
-      <p className="text-[10px] text-slate-400 mt-1.5 flex items-start gap-1.5">
+      <p className="text-[11px] text-slate-400 mt-1.5 flex items-start gap-1.5">
         <Sparkles size={12} className="shrink-0 mt-0.5 opacity-60" />
         <span>Ainda sem dados suficientes dos últimos treinos (menos de 3 das últimas 4 semanas com registo) para sugerir automaticamente o teu nível para esta prova.</span>
       </p>
@@ -129,7 +129,7 @@ export default function RaceLevelSuggestion({
   const matchesDeclared = declaredLevel && declaredLevel === result.level;
   if (matchesDeclared) {
     return (
-      <p className="text-[10px] text-emerald-600 mt-1.5 flex items-start gap-1.5">
+      <p className="text-[11px] text-emerald-600 mt-1.5 flex items-start gap-1.5">
         <Sparkles size={12} className="shrink-0 mt-0.5" />
         <span>Pelos teus últimos treinos ({evidence}), o nível que escolheste bate certo.</span>
       </p>
@@ -147,7 +147,7 @@ export default function RaceLevelSuggestion({
         <button
           type="button"
           onClick={() => onUseLevel(result.level)}
-          className="mt-1 text-[11px] font-semibold text-amber-700 underline underline-offset-2 active:opacity-70"
+          className="tap-h-44 mt-1 text-[11px] font-semibold text-amber-700 underline underline-offset-2 active:opacity-70"
         >
           Usar nível {levelLabel(result.level)}
         </button>

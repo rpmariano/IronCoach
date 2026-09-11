@@ -10,6 +10,7 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
@@ -552,8 +553,37 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     : availableCategories.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || categories.includes(c));
   const hiddenCount = availableCategories.length - visibleCategories.length;
 
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
+  const primaryAction = isEditing ? (
+    <CoachAnalyzeButton
+      onClick={handleSaveEdit}
+      disabled={isSaving}
+      busy={isSaving}
+      label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
+    />
+  ) : entryMethod === 'foto' ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzePhotos}
+      disabled={!photos.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar Treino"
+    />
+  ) : (
+    <CoachAnalyzeButton
+      onClick={handleSaveManual}
+      disabled={isSaving}
+      busy={isSaving}
+      label="Analisar Treino"
+    />
+  );
+
   return (
-    <div className="space-y-4 fade-in">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    <div
+      className="space-y-4 fade-in"
+      style={{ '--focus-ring': 'var(--mod-ginasio-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       <div
         className="module-card-contrast"
         // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
@@ -573,11 +603,15 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            // O circulo continua a desenhar-se com 32px; o que cresce para
+            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+            className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <X size={16} />
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">
+              <X size={16} />
+            </span>
           </button>
         </div>
 
@@ -648,7 +682,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               <button
                 onClick={() => setCategoriesExpanded(true)}
                 type="button"
-                className="rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
+                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
               >
                 +{hiddenCount} mais
               </button>
@@ -657,7 +691,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               <button
                 onClick={() => setCategoriesExpanded(false)}
                 type="button"
-                className="rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
+                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-slate-300 text-slate-500"
               >
                 Mostrar menos
               </button>
@@ -744,7 +778,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
                 <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                 <p className="text-xs text-slate-600 font-semibold">Escolhe os prints da app de treino (Hevy, Strong...)</p>
-                <p className="text-[10px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma sessão — a IA lê exercícios, séries e cargas automaticamente</p>
+                <p className="text-[11px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma sessão — a IA lê exercícios, séries e cargas automaticamente</p>
               </label>
             )}
           </>
@@ -809,13 +843,16 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                     key={i}
                     type="button"
                     onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    className={`flex-1 aspect-square rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
+                    // min-h-[44px] em vez de aspect-square: dez celulas de 44px de LARGURA nao
+                    // cabem em 358px, e o piso do handoff e de altura (44 de largura so
+                    // se exige a botoes que sao so icone).
+                    className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-white/5 border-white/10 text-slate-400'}`}
                   >
                     {i + 1}
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-400 mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
+              <p className="text-[11px] text-slate-400 mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
             </div>
             {isEditing ? (
               <div className="mb-4">
@@ -843,14 +880,14 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                             placeholder="Nome do exercício"
                             className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-slate-200 focus:border-slate-400 pb-1"
                           />
-                          <button onClick={() => removeExercise(ex.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
+                          <button onClick={() => removeExercise(ex.key)} type="button" aria-label="Remover exercicio" className="tap-44 text-slate-400 hover:text-red-500 shrink-0">
                             <Trash2 size={14} />
                           </button>
                         </div>
                         <div className="space-y-1.5">
                           {ex.sets.map((s, idx) => (
                             <div key={s.key} className="flex items-center gap-2">
-                              <span className="text-[10px] text-slate-400 w-14 shrink-0">Série {idx + 1}</span>
+                              <span className="text-[11px] text-slate-400 w-14 shrink-0">Série {idx + 1}</span>
                               <input
                                 type="number"
                                 value={s.reps}
@@ -866,7 +903,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                                 placeholder="kg"
                                 className="w-16 bg-white/5 border border-white/10 text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
                               />
-                              <button onClick={() => removeSet(ex.key, s.key)} type="button" className="text-slate-400 hover:text-red-500 shrink-0">
+                              <button onClick={() => removeSet(ex.key, s.key)} type="button" aria-label={`Remover serie ${idx + 1}`} className="tap-44 text-slate-400 hover:text-red-500 shrink-0">
                                 <X size={13} />
                               </button>
                             </div>
@@ -885,7 +922,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 )}
               </div>
             ) : (
-              <p className="text-[10px] text-slate-500 -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
+              <p className="text-[11px] text-slate-500 -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
             )}
           </>
         )}
@@ -939,30 +976,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           );
         })()}
 
-        {/* Ação */}
-        {isEditing ? (
-          <CoachAnalyzeButton
-            onClick={handleSaveEdit}
-            disabled={isSaving}
-            busy={isSaving}
-            label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-          />
-        ) : entryMethod === 'foto' ? (
-          <CoachAnalyzeButton
-            onClick={handleAnalyzePhotos}
-            disabled={!photos.length || isAnalyzing}
-            busy={isAnalyzing}
-            label="Analisar Treino"
-          />
-        ) : (
-          <CoachAnalyzeButton
-            onClick={handleSaveManual}
-            disabled={isSaving}
-            busy={isSaving}
-            label="Analisar Treino"
-          />
-        )}
-
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
       </div>
 
@@ -974,6 +987,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      <ActionBar>{primaryAction}</ActionBar>
     </div>
   );
 }

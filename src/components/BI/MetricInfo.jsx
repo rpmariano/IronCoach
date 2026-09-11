@@ -30,7 +30,8 @@ export default function MetricInfo({ text }) {
     <>
       <button 
         onClick={toggle}
-        className={`inline-flex ml-1.5 align-text-bottom rounded-full p-0.5 transition-all ${isOpen ? 'text-cyan-500 bg-cyan-50' : 'text-slate-400 active:bg-slate-100'}`}
+        // tap-area-44: o glifo continua com 14px e a area de toque passa a 44 (globals.css).
+        className={`tap-area-44 inline-flex ml-1.5 align-text-bottom rounded-full p-0.5 transition-all ${isOpen ? 'text-cyan-500 bg-cyan-50' : 'text-slate-400 active:bg-slate-100'}`}
         aria-label="Mais informações"
       >
         <Info size={14} />

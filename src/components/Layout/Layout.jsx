@@ -341,7 +341,7 @@ function VBarBtn({ tab, icon, label, activeTab, setTab }) {
         />
       )}
       {icon}
-      <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
+      <span className="text-[11px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 }
@@ -367,7 +367,7 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
         />
       )}
       <LayoutDashboard size={20} />
-      <span className="text-[10px] leading-none whitespace-nowrap">Dashboard</span>
+      <span className="text-[11px] leading-none whitespace-nowrap">Dashboard</span>
     </button>
   );
 }

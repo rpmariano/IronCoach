@@ -306,8 +306,23 @@ body {
 /* ===== Utilitários ===== */
 .no-scrollbar::-webkit-scrollbar { display:none; }
 .no-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
-.tap-44 { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-.tap-h-44 { min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+.tap-44 { min-width:var(--tap); min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
+.tap-h-44 { min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
+
+/* Alvo de toque de 44px num controlo cujo DESENHO é mais pequeno — ícones de
+   ajuda de 18px, o "x" de remover um print, os interruptores de 44×24. O
+   handoff (ponto 2) pede "nos ícones pequenos mantém o desenho e alarga só a
+   área tocável": esta área invisível fica centrada por cima do controlo e é
+   ele que continua a receber o toque, sem que nada mude de tamanho no ecrã.
+   Só em controlos isolados — dois destes lado a lado sobrepunham-se. */
+.tap-area-44 { position: relative; }
+.tap-area-44::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: var(--tap); height: var(--tap);
+  transform: translate(-50%, -50%);
+}
 
 .range-chip {
   min-height: 44px;
@@ -331,8 +346,15 @@ body {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
+/* Foco de teclado — handoff, "Fidelity": anel de 2px na cor do contexto.
+   O anel não está desenhado nos mocks, por isso é esta regra global que o
+   define para todos os controlos. --focus-ring tem por omissão o ciano da
+   Carol e é redefinida no contentor de cada ecrã com identidade própria
+   (registos de corrida/ginásio/nutrição/corpo/prova, separadores do Perfil),
+   para o anel falar a cor do sítio onde se está. */
+:root { --focus-ring: var(--coach); }
 :focus-visible {
-  outline: 3px solid var(--green);
+  outline: 2px solid var(--focus-ring, var(--coach));
   outline-offset: 2px;
   border-radius: 4px;
 }

@@ -209,7 +209,7 @@ export default function Calendar() {
 
         <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
+            <span className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
           ))}
         </div>
 
@@ -260,7 +260,7 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[11px] font-semibold text-slate-600 shadow-sm">
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-prova)]"></span>
             <span>Prova</span>

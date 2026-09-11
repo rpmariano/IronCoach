@@ -94,7 +94,7 @@ export default function MissingMetricsBottomSheet({
               onProceedAnyway();
               onClose();
             }}
-            className="w-full text-slate-500 font-semibold text-[11px] uppercase tracking-wider py-2 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
+            className="w-full min-h-[44px] text-slate-500 font-semibold text-[11px] uppercase tracking-wider py-2 flex items-center justify-center gap-1.5 hover:text-slate-700 transition"
           >
             <span>Prosseguir sem estas métricas</span>
             <ArrowRight className="w-3.5 h-3.5" />

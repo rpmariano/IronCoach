@@ -361,3 +361,35 @@ describe('Perfil — Altura (height_cm) sem pontuação', () => {
     expect(mocks.updates[0]).toEqual({ height_cm: 175 });
   });
 });
+
+
+// Ponto 2 do handoff: a ação de cada separador do Perfil vive na barra de
+// ação fixa (ActionBar), não no fim do carrossel — antes ficava abaixo da
+// dobra, à altura do separador mais alto dos quatro.
+describe('Perfil — ação na ActionBar', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      runs: [],
+    });
+  });
+
+  it('mostra "Guardar alterações" dentro da barra', () => {
+    render(<Perfil />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar altera/ }));
+  });
+
+  it('no separador Equipamento a barra passa a "Adicionar sapatilhas"', async () => {
+    render(<Perfil />);
+    fireEvent.click(screen.getByRole('button', { name: /Equipa\./ }));
+    const botao = await screen.findByRole('button', { name: /Adicionar sapatilhas/ });
+    expect(screen.getByTestId('action-bar')).toContainElement(botao);
+    expect(screen.queryByRole('button', { name: /Guardar altera/ })).not.toBeInTheDocument();
+  });
+});

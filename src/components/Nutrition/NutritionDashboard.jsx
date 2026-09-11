@@ -146,11 +146,11 @@ export default function NutritionDashboard() {
     scales: {
       x: {
         grid: { display: false },
-        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 10 } }
+        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 11 } }
       },
       y: {
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 10 } },
+        ticks: { color: 'rgba(255, 255, 255, 0.5)', font: { size: 11 } },
         beginAtZero: true
       }
     }
@@ -269,7 +269,7 @@ export default function NutritionDashboard() {
             </h2>
             <MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />
           </div>
-          <div className="flex justify-center items-center gap-3 mb-4 text-[10px] text-slate-400 font-semibold">
+          <div className="flex justify-center items-center gap-3 mb-4 text-[11px] text-slate-400 font-semibold">
             <span className="flex items-center gap-1">
               <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: MACROS.find(m => m.key === selectedMacro)?.color }}></div> 
               {MACROS.find(m => m.key === selectedMacro)?.label} ({MACROS.find(m => m.key === selectedMacro)?.unit})
@@ -294,7 +294,7 @@ export default function NutritionDashboard() {
       <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
         <button
           onClick={() => setMicrosExpanded(!microsExpanded)}
-          className="w-full flex items-center justify-between p-4 text-left hover:bg-white/10 transition"
+          className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-white/10 transition"
         >
           <div className="flex items-center gap-2">
             <FlaskConical size={14} className="text-[var(--mod-nutricao)]" />
@@ -308,7 +308,7 @@ export default function NutritionDashboard() {
               {MICROS.map(micro => (
                 <div key={micro.key} className="flex justify-between items-center text-sm border-b border-white/10 last:border-0 pb-2 last:pb-0">
                   <span className="text-slate-400 text-xs">{micro.label}</span>
-                  <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[10px] font-normal text-slate-400">{micro.unit}</span></span>
+                  <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-slate-400">{micro.unit}</span></span>
                 </div>
               ))}
             </div>
