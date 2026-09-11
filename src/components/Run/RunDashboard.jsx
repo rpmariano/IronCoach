@@ -9,6 +9,7 @@ import RunIcon from '../shared/RunIcon';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import ACWRChart from '../BI/ACWRChart';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
@@ -170,10 +171,13 @@ export default function RunDashboard() {
   // Ponto 6: os ticks deixam de escrever dentro da tela. O total do período
   // é o número grande do ChartFrame e os extremos do eixo vão para os
   // cantos, em HTML.
+  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars. */
+  const introBars = useIntroAnimation('bi-bars');
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
+    animation: barGrowAnimation(introBars),
     scales: {
       y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }

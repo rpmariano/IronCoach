@@ -5,8 +5,8 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
@@ -48,7 +48,6 @@ function getDefaultMealType() {
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
   const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
 
@@ -166,17 +165,25 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(date);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(date);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
@@ -310,8 +317,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       console.warn('Aviso: análise retornou 0 itens', data);
     }
     setMeals([...meals, mealWithItems]);
-    showToast('Refeição registada');
-    finishCreateAndGoToCalendar(mealWithItems);
+    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada');
   };
 
   const handleAnalyzePhotos = () => {
@@ -361,8 +367,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (data?.error) throw new Error(data.error);
 
     setMeals([...meals, data.meal]);
-    showToast('Refeição registada');
-    finishCreateAndGoToCalendar(data?.meal);
+    finishCreateAndGoToCalendar(data?.meal, 'Refeição registada');
   };
 
   const handleFinalizeManual = () => {
@@ -408,8 +413,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
-      finishCreateAndGoToCalendar(savedMeal);
+      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
     }
   };
 
@@ -807,6 +811,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAppStore } from '../../store';
+import { useAppStore, selectCoachHasPendingTopic } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { Send, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
@@ -88,6 +88,8 @@ export default function Coach() {
     runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes
   } = useAppStore();
   const { showToast } = useToast();
+  // Liga o halo do avatar (ponto 9, animação 7).
+  const hasPendingTopic = useAppStore(selectCoachHasPendingTopic);
 
   const pendingPlans = (coachPlans || []).filter(p => p.status === 'proposto');
   const pendingGoalProposals = coachGoalProposals || [];
@@ -580,7 +582,9 @@ export default function Coach() {
       {/* Header section */}
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2.5">
-          <CoachAvatar size={36} radius={12} />
+          {/* Ponto 9, animação 7: o halo só respira quando há assunto por
+              resolver — três ciclos e para. */}
+          <CoachAvatar size={36} radius={12} breathing={hasPendingTopic} />
           <div>
             <h2 className="text-base font-bold leading-none tracking-tight" style={{ color: 'var(--coach-soft)' }}>Carol</h2>
             <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--text-4)' }}>a tua treinadora</p>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { Bot, LayoutGrid, Dumbbell, Plus, X, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
+import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import AppBackground from './AppBackground';
@@ -208,11 +208,11 @@ export default function Layout({ children }) {
           />
 
           <div
-            className="fixed left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-max fade-in"
+            className="fixed left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-max"
             style={{ bottom: 90 }}
             ref={fabRef}
           >
-            <FabItem
+            <FabItem delayIndex={5}
               label="Nova prova"
               tone="race"
               ink="var(--race-ink)"
@@ -229,7 +229,7 @@ export default function Layout({ children }) {
                 goRegister(activeTab, 'race');
               }}
             />
-            <FabItem
+            <FabItem delayIndex={4}
               label="Registar refeição"
               tone="nutrition"
               ink="#22103a"
@@ -240,7 +240,7 @@ export default function Layout({ children }) {
                 goRegister('nutricao', 'meal');
               }} 
             />
-            <FabItem 
+            <FabItem delayIndex={3} 
               label="Nova avaliação"
               tone="body"
               ink="#3a0a22"
@@ -251,7 +251,7 @@ export default function Layout({ children }) {
                 goRegister('corpo', 'assessment');
               }} 
             />
-            <FabItem 
+            <FabItem delayIndex={2} 
               label="Nova corrida"
               tone="run"
               ink="#04252b"
@@ -262,7 +262,7 @@ export default function Layout({ children }) {
                 goRegister('corrida', 'run');
               }} 
             />
-            <FabItem 
+            <FabItem delayIndex={1} 
               label="Novo treino"
               tone="gym"
               ink="#0b2129"
@@ -275,7 +275,7 @@ export default function Layout({ children }) {
             />
             {/* Água: saiu do cartão do Início (a órbita é só leitura —
                 auditoria 2026-09-09, achado 7) e regista-se aqui. */}
-            <FabItem
+            <FabItem delayIndex={0}
               label="Registar água"
               tone="run"
               ink="#04252b"
@@ -344,7 +344,7 @@ export default function Layout({ children }) {
             e.stopPropagation();
             setFabOpen(v => !v);
           }}
-          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all border-[4px] z-50 cursor-pointer"
+          className={`${fabOpen ? 'fab-open ' : ''}absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center border-[4px] z-50 cursor-pointer`}
           style={{
             top: -22,
             background: 'var(--grad-race)',
@@ -355,11 +355,9 @@ export default function Layout({ children }) {
           aria-label={fabOpen ? 'Fechar menu de registo' : 'Registar novo item'}
           aria-expanded={fabOpen}
         >
-          {fabOpen ? (
-            <X size={22} className="stroke-[2.5]" />
-          ) : (
-            <Plus size={24} className="stroke-[2.5]" />
-          )}
+          {/* Ponto 9: o mesmo "+" a rodar 45° (vira "×") em --dur-tap, em vez
+              de trocar de glifo — ver `.fab-icon` em globals.css. */}
+          <Plus size={24} className="fab-icon stroke-[2.5]" />
         </button>
       </nav>
     </div>
@@ -423,13 +421,15 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
 
 // Pílula do menu do FAB (mock "FAB aberto"): fundo escuro, borda na cor do
 // módulo, círculo cheio dessa cor com o glifo em tinta escura.
-function FabItem({ label, tone, ink, icon, onClick }) {
+function FabItem({ label, tone, ink, icon, onClick, delayIndex = 0 }) {
   return (
     <button
       onClick={onClick}
       type="button"
-      className="flex items-center gap-[9px] min-h-[44px] rounded-full active:scale-95 transition-transform cursor-pointer"
-      style={{ padding: '9px 16px 9px 12px', background: 'rgba(15,23,42,.92)', border: `1px solid var(--tint-${tone}-bd)`, boxShadow: '0 8px 22px rgba(0,0,0,.5)' }}
+      /* `fab-item` (globals.css): entra de baixo para cima com o
+         desfasamento do ponto 9; o scale .98 do toque vem da regra global. */
+      className="fab-item flex items-center gap-[9px] min-h-[44px] rounded-full cursor-pointer"
+      style={{ '--fab-i': delayIndex, padding: '9px 16px 9px 12px', background: 'rgba(15,23,42,.92)', border: `1px solid var(--tint-${tone}-bd)`, boxShadow: '0 8px 22px rgba(0,0,0,.5)' }}
     >
       <span className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0" style={{ background: `var(--${tone})`, color: ink }}>
         {icon}

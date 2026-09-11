@@ -6,12 +6,12 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
@@ -74,7 +74,6 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns, setNavGuard, activeTab, shoes } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
 
@@ -234,17 +233,25 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'run', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'run', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(runDate);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(runDate);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   // Estado do Bottom Sheet de métricas em falta
@@ -650,8 +657,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       setRuns([...runs, createdRun]);
-      showToast('Corrida registada');
-      finishCreateAndGoToCalendar(createdRun);
+      finishCreateAndGoToCalendar(createdRun, 'Corrida registada');
     }
   };
 
@@ -661,8 +667,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setUserBypassedMissingSheet(true);
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
-      showToast('Corrida registada');
-      finishCreateAndGoToCalendar(pendingCreatedRun);
+      finishCreateAndGoToCalendar(pendingCreatedRun, 'Corrida registada');
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -790,8 +795,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           const updatedRun = data.run;
           setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
-          showToast('Corrida reanalisada pelo Coach');
-          finishCreateAndGoToCalendar(updatedRun);
+          finishCreateAndGoToCalendar(updatedRun, 'Corrida reanalisada pelo Coach');
         } else {
           const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
@@ -799,8 +803,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           const currentRun = runs.find(r => r.id === runIdToEdit);
           const updatedRun = currentRun ? { ...currentRun, ...payload } : payload;
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
-          showToast('Corrida atualizada');
-          finishCreateAndGoToCalendar(updatedRun);
+          finishCreateAndGoToCalendar(updatedRun, 'Corrida atualizada');
         }
         return;
       }
@@ -862,8 +865,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         });
       }
 
-      showToast('Corrida registada');
-      finishCreateAndGoToCalendar(newlySavedRun);
+      finishCreateAndGoToCalendar(newlySavedRun, 'Corrida registada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
@@ -1584,6 +1586,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
     </div>
   );
 }

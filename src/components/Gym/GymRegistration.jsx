@@ -6,8 +6,8 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2, MessageSquare } from 'lucide-react';
-import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Card from '../shared/Card';
@@ -72,7 +72,6 @@ function flattenExercises(exercises) {
 export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
   const isEditing = !!sessionIdToEdit;
@@ -207,17 +206,25 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Treino registado') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'gym', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'gym', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(date);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(date);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora. Recebe
@@ -421,8 +428,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       setGymSessions([sessionWithSets, ...gymSessions]);
-      showToast('Treino registado');
-      finishCreateAndGoToCalendar(sessionWithSets);
+      finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     }
   };
 
@@ -477,8 +483,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         });
       }
 
-      showToast('Treino registado');
-      finishCreateAndGoToCalendar(sessionWithSets);
+      finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
@@ -535,8 +540,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast(needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
-      finishCreateAndGoToCalendar(savedSession);
+      finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -1018,6 +1022,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

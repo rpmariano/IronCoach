@@ -296,7 +296,81 @@ body {
    A cor passa a vir do inline de VBarBtn e o estado da minhoca. */
 
 /* ===== FAB menu ===== */
+/* Ponto 9: o "+" RODA 45° e vira "×" — não se troca o glifo (handoff,
+   Interactions & Behavior: «FAB: roda 45° ao abrir»). Trocar o ícone fazia
+   o botão piscar; rodar mostra que é o mesmo botão a mudar de estado. */
+.fab-icon { transition: transform var(--dur-tap) var(--ease-out); }
 .fab-open .fab-icon { transform: rotate(45deg); }
+
+/* As pílulas do menu entram de baixo para cima — a mais próxima do "+"
+   primeiro, que é de onde o menu nasce. O menu do FAB pertence à família da
+   persiana (animação 5 do ficheiro de animações, que o nomeia a par das seis
+   refeições): --dur-sheet-open, com o mesmo desfasamento das barras. */
+.fab-item {
+  animation: fabItemIn var(--dur-sheet-open) var(--ease-out) both;
+  animation-delay: calc(var(--fab-i, 0) * var(--stagger-bars));
+}
+@keyframes fabItemIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Toque: scale .98 em 120ms, em toda a ação =====
+   Handoff, Interactions & Behavior: «Toque: scale .98 em 120 ms».
+   Usa a propriedade independente `scale` e NÃO `transform`: metade dos
+   controlos da app já usa transform para se posicionar (o "+" com
+   -translate-x-1/2, a âncora da minhoca, os pontos dos carrosséis) e um
+   `transform: scale()` global apagava-lhes a translação — o botão saltava
+   para o lado ao ser tocado.
+   Exclusões: `.vbar-btn` (a barra inferior tem a sua própria resposta ao
+   toque e leva dentro a âncora que a minhoca MEDE — encolhê-la a meio do
+   toque falseava a medição) e `.no-tap-scale`, para o mesmo motivo nos
+   pontos dos carrosséis. */
+button:not(.vbar-btn):not(.no-tap-scale),
+[role="button"]:not(.no-tap-scale),
+a[href]:not(.no-tap-scale) {
+  transition: scale var(--dur-tap) var(--ease-out);
+}
+button:not(.vbar-btn):not(.no-tap-scale):active,
+[role="button"]:not(.no-tap-scale):active,
+a[href]:not(.no-tap-scale):active {
+  scale: .98;
+}
+
+/* ===== A Carol respira (animação 7) =====
+   Halo lento no avatar, só quando há assunto por resolver — «a Carol chama,
+   não alarma» (CAROL.md §5). --dur-breathe (2600ms), TRÊS ciclos e para: um
+   halo eterno passava a alarme, que é justamente o que se quer evitar. */
+.coach-breathing {
+  animation: coachBreathe var(--dur-breathe) ease-in-out 3;
+}
+@keyframes coachBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, .4); }
+  50%      { box-shadow: 0 0 0 7px rgba(34, 211, 238, 0); }
+}
+
+/* ===== Registo confirmado (animação 6) =====
+   Check com impulso elástico (--ease-spring, --dur-confirm, overshoot 1.12),
+   halo a dissipar-se e a etiqueta a subir ao sair. O ecrã volta ao seu
+   caminho normal aos --dur-confirm-exit (900ms) — quem conta esse tempo é o
+   RecordConfirmation.jsx, não o CSS. */
+.record-confirm-check { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+@keyframes recordConfirmPop {
+  0%   { transform: scale(.2); opacity: 0; }
+  45%  { transform: scale(1.12); opacity: 1; }
+  60%  { transform: scale(.97); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.record-confirm-halo { animation: recordConfirmHalo var(--dur-confirm-exit) var(--ease-out) both; }
+@keyframes recordConfirmHalo {
+  0%        { transform: scale(.6); opacity: .55; }
+  60%, 100% { transform: scale(2.1); opacity: 0; }
+}
+.record-confirm-label { animation: recordConfirmLabel var(--dur-confirm) var(--ease-out) both; }
+@keyframes recordConfirmLabel {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
 
 /* ===== Copo de água ===== */
 .water-glass {

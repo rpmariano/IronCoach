@@ -4,6 +4,7 @@ import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 
 /* Ponto 6 do redesenho: as etiquetas saíram da tela. Os eixos deixaram de
    ter ticks de texto (`ticks.display: false`) — o rácio atual é o número
@@ -101,8 +102,13 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
 
   // Nenhum eixo mostra texto: `ticks.display: false` nos três. A escala
   // continua a existir (as bandas e a linha precisam dela), só não escreve.
+  const introBars = useIntroAnimation('bi-bars');
+
   const options = {
     responsive: true,
+    /* Ponto 9, animação 4: só as barras da carga aguda crescem; a linha do
+       rácio e as bandas entram com elas, sem animação própria. */
+    animation: barGrowAnimation(introBars),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },

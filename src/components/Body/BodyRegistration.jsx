@@ -6,8 +6,8 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
-import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
 import Card from '../shared/Card';
 import Button from '../shared/Button';
@@ -36,7 +36,6 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-body
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
   const isEditing = !!assessmentIdToEdit;
@@ -140,17 +139,25 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // de "Gravar e sair" a caminho de outro separador (navGuard
   // intercetado), respeita esse destino em vez de o substituir — por isso
   // o alvo pendente é lido ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Coach", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Avaliação registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(date);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(date);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
@@ -268,8 +275,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
-      finishCreateAndGoToCalendar(savedAssessment);
+      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -320,8 +326,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
-      showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(data?.assessment);
+      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
     }
   };
 
@@ -355,8 +360,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
-      showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(data?.assessment);
+      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
@@ -603,6 +607,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

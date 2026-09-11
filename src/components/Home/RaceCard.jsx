@@ -6,11 +6,19 @@ import { buildTrailModel } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
 import RaceTrail from '../shared/RaceTrail';
 import CarouselDots from '../shared/CarouselDots';
+import { useIntroAnimation } from '../../utils/introAnimations';
+import { useCountUpText } from '../../utils/useCountUp';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
    fase atual, "semana 6 de 18", os dias em número grande, o trilho do
    macrociclo e, com mais de uma prova, setas e pontos. Toca-se para abrir
    o hub. O âmbar é da prova e só da prova. */
+/* Os dias que faltam, a contar (--dur-count). Em componente próprio para o
+   rAF viver depois do `if (!race)` do cartão. */
+function DaysCount({ days, animate }) {
+  return <>{useCountUpText(days, { animate })}</>;
+}
+
 export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace }) {
   const today = todayISO();
   const upcoming = useMemo(
@@ -20,6 +28,10 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
   const [index, setIndex] = useState(0);
   const safeIndex = Math.min(index, Math.max(0, upcoming.length - 1));
   const race = upcoming[safeIndex];
+
+  /* Ponto 9, animação 2: os dias que faltam contam à primeira entrada da
+     sessão. Ao trocar de prova nas setas já não conta — é a mesma leitura. */
+  const intro = useIntroAnimation('home-race-days');
 
   const model = useMemo(() => {
     if (!race) return null;
@@ -65,11 +77,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
             {model.weekLabel && <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>}
           </div>
           <div className="text-right shrink-0">
-            <div className="text-[26px] font-black leading-none" style={{ color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}>{model.days}</div>
+            <div className="text-[26px] font-black leading-none" style={{ color: '#f59e0b', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
             <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: '#e2932a', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
           </div>
         </div>
-        <RaceTrail weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
+        <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
       </div>
       {upcoming.length > 1 && (
         <div className="flex justify-center mt-2.5 -mb-1 min-h-[24px] items-center">

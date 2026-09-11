@@ -11,14 +11,20 @@ import { MessageCircle } from 'lucide-react';
    ícone message-circle sobre o gradiente da Carol. Quem o vier substituir
    só precisa de trocar o interior deste componente — `mood` já chega a
    todos os sítios onde ela aparece, e fica exposto em data-mood para
-   estilos. Tem de funcionar a 30px e a 76px. */
-export default function CoachAvatar({ mood = 'neutral', size = 30, radius, className = '', style }) {
+   estilos. Tem de funcionar a 30px e a 76px.
+
+   `breathing` é a animação 7 do ponto 9 ("A Carol respira"): um halo lento de
+   --dur-breathe (2600 ms), TRÊS ciclos e para, só quando há assunto por
+   resolver (`selectCoachHasPendingTopic`). CAROL.md §5 — ela chama, não
+   alarma; sem nada pendente o avatar fica completamente parado. */
+export default function CoachAvatar({ mood = 'neutral', size = 30, radius, className = '', style, breathing = false }) {
   const iconSize = Math.round(size * 0.53);
   return (
     <span
       aria-hidden="true"
       data-mood={mood}
-      className={`inline-flex items-center justify-center shrink-0 ${className}`}
+      data-breathing={breathing ? 'true' : undefined}
+      className={`inline-flex items-center justify-center shrink-0 ${breathing ? 'coach-breathing ' : ''}${className}`}
       style={{
         width: size,
         height: size,

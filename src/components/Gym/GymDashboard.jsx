@@ -10,6 +10,7 @@ import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
@@ -147,9 +148,13 @@ export default function GymDashboard() {
     x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
     y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
   };
+  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
+     uma vez por sessão. */
+  const introBars = useIntroAnimation('bi-bars');
   const baseChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: barGrowAnimation(introBars),
     plugins: { legend: { display: false } }
   };
 

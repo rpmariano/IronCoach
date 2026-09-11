@@ -85,7 +85,11 @@ export default function SubNav({ items, activeIndex, onChange, className = '', s
             type="button"
             onClick={() => onChange?.(i, item)}
             aria-current={active ? 'page' : undefined}
-            className="relative flex-1 flex flex-col items-center justify-center cursor-pointer"
+            /* no-tap-scale: este botão É a caixa que a minhoca mede
+               (setItemRef). O scale .98 do toque (ponto 9) encolhia-o
+               enquanto o dedo estivesse em baixo e a pílula media 2% a
+               menos — aqui a resposta ao toque é a própria pílula. */
+            className="no-tap-scale relative flex-1 flex flex-col items-center justify-center cursor-pointer"
             style={{
               zIndex: 2,
               gap: 4,

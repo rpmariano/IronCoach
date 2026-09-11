@@ -89,7 +89,7 @@ export default function CarolCard({ pendingTopics = 0, onOpenCoach, onDismissTop
   return (
     <GlassCard tone="coach" radius={20} padding="14px 15px" className="flex flex-col gap-[11px]" data-testid="carol-card">
       <button type="button" onClick={onOpenCoach} className="flex items-center gap-2.5 w-full text-left min-h-[44px] -my-1.5">
-        <CoachAvatar size={30} mood={pendingTopics > 0 ? 'concerned' : 'neutral'} />
+        <CoachAvatar size={30} mood={pendingTopics > 0 ? 'concerned' : 'neutral'} breathing={pendingTopics > 0} />
         <div className="flex-1 min-w-0">
           {pendingTopics > 0 ? (
             <>

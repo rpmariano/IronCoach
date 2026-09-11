@@ -5,6 +5,7 @@ import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 
 /* Ponto 6 do redesenho:
    - O "Média 4s" era escrito com `ctx.fillText` em cima da tela. A linha
@@ -69,8 +70,13 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
     ]
   };
 
+  const introBars = useIntroAnimation('bi-bars');
+
   const options = {
     responsive: true,
+    /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
+       direita, --dur-bars com --stagger-bars — uma vez por sessão. */
+    animation: barGrowAnimation(introBars),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },

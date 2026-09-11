@@ -1,4 +1,6 @@
 import React from 'react';
+import { useIntroAnimation } from '../../utils/introAnimations';
+import { useCountUpDisplay } from '../../utils/useCountUp';
 
 /**
  * ChartFrame — a moldura de qualquer gráfico dos dashboards (ponto 6 do
@@ -43,11 +45,27 @@ const DELTA_COLOR = {
   neutral: 'var(--text-4)',
 };
 
-/** O número de destaque. Separado para o ponto 9 poder animá-lo sozinho. */
-export function BigNumber({ value, unit, color = 'var(--text-1)', size = 'var(--text-num)', ...rest }) {
+/** Quantas casas decimais o valor já mostra — para a contagem não mudar de
+ *  largura a meio ("42,6" conta com uma casa, "1 850" com nenhuma). */
+function decimalsOf(value) {
+  const dec = String(value ?? '').split(',')[1];
+  return dec ? dec.replace(/\D/g, '').length : 0;
+}
+
+/** O número de destaque. Separado para o ponto 9 poder animá-lo sozinho:
+ *  `animate` liga a contagem de --dur-count (1400 ms, --ease-back). O texto
+ *  final é sempre o `value` que o gráfico passou — só os frames do meio é
+ *  que são formatados aqui. */
+export function BigNumber({ value, unit, color = 'var(--text-1)', size = 'var(--text-num)', animate = false, ...rest }) {
   const numeric = typeof value === 'number'
     ? value
     : Number(String(value ?? '').replace(/\s/g, '').replace(',', '.'));
+
+  const shown = useCountUpDisplay(isFinite(numeric) ? numeric : value, {
+    animate,
+    decimals: decimalsOf(value),
+    display: value,
+  });
 
   return (
     <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4 }} {...rest}>
@@ -63,7 +81,7 @@ export function BigNumber({ value, unit, color = 'var(--text-1)', size = 'var(--
           fontFeatureSettings: '"tnum"',
         }}
       >
-        {value}
+        {shown}
       </span>
       {unit && (
         <span
@@ -94,6 +112,11 @@ export default function ChartFrame({
   style,
   ...rest
 }) {
+  /* Ponto 9, animação 2: os KPIs dos dashboards contam à primeira entrada da
+     sessão. Chave única para todos — os quatro dashboards montam juntos
+     (carrossel de scroll-snap) e contam de uma vez só. */
+  const intro = useIntroAnimation('bi-big-number');
+
   return (
     <div
       data-testid="chart-frame"
@@ -136,7 +159,7 @@ export default function ChartFrame({
 
       {(value !== undefined && value !== null && value !== '') && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 9, flexWrap: 'wrap' }}>
-          <BigNumber value={value} unit={unit} color={valueColor} />
+          <BigNumber value={value} unit={unit} color={valueColor} animate={intro} />
           {delta?.text && (
             <span
               data-testid="chart-frame-delta"

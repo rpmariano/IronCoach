@@ -33,6 +33,7 @@ import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViabili
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { useCarouselHaptics } from '../../utils/haptics';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
@@ -191,6 +192,10 @@ export default function RunAgenda({ onClose }) {
   // alterações por gravar — null quando o pedido veio do próprio botão
   // "Cancelar" do formulário, sem navegação nenhuma envolvida.
   const [leavePrompt, setLeavePrompt] = useState(null);
+  /* Ponto 9, animação 6: o check de "Registo confirmado" também aqui — a
+     prova é o quinto registo. Substitui o toast "Prova guardada", que
+     dizia exatamente o mesmo em letra pequena. */
+  const [confirmation, setConfirmation] = useState(null);
 
   // Qual dos dois campos (tempo/ritmo) foi o último a ser escrito à mão —
   // é a partir dele que se recalcula o outro quando a distância muda.
@@ -626,7 +631,15 @@ export default function RunAgenda({ onClose }) {
           }
         }
       }
-      showToast('Prova guardada');
+      /* "Gravar e sair" a caminho de outro separador: o destino já foi
+         escolhido pelo atleta e saveAndLeave leva-o lá já a seguir — um
+         check de 900 ms pelo meio só atrasava (e este ecrã desmontava com
+         ele, deixando o rascunho por limpar). Nesse caso fecha-se direto. */
+      if (leavePrompt?.target) {
+        handleCloseForm();
+        return true;
+      }
+      setConfirmation({ label: 'Prova guardada', done: () => {
       handleCloseForm();
       // Gravar uma prova NOVA vai sempre para o Calendário, aberto no dia
       // da prova — independentemente de onde a criação foi iniciada (ex.:
@@ -642,11 +655,12 @@ export default function RunAgenda({ onClose }) {
       // esse destino a seguir — sem esta guarda, ficava pendingCalendarDate
       // por aplicar (só à próxima visita ao Calendário) sem nunca lá se
       // chegar agora.
-      if (!editingEventId && !leavePrompt?.target) {
+      if (!editingEventId) {
         setNavGuard(null);
         useAppStore.getState().setPendingCalendarDate(draft.date);
         useAppStore.getState().setActiveTab('calendario');
       }
+      } });
       return true;
     } catch (err) {
       console.error('Error saving race event:', err);
@@ -755,6 +769,7 @@ export default function RunAgenda({ onClose }) {
     >
       {leaveModal}
       {validationModal}
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
