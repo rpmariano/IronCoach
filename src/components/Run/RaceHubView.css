@@ -227,11 +227,18 @@
   position: relative;
 }
 
+/* Cresce por transform e não por width — animar width refaz layout a cada
+   frame; scaleX com origem à esquerda fica no compositor e dá o mesmo
+   desenho. A largura é sempre 100%: quem manda é o --rh-track-scale que o
+   componente calcula (0–1). */
 .rh-track-fill {
   height: 100%;
+  width: 100%;
   background: linear-gradient(90deg, #fbbf24 0%, #d97706 100%);
   border-radius: 8px;
-  transition: width 0.5s ease;
+  transform: scaleX(var(--rh-track-scale, 0));
+  transform-origin: left;
+  transition: transform var(--dur-bars) var(--ease-out);
 }
 
 .rh-runner-dot {

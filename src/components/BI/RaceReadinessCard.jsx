@@ -171,10 +171,21 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                     casos (ponto 2, "12px para dados lidos em movimento"). */}
                 <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{pillar.score}%</span>
               </div>
+              {/* Cresce por transform, não por width: animar width obriga o
+                  browser a refazer layout a cada frame (as barras são
+                  várias e crescem ao mesmo tempo). scaleX com origem à
+                  esquerda dá o mesmo desenho e fica no compositor.
+                  --dur-bars/--ease-out em vez de 0.8s ease: é a mesma
+                  barra a crescer que o resto do redesenho. */}
               <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: `${pillar.score}%`, background: pCfg.color, transition: 'width 0.8s ease' }}
+                  className="h-full w-full rounded-full"
+                  style={{
+                    background: pCfg.color,
+                    transform: `scaleX(${Math.max(0, Math.min(100, pillar.score)) / 100})`,
+                    transformOrigin: 'left',
+                    transition: 'transform var(--dur-bars) var(--ease-out)',
+                  }}
                 />
               </div>
             </div>

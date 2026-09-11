@@ -389,7 +389,7 @@ export default function RaceHubView({
         {/* Linha de Progresso & Corredor na Timeline */}
         <div className="rh-track-container">
           <div className="rh-track-bar">
-            <div className="rh-track-fill" style={{ width: `${progressPercentage}%` }} />
+            <div className="rh-track-fill" style={{ '--rh-track-scale': Math.max(0, Math.min(100, progressPercentage)) / 100 }} />
             <div className="rh-runner-dot" style={{ left: `${progressPercentage}%` }}>
               <RunIcon size={14} strokeWidth={2.5} color="#d97706" />
             </div>

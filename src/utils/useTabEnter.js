@@ -15,8 +15,9 @@ import { useCallback, useEffect, useRef } from 'react';
  * Perfil ficam todos montados de propósito (o carrossel de scroll-snap
  * exige-o, e é o que preserva filtros/rascunhos ao deslizar entre eles).
  *
- * `prefers-reduced-motion` não precisa de ramo aqui: a regra global de
- * globals.css já leva qualquer animação a .01ms.
+ * `prefers-reduced-motion` não precisa de ramo aqui: o token
+ * --dur-tab-content baixa para 120ms (tokens/motion.css), por isso a
+ * entrada encurta-se sozinha — sem desaparecer, que é o ponto.
  *
  * @param activeIndex índice do separador ativo
  * @returns setPageRef(i) — callback ref para o painel de cada separador
