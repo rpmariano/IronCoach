@@ -14,10 +14,10 @@ export const COACH_GRADIENT = 'linear-gradient(135deg, var(--mod-coach-from), va
    compensar, em vez de escurecer o gradiente da marca. */
 export const COACH_TEXT_SHADOW = '0 1px 2px rgba(0,0,0,0.35)';
 
-/* Cor via style, nunca pela classe text-white — um override global
-   (globals.css:66, "portado do legado") força text-white para #0f172a com
-   !important; um style inline só escapa a essa regra se a classe text-white
-   não estiver presente no className. */
+/* Cor via style, não pela classe: o texto destes botões tem de ser branco a
+   valer sobre o gradiente do Coach, e não o --text-1 do resto da app. (Até ao
+   impeccable colorize havia também um override global que reescrevia
+   text-white; saiu com os outros — ver a tabela em globals.css.) */
 export function CoachIcon({ busy }) {
   return (
     <span

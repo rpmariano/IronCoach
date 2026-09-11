@@ -971,10 +971,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             style={analyzingRun ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
           >
           <div className="flex flex-wrap gap-1.5 mb-3">
-            {/* Cor via style, não pela classe text-white — um override global
-                (globals.css:66, "portado do legado") força text-white para
-                #0f172a com !important; nestes botões o fundo é mesmo escuro/
-                colorido e o texto tem de ficar branco a valer. */}
+            {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou
+                colorido e o texto tem de ficar branco a valer, não o --text-1
+                do resto da app. (O override global que reescrevia text-white
+                saiu no impeccable colorize — ver a tabela em globals.css.) */}
             <Chip
               active={runKind === 'treino'}
               variant="run"
