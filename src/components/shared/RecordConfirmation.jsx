@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Check } from 'lucide-react';
+import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
 
@@ -19,8 +19,30 @@ import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
  * pelos tokens e pela regra global de globals.css; o que este componente tem
  * de garantir é que o TEMPO ATÉ `onDone` acompanha, senão o ecrã ficava 900 ms
  * parado à espera de uma animação que já acabou.
+ *
+ * `tone="race"` — o dia da prova (specs/prova-concluida.md §4). Mesma
+ * animação, outra leitura: âmbar em vez de verde e um troféu em vez do
+ * visto, porque o que acabou de acontecer não foi "mais um registo" mas a
+ * prova para a qual o ciclo inteiro foi montado. O rótulo traz o nome dela
+ * ("Meia de Lisboa concluída"), escrito por quem monta.
  */
-export default function RecordConfirmation({ label = 'Registo guardado', onDone }) {
+const TONES = {
+  ok: {
+    ring: 'var(--ok)',
+    fill: 'rgba(52,211,153,.16)',
+    label: 'var(--ok-soft)',
+    Icon: Check,
+  },
+  race: {
+    ring: 'var(--race)',
+    fill: 'var(--tint-race-bg)',
+    label: 'var(--race)',
+    Icon: Trophy,
+  },
+};
+
+export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', onDone }) {
+  const { ring, fill, label: labelColor, Icon } = TONES[tone] || TONES.ok;
   useEffect(() => {
     const delay = prefersReducedMotion() ? DUR_TAP : DUR_CONFIRM_EXIT;
     const id = setTimeout(() => { onDone?.(); }, delay);
@@ -32,22 +54,23 @@ export default function RecordConfirmation({ label = 'Registo guardado', onDone 
   return (
     <div
       data-testid="record-confirmation"
+      data-tone={tone}
       role="status"
       aria-live="polite"
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
       style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}
     >
       <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
-        <span aria-hidden="true" className="record-confirm-halo absolute inset-0 rounded-full" style={{ border: '2px solid var(--ok)' }} />
+        <span aria-hidden="true" className="record-confirm-halo absolute inset-0 rounded-full" style={{ border: `2px solid ${ring}` }} />
         <span
           aria-hidden="true"
           className="record-confirm-check flex items-center justify-center rounded-full"
-          style={{ width: 56, height: 56, background: 'rgba(52,211,153,.16)', border: '1.5px solid var(--ok)', color: 'var(--ok)' }}
+          style={{ width: 56, height: 56, background: fill, border: `1.5px solid ${ring}`, color: ring }}
         >
-          <Check size={26} />
+          <Icon size={26} />
         </span>
       </div>
-      <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: 'var(--ok-soft)' }}>{label}</div>
+      <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: labelColor }}>{label}</div>
     </div>
   );
 }

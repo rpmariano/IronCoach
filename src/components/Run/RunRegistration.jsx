@@ -1,13 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, Award, FileText } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
+import SectionLabel from '../shared/SectionLabel';
+import GlassCard from '../shared/GlassCard';
+import Warning, { WarningAction } from '../shared/Warning';
+import {
+  parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace,
+  raceDistanceLabel, raceTerrainLabel, formatTargetTimeLabel,
+} from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
+import { formatDatePTShort } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -66,10 +73,56 @@ const COMPLETED_RACE_TYPES = [
 // Convert "43m" or "37:57" or "1:11:26" to seconds
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
+// ── Modo prova (specs/prova-concluida.md) ───────────────────────────────────
+// Fotografias do DIA da prova — não confundir com os prints do relógio
+// (MAX_PHOTOS, acima), que são a matéria-prima da análise da Carol. Estas são
+// memórias e vivem na prova, não na corrida.
+const MAX_RACE_PHOTOS = 6;
+// Espelha o file_size_limit do bucket race-memories
+// (supabase/migrations/20260912100000_race_completion.sql): o cliente diz
+// porque recusou em vez de deixar o upload falhar com um 413 sem explicação.
+const MAX_MEMORY_BYTES = 2097152;
+const RACE_MEMORIES_BUCKET = 'race-memories';
+// Provas a ±7 dias entram no seletor "Qual prova?" — o registo faz-se no dia
+// ou nos dias seguintes, e às vezes a data da agenda ficou um dia ao lado.
+const RACE_PICKER_WINDOW_DAYS = 7;
+
+function daysBetweenIso(a, b) {
+  return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
+}
+
+/* A disciplina do REGISTO (runs.details.race_type, a lista COMPLETED_RACE_TYPES
+   acima) a partir da prova da AGENDA: race_events.race_type só distingue o
+   piso (estrada/trail) e guarda a distância num campo à parte. São dois enums
+   diferentes de propósito — isto é a ponte entre eles. */
+function raceTypeFromRaceEvent(ev) {
+  if (!ev) return null;
+  if (ev.race_type === 'trail') return 'trail';
+  const km = Number(ev.distance_km || 0);
+  if (Math.abs(km - 5) < 0.3) return '5k';
+  if (Math.abs(km - 10) < 0.3) return '10k';
+  if (Math.abs(km - 21.0975) < 0.6) return '21k';
+  if (Math.abs(km - 42.195) < 0.6) return '42k';
+  return 'estrada';
+}
+
+/* O Storage recebe bytes; a compressImage devolve um dataUrl. `fetch(dataUrl)`
+   resolveria isto numa linha, mas não é fiável em todos os contextos (jsdom
+   nos testes, WebViews antigas) — atob/Uint8Array é síncrono e funciona em
+   qualquer lado. */
+function dataUrlToBlob(dataUrl) {
+  const [head, body] = String(dataUrl).split(',');
+  const mime = (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+  const binary = atob(body || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
 // RunAgenda.jsx — este componente só regista corridas (tabela runs).
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns, setNavGuard, activeTab, shoes } = useAppStore();
+  const { profile, runs, setRuns, setNavGuard, activeTab, shoes, raceEvents } = useAppStore();
   const [initialTab] = useState(activeTab);
 
   
@@ -83,6 +136,24 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   );
   const planItem = completingPlanItemRef.current?.kind === 'corrida' ? completingPlanItemRef.current : null;
 
+  /* ── MODO PROVA (specs/prova-concluida.md §3) ──────────────────────────────
+     A prova que esta corrida vem concluir. Chega de três sítios — o hub, o
+     cartão do Início e o cartão da agenda — sempre pelo mesmo campo do store
+     (runRacePrefill, posto por openRaceRun), consumido UMA vez ao montar. A
+     editar uma corrida já gravada vem do próprio registo (runs.race_id), mais
+     abaixo; e o seletor "Qual prova?" do FAB escreve diretamente no estado. */
+  const runRacePrefillRef = useRef(
+    !runIdToEdit ? useAppStore.getState().runRacePrefill : null
+  );
+  const initialRace = runRacePrefillRef.current?.raceId
+    ? (useAppStore.getState().raceEvents || []).find(e => e.id === runRacePrefillRef.current.raceId) || null
+    : null;
+  const [raceId, setRaceId] = useState(initialRace?.id || null);
+  const raceEvent = raceId ? (raceEvents || []).find(e => e.id === raceId) || null : null;
+  // O modo prova exige a prova: sem ela em memória, isto é uma competição
+  // fora da agenda e o ecrã é o de sempre.
+  const isRaceMode = !!raceEvent;
+
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // corridas diferentes nem entre uma edição e uma criação nova a seguir.
@@ -93,10 +164,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const restoredForKeyRef = useRef(null);
 
   // --- RUNS STATE ---
-  const [runKind, setRunKind] = useState(planItem?.isRace ? 'competicao' : 'treino'); // 'treino' | 'competicao'
+  const [runKind, setRunKind] = useState(planItem?.isRace || initialRace ? 'competicao' : 'treino'); // 'treino' | 'competicao'
   const [runTrainingType, setRunTrainingType] = useState(planItem?.training_type || 'continuo');
-  const [runDate, setRunDate] = useState(planItem?.planned_date || dateIso || todayISO());
-  const [runName, setRunName] = useState(planItem?.title || 'Corrida de Hoje');
+  const [runDate, setRunDate] = useState(initialRace?.date || planItem?.planned_date || dateIso || todayISO());
+  const [runName, setRunName] = useState(initialRace?.name || planItem?.title || 'Corrida de Hoje');
   // Par usado nesta corrida — é daqui que sai o acumulado de km do armário
   // (Perfil → Equipamento). Fica fora da analyticalSignature de propósito:
   // trocar o par não muda a análise do Coach, por isso não deve custar uma
@@ -109,13 +180,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const activeShoes = (shoes || []).filter(s => s.status !== 'aposentada' || s.id === shoeId);
   
   // Basic metrics
-  const [runDistance, setRunDistance] = useState(planItem?.target_distance_km ? String(planItem.target_distance_km) : '');
+  const [runDistance, setRunDistance] = useState(
+    initialRace?.distance_km ? String(initialRace.distance_km)
+      : planItem?.target_distance_km ? String(planItem.target_distance_km) : ''
+  );
   const [runDuration, setRunDuration] = useState(planItem?.target_duration ? formatDuration(planItem.target_duration) : '');
   const [runEffortRpe, setRunEffortRpe] = useState(0); // 0-10
   const [runNotes, setRunNotes] = useState('');
   
   // Detailed metrics
-  const [elevationGain, setElevationGain] = useState(planItem?.elevation_gain_m ? String(planItem.elevation_gain_m) : '');
+  const [elevationGain, setElevationGain] = useState(
+    initialRace?.elevation_gain_m ? String(initialRace.elevation_gain_m)
+      : planItem?.elevation_gain_m ? String(planItem.elevation_gain_m) : ''
+  );
   const [cadence, setCadence] = useState('');
   const [maxCadence, setMaxCadence] = useState('');
   const [calories, setCalories] = useState('');
@@ -144,10 +221,32 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [hrZones, setHrZones] = useState([]); // { zone, minutes }
   
   // Competition specifics (when runKind === 'competicao')
-  const [officialTime, setOfficialTime] = useState(planItem?.target_duration ? formatDuration(planItem.target_duration) : '');
+  // Em modo prova o tempo oficial começa VAZIO — é o resultado, e pré-enchê-lo
+  // com o objetivo da prova seria pôr na boca do atleta um número que ele
+  // ainda não disse.
+  const [officialTime, setOfficialTime] = useState(
+    !initialRace && planItem?.target_duration ? formatDuration(planItem.target_duration) : ''
+  );
   const [position, setPosition] = useState('');
-  const [completedRaceType, setCompletedRaceType] = useState(planItem?.race_type || '10k');
-  
+  const [completedRaceType, setCompletedRaceType] = useState(
+    raceTypeFromRaceEvent(initialRace) || planItem?.race_type || '10k'
+  );
+
+  /* Memórias da prova — vivem em race_events, não em runs (specs §2). Cada
+     uma é { dataUrl?, blob?, url?, path?, isPdf?, name? }: `blob` só existe
+     enquanto o ficheiro é novo e está por enviar; `path`/`url` são o que já
+     está no bucket (e a sua signed URL) ao editar. */
+  const [diploma, setDiploma] = useState(null);
+  const [medal, setMedal] = useState(null);
+  const [racePhotos, setRacePhotos] = useState([]);
+  // Recusa na ESCOLHA do ficheiro (tamanho, formato ilegível) — imediata.
+  const [memoryError, setMemoryError] = useState('');
+  // Falha no ENVIO, já com a corrida gravada: aí não se perde nada, mostra-se
+  // o aviso com "Tentar de novo" (mesmo padrão do useAnalysis).
+  const [memoriesFailed, setMemoriesFailed] = useState(false);
+  const [savingMemories, setSavingMemories] = useState(false);
+  const savedRaceRunRef = useRef(null);
+
   // Photos
   const [runPhotos, setRunPhotos] = useState([]); // [{ file?, dataUrl, url? }]
   /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
@@ -291,7 +390,34 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Nova Corrida".
   useEffect(() => {
     if (completingPlanItemRef.current) useAppStore.getState().clearPlanItemPrefill();
+    if (runRacePrefillRef.current) useAppStore.getState().clearRunRacePrefill();
   }, []);
+
+  /* Seletor "Qual prova?" do FAB → chip "Competição": as provas agendadas a
+     ±7 dias de hoje, mais "Prova fora da agenda". Fora desta janela a
+     resposta certa é a agenda, não este ecrã. */
+  const racePickerOptions = useMemo(() => {
+    const hoje = todayISO();
+    return (raceEvents || [])
+      .filter(e => e?.date && e.status === 'agendada' && Math.abs(daysBetweenIso(e.date, hoje)) <= RACE_PICKER_WINDOW_DAYS)
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [raceEvents]);
+
+  /* Escolher uma prova entra no modo prova e traz o que a prova já sabe — o
+     que aqui não se edita (nome, data, distância, piso) tem mesmo de vir
+     dela, senão o cabeçalho do bloco "A prova" e o registo divergiam. */
+  const applyRaceSelection = (id) => {
+    const ev = id ? (raceEvents || []).find(e => e.id === id) || null : null;
+    setRaceId(ev?.id || null);
+    setIsFormDirty(true);
+    if (!ev) return;
+    setRunKind('competicao');
+    setRunName(ev.name || 'Corrida de Hoje');
+    setRunDate(ev.date);
+    setCompletedRaceType(raceTypeFromRaceEvent(ev));
+    if (!runDistance && ev.distance_km) setRunDistance(String(ev.distance_km));
+    if (!elevationGain && ev.elevation_gain_m) setElevationGain(String(ev.elevation_gain_m));
+  };
 
   // Assinatura do que é analítico. Normaliza (descarta vazios, ordena
   // chaves) para que o objeto vindo da BD e o construído a partir do
@@ -413,6 +539,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setOfficialTime(persisted?.officialTime ?? (d.official_time_seconds ? formatDuration(d.official_time_seconds) : ''));
         setPosition(persisted?.position ?? (d.position || ''));
         setCompletedRaceType(persisted?.completedRaceType ?? (d.race_type || '10k'));
+        // Uma corrida já ligada a uma prova reabre SEMPRE em modo prova — é
+        // assim que se voltam a ver (e a corrigir) as memórias já guardadas.
+        setRaceId(persisted?.raceId ?? (r.race_id || null));
 
         // Distância, duração, RPE, tipo e métricas são dados ANALÍTICOS:
         // mudá-los muda a análise, e guardar passa pelo Coach para a
@@ -446,6 +575,53 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
     }
   }, [runIdToEdit, runs]);
+
+  /* Memórias JÁ guardadas nesta prova — o bucket race-memories é privado, por
+     isso assinam-se na hora, como os prints acima. Depende dos CAMINHOS (não
+     do objeto da prova, que muda de identidade a cada render do store) e
+     nunca pisa um ficheiro novo ainda por enviar (`blob`). */
+  const memoryPathsKey = raceEvent
+    ? JSON.stringify([raceEvent.diploma_path || null, raceEvent.medal_path || null, raceEvent.photo_paths || []])
+    : '';
+  useEffect(() => {
+    const ev = raceEvent;
+    const paths = ev ? (ev.photo_paths || []) : [];
+    if (!ev || (!ev.diploma_path && !ev.medal_path && paths.length === 0)) return undefined;
+    let cancelled = false;
+    const sign = async (path) => {
+      if (!path) return null;
+      try {
+        const { data, error } = await supabase.storage.from(RACE_MEMORIES_BUCKET).createSignedUrl(path, 3600);
+        return error ? null : (data?.signedUrl || null);
+      } catch (err) {
+        return null;
+      }
+    };
+    (async () => {
+      const [diplomaUrl, medalUrl, ...photoUrls] = await Promise.all([
+        sign(ev.diploma_path), sign(ev.medal_path), ...paths.map(sign),
+      ]);
+      if (cancelled) return;
+      if (ev.diploma_path) {
+        setDiploma(prev => (prev?.blob ? prev : {
+          path: ev.diploma_path,
+          url: diplomaUrl,
+          isPdf: ev.diploma_path.toLowerCase().endsWith('.pdf'),
+          name: ev.diploma_path.split('/').pop(),
+        }));
+      }
+      if (ev.medal_path) {
+        setMedal(prev => (prev?.blob ? prev : { path: ev.medal_path, url: medalUrl, dataUrl: medalUrl }));
+      }
+      if (paths.length) {
+        setRacePhotos(prev => (prev.some(p => p.blob) ? prev : paths.map((path, i) => ({
+          path, url: photoUrls[i], dataUrl: photoUrls[i],
+        }))));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memoryPathsKey]);
 
   // Restaura um rascunho de corrida NOVA por gravar (ver
   // formDraftPersistence.js) — o caminho de edição está no efeito acima.
@@ -494,6 +670,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (persisted.officialTime !== undefined) setOfficialTime(persisted.officialTime);
     if (persisted.position !== undefined) setPosition(persisted.position);
     if (persisted.completedRaceType) setCompletedRaceType(persisted.completedRaceType);
+    if (persisted.raceId !== undefined) setRaceId(persisted.raceId);
     setIsFormDirty(true);
   }, [runIdToEdit, draftStorageKey]);
 
@@ -501,8 +678,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
   // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
   // picker não é restaurável depois de recarregar, e não são tipicamente o
-  // que se está a meio de escrever quando se é interrompido.
+  // que se está a meio de escrever quando se é interrompido. Isso vale
+  // igualmente para as memórias da prova (diploma, medalha, fotografias):
+  // seis imagens em dataUrl estouravam a quota do localStorage, e o que o
+  // rascunho tem mesmo de guardar é a PROVA escolhida — sem ela, recarregar
+  // a página caía no formulário de competição genérico.
   usePersistedFormDraft(draftStorageKey, {
+    raceId,
     entryMethod, runKind, runTrainingType, runDate, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
     elevationGain, cadence, maxCadence, calories, vo2Max, avgHeartRate, maxHeartRate,
@@ -554,6 +736,200 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   };
 
   // ----------------------------------
+  // MEMÓRIAS DA PROVA (diploma, medalha, fotografias)
+  // ----------------------------------
+  // As imagens passam pela mesma compressImage dos prints (JPEG, 1600px,
+  // ~300 KB). O PDF do diploma vai inteiro — comprimir um PDF não é coisa
+  // que se faça no browser —, e por isso é o único que precisa da verificação
+  // do limite de 2 MB do bucket.
+  const readMemoryImage = async (file) => {
+    const { dataUrl } = await compressImage(file);
+    return { dataUrl, blob: dataUrlToBlob(dataUrl), mime: 'image/jpeg' };
+  };
+
+  const handleDiplomaSelected = async (e) => {
+    const file = (e.target.files || [])[0];
+    e.target.value = '';
+    if (!file) return;
+    setMemoryError('');
+    if (file.type === 'application/pdf') {
+      if (file.size > MAX_MEMORY_BYTES) {
+        setMemoryError('O diploma em PDF tem mais de 2 MB. Escolhe um ficheiro mais pequeno ou uma fotografia dele.');
+        return;
+      }
+      setDiploma({ blob: file, mime: 'application/pdf', isPdf: true, name: file.name });
+      setIsFormDirty(true);
+      return;
+    }
+    try {
+      const img = await readMemoryImage(file);
+      setDiploma({ ...img, isPdf: false, name: file.name });
+      setIsFormDirty(true);
+    } catch (err) {
+      console.warn('Falha a processar o diploma', err);
+      setMemoryError('Não consegui ler esse ficheiro. Tenta uma imagem ou um PDF.');
+    }
+  };
+
+  const handleMedalSelected = async (e) => {
+    const file = (e.target.files || [])[0];
+    e.target.value = '';
+    if (!file) return;
+    setMemoryError('');
+    try {
+      const img = await readMemoryImage(file);
+      setMedal(img);
+      setIsFormDirty(true);
+    } catch (err) {
+      console.warn('Falha a processar a medalha', err);
+      setMemoryError('Não consegui ler essa imagem. Tenta outra.');
+    }
+  };
+
+  const handleRacePhotosSelected = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setMemoryError('');
+    const remaining = MAX_RACE_PHOTOS - racePhotos.length;
+    if (remaining <= 0) {
+      setMemoryError(`Já tens ${MAX_RACE_PHOTOS} fotografias. Remove uma para acrescentar outra.`);
+      return;
+    }
+    if (files.length > remaining) {
+      setMemoryError(`Guardei as primeiras ${remaining} — o limite é de ${MAX_RACE_PHOTOS} fotografias.`);
+    }
+    for (const file of files.slice(0, remaining)) {
+      try {
+        const img = await readMemoryImage(file);
+        setRacePhotos(prev => (prev.length >= MAX_RACE_PHOTOS ? prev : [...prev, img]));
+        setIsFormDirty(true);
+      } catch (err) {
+        console.warn('Falha a processar a fotografia da prova', err);
+        setMemoryError('Não consegui ler uma das imagens.');
+      }
+    }
+  };
+
+  /* A corrida é gravada pela Edge Function analyze-run, que insere a linha em
+     `runs` e não sabe nada de provas. Passar-lhe race_id obrigava a mexer numa
+     função que faz deploy em produção a cada push a `dev` (ver CLAUDE.md), e a
+     spec põe isso fora de âmbito — por isso a ligação faz-se AQUI, logo a
+     seguir, com o id que ela devolve: um update de uma coluna, sob a mesma
+     RLS "own rows" da tabela. */
+  const linkRunToRace = async (run) => {
+    if (!run?.id || !raceId) return run;
+    const { error } = await supabase.from('runs').update({ race_id: raceId }).eq('id', run.id);
+    if (error) throw error;
+    return { ...run, race_id: raceId };
+  };
+
+  /* Envia o que é novo para race-memories/<uid>/<raceId>/… e grava os
+     caminhos na prova, junto com o status. Um nome fixo por memória (e
+     upsert) em vez de nomes únicos: substituir o diploma não pode deixar o
+     anterior a ocupar espaço para sempre. */
+  const persistRaceMemories = async () => {
+    const userId = profile?.id;
+    const base = `${userId}/${raceId}`;
+    const bucket = supabase.storage.from(RACE_MEMORIES_BUCKET);
+
+    const send = async (path, memory) => {
+      const { error } = await bucket.upload(path, memory.blob, {
+        upsert: true,
+        contentType: memory.mime || 'image/jpeg',
+      });
+      if (error) throw error;
+      return path;
+    };
+
+    const patch = { status: 'concluida' };
+
+    patch.diploma_path = diploma
+      ? (diploma.blob ? await send(`${base}/diploma.${diploma.isPdf ? 'pdf' : 'jpg'}`, diploma) : diploma.path || null)
+      : null;
+    patch.medal_path = medal
+      ? (medal.blob ? await send(`${base}/medal.jpg`, medal) : medal.path || null)
+      : null;
+
+    const photoPaths = [];
+    for (let i = 0; i < racePhotos.length; i += 1) {
+      const photo = racePhotos[i];
+      photoPaths.push(photo.blob ? await send(`${base}/photo-${i + 1}.jpg`, photo) : photo.path);
+    }
+    patch.photo_paths = photoPaths.filter(Boolean);
+
+    const { error } = await supabase.from('race_events').update(patch).eq('id', raceId);
+    if (error) throw error;
+    return patch;
+  };
+
+  const persistRaceLinkAndMemories = async () => {
+    const store = useAppStore.getState();
+    const linked = await linkRunToRace(savedRaceRunRef.current);
+    savedRaceRunRef.current = linked;
+    if (linked?.id) {
+      store.setRuns(store.runs.map(r => (r.id === linked.id ? { ...r, ...linked } : r)));
+    }
+    const patch = await persistRaceMemories();
+    store.setRaceEvents(store.raceEvents.map(e => (e.id === raceId ? { ...e, ...patch } : e)));
+  };
+
+  /* Modo prova: a confirmação é a da prova (âmbar, troféu, o nome dela) e o
+     destino é o HUB, não o Calendário — é lá que estão o tempo final ao lado
+     do objetivo, o balanço da Carol e a galeria das memórias. */
+  const finishRaceAndGoToHub = () => {
+    const hadPendingNav = !!pendingNavTarget.current;
+    setConfirmation({
+      label: `${raceEvent?.name || 'Prova'} concluída`,
+      tone: 'race',
+      done: () => {
+        handleClose();
+        if (!hadPendingNav) {
+          setNavGuard(null);
+          useAppStore.getState().setEditingRaceId(raceId);
+        }
+      },
+    });
+  };
+
+  /* Fecho comum dos quatro caminhos de gravação (foto/IA e manual, criar e
+     editar). Fora do modo prova nada muda. Em modo prova, a corrida JÁ está
+     gravada quando isto corre: se a ligação ou as memórias falharem, não se
+     desfaz nada — fica o aviso com "Tentar de novo" e o atleta não perde o
+     registo por causa de uma foto. */
+  const finishSavedRun = async (savedRun, label) => {
+    if (!isRaceMode) {
+      finishCreateAndGoToCalendar(savedRun, label);
+      return;
+    }
+    savedRaceRunRef.current = savedRun;
+    try {
+      await persistRaceLinkAndMemories();
+    } catch (err) {
+      console.error('Falha a ligar a corrida à prova ou a guardar as memórias', err);
+      setMemoriesFailed(true);
+      setIsSubmitting(false);
+      return;
+    }
+    setMemoriesFailed(false);
+    finishRaceAndGoToHub();
+  };
+
+  const retryRaceMemories = async () => {
+    setSavingMemories(true);
+    try {
+      await persistRaceLinkAndMemories();
+      setMemoriesFailed(false);
+      finishRaceAndGoToHub();
+    } catch (err) {
+      console.error('Falha a guardar as memórias da prova (nova tentativa)', err);
+      setMemoriesFailed(true);
+    } finally {
+      setSavingMemories(false);
+    }
+  };
+
+  // ----------------------------------
   // ANALISAR CORRIDA (IA — analyze-run)
   // ----------------------------------
   // Fotos são só para este caminho: o registo manual (handleSaveCorrida)
@@ -573,6 +949,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
     if (runKind === 'competicao' && !completedRaceType) {
       setErrorMsg('Escolhe a disciplina.');
+      return;
+    }
+    // O tempo oficial é o resultado da prova — sem ele não há o que comparar
+    // com o objetivo no hub, e o registo do dia fica pela metade.
+    if (isRaceMode && !parseDurationToSeconds(officialTime)) {
+      setErrorMsg('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -654,7 +1036,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       setRuns([...runs, createdRun]);
-      finishCreateAndGoToCalendar(createdRun, 'Corrida registada');
+      await finishSavedRun(createdRun, 'Corrida registada');
     }
   };
 
@@ -664,7 +1046,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setUserBypassedMissingSheet(true);
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
-      finishCreateAndGoToCalendar(pendingCreatedRun, 'Corrida registada');
+      await finishSavedRun(pendingCreatedRun, 'Corrida registada');
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -692,6 +1074,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
     if (runKind === 'competicao' && !completedRaceType) {
       setErrorMsg('Escolhe a disciplina.');
+      return;
+    }
+    if (isRaceMode && !parseDurationToSeconds(officialTime)) {
+      setErrorMsg('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -792,7 +1178,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           const updatedRun = data.run;
           setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
-          finishCreateAndGoToCalendar(updatedRun, 'Corrida reanalisada pelo Coach');
+          await finishSavedRun(updatedRun, 'Corrida reanalisada pelo Coach');
         } else {
           const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
@@ -800,7 +1186,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           const currentRun = runs.find(r => r.id === runIdToEdit);
           const updatedRun = currentRun ? { ...currentRun, ...payload } : payload;
           setRuns(runs.map(r => r.id === runIdToEdit ? { ...r, ...payload } : r));
-          finishCreateAndGoToCalendar(updatedRun, 'Corrida atualizada');
+          await finishSavedRun(updatedRun, 'Corrida atualizada');
         }
         return;
       }
@@ -862,7 +1248,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         });
       }
 
-      finishCreateAndGoToCalendar(newlySavedRun, 'Corrida registada');
+      await finishSavedRun(newlySavedRun, 'Corrida registada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
@@ -887,7 +1273,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       onClick={handleAnalyzeRun}
       disabled={!runPhotos.length || analyzingRun}
       busy={analyzingRun}
-      label="Analisar corrida"
+      label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
     />
   ) : runIdToEdit ? (
     <CoachAnalyzeButton
@@ -898,17 +1284,431 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     />
   ) : (
     // Criar uma corrida manualmente também passa pelo Coach, por isso tem o
-    // mesmo botão do caminho por foto.
+    // mesmo botão do caminho por foto. No modo prova o botão nomeia o que
+    // está mesmo a acontecer — registar a prova, memórias incluídas.
     <CoachAnalyzeButton
       onClick={handleSaveCorrida}
       disabled={isSubmitting}
       busy={isSubmitting}
-      label="Analisar corrida"
+      label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
     />
   );
 
+  const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+
+  /* As peças partilhadas pelos dois layouts (treino e modo prova) vivem aqui
+     em cima, para não haver duas versões do mesmo bloco a divergir com o
+     tempo. O que muda entre os dois é a ORDEM e o enquadramento, não os
+     campos. */
+  const closeButton = (
+    <button
+      onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
+      // O circulo continua a desenhar-se com 32px; o que cresce para
+      // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+      className="tap-44 shrink-0"
+      title="Fechar"
+      aria-label="Fechar"
+    >
+      <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+        <X size={16} />
+      </span>
+    </button>
+  );
+
+  /* Ponto 7 — espera e erro (ver MealRegistration para o padrão):
+     esqueleto no sítio do resultado, formulário bloqueado mas visível, e
+     aviso coral com "Tentar de novo" e a alternativa manual quando a leitura
+     do print falha. */
+  const renderAnalysisStates = () => (
+    <>
+      {analyzingRun && <AnalysisSkeleton />}
+
+      {analysis.hasFailed && (
+        <AnalysisFailure
+          detail={analysis.error}
+          onRetry={analysis.retry}
+          onManual={showToggle && entryMethod === 'foto'
+            ? () => { setEntryMethod('manual'); analysis.reset(); }
+            : undefined}
+        >
+          Os prints ficaram guardados. Podes tentar outra vez ou escrever os dados da corrida — eu faço as contas na mesma.
+        </AnalysisFailure>
+      )}
+    </>
+  );
+
+  const renderEntryMethodChips = () => (
+    <div className="mb-4">
+      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
+      <div className="flex gap-1.5">
+        <Chip
+          active={entryMethod === 'foto'}
+          variant="run"
+          rounded="xl"
+          onClick={() => setEntryMethod('foto')}
+          className="flex-1 py-2.5 gap-1.5"
+          type="button"
+        >
+          <Camera size={14} /> Foto (IA)
+        </Chip>
+        <Chip
+          active={entryMethod === 'manual'}
+          variant="run"
+          rounded="xl"
+          onClick={() => setEntryMethod('manual')}
+          className="flex-1 py-2.5 gap-1.5"
+          type="button"
+        >
+          <PencilLine size={14} /> Manual
+        </Chip>
+      </div>
+    </div>
+  );
+
+  /* A cor do foco e do estado ativo segue o ecrã: ciano do módulo Corrida
+     num treino, âmbar da prova no modo prova. Strings literais (e não
+     interpoladas) para o Tailwind as conseguir gerar. */
+  const fieldFocusClass = isRaceMode ? 'focus:border-[var(--race)]' : 'focus:border-[var(--mod-corrida-to)]';
+  const rpeActiveClass = isRaceMode
+    ? 'bg-[var(--race)]/15 border-[var(--race)]/40 text-[var(--race)]'
+    : 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]';
+
+  const renderEffortField = () => (
+    <div className="mb-4">
+      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+      <div className="flex gap-1.5">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => { setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
+            // min-h-[44px] em vez de aspect-square: ver a mesma nota em
+            // GymRegistration - dez celulas de 44px de largura nao cabem.
+            className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? rpeActiveClass : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
+          >
+            {i + 1}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  /* Sapatilhas usadas — alimenta o acumulado de km do armário
+     (Perfil → Equipamento). Só aparece se houver pares ativos: sem
+     armário montado seria um campo vazio a ocupar espaço. */
+  const renderShoesField = () => (activeShoes.length > 0 ? (
+    <div className="mb-4">
+      <label htmlFor="rr-sapatilhas-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
+        <Footprints size={14} /> Sapatilhas (opcional)
+      </label>
+      <select id="rr-sapatilhas-opcional"
+        value={shoeId || ''}
+        onChange={e => { setShoeId(e.target.value || null); setIsFormDirty(true); }}
+        className={`w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none transition ${fieldFocusClass}`}
+      >
+        <option value="">Não indicar</option>
+        {activeShoes.map(s => (
+          <option key={s.id} value={s.id}>{shoeLabel(s)}</option>
+        ))}
+      </select>
+      <p className="text-[11px] text-[var(--text-3)] mt-1.5">
+        Os km desta corrida somam-se ao par escolhido.
+      </p>
+    </div>
+  ) : null);
+
+  const renderNotesField = () => (
+    <div className="mb-4">
+      <label htmlFor="rr-observacoes-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
+        <PencilLine size={14} /> {isRaceMode ? 'Notas da prova (opcional)' : 'Observações (opcional)'}
+      </label>
+      <textarea id="rr-observacoes-opcional"
+        className={`w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none transition min-h-[80px] resize-y ${fieldFocusClass}`}
+        placeholder={isRaceMode ? 'O percurso, o tempo que esteve, como te sentiste...' : 'Como te sentiste, dores, condições atmosféricas...'}
+        value={runNotes}
+        onChange={e => { setRunNotes(e.target.value); setIsFormDirty(true); }}
+      />
+    </div>
+  );
+
+  /* Distância e duração do relógio. Em competição a duração é o "tempo
+     pessoal" (runs.duration_seconds) — distinto do tempo oficial, que é o
+     do cronómetro da organização e vai em details.official_time_seconds. */
+  const renderCoreMetrics = () => (
+    <>
+      <div className="mb-3">
+        <label htmlFor="rr-distancia" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
+          {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
+        </label>
+        <div className="relative">
+          <input
+            type="number" min="0" step="0.01"
+            id="rr-distancia"
+            placeholder="0.00"
+            value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
+            className={`w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl pl-3 pr-10 py-2.5 text-sm text-white outline-none transition ${fieldFocusClass}`}
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-[var(--text-3)] pointer-events-none">km</span>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label htmlFor="rr-duracao" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
+          {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind === 'competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
+        </label>
+        <input id="rr-duracao"
+          type="text"
+          placeholder="00:00"
+          value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
+          className={`w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-white outline-none transition ${fieldFocusClass}`}
+        />
+      </div>
+    </>
+  );
+
+  const renderProvaForm = () => {
+    const objetivo = [
+      raceEvent?.target_time ? `Tempo ${formatTargetTimeLabel(raceEvent.target_time)}` : null,
+      raceEvent?.target_pace_seconds_per_km ? `Ritmo ${formatPace(raceEvent.target_pace_seconds_per_km)}/km` : null,
+    ].filter(Boolean).join(' · ');
+
+    const pill = {
+      fontSize: 11,
+      fontWeight: 800,
+      padding: '3px 9px',
+      borderRadius: 'var(--radius-pill)',
+      background: 'var(--tint-race-bg)',
+      border: '1px solid var(--tint-race-bd)',
+      color: 'var(--race)',
+    };
+    const memoryLabel = {
+      fontSize: 11,
+      fontWeight: 800,
+      textTransform: 'uppercase',
+      letterSpacing: 'var(--tracking-label)',
+      color: 'var(--text-3)',
+    };
+    const memorySlot = {
+      minHeight: 'var(--tap)',
+      borderRadius: 'var(--radius-sm)',
+      border: '1px dashed var(--tint-race-bd)',
+      background: 'var(--tint-race-bg)',
+      color: 'var(--race)',
+      fontSize: 12.5,
+      fontWeight: 800,
+    };
+
+    return (
+      <div className="space-y-2.5 fade-in pb-10" data-testid="run-race-mode">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Trophy size={16} style={{ color: 'var(--race)' }} className="shrink-0" />
+            <h2 className="text-[14px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>
+              {runIdToEdit ? 'Editar o registo da prova' : 'Registar a prova'}
+            </h2>
+          </div>
+          {closeButton}
+        </div>
+
+        {/* ── 1. A PROVA — o que a agenda já sabe. Não se edita aqui: a prova
+            vive em race_events e o sítio de lhe mexer é a Agenda. ───────── */}
+        <SectionLabel tone="race">A prova</SectionLabel>
+        <GlassCard tone="race" glow data-testid="race-mode-header">
+          <div className="text-[17px] font-black leading-[1.15]" style={{ color: 'var(--race)', letterSpacing: 'var(--tracking-tight)' }}>
+            {raceEvent.name}
+          </div>
+          <div className="text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)' }}>
+            {[formatDatePTShort(raceEvent.date), raceEvent.location].filter(Boolean).join(' · ')}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            <span style={pill}>{raceDistanceLabel(raceEvent.distance_km)}</span>
+            <span style={pill}>{raceTerrainLabel(raceEvent.race_type)}</span>
+            {raceEvent.elevation_gain_m ? <span style={pill}>{`${raceEvent.elevation_gain_m} m D+`}</span> : null}
+          </div>
+          {objetivo && (
+            <div
+              className="flex items-center justify-between gap-2 mt-3"
+              style={{ padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass)' }}
+            >
+              <span className="text-[11px]" style={{ color: 'var(--text-4)' }}>Objetivo</span>
+              <span className="text-[12.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{objetivo}</span>
+            </div>
+          )}
+          <p className="text-[11px] mt-2.5" style={{ color: 'var(--text-4)' }}>
+            Estes dados vêm da agenda — é lá que se mudam.
+          </p>
+        </GlassCard>
+
+        {/* ── 2. O RESULTADO ─────────────────────────────────────────────── */}
+        <SectionLabel tone="race">O resultado</SectionLabel>
+        <GlassCard>
+          {renderAnalysisStates()}
+          <div
+            aria-busy={analyzingRun || undefined}
+            style={analyzingRun ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          >
+            <div className="grid grid-cols-2 gap-2.5 mb-4">
+              <div>
+                <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1.5">
+                  Tempo oficial <span className="text-[var(--danger)]">*</span>
+                </label>
+                <input
+                  id="rr-tempo-oficial"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="ex.: 1:45:00"
+                  value={officialTime}
+                  onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }}
+                  className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+                />
+              </div>
+              <div>
+                <label htmlFor="rr-posicao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Posição geral (opcional)</label>
+                <input
+                  id="rr-posicao"
+                  type="number"
+                  placeholder="ex.: 12"
+                  value={position}
+                  onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }}
+                  className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+                />
+              </div>
+            </div>
+
+            {showToggle && renderEntryMethodChips()}
+
+            {showFotoBlock ? renderPhotoBlock() : (
+              <>
+                {renderCoreMetrics()}
+                {renderManualDetails()}
+              </>
+            )}
+
+            {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+          </div>
+        </GlassCard>
+
+        {/* ── 3. COMO CORREU ─────────────────────────────────────────────── */}
+        <SectionLabel tone="race">Como correu</SectionLabel>
+        <GlassCard>
+          {renderEffortField()}
+          {renderNotesField()}
+          {renderShoesField()}
+        </GlassCard>
+
+        {/* ── 4. MEMÓRIAS — vivem na prova, não na corrida (spec §2). ─────── */}
+        <SectionLabel tone="race">Memórias</SectionLabel>
+        <GlassCard data-testid="race-memories">
+          <div className="mb-4">
+            <p style={memoryLabel}>Diploma</p>
+            {diploma ? (
+              <div className="flex items-center gap-2.5 mt-2">
+                {diploma.isPdf ? (
+                  <span className="flex items-center justify-center rounded-xl shrink-0" style={{ width: 56, height: 56, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+                    <FileText size={20} />
+                  </span>
+                ) : (
+                  <img src={diploma.dataUrl || diploma.url} alt="Diploma da prova" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid var(--border-glass)' }} />
+                )}
+                <span className="flex-1 min-w-0 text-[12.5px] truncate" style={{ color: 'var(--text-2)' }}>{diploma.name || 'Diploma'}</span>
+                <button
+                  type="button"
+                  onClick={() => { setDiploma(null); setIsFormDirty(true); }}
+                  aria-label="Remover o diploma"
+                  className="tap-44 shrink-0 text-[var(--text-3)] hover:text-[var(--danger)] transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
+                <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleDiplomaSelected} />
+                <FileText size={15} /> Adicionar o diploma
+              </label>
+            )}
+            <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-4)' }}>Uma imagem ou um PDF, até 2 MB.</p>
+          </div>
+
+          <div className="mb-4">
+            <p style={memoryLabel}>Medalha</p>
+            {medal ? (
+              <div className="flex items-center gap-2.5 mt-2">
+                <img src={medal.dataUrl || medal.url} alt="Medalha da prova" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid var(--border-glass)' }} />
+                <span className="flex-1 min-w-0 text-[12.5px]" style={{ color: 'var(--text-2)' }}>A medalha do dia</span>
+                <button
+                  type="button"
+                  onClick={() => { setMedal(null); setIsFormDirty(true); }}
+                  aria-label="Remover a medalha"
+                  className="tap-44 shrink-0 text-[var(--text-3)] hover:text-[var(--danger)] transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
+                <input type="file" accept="image/*" className="hidden" onChange={handleMedalSelected} />
+                <Award size={15} /> Adicionar a medalha
+              </label>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <p style={memoryLabel}>Fotografias</p>
+              <span className="text-[11px]" style={{ color: 'var(--text-4)' }} data-testid="race-photos-counter">
+                {racePhotos.length} de {MAX_RACE_PHOTOS}
+              </span>
+            </div>
+            {racePhotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                {racePhotos.map((p, i) => (
+                  <div key={p.path || p.dataUrl || i} className="relative aspect-square">
+                    <img src={p.dataUrl || p.url} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Fotografia ${i + 1} da prova`} />
+                    <button
+                      type="button"
+                      onClick={() => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
+                      aria-label={`Remover a fotografia ${i + 1}`}
+                      className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition"
+                      style={{ color: '#fff' }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {racePhotos.length < MAX_RACE_PHOTOS && (
+              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handleRacePhotosSelected} />
+                <ImagePlus size={15} /> Adicionar fotografias
+              </label>
+            )}
+          </div>
+
+          {memoryError && (
+            <Warning title="Memória não aceite" className="mt-3">{memoryError}</Warning>
+          )}
+
+          {memoriesFailed && (
+            <Warning
+              title="Memórias por guardar"
+              className="mt-3"
+              actions={(
+                <WarningAction onClick={retryRaceMemories} disabled={savingMemories}>
+                  {savingMemories ? 'A guardar…' : 'Tentar de novo'}
+                </WarningAction>
+              )}
+            >
+              A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.
+            </Warning>
+          )}
+        </GlassCard>
+      </div>
+    );
+  };
+
   const renderCorridaForm = () => {
-    const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+    if (isRaceMode) return renderProvaForm();
 
     return (
       <div className="space-y-4 fade-in pb-10">
@@ -945,23 +1745,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </button>
           </div>
 
-          {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão):
-              esqueleto no sítio do resultado, formulário bloqueado mas
-              visível, e aviso coral com "Tentar de novo" e a alternativa
-              manual quando a leitura do print falha. */}
-          {analyzingRun && <AnalysisSkeleton />}
-
-          {analysis.hasFailed && (
-            <AnalysisFailure
-              detail={analysis.error}
-              onRetry={analysis.retry}
-              onManual={showToggle && entryMethod === 'foto'
-                ? () => { setEntryMethod('manual'); analysis.reset(); }
-                : undefined}
-            >
-              Os prints ficaram guardados. Podes tentar outra vez ou escrever os dados da corrida — eu faço as contas na mesma.
-            </AnalysisFailure>
-          )}
+          {renderAnalysisStates()}
 
           <div
             aria-busy={analyzingRun || undefined}
@@ -1021,16 +1805,39 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </RunTrainingTypeHelp>
             </div>
           ) : (
-            <div className="mb-4">
-              <label htmlFor="rr-disciplina" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Disciplina</label>
-              <select id="rr-disciplina"
-                value={completedRaceType}
-                onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
-                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-              >
-                {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
+            <>
+              {/* "Qual prova?" — uma competição quase sempre é uma prova que
+                  já está na agenda. Escolhê-la entra no modo prova (spec §3);
+                  "fora da agenda" é o comportamento de sempre, para a corrida
+                  de rua que ninguém marcou. Só a criar: a editar, a ligação
+                  já vem de runs.race_id. */}
+              {showToggle && racePickerOptions.length > 0 && (
+                <div className="mb-4">
+                  <label htmlFor="rr-qual-prova" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Qual prova?</label>
+                  <select id="rr-qual-prova"
+                    value={raceId || ''}
+                    onChange={e => applyRaceSelection(e.target.value || null)}
+                    className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+                  >
+                    <option value="">Prova fora da agenda</option>
+                    {racePickerOptions.map(ev => (
+                      <option key={ev.id} value={ev.id}>{`${ev.name} · ${formatDatePTShort(ev.date)}`}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label htmlFor="rr-disciplina" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Disciplina</label>
+                <select id="rr-disciplina"
+                  value={completedRaceType}
+                  onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+                >
+                  {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
+            </>
           )}
 
           <div className="mb-4">
@@ -1044,58 +1851,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             />
           </div>
 
-          <div className="mb-4">
-            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
-            <div className="flex gap-1.5">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setRunEffortRpe(runEffortRpe === i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                  // min-h-[44px] em vez de aspect-square: ver a mesma nota em
-                  // GymRegistration - dez celulas de 44px de largura nao cabem.
-                  className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${runEffortRpe === i + 1 ? 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
-                >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
+          {renderEffortField()}
 
-          {/* Sapatilhas usadas — alimenta o acumulado de km do armário
-              (Perfil → Equipamento). Só aparece se houver pares ativos: sem
-              armário montado seria um campo vazio a ocupar espaço. */}
-          {activeShoes.length > 0 && (
-            <div className="mb-4">
-              <label htmlFor="rr-sapatilhas-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
-                <Footprints size={14} /> Sapatilhas (opcional)
-              </label>
-              <select id="rr-sapatilhas-opcional"
-                value={shoeId || ''}
-                onChange={e => { setShoeId(e.target.value || null); setIsFormDirty(true); }}
-                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-              >
-                <option value="">Não indicar</option>
-                {activeShoes.map(s => (
-                  <option key={s.id} value={s.id}>{shoeLabel(s)}</option>
-                ))}
-              </select>
-              <p className="text-[11px] text-[var(--text-3)] mt-1.5">
-                Os km desta corrida somam-se ao par escolhido.
-              </p>
-            </div>
-          )}
+          {renderShoesField()}
 
-          <div className="mb-4">
-            <label htmlFor="rr-observacoes-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
-              <PencilLine size={14} /> Observações (opcional)
-            </label>
-            <textarea id="rr-observacoes-opcional"
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
-              placeholder="Como te sentiste, dores, condições atmosféricas..."
-              value={runNotes}
-              onChange={e => { setRunNotes(e.target.value); setIsFormDirty(true); }}
-            />
-          </div>
+          {renderNotesField()}
 
           <div className="mb-4">
             <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nome da corrida <span className="text-[var(--danger)]">*</span></label>
@@ -1123,63 +1883,23 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           {/* Main Manual Fields */}
-          <div className="mb-3">
-            <label htmlFor="rr-distancia" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
-              {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
-            </label>
-            <div className="relative">
-              <input 
-                type="number" min="0" step="0.01" 
-                id="rr-distancia"
-                placeholder="0.00" 
-                value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
-                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl pl-3 pr-10 py-2.5 text-sm text-white outline-none focus:border-[var(--mod-corrida-to)] transition" 
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-medium text-[var(--text-3)] pointer-events-none">km</span>
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <label htmlFor="rr-duracao" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
-              {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
-            </label>
-            <input id="rr-duracao"
-              type="text"
-              placeholder="00:00"
-              value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-            />
-          </div>
+          {renderCoreMetrics()}
 
-          {showToggle && (
-            <div className="mb-4">
-              <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
-              <div className="flex gap-1.5">
-                <Chip
-                  active={entryMethod === 'foto'}
-                  variant="run"
-                  rounded="xl"
-                  onClick={() => setEntryMethod('foto')}
-                  className="flex-1 py-2.5 gap-1.5"
-                  type="button"
-                >
-                  <Camera size={14} /> Foto (IA)
-                </Chip>
-                <Chip
-                  active={entryMethod === 'manual'}
-                  variant="run"
-                  rounded="xl"
-                  onClick={() => setEntryMethod('manual')}
-                  className="flex-1 py-2.5 gap-1.5"
-                  type="button"
-                >
-                  <PencilLine size={14} /> Manual
-                </Chip>
-              </div>
-            </div>
-          )}
+          {showToggle && renderEntryMethodChips()}
 
-          {showFotoBlock ? (
+          {showFotoBlock ? renderPhotoBlock() : renderManualDetails()}
+
+          {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* Os prints do relógio (foto/IA) — a matéria-prima da análise da Carol.
+     Não confundir com as memórias da prova, que não passam pela IA. */
+  function renderPhotoBlock() {
+    return (
             <>
               {runPhotos.length > 0 ? (
                 <>
@@ -1216,7 +1936,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 </label>
               )}
             </>
-          ) : (
+    );
+  }
+
+  /* Tudo o que o registo manual acrescenta: os prints já carregados (a
+     editar), as grelhas de métricas do relógio, as zonas de FC, a estrutura
+     da sessão (só treinos de repetições) e o atalho para a Carol. Partilhado
+     pelos dois layouts — em modo prova entra dentro de "O resultado". */
+  function renderManualDetails() {
+    return (
             <>
           {runIdToEdit && runPhotos.length > 0 && (
             <div className="mb-4">
@@ -1527,21 +2255,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           })()}
 
             </>
-          )}
-
-          {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
-          </div>
-        </div>
-      </div>
     );
-  };
+  }
 
   return (
     // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    // No modo prova o módulo é a prova, e o âmbar é dela — o anel acompanha.
     // paddingBottom: espaço para a ActionBar fixa não tapar o fim do form.
     <div
       className="w-full max-w-lg mx-auto"
-      style={{ '--focus-ring': 'var(--mod-corrida-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+      style={{ '--focus-ring': isRaceMode ? 'var(--race)' : 'var(--mod-corrida-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
     >
       {renderCorridaForm()}
 
@@ -1588,7 +2311,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} onDone={confirmation.done} />}
     </div>
   );
 }
