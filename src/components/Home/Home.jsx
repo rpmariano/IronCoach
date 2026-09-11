@@ -1,474 +1,156 @@
-import React, { useMemo, useState, useRef } from 'react';
-import Card from '../shared/Card';
-import { useAppStore } from '../../store';
-import { Flag, ChevronLeft, ChevronRight, Bot, X } from 'lucide-react';
-import PremiumModal from '../shared/PremiumModal';
-import Button from '../shared/Button';
-import PremiumNextRaceCard from '../GraphicsLibrary/NextRaceCard';
-import HydrationOptionA from '../GraphicsLibrary/HydrationOptionA';
-import NutritionOptionA from '../GraphicsLibrary/NutritionOptionA';
-import WeeklyPlanCard from './WeeklyPlanCard';
-import CoachDailySummaryCard from './CoachDailySummaryCard';
-import CarouselDots from '../shared/CarouselDots';
+import React, { useMemo, useState } from 'react';
+import { Footprints, ChevronRight } from 'lucide-react';
+import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
-import { useCarouselHaptics } from '../../utils/haptics';
-import { assessRaceViability, recentWeeklyVolume, categorizeDistance, MIN_PREP_WEEKS } from '../../utils/raceViability';
-import { calculateRaceTrainingPlan, formatDatePTShort } from '../../utils/racePlanEngine';
-import { raceDistanceLabel } from '../../utils/run';
-import { detectCoachInsights, calculateReadinessIndex } from '../../utils/biEngine';
+import { detectCoachInsights } from '../../utils/biEngine';
+import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
+import { todayISO } from '../../lib/utils';
+import SectionLabel from '../shared/SectionLabel';
+import { Dialog } from '../shared/Sheet';
+import CarolCard from './CarolCard';
+import DayPlanCard from './DayPlanCard';
+import MealSheet from './MealSheet';
+import RaceCard from './RaceCard';
+import StatusCard from './StatusCard';
+import FirstDayCard from './FirstDayCard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
-import { todayISO } from '../../lib/utils';
 
-function statCardBg(color) {
-  return {
-    background: `radial-gradient(130% 150% at 100% 0%, color-mix(in srgb, ${color} 10%, transparent) 0%, transparent 60%), linear-gradient(165deg, #ffffff, var(--surf-800))`,
-    borderStyle: 'solid',
-    borderWidth: '1px 1px 1px 3px',
-    borderColor: `var(--brd-700) var(--brd-700) var(--brd-700) color-mix(in srgb, ${color} 70%, var(--brd-700))`,
-    boxShadow: '0 1px 2px rgba(15,23,42,0.06), 0 4px 14px -5px rgba(15,23,42,0.16), inset 0 1px 0 rgba(255,255,255,0.6)',
-  };
+/* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
+   Carol, "O que faço hoje" (plano do dia), "Para onde vou" (a prova com o
+   trilho) e "Como estou" (a órbita, só leitura). Gap de 8px entre cartões.
+   No primeiro dia (sem registo e sem prova) a Carol abre a conversa e o
+   resto do ecrã convida a registar. Registar água vive no FAB. */
+
+function firstNameOf(name) {
+  if (!name || typeof name !== 'string') return null;
+  const t = name.trim();
+  return t ? t.split(/\s+/)[0] : null;
 }
 
-const WATER_WAVE_PATH_1 = "M0 10 C 25 20 25 0 50 10 S 75 0 100 10 S 125 20 150 10 S 175 0 200 10 V20 H0 Z";
-const WATER_WAVE_PATH_2 = "M0 10 C 25 0 25 20 50 10 S 75 20 100 10 S 125 0 150 10 S 175 20 200 10 V20 H0 Z";
-const WATER_QUICK_AMOUNTS = [200, 250, 300];
-
-// ─── SVG ring ────────────────────────────────────────────────────────────────
-function RingSvg({ pct, size = 96, stroke = 8, color = 'var(--accent)' }) {
-  const r = (size - stroke) / 2;
-  const c = size / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = circ * Math.max(0, Math.min(100, pct || 0)) / 100;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-      <circle cx={c} cy={c} r={r} fill="none" stroke="rgba(15,23,42,0.10)" strokeWidth={stroke} />
-      {dash > 0.5 && (
-        <circle cx={c} cy={c} r={r} fill="none" stroke={color} strokeWidth={stroke}
-          strokeLinecap="round" strokeDasharray={`${dash} ${circ}`}
-          style={{ transition: 'stroke-dasharray .4s ease' }} />
-      )}
-    </svg>
-  );
-}
-
-// Valores válidos para o semáforo de prontidão da Carol — fora do componente
-// para evitar recriar o array a cada render/iteração do .map().
-const VALID_READINESS_LEVELS = ['green', 'yellow', 'red'];
-
-// ─── Próxima Prova ───────────────────────────────────────────────────────────
-function NextRaceCard({ raceEvents = [], runs = [], meals = [], bodyAssessments = [], gymSessions = [], profile = {}, onNav, onEditRace }) {
-  const { dailySummary } = useAppStore();
-  const today = todayISO();
-  const upcoming = raceEvents
-    .filter(e => e.status !== 'concluida' && e.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(0, 5);
-  
-  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, today), [runs, today]);
-
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollRef = useRef(null);
-  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
-    scrollRef,
-    upcoming.length,
-    currentIndex,
-    setCurrentIndex
-  );
-
-  const color = 'var(--color-warn)';
-
-  if (upcoming.length === 0) return (
-    <button onClick={() => onNav('corrida')} className="w-full text-left rounded-2xl p-3.5 active:scale-[0.98] transition" style={statCardBg(color)}>
-      <h2 className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--green)' }}>Próxima Prova</h2>
-      <div className="flex items-center gap-2.5">
-        <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${color}1a` }}>
-          <Flag size={16} style={{ color }} />
-        </span>
-        <p className="text-xs" style={{ color: 'var(--green)' }}>Sem provas agendadas — toca para adicionar uma na Agenda.</p>
-      </div>
-    </button>
-  );
-
-  return (
-    <div className="relative">
-      <div 
-        ref={scrollRef}
-        onScroll={handleScroll}
-        onTouchMove={handleTouchMove}
-        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
-        style={{ scrollBehavior: 'smooth' }}
-      >
-        {upcoming.map(next => {
-          const plan = calculateRaceTrainingPlan({
-            race: next,
-            profile,
-            runs,
-            todayISO: today,
-          });
-
-          // Calcula a Prontidão Global especificamente para esta prova (Pilar Tático)
-          const readinessGlobal = calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, next);
-
-          const formattedDate = formatDatePTShort(plan.raceDate);
-          const daysUntil = Math.max(0, plan.daysToRace);
-
-          // Usar a cor que vem da Prontidão Global (que mapeia high=green, medium=yellow, low=red)
-          const readinessColor = readinessGlobal.level === 'high' ? 'green' : readinessGlobal.level === 'medium' ? 'yellow' : 'red';
-          const readinessReason = `Score global de ${readinessGlobal.score}%. ${plan.carolAnalysis?.overviewText || ''}`;
-
-          return (
-            <div
-              key={next.id}
-              className="relative w-full h-full shrink-0 snap-center"
-              onClick={() => {
-                if (onEditRace) onEditRace(next.id);
-              }}
-            >
-              <div className="cursor-pointer active:scale-[0.99] transition-transform w-full h-full">
-                <PremiumNextRaceCard
-                  title={next.name}
-                  date={formattedDate}
-                  location={next.location || 'Não definida'}
-                  tag={next.race_type || 'Prova'}
-                  distance={raceDistanceLabel(next.distance_km)}
-                  priority={next.race_priority}
-                  daysRemaining={daysUntil}
-                  daysToStart={plan.daysToStart}
-                  progressPercentage={plan.progressPercentage}
-                  readiness={readinessColor}
-                  readinessReason={readinessReason}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Pontos do carrossel FORA do cartão, em fluxo normal — antes ficavam
-          sobrepostos ao cartão translúcido (absolute bottom-4), o que
-          obrigava a reservar padding extra só para eles. Sem conteúdo
-          colorido nessa faixa reservada, lia-se como uma caixa cinzenta à
-          parte. Também deixou de haver um <div> de pontos repetido por
-          prova (um por slide, todos empilhados) — passa a ser um só. */}
-      {upcoming.length > 1 && (
-        <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
-          <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
-            <CarouselDots count={upcoming.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver prova" />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-// ─── Água Home card ───────────────────────────────────────────────────────────
-function WaterHomeCard({ waterLogs = [], profile = {}, onNav, onLogWater }) {
-  const today = todayISO();
-  const goal = Number(profile?.water_goal_ml) || 2000;
-  const total = useMemo(() => waterLogs.filter(w => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0), [waterLogs, today]);
-
-  return (
-    <div 
-      onClick={() => onNav('nutricao')} 
-      role="button" tabIndex={0}
-      className="cursor-pointer transition active:scale-[0.99] w-full"
-    >
-      <HydrationOptionA 
-        currentMl={total} 
-        goalMl={goal} 
-        onLogWater={onLogWater}
-        profile={profile}
-      />
-    </div>
-  );
-}
-
-// ─── Nutrição & Água Carousel ────────────────────────────────────────────────
-function NutritionWaterCarousel({ meals, waterLogs, profile, onNav, onLogWater }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollRef = useRef(null);
-  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
-    scrollRef,
-    2,
-    currentIndex,
-    setCurrentIndex
-  );
-
-  return (
-    <div className="relative">
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        onTouchMove={handleTouchMove}
-        className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
-        style={{ scrollBehavior: 'smooth' }}
-      >
-        <div className="w-full h-full shrink-0 snap-center">
-          <WaterHomeCard waterLogs={waterLogs} profile={profile} onNav={onNav} onLogWater={onLogWater} />
-        </div>
-        <div className="w-full h-full shrink-0 snap-center">
-          <NutritionOptionA meals={meals} profile={profile} onNav={onNav} />
-        </div>
-      </div>
-
-      
-      <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none z-10">
-        <div className="flex items-center gap-1.5 bg-white/10 backdrop-blur-md border border-white/5 shadow-sm px-2 py-1.5 rounded-full pointer-events-auto">
-          <CarouselDots count={2} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver cartão" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Home component ──────────────────────────────────────────────────────
-// Só os 3 cartões fixos (Próxima Prova, Nutrição, Água) + o Plano da semana.
-// A antiga grelha personalizável foi removida — ver specs/plano-de-treino.md.
 export default function Home() {
   const { showToast } = useToast();
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
-    setActiveTab, setPlanItemPrefill, completePlanItem, cancelPlanItem,
-    addWaterLog, setEditingRaceId, setProfile
+    setActiveTab, setPlanItemPrefill, setEditingRaceId, setProfile, setCoachIntent, setOpenCreationMode,
   } = useAppStore();
+  const pendingTopics = useAppStore(selectCoachPendingTopics);
 
   const [showInsights, setShowInsights] = useState(false);
-  const [showDismissIntervention, setShowDismissIntervention] = useState(false);
-  const [isDismissingIntervention, setIsDismissingIntervention] = useState(false);
+  const [showDismiss, setShowDismiss] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+  const [mealDay, setMealDay] = useState(null);
 
-  // Rede de segurança do botão "A Carol precisa de falar contigo": a via
-  // normal é a Carol chamar resolve_intervention no chat, mas isso depende
-  // do modelo reconhecer o desfecho certo — se a conversa não encaixar
-  // perfeitamente numa das regras do prompt, o aviso fica preso (bug-016).
-  // Isto dá ao atleta uma saída manual, sempre disponível, independente do
-  // que a Carol decidiu na conversa.
-  const handleDismissIntervention = async () => {
-    if (!profile?.id) return;
-    setIsDismissingIntervention(true);
-    try {
-      const { supabase } = await import('../../lib/supabase');
-      const { error } = await supabase
-        .from('profiles')
-        .update({ coach_intervention_status: 'resolved', coach_intervention_reason: null })
-        .eq('id', profile.id);
-      if (error) throw error;
-      setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
-      setShowDismissIntervention(false);
-      showToast('Aviso dispensado.', 'success');
-    } catch (err) {
-      console.error('Erro ao dispensar intervenção:', err);
-      showToast('Não foi possível dispensar o aviso. Tenta novamente.', 'error');
-    } finally {
-      setIsDismissingIntervention(false);
-    }
-  };
+  const today = todayISO();
+  const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
+  const hasUpcomingRace = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= today);
+  const firstDay = !hasRecords && !hasUpcomingRace;
+
+  const rings = useMemo(() => buildOrbitRings({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
 
   const homeInsights = useMemo(() => {
     const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
-    return all.filter(i => insightStates[i.id] !== 'understood' && i.module === 'coach');
+    return all.filter((i) => insightStates[i.id] !== 'understood' && i.module === 'coach');
   }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates]);
 
-  const handleNav = (tab) => setActiveTab(tab);
+  const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
 
-  const handleLogWater = (ml) => {
-    if (profile?.id) {
-      addWaterLog(ml, profile.id);
-    }
+  const openCoach = () => {
+    if (interventionPending) setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
+    setActiveTab('coach');
   };
 
-  // "Concluir" não marca logo — deixa isso ao ecrã de registo, que grava o
-  // completePlanItem só depois de a corrida/sessão real estar gravada (ver
-  // RunRegistration/GymRegistration). Aqui só passamos o item a pré-preencher
-  // e navegamos para o ecrã certo — specs/plano-de-treino.md §5.2.
+  // "Registar sessão" não marca logo — deixa isso ao ecrã de registo, que
+  // grava o completePlanItem só depois de a corrida/sessão real estar
+  // gravada (specs/plano-de-treino.md §5.2).
   const handleCompleteItem = (item) => {
     setPlanItemPrefill(item);
     if (item.kind === 'corrida') {
       setActiveTab('corrida');
-      useAppStore.getState().setOpenCreationMode('run');
+      setOpenCreationMode('run');
     } else {
       setActiveTab('ginasio');
-      useAppStore.getState().setOpenCreationMode('workout');
+      setOpenCreationMode('workout');
     }
   };
 
-  const handleCancelItem = async (item) => {
-    if (item.isRace) {
-      if (window.confirm('Cancelar (eliminar) esta prova da agenda?')) {
-        const id = item.id.replace('race-', '');
-        const previous = [...raceEvents];
-        useAppStore.setState({ raceEvents: raceEvents.filter(r => r.id !== id) });
-        try {
-          const { supabase } = await import('../../lib/supabase');
-          const { error } = await supabase.from('race_events').delete().eq('id', id);
-          if (error) throw error;
-          showToast('Prova cancelada');
-        } catch (err) {
-          console.error(err);
-          useAppStore.setState({ raceEvents: previous });
-          showToast('Erro ao cancelar prova');
-        }
-      }
-      return;
-    }
+  const createRace = () => setOpenCreationMode('race');
+  const registerMeal = () => { setActiveTab('nutricao'); setOpenCreationMode('meal'); };
+  const registerRun = () => { setActiveTab('corrida'); setOpenCreationMode('run'); };
 
-    if (window.confirm('Cancelar este treino do plano? Deixa de contar para os objetivos de nutrição do dia.')) {
-      cancelPlanItem(item.id);
-      showToast('Treino cancelado');
+  // Saída manual do aviso da Carol (bug-016): se a conversa já resolveu o
+  // assunto mas o aviso ficou preso, o atleta não fica refém disso.
+  const dismissIntervention = async () => {
+    if (!profile?.id) return;
+    setDismissing(true);
+    try {
+      const { supabase } = await import('../../lib/supabase');
+      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
+      if (error) throw error;
+      setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
+      setShowDismiss(false);
+      showToast('Aviso dispensado.', 'success');
+    } catch (err) {
+      console.error('Erro ao dispensar intervenção:', err);
+      showToast('Não foi possível dispensar o aviso. Tenta outra vez.', 'error');
+    } finally {
+      setDismissing(false);
     }
   };
 
-  const modifiedPlanItems = useMemo(() => {
-    const raceDates = new Set(raceEvents.map(r => r.date));
-    
-    // Filter out coach items that fall on a race date
-    const itemsWithoutRaces = coachPlanItems.filter(item => !raceDates.has(item.planned_date));
-
-    // Convert races into mock planItems
-    const racePlanItems = raceEvents.map(race => ({
-      id: `race-${race.id}`,
-      // Just pick an active plan so it renders; if none, it's fine, it won't render unless we fake a plan too.
-      // But actually computeAcceptedWindow filters planItems by plan_id of ACCEPTED plans.
-      // So we MUST assign it to an accepted plan!
-      plan_id: coachPlans.find(p => p.status === 'aceite' && p.period_start <= race.date && p.period_end >= race.date)?.id 
-               || coachPlans.find(p => p.status === 'aceite')?.id, 
-      date: race.date,
-      planned_date: race.date,
-      kind: 'corrida',
-      isRace: true, 
-      title: race.name, 
-      training_type: 'competicao', 
-      target_distance_km: race.distance_km,
-      target_duration: race.target_time_seconds,
-      elevation_gain_m: race.elevation_gain_m,
-      race_type: race.race_type,
-      status: race.status === 'concluida' ? 'concluido' : 'pendente',
-      notes: race.notes
-    }));
-
-    // Only include races that actually got assigned to a plan (otherwise they won't render anyway)
-    return [...itemsWithoutRaces, ...racePlanItems.filter(r => r.plan_id)];
-  }, [coachPlanItems, raceEvents, coachPlans]);
+  if (firstDay) {
+    return (
+      <div className="flex flex-col gap-3 fade-in pb-2">
+        <FirstDayCard firstName={firstNameOf(profile?.display_name)} onTalk={() => setActiveTab('coach')} onCreateRace={createRace} />
+        <SectionLabel style={{ marginTop: 4 }}>Entretanto, começa a registar</SectionLabel>
+        <StatusCard empty onRegisterMeal={registerMeal} />
+        <button type="button" onClick={registerRun} className="flex items-center gap-2.5 w-full text-left rounded-[18px]" style={{ padding: '14px 16px', minHeight: 44, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
+          <Footprints size={16} style={{ color: 'var(--run)' }} className="shrink-0" />
+          <span className="flex-1 text-[12.5px]" style={{ color: 'var(--text-3)' }}>Já correste hoje? Regista e eu ajusto o plano.</span>
+          <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6 fade-in pb-8">
-      {/* Resumo do Coach — ver specs/plano-de-treino.md §11 */}
-      <CoachDailySummaryCard />
+    <div className="flex flex-col gap-2 fade-in pb-2">
+      <CarolCard pendingTopics={pendingTopics} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
 
-      {/* Próxima Prova */}
-      <NextRaceCard 
-        raceEvents={raceEvents} 
-        runs={runs} 
-        meals={meals}
-        bodyAssessments={bodyAssessments}
-        gymSessions={gymSessions}
-        profile={profile} 
-        onNav={handleNav} 
-        onEditRace={setEditingRaceId} 
-      />
+      <SectionLabel>O que faço hoje</SectionLabel>
+      <DayPlanCard plans={coachPlans} planItems={coachPlanItems} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
 
-      {/* Nutrição & Água Carousel */}
-      <NutritionWaterCarousel 
-        meals={meals} 
-        waterLogs={waterLogs} 
-        profile={profile} 
-        onNav={handleNav} 
-        onLogWater={handleLogWater} 
-      />
+      <SectionLabel>Para onde vou</SectionLabel>
+      <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} />
 
-      {/* Plano — aceitar/recusar vive no chat do Coach; aqui é só consulta
-          do plano aceite + registo de execução (specs/plano-de-treino.md) */}
-      <WeeklyPlanCard
-        plans={coachPlans}
-        planItems={modifiedPlanItems}
-        profile={profile}
-        onComplete={handleCompleteItem}
-        onCancel={handleCancelItem}
-        onNav={handleNav}
-      />
+      <SectionLabel>Como estou</SectionLabel>
+      <StatusCard rings={rings} />
 
-      {/* Botão de Intervenção Proativa do Coach */}
-      {(profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress') && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm">
-          <div className="relative">
-            <button
-              onClick={() => handleNav('coach')}
-              className="w-full shadow-lg shadow-orange-500/20 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 active:scale-[0.98] transition-transform py-3 px-4 rounded-xl flex items-center justify-between"
-            >
-              <div className="flex items-center gap-3">
-                <div className="bg-white/20 p-2 rounded-full relative">
-                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-600 border border-white rounded-full animate-pulse"></span>
-                  <Bot size={20} className="text-white" />
-                </div>
-                <div className="flex flex-col items-start">
-                  <span className="text-white font-bold text-sm leading-tight">A Carol precisa de falar contigo</span>
-                  <span className="text-orange-100 text-xs mt-0.5">O teu plano requer atenção</span>
-                </div>
-              </div>
-              <span className="text-white bg-black/20 p-1.5 rounded-full">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-              </span>
-            </button>
-            {/* Saída manual (bug-016): se a conversa com a Carol já resolveu o
-                assunto mas o aviso ficou preso (ela não chamou resolve_intervention),
-                o atleta não fica refém disso. */}
-            <button
-              type="button"
-              onClick={() => setShowDismissIntervention(true)}
-              aria-label="Dispensar aviso"
-              className="absolute -top-2 -right-2 bg-slate-900 border border-white/20 text-white/80 hover:text-white rounded-full p-1 shadow-md active:scale-95 transition-transform"
-            >
-              <X size={12} strokeWidth={2.5} />
-            </button>
-          </div>
-        </div>
-      )}
+      {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
 
-      {showDismissIntervention && (
-        <PremiumModal
-          isOpen={showDismissIntervention}
-          onClose={() => !isDismissingIntervention && setShowDismissIntervention(false)}
-          title="Dispensar aviso da Carol"
-          icon={Bot}
-          theme="warning"
-          variant="dialog"
-          maxWidth="max-w-sm"
-        >
-          <div className="p-6">
-            <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
-              Isto remove o aviso sem passar pela conversa com a Carol. Usa isto só se já esclareceste o assunto
-              com ela e o botão ficou preso por engano — caso contrário, fala primeiro com a Carol.
-            </p>
-            <div className="space-y-3">
-              <Button
-                onClick={handleDismissIntervention}
-                disabled={isDismissingIntervention}
-                isLoading={isDismissingIntervention}
-                type="button"
-                variant="danger"
-                className="w-full"
-              >
-                {isDismissingIntervention ? 'A dispensar...' : 'Dispensar aviso'}
-              </Button>
-              <Button
-                onClick={() => setShowDismissIntervention(false)}
-                disabled={isDismissingIntervention}
-                type="button"
-                variant="ghost"
-                className="w-full"
-              >
+      {showDismiss && (
+        <Dialog
+          title="Dispensar o aviso da Carol?"
+          onClose={() => !dismissing && setShowDismiss(false)}
+          actions={(
+            <>
+              <button type="button" disabled={dismissing} onClick={dismissIntervention} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
+                {dismissing ? 'A dispensar…' : 'Dispensar'}
+              </button>
+              <button type="button" disabled={dismissing} onClick={() => setShowDismiss(false)} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
                 Cancelar
-              </Button>
-            </div>
-          </div>
-        </PremiumModal>
+              </button>
+            </>
+          )}
+        >
+          <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
+            O aviso deixa de aparecer no Início. Podes voltar a falar com a Carol no Chat sempre que quiseres.
+          </p>
+        </Dialog>
       )}
 
       <CoachInsightButton insights={homeInsights} onClick={() => setShowInsights(true)} />
-      {showInsights && (
-        <CoachInsightModal insights={homeInsights} onClose={() => setShowInsights(false)} />
-      )}
+      {showInsights && <CoachInsightModal insights={homeInsights} onClose={() => setShowInsights(false)} />}
     </div>
   );
 }

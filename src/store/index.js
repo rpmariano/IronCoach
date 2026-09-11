@@ -116,6 +116,10 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  // Persiana de registar água (Home/WaterSheet.jsx), aberta pelo FAB —
+  // redesenho 2026-09: a órbita do Início é só leitura, o registo vive aqui.
+  waterSheetOpen: false,
+  setWaterSheetOpen: (open) => set({ waterSheetOpen: !!open }),
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
   
@@ -598,3 +602,16 @@ export const useAppStore = create((set, get) => ({
     }
   }
 }));
+
+// ── Seletores ────────────────────────────────────────────────────────────
+// "Assuntos a resolver" com a Carol (handoff 2026-09, State Management:
+// coachHasPendingTopic liga o halo e o cartão "A Carol precisa de falar
+// contigo"): uma intervenção em aberto conta um; cada proposta de plano ou
+// de objetivos por decidir conta mais um.
+export const selectCoachPendingTopics = (state) => {
+  const intervention = ['needed', 'in_progress'].includes(state.profile?.coach_intervention_status) ? 1 : 0;
+  const plans = (state.coachPlans || []).filter((p) => p.status === 'proposto').length;
+  const goals = (state.coachGoalProposals || []).filter((g) => g.status === 'proposto').length;
+  return intervention + plans + goals;
+};
+export const selectCoachHasPendingTopic = (state) => selectCoachPendingTopics(state) > 0;

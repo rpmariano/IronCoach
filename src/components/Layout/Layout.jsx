@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { Bot, LayoutGrid, Utensils, Dumbbell, Plus, X, Camera, User, Calendar, Activity, LayoutDashboard, Trophy } from 'lucide-react';
-import RunIcon from '../shared/RunIcon';
+import { Bot, LayoutGrid, Dumbbell, Plus, X, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import AppBackground from './AppBackground';
+import WaterSheet from '../Home/WaterSheet';
 
 const TAB_MODULE_COLORS = {
   home: 'var(--green)',
@@ -27,7 +27,7 @@ const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode, lastDashboardTab } = useAppStore();
+  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -171,11 +171,15 @@ export default function Layout({ children }) {
           do login, incluindo os ecrãs de registo — ver App.jsx). */}
       <ReportIssueButton />
 
+      {/* Registar água — só se abre pelo FAB (ver WaterSheet.jsx). */}
+      <WaterSheet />
+
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
       {fabOpen && (
         <>
           <div 
-            className="fixed inset-0 bg-slate-900/20 backdrop-blur-[1px] z-40 fade-in"
+            className="fixed inset-0 z-40 fade-in"
+            style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}
             onClick={(e) => {
               e.stopPropagation();
               closeFab();
@@ -189,7 +193,8 @@ export default function Layout({ children }) {
           >
             <FabItem
               label="Nova prova"
-              color="var(--mod-prova)"
+              tone="race"
+              ink="var(--race-ink)"
               icon={<Trophy size={14} />}
               onClick={(e) => {
                 e.stopPropagation();
@@ -205,7 +210,8 @@ export default function Layout({ children }) {
             />
             <FabItem
               label="Registar refeição"
-              color="var(--mod-nutricao)"
+              tone="nutrition"
+              ink="#22103a"
               icon={<Camera size={14} />}
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -215,7 +221,8 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Nova avaliação"
-              color="var(--mod-corpo)"
+              tone="body"
+              ink="#3a0a22"
               icon={<User size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -225,8 +232,9 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Nova corrida"
-              color="var(--mod-corrida)"
-              icon={<RunIcon className="w-3.5 h-3.5" />} 
+              tone="run"
+              ink="#04252b"
+              icon={<Footprints size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
@@ -235,13 +243,27 @@ export default function Layout({ children }) {
             />
             <FabItem 
               label="Novo treino"
-              color="var(--mod-ginasio)"
+              tone="gym"
+              ink="#0b2129"
               icon={<Dumbbell size={14} />} 
               onClick={(e) => { 
                 e.stopPropagation(); 
                 closeFab(); 
                 goRegister('ginasio', 'workout');
               }} 
+            />
+            {/* Água: saiu do cartão do Início (a órbita é só leitura —
+                auditoria 2026-09-09, achado 7) e regista-se aqui. */}
+            <FabItem
+              label="Registar água"
+              tone="run"
+              ink="#04252b"
+              icon={<Droplets size={14} />}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeFab();
+                setWaterSheetOpen(true);
+              }}
             />
           </div>
         </>
@@ -273,11 +295,13 @@ export default function Layout({ children }) {
             e.stopPropagation();
             setFabOpen(v => !v);
           }}
-          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all border-[4px] border-white shadow-xl text-white z-50 cursor-pointer"
+          className="absolute left-1/2 -translate-x-1/2 w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-all border-[4px] z-50 cursor-pointer"
           style={{
             top: -22,
-            background: 'linear-gradient(135deg, #d97706, #fbbf24)',
-            boxShadow: '0 4px 20px rgba(251, 191, 36, 0.4), 0 0 0 2.5px var(--green-dark)',
+            background: 'var(--grad-race)',
+            color: 'var(--race-ink)',
+            borderColor: '#0f172a',
+            boxShadow: 'var(--shadow-fab)',
           }}
           aria-label={fabOpen ? 'Fechar menu de registo' : 'Registar novo item'}
           aria-expanded={fabOpen}
@@ -348,20 +372,20 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab }) {
   );
 }
 
-function FabItem({ label, color, icon, onClick }) {
+// Pílula do menu do FAB (mock "FAB aberto"): fundo escuro, borda na cor do
+// módulo, círculo cheio dessa cor com o glifo em tinta escura.
+function FabItem({ label, tone, ink, icon, onClick }) {
   return (
     <button
       onClick={onClick}
       type="button"
-      className="flex items-center gap-3 pl-2.5 pr-4 py-2 min-h-[44px] rounded-full bg-white/10 backdrop-blur-xl border border-white/10 shadow-[0_4px_15px_rgba(0,0,0,0.3)] text-slate-100 hover:shadow-lg active:scale-95 transition-transform cursor-pointer"
+      className="flex items-center gap-[9px] min-h-[44px] rounded-full active:scale-95 transition-transform cursor-pointer"
+      style={{ padding: '9px 16px 9px 12px', background: 'rgba(15,23,42,.92)', border: `1px solid var(--tint-${tone}-bd)`, boxShadow: '0 8px 22px rgba(0,0,0,.5)' }}
     >
-      <span
-        className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-        style={{ background: color, color: '#fff' }}
-      >
+      <span className="w-[26px] h-[26px] rounded-full flex items-center justify-center shrink-0" style={{ background: `var(--${tone})`, color: ink }}>
         {icon}
       </span>
-      <span className="text-xs font-bold text-slate-100 whitespace-nowrap">{label}</span>
+      <span className="text-[13px] font-extrabold whitespace-nowrap" style={{ color: 'var(--text-1)' }}>{label}</span>
     </button>
   );
 }
