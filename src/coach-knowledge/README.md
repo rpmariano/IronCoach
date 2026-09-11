@@ -61,5 +61,7 @@ modelo de duas formas:
 | 7 — Sugestões alimentares | ✅ `MEAL_DOCTRINE` em `coach-chat`, `coach-daily-summary`, `analyze-meal`; restrições alimentares em `src/utils/diet.js` |
 | 8 — Nível por prova / trail | ✅ Motor completo e ligado dos dois lados: `categorizeElevationRatio()`, invalidação do nível, `assessRaceLevelTriage()`, `RaceLevelSuggestion.jsx`, `ExperienceLevelHelp.jsx` (`context='prova'`) no formulário; `buildRaceEventsContext` injeta o NÍVEL MEDIDO no `coach-chat` — ver [specs/nivel-por-prova.md](../../specs/nivel-por-prova.md) |
 
+| Carol — personalidade (CAROL.md, handoff 2026-09) | ✅ Regras de tom partilhadas em `supabase/functions/_shared/carolTone.ts` (chat, resumo diário, comentários dos registos); memória citada, reação a eventos, "ela fala de si" e retoma após 24h no prompt do `coach-chat`; mensagens por iniciativa dela (3 dias sem registo, véspera/manhã/depois da prova) via `proactive_trigger` + `src/utils/coachProactive.js`; "a escrever…" e uma ideia por bolha em `Coach.jsx` + `src/utils/coachBubbles.js`; rosto em `CoachAvatar.jsx` (provisório — retrato por fazer, CAROL.md §4) |
+
 Esta tabela é o mapa de gaps — cada `⚠️`/`❌` é candidato a próxima
 iteração. Atualizar sempre que uma peça passar a estar wired.

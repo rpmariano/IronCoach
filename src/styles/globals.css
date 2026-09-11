@@ -281,9 +281,21 @@ body {
 .water-glass-ml small { font-weight:700; color:#e2e8f0; margin-left:2px; }
 .water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
-/* ===== Coach bubbles ===== */
-.coach-bubble-user  { background:var(--accent); color:#09090b; border-radius:18px 18px 4px 18px; }
-.coach-bubble-model { background:var(--surf-800); border:1px solid var(--brd-800); border-radius:18px 18px 18px 4px; }
+/* ===== Bolhas do chat da Carol (mock "Coach", redesenho 2026-09) =====
+   A dela em tinta ciano, a do atleta em vidro neutro. Raio 20 com o canto
+   "de onde vem" a 6. */
+.coach-bubble-user  { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #f1f5f9; border-radius: 20px 20px 6px 20px; }
+.coach-bubble-model { background: rgba(34,211,238,.09); border: 1px solid rgba(34,211,238,.26); color: var(--text-2); border-radius: 20px 20px 20px 6px; }
+/* "a escrever…" — três pontos a respirar ao lado do texto */
+.coach-typing-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--coach); opacity: .35;
+  animation: coachTyping 1s ease-in-out infinite;
+}
+@keyframes coachTyping {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
 .md-body strong { font-weight:700; }
 .md-body em     { font-style:italic; }
 .md-body ul     { list-style:disc inside; margin:.375rem 0; }

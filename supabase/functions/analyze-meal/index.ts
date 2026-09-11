@@ -8,6 +8,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -565,8 +566,9 @@ async function generateMealCoachNotes(
     : planningFrameSection(false, hasUpcomingRace);
 
   const prompt =
-    `És um nutricionista/treinador direto, a comentar uma refeição que um atleta amador acabou de registar. ` +
+    `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
     `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
     `Refeição: ${typeLabel}, ${meal.date}\n` +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
     `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +

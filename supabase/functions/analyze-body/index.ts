@@ -8,6 +8,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -384,15 +385,19 @@ async function generateBodySummaryFromMetrics(
     .join("\n");
 
   const prompt =
-    "O utilizador registou manualmente os seguintes valores de uma avaliação de composição " +
+    "És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a avaliação corporal que ele acabou de registar.\n" +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
+    "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
     `corporal (sem foto):\n${metricLines}\n\n` +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\nEscreve uma breve avaliação (2 a 4 frases, em português de Portugal) destes valores: " +
     "o que está bom e o que merece atenção. Se existir histórico acima, compara com a avaliação " +
     "mais recente e comenta a evolução (o que melhorou, o que piorou, ex.: peso, gordura " +
-    "corporal, massa muscular). Sê direto e prático, sem alarmismos e sem dar diagnósticos " +
-    "médicos." +
+    "corporal, massa muscular). Sê direta e prática, sem alarmismos e sem dar diagnósticos " +
+    "médicos. Se o peso desceu mais de 1 kg face a uma avaliação de há cerca de uma semana (ou a um " +
+    "ritmo equivalente), pergunta se é intencional antes de sugerires mexer nas calorias — não ajustes " +
+    "nada por tua conta." +
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {

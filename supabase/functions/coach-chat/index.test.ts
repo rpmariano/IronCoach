@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2814,4 +2814,102 @@ Deno.test("buildMealMacros: tipos todos distintos continuam a passar", () => {
     { tipo: "jantar", texto: "150g de peixe com arroz" },
   ]);
   assertEquals(out?.kcal, 2000);
+});
+
+// ─── CAROL.md — personalidade e comportamento (handoff 2026-09, ponto 10) ────
+// O prompt é texto: a única forma de garantir que as regras de tom não caem
+// num retoque futuro é afirmá-las aqui. Ver specs/design-handoff-2026-09/
+// design/CAROL.md e _shared/carolTone.ts.
+
+// 27 argumentos posicionais até suggestionAdherencePanel; os extras entram a
+// seguir (lastExchangeHoursAgo, proactiveTrigger, proactiveDetails).
+// deno-lint-ignore no-explicit-any
+function sysCarol(...extra: any[]): string {
+  return buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, false, null, null, null, null, null, null, null, null, null, null, null, null,
+    ...extra,
+  );
+}
+
+Deno.test("CAROL.md: o prompt proíbe emojis e exclamações e já não pede emojis", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Nunca uses emojis. Nunca.");
+  assertStringIncludes(sys, "Pontos de exclamação: praticamente nunca");
+  assertEquals(sys.includes("Usa emojis"), false);
+  assertEquals(sys.includes("💪"), false);
+  assertEquals(sys.includes("❌"), false);
+  assertEquals(sys.includes("😊"), false);
+});
+
+Deno.test("CAROL.md: opinião primeiro, sem elogios automáticos, sem frases de manual, sem pedir desculpa pelo sistema", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Opinião primeiro, número depois");
+  assertStringIncludes(sys, "Sem elogios automáticos");
+  assertStringIncludes(sys, "Lembra-te de te hidratar");
+  assertStringIncludes(sys, "Nunca pedes desculpa pelo sistema");
+  assertStringIncludes(sys, "É uma treinadora, não um assistente".replace("É", "És"));
+});
+
+Deno.test("CAROL.md: o banco de humor deixou de ter exclamações e o exemplo com emoji", () => {
+  const sys = sysCarol();
+  const bank = sys.split("## Banco de Humor")[1].split("## Formato das Respostas")[0];
+  assertEquals(bank.includes("!"), false, "exclamação no banco de humor");
+  assertEquals(bank.includes("emoji a suar"), false);
+  assertStringIncludes(bank, "O humor nunca suspende as regras de tom");
+});
+
+Deno.test("CAROL.md: memória citada, reação a eventos e 'ela fala de si' entram no prompt", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Memória visível");
+  assertStringIncludes(sys, "Da última vez disseste que");
+  assertStringIncludes(sys, "## Reação ao que Aconteceu");
+  assertStringIncludes(sys, "Aconteceu alguma coisa?");
+  assertStringIncludes(sys, "Peso a descer mais de 1 kg por semana");
+  assertStringIncludes(sys, "## Ela Fala de Si");
+  assertStringIncludes(sys, "nunca em duas conversas seguidas");
+});
+
+Deno.test("CAROL.md §2: um pedido irrealista recebe discordância com números, não uma pergunta em vez de opinião", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "dizes que não concordas e porquê");
+  assertEquals(sys.includes("não recuses de imediato"), false);
+});
+
+Deno.test("última troca: >24h pede retoma do assunto; <24h só regista as horas; null é a primeira conversa; undefined não diz nada", () => {
+  const long = sysCarol(30);
+  assertStringIncludes(long, "Última troca nesta conversa: há 30 horas.");
+  assertStringIncludes(long, "retoma o último assunto em aberto");
+  const short = sysCarol(2);
+  assertStringIncludes(short, "Última troca nesta conversa: há 2 horas.");
+  assertEquals(short.includes("retoma o último assunto em aberto, com citação, antes de responderes"), false);
+  assertStringIncludes(sysCarol(1), "há 1 hora.");
+  assertStringIncludes(sysCarol(null), "é a primeira conversa");
+  assertEquals(sysCarol().includes("Última troca nesta conversa"), false);
+});
+
+Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto do cliente e a proibição de ferramentas", () => {
+  for (const t of PROACTIVE_TRIGGERS) {
+    const sys = sysCarol(undefined, t, "Prova amanhã: \"Meia de Lisboa\".");
+    assertStringIncludes(sys, `=== MENSAGEM POR INICIATIVA TUA (${t}) ===`);
+    assertStringIncludes(sys, "Contexto: Prova amanhã");
+    assertStringIncludes(sys, "não chames ferramentas");
+    assertStringIncludes(sys, "não é uma notificação do sistema");
+  }
+  assertStringIncludes(sysCarol(undefined, "silence", null), "Estás bem?");
+  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados, sem números");
+  assertStringIncludes(sysCarol(undefined, "race_after", null), "sem balanço inventado");
+  assertStringIncludes(buildProactiveUserTurn("race_eve"), "race_eve");
+  assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
+});
+
+Deno.test("shouldSkipProactive: salta se a Carol foi a última a falar há menos de 6h; não salta se o atleta já respondeu ou se passou o silêncio", () => {
+  const now = Date.parse("2026-09-11T09:00:00Z");
+  const recent = new Date(now - 2 * 3600000).toISOString();
+  const old = new Date(now - (PROACTIVE_QUIET_HOURS + 1) * 3600000).toISOString();
+  assertEquals(shouldSkipProactive([{ role: "model", created_at: recent }], now), true);
+  assertEquals(shouldSkipProactive([{ role: "model", created_at: old }], now), false);
+  assertEquals(shouldSkipProactive([{ role: "user", created_at: recent }, { role: "model", created_at: recent }], now), false);
+  assertEquals(shouldSkipProactive([], now), false);
+  assertEquals(shouldSkipProactive(null, now), false);
 });

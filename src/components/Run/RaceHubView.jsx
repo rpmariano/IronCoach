@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import CoachAvatar from '../Coach/CoachAvatar';
 import {
   Sparkles,
   RefreshCw,
@@ -272,9 +273,7 @@ export default function RaceHubView({
       <div className="rh-carol-box">
         <div className="rh-carol-header">
           <div className="rh-carol-badge">
-            <div className="rh-carol-avatar">
-              <Sparkles size={15} />
-            </div>
+            <CoachAvatar size={28} />
             <span>Evolução & Prontidão</span>
           </div>
           <span className={`rh-carol-readiness-pill text-[10px] font-extrabold px-2.5 py-1 rounded-full ${

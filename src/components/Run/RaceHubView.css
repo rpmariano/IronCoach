@@ -367,18 +367,8 @@
   }
 }
 
-.rh-carol-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #d97706, #fbbf24);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
-  flex-shrink: 0;
-}
+/* .rh-carol-avatar saiu: o rosto da Carol é o CoachAvatar (ciano, não
+   âmbar — o âmbar é da prova e só da prova). */
 
 /* Pílula de prontidão do cabeçalho — sempre na sua própria linha (basis
    100%), centrada nela, em vez de ficar encostada à esquerda por baixo
