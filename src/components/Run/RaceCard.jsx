@@ -243,26 +243,30 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               Registar a prova
             </Button>
           )}
+          {/* A ação de estado ocupa a largura toda: "Marcar como concluída"
+              partido em duas linhas dentro de um terço do cartão lia-se pior
+              do que a linha extra que ocupa aqui. */}
+          {raceRun && onViewRun ? (
+            <Button
+              variant="light"
+              onClick={(e) => { e.stopPropagation(); onViewRun(raceRun.id); }}
+              className="w-full text-xs text-[var(--race)] mt-2"
+              icon={<Eye size={14} />}
+            >
+              Ver registo
+            </Button>
+          ) : (
+            <Button
+              variant="light"
+              onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
+              className={`w-full text-xs mt-2 ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
+              icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
+            >
+              {done ? 'Repor' : 'Marcar como concluída'}
+            </Button>
+          )}
+
           <div className="flex items-center gap-2 pt-1">
-            {raceRun && onViewRun ? (
-              <Button
-                variant="light"
-                onClick={(e) => { e.stopPropagation(); onViewRun(raceRun.id); }}
-                className="flex-1 text-xs text-[var(--race)]"
-                icon={<Eye size={14} />}
-              >
-                Ver registo
-              </Button>
-            ) : (
-              <Button
-                variant="light"
-                onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
-                className={`flex-1 text-xs ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
-                icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
-              >
-                {done ? 'Repor' : 'Marcar como concluída'}
-              </Button>
-            )}
             {onEdit && (
               <Button
                 variant="light"

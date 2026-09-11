@@ -88,6 +88,11 @@ export const useAppStore = create((set, get) => ({
   }),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
+  // Corrida a abrir em EDIÇÃO no ecrã de topo (openCreationMode === 'run').
+  // Só o hub da prova a usa, para reabrir o registo já gravado quando o
+  // atleta quer acrescentar as memórias; o Calendário continua a ter o seu
+  // próprio estado local para editar corridas de dentro do calendário.
+  editingRunId: null,
   // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar
   // uma prova NOVA, para o Calendário abrir logo nesse dia em vez do de
   // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
@@ -131,13 +136,14 @@ export const useAppStore = create((set, get) => ({
      no mesmo estado. setActiveTab pode ser recusado por um navGuard (um
      formulário com alterações por gravar); nesse caso não se abre nada, tal
      como o "+" da barra inferior já faz (Layout.jsx). */
-  openRaceRun: (raceId) => {
+  openRaceRun: (raceId, runId = null) => {
     if (!raceId) return false;
-    set({ runRacePrefill: { raceId }, editingRaceId: null, openCreationMode: null });
-    if (!get().setActiveTab('corrida')) { set({ runRacePrefill: null }); return false; }
+    set({ runRacePrefill: { raceId }, editingRunId: runId, editingRaceId: null, openCreationMode: null });
+    if (!get().setActiveTab('corrida')) { set({ runRacePrefill: null, editingRunId: null }); return false; }
     set({ openCreationMode: 'run' });
     return true;
   },
+  setEditingRunId: (id) => set({ editingRunId: id || null }),
   // Onboarding (ponto 8 do redesenho 2026-09). No primeiro acesso é App.jsx
   // que o decide sozinho, a partir do perfil e dos registos (ver
   // utils/onboarding.js) — esta flag é só a REENTRADA de propósito, pelo

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import {
   Sparkles,
@@ -28,11 +28,13 @@ import Warning from '../shared/Warning';
 import RunIcon from '../shared/RunIcon';
 import RaceTrail from '../shared/RaceTrail';
 import SectionLabel from '../shared/SectionLabel';
+import { Sheet } from '../shared/Sheet';
 import { useAppStore } from '../../store';
+import { supabase } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -108,12 +110,55 @@ export default function RaceHubView({
      pergunta que ainda faz sentido, "e agora?". */
   const isCompleted = race?.status === 'concluida' || trainingStatus === 'completed';
 
-  // A corrida de competição registada NO DIA da prova é o que dá o tempo
-  // final. Sem ela não se inventa nada: pede-se o registo.
-  const raceRun = useMemo(() => {
-    if (!isCompleted || !raceDate) return null;
-    return (runs || []).find(r => r.kind === 'competicao' && r.date === raceDate) || null;
-  }, [isCompleted, runs, raceDate]);
+  /* A corrida que registou esta prova é o que dá o tempo final. Procura-se
+     por runs.race_id — a ligação real desde specs/prova-concluida.md — e só
+     depois pela coincidência de data, que é o que existia antes e falhava em
+     qualquer registo feito no dia seguinte (ver findRaceRun). Sem corrida
+     nenhuma não se inventa nada: pede-se o registo. */
+  const raceRun = useMemo(() => findRaceRun(runs, race), [runs, race]);
+
+  /* Registar a prova: a entrada existe a partir do DIA da prova, esteja ela
+     marcada como concluída ou não. É a mesma ação das outras duas entradas
+     (Início e agenda) e passa pelo mesmo ponto do store. */
+  const canRegisterRace = !!race?.id && daysToRace <= 0 && !raceRun;
+  const openRaceRegistration = () => {
+    const store = useAppStore.getState();
+    store.setEditingRaceId(null);
+    store.openRaceRun(race.id);
+  };
+
+  /* ── Galeria de memórias (spec §4) ──────────────────────────────────────
+     Os caminhos estão em race_events; o bucket é privado, por isso as URLs
+     assinam-se na hora, tal como as fotos dos outros registos. */
+  const memoryPaths = useMemo(() => ({
+    diploma: race?.diploma_path || null,
+    medal: race?.medal_path || null,
+    photos: race?.photo_paths || [],
+  }), [race?.diploma_path, race?.medal_path, race?.photo_paths]);
+  const hasMemories = !!(memoryPaths.diploma || memoryPaths.medal || memoryPaths.photos.length);
+  const [memoryUrls, setMemoryUrls] = useState({ diploma: null, medal: null, photos: [] });
+  const [openPhoto, setOpenPhoto] = useState(null);
+
+  useEffect(() => {
+    if (!hasMemories) { setMemoryUrls({ diploma: null, medal: null, photos: [] }); return undefined; }
+    let cancelled = false;
+    const sign = async (path) => {
+      if (!path) return null;
+      try {
+        const { data, error } = await supabase.storage.from('race-memories').createSignedUrl(path, 3600);
+        return error ? null : (data?.signedUrl || null);
+      } catch (err) {
+        return null;
+      }
+    };
+    (async () => {
+      const [diploma, medal, ...photos] = await Promise.all([
+        sign(memoryPaths.diploma), sign(memoryPaths.medal), ...memoryPaths.photos.map(sign),
+      ]);
+      if (!cancelled) setMemoryUrls({ diploma, medal, photos: photos.filter(Boolean) });
+    })();
+    return () => { cancelled = true; };
+  }, [hasMemories, memoryPaths]);
 
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
   // "Adesão ao plano" e "Lesões" do mock não têm fonte no modelo de dados —
@@ -147,6 +192,14 @@ export default function RaceHubView({
       const store = useAppStore.getState();
       store.setEditingRaceId(null);
       if (mode) store.setOpenCreationMode(mode);
+    };
+
+    // Sem memórias nenhumas, o convite é reabrir o registo desta prova já
+    // gravado — é lá que vivem o diploma, a medalha e as fotografias.
+    const openMemories = () => {
+      const store = useAppStore.getState();
+      store.setEditingRaceId(null);
+      store.openRaceRun(race.id, raceRun?.id || null);
     };
 
     return (
@@ -229,16 +282,90 @@ export default function RaceHubView({
                 </p>
                 <button
                   type="button"
-                  onClick={() => leaveTo('run')}
+                  onClick={openRaceRegistration}
                   className="w-full inline-flex items-center justify-center gap-2 mt-4"
                   style={{ minHeight: 'var(--tap)', borderRadius: 14, background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, border: 'none', cursor: 'pointer' }}
                 >
-                  Registar a corrida da prova
+                  Registar a prova
                 </button>
               </>
             )}
           </div>
         </div>
+
+        {/* 1b. As memórias do dia — medalha em destaque, diploma e as
+            fotografias. Sem nada guardado fica o convite, discreto: é uma
+            oferta, não uma tarefa por cumprir. */}
+        {hasMemories ? (
+          <>
+            <SectionLabel tone="race" style={{ margin: '16px 2px 0' }}>Memórias</SectionLabel>
+            <div data-testid="race-memories-gallery" style={{ borderRadius: 22, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 14, marginTop: 8 }}>
+              {memoryUrls.medal && (
+                <img
+                  src={memoryUrls.medal}
+                  alt="A medalha da prova"
+                  style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--tint-race-bd)', display: 'block' }}
+                />
+              )}
+
+              {memoryPaths.diploma && (
+                memoryPaths.diploma.toLowerCase().endsWith('.pdf') ? (
+                  <a
+                    href={memoryUrls.diploma || undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full inline-flex items-center justify-center gap-2"
+                    style={{ minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, textDecoration: 'none' }}
+                  >
+                    <Award size={15} /> Abrir diploma
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setOpenPhoto(memoryUrls.diploma)}
+                    aria-label="Ver o diploma em ecrã inteiro"
+                    style={{ display: 'block', width: '100%', minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    <img src={memoryUrls.diploma} alt="Diploma da prova" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--border-glass)', display: 'block' }} />
+                  </button>
+                )
+              )}
+
+              {memoryUrls.photos.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: (memoryUrls.medal || memoryPaths.diploma) ? 10 : 0 }}>
+                  {memoryUrls.photos.map((url, i) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setOpenPhoto(url)}
+                      aria-label={`Ver a fotografia ${i + 1} em ecrã inteiro`}
+                      // Miniatura quadrada, nunca abaixo do piso de toque.
+                      style={{ minHeight: 'var(--tap)', minWidth: 'var(--tap)', aspectRatio: '1 / 1', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+                    >
+                      <img src={url} alt={`Fotografia ${i + 1} da prova`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, border: '1px solid var(--border-glass)' }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        ) : raceRun ? (
+          <button
+            type="button"
+            data-testid="race-memories-invite"
+            onClick={openMemories}
+            className="w-full inline-flex items-center justify-center gap-2"
+            style={{ minHeight: 'var(--tap)', marginTop: 12, borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <Award size={15} /> Guardar as memórias da prova
+          </button>
+        ) : null}
+
+        {openPhoto && (
+          <Sheet eyebrow="Memórias" eyebrowTone="race" onClose={() => setOpenPhoto(null)} testId="race-photo-viewer" maxHeight="90dvh">
+            <img src={openPhoto} alt="Memória da prova em ecrã inteiro" style={{ width: '100%', borderRadius: 14, display: 'block', marginBottom: 8 }} />
+          </Sheet>
+        )}
 
         {/* 2. Balanço da Carol — o texto é o do motor (carolAnalysis), que
             neste estado já escreve sobre a prova no passado. */}
@@ -484,6 +611,21 @@ export default function RaceHubView({
           )}
         </div>
       </div>
+
+      {/* A partir do DIA da prova, a ação que interessa é registá-la — mesmo
+          que o hub continue a mostrar a preparação, porque "concluída" é
+          coisa que só o atleta decide (specs/prova-concluida.md §3). */}
+      {canRegisterRace && (
+        <button
+          type="button"
+          data-testid="race-hub-register"
+          onClick={openRaceRegistration}
+          className="w-full inline-flex items-center justify-center gap-2"
+          style={{ minHeight: 'var(--tap)', marginBottom: 12, borderRadius: 14, border: 'none', background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}
+        >
+          <Trophy size={16} /> Registar a prova
+        </button>
+      )}
 
       {/* ─── 2. Parecer & Análise da Carol sobre a Evolução do Treino ───────── */}
       <div className="rh-carol-box">

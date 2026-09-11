@@ -159,10 +159,13 @@ const DEMO_PROFILE = {
 // "caixa cinzenta" por baixo do cartão (ver git log de NextRaceCard.css).
 function buildDemoData() {
   const today = new Date();
+  // Data LOCAL, como o todayISO da app: passar por toISOString num fuso a
+  // leste de Greenwich devolvia o dia anterior, e uma prova declarada como
+  // "há 2 dias" aparecia no ecrã como "há 3".
   const inDays = (n) => {
     const d = new Date(today);
     d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
   return {
     raceEvents: [
@@ -175,6 +178,22 @@ function buildDemoData() {
         id: 'demo-race-2', date: inDays(70), name: 'Meia Maratona do Porto',
         location: 'Porto', race_type: '21k', distance_km: 21.0975,
         experience_level: 'medio', status: 'agendada',
+      },
+      /* Duas provas a pedir registo (specs/prova-concluida.md §3) — o estado
+         que o demo não tinha e que é o mais fácil de partir sem dar por
+         isso: o dia da prova e os dias a seguir, ainda sem corrida ligada.
+         É com elas que se vê o CTA âmbar do Início, o da agenda e o do hub. */
+      {
+        id: 'demo-race-3', date: inDays(0), name: 'São Silvestre de Lisboa',
+        location: 'Lisboa', race_type: 'estrada', distance_km: 10,
+        experience_level: 'medio', status: 'agendada',
+        target_time: '48:00', target_time_seconds: 2880, target_pace_seconds_per_km: 288,
+      },
+      {
+        id: 'demo-race-4', date: inDays(-2), name: 'Trail dos Moinhos',
+        location: 'Sintra', race_type: 'trail', distance_km: 15, elevation_gain_m: 620,
+        experience_level: 'medio', status: 'agendada',
+        target_time: '1:45:00', target_time_seconds: 6300, target_pace_seconds_per_km: 420,
       },
     ],
     waterLogs: [],
@@ -201,7 +220,7 @@ function buildEmptyDemoData() {
 }
 
 export default function App() {
-  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId } = useAppStore();
+  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId, editingRunId, setEditingRunId } = useAppStore();
   const profile = useAppStore((s) => s.profile);
   const runs = useAppStore((s) => s.runs);
   const meals = useAppStore((s) => s.meals);
@@ -243,8 +262,9 @@ export default function App() {
   const closeTopScreen = useCallback(() => {
     setOpenCreationMode(null);
     setEditingRaceId(null);
+    setEditingRunId(null);
     setOnboardingOpen(false);
-  }, [setOpenCreationMode, setEditingRaceId, setOnboardingOpen]);
+  }, [setOpenCreationMode, setEditingRaceId, setEditingRunId, setOnboardingOpen]);
   useAppNavigationHistory({
     activeTab,
     setActiveTab,
@@ -386,7 +406,16 @@ export default function App() {
           )}
           {openCreationMode === 'meal' && <MealRegistration onClose={() => setOpenCreationMode(null)} />}
           {openCreationMode === 'assessment' && <BodyRegistration onClose={() => setOpenCreationMode(null)} />}
-          {openCreationMode === 'run' && <RunRegistration onClose={() => setOpenCreationMode(null)} />}
+          {/* `editingRunId` só vem do hub da prova, a reabrir um registo já
+              gravado para lhe juntar as memórias (specs/prova-concluida.md
+              §4); a criar, é null e isto é o "Nova corrida" de sempre. */}
+          {openCreationMode === 'run' && (
+            <RunRegistration
+              key={editingRunId || 'nova-corrida'}
+              runIdToEdit={editingRunId}
+              onClose={() => { setOpenCreationMode(null); setEditingRunId(null); }}
+            />
+          )}
           {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
         </Suspense>
       </Layout>

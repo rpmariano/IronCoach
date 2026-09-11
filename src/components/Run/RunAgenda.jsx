@@ -308,6 +308,17 @@ export default function RunAgenda({ onClose }) {
           // (bug relatado 2026-08-30, ainda visível depois da correção
           // original por esta via).
           created_at: ev.created_at || null,
+          /* Também não são campos do formulário, pela mesma razão: o hub
+             embutido precisa deles para saber se a prova já foi registada
+             (id → runs.race_id), se está concluída, e o que há para mostrar
+             na galeria de memórias (specs/prova-concluida.md §4). O payload
+             de gravação é explícito (ver handleSaveForm), por isso nada
+             disto vai parar a um UPDATE por engano. */
+          id: ev.id,
+          status: ev.status || null,
+          diploma_path: ev.diploma_path || null,
+          medal_path: ev.medal_path || null,
+          photo_paths: ev.photo_paths || [],
         };
         setDraft(persisted ? { ...canonical, ...persisted } : canonical);
         // A prova já gravada tem o nível "respondido" para a categoria com
