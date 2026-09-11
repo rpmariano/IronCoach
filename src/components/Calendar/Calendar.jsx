@@ -17,6 +17,7 @@ import GymRegistration from '../Gym/GymRegistration';
 import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 import CreatedRecordModal from '../shared/CreatedRecordModal';
+import { Dialog } from '../shared/Sheet';
 
 export default function Calendar() {
   const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
@@ -51,6 +52,11 @@ export default function Calendar() {
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingBodyId, setEditingBodyId] = useState(null);
   const [racePrefillActive, setRacePrefillActive] = useState(false);
+  // Prova cuja eliminação está por confirmar. Era um window.confirm — o
+  // popup do sistema não fala a língua da app, não diz o que se perde e
+  // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog
+  // partilhado, como "Dispensar o aviso da Carol?" no Início.
+  const [raceToDelete, setRaceToDelete] = useState(null);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -148,7 +154,6 @@ export default function Calendar() {
   };
 
   const handleDeleteRace = async (id) => {
-    if (!window.confirm("Eliminar prova?")) return;
     const previous = [...raceEvents];
     setRaceEvents(raceEvents.filter(e => e.id !== id));
     try {
@@ -158,7 +163,14 @@ export default function Calendar() {
     } catch (err) {
       console.error(err);
       setRaceEvents(previous);
+      showToast('Não consegui eliminar a prova. Tenta outra vez.', 'error');
     }
+  };
+
+  const confirmDeleteRace = () => {
+    const alvo = raceToDelete;
+    setRaceToDelete(null);
+    if (alvo) handleDeleteRace(alvo.id);
   };
 
   const handleCompleteRace = (ev) => {
@@ -298,7 +310,7 @@ export default function Calendar() {
         )}
 
         {selectedRaces.map(race => (
-          <RaceCard key={race.id} ev={race} onEdit={setEditingRaceId} onToggleStatus={() => handleCompleteRace(race)} onDelete={handleDeleteRace} />
+          <RaceCard key={race.id} ev={race} onEdit={setEditingRaceId} onToggleStatus={() => handleCompleteRace(race)} onDelete={() => setRaceToDelete(race)} />
         ))}
         {selectedRuns.map(run => (
           <RunCard key={run.id} run={run} onEdit={setEditingRunId} onDelete={handleDeleteRun} />
@@ -314,6 +326,28 @@ export default function Calendar() {
         ))}
       </div>
       
+      {raceToDelete && (
+        <Dialog
+          title="Eliminar esta prova?"
+          tone="race"
+          onClose={() => setRaceToDelete(null)}
+          actions={(
+            <>
+              <button type="button" onClick={confirmDeleteRace} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+                Eliminar
+              </button>
+              <button type="button" onClick={() => setRaceToDelete(null)} className="flex-1 min-h-[44px] rounded-[12px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+                Cancelar
+              </button>
+            </>
+          )}
+        >
+          <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
+            {raceToDelete.name ? `"${raceToDelete.name}" sai do calendário` : 'A prova sai do calendário'} e o plano deixa de a ter como alvo. Os treinos já registados ficam.
+          </p>
+        </Dialog>
+      )}
+
       <CreatedRecordModal />
     </div>
   );

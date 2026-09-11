@@ -673,6 +673,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         <div className="grid grid-cols-2 gap-2 mb-4">
           <input
             type="date"
+            aria-label="Data do treino"
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
@@ -682,10 +683,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         </div>
 
         <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">
+          <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-slate-500 mb-1.5 block">
             Nome da sessão (opcional) — ex.: "{kind === 'aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"
           </label>
-          <input
+          <input id="gr-nome-da-sessao-opcional-ex"
             type="text"
             maxLength={80}
             value={name}
@@ -821,8 +822,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             <label className="text-[11px] text-slate-500 mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Duração (ex.: 43m)</label>
-                <input
+                <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-slate-500 block mb-1">Duração (ex.: 43m)</label>
+                <input id="gr-duracao-ex-43m"
                   type="text"
                   inputMode="text"
                   value={durationStr}
@@ -832,8 +833,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
-                <input
+                <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
+                <input id="gr-calorias-kcal"
                   type="number"
                   min="0"
                   step="1"
@@ -844,8 +845,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
-                <input
+                <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
+                <input id="gr-fc-media-bpm"
                   type="number"
                   min="0"
                   step="1"
@@ -856,8 +857,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
-                <input
+                <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
+                <input id="gr-fc-maxima-bpm"
                   type="number"
                   min="0"
                   step="1"
@@ -909,6 +910,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                         <div className="flex items-center gap-2 mb-2">
                           <input
                             type="text"
+                            aria-label="Nome do exercício"
                             value={ex.name}
                             onChange={e => { updateExercise(ex.key, { name: e.target.value }); setIsFormDirty(true); }}
                             placeholder="Nome do exercício"
@@ -924,6 +926,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                               <span className="text-[11px] text-slate-400 w-14 shrink-0">Série {idx + 1}</span>
                               <input
                                 type="number"
+                                aria-label={`Repetições da série ${idx + 1}`}
                                 value={s.reps}
                                 onChange={e => { updateSet(ex.key, s.key, { reps: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="Reps"
@@ -932,6 +935,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                               <input
                                 type="number"
                                 step="0.5"
+                                aria-label={`Peso da série ${idx + 1} (kg)`}
                                 value={s.weight}
                                 onChange={e => { updateSet(ex.key, s.key, { weight: e.target.value }); setIsFormDirty(true); }}
                                 placeholder="kg"
@@ -962,10 +966,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         )}
 
         <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">
+          <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-slate-500 mb-1.5 block">
             Observações (opcional) — ex.: "{kind === 'aula' ? 'aula puxada, professor novo' : 'treino de força, peso corporal'}"
           </label>
-          <textarea
+          <textarea id="gr-observacoes-opcional-ex"
             rows={2}
             maxLength={500}
             value={notes}
@@ -1010,7 +1014,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           );
         })()}
 
-        {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>
       </div>
 

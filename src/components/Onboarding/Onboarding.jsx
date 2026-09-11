@@ -457,12 +457,14 @@ export default function Onboarding({ reentry = false, onDone }) {
                 aria-valuemin={1}
                 aria-valuemax={TOTAL_PASSOS}
                 aria-valuenow={step + 1}
-                aria-label={`Passo ${step + 1} de ${TOTAL_PASSOS}`}
+                aria-label="Progresso do arranque"
+                aria-valuetext={`Passo ${step + 1} de ${TOTAL_PASSOS}`}
                 style={{ gap: 5 }}
               >
                 {Array.from({ length: TOTAL_PASSOS }, (_, i) => (
                   <span
                     key={i}
+                    aria-hidden="true"
                     style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? 'var(--coach)' : 'rgba(255,255,255,.14)' }}
                   />
                 ))}

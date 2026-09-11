@@ -40,7 +40,7 @@ const selectPhoto = async () => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'refeicao.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
-  await screen.findByAltText('Foto 1');
+  await screen.findByAltText('Foto da refeição 1');
 };
 
 describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () => {
@@ -607,7 +607,7 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
     const fields = screen.getByTestId('meal-form-fields');
     expect(fields).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Bife com arroz');
-    expect(screen.getByAltText('Foto 1')).toBeInTheDocument();
+    expect(screen.getByAltText('Foto da refeição 1')).toBeInTheDocument();
 
     await act(async () => {
       resolveInvoke({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });

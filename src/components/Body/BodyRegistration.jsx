@@ -453,6 +453,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="grid grid-cols-2 gap-2 mb-4">
           <input
             type="date"
+            aria-label="Data da avaliação"
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
@@ -549,8 +550,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         )}
 
         <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
-          <textarea
+          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-slate-500 mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
+          <textarea id="br-observacoes-opcional-ex-em-jejum-a"
             rows={2}
             maxLength={500}
             value={notes}
@@ -595,7 +596,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           );
         })()}
 
-        {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>
       </div>
 

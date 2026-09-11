@@ -522,6 +522,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         <div className="grid grid-cols-[1fr_auto] items-center gap-3 mb-4">
           <input
             type="date"
+            aria-label="Data da refeição"
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
@@ -585,7 +586,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
                     <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Foto ${i+1}`} />
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Foto da refeição ${i + 1}`} />
                       <button
                         onClick={() => removePhoto(i)}
                         aria-label={`Remover foto ${i + 1}`}
@@ -662,7 +663,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     <img
                       key={i}
                       src={ph.dataUrl}
-                      alt={`Foto ${i + 1}`}
+                      alt={`Foto da refeição ${i + 1}`}
                       className="object-cover"
                       style={{ width: 62, height: 62, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)' }}
                     />
@@ -683,6 +684,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
                   <input
                     type="text"
+                    aria-label="Nome do alimento a adicionar"
                     placeholder="Ex.: peito de frango grelhado"
                     value={itemName}
                     onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
@@ -691,6 +693,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   <div className="relative w-24">
                     <input
                       type="number" min="1" step="1"
+                      aria-label="Gramas do alimento a adicionar (opcional)"
                       placeholder="g (opcional)"
                       value={itemGrams}
                       onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
@@ -717,12 +720,14 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                       <>
                         <input
                           type="text"
+                          aria-label={`Nome do alimento: ${item.name}`}
                           value={item.name}
                           onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
                           className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent"
                         />
                         <input
                           type="number" min="1"
+                          aria-label={`Gramas de ${item.name}`}
                           value={item.grams}
                           onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
                           className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
@@ -753,8 +758,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         )}
 
         <div className="mb-5">
-          <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
-          <textarea
+          <label htmlFor="mr-observacoes-opcional-ex-big-mac-bi" className="text-[11px] text-slate-500 mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
+          <textarea id="mr-observacoes-opcional-ex-big-mac-bi"
             rows="2"
             maxLength="500"
             placeholder="Detalhes que mudam os valores nutricionais..."
@@ -799,7 +804,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           );
         })()}
 
-        {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>
       </div>
 

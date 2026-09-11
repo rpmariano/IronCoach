@@ -29,13 +29,15 @@ const RUN_TRAINING_TYPES_DOCS = [
   }
 ];
 
-export default function RunTrainingTypeHelp({ label, children }) {
+// fieldId: id do campo embrulhado, para a etiqueta visual ser tambem
+// programatica (auditoria a11y) — quem usa passa o mesmo id ao <select>.
+export default function RunTrainingTypeHelp({ label, fieldId, children }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-[11px] text-slate-500">{label}</label>
+        <label className="text-[11px] text-slate-500" htmlFor={fieldId}>{label}</label>
         <button
           type="button"
           onClick={() => setIsOpen(true)}

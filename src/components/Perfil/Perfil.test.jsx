@@ -397,3 +397,40 @@ describe('Perfil — ação na ActionBar', () => {
     expect(screen.queryByRole('button', { name: /Guardar altera/ })).not.toBeInTheDocument();
   });
 });
+
+/* Auditoria a11y (passagem "harden"): as etiquetas do Perfil eram só
+   visuais — 17 campos chegavam ao leitor de ecrã sem nome. Cada uma passou
+   a ter htmlFor com o id do campo. getByLabelText falha se a ligação se
+   perder num refactor futuro. */
+describe('Perfil — etiquetas programáticas', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      runs: [],
+    });
+  });
+
+  it('encontra os campos pelo nome da etiqueta', () => {
+    render(<Perfil />);
+    expect(screen.getByLabelText('Nome')).toHaveValue('Atleta');
+    expect(screen.getByLabelText('Género')).toHaveValue('M');
+    expect(screen.getByLabelText('Altura (cm)')).toHaveValue(180);
+    expect(screen.getByLabelText(/Calorias \(kcal\/dia\)/)).toHaveValue(2100);
+  });
+
+  it('nenhum input/select do Perfil fica sem nome acessível', () => {
+    const { container } = render(<Perfil />);
+    const semNome = [...container.querySelectorAll('input, select, textarea')].filter((el) => {
+      if (el.getAttribute('aria-label')) return false;
+      if (el.id && container.querySelector(`label[for="${el.id}"]`)) return false;
+      if (el.closest('label')) return false;
+      return true;
+    });
+    expect(semNome.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
+  });
+});

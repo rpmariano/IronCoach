@@ -224,7 +224,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Footprints size={16} className="text-[var(--mod-corrida)]" />
-          <h2 className="text-sm font-semibold">Armário de Sapatilhas</h2>
+          <h3 className="text-sm font-semibold">Armário de Sapatilhas</h3>
         </div>
         <button
           onClick={openNew}
@@ -297,16 +297,18 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
       >
         <div className="p-6 space-y-4 bg-neutral-900 text-slate-200">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Marca">
+            <Field label="Marca" htmlFor="shoe-marca">
               <input
+                id="shoe-marca"
                 value={form.brand}
                 onChange={e => setField('brand', e.target.value)}
                 placeholder="Nike"
                 className={inputClass}
               />
             </Field>
-            <Field label="Modelo">
+            <Field label="Modelo" htmlFor="shoe-modelo">
               <input
+                id="shoe-modelo"
                 value={form.model}
                 onChange={e => setField('model', e.target.value)}
                 placeholder="Pegasus 40"
@@ -315,9 +317,11 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
             </Field>
           </div>
 
-          <Field label="Início de utilização">
+          <Field label="Início de utilização" htmlFor="shoe-inicio-mes">
             <div className="grid grid-cols-2 gap-3">
               <select
+                id="shoe-inicio-mes"
+                aria-label="Mês de início de utilização"
                 value={form.startMonth}
                 onChange={e => setField('startMonth', e.target.value)}
                 className={inputClass}
@@ -327,6 +331,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
                 ))}
               </select>
               <select
+                aria-label="Ano de início de utilização"
                 value={form.startYear}
                 onChange={e => setField('startYear', e.target.value)}
                 className={inputClass}
@@ -339,8 +344,10 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
           <Field
             label="Km que já tinham ao registar"
             hint="Deixa a zero se o par é novo."
+            htmlFor="shoe-km-iniciais"
           >
             <input
+              id="shoe-km-iniciais"
               type="number" min="0" step="1" inputMode="decimal"
               value={form.initial_km}
               onChange={e => setField('initial_km', e.target.value)}
@@ -351,7 +358,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
 
           <div className="space-y-1.5 pt-1 border-t border-neutral-800">
             <div className="flex items-center justify-between pt-3">
-              <label className="text-xs font-semibold text-slate-300">
+              <label htmlFor="shoe-vida-util" className="text-xs font-semibold text-slate-300">
                 Vida útil (km)
               </label>
               <button
@@ -370,6 +377,7 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
               </button>
             </div>
             <input
+              id="shoe-vida-util"
               type="number" min="1" step="1" inputMode="numeric"
               value={form.lifespan_km}
               onChange={e => setForm(f => ({ ...f, lifespan_km: e.target.value, lifespan_source: 'manual' }))}
@@ -426,10 +434,13 @@ export default ShoeCabinet;
 
 const inputClass = 'w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-[var(--mod-corrida)]/60';
 
-function Field({ label, hint, children }) {
+/* `htmlFor` liga a etiqueta ao campo que o Field embrulha — sem isto a
+   etiqueta é só visual e o campo chega ao leitor de ecrã sem nome
+   (auditoria a11y). Quem usa passa o mesmo id ao controlo em children. */
+function Field({ label, hint, htmlFor, children }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-slate-300">{label}</label>
+      <label className="text-xs font-semibold text-slate-300" htmlFor={htmlFor}>{label}</label>
       {children}
       {hint && <p className="text-[11px] text-slate-500">{hint}</p>}
     </div>

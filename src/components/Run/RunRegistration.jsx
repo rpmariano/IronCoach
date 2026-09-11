@@ -997,8 +997,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {runKind === 'treino' ? (
             <div className="mb-4">
-              <RunTrainingTypeHelp label="Tipo de treino">
+              <RunTrainingTypeHelp label="Tipo de treino" fieldId="rr-tipo-de-treino">
                 <select
+                  id="rr-tipo-de-treino"
                   value={runTrainingType}
                   onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
@@ -1024,8 +1025,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
           ) : (
             <div className="mb-4">
-              <label className="text-[11px] text-slate-500 mb-1.5 block">Disciplina</label>
-              <select
+              <label htmlFor="rr-disciplina" className="text-[11px] text-slate-500 mb-1.5 block">Disciplina</label>
+              <select id="rr-disciplina"
                 value={completedRaceType}
                 onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
                 className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
@@ -1036,8 +1037,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Data da corrida</label>
-            <input
+            <label htmlFor="rr-data-da-corrida" className="text-[11px] text-slate-500 mb-1.5 block">Data da corrida</label>
+            <input id="rr-data-da-corrida"
               type="date"
               value={runDate}
               max={todayISO()}
@@ -1068,10 +1069,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               armário montado seria um campo vazio a ocupar espaço. */}
           {activeShoes.length > 0 && (
             <div className="mb-4">
-              <label className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+              <label htmlFor="rr-sapatilhas-opcional" className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
                 <Footprints size={14} /> Sapatilhas (opcional)
               </label>
-              <select
+              <select id="rr-sapatilhas-opcional"
                 value={shoeId || ''}
                 onChange={e => { setShoeId(e.target.value || null); setIsFormDirty(true); }}
                 className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
@@ -1088,10 +1089,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
+            <label htmlFor="rr-observacoes-opcional" className="text-[11px] text-slate-500 mb-1.5 flex items-center gap-1.5">
               <PencilLine size={14} /> Observações (opcional)
             </label>
-            <textarea
+            <textarea id="rr-observacoes-opcional"
               className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition min-h-[80px] resize-y"
               placeholder="Como te sentiste, dores, condições atmosféricas..."
               value={runNotes}
@@ -1100,8 +1101,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
-            <input
+            <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-slate-500 mb-1.5 block">Nome da corrida <span className="text-red-400">*</span></label>
+            <input id="rr-nome-da-corrida"
               type="text"
               value={runName}
               onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
@@ -1114,24 +1115,25 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           {runKind === 'competicao' && (
             <div className="grid grid-cols-2 gap-2 mb-4 bg-white/5 border border-white/10 text-white rounded-xl p-3">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Tempo Oficial</label>
-                <input type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <label htmlFor="rr-tempo-oficial" className="text-[11px] text-slate-500 block mb-1">Tempo Oficial</label>
+                <input id="rr-tempo-oficial" type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Posição</label>
-                <input type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <label htmlFor="rr-posicao" className="text-[11px] text-slate-500 block mb-1">Posição</label>
+                <input id="rr-posicao" type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
             </div>
           )}
 
           {/* Main Manual Fields */}
           <div className="mb-3">
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            <label htmlFor="rr-distancia" className="text-[11px] font-semibold text-slate-500 block mb-1">
               {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
             </label>
             <div className="relative">
               <input 
                 type="number" min="0" step="0.01" 
+                id="rr-distancia"
                 placeholder="0.00" 
                 value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
                 className="w-full bg-slate-50/50 border border-slate-200 rounded-xl pl-3 pr-10 py-2.5 text-sm text-white outline-none focus:border-[var(--mod-corrida-to)] transition" 
@@ -1141,10 +1143,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
           
           <div className="mb-4">
-            <label className="text-[11px] font-semibold text-slate-500 block mb-1">
+            <label htmlFor="rr-duracao" className="text-[11px] font-semibold text-slate-500 block mb-1">
               {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind==='competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
             </label>
-            <input
+            <input id="rr-duracao"
               type="text"
               placeholder="00:00"
               value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
@@ -1242,80 +1244,80 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível subida (m)</label>
-                  <input 
+                  <label htmlFor="rr-desnivel-subida-m" className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível subida (m)</label>
+                  <input id="rr-desnivel-subida-m" 
                     type="number" placeholder="Ex: 120" 
                     value={elevationGain} onChange={e=>{setElevationGain(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível descida (m)</label>
-                  <input 
+                  <label htmlFor="rr-desnivel-descida-m" className="text-[11px] font-semibold text-slate-500 block mb-1">Desnível descida (m)</label>
+                  <input id="rr-desnivel-descida-m" 
                     type="number" placeholder="Ex: 80" 
                     value={elevationLoss} onChange={e=>{setElevationLoss(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência média (spm)</label>
-                  <input
+                  <label htmlFor="rr-cadencia-media-spm" className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência média (spm)</label>
+                  <input id="rr-cadencia-media-spm"
                     type="number" placeholder="Ex: 158"
                     value={cadence} onChange={e=>{setCadence(e.target.value); setIsFormDirty(true);}}
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência máx (spm)</label>
-                  <input
+                  <label htmlFor="rr-cadencia-max-spm" className="text-[11px] font-semibold text-slate-500 block mb-1">Cadência máx (spm)</label>
+                  <input id="rr-cadencia-max-spm"
                     type="number" placeholder="Ex: 175"
                     value={maxCadence} onChange={e=>{setMaxCadence(e.target.value); setIsFormDirty(true);}}
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
-                  <input
+                  <label htmlFor="rr-calorias-kcal" className="text-[11px] font-semibold text-slate-500 block mb-1">Calorias (kcal)</label>
+                  <input id="rr-calorias-kcal"
                     type="number" placeholder="Ex: 450"
                     value={calories} onChange={e=>{setCalories(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">VO2 máx</label>
-                  <input 
+                  <label htmlFor="rr-vo2-max" className="text-[11px] font-semibold text-slate-500 block mb-1">VO2 máx</label>
+                  <input id="rr-vo2-max" 
                     type="number" step="0.1" placeholder="Ex: 48.5" 
                     value={vo2Max} onChange={e=>{setVo2Max(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
-                  <input 
+                  <label htmlFor="rr-fc-media-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC média (bpm)</label>
+                  <input id="rr-fc-media-bpm" 
                     type="number" placeholder="Ex: 142" 
                     value={avgHeartRate} onChange={e=>{setAvgHeartRate(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
-                  <input 
+                  <label htmlFor="rr-fc-maxima-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC máxima (bpm)</label>
+                  <input id="rr-fc-maxima-bpm" 
                     type="number" placeholder="Ex: 172" 
                     value={maxHeartRate} onChange={e=>{setMaxHeartRate(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Aeróbio (bpm)</label>
-                  <input 
+                  <label htmlFor="rr-fc-limiar-aerobio-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Aeróbio (bpm)</label>
+                  <input id="rr-fc-limiar-aerobio-bpm" 
                     type="number" placeholder="Ex: 145" 
                     value={aerobicThreshold} onChange={e=>{setAerobicThreshold(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Anaeróbio (bpm)</label>
-                  <input 
+                  <label htmlFor="rr-fc-limiar-anaerobio-bpm" className="text-[11px] font-semibold text-slate-500 block mb-1">FC Limiar Anaeróbio (bpm)</label>
+                  <input id="rr-fc-limiar-anaerobio-bpm" 
                     type="number" placeholder="Ex: 165" 
                     value={anaerobicThreshold} onChange={e=>{setAnaerobicThreshold(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
@@ -1332,48 +1334,48 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Contacto Solo (ms)</label>
-                  <input 
+                  <label htmlFor="rr-contacto-solo-ms" className="text-[11px] font-semibold text-slate-500 block mb-1">Contacto Solo (ms)</label>
+                  <input id="rr-contacto-solo-ms" 
                     type="number" placeholder="Ex: 215" 
                     value={groundContactTime} onChange={e=>{setGroundContactTime(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Tempo de Voo (ms)</label>
-                  <input 
+                  <label htmlFor="rr-tempo-de-voo-ms" className="text-[11px] font-semibold text-slate-500 block mb-1">Tempo de Voo (ms)</label>
+                  <input id="rr-tempo-de-voo-ms" 
                     type="number" placeholder="Ex: 190" 
                     value={flightTime} onChange={e=>{setFlightTime(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Oscilação Vertical (cm)</label>
-                  <input 
+                  <label htmlFor="rr-oscilacao-vertical-cm" className="text-[11px] font-semibold text-slate-500 block mb-1">Oscilação Vertical (cm)</label>
+                  <input id="rr-oscilacao-vertical-cm" 
                     type="number" step="0.1" placeholder="Ex: 8.5" 
                     value={verticalOscillation} onChange={e=>{setVerticalOscillation(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Assimetria (%)</label>
-                  <input 
+                  <label htmlFor="rr-assimetria" className="text-[11px] font-semibold text-slate-500 block mb-1">Assimetria (%)</label>
+                  <input id="rr-assimetria" 
                     type="number" step="0.1" placeholder="Ex: 48.2" 
                     value={asymmetryPct} onChange={e=>{setAsymmetryPct(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Rigidez Perna (kN/m)</label>
-                  <input 
+                  <label htmlFor="rr-rigidez-perna-kn-m" className="text-[11px] font-semibold text-slate-500 block mb-1">Rigidez Perna (kN/m)</label>
+                  <input id="rr-rigidez-perna-kn-m" 
                     type="number" step="0.1" placeholder="Ex: 11.5" 
                     value={legStiffness} onChange={e=>{setLegStiffness(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Pace máx (min/km)</label>
-                  <input 
+                  <label htmlFor="rr-pace-max-min-km" className="text-[11px] font-semibold text-slate-500 block mb-1">Pace máx (min/km)</label>
+                  <input id="rr-pace-max-min-km" 
                     type="text" placeholder="Ex: 4:15" 
                     value={maxPace} onChange={e=>{setMaxPace(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
@@ -1390,16 +1392,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </p>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Perda transpiração (ml)</label>
-                  <input 
+                  <label htmlFor="rr-perda-transpiracao-ml" className="text-[11px] font-semibold text-slate-500 block mb-1">Perda transpiração (ml)</label>
+                  <input id="rr-perda-transpiracao-ml" 
                     type="number" placeholder="Ex: 850" 
                     value={sweatLossMl} onChange={e=>{setSweatLossMl(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-500 block mb-1">Passos totais</label>
-                  <input 
+                  <label htmlFor="rr-passos-totais" className="text-[11px] font-semibold text-slate-500 block mb-1">Passos totais</label>
+                  <input id="rr-passos-totais" 
                     type="number" placeholder="Ex: 12500" 
                     value={totalSteps} onChange={e=>{setTotalSteps(e.target.value); setIsFormDirty(true);}} 
                     className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-slate-400 transition" 
@@ -1427,6 +1429,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 hrZones.map((z, idx) => (
                   <div key={idx} className="flex items-center gap-1.5 mb-1.5">
                     <select 
+                      aria-label={`Zona de FC na linha ${idx + 1}`}
                       value={z.zone} 
                       onChange={e => { const copy = [...hrZones]; copy[idx].zone = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
                       className="bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none"
@@ -1436,6 +1439,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     </select>
                     <input 
                       type="number" placeholder="Minutos" 
+                      aria-label={`Minutos na linha ${idx + 1}`}
                       value={z.minutes} 
                       onChange={e => { const copy = [...hrZones]; copy[idx].minutes = e.target.value; setHrZones(copy); setIsFormDirty(true); }} 
                       className="w-full bg-slate-100/50 border border-slate-200 rounded-xl px-2 py-2 text-xs text-white outline-none" 
@@ -1459,12 +1463,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <p className="text-[12px] font-semibold text-slate-500 mb-2">Estrutura da Sessão</p>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">Aquecimento (min)</label>
-                  <input type="number" value={warmupMinutes} onChange={e => { setWarmupMinutes(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <label htmlFor="rr-aquecimento-min" className="text-[11px] text-slate-500 block mb-1">Aquecimento (min)</label>
+                  <input id="rr-aquecimento-min" type="number" value={warmupMinutes} onChange={e => { setWarmupMinutes(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">Recuperação (seg)</label>
-                  <input type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
+                  <label htmlFor="rr-recuperacao-seg" className="text-[11px] text-slate-500 block mb-1">Recuperação (seg)</label>
+                  <input id="rr-recuperacao-seg" type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
               <div className="flex items-center justify-between mb-1.5">
@@ -1480,8 +1484,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {splits.map((s, i) => (
                 <div key={i} className="flex gap-1 mb-1.5 items-center">
                   <span className="text-[11px] text-slate-400 w-3">{i+1}.</span>
-                  <input type="number" step="0.01" placeholder="km" value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
-                  <input type="text" placeholder="Tempo" value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <input type="number" step="0.01" placeholder="km" aria-label={`Distância da parcial ${i + 1} (km)`} value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
+                  <input type="text" placeholder="Tempo" aria-label={`Tempo da parcial ${i + 1}`} value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-white/5 border border-white/10 text-white rounded-xl px-2 py-1 text-xs" />
                   <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
                     aria-label={`Remover parcial ${i + 1}`}
                     className="tap-44 text-slate-400 hover:text-red-500 shrink-0"><X className="w-3.5 h-3.5"/></button>
@@ -1528,7 +1532,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </>
           )}
 
-          {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3">{errorMsg}</p>}
+          {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
           </div>
         </div>
       </div>

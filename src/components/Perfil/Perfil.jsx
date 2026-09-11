@@ -439,15 +439,17 @@ export default function Perfil() {
         className="tab-swipe-carousel"
       >
       <div ref={(el) => { pageRefs.current[0] = el; setPageRef(0)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Pessoal</h2>
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Pessoal</h2>
+              <h3 className="text-sm font-semibold">Pessoal</h3>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Nome</label>
+                <label htmlFor="perfil-nome" className="text-[11px] text-slate-500 block mb-1">Nome</label>
                 <input
+                  id="perfil-nome"
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
@@ -455,8 +457,9 @@ export default function Perfil() {
                 />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Género</label>
+                <label htmlFor="perfil-genero" className="text-[11px] text-slate-500 block mb-1">Género</label>
                 <select
+                  id="perfil-genero"
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
@@ -467,13 +470,14 @@ export default function Perfil() {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">
+                <label htmlFor="perfil-nascimento" className="text-[11px] text-slate-500 block mb-1">
                   Data de nascimento
                   {ageFromBirthDate(draft.birth_date) != null && (
                     <span className="text-slate-400"> · {ageFromBirthDate(draft.birth_date)} anos</span>
                   )}
                 </label>
                 <input
+                  id="perfil-nascimento"
                   type="date"
                   max={todayISO()}
                   value={draft.birth_date || ''}
@@ -485,8 +489,9 @@ export default function Perfil() {
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
               </div>
-              <ExperienceLevelHelp label="Nível como corredor" variant="dark">
+              <ExperienceLevelHelp label="Nível como corredor" variant="dark" fieldId="perfil-nivel">
                 <select
+                  id="perfil-nivel"
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
@@ -520,8 +525,9 @@ export default function Perfil() {
                 <ChevronRight size={14} className="text-slate-500 shrink-0" />
               </button>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
+                <label htmlFor="perfil-fc-repouso" className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
                 <input
+                  id="perfil-fc-repouso"
                   type="number"
                   min="25"
                   max="120"
@@ -550,27 +556,28 @@ export default function Perfil() {
       </div>
 
       <div ref={(el) => { pageRefs.current[1] = el; setPageRef(1)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Metas</h2>
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Avaliação Corporal</h2>
+              <h3 className="text-sm font-semibold">Avaliação Corporal</h3>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
-                <input type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
+                <label htmlFor="perfil-altura" className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
+                <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
-                <input type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
+                <label htmlFor="perfil-peso" className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
+                <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
                   className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
               </div>
             </div>
             
             <div className="flex items-center gap-2 mb-3 mt-1">
               <Target size={14} className="text-[var(--accent)]" />
-              <h3 className="text-xs font-semibold text-slate-300">Objetivos corporais</h3>
+              <h4 className="text-xs font-semibold text-slate-300">Objetivos corporais</h4>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BODY_METRICS.map(m => {
@@ -578,11 +585,11 @@ export default function Perfil() {
                 const isCoach = flagKey && draft[flagKey];
                 return (
                   <div key={m.key}>
-                    <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                    <label htmlFor={`perfil-goal-${m.key}`} className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                       {m.label}{m.unit ? ` (${m.unit})` : ''}
                       {isCoach && <CoachBadge />}
                     </label>
-                    <input type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
+                    <input id={`perfil-goal-${m.key}`} type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
                       onChange={e => {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
@@ -598,55 +605,55 @@ export default function Perfil() {
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <Target size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Nutrição & Água</h2>
+              <h3 className="text-sm font-semibold">Nutrição &amp; Água</h3>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-calorias" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Calorias (kcal/dia)
                   {draft.calorie_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.calorie_goal || ''}
+                <input id="perfil-calorias" type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-proteina" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Proteína (g/dia)
                   {draft.protein_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.protein_goal || ''}
+                <input id="perfil-proteina" type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-hidratos" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Hidratos (g/dia)
                   {draft.carbs_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.carbs_goal || ''}
+                <input id="perfil-hidratos" type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-gordura" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Gordura (g/dia)
                   {draft.fat_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.fat_goal || ''}
+                <input id="perfil-gordura" type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-agua" className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
                   Meta água (ml/dia)
                   {draft.water_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" step="50" value={draft.water_goal_ml || ''}
+                <input id="perfil-agua" type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
                   className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
@@ -703,8 +710,8 @@ export default function Perfil() {
             {draft.water_reminder_enabled && (
               <div className="mt-3 space-y-3 fade-in">
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
-                  <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
+                  <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
+                  <select id="perfil-lembrete-intervalo" value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
                     className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
@@ -713,15 +720,15 @@ export default function Perfil() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Início</label>
-                    <select value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
+                    <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-slate-500 block mb-1">Início</label>
+                    <select id="perfil-lembrete-inicio" value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Fim</label>
-                    <select value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
+                    <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-slate-500 block mb-1">Fim</label>
+                    <select id="perfil-lembrete-fim" value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
                       className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
@@ -744,10 +751,12 @@ export default function Perfil() {
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Equipamento</h2>
           <ShoeCabinet ref={shoeCabinetRef} />
       </div>
 
       <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Coach</h2>
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
@@ -796,7 +805,7 @@ export default function Perfil() {
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <Utensils size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold">Restrições Alimentares</h2>
+              <h3 className="text-sm font-semibold">Restrições Alimentares</h3>
             </div>
             <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
               Regra absoluta que o Coach nunca contraria — ao contrário da Memória, aqui é a
@@ -832,6 +841,7 @@ export default function Perfil() {
             </p>
             <input
               type="text"
+              aria-label="Alergias ou alimentos a evitar"
               placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
               value={draft.dietary_notes || ''}
               onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}

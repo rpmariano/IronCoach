@@ -372,3 +372,17 @@ describe('Onboarding — regra de arranque', () => {
     expect(shouldSilentlyMarkDone({ profile: null, ...semNada })).toBe(false);
   });
 });
+
+/* Auditoria a11y (passagem "harden"): a barra de seis segmentos é a única
+   indicação de onde se está nos passos. Sem semântica de progressbar,
+   quem ouve o ecrã não tem nada. */
+describe('Onboarding — progresso anunciado', () => {
+  it('a barra é um progressbar que diz o passo em que se está', () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    const barra = screen.getByRole('progressbar');
+    expect(barra).toHaveAttribute('aria-valuenow', '2');
+    expect(barra).toHaveAttribute('aria-valuemax', '6');
+    expect(barra).toHaveAttribute('aria-valuetext', 'Passo 2 de 6');
+  });
+});

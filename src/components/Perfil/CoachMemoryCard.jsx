@@ -128,7 +128,7 @@ export default function CoachMemoryCard() {
     <div className="module-card-contrast">
       <div className="flex items-center gap-2 mb-3">
         <Brain size={16} className="text-[var(--mod-coach-to)]" />
-        <h2 className="text-sm font-semibold">Memória do Coach</h2>
+        <h3 className="text-sm font-semibold">Memória do Coach</h3>
         <button
           type="button"
           onClick={() => setShowCategoryHelp(true)}

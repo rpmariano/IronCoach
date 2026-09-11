@@ -51,6 +51,10 @@ function pctRangeLabel(floors, key) {
 export default function ExperienceLevelHelp({
   label,
   variant = 'light',
+  // id do campo que este componente embrulha — a etiqueta é visual mas tem
+  // de ser também programática (auditoria a11y): quem usa passa o mesmo id
+  // ao <select> que mete como children.
+  fieldId,
   children,
   context = 'geral',
   raceType,
@@ -71,7 +75,7 @@ export default function ExperienceLevelHelp({
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className={labelClass}>{label}</label>
+        <label className={labelClass} htmlFor={fieldId}>{label}</label>
         <button
           type="button"
           onClick={() => setIsOpen(true)}
