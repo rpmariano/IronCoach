@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
-import { Footprints, Dumbbell, Utensils, Scale } from 'lucide-react';
+import { Footprints, Dumbbell, Utensils, Scale, ChartNoAxesColumn, Check, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
 import SmartInsightsBanner from '../BI/SmartInsightsBanner';
 import RaceReadinessCard from '../BI/RaceReadinessCard';
 import PillarSummaryCard from '../BI/PillarSummaryCard';
+import EmptyModuleState from '../BI/EmptyModuleState';
+import SectionLabel from '../shared/SectionLabel';
 import CrossAnalysisSection from '../BI/CrossAnalysisSection';
 import {
   calculateACWR,
@@ -40,6 +42,8 @@ export default function OverviewDashboard({ scrollToTab }) {
     profile,
     shoes,
     setEditingRaceId,
+    setOpenCreationMode,
+    setActiveTab,
   } = useAppStore();
 
   const data = { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes };
@@ -139,6 +143,136 @@ export default function OverviewDashboard({ scrollToTab }) {
   const bodySubtitle = weekBodyAssessments.length > 0
     ? `${weekBodyAssessments.length} avaliação${weekBodyAssessments.length !== 1 ? 'ões' : ''} esta semana`
     : 'Sem avaliações esta semana';
+
+  /* ─────────────── Ponto 7: a Visão Geral sem dados ───────────────
+     Mock "Dashboard · sem dados". Sem um único registo, os quatro pilares
+     mostravam "—" com badges "Sem dados", a Análise Cruzada abria vazia e a
+     Prontidão dava uma percentagem calculada sobre nada — quatro maneiras
+     de dizer o mesmo, nenhuma delas a dizer o que fazer a seguir. Passa a
+     ser o cartão do mock mais a lista "O que falta para começar", que é a
+     única coisa acionável neste estado. O cartão da prova fica, se houver
+     prova: "até lá mostro-te o que já tenho".
+     Os textos são os do mock, finais. */
+  const hasNoRecords =
+    (runs?.length || 0) === 0 &&
+    (gymSessions?.length || 0) === 0 &&
+    (meals?.length || 0) === 0 &&
+    (bodyAssessments?.length || 0) === 0;
+
+  // "2 de 7": dias DISTINTOS com refeição registada nos últimos 7 dias — a
+  // pergunta do mock é "uma semana de refeições", não "sete refeições".
+  const mealDaysLastWeek = useMemo(() => {
+    const week = filterByDateRange(meals || [], 'semana');
+    return new Set(week.map(m => m.date)).size;
+  }, [meals]);
+
+  const checklist = [
+    {
+      key: 'perfil',
+      label: 'Perfil preenchido',
+      done: !!(profile?.experience_level && (profile?.weight_kg || profile?.height_cm)),
+      onClick: () => setActiveTab('perfil'),
+    },
+    {
+      key: 'prova',
+      label: 'Marcar uma prova',
+      done: (raceEvents?.length || 0) > 0,
+      onClick: () => setOpenCreationMode('race'),
+    },
+    {
+      key: 'corridas',
+      label: 'Registar 3 corridas',
+      done: (runs?.length || 0) >= 3,
+      progress: `${Math.min(runs?.length || 0, 3)} de 3`,
+      onClick: () => setOpenCreationMode('run'),
+    },
+    {
+      key: 'refeicoes',
+      label: 'Registar 1 semana de refeições',
+      done: mealDaysLastWeek >= 7,
+      progress: `${Math.min(mealDaysLastWeek, 7)} de 7`,
+      onClick: () => setOpenCreationMode('meal'),
+    },
+  ];
+
+  if (hasNoRecords) {
+    return (
+      <div className="space-y-3 fade-in pb-8 pt-2" data-testid="overview-empty">
+        {(raceEvents?.length || 0) > 0 && (
+          <RaceReadinessCard
+            runs={runs}
+            meals={meals}
+            bodyAssessments={bodyAssessments}
+            gymSessions={gymSessions}
+            raceEvents={raceEvents}
+            profile={profile}
+            onClickRace={(id) => setEditingRaceId(id)}
+          />
+        )}
+
+        <EmptyModuleState icon={<ChartNoAxesColumn size={22} />}>
+          A prontidão precisa de duas semanas de registos para dizer alguma coisa útil. Até lá mostro-te o que já tenho.
+        </EmptyModuleState>
+
+        <SectionLabel style={{ margin: '6px 2px 0' }}>O que falta para começar</SectionLabel>
+
+        <div
+          style={{
+            borderRadius: 'var(--radius-xl)',
+            background: 'var(--surface-glass)',
+            border: '1px solid var(--border-glass)',
+            padding: '6px 16px',
+          }}
+        >
+          {checklist.map((item, i) => (
+            <div
+              key={item.key}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                borderBottom: i < checklist.length - 1 ? '1px solid rgba(255,255,255,.08)' : 'none',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={item.done
+                  ? {
+                      width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                      background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ok)',
+                    }
+                  : { width: 22, height: 22, borderRadius: '50%', flexShrink: 0, border: '1px dashed rgba(255,255,255,.28)' }}
+              >
+                {item.done && <Check size={12} />}
+              </span>
+
+              {item.done ? (
+                <span style={{ flex: 1, fontSize: 'var(--text-sm)', color: 'var(--text-3)', padding: '13px 0' }}>
+                  {item.label}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={item.onClick}
+                  style={{
+                    flex: 1, display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
+                    minHeight: 'var(--tap)', background: 'none', border: 'none', cursor: 'pointer',
+                    fontSize: 'var(--text-sm)', color: 'var(--text-3)', padding: 0,
+                  }}
+                >
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.progress
+                    ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{item.progress}</span>
+                    : <ChevronRight size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 fade-in pb-8 pt-2">

@@ -33,13 +33,17 @@ export function CoachIcon({ busy }) {
 
 // Botão "Analisar" completo — mesmo texto, mesmo gradiente, mesma insígnia,
 // esteja a analisar uma foto ou um registo manual (o Coach é o mesmo).
-export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar', busyLabel = 'A analisar...' }) {
+// busyLabel: "A analisar…" com reticências tipográficas, como o mock
+// "Refeição · a analisar" (ponto 7). O rótulo acessível continua a ser o
+// texto visível — quem usa leitor de ecrã ouve o estado, não só o vê.
+export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar', busyLabel = 'A analisar…' }) {
   return (
     <Button
       variant="module"
       moduleColor={COACH_GRADIENT}
       onClick={onClick}
       disabled={disabled}
+      aria-busy={busy || undefined}
       className="w-full text-[14px] disabled:opacity-30"
       icon={<CoachIcon busy={busy} />}
     >

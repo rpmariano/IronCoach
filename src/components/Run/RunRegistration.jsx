@@ -4,6 +4,8 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
 import { useToast } from '../shared/ToastProvider';
 import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace } from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
@@ -152,7 +154,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   
   // Photos
   const [runPhotos, setRunPhotos] = useState([]); // [{ file?, dataUrl, url? }]
-  const [analyzingRun, setAnalyzingRun] = useState(false);
+  /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
+     (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
+     registo manual (handleSaveCorrida) é uma gravação, não uma leitura de
+     print, e fica com o `errorMsg` de sempre. */
+  const analysis = useAnalysis();
+  const analyzingRun = analysis.isAnalyzing;
   // Um único cartão, forma de introdução escolhida em vez de 2 blocos
   // sempre visíveis — só um dos dois fica ativo/clicável a cada vez, por
   // isso não há risco de o utilizador preencher os dois em paralelo.
@@ -565,9 +572,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       return;
     }
 
-    setAnalyzingRun(true);
     setErrorMsg('');
-    try {
+    analysis.run(analyzeRunTask);
+  };
+
+  // A tarefa, separada das validações e do gesto: é ela que o "Tentar de
+  // novo" repete, com os mesmos prints e os mesmos campos.
+  const analyzeRunTask = async () => {
+    {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           images: runPhotos.map(p => p.base64),
@@ -640,11 +652,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setRuns([...runs, createdRun]);
       showToast('Corrida registada');
       finishCreateAndGoToCalendar(createdRun);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setAnalyzingRun(false);
     }
   };
 
@@ -939,6 +946,28 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </button>
           </div>
 
+          {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão):
+              esqueleto no sítio do resultado, formulário bloqueado mas
+              visível, e aviso coral com "Tentar de novo" e a alternativa
+              manual quando a leitura do print falha. */}
+          {analyzingRun && <AnalysisSkeleton />}
+
+          {analysis.hasFailed && (
+            <AnalysisFailure
+              detail={analysis.error}
+              onRetry={analysis.retry}
+              onManual={showToggle && entryMethod === 'foto'
+                ? () => { setEntryMethod('manual'); analysis.reset(); }
+                : undefined}
+            >
+              Os prints ficaram guardados. Podes tentar outra vez ou escrever os dados da corrida — eu faço as contas na mesma.
+            </AnalysisFailure>
+          )}
+
+          <div
+            aria-busy={analyzingRun || undefined}
+            style={analyzingRun ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          >
           <div className="flex flex-wrap gap-1.5 mb-3">
             {/* Cor via style, não pela classe text-white — um override global
                 (globals.css:66, "portado do legado") força text-white para
@@ -1498,6 +1527,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           )}
 
           {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3">{errorMsg}</p>}
+          </div>
         </div>
       </div>
     );

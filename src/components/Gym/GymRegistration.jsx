@@ -3,6 +3,8 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Plus, Trash2, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -116,7 +118,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
+     (src/utils/useAnalysis.js) — a análise por foto é a operação que demora
+     e que pode falhar. O registo manual e a edição continuam com `errorMsg`:
+     são gravações, não análises de imagem, e não há alternativa manual para
+     onde cair. */
+  const analysis = useAnalysis();
+  const isAnalyzing = analysis.isAnalyzing;
 
   // Manual — métricas do relógio; séries/repetições/carga só se gerem ao
   // editar uma sessão já criada (ver exercises abaixo) — não fazem parte do
@@ -390,11 +398,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // ----------------------------------
   // ANALISAR TREINO POR FOTO (IA — analyze-gym)
   // ----------------------------------
-  const handleAnalyzePhotos = async () => {
-    if (!photos.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    setErrorMsg('');
-    try {
+  // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete, com as
+  // mesmas fotos e os mesmos campos.
+  const analyzePhotosTask = async () => {
+    {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
           images: photos.map(p => p.base64),
@@ -416,12 +423,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       setGymSessions([sessionWithSets, ...gymSessions]);
       showToast('Treino registado');
       finishCreateAndGoToCalendar(sessionWithSets);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setIsAnalyzing(false);
     }
+  };
+
+  const handleAnalyzePhotos = () => {
+    if (!photos.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(analyzePhotosTask);
   };
 
   // ----------------------------------
@@ -615,6 +623,28 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           </button>
         </div>
 
+        {/* Ponto 7 — espera: esqueleto onde o resultado vai aparecer, com o
+            formulário bloqueado mas visível. */}
+        {isAnalyzing && <AnalysisSkeleton />}
+
+        {/* Ponto 7 — erro: aviso coral na voz da Carol, com "Tentar de novo"
+            (mesma chamada, mesmos dados) e a alternativa manual. */}
+        {analysis.hasFailed && (
+          <AnalysisFailure
+            detail={analysis.error}
+            onRetry={analysis.retry}
+            onManual={!isEditing && entryMethod === 'foto'
+              ? () => { setEntryMethod('manual'); analysis.reset(); }
+              : undefined}
+          >
+            As fotos ficaram guardadas. Podes tentar outra vez ou escrever o treino — eu faço as contas na mesma.
+          </AnalysisFailure>
+        )}
+
+        <div
+          aria-busy={isAnalyzing || undefined}
+          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+        >
         <label className="text-[11px] text-slate-500 mb-1.5 block">Tipo de sessão</label>
         <div className="flex gap-1.5 mb-4">
           {GYM_KINDS.map(k => {
@@ -977,6 +1007,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         })()}
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        </div>
       </div>
 
       {/* Modal de confirmação de saída com alterações por gravar */}

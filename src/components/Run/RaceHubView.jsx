@@ -9,6 +9,7 @@ import {
   Gauge,
   Timer,
   Trophy,
+  Plus,
   CheckCircle2,
   ChevronRight,
   ChevronDown,
@@ -25,9 +26,12 @@ import {
 import Button from '../shared/Button';
 import Warning from '../shared/Warning';
 import RunIcon from '../shared/RunIcon';
+import RaceTrail from '../shared/RaceTrail';
+import SectionLabel from '../shared/SectionLabel';
+import { useAppStore } from '../../store';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
-import { calculateReadinessIndex, getRacePrediction } from '../../utils/biEngine';
+import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel } from '../../utils/run';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
@@ -93,6 +97,215 @@ export default function RaceHubView({
   const prediction = useMemo(() =>
     getRacePrediction(race, profile, runs),
   [race, profile, runs]);
+
+  /* ══════ Ponto 7 do redesenho: o hub DEPOIS da prova ══════
+     Mock "Hub de prova · depois da prova". Até aqui, uma prova já corrida
+     continuava a mostrar a contagem decrescente ("Concluída" dentro de um
+     cartão chamado "Contagem para a Prova"), a previsão VDOT para uma prova
+     que já aconteceu e o macrociclo por cumprir — um ecrã inteiro a olhar
+     para a frente quando já não há frente nenhuma. Este estado olha para
+     trás: o tempo final, o balanço da Carol, o ciclo fechado, e a única
+     pergunta que ainda faz sentido, "e agora?". */
+  const isCompleted = race?.status === 'concluida' || trainingStatus === 'completed';
+
+  // A corrida de competição registada NO DIA da prova é o que dá o tempo
+  // final. Sem ela não se inventa nada: pede-se o registo.
+  const raceRun = useMemo(() => {
+    if (!isCompleted || !raceDate) return null;
+    return (runs || []).find(r => r.kind === 'competicao' && r.date === raceDate) || null;
+  }, [isCompleted, runs, raceDate]);
+
+  // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
+  // "Adesão ao plano" e "Lesões" do mock não têm fonte no modelo de dados —
+  // ficam de fora em vez de saírem inventados.
+  const cycleSummary = useMemo(() => {
+    if (!isCompleted) return null;
+    const inCycle = (runs || []).filter(r => r.date >= planStartDate && r.date <= raceDate);
+    const totalKm = inCycle.reduce((sum, r) => sum + Number(r.distance_km || 0), 0);
+    const trend = getVDOTTrend(runs || []).filter(v => v.date >= planStartDate && v.date <= raceDate);
+    const fmt1 = (n) => Number(n).toFixed(1).replace('.', ',');
+    return {
+      totalKm: totalKm > 0 ? `${fmt1(totalKm)} km` : null,
+      vdot: trend.length >= 2 ? `${fmt1(trend[0].vdot)} \u2192 ${fmt1(trend[trend.length - 1].vdot)}` : null,
+    };
+  }, [isCompleted, runs, planStartDate, raceDate]);
+
+  if (isCompleted) {
+    const finalSeconds = Number(raceRun?.duration_seconds || 0);
+    const finalTime = finalSeconds > 0 ? formatDuration(Math.round(finalSeconds)) : null;
+    const finalPace = finalSeconds > 0 && Number(raceRun?.distance_km) > 0
+      ? formatPace(Math.round(finalSeconds / Number(raceRun.distance_km)))
+      : null;
+    // "−2:18" = bateste a previsão por 2:18; "+" = ficaste acima dela.
+    const predSeconds = Number(prediction?.predictedSeconds || 0);
+    const diff = finalSeconds > 0 && predSeconds > 0 ? Math.round(finalSeconds - predSeconds) : null;
+    const diffLabel = diff === null
+      ? null
+      : `${diff <= 0 ? '\u2212' : '+'}${formatDuration(Math.abs(diff)) || '0:00'}`;
+
+    const leaveTo = (mode) => {
+      const store = useAppStore.getState();
+      store.setEditingRaceId(null);
+      if (mode) store.setOpenCreationMode(mode);
+    };
+
+    return (
+      <div className="race-hub-container" data-testid="race-hub-completed">
+        {/* 1. Tempo final — o número herói do mock (44px, --text-num-lg). */}
+        <div
+          className="relative overflow-hidden"
+          style={{
+            background: 'var(--surface-glass)',
+            backdropFilter: 'blur(var(--blur-card))',
+            WebkitBackdropFilter: 'blur(var(--blur-card))',
+            border: '1px solid rgba(251,191,36,.3)',
+            borderRadius: 26,
+            padding: 20,
+            boxShadow: 'var(--shadow-card)',
+            textAlign: 'center',
+          }}
+        >
+          <div aria-hidden="true" className="absolute pointer-events-none" style={{ right: -40, top: -40, width: 200, height: 200, background: 'radial-gradient(circle, rgba(251,191,36,.2) 0%, transparent 70%)' }} />
+
+          <div className="relative">
+            <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.08em', color: 'var(--race)' }}>
+              Prova concluída
+            </div>
+            <h1 className="text-[16px] font-extrabold mt-1" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
+              {race?.name || 'Prova'}
+            </h1>
+
+            <span
+              className="inline-flex items-center justify-center mt-3"
+              style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--grad-race)', color: 'var(--race-ink)' }}
+            >
+              <Trophy size={22} />
+            </span>
+
+            {finalTime ? (
+              <>
+                <div className="text-[11px] font-extrabold uppercase mt-3" style={{ letterSpacing: '.1em', color: 'var(--race)' }}>
+                  Tempo final
+                </div>
+                <div
+                  data-testid="race-final-time"
+                  style={{ fontSize: 'var(--text-num-lg)', fontWeight: 900, color: 'var(--text-1)', lineHeight: 1, letterSpacing: '-.03em', marginTop: 7, fontVariantNumeric: 'tabular-nums' }}
+                >
+                  {finalTime}
+                </div>
+                <div className="text-[13px] mt-2" style={{ color: 'var(--text-3)' }}>
+                  {[finalPace ? `${finalPace}/km` : null, formatDatePTShort(raceDate)].filter(Boolean).join(' · ')}
+                </div>
+
+                {(race?.target_time || diffLabel) && (
+                  <div className="flex gap-2.5 mt-4">
+                    {race?.target_time && (
+                      <div className="flex-1" style={{ borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', padding: 11 }}>
+                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Objetivo</div>
+                        <div className="text-[14px] font-extrabold mt-1" style={{ color: 'var(--text-1)' }}>{formatTargetTimeLabel(race.target_time)}</div>
+                      </div>
+                    )}
+                    {diffLabel && (
+                      <div
+                        className="flex-1"
+                        style={{
+                          borderRadius: 14,
+                          background: diff <= 0 ? 'var(--tint-ok-bg)' : 'var(--tint-warn-bg)',
+                          border: `1px solid ${diff <= 0 ? 'var(--tint-ok-bd)' : 'var(--tint-warn-bd)'}`,
+                          padding: 11,
+                        }}
+                      >
+                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Previsão</div>
+                        <div className="text-[14px] font-extrabold mt-1" style={{ color: diff <= 0 ? 'var(--ok)' : 'var(--warn)' }}>{diffLabel}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-3)' }}>
+                  Não tenho a corrida desta prova. Regista-a e mostro-te o tempo final ao lado do objetivo.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => leaveTo('run')}
+                  className="w-full inline-flex items-center justify-center gap-2 mt-4"
+                  style={{ minHeight: 'var(--tap)', borderRadius: 14, background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, border: 'none', cursor: 'pointer' }}
+                >
+                  Registar a corrida da prova
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* 2. Balanço da Carol — o texto é o do motor (carolAnalysis), que
+            neste estado já escreve sobre a prova no passado. */}
+        <div style={{ borderRadius: 22, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 16, marginTop: 12 }}>
+          <div className="flex items-center gap-2.5">
+            <CoachAvatar size={28} />
+            <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
+              Balanço da Carol
+            </span>
+          </div>
+          <p className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-2)' }}>
+            {carolAnalysis.overviewText}
+          </p>
+        </div>
+
+        {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se
+            consegue somar dos registos reais. */}
+        <SectionLabel style={{ margin: '16px 2px 0' }}>{`Ciclo de ${totalWeeks} semanas`}</SectionLabel>
+
+        <RaceTrail
+          weeks={totalWeeks}
+          current={totalWeeks}
+          startLabel={formatDateDayMonth(planStartDate)}
+          endLabel={formatDateDayMonth(raceDate)}
+        />
+
+        {(cycleSummary?.totalKm || cycleSummary?.vdot) && (
+          <div style={{ borderRadius: 20, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: '6px 16px', marginTop: 10 }}>
+            {cycleSummary.totalKm && (
+              <div className="flex items-center justify-between" style={{ padding: '12px 0', borderBottom: cycleSummary.vdot ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
+                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Volume total</span>
+                <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.totalKm}</span>
+              </div>
+            )}
+            {cycleSummary.vdot && (
+              <div className="flex items-center justify-between" style={{ padding: '12px 0' }}>
+                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>VDOT no início / fim</span>
+                <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.vdot}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 4. E agora? As duas saídas do mock. "Arquivar e descansar" não
+            entra: não existe arquivo no modelo de dados (o estado
+            "concluída" já é o fim da linha), e o handoff proíbe inventar
+            funcionalidades. Fica a conversa com a Carol, que é onde o
+            próximo ciclo se decide. */}
+        <button
+          type="button"
+          onClick={() => leaveTo('race')}
+          className="w-full inline-flex items-center justify-center gap-2"
+          style={{ minHeight: 48, marginTop: 16, borderRadius: 14, border: 'none', background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}
+        >
+          <Plus size={16} /> Marcar a próxima prova
+        </button>
+        <button
+          type="button"
+          onClick={() => { leaveTo(null); useAppStore.getState().setActiveTab('coach'); }}
+          className="w-full"
+          style={{ minHeight: 'var(--tap)', marginTop: 9, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)', background: 'rgba(255,255,255,.05)', color: 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Falar com a Carol
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="race-hub-container">

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
 import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
-import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, TrendingUp, Utensils } from 'lucide-react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -23,6 +23,7 @@ import MacroComplianceChart from '../BI/MacroComplianceChart';
 import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
+import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { nutritionVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
@@ -40,7 +41,7 @@ ChartJS.register(
 );
 
 export default function NutritionDashboard() {
-  const { profile, meals, bodyAssessments, runs, gymSessions } = useAppStore();
+  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode } = useAppStore();
   const [activeFilter, setActiveFilter] = useState('semana');
   const [selectedMacro, setSelectedMacro] = useState('calories');
   const [microsExpanded, setMicrosExpanded] = useState(false);
@@ -198,6 +199,32 @@ export default function NutritionDashboard() {
     if (zone === 'over') return 'caution';
     return 'safe';
   };
+
+  /* Ponto 7: sem refeições no período, o cartão de convite do mock
+     "Dashboard · sem dados" em vez dos quatro KPIs a zero e de uma linha
+     de macros achatada no chão do gráfico. */
+  const periodMeals = useMemo(
+    () => filterByDateRange(meals || [], biRange),
+    [meals, biRange]
+  );
+
+  if (periodMeals.length === 0) {
+    return (
+      <div className="space-y-4 fade-in pb-20">
+        <VerdictLine text={verdict.text} tone={verdict.tone} />
+        <TimeFilterBar activeRange={activeFilter} onChange={setActiveFilter} module="nutricao" />
+        <EmptyModuleState
+          tone="nutrition"
+          icon={<Utensils size={22} />}
+          actionLabel="Registar refeição"
+          onAction={() => setOpenCreationMode('meal')}
+        >
+          Ainda não há refeições neste período. Regista uma refeição para veres a tua evolução aqui.
+        </EmptyModuleState>
+        <EmptyChartFrame label="Calorias por dia" unit="kcal no último dia" height={192} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 fade-in pb-20">

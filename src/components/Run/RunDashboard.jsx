@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
+import { TrendingUp, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
+import RunIcon from '../shared/RunIcon';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import ACWRChart from '../BI/ACWRChart';
@@ -12,6 +13,7 @@ import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
 import ChartFrame from '../BI/ChartFrame';
+import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
@@ -45,7 +47,7 @@ function getBestPaceData(allRuns, targetKm) {
 }
 
 export default function RunDashboard() {
-  const { runs, profile, raceEvents = [] } = useAppStore();
+  const { runs, profile, raceEvents = [], setOpenCreationMode } = useAppStore();
   const [activeRange, setActiveRange] = useState('mes');
 
   // BI Data processing
@@ -230,6 +232,32 @@ export default function RunDashboard() {
     );
   };
 
+  /* Ponto 7 do redesenho: sem corridas no período, o dashboard não mostra
+     gráficos a zero (uma barra a zero lê-se como "correste zero", não como
+     "não sei") nem os cartões partidos que o ponto 6 assinalou — mostra o
+     cartão de convite do mock "Dashboard · sem dados" e a moldura do
+     gráfico vazia. O veredicto e o filtro de período ficam: é pelo filtro
+     que se chega a um período com dados. */
+  const isEmpty = periodRuns.length === 0;
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-4 fade-in">
+        <VerdictLine text={verdict.text} tone={verdict.tone} />
+        <TimeFilterBar activeRange={activeRange} onChange={setActiveRange} module="corrida" />
+        <EmptyModuleState
+          tone="run"
+          icon={<RunIcon className="w-[22px] h-[22px]" />}
+          actionLabel="Registar corrida"
+          onAction={() => setOpenCreationMode('run')}
+        >
+          Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
+        </EmptyModuleState>
+        <EmptyChartFrame label="Distância por dia" unit="km no período" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 fade-in">
       {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
@@ -325,15 +353,9 @@ export default function RunDashboard() {
         />
       )}
 
-      {/* 7. Daily Distance Bar Chart */}
-      {periodRuns.length === 0 ? (
-        <div className="min-h-[25vh] flex flex-col items-center justify-center text-center px-6 py-6">
-          <BarChart3 className="w-10 h-10 text-slate-500 mb-3" />
-          <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-            Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
-          </p>
-        </div>
-      ) : (
+      {/* 7. Daily Distance Bar Chart — o caso "sem corridas no período" já
+          saiu antes (EmptyModuleState), por isso aqui há sempre dados. */}
+      {chartData && (
         <ChartFrame
           label="Distância por dia"
           value={fmtNumber(totalDist, 1)}

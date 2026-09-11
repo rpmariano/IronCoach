@@ -3,6 +3,8 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
 import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -59,7 +61,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
+     (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
+     registo manual e a edição são gravações, não análises de imagem, e
+     ficam com o `errorMsg` de sempre. */
+  const analysis = useAnalysis();
+  const isAnalyzing = analysis.isAnalyzing;
 
   // Manual
   const [metrics, setMetrics] = useState({});
@@ -298,11 +305,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // ----------------------------------
   // ANALISAR AVALIAÇÃO POR FOTO (IA — analyze-body)
   // ----------------------------------
-  const handleAnalyzePhotos = async () => {
-    if (!photos.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    setErrorMsg('');
-    try {
+  // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete.
+  const analyzePhotosTask = async () => {
+    {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: {
           images: photos.map(p => p.base64),
@@ -317,12 +322,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       setBodyAssessments([data.assessment, ...bodyAssessments]);
       showToast('Avaliação registada');
       finishCreateAndGoToCalendar(data?.assessment);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setIsAnalyzing(false);
     }
+  };
+
+  const handleAnalyzePhotos = () => {
+    if (!photos.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(analyzePhotosTask);
   };
 
   // ----------------------------------
@@ -421,6 +427,25 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           </button>
         </div>
 
+        {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão). */}
+        {isAnalyzing && <AnalysisSkeleton />}
+
+        {analysis.hasFailed && (
+          <AnalysisFailure
+            detail={analysis.error}
+            onRetry={analysis.retry}
+            onManual={!isEditing && entryMethod === 'foto'
+              ? () => { setEntryMethod('manual'); analysis.reset(); }
+              : undefined}
+          >
+            Os prints ficaram guardados. Podes tentar outra vez ou escrever os valores — eu faço as contas na mesma.
+          </AnalysisFailure>
+        )}
+
+        <div
+          aria-busy={isAnalyzing || undefined}
+          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+        >
         <div className="grid grid-cols-2 gap-2 mb-4">
           <input
             type="date"
@@ -567,6 +592,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         })()}
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        </div>
       </div>
 
       {/* Modal de confirmação de saída com alterações por gravar */}

@@ -90,11 +90,22 @@ describe('NutritionDashboard', () => {
     expect(kpiValue).toHaveLength(1);
   });
 
-  it('não rebenta sem refeições nenhumas', () => {
+  /* Ponto 7 do redesenho: sem refeições no período, o ecrã deixa de mostrar
+     os quatro KPIs a zero (que se liam como "comeste zero calorias", e não
+     como "não sei o que comeste") e passa ao cartão do mock "Dashboard ·
+     sem dados" — o veredicto, o convite a registar e a moldura do gráfico
+     a "—". A asserção antiga era exatamente o comportamento substituído. */
+  it('sem refeições nenhumas, mostra o estado vazio em vez de KPIs a zero', () => {
     useAppStore.setState({ meals: [] });
     render(<NutritionDashboard />);
-    // Sem dados, os KPIs caem a zero em vez de rebentar ou desaparecer.
-    expect(screen.getByText('Calorias')).toBeInTheDocument();
-    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+
+    expect(screen.getByTestId('empty-module-state')).toBeInTheDocument();
+    expect(screen.getByText('Ainda não há dados')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Registar refeição' })).toBeInTheDocument();
+    expect(screen.getByTestId('chart-frame-value')).toHaveTextContent('—');
+    // A frase de veredicto continua lá, a dizer que não há o que dizer.
+    expect(screen.getByTestId('verdict-line')).toBeInTheDocument();
+    // E nenhum KPI a fingir um número.
+    expect(screen.queryByText('Calorias')).not.toBeInTheDocument();
   });
 });

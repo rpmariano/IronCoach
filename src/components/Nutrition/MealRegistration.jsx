@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -11,6 +11,9 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import SectionLabel from '../shared/SectionLabel';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -71,7 +74,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  /* Ponto 7 do redesenho: espera e erro da análise num só estado
+     (src/utils/useAnalysis.js). Antes eram três booleanos independentes
+     (isAnalyzing, isFinalizing, isSaving) e um errorMsg partilhado com as
+     validações do formulário — uma falha de rede lia-se como um campo mal
+     preenchido e não havia forma de repetir sem refazer tudo. `errorMsg`
+     fica, mas só para as validações locais (nome do alimento, gramas,
+     número de fotos). */
+  const analysis = useAnalysis();
+  const isAnalyzing = analysis.isAnalyzing;
 
   // Manual — "Adicionar alimento" só acrescenta {name, grams} a uma lista
   // local, sem tocar no servidor nem no Gemini. Só ao premir "Analisar
@@ -81,7 +93,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [manualItems, setManualItems] = useState([]); // [{ key, name, grams, dbId? }]
   const [itemName, setItemName] = useState('');
   const [itemGrams, setItemGrams] = useState('');
-  const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
@@ -90,7 +101,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // refeição não mexem na análise, e nesses casos guardar é um update direto,
   // sem custo de API. É por passar pelo Coach que acrescentar um alimento
   // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
-  const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -278,38 +288,36 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // ----------------------------------
   // ANALISAR REFEIÇÃO POR FOTO (IA — analyze-meal)
   // ----------------------------------
-  const handleAnalyzePhotos = async () => {
-    if (!photos.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    setErrorMsg('');
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: {
-          images: photos.map(p => p.base64),
-          mime_type: 'image/jpeg',
-          date,
-          meal_type: mealType,
-          notes: notes.trim() || null,
-        },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+  // A tarefa em si, separada do gesto: é ela que o "Tentar de novo" repete,
+  // com as MESMAS fotos, data, tipo e observações (useAnalysis guarda-a).
+  const analyzePhotosTask = async () => {
+    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+      body: {
+        images: photos.map(p => p.base64),
+        mime_type: 'image/jpeg',
+        date,
+        meal_type: mealType,
+        notes: notes.trim() || null,
+      },
+    });
+    if (error) throw new Error(error);
+    if (data?.error) throw new Error(data.error);
 
-      // A resposta traz meal e items em separado — o store espera-os juntos,
-      // tal como loadInitialData os carrega (select('*, meal_items(*)')).
-      const mealWithItems = { ...data.meal, meal_items: data.items || [] };
-      if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
-        console.warn('Aviso: análise retornou 0 itens', data);
-      }
-      setMeals([...meals, mealWithItems]);
-      showToast('Refeição registada');
-      finishCreateAndGoToCalendar(mealWithItems);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setIsAnalyzing(false);
+    // A resposta traz meal e items em separado — o store espera-os juntos,
+    // tal como loadInitialData os carrega (select('*, meal_items(*)')).
+    const mealWithItems = { ...data.meal, meal_items: data.items || [] };
+    if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
+      console.warn('Aviso: análise retornou 0 itens', data);
     }
+    setMeals([...meals, mealWithItems]);
+    showToast('Refeição registada');
+    finishCreateAndGoToCalendar(mealWithItems);
+  };
+
+  const handleAnalyzePhotos = () => {
+    if (!photos.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(analyzePhotosTask);
   };
 
   // ----------------------------------
@@ -339,32 +347,28 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setIsFormDirty(true);
   };
 
-  const handleFinalizeManual = async () => {
-    if (!manualItems.length || isFinalizing) return;
-    setIsFinalizing(true);
-    setErrorMsg('');
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: {
-          mode: 'manual',
-          date,
-          meal_type: mealType,
-          notes: notes.trim() || null,
-          items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
-        },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+  const finalizeManualTask = async () => {
+    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+      body: {
+        mode: 'manual',
+        date,
+        meal_type: mealType,
+        notes: notes.trim() || null,
+        items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
+      },
+    });
+    if (error) throw new Error(error);
+    if (data?.error) throw new Error(data.error);
 
-      setMeals([...meals, data.meal]);
-      showToast('Refeição registada');
-      finishCreateAndGoToCalendar(data?.meal);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');
-    } finally {
-      setIsFinalizing(false);
-    }
+    setMeals([...meals, data.meal]);
+    showToast('Refeição registada');
+    finishCreateAndGoToCalendar(data?.meal);
+  };
+
+  const handleFinalizeManual = () => {
+    if (!manualItems.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(finalizeManualTask);
   };
 
   // ----------------------------------
@@ -375,15 +379,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   //     um alimento novo ao editar.
   //   • Só a data/tipo mudaram → update direto, sem chamada ao Gemini.
   // ----------------------------------
-  const handleSaveEdit = async () => {
-    if (isSaving) return;
-    if (needsReanalysis && !manualItems.length) {
-      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
-      return;
-    }
-    setIsSaving(true);
-    setErrorMsg('');
-    try {
+  const saveEditTask = async () => {
+    {
       let savedMeal = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
@@ -413,12 +410,17 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       if (profile?.id) await loadInitialData(profile.id);
       showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
       finishCreateAndGoToCalendar(savedMeal);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
-    } finally {
-      setIsSaving(false);
     }
+  };
+
+  const handleSaveEdit = () => {
+    if (isAnalyzing) return;
+    if (needsReanalysis && !manualItems.length) {
+      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
+      return;
+    }
+    setErrorMsg('');
+    analysis.run(saveEditTask);
   };
 
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
@@ -427,8 +429,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const primaryAction = isEditing ? (
     <CoachAnalyzeButton
       onClick={handleSaveEdit}
-      disabled={isSaving || (needsReanalysis && !manualItems.length)}
-      busy={isSaving}
+      disabled={isAnalyzing || (needsReanalysis && !manualItems.length)}
+      busy={isAnalyzing}
       label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
     />
   ) : entryMethod === 'foto' ? (
@@ -441,8 +443,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   ) : (
     <CoachAnalyzeButton
       onClick={handleFinalizeManual}
-      disabled={!manualItems.length || isFinalizing}
-      busy={isFinalizing}
+      disabled={!manualItems.length || isAnalyzing}
+      busy={isAnalyzing}
       label="Analisar Refeição"
     />
   );
@@ -484,6 +486,35 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           </button>
         </div>
 
+        {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
+            aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
+            nada do que o atleta escreveu ou fotografou se apaga. */}
+        {isAnalyzing && <AnalysisSkeleton />}
+
+        {/* Ponto 7 — ERRO. Texto do mock "Refeição · análise falhou", na voz
+            da Carol (CAROL.md: nunca "Desculpa, não consegui analisar").
+            "Tentar de novo" repete a MESMA chamada com os mesmos dados;
+            "Escrever" passa ao modo manual sem perder foto, data, tipo nem
+            observações. */}
+        {analysis.hasFailed && (
+          <AnalysisFailure
+            detail={analysis.error}
+            onRetry={analysis.retry}
+            onManual={!isEditing && entryMethod === 'foto'
+              ? () => { setEntryMethod('manual'); analysis.reset(); }
+              : undefined}
+          >
+            {photos.length > 0
+              ? 'As fotos ficaram guardadas. Podes tentar outra vez ou escrever o que comeste — eu calculo na mesma.'
+              : 'O que escreveste ficou guardado. Podes tentar outra vez.'}
+          </AnalysisFailure>
+        )}
+
+        <div
+          data-testid="meal-form-fields"
+          aria-busy={isAnalyzing || undefined}
+          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+        >
         <div className="grid grid-cols-[1fr_auto] items-center gap-3 mb-4">
           <input
             type="date"
@@ -605,6 +636,41 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           </>
         ) : (
           <div className="mb-4">
+            {/* As fotos não se perdem ao cair para o modo manual (mock
+                "Refeição · análise falhou": "2 fotos guardadas"). Ficam à
+                vista, e voltar a "Foto (IA)" encontra-as lá. */}
+            {photos.length > 0 && (
+              <div
+                data-testid="saved-photos"
+                className="mb-3"
+                style={{
+                  borderRadius: 'var(--radius-xl)',
+                  background: 'rgba(255,255,255,.05)',
+                  border: '1px solid rgba(255,255,255,.11)',
+                  padding: '14px 16px',
+                }}
+              >
+                <div className="flex items-center gap-[7px] text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--text-muted)' }}>
+                  <ImageIcon size={14} /> {photos.length} foto{photos.length === 1 ? '' : 's'} guardada{photos.length === 1 ? '' : 's'}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {photos.map((ph, i) => (
+                    <img
+                      key={i}
+                      src={ph.dataUrl}
+                      alt={`Foto ${i + 1}`}
+                      className="object-cover"
+                      style={{ width: 62, height: 62, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)' }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {photos.length > 0 && !isEditing && (
+              <SectionLabel style={{ margin: '4px 2px 8px' }}>Ou escreve os alimentos</SectionLabel>
+            )}
+
             {/* Também disponível a editar: como guardar passa pelo Coach
                 quando os alimentos mudam, os valores nutricionais de um
                 alimento novo são estimados na mesma chamada. */}
@@ -730,12 +796,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         })()}
 
         {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        </div>
       </div>
 
       {/* Modal de confirmação de saída com alterações por gravar */}
       <UnsavedChangesModal
         isOpen={showUnsavedModal}
-        isSaving={isSaving || isFinalizing}
+        isSaving={isAnalyzing}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleFinalizeManual}
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}

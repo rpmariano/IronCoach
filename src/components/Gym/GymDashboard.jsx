@@ -10,6 +10,7 @@ import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
+import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume, sessionVolumeKg } from '../../utils/biEngine';
@@ -32,7 +33,7 @@ function formatDurationMinutes(seconds) {
 }
 
 export default function GymDashboard() {
-  const { gymSessions } = useAppStore();
+  const { gymSessions, setOpenCreationMode } = useAppStore();
   const [timeRange, setTimeRange] = useState('mes');
   const rangeKey = timeRange;
 
@@ -152,6 +153,28 @@ export default function GymDashboard() {
     plugins: { legend: { display: false } }
   };
 
+  /* Ponto 7: sem sessões no período, o cartão de convite do mock
+     "Dashboard · sem dados" em vez dos KPIs a zero e do bloco de aulas
+     vazio. O veredicto e o filtro ficam — é pelo filtro que se chega a um
+     período com dados. */
+  if (sessionsInRange.length === 0) {
+    return (
+      <div className="space-y-4 fade-in">
+        <VerdictLine text={verdict.text} tone={verdict.tone} />
+        <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="ginasio" />
+        <EmptyModuleState
+          tone="gym"
+          icon={<Dumbbell size={22} />}
+          actionLabel="Registar treino"
+          onAction={() => setOpenCreationMode('workout')}
+        >
+          Ainda não há treinos neste período. Regista um treino para veres a tua evolução aqui.
+        </EmptyModuleState>
+        <EmptyChartFrame label="Volume diário" unit="kg no último dia com treino" height={192} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 fade-in">
       {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
@@ -165,14 +188,8 @@ export default function GymDashboard() {
         <KPICard label="Aulas" value={classAnalytics.totalClasses} icon={Users} moduleColor="var(--mod-ginasio)" />
       </div>
 
-      {sessionsInRange.length === 0 ? (
-        <div className="min-h-[30vh] flex flex-col items-center justify-center text-center px-6 py-12 rounded-2xl bg-white/5 border border-white/10">
-          <Dumbbell className="w-10 h-10 text-slate-500 mb-3" />
-          <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-            Ainda não há treinos neste período. Termina uma sessão de treino para veres a tua evolução aqui.
-          </p>
-        </div>
-      ) : (
+      {/* O caso "sem sessões no período" já saiu antes (EmptyModuleState). */}
+      {(
         <div className="space-y-4">
           {volumeData.weeklyBreakdown.length > 0 && (
             <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus, hasEnoughData: volumeData.acwrHasEnoughData }} />

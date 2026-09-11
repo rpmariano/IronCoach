@@ -118,12 +118,18 @@ export default function Warning({
  * Botão de ação de um Warning — 44px de altura (piso de toque do ponto 2),
  * na cor do tom, sobre a tinta do tom.
  */
-export function WarningAction({ tone = 'warn', onClick, children, type = 'button', ...rest }) {
+export function WarningAction({ tone = 'warn', onClick, children, type = 'button', style, ...rest }) {
   const safeTone = TONE_ICON[tone] ? tone : 'warn';
   return (
     <button
       type={type}
       onClick={onClick}
+      // `style` é FUNDIDO, não espalhado com o resto das props: enquanto ia
+      // no {...rest}, um chamador que passasse style (ex.: o "Tentar de
+      // novo" do AnalysisFailure, a alinhar o ícone) substituía o objeto
+      // inteiro e levava com ele o piso de toque — o botão caía a 24px de
+      // altura, medido no browser. O piso do ponto 2 não pode depender de
+      // quem chama se lembrar dele.
       style={{
         minHeight: 'var(--tap)',
         padding: '0 14px',
@@ -134,6 +140,7 @@ export function WarningAction({ tone = 'warn', onClick, children, type = 'button
         fontSize: 'var(--text-xs)',
         fontWeight: 700,
         cursor: 'pointer',
+        ...style,
       }}
       {...rest}
     >

@@ -569,3 +569,132 @@ describe('MealRegistration — ação primária na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar Refeição/i }));
   });
 });
+
+
+/* Ponto 7 do redesenho 6c — os dois estados que faltavam (auditoria, achado
+   10: "nenhum estado de espera ou de erro"). Handoff, "Interactions &
+   Behavior": «Espera: esqueleto + spinner no botão ("A analisar…"). Erro:
+   Warning coral com "Tentar de novo" e alternativa manual; dados do
+   utilizador nunca se perdem.» O texto do erro é o do mock "Refeição ·
+   análise falhou", na voz da Carol (CAROL.md: nunca "Desculpa, não consegui
+   analisar"). */
+describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, meals: [] });
+  });
+
+  // (a) ESPERA
+  it('enquanto analisa: botão "A analisar…" desativado, esqueleto à vista e formulário bloqueado mas visível', async () => {
+    let resolveInvoke;
+    mocks.invoke.mockReturnValue(new Promise((resolve) => { resolveInvoke = resolve; }));
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Bife com arroz' } });
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+
+    const busyButton = await screen.findByRole('button', { name: /A analisar/ });
+    expect(busyButton).toBeDisabled();
+    expect(screen.getByTestId('analysis-skeleton')).toBeInTheDocument();
+
+    // O formulário não desaparece: continua lá, com o que o atleta escreveu.
+    const fields = screen.getByTestId('meal-form-fields');
+    expect(fields).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Bife com arroz');
+    expect(screen.getByAltText('Foto 1')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveInvoke({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
+    });
+  });
+
+  // (b) ERRO + "Tentar de novo"
+  it('ao falhar: aviso com o texto do mock e "Tentar de novo" que repete a chamada com os mesmos dados', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+
+    await screen.findByTestId('analysis-failure');
+    expect(screen.getByText('Não consegui analisar')).toBeInTheDocument();
+    expect(screen.getByText(/As fotos ficaram guardadas/)).toBeInTheDocument();
+    // Nunca pede desculpa (CAROL.md, "O que evitar").
+    expect(screen.queryByText(/Desculpa/i)).not.toBeInTheDocument();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+
+    // Ponto 2: as duas ações do aviso respeitam o piso de toque de 44px.
+    // (O style do "Tentar de novo" já substituiu o minHeight do
+    // WarningAction uma vez — 24px medidos no browser; ver Warning.jsx.)
+    const retryButton = screen.getByRole('button', { name: /Tentar de novo/ });
+    expect(retryButton).toHaveStyle({ minHeight: 'var(--tap)' });
+    expect(screen.getByRole('button', { name: 'Escrever' })).toHaveStyle({ minHeight: 'var(--tap)' });
+
+    const firstBody = mocks.invoke.mock.calls[0][1].body;
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    // Mesmos dados: a mesma foto, a mesma data, o mesmo tipo de refeição.
+    expect(mocks.invoke.mock.calls[1][1].body).toEqual(firstBody);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // (b) ERRO + alternativa manual
+  it('a alternativa manual passa ao modo de escrita e preserva foto, data, tipo e observações', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Big Mac' } });
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    await screen.findByTestId('analysis-failure');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escrever' }));
+
+    // Passou ao modo manual…
+    expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
+    // …e nada se perdeu: as fotos ficam guardadas (mock: "2 fotos guardadas"),
+    // as observações e o tipo de refeição também.
+    expect(screen.getByTestId('saved-photos')).toHaveTextContent('1 foto guardada');
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Big Mac');
+    expect(screen.getByRole('button', { name: /^Almoço$/i })).toBeInTheDocument();
+    // O aviso sai assim que há um caminho novo à frente.
+    expect(screen.queryByTestId('analysis-failure')).not.toBeInTheDocument();
+  });
+
+  // (c) O texto escrito sobrevive ao erro
+  it('o que o atleta escreveu sobrevive a uma análise falhada, no ecrã e no rascunho persistido', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Timeout na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'com molho extra' } });
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Ovos' } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    await screen.findByTestId('analysis-failure');
+
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('com molho extra');
+    expect(screen.getByText('Ovos')).toBeInTheDocument();
+    expect(useAppStore.getState().meals).toEqual([]);
+
+    // A mensagem técnica fica — é ela que distingue um timeout de um 401
+    // num relatório de bug.
+    expect(screen.getByTestId('analysis-failure-detail')).toHaveTextContent('Timeout na análise.');
+
+    // E o rascunho persistido cobre o erro: fechar e reabrir não perde nada.
+    await waitFor(() => {
+      const raw = localStorage.getItem('ironcoach:refeicao-rascunho:nova');
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw).notes).toBe('com molho extra');
+    }, { timeout: 2000 });
+  });
+});

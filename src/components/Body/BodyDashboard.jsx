@@ -2,20 +2,20 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { BODY_METRICS, fmtMetric } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
-import { User, CalendarDays } from 'lucide-react';
+import { User } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import '../../lib/chartSetup';
-import Button from '../shared/Button';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import StackedAreaChart from '../BI/StackedAreaChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
+import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { bodyVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
 
 export default function BodyDashboard({ onGoToCalendar }) {
-  const { bodyAssessments, profile } = useAppStore();
+  const { bodyAssessments, profile, setOpenCreationMode } = useAppStore();
   const [timeRange, setTimeRange] = useState('trimestre');
   const [selectedMetricKey, setSelectedMetricKey] = useState('weight_kg');
 
@@ -139,23 +139,31 @@ export default function BodyDashboard({ onGoToCalendar }) {
     assessmentCount: filteredAssessments.length,
   }), [weightTrendData, compositionData, filteredAssessments.length]);
 
-  if (bodyAssessments.length === 0) {
+  /* Ponto 7 do redesenho. Este `return` antecipado era o caso que o ponto 6
+     assinalou: saía ANTES da frase de veredicto e do filtro de período, por
+     isso o Corpo era o único módulo sem veredicto nenhum quando não havia
+     dados — e o botão que mostrava ("Ir para o Calendário") recebia um
+     onGoToCalendar que ninguém passa (Body.jsx monta <BodyDashboard /> sem
+     props), ou seja, não fazia nada. Passa a ser o cartão do mock
+     "Dashboard · sem dados", já depois do veredicto e do filtro, com o
+     convite a registar uma avaliação.
+     A condição também passa a ser do PERÍODO (e não "nenhuma avaliação de
+     sempre"): com avaliações antigas mas nenhuma no trimestre, o ecrã
+     mostrava gráficos vazios sem dizer porquê. */
+  if (filteredAssessments.length === 0) {
     return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-6 fade-in">
-        <span className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4" style={{ background: 'linear-gradient(135deg, var(--mod-corpo-from), var(--mod-corpo-to))' }}>
-          <User className="w-7 h-7" style={{ color: '#fff' }} />
-        </span>
-        <h2 className="text-sm font-bold text-white mb-1">Composição corporal</h2>
-        <p className="text-xs text-slate-400 max-w-xs leading-relaxed">Ainda não tens avaliações. Vai ao Calendário para enviar o teu primeiro print da Renpho Health.</p>
-        <Button 
-          variant="module"
-          moduleColor="var(--accent)"
-          onClick={onGoToCalendar} 
-          className="mt-4 text-xs px-4"
-          icon={<CalendarDays className="w-4 h-4" />}
+      <div className="space-y-4 fade-in pb-16">
+        <VerdictLine text={verdict.text} tone={verdict.tone} />
+        <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="corpo" />
+        <EmptyModuleState
+          tone="body"
+          icon={<User size={22} />}
+          actionLabel="Registar avaliação"
+          onAction={() => setOpenCreationMode('assessment')}
         >
-          Ir para o Calendário
-        </Button>
+          Ainda não há avaliações neste período. Regista uma avaliação — podes enviar um print da Renpho Health — para veres a tua evolução aqui.
+        </EmptyModuleState>
+        <EmptyChartFrame label="Peso" unit="kg" height={192} />
       </div>
     );
   }
