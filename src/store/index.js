@@ -40,7 +40,15 @@ export const useAppStore = create((set, get) => ({
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
   planItemPrefill: null,
-  
+  // Prova que o registo de corrida vai concluir — posto por quem abre o
+  // "modo prova" do RunRegistration (hub, cartão do Início, agenda) mesmo
+  // antes de navegar para lá, e consumido UMA vez ao montar. Campo próprio
+  // em vez de mais uma chave no planItemPrefill: esse pertence ao plano de
+  // treino e é ele que dispara completePlanItem() ao gravar — uma prova da
+  // agenda não é um item de plano e não pode acabar a marcar um.
+  // Ver specs/prova-concluida.md §3.
+  runRacePrefill: null,
+
   // Coach State
   coachMessages: [],
   coachLoading: false,
@@ -117,6 +125,19 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  /* Abre o registo de corrida em MODO PROVA (specs/prova-concluida.md §3).
+     Ponto único das três entradas — hub da prova, cartão do Início e cartão
+     da agenda — para o prefill, o separador e o ecrã de topo ficarem sempre
+     no mesmo estado. setActiveTab pode ser recusado por um navGuard (um
+     formulário com alterações por gravar); nesse caso não se abre nada, tal
+     como o "+" da barra inferior já faz (Layout.jsx). */
+  openRaceRun: (raceId) => {
+    if (!raceId) return false;
+    set({ runRacePrefill: { raceId }, editingRaceId: null, openCreationMode: null });
+    if (!get().setActiveTab('corrida')) { set({ runRacePrefill: null }); return false; }
+    set({ openCreationMode: 'run' });
+    return true;
+  },
   // Onboarding (ponto 8 do redesenho 2026-09). No primeiro acesso é App.jsx
   // que o decide sozinho, a partir do perfil e dos registos (ver
   // utils/onboarding.js) — esta flag é só a REENTRADA de propósito, pelo
@@ -156,6 +177,8 @@ export const useAppStore = create((set, get) => ({
   setCoachPlanItems: (items) => set({ coachPlanItems: items }),
   setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
+  setRunRacePrefill: (value) => set({ runRacePrefill: value || null }),
+  clearRunRacePrefill: () => set({ runRacePrefill: null }),
   setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
   clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
   newlyCreatedRecord: null,
