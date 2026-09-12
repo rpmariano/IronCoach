@@ -67,6 +67,25 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     expect(screen.getByText('Principal')).toBeInTheDocument();
   });
 
+  it('exibe a hora de início (start_time) normalizada na linha de data e local', () => {
+    const raceWithTime = { ...sampleRace, start_time: '09:00:00' };
+    render(
+      <RaceCard
+        ev={raceWithTime}
+        onEdit={mockOnEdit}
+        onToggleStatus={mockOnToggleStatus}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    // Verifica que a hora aparece na linha, entre a data e o local
+    // Procura o parágrafo que contém "09:00"
+    const dateElement = screen.getByText(/09:00/);
+    expect(dateElement).toBeInTheDocument();
+    // Verifica que está na mesma linha (p tag) com o nome e local
+    expect(dateElement.textContent).toMatch(/09:00/);
+  });
+
   it('expande e apresenta os dados de prova prévia ao início (Início do Treino e Recomendações da Carol sem pílula de preparação adequada)', () => {
     render(
       <RaceCard

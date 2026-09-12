@@ -29,6 +29,7 @@ import {
 } from '../../utils/run';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
+import { startTimeInputValue } from '../../utils/startTime';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -104,6 +105,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
           </p>
           <p className="text-[11px] text-[var(--text-3)] mt-1">
             {formatDatePT(ev.date)}
+            {ev.start_time && startTimeInputValue(ev.start_time) ? ` · ${startTimeInputValue(ev.start_time)}` : ''}
             {isPast && !done ? ' · já passou' : ''}
             {ev.location ? ` · ${ev.location}` : ''}
           </p>
