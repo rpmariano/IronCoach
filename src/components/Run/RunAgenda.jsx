@@ -123,6 +123,15 @@ export default function RunAgenda({ onClose }) {
   // muda, ex.: outra prova gravada em paralelo) repunha o rascunho
   // guardado por cima de alterações mais recentes ainda não persistidas.
   const restoredForKeyRef = useRef(null);
+  // Marcador das escritas em `raceEvents` feitas por este PRÓPRIO ecrã
+  // (marcar concluída, obter informação do site) — guarda o array exato que
+  // enviámos ao store, para o efeito de carregamento abaixo o reconhecer e
+  // não repor o rascunho canónico por cima de edições ainda por gravar.
+  // Um array (e não um booleano) porque é auto-identificante: se por alguma
+  // razão o efeito não chegar a correr para essa escrita, o ref fica com um
+  // array que nunca mais volta a coincidir — nunca engole, por engano, uma
+  // alteração vinda de fora.
+  const localRaceEventsWriteRef = useRef(null);
   const [validationError, setValidationError] = useState(null);
   // Categoria (tipo+distância+D+) associada ao nível ATUALMENTE em
   // draft.experience_level — atualiza-se sempre que o próprio atleta o
@@ -281,6 +290,14 @@ export default function RunAgenda({ onClose }) {
   // que `raceEvents` muda por qualquer razão, e reaplicar o mesmo
   // instantâneo guardado a cada vez seria inofensivo mas inútil.
   useEffect(() => {
+    // Foi este ecrã que acabou de escrever no store (status, web_info)? Então
+    // não há nada a recarregar: o handler já atualizou no rascunho o único
+    // campo que mudou. Repor aqui o registo canónico inteiro apagava as
+    // edições por gravar da página "Detalhes" e limpava o isDirty — era o que
+    // acontecia ao marcar a prova como concluída a partir do Hub embutido.
+    // Uma alteração vinda de FORA (outra sessão, outro ecrã) continua a
+    // recarregar normalmente, que é o comportamento que se quer.
+    if (localRaceEventsWriteRef.current === raceEvents) return;
     const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
     const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
     restoredForKeyRef.current = draftStorageKey;
@@ -375,6 +392,14 @@ export default function RunAgenda({ onClose }) {
     }
   }, [activeTab, initialTab, isFormOpen]);
 
+  // Escrita no store vinda deste ecrã: regista o array em
+  // localRaceEventsWriteRef antes de o entregar, para o efeito de
+  // carregamento a distinguir de uma alteração externa (ver lá o porquê).
+  const writeRaceEventsLocally = (next) => {
+    localRaceEventsWriteRef.current = next;
+    setRaceEvents(next);
+  };
+
   // "Marcar como concluída" a partir do Hub embutido (RaceHubView) — a mesma
   // escrita que o toggle do cartão da agenda (Calendar.handleToggleRaceStatus),
   // só no sentido agendada → concluída, e já confirmada lá. Grava logo, sem
@@ -384,7 +409,10 @@ export default function RunAgenda({ onClose }) {
     const id = ev?.id || editingEventId;
     if (!id) return;
     const previous = raceEvents;
-    setRaceEvents(raceEvents.map(e => e.id === id ? { ...e, status: 'concluida' } : e));
+    writeRaceEventsLocally(raceEvents.map(e => e.id === id ? { ...e, status: 'concluida' } : e));
+    // Só o campo que mudou: o efeito de carregamento não repõe o canónico
+    // nesta escrita, por isso é este setDraft que mantém o Hub coerente —
+    // e é por isso também que o resto do rascunho (e o isDirty) sobrevive.
     setDraft(prev => ({ ...prev, status: 'concluida' }));
     try {
       const { error } = await supabase.from('race_events').update({ status: 'concluida' }).eq('id', id);
@@ -392,7 +420,7 @@ export default function RunAgenda({ onClose }) {
       showToast('Prova marcada como concluída.', 'success');
     } catch (err) {
       console.error(err);
-      setRaceEvents(previous);
+      writeRaceEventsLocally(previous);
       setDraft(prev => ({ ...prev, status: previous.find(e => e.id === id)?.status || 'agendada' }));
       showToast('Não consegui marcar a prova como concluída.', 'error');
     }
@@ -474,9 +502,11 @@ export default function RunAgenda({ onClose }) {
         return;
       }
       if (data?.race_event) {
-        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? data.race_event : e));
+        writeRaceEventsLocally(raceEvents.map(e => e.id === editingEventId ? data.race_event : e));
         // Direto, não updateDraft: já está gravado no servidor, não é uma
-        // alteração pendente que "Guardar" precise de submeter.
+        // alteração pendente que "Guardar" precise de submeter. E só este
+        // campo: o efeito de carregamento ignora esta escrita (é nossa), por
+        // isso o que estiver por gravar em "Detalhes" fica intacto.
         setDraft(prev => ({ ...prev, web_info: data.race_event.web_info }));
         showToast('Informação da prova atualizada.', 'success');
       } else if (data?.web_info) {

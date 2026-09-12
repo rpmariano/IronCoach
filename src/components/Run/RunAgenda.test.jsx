@@ -622,3 +622,102 @@ describe('RunAgenda — hora de partida', () => {
     });
   });
 });
+
+/* BUG CORRIGIDO (2026-09-12) — uma escrita no store feita por este próprio
+   ecrã (marcar concluída no Hub, obter informação do site) re-disparava o
+   efeito que carrega o rascunho canónico, apagando o que estivesse escrito e
+   por gravar na página "Detalhes" e limpando o isDirty.
+   "Guardar prova" só está ativo com alterações por gravar — é por aí que se
+   observa o isDirty de fora. */
+describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
+  const diasAntes = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [EXISTING_RACE],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      activeTab: 'holistica',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const irPara = (pagina) => fireEvent.click(screen.getByRole('button', { name: pagina }));
+  const notas = () => screen.getByPlaceholderText('Logística, nutrição planeada...');
+  const botaoGuardar = () => screen.getByRole('button', { name: /Guardar prova/i });
+
+  it('marcar concluída pelo Hub mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {
+    // Data passada: aí a ação vive no estado pós-prova do hub, já ativa.
+    useAppStore.setState({
+      raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'agendada' }],
+    });
+    renderAgenda();
+
+    irPara(/^Detalhes da prova$/i);
+    fireEvent.change(notas(), { target: { value: 'Levar géis extra.' } });
+    expect(botaoGuardar()).toBeEnabled();
+
+    irPara(/^Treino e Evolução$/i);
+    fireEvent.click(screen.getByTestId('race-hub-mark-completed'));
+    fireEvent.click(screen.getByRole('button', { name: /Sim, concluída/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].status).toBe('concluida');
+    });
+
+    // A nota continua lá e continua por gravar.
+    irPara(/^Detalhes da prova$/i);
+    expect(notas()).toHaveValue('Levar géis extra.');
+    expect(botaoGuardar()).toBeEnabled();
+  });
+
+  it('"Obter informação do site" mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {
+    const web_info = {
+      schedule: [{ label: 'Partida', when: 'Domingo 09:00', where: null }],
+      required_documents: 'Cartão de cidadão.',
+      category_info: null,
+      gear_recommendations: null,
+      logistics: null,
+      route_summary: null,
+      route_segments: null,
+      caveats: null,
+      source_url: 'https://corridadotejo.com/',
+      fetched_at: '2026-09-12T10:00:00.000Z',
+    };
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { race_event: { ...EXISTING_RACE, web_info } },
+      error: null,
+    });
+
+    renderAgenda();
+
+    irPara(/^Detalhes da prova$/i);
+    fireEvent.change(notas(), { target: { value: 'Dorsal levantado na véspera.' } });
+    expect(botaoGuardar()).toBeEnabled();
+
+    irPara(/^Treino e Evolução$/i);
+    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cartão de cidadão.')).toBeInTheDocument();
+    });
+
+    irPara(/^Detalhes da prova$/i);
+    expect(notas()).toHaveValue('Dorsal levantado na véspera.');
+    expect(botaoGuardar()).toBeEnabled();
+  });
+});
