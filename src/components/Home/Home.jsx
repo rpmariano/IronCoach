@@ -131,7 +131,7 @@ export default function Home() {
       <CarolCard pendingTopics={pendingTopics} topic={raceBalance ? 'o balanço da prova' : null} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
-      <DayPlanCard plans={coachPlans} planItems={coachPlanItems} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
+      <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
 
       <SectionLabel>Para onde vou</SectionLabel>
       <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} />
