@@ -163,6 +163,13 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
       position: 412, effort_rpe: 8, verdict: 'perto', basis: 'objetivo', vs_training: 'acima', is_personal_record: true,
     });
     expect(typeof payload.predicted_seconds).toBe('number');
+    expect(payload.splits).toEqual([]);
     expect(buildRaceOutcomePayload(null, RACE)).toBeNull();
+  });
+
+  it('os parciais registados seguem no payload, limpos', () => {
+    const run = { ...RACE_RUN, details: { official_time_seconds: 6822, splits: [{ distance_km: 5, time_seconds: 1600 }, { distance_km: '10', time_seconds: '3210' }, { distance_km: null, time_seconds: 100 }, { distance_km: 15, time_seconds: 0 }] } };
+    const out = classifyRaceOutcome({ race: RACE, run, runs: [run], profile: PROFILE });
+    expect(buildRaceOutcomePayload(out, RACE, run).splits).toEqual([{ distance_km: 5, time_seconds: 1600 }, { distance_km: 10, time_seconds: 3210 }]);
   });
 });

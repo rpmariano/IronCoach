@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2897,7 +2898,7 @@ Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto d
     assertStringIncludes(sys, "não é uma notificação do sistema");
   }
   assertStringIncludes(sysCarol(undefined, "silence", null), "Estás bem?");
-  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados, sem números");
+  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados nem lista");
   assertStringIncludes(sysCarol(undefined, "race_after", null), "sem balanço inventado");
   assertStringIncludes(buildProactiveUserTurn("race_eve"), "race_eve");
   assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
@@ -2921,7 +2922,7 @@ function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
   return {
     race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
     official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
-    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
+    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [],
     ...overrides,
   };
 }
@@ -3066,4 +3067,74 @@ Deno.test("raceOutcomeNote: a memória de longo prazo da prova, curta e com o ve
     "Prova «Meia de Lisboa» (2027-03-08, meia): 1:53:42; sem objetivo marcado.",
   );
   assertEquals(raceOutcomeNote(outcome()).length <= 501, true);
+});
+
+// ── Plano para o dia da prova (specs/plano-de-prova.md) ─────────────────────
+const PLANO_MEIA = buildRacePacingPlan({
+  distanceKm: 21.1, raceType: "estrada", targetSeconds: 6720, predictedSeconds: 6810, experienceLevel: "medio",
+  routeSegments: [{ km_marker: 6.2, description: "subida da Calçada da Ajuda", elevation: "sobe" }],
+});
+
+Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e o abastecimento", () => {
+  const ctx = buildRacePlanContext(PLANO_MEIA, "Meia de Lisboa", 1)!;
+  assertStringIncludes(ctx, "=== PLANO PARA O DIA DA PROVA");
+  assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
+  assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
+  assertStringIncludes(ctx, "Primeiro km: 5.26/km. Ponto de decisão: km 15.");
+  assertStringIncludes(ctx, "Percurso: conhecido");
+  assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
+  assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida (subida da Calçada da Ajuda)");
+  assertStringIncludes(ctx, "Abastecimento: km 5 água");
+  assertEquals(buildRacePlanContext(null, "X", 1), null);
+});
+
+Deno.test("buildRacePlanContext: objetivo ambicioso diz-o; percurso desconhecido proíbe inventar", () => {
+  const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 2400, predictedSeconds: 2700 });
+  const ctx = buildRacePlanContext(plan, "Corrida das Vindimas", 0)!;
+  assertStringIncludes(ctx, "— é hoje.");
+  assertStringIncludes(ctx, "o objetivo 40:00 é AMBICIOSO (mais de 3% abaixo) e decide-se ao km 7.");
+  assertStringIncludes(ctx, "Percurso: DESCONHECIDO — não descrevas subidas nem lugares.");
+});
+
+Deno.test("parseRaceOutcome: os parciais entram limpos e limitados", () => {
+  const parsed = parseRaceOutcome({ verdict: "aquem", official_seconds: 3300, splits: [{ distance_km: 5, time_seconds: 1500 }, { distance_km: "10", time_seconds: "3300" }, { distance_km: 0, time_seconds: 10 }, "lixo", null] })!;
+  assertEquals(parsed.splits, [{ distance_km: 5, time_seconds: 1500 }, { distance_km: 10, time_seconds: 3300 }]);
+  assertEquals(parseRaceOutcome({ verdict: "aquem", official_seconds: 3300 })!.splits, []);
+});
+
+Deno.test("buildSplitsComparisonContext: os km com desvio e a leitura (arranque rápido, quebra no fim)", () => {
+  const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 });
+  const splits = [{ distance_km: 1, time_seconds: 290 }, { distance_km: 5, time_seconds: 1208 }, { distance_km: 10, time_seconds: 1560 }];
+  const ctx = buildSplitsComparisonContext(compareSplitsToPlan(plan, splits), plan, splits.length)!;
+  assertStringIncludes(ctx, "=== PARCIAIS FACE AO PLANO PARA O DIA");
+  assertStringIncludes(ctx, "- km 1: fez 4.50/km, o plano dizia 5.06/km (16 s/km mais rápido).");
+  assertStringIncludes(ctx, "- km 10: fez 5.12/km, o plano dizia 4.52/km (20 s/km mais lento).");
+  assertStringIncludes(ctx, "Leitura: arrancou acima do plano.");
+  assertStringIncludes(ctx, "Leitura: quebrou na parte final.");
+  const flat = buildSplitsComparisonContext([], plan, 2)!;
+  assertStringIncludes(flat, "2 parciais registados, todos a menos de 5 s/km do plano: correu como planeado.");
+  assertEquals(buildSplitsComparisonContext([], plan, 0), null);
+  assertEquals(buildSplitsComparisonContext([], null, 3), null);
+});
+
+Deno.test("véspera e manhã apontam para o plano; o balanço manda usar os parciais", () => {
+  assertStringIncludes(buildProactiveInstruction("race_eve", null), "PLANO PARA O DIA");
+  assertStringIncludes(buildProactiveInstruction("race_eve", null), "Não inventes troços nem ritmos");
+  assertStringIncludes(buildProactiveInstruction("race_morning", null), "o único número permitido é o ritmo do primeiro km");
+  assertStringIncludes(raceAfterInstruction(outcome({ verdict: "aquem", target_seconds: 6300 })), "PARCIAIS FACE AO PLANO PARA O DIA");
+});
+
+Deno.test("buildSystemInstruction injeta o plano e os parciais quando existem", () => {
+  const planCtx = buildRacePlanContext(PLANO_MEIA, "Meia de Lisboa", 1)!;
+  // 33 parâmetros posicionais; os dois últimos são o plano e os parciais.
+  const args: unknown[] = new Array(33).fill(null);
+  args[1] = BIO_BASE;
+  args[27] = undefined; // lastExchangeHoursAgo: "quem chama não sabe"
+  args[31] = planCtx;
+  args[32] = "=== PARCIAIS FACE AO PLANO PARA O DIA ===\nteste";
+  // deno-lint-ignore no-explicit-any
+  const sys = (buildSystemInstruction as any)(...args) as string;
+  assertStringIncludes(sys, "=== PLANO PARA O DIA DA PROVA");
+  assertStringIncludes(sys, "responde com ESTE plano");
+  assertStringIncludes(sys, "=== PARCIAIS FACE AO PLANO PARA O DIA ===\nteste");
 });
