@@ -5,6 +5,10 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import Coach from './Coach';
+// Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
+// a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
+const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 
 // Mesmo padrão de mock usado em RunAgenda.test.jsx: supabase.from é um
 // vi.fn() reconfigurável por teste (mockImplementation), em vez de uma
@@ -583,7 +587,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   });
 
   it('3 dias sem registo: ao abrir o chat a Carol escreve primeiro ("Estás bem?") — e só uma vez', async () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ runs: [{ id: 'r1', date: fiveDaysAgo, distance_km: 8, duration_seconds: 2400 }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: { model_message: { id: 'p1', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' },
@@ -606,7 +610,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   });
 
   it('se o servidor saltar (ela falou há pouco), não fica marcado — volta a tentar na abertura seguinte', async () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, proactive: 'silence', model_message: null, suggestions: [] }, error: null });
 
@@ -624,7 +628,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   it('INCIDENTE 2026-09-12 — se o servidor recusar (409 busy), a mensagem proativa falha em silêncio: sem "A tua mensagem não saiu"', async () => {
     // O atleta não escreveu nada — uma bolha a dizer que a mensagem dele
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
