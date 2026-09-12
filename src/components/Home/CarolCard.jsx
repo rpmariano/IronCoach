@@ -66,7 +66,10 @@ export function useCoachDailyMessages() {
     // hidratar-te…"); juntar-lhe a frase local dizia a mesma coisa duas
     // vezes seguidas (bug relatado 2026-09-12). A frase local fica só para
     // quando o aviso não fala de água — que é o caso sem resumo do dia.
-    const mentionsWater = /\b(água|agua|hidrat)/i.test(warning);
+    // Sem \b antes de "água": em JavaScript \b é só ASCII e nunca casa entre
+    // um espaço e um "á" — apanhado na revisão pré-deploy; passava só porque
+    // o servidor escreve sempre "hidratar-te".
+    const mentionsWater = /água|\b(agua|hidrat)/i.test(warning);
     if (waterGoal && !mentionsWater && waterTotal === 0) warning = `${warning} Ainda não registaste água hoje.`.trim();
     else if (waterGoal && !mentionsWater && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
     if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning });

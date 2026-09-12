@@ -74,6 +74,16 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     expect(screen.getByText(/Para hoje tens agendado: Corrida \(longo, 16 km\)\. Ainda não registaste água hoje\./)).toBeInTheDocument();
   });
 
+  it('a água conta mesmo sem "hidratar" no aviso (o \\b não casa antes de "á")', () => {
+    useAppStore.setState({
+      profile: { id: 'u1', water_goal_ml: 2500 },
+      dailySummary: { date: '2026-08-11', recap: null, warnings: 'Bebe mais água ao longo do dia.', meal_suggestion: null, tomorrow_prep: null },
+    });
+    render(<CarolCard />);
+    expect(screen.getByText('Bebe mais água ao longo do dia.')).toBeInTheDocument();
+    expect(screen.queryByText(/Ainda não registaste água hoje\./)).not.toBeInTheDocument();
+  });
+
   it('não repete a água quando o aviso do servidor já fala dela', () => {
     useAppStore.setState({
       profile: { id: 'u1', water_goal_ml: 2500 },
