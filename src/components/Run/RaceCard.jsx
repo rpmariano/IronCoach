@@ -52,9 +52,13 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
      prova três semanas depois continua a ser legítimo.
      "Marcar como concluída" fica como saída secundária para quem não quer
      registar nada, e desaparece assim que há corrida ligada — aí seria uma
-     contradição a oferecer-se ao lado do registo. */
+     contradição a oferecer-se ao lado do registo. Também só a partir do dia
+     da prova (pedido 2026-09-12): antes disso não há nada para concluir, e
+     o botão aceso convidava a fechar uma prova por correr. "Repor" (a
+     desfazer) não tem esse limite. */
   const raceRun = findRaceRun(runs, ev);
-  const canRegister = ev.date <= todayIso && !raceRun;
+  const raceDayReached = ev.date <= todayIso;
+  const canRegister = raceDayReached && !raceRun;
 
   // Macrociclo e evolução da preparação através do motor unificado
   const plan = useMemo(() => {
@@ -259,7 +263,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
             <Button
               variant="light"
               onClick={(e) => { e.stopPropagation(); onToggleStatus && onToggleStatus(ev); setExpanded(false); }}
-              className={`w-full text-xs mt-2 ${done ? 'text-[var(--race)]' : 'text-[var(--ok)]'}`}
+              disabled={!done && !raceDayReached}
+              className={`w-full text-xs mt-2 ${done ? 'text-[var(--race)]' : raceDayReached ? 'text-[var(--ok)]' : ''}`}
               icon={done ? <RotateCcw size={14} /> : <CheckCircle size={14} />}
             >
               {done ? 'Repor' : 'Marcar como concluída'}

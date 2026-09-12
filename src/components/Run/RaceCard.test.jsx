@@ -119,7 +119,7 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     expect(mockOnEdit).toHaveBeenCalledWith('race-1');
   });
 
-  it('invoca a callback de alternar status', () => {
+  it('antes do dia da prova, "Marcar como concluída" está desativado (pedido 2026-09-12)', () => {
     render(
       <RaceCard
         ev={sampleRace}
@@ -130,7 +130,24 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     );
 
     fireEvent.click(screen.getByText('Corrida do Tejo'));
-    fireEvent.click(screen.getByRole('button', { name: /Concluída/i }));
+    const btn = screen.getByRole('button', { name: /Marcar como concluída/i });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(mockOnToggleStatus).not.toHaveBeenCalled();
+  });
+
+  it('já concluída, "Repor" continua disponível mesmo com a data no futuro', () => {
+    render(
+      <RaceCard
+        ev={{ ...sampleRace, status: 'concluida' }}
+        onEdit={mockOnEdit}
+        onToggleStatus={mockOnToggleStatus}
+        onDelete={mockOnDelete}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+    fireEvent.click(screen.getByRole('button', { name: /Repor/i }));
     expect(mockOnToggleStatus).toHaveBeenCalled();
   });
 

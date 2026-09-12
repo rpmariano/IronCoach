@@ -368,6 +368,29 @@ export default function RunAgenda({ onClose }) {
     }
   }, [activeTab, initialTab, isFormOpen]);
 
+  // "Marcar como concluída" a partir do Hub embutido (RaceHubView) — a mesma
+  // escrita que o toggle do cartão da agenda (Calendar.handleToggleRaceStatus),
+  // só no sentido agendada → concluída, e já confirmada lá. Grava logo, sem
+  // passar pelo "Guardar prova": é um estado, não uma edição do rascunho —
+  // por isso toca no draft sem o sujar (setDraft direto, não updateDraft).
+  const handleMarkCompleted = async (ev) => {
+    const id = ev?.id || editingEventId;
+    if (!id) return;
+    const previous = raceEvents;
+    setRaceEvents(raceEvents.map(e => e.id === id ? { ...e, status: 'concluida' } : e));
+    setDraft(prev => ({ ...prev, status: 'concluida' }));
+    try {
+      const { error } = await supabase.from('race_events').update({ status: 'concluida' }).eq('id', id);
+      if (error) throw error;
+      showToast('Prova marcada como concluída.', 'success');
+    } catch (err) {
+      console.error(err);
+      setRaceEvents(previous);
+      setDraft(prev => ({ ...prev, status: previous.find(e => e.id === id)?.status || 'agendada' }));
+      showToast('Não consegui marcar a prova como concluída.', 'error');
+    }
+  };
+
   const updateDraft = (key, val) => {
     setIsDirty(true);
     setDraft(prev => ({ ...prev, [key]: val }));
@@ -871,6 +894,7 @@ export default function RunAgenda({ onClose }) {
                 gymSessions={gymSessions}
                 onFetchWebInfo={handleFetchWebInfo}
                 fetchingWebInfo={fetchingWebInfo}
+                onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
                 onGoToEdit={() => {
                   setActivePage('details');
                   scrollTo(1);
@@ -1158,11 +1182,15 @@ export default function RunAgenda({ onClose }) {
           carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
           é uma só, sempre visível, seja qual for a página. */}
       <ActionBar>
+        {/* Só há o que guardar quando algo mudou (isDirty): a barra também
+            está por cima do Hub, que é só de leitura, e um "Guardar prova"
+            aceso sem alterações convidava a gravar o nada (relatado
+            2026-09-12). Novo registo: escrever o nome já suja o rascunho. */}
         <Button
           variant="module"
           moduleColor="var(--mod-prova)"
           onClick={handleSaveForm}
-          disabled={isSubmitting || !draft.name.trim()}
+          disabled={isSubmitting || !draft.name.trim() || !isDirty}
           type="button"
           className="w-full text-xs"
           icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
