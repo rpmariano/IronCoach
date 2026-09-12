@@ -649,3 +649,68 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     expect(screen.getByText(/Sou a Carol, a tua treinadora/)).toBeInTheDocument();
   });
 });
+
+/* specs/plano-de-prova.md, "O plano tem de saber da prova" — Alerta de
+   ajuste. O Início deteta a divergência (utils/planDivergence.js) e abre o
+   chat já no "Adaptar plano", com os motivos no corpo. */
+describe('Coach — "o plano precisa de um ajuste"', () => {
+  const SIGNATURE = 'p1|prova_sem_item:r1:2026-09-13';
+  const STORAGE_KEY = 'ironcoach:plano-ajuste:user-1';
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Vi que a prova não está no plano. Vamos arrumar isso.' }, suggestions: [] },
+      error: null,
+    });
+  });
+
+  it('o botão "Adaptar plano" (string) continua a fazer o check-in de sempre, sem motivos', async () => {
+    useAppStore.setState({ coachIntent: 'adapt_plan' });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.is_plan_checkin).toBe(true);
+    expect(body.plan_divergence).toBeUndefined();
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('vindo do Início com motivos: mesmo check-in, mas com plan_divergence — e a assinatura fica tratada', async () => {
+    useAppStore.setState({
+      coachIntent: { kind: 'adapt_plan', divergence: ['A Corrida do Tejo (13 set) não está no plano.'], signature: SIGNATURE },
+    });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.is_plan_checkin).toBe(true);
+    expect(body.plan_divergence).toEqual(['A Corrida do Tejo (13 set) não está no plano.']);
+    await waitFor(() => expect(window.localStorage.getItem(STORAGE_KEY)).toBe(SIGNATURE));
+  });
+
+  it('o servidor aceita no máximo 6 motivos', async () => {
+    const oito = Array.from({ length: 8 }, (_, i) => `motivo ${i + 1}`);
+    useAppStore.setState({ coachIntent: { kind: 'adapt_plan', divergence: oito, signature: SIGNATURE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.plan_divergence).toHaveLength(6);
+    expect(body.plan_divergence[5]).toBe('motivo 6');
+  });
+
+  it('se o pedido falhar, a assinatura NÃO fica tratada — ela volta a chamar', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'rede', isTimeout: false, isBusy: true });
+    useAppStore.setState({ coachIntent: { kind: 'adapt_plan', divergence: ['x'], signature: SIGNATURE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});

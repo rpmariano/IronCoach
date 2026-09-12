@@ -4,6 +4,7 @@ import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { pendingRaceBalance } from '../../utils/coachProactive';
+import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
 import SectionLabel from '../shared/SectionLabel';
@@ -65,8 +66,28 @@ export default function Home() {
     [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile],
   );
 
+  /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
+     saber da prova"): a app deteta sozinha quando a realidade se afastou do
+     plano — prova sem item de prova, treino no dia da prova, trabalho forte
+     na véspera, sessões falhadas — e a Carol chama por isso. A assinatura
+     impede que ela chame pela mesma coisa outra vez enquanto o plano não
+     mudar. Prioridade: uma intervenção pesa mais, e o ajuste pesa mais do
+     que o balanço da prova (que é uma boa notícia, não uma urgência). */
+  const divergence = useMemo(() => {
+    if (pendingTopics > 0) return null;
+    const found = detectPlanDivergence({ coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today });
+    if (!found.reasons.length || wasDivergenceHandled(profile?.id, found.signature)) return null;
+    return found;
+  }, [pendingTopics, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
+
+  const carolTopic = divergence ? 'o plano precisa de um ajuste' : raceBalance ? 'o balanço da prova' : null;
+
   const openCoach = () => {
-    if (interventionPending) setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
+    if (interventionPending) {
+      setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
+    } else if (divergence) {
+      setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
+    }
     setActiveTab('coach');
   };
 
@@ -128,7 +149,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
-      <CarolCard pendingTopics={pendingTopics} topic={raceBalance ? 'o balanço da prova' : null} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
+      <CarolCard pendingTopics={pendingTopics} topic={carolTopic} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />

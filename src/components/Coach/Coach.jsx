@@ -12,6 +12,7 @@ import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
 import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
+import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 // Chave única — o chat da Carol é uma conversa só, não um registo por id
@@ -201,11 +202,22 @@ export default function Coach() {
   // atender como quem abre a porta: cumprimentar/retomar consoante já
   // tenham falado hoje, perguntar como pode ajudar, e só trazer um alerta
   // ativo à conversa como hipótese — nunca como acusação.
-  const handleAdaptPlanCheckin = () => sendCoachInitiatedPayload({
+  /* `divergence` só vem do Início, quando a app detetou sozinha que o plano
+     e a realidade se afastaram (utils/planDivergence.js): é o MESMO
+     check-in, mas com os motivos concretos no corpo — o servidor aceita até
+     seis textos em `plan_divergence` e a Carol explica o que muda e propõe o
+     plano ajustado. Recebida a resposta, a assinatura fica marcada como
+     tratada e a mesma deteção não volta a chamar enquanto o plano não mudar.
+     specs/plano-de-prova.md, "O plano tem de saber da prova". */
+  const handleAdaptPlanCheckin = ({ divergence = null, signature = null } = {}) => sendCoachInitiatedPayload({
     message: '',
     is_plan_checkin: true,
+    ...(divergence?.length ? { plan_divergence: divergence.slice(0, MAX_DIVERGENCE_TEXTS) } : {}),
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
+  }).then((data) => {
+    if (data && signature) markDivergenceHandled(profile?.id, signature);
+    return data;
   });
 
   useEffect(() => {
@@ -214,9 +226,17 @@ export default function Coach() {
       handleProactiveIntervention(coachIntent);
       return;
     }
+    // Os botões "Adaptar plano" mandam a string; o Início, quando detetou uma
+    // divergência, manda o objeto com os motivos.
     if (coachIntent === 'adapt_plan') {
       setCoachIntent(null);
       handleAdaptPlanCheckin();
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'adapt_plan') {
+      const { divergence, signature } = coachIntent;
+      setCoachIntent(null);
+      handleAdaptPlanCheckin({ divergence, signature });
       return;
     }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
