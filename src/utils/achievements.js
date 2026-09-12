@@ -171,21 +171,79 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
   return [provaConcluida, objetivoBatido, recordePessoal, primeiraTrail, sequencia];
 }
 
-/** As conquistas desbloqueadas POR esta prova — o que o hub e o cartão do
- *  Início mostram no dia a seguir. */
-export function achievementsForRace(list, raceId) {
-  if (!raceId) return [];
-  return (list || []).filter((a) => a.unlocked && a.raceId === raceId);
-}
-
-/** As que ficaram por desbloquear e que esta prova ainda podia ter dado —
- *  só objetivo e recorde: "primeira de trail" ou "sequência" não são
- *  falhas de quem correu. */
+/* As conquistas de UMA prova avaliam-se NA PRÓPRIA prova, não por "foi a
+   mais recente a cumprir a condição": com duas provas com objetivo batido,
+   as duas o bateram — e o hub da mais antiga, a lista do Palmarés e o cartão
+   do Início têm de o dizer. (Antes filtrava-se o palmarés global pelo raceId
+   da última que cumpria, e a mais antiga aparecia sem conquistas e com um
+   "fica para a próxima" errado — apanhado na revisão pré-deploy.)
+   Devolve { earned, missed }: o que ela deu, e o que ainda podia ter dado —
+   só objetivo e recorde, porque "primeira de trail" ou "sequência" não são
+   falhas de quem correu. */
 export const PERDIDAS_NA_PROVA = ['objetivo_batido', 'recorde_pessoal'];
 
-export function missedInRace(list, raceId) {
-  if (!raceId) return [];
-  return (list || []).filter((a) => PERDIDAS_NA_PROVA.includes(a.key) && a.raceId !== raceId);
+const LOCKED_SHAPE = {
+  objetivo_batido: { name: 'Objetivo batido', short: 'Objetivo', tone: 'ok', Icon: Target },
+  recorde_pessoal: { name: 'Recorde pessoal', short: 'Recorde', tone: 'run', Icon: Zap },
+};
+
+export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = new Date() } = {}, raceId) {
+  const none = { earned: [], missed: [] };
+  if (!raceId) return none;
+  const today = isoDay(now);
+  const completed = completedRaces({ raceEvents, runs, profile });
+  const idx = completed.findIndex(({ race }) => race.id === raceId);
+  if (idx < 0) return none;
+  const { race, outcome } = completed[idx];
+  const isNew = daysBetween(dayOf(race.date), today) < NOVA_ATE_DIAS;
+  const item = (key, name, short, tone, Icon, detail) => ({
+    key, name, short, tone, Icon, unlocked: true, date: dayOf(race.date), raceId: race.id, raceName: race.name ?? null, detail, isNew,
+  });
+  const locked = (key) => ({ key, ...LOCKED_SHAPE[key], unlocked: false, raceId: race.id });
+  const earned = [];
+  const missed = [];
+
+  // A lista vem da mais recente para a mais antiga: a ordem desta prova é
+  // quantas há dela (inclusive) para trás.
+  earned.push(item('prova_concluida', 'Prova concluída', 'Prova', 'race', Flag, `${ordinalFem(completed.length - idx)} prova`));
+
+  if (outcome?.verdict === 'superado' && outcome?.basis === 'objetivo') {
+    earned.push(item('objetivo_batido', 'Objetivo batido', 'Objetivo', 'ok', Target,
+      `${race.name}, ${formatDuration(outcome.officialSeconds)} (objetivo ${formatDuration(outcome.targetSeconds)})`));
+  } else {
+    missed.push(locked('objetivo_batido'));
+  }
+
+  if (outcome?.isPersonalRecord) {
+    earned.push(item('recorde_pessoal', 'Recorde pessoal', 'Recorde', 'run', Zap,
+      `${capitalize(raceCategoryLabel(outcome.category))}: ${formatDuration(outcome.officialSeconds)}, ${formatDelta(outcome.deltaBestSeconds)} abaixo do anterior`));
+  } else {
+    missed.push(locked('recorde_pessoal'));
+  }
+
+  const trails = completed.filter(({ race: r }) => r.race_type === 'trail');
+  if (trails.length && trails[trails.length - 1].race.id === race.id) {
+    earned.push(item('primeira_trail', 'Primeira de trail', 'Trail', 'race', Mountain,
+      [race.name, outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null].filter(Boolean).join(', ')));
+  }
+
+  // A sequência conta-se a partir da 2.ª prova seguida: a posição desta na
+  // sequência atual é o número que ela mostra ("2 provas seguidas").
+  const pos = currentStreak(raceEvents, runs, today).findIndex((r) => r.id === race.id);
+  if (pos >= 1) earned.push(item('sequencia', 'Sequência de provas', 'Sequência', 'race', Repeat, `${pos + 1} provas seguidas`));
+
+  return { earned, missed };
+}
+
+/** As conquistas desbloqueadas POR esta prova — o que o hub, o cartão do
+ *  Início e a confirmação do registo mostram. */
+export function achievementsForRace(data, raceId) {
+  return evaluateRace(data, raceId).earned;
+}
+
+/** As que esta prova ainda podia ter dado (objetivo, recorde). */
+export function missedInRace(data, raceId) {
+  return evaluateRace(data, raceId).missed;
 }
 
 /** A linha discreta do hub: o que esta prova não deu, com o número de quanto

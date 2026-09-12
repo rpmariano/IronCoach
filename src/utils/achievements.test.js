@@ -78,14 +78,19 @@ describe('computeAchievements — uma prova concluída', () => {
     expect(a.sequencia.unlocked).toBe(false);
   });
 
+  const dados = { raceEvents: [race], runs: [...TREINOS, run], profile: PROFILE, now: AGORA };
+
   it('achievementsForRace devolve só as desta prova', () => {
-    const desta = achievementsForRace(lista, 'r1');
+    const desta = achievementsForRace(dados, 'r1');
     expect(desta.map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido']);
-    expect(achievementsForRace(lista, 'outra')).toEqual([]);
+    expect(desta[0].detail).toBe('1.ª prova');
+    expect(desta.every((x) => x.unlocked && x.isNew && x.raceId === 'r1')).toBe(true);
+    expect(achievementsForRace(dados, 'outra')).toEqual([]);
+    expect(achievementsForRace(dados, null)).toEqual([]);
   });
 
   it('missedInRace devolve o que esta prova ainda podia ter dado', () => {
-    expect(missedInRace(lista, 'r1').map((x) => x.key)).toEqual(['recorde_pessoal']);
+    expect(missedInRace(dados, 'r1').map((x) => x.key)).toEqual(['recorde_pessoal']);
   });
 });
 
@@ -132,6 +137,36 @@ describe('computeAchievements — recorde pessoal', () => {
     const feitas = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE });
     expect(feitas.map((f) => f.race.id)).toEqual(['r1', 'r0']);
     expect(feitas[0].outcome.officialSeconds).toBe(6822);
+  });
+
+  it('cada prova avalia-se nela própria: a antiga é a 1.ª e não faz sequência, a nova é a 2.ª, com recorde e sequência', () => {
+    const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
+    expect(achievementsForRace(dados, 'r0').map((x) => `${x.key}:${x.detail}`)).toEqual(['prova_concluida:1.ª prova']);
+    expect(achievementsForRace(dados, 'r0')[0].isNew).toBe(false);
+    expect(achievementsForRace(dados, 'r1').map((x) => x.key)).toEqual(['prova_concluida', 'recorde_pessoal', 'sequencia']);
+    expect(achievementsForRace(dados, 'r1').find((x) => x.key === 'sequencia').detail).toBe('2 provas seguidas');
+  });
+});
+
+describe('achievementsForRace — duas provas com objetivo batido têm-no as duas', () => {
+  const antiga = meia({ id: 'r0', name: 'Meia do Estoril', date: '2026-05-10', target_time_seconds: 7200 });
+  const nova = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
+  const runs = [
+    ...TREINOS,
+    corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 7066, details: { official_time_seconds: 7066 } }),
+    corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } }),
+  ];
+  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
+
+  it('a antiga não perde o objetivo por a nova também o ter batido', () => {
+    expect(achievementsForRace(dados, 'r0').map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido']);
+    expect(missedInRace(dados, 'r0').map((x) => x.key)).toEqual(['recorde_pessoal']);
+    expect(achievementsForRace(dados, 'r1').map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido', 'recorde_pessoal', 'sequencia']);
+    expect(missedInRace(dados, 'r1')).toEqual([]);
+  });
+
+  it('o palmarés global continua a apontar para a mais recente', () => {
+    expect(byKey(computeAchievements(dados)).objetivo_batido.raceId).toBe('r1');
   });
 });
 
@@ -197,18 +232,19 @@ describe('missedInRace / describeMissedInRace — o que ficou para a próxima', 
     corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 6938, details: { official_time_seconds: 6938 } }),
     corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } }),
   ];
-  const lista = computeAchievements({ raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA });
+  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
+  const lista = computeAchievements(dados);
 
   it('uma conquista dada por OUTRA prova conta como não dada nesta', () => {
     // O objetivo foi batido na do Estoril (6938 < 7200), não em Lisboa.
     expect(byKey(lista).objetivo_batido.raceId).toBe('r0');
-    expect(missedInRace(lista, 'r1').map((x) => x.key)).toEqual(['objetivo_batido', 'recorde_pessoal']);
-    expect(missedInRace(lista, 'r0').map((x) => x.key)).toEqual(['recorde_pessoal']);
+    expect(missedInRace(dados, 'r1').map((x) => x.key)).toEqual(['objetivo_batido', 'recorde_pessoal']);
+    expect(missedInRace(dados, 'r0').map((x) => x.key)).toEqual(['recorde_pessoal']);
   });
 
   it('a linha diz de quanto foi, com o número', () => {
     const outcome = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE })[0].outcome;
-    const [objetivo, recorde] = missedInRace(lista, 'r1');
+    const [objetivo, recorde] = missedInRace(dados, 'r1');
     expect(describeMissedInRace(objetivo, outcome)).toBe('Objetivo batido fica para a próxima: ficaste a 1:42');
     expect(describeMissedInRace(recorde, outcome)).toBe('Recorde pessoal fica para a próxima: 1:04 acima do teu melhor na meia');
   });
@@ -217,7 +253,7 @@ describe('missedInRace / describeMissedInRace — o que ficou para a próxima', 
     const semNada = meia({ id: 'r9', name: 'Meia Solta', date: '2026-09-10' });
     const run = corrida({ id: 'run9', race_id: 'r9', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } });
     const outcome = completedRaces({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE })[0].outcome;
-    const perdidas = missedInRace(computeAchievements({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }), 'r9');
+    const perdidas = missedInRace({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }, 'r9');
     expect(describeMissedInRace(perdidas[0], outcome)).toBe('Objetivo batido fica para a próxima: esta prova não tinha objetivo marcado');
     expect(describeMissedInRace(perdidas[1], outcome)).toBe('Recorde pessoal fica para a próxima: precisa de duas provas na mesma distância');
   });

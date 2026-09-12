@@ -15,7 +15,8 @@ import {
 } from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
-import { computeAchievements, achievementsForRace } from '../../utils/achievements';
+import { achievementsForRace } from '../../utils/achievements';
+import { raceResultSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -390,8 +391,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // Limpa o item do plano do store assim que foi consumido para os estados
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Nova Corrida".
   useEffect(() => {
-    if (completingPlanItemRef.current) useAppStore.getState().clearPlanItemPrefill();
-    if (runRacePrefillRef.current) useAppStore.getState().clearRunRacePrefill();
+    const store = useAppStore.getState();
+    if (completingPlanItemRef.current) store.clearPlanItemPrefill();
+    // Limpa-se SEMPRE que exista, não só quando foi consumido: a editar uma
+    // corrida já gravada (o hub a reabrir o registo para as memórias) o ref
+    // fica a null de propósito, mas o store ficava com o prefill — e o
+    // "Nova corrida" seguinte abria em modo prova dessa prova e gravava uma
+    // segunda corrida ligada a ela (apanhado na revisão pré-deploy).
+    if (store.runRacePrefill) store.clearRunRacePrefill();
   }, []);
 
   /* Seletor "Qual prova?" do FAB → chip "Competição": as provas agendadas a
@@ -826,13 +833,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   };
 
   /* Envia o que é novo para race-memories/<uid>/<raceId>/… e grava os
-     caminhos na prova, junto com o status. Um nome fixo por memória (e
-     upsert) em vez de nomes únicos: substituir o diploma não pode deixar o
-     anterior a ocupar espaço para sempre. */
+     caminhos na prova, junto com o status. Diploma e medalha têm nome fixo
+     (é uma de cada; upsert substitui). As fotografias levam nome ÚNICO: com
+     nomes por posição, remover a 1.ª de três e juntar uma nova enviava-a
+     como photo-3.jpg por cima da antiga e a galeria ficava com a mesma foto
+     duas vezes (apanhado na revisão pré-deploy). O que deixou de ser
+     referenciado apaga-se do bucket no fim, para nada ficar a ocupar espaço
+     para sempre — best-effort: se falhar, fica só no log. */
   const persistRaceMemories = async () => {
     const userId = profile?.id;
     const base = `${userId}/${raceId}`;
     const bucket = supabase.storage.from(RACE_MEMORIES_BUCKET);
+    const currentRace = (useAppStore.getState().raceEvents || []).find(e => e.id === raceId);
+    const before = new Set([currentRace?.diploma_path, currentRace?.medal_path, ...(currentRace?.photo_paths || [])].filter(Boolean));
 
     const send = async (path, memory) => {
       const { error } = await bucket.upload(path, memory.blob, {
@@ -853,14 +866,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       : null;
 
     const photoPaths = [];
+    const stamp = Date.now();
     for (let i = 0; i < racePhotos.length; i += 1) {
       const photo = racePhotos[i];
-      photoPaths.push(photo.blob ? await send(`${base}/photo-${i + 1}.jpg`, photo) : photo.path);
+      photoPaths.push(photo.blob ? await send(`${base}/photo-${stamp}-${i + 1}.jpg`, photo) : photo.path);
     }
     patch.photo_paths = photoPaths.filter(Boolean);
 
     const { error } = await supabase.from('race_events').update(patch).eq('id', raceId);
     if (error) throw error;
+
+    const kept = new Set([patch.diploma_path, patch.medal_path, ...patch.photo_paths].filter(Boolean));
+    const orphans = [...before].filter(p => !kept.has(p));
+    if (orphans.length) {
+      const { error: removeError } = await bucket.remove(orphans);
+      if (removeError) console.warn('Memórias antigas da prova não apagadas do bucket', removeError);
+    }
     return patch;
   };
 
@@ -883,10 +904,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      atleta vai a seguir. */
   const novaConquistaDaProva = () => {
     const store = useAppStore.getState();
-    const novas = achievementsForRace(
-      computeAchievements({ raceEvents: store.raceEvents, runs: store.runs, profile }),
-      raceId,
-    ).filter((a) => a.isNew);
+    // A que se mostra é a mais rara: "Prova concluída" toda a prova dá — se
+    // esta também deu o objetivo ou um recorde, é isso que vai à frente.
+    const prioridade = ['objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia', 'prova_concluida'];
+    const novas = achievementsForRace({ raceEvents: store.raceEvents, runs: store.runs, profile }, raceId)
+      .filter((a) => a.isNew)
+      .sort((a, b) => prioridade.indexOf(a.key) - prioridade.indexOf(b.key));
     if (!novas.length) return null;
     const resto = novas.length - 1;
     return { ...novas[0], extra: resto > 0 ? `+${resto} conquista${resto > 1 ? 's' : ''}` : null };
@@ -897,8 +920,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do objetivo, o balanço da Carol e a galeria das memórias. */
   const finishRaceAndGoToHub = () => {
     const hadPendingNav = !!pendingNavTarget.current;
+    // "Meia de Lisboa concluída · 1:53:42" — o nome dela e o tempo que conta.
+    const finalSeconds = raceResultSeconds(savedRaceRunRef.current);
     setConfirmation({
-      label: `${raceEvent?.name || 'Prova'} concluída`,
+      label: `${raceEvent?.name || 'Prova'} concluída${finalSeconds ? ` · ${formatDuration(finalSeconds)}` : ''}`,
       tone: 'race',
       achievement: novaConquistaDaProva(),
       done: () => {

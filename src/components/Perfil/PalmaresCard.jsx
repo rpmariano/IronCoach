@@ -98,7 +98,7 @@ export default function PalmaresCard({ onOpenRace }) {
               <SectionLabel style={{ margin: '18px 2px 0' }}>Provas concluídas</SectionLabel>
               <div className="flex flex-col gap-2 mt-2 pb-1">
                 {provas.map(({ race, outcome }) => {
-                  const daProva = achievementsForRace(achievements, race.id);
+                  const daProva = achievementsForRace({ raceEvents, runs, profile }, race.id);
                   return (
                     <button
                       key={race.id}

@@ -23,8 +23,11 @@ export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 const STORAGE_PREFIX = 'ironcoach:carol-proativa:';
 const DAY_MS = 86400000;
 
+// Dia LOCAL (yyyy-mm-dd), como o todayISO() do resto da app — em UTC, entre
+// as 00:00 e a 01:00 de verão "hoje" ainda era ontem e a manhã da prova
+// ficava calada nessa hora.
 function isoDay(d) {
-  return d.toISOString().slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /** Data (yyyy-mm-dd) do registo mais recente entre corridas, refeições,

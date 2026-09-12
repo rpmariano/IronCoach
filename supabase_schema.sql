@@ -721,6 +721,15 @@ create policy "admin read unknown logs" on unknown_app_image_logs for select usi
 create policy "admin update unknown logs" on unknown_app_image_logs for update using (public.is_admin());
 create policy "admin delete unknown logs" on unknown_app_image_logs for delete using (public.is_admin());
 
+-- ============================================================================
+-- Onboarding — marca de "arranque concluído" no perfil (ponto 8 do redesenho
+-- 2026-09). Ver supabase/migrations/20260911180000_profile_onboarding_done.sql
+-- e src/utils/onboarding.js (a coluna nunca decide sozinha: só sem registos
+-- nem prova é que o arranque aparece).
+-- ============================================================================
+alter table public.profiles
+  add column if not exists onboarding_done boolean not null default false;
+
 -- ============ prova concluída: a corrida liga-se à prova + memórias ============
 -- Ver supabase/migrations/20260912100000_race_completion.sql e
 -- specs/prova-concluida.md. Registar a prova é registar uma corrida com

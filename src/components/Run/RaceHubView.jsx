@@ -37,8 +37,8 @@ import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun } from '../../utils/run';
-import { classifyRaceOutcome, describeRaceOutcome } from '../../utils/raceOutcome';
-import { computeAchievements, achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
+import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
+import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -245,12 +245,14 @@ export default function RaceHubView({
     () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile }) : null),
     [race, raceRun, runs, profile],
   );
-  const achievements = useMemo(
-    () => (raceRun ? computeAchievements({ raceEvents: palmaresRaces, runs, profile }) : []),
-    [raceRun, palmaresRaces, runs, profile],
+  const raceAchievements = useMemo(
+    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id],
   );
-  const raceAchievements = achievementsForRace(achievements, race?.id);
-  const raceMissed = raceRun ? missedInRace(achievements, race?.id) : [];
+  const raceMissed = useMemo(
+    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id],
+  );
 
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
   // "Adesão ao plano" e "Lesões" do mock não têm fonte no modelo de dados —
@@ -268,7 +270,12 @@ export default function RaceHubView({
   }, [isCompleted, runs, planStartDate, raceDate]);
 
   if (isCompleted) {
-    const finalSeconds = Number(raceRun?.duration_seconds || 0);
+    // O tempo do herói é o mesmo da régua (raceOutcome): o oficial do
+    // cronómetro da organização quando existe, senão a duração registada.
+    // Antes lia só duration_seconds — dava dois tempos diferentes no mesmo
+    // ecrã, e uma corrida só com tempo oficial (manual, sem relógio) fazia o
+    // hub dizer "não tenho a corrida desta prova" com a corrida lá.
+    const finalSeconds = raceResultSeconds(raceRun) || 0;
     const finalTime = finalSeconds > 0 ? formatDuration(Math.round(finalSeconds)) : null;
     const finalPace = finalSeconds > 0 && Number(raceRun?.distance_km) > 0
       ? formatPace(Math.round(finalSeconds / Number(raceRun.distance_km)))

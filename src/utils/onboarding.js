@@ -86,6 +86,10 @@ export function shouldSilentlyMarkDone({
 } = {}) {
   if (!profile) return false;
   if (profile.onboarding_done === true) return false;
+  // Já marcado neste dispositivo (o UPDATE falhou por a coluna ainda não
+  // existir, ou foi feito noutra sessão): não volta a tentar a cada
+  // carregamento — era um erro na consola por login e por refresh do token.
+  if (isOnboardingDoneLocally(profile.id)) return false;
   const temRegistos = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
   const temProva = Array.isArray(raceEvents) && raceEvents.length > 0;
   return temRegistos || temProva;

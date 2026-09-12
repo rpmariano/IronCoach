@@ -24,17 +24,40 @@ import Home from './components/Home/Home';
    para poderem ser reutilizadas no pré-carregamento por gesto, mais abaixo:
    tocar num separador da barra começa a descarregar o chunk antes de o
    React o pedir, e o esqueleto quase nunca chega a aparecer. */
-const loadDashboard = () => import('./components/Dashboard/Dashboard');
-const loadCalendar = () => import('./components/Calendar/Calendar');
-const loadCoach = () => import('./components/Coach/Coach');
-const loadPerfil = () => import('./components/Perfil/Perfil');
-const loadAdmin = () => import('./components/Admin/Admin');
-const loadOnboarding = () => import('./components/Onboarding/Onboarding');
-const loadRunAgenda = () => import('./components/Run/RunAgenda');
-const loadMealRegistration = () => import('./components/Nutrition/MealRegistration');
-const loadBodyRegistration = () => import('./components/Body/BodyRegistration');
-const loadRunRegistration = () => import('./components/Run/RunRegistration');
-const loadGymRegistration = () => import('./components/Gym/GymRegistration');
+/* Depois de um deploy do GitHub Pages os ficheiros antigos (com hash) deixam
+   de existir: numa sessão que ficou aberta, o primeiro separador ainda não
+   visitado falhava o import() e caía no AppErrorBoundary — um ecrã de erro
+   por causa de uma atualização. Uma recarga única resolve; a marca em
+   sessionStorage evita um ciclo se a recarga não resolver. */
+const CHUNK_RELOAD_KEY = 'ironcoach:chunk-reload';
+function retryOnce(load) {
+  return () => load().then((mod) => {
+    try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* sem storage */ }
+    return mod;
+  }).catch((err) => {
+    let already = false;
+    try {
+      already = sessionStorage.getItem(CHUNK_RELOAD_KEY) === '1';
+      if (!already) sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
+    } catch { already = true; }
+    if (!already && typeof window !== 'undefined') {
+      window.location.reload();
+      return new Promise(() => {});
+    }
+    throw err;
+  });
+}
+const loadDashboard = retryOnce(() => import('./components/Dashboard/Dashboard'));
+const loadCalendar = retryOnce(() => import('./components/Calendar/Calendar'));
+const loadCoach = retryOnce(() => import('./components/Coach/Coach'));
+const loadPerfil = retryOnce(() => import('./components/Perfil/Perfil'));
+const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
+const loadOnboarding = retryOnce(() => import('./components/Onboarding/Onboarding'));
+const loadRunAgenda = retryOnce(() => import('./components/Run/RunAgenda'));
+const loadMealRegistration = retryOnce(() => import('./components/Nutrition/MealRegistration'));
+const loadBodyRegistration = retryOnce(() => import('./components/Body/BodyRegistration'));
+const loadRunRegistration = retryOnce(() => import('./components/Run/RunRegistration'));
+const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistration'));
 
 const Dashboard = lazy(loadDashboard);
 const Calendar = lazy(loadCalendar);
@@ -381,7 +404,17 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (newSession?.user) {
         setSession(newSession);
-        loadInitialData(newSession.user.id);
+        // No login (password/registo) o perfil chega antes das listas e, por
+        // um instante, um atleta com dados parecia "sem registos" — o
+        // onboarding montava e desmontava logo a seguir. Enquanto os dados
+        // carregam, é o loader que se vê; só no SIGNED_IN, para o refresh do
+        // token (TOKEN_REFRESHED) não piscar a app de hora a hora.
+        if (_event === 'SIGNED_IN') {
+          setIsInitializing(true);
+          Promise.resolve(loadInitialData(newSession.user.id)).finally(() => setIsInitializing(false));
+        } else {
+          loadInitialData(newSession.user.id);
+        }
       } else if (_event === 'SIGNED_OUT') {
         setSession(null);
       }

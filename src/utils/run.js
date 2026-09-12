@@ -31,9 +31,15 @@ export function raceTerrainLabel(key) {
 export function findRaceRun(runs, race) {
   if (!race?.id) return null;
   const list = runs || [];
-  return list.find(r => r?.race_id === race.id)
-    || list.find(r => !r?.race_id && r?.kind === 'competicao' && r?.date === race.date)
-    || null;
+  const linked = list.find(r => r?.race_id === race.id);
+  if (linked) return linked;
+  // O recurso por data só numa prova já marcada como concluída: é o caso dos
+  // registos antigos (a prova foi fechada à mão e a competição desse dia era
+  // dela). Numa prova ainda agendada, uma competição sem race_id no mesmo
+  // dia é uma "prova fora da agenda" — ligá-la escondia o "Registar a prova"
+  // sem nunca a concluir (apanhado na revisão pré-deploy).
+  if (race.status !== 'concluida') return null;
+  return list.find(r => !r?.race_id && r?.kind === 'competicao' && r?.date === race.date) || null;
 }
 
 // Distâncias fixas que o utilizador escolhe — a mesma lista alimenta o select
