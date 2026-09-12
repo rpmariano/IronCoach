@@ -436,3 +436,76 @@ describe('Perfil — etiquetas programáticas', () => {
     expect(semNome.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
   });
 });
+
+/* O Palmarés no topo do separador Pessoal (specs/gamificacao-provas.md §5,
+   opção B). Sem separador novo: o arquivo do que já aconteceu vem antes do
+   nome e da idade, e "Ver tudo" abre a persiana com o detalhe e as provas. */
+describe('Perfil — Palmarés', () => {
+  const PROVA = {
+    id: 'race-1',
+    name: 'Meia de Lisboa',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    race_type: 'estrada',
+    status: 'concluida',
+    target_time_seconds: 6900,
+  };
+  const CORRIDA = {
+    id: 'run-1',
+    kind: 'competicao',
+    race_id: 'race-1',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    duration_seconds: 6822,
+    details: { official_time_seconds: 6822 },
+  };
+
+  const montar = ({ raceEvents = [], runs = [] } = {}) => {
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      raceEvents,
+      runs,
+      editingRaceId: null,
+    });
+    render(<Perfil />);
+  };
+
+  it('sem provas, as cinco conquistas mostram-se bloqueadas e o resumo diz porquê', () => {
+    montar();
+    expect(screen.getByTestId('palmares-resumo')).toHaveTextContent('Ainda sem provas concluídas');
+    expect(screen.getByTestId('palmares-card')).toHaveTextContent('Sequência');
+  });
+
+  it('com uma prova, o resumo conta as conquistas e diz desde quando', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+    // Prova concluída + objetivo batido (6822 <= 6900).
+    expect(screen.getByTestId('palmares-resumo')).toHaveTextContent('2 de 5 conquistas · desde maio de 2026');
+  });
+
+  it('"Ver tudo" abre a persiana com as conquistas e as provas concluídas', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+
+    const verTudo = screen.getByTestId('palmares-ver-tudo');
+    expect(verTudo).toHaveStyle({ minHeight: '44px' });
+    fireEvent.click(verTudo);
+
+    const persiana = screen.getByTestId('palmares-sheet');
+    expect(persiana).toHaveTextContent('Palmarés');
+    expect(persiana).toHaveTextContent('Objetivo batido');
+    expect(persiana).toHaveTextContent('Precisa de duas provas na mesma distância');
+    expect(persiana).toHaveTextContent('Provas concluídas');
+    expect(screen.getByTestId('palmares-prova-race-1')).toHaveTextContent('1:53:42');
+  });
+
+  it('tocar numa prova leva ao hub dela', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+    fireEvent.click(screen.getByTestId('palmares-ver-tudo'));
+    fireEvent.click(screen.getByTestId('palmares-prova-race-1'));
+
+    expect(useAppStore.getState().editingRaceId).toBe('race-1');
+  });
+});

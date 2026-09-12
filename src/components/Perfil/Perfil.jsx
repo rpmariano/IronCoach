@@ -11,6 +11,7 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import PalmaresCard from './PalmaresCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -86,7 +87,7 @@ const DEFAULT_REMINDER_END_HOUR = 22;
 const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setEditingRaceId } = useAppStore();
   const [tab, setTab] = useState('perfil');
 
   // Local state form (draft)
@@ -441,6 +442,9 @@ export default function Perfil() {
       >
       <div ref={(el) => { pageRefs.current[0] = el; setPageRef(0)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Pessoal</h2>
+          {/* O Palmarés à cabeça do "quem sou" (specs/gamificacao-provas.md
+              §5): o que já aconteceu vem antes do nome e da idade. */}
+          <PalmaresCard onOpenRace={setEditingRaceId} />
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--gym)]" />
