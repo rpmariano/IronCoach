@@ -93,17 +93,24 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       }
 
       let detailedMsg = error.message;
+      // `busy: true` é o 409 do coach-chat ("Calma Rui, ainda estou a preparar
+      // a resposta ao teu pedido anterior") — uma recusa escrita na voz da
+      // Carol para ser MOSTRADA, não uma falha. Sem esta flag o Coach.jsx não
+      // a distinguia de um erro de rede e escondia-a atrás de "A tua mensagem
+      // não saiu" (incidente 2026-09-12).
+      let isBusy = false;
       if (error.context && typeof error.context.json === 'function') {
         try {
           const bodyJson = await error.context.json();
           if (bodyJson?.error) detailedMsg = bodyJson.error;
+          isBusy = bodyJson?.busy === true;
         } catch (_) {}
       }
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
       logAppEvent('error', fnName, detailedMsg || 'Erro na execução', { fnName });
       // O servidor respondeu (mesmo que com erro) — não há timeout nem
       // processamento em curso a aguardar.
-      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.', isTimeout: false };
+      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.', isTimeout: false, isBusy };
     }
 
     if (data?.usage) {

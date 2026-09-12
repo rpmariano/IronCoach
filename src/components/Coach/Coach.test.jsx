@@ -105,6 +105,34 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).toBeDisabled();
   });
 
+  it('INCIDENTE 2026-09-12 — o 409 "busy" do servidor mostra-se na voz da Carol, não como falha de rede', async () => {
+    // A recusa "Calma Rui…" é escrita de propósito para o atleta a ler; o
+    // cliente deitava-a fora e anunciava "A tua mensagem não saiu: falha de
+    // rede" — que não houve.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null,
+      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      isTimeout: false,
+      isBusy: true,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+    renderCoach();
+
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(/Calma Rui, ainda estou a preparar/)).toBeInTheDocument();
+    expect(screen.queryByText(/A tua mensagem não saiu/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
   it('BUG CORRIGIDO 2026-08-31 — Enter faz quebra de linha, nunca envia a pergunta; só o botão envia', () => {
     // Pedido explícito do utilizador: uma mensagem mais longa (várias
     // linhas) enviava-se a meio sem querer ao carregar em Enter para
@@ -591,6 +619,27 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     unmount();
     renderCoach();
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+  });
+
+  it('INCIDENTE 2026-09-12 — se o servidor recusar (409 busy), a mensagem proativa falha em silêncio: sem "A tua mensagem não saiu"', async () => {
+    // O atleta não escreveu nada — uma bolha a dizer que a mensagem dele
+    // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null,
+      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      isTimeout: false,
+      isBusy: true,
+    });
+
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/A tua mensagem não saiu/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Calma Rui/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    expect(useAppStore.getState().coachMessages).toHaveLength(0);
   });
 
   it('sem registos e sem provas, abrir o chat não dispara nada', async () => {
