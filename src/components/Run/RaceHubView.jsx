@@ -42,6 +42,7 @@ import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, forma
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { experienceLevelLabel } from '../../utils/experience';
+import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
 
 export default function RaceHubView({
@@ -89,7 +90,13 @@ export default function RaceHubView({
     setExpandedPhaseId(prev => (prev === id ? null : id));
   };
 
+  /* "11 set 2026 · 09:00" — a hora de partida só entra quando existe; sem
+     ela o cabeçalho fica exatamente como sempre foi. O rascunho da agenda
+     (RunAgenda passa `race={draft}`) já traz 'HH:MM'; o registo gravado
+     traz 'HH:MM:SS' da BD — normalizeStartTime concilia os dois. */
   const formattedRaceDate = formatDatePTShort(raceDate);
+  const raceStartTime = normalizeStartTime(race?.start_time);
+  const raceDateLine = raceStartTime ? `${formattedRaceDate} · ${raceStartTime}` : formattedRaceDate;
   const distanceLabel = raceDistanceLabel(race?.distance_km || 10);
   const info = race?.web_info || null;
 
@@ -620,7 +627,7 @@ export default function RaceHubView({
             <div className="rh-sub-info">
               <div className="rh-sub-item">
                 <Calendar size={13} className="text-[var(--race)]" />
-                <span>{formattedRaceDate}</span>
+                <span data-testid="race-hub-date">{raceDateLine}</span>
               </div>
               <div className="rh-sub-item">
                 <MapPin size={13} className="text-[var(--race)]" />

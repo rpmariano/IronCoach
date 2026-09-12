@@ -560,3 +560,65 @@ describe('RunAgenda — ação primária na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar prova/i }));
   });
 });
+
+
+/* Hora de partida (specs/plano-de-prova.md, "A véspera e a hora"): opcional,
+   ao lado da data. É ela que deixa a Carol planear a véspera e a manhã com
+   horas — sem ela o conselho fica em abstrato. Duas grafias da mesma coisa:
+   a BD devolve 'HH:MM:SS' e o input só fala 'HH:MM'. */
+describe('RunAgenda — hora de partida', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [{ ...EXISTING_RACE, start_time: '09:00:00' }],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      activeTab: 'holistica',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  const abrirDetalhes = () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    return screen.getByLabelText('Hora de partida');
+  };
+
+  it("a hora vinda da BD ('09:00:00') abre como 09:00, grava-se em 'HH:MM' e reabre assim", async () => {
+    const { unmount } = renderAgenda();
+    const campo = abrirDetalhes();
+    expect(campo.value).toBe('09:00');
+
+    fireEvent.change(campo, { target: { value: '08:45' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].start_time).toBe('08:45');
+    });
+    unmount();
+
+    // Reabrir a prova: a hora gravada volta ao campo, já sem os segundos.
+    useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
+    renderAgenda();
+    expect(abrirDetalhes().value).toBe('08:45');
+  });
+
+  it('a hora é opcional: apagá-la grava null, não a cadeia vazia (a coluna é `time`)', async () => {
+    renderAgenda();
+    const campo = abrirDetalhes();
+
+    // Opcional = sem asterisco de obrigatório ao lado do rótulo.
+    expect(document.querySelector('label[for="ra-hora-de-partida"]').textContent).toBe('Hora de partida');
+
+    fireEvent.change(campo, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].start_time).toBeNull();
+    });
+  });
+});

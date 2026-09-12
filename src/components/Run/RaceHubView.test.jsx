@@ -445,4 +445,28 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.queryByTestId('race-pacing-card')).not.toBeInTheDocument();
     expect(screen.queryByText('Plano para o dia')).not.toBeInTheDocument();
   });
+
+  /* A hora de partida (specs/plano-de-prova.md, "A véspera e a hora"): sem
+     ela a Carol planeia a véspera em abstrato, por isso o hub mostra-a junto
+     à data e o cartão do plano pede-a quando falta. */
+  it('com hora de partida, mostra-a a seguir à data no cabeçalho e "Partida às" no cartão do plano', () => {
+    // A BD devolve 'HH:MM:SS' — o hub mostra 'HH:MM'.
+    render(<RaceHubView race={{ ...MEIA_PROXIMA, start_time: '09:00:00' }} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getByTestId('race-hub-date')).toHaveTextContent(/· 09:00$/);
+    expect(screen.getByTestId('race-pacing-start-time')).toHaveTextContent('Partida às 09:00');
+    expect(screen.queryByTestId('race-pacing-start-time-missing')).not.toBeInTheDocument();
+  });
+
+  it('sem hora de partida, o cabeçalho fica só com a data e o cartão do plano pede-a, com atalho para a edição', () => {
+    const onGoToEdit = vi.fn();
+    render(<RaceHubView race={MEIA_PROXIMA} runs={[]} profile={PROFILE} onGoToEdit={onGoToEdit} />);
+
+    expect(screen.getByTestId('race-hub-date').textContent).not.toContain('·');
+    expect(screen.getByTestId('race-pacing-start-time-missing'))
+      .toHaveTextContent('Sem hora de partida: marca-a para a Carol planear a véspera');
+
+    fireEvent.click(screen.getByTestId('race-pacing-edit'));
+    expect(onGoToEdit).toHaveBeenCalled();
+  });
 });

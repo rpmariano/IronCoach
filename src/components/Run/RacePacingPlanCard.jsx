@@ -4,6 +4,7 @@ import Button from '../shared/Button';
 import GlassCard from '../shared/GlassCard';
 import SectionLabel from '../shared/SectionLabel';
 import { formatPace, formatDuration } from '../../utils/run';
+import { normalizeStartTime } from '../../utils/startTime';
 
 /* ── Cartão "Plano para o dia" (specs/plano-de-prova.md §"Onde aparece" 1) ──
    Vive no hub da prova, nos últimos 7 dias e no próprio dia. Um plano de
@@ -52,6 +53,44 @@ export default function RacePacingPlanCard({
      nota. */
   const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !!race?.website?.toString().trim();
 
+  /* A hora de partida (specs/plano-de-prova.md, "A véspera e a hora"). Sem
+     ela a Carol planeia a véspera e a manhã em abstrato — "acorda cedo" em
+     vez de "acorda às 06:00" —, por isso o cartão pede-a aqui, onde a falta
+     se nota, e encaminha para o mesmo "Editar detalhes" da agenda. */
+  const startTime = normalizeStartTime(race?.start_time);
+
+  const editCta = onGoToEdit ? (
+    <Button
+      variant="light"
+      size="sm"
+      onClick={onGoToEdit}
+      type="button"
+      data-testid="race-pacing-edit"
+      className="w-full mt-3"
+      style={{ minHeight: 'var(--tap)' }}
+    >
+      Editar detalhes
+    </Button>
+  ) : null;
+
+  const startTimeNote = startTime ? (
+    <p
+      data-testid="race-pacing-start-time"
+      className="text-[11.5px] leading-[1.45] mt-2"
+      style={{ color: 'var(--text-4)' }}
+    >
+      Partida às {startTime}
+    </p>
+  ) : (
+    <p
+      data-testid="race-pacing-start-time-missing"
+      className="text-[11.5px] leading-[1.45] mt-2"
+      style={{ color: 'var(--text-4)' }}
+    >
+      Sem hora de partida: marca-a para a Carol planear a véspera
+    </p>
+  );
+
   const routeCta = canFetchRoute ? (
     <div style={{ marginTop: 12 }}>
       <p className="text-[11.5px] leading-[1.45]" style={{ color: 'var(--text-4)' }}>
@@ -83,19 +122,8 @@ export default function RacePacingPlanCard({
           <p className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-3)' }}>
             Marca um objetivo de tempo para eu montar o plano.
           </p>
-          {onGoToEdit && (
-            <Button
-              variant="light"
-              size="sm"
-              onClick={onGoToEdit}
-              type="button"
-              data-testid="race-pacing-edit"
-              className="w-full mt-3"
-              style={{ minHeight: 'var(--tap)' }}
-            >
-              Editar detalhes
-            </Button>
-          )}
+          {startTimeNote}
+          {editCta}
           {routeCta}
         </GlassCard>
       </>
@@ -134,6 +162,10 @@ export default function RacePacingPlanCard({
             {ambitiousNote}
           </p>
         )}
+
+        {/* A hora: uma linha só, e o atalho para a marcar quando falta. */}
+        {startTimeNote}
+        {!startTime && editCta}
 
         {/* A tabela. Cada troço numa linha: km, ritmo e passagem em cima,
             rótulo e instrução por baixo. Em trail o ritmo é referência
