@@ -826,4 +826,98 @@ describe('RunRegistration — modo prova', () => {
     expect(screen.getByLabelText(/Tempo oficial/).value).toBe('1:53:42');
     expect(screen.getByTestId('race-memories')).toBeInTheDocument();
   });
+
+  /* A hora do modo prova não se escreve aqui (o bloco "A prova" é só de
+     leitura): herda-se da partida marcada na agenda — specs/plano-de-prova.md,
+     "A véspera e a hora". */
+  it('a corrida herda a hora de partida da prova, mesmo sem campo à vista', async () => {
+    useAppStore.setState({
+      profile: PROFILE, runs: [], shoes: [],
+      raceEvents: [{ ...PROVA, start_time: '09:00:00' }],
+      runRacePrefill: { raceId: 'race-1' },
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+    fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '1:53:50' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.start_time === '09:00'),
+    ).toBe(true));
+  });
+});
+
+
+/* Hora de início da corrida (specs/plano-de-prova.md, "A véspera e a hora").
+   Opcional, ao lado da data, e sem valor por omissão. Quem insere a linha em
+   `runs` é a Edge Function analyze-run, que não a conhece — a hora é um
+   update de uma coluna logo a seguir, como já era a ligação à prova. */
+describe('RunRegistration — hora de início', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });
+  });
+
+  it('corrida nova: a hora escrita grava-se em runs.start_time a seguir à análise', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-7' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '07:30' } });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+    fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(mocks.updates.length).toBeGreaterThan(0));
+    expect(mocks.updates[0]).toEqual({ table: 'runs', payload: { start_time: '07:30' }, id: 'run-7' });
+    // A análise não leva a hora: a Edge Function não a conhece.
+    expect(mocks.invoke.mock.calls[0][1].body.start_time).toBeUndefined();
+    expect(useAppStore.getState().runs.find(r => r.id === 'run-7').start_time).toBe('07:30');
+  });
+
+  it('sem hora escrita não há update nenhum — o campo é mesmo opcional', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-7' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+    fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '50:00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.updates).toEqual([]);
+  });
+
+  it("a editar: a hora da BD ('18:45:00') abre como 18:45 e mudá-la não custa uma reanálise", async () => {
+    const RUN = {
+      id: 'run-8', kind: 'treino', training_type: 'continuo', date: '2026-08-01',
+      name: 'Rodagem', distance_km: 10, duration_seconds: 3000, effort_rpe: 5,
+      start_time: '18:45:00', details: { cadence_spm: 165 },
+    };
+    useAppStore.setState({ profile: PROFILE, runs: [RUN], raceEvents: [], shoes: [] });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-8" />);
+
+    const campo = screen.getByLabelText('Hora');
+    expect(campo.value).toBe('18:45');
+
+    fireEvent.change(campo, { target: { value: '19:15' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.start_time === '19:15'),
+    ).toBe(true));
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(useAppStore.getState().runs.find(r => r.id === 'run-8').start_time).toBe('19:15');
+  });
 });

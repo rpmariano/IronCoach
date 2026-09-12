@@ -27,6 +27,7 @@ import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -169,6 +170,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [runKind, setRunKind] = useState(planItem?.isRace || initialRace ? 'competicao' : 'treino'); // 'treino' | 'competicao'
   const [runTrainingType, setRunTrainingType] = useState(planItem?.training_type || 'continuo');
   const [runDate, setRunDate] = useState(initialRace?.date || planItem?.planned_date || dateIso || todayISO());
+  /* Hora de início ('HH:MM', hora local) — opcional, e sem valor por omissão:
+     inventar "agora" enchia a coluna de horas que ninguém confirmou. O que a
+     pré-preenche é uma hora que já foi decidida noutro sítio: a partida da
+     prova, no modo prova, ou o item do plano quando o vier a trazer (hoje o
+     plano ainda não tem hora — ver coach_plan_items). Ver
+     specs/plano-de-prova.md, "A véspera e a hora". */
+  const [runStartTime, setRunStartTime] = useState(
+    startTimeInputValue(initialRace?.start_time || planItem?.start_time)
+  );
   const [runName, setRunName] = useState(initialRace?.name || planItem?.title || 'Corrida de Hoje');
   // Par usado nesta corrida — é daqui que sai o acumulado de km do armário
   // (Perfil → Equipamento). Fica fora da analyticalSignature de propósito:
@@ -422,6 +432,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setRunKind('competicao');
     setRunName(ev.name || 'Corrida de Hoje');
     setRunDate(ev.date);
+    // A hora da prova só se impõe se ainda não houver uma escrita aqui.
+    if (!runStartTime && ev.start_time) setRunStartTime(startTimeInputValue(ev.start_time));
     setCompletedRaceType(raceTypeFromRaceEvent(ev));
     if (!runDistance && ev.distance_km) setRunDistance(String(ev.distance_km));
     if (!elevationGain && ev.elevation_gain_m) setElevationGain(String(ev.elevation_gain_m));
@@ -511,6 +523,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunKind(persisted?.runKind ?? (r.kind || 'treino'));
         setRunTrainingType(persisted?.runTrainingType ?? (r.training_type || 'continuo'));
         setRunDate(persisted?.runDate ?? (r.date || todayISO()));
+        // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
+        setRunStartTime(persisted?.runStartTime ?? startTimeInputValue(r.start_time));
         setRunName(persisted?.runName ?? (r.name || ''));
         setRunDistance(persisted?.runDistance ?? (r.distance_km || ''));
         setRunDuration(persisted?.runDuration ?? (r.duration_seconds ? formatDuration(r.duration_seconds) : ''));
@@ -646,6 +660,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (persisted.runKind) setRunKind(persisted.runKind);
     if (persisted.runTrainingType) setRunTrainingType(persisted.runTrainingType);
     if (persisted.runDate) setRunDate(persisted.runDate);
+    if (persisted.runStartTime !== undefined) setRunStartTime(persisted.runStartTime);
     if (persisted.runName !== undefined) setRunName(persisted.runName);
     if (persisted.shoeId !== undefined) setShoeId(persisted.shoeId);
     if (persisted.runDistance !== undefined) setRunDistance(persisted.runDistance);
@@ -693,7 +708,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // a página caía no formulário de competição genérico.
   usePersistedFormDraft(draftStorageKey, {
     raceId,
-    entryMethod, runKind, runTrainingType, runDate, runName, shoeId,
+    entryMethod, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
     elevationGain, cadence, maxCadence, calories, vo2Max, avgHeartRate, maxHeartRate,
     sweatLossMl, totalSteps, maxPace, elevationLoss, aerobicThreshold, anaerobicThreshold,
@@ -832,6 +847,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return { ...run, race_id: raceId };
   };
 
+  /* A hora de início toma o mesmo caminho do race_id acima, e pela mesma
+     razão: quem escreve a linha em `runs` é a analyze-run, e acrescentar-lhe
+     um campo obriga a mexer numa função que faz deploy em produção a cada
+     push a `dev` (ver CLAUDE.md). É uma coluna só, sob a mesma RLS "own
+     rows" — grava-se aqui, no ponto comum aos quatro caminhos de gravação
+     (finishSavedRun). Não vai na analyticalSignature de propósito: mudar a
+     hora não muda análise nenhuma, logo não custa uma reanálise. */
+  const persistRunStartTime = async (run) => {
+    if (!run?.id) return run;
+    const value = normalizeStartTime(runStartTime);
+    if (value === normalizeStartTime(run.start_time)) return run;
+    const { error } = await supabase.from('runs').update({ start_time: value }).eq('id', run.id);
+    if (error) throw error;
+    return { ...run, start_time: value };
+  };
+
   /* Envia o que é novo para race-memories/<uid>/<raceId>/… e grava os
      caminhos na prova, junto com o status. Diploma e medalha têm nome fixo
      (é uma de cada; upsert substitui). As fotografias levam nome ÚNICO: com
@@ -942,11 +973,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      desfaz nada — fica o aviso com "Tentar de novo" e o atleta não perde o
      registo por causa de uma foto. */
   const finishSavedRun = async (savedRun, label) => {
+    /* A hora é a primeira coisa a assentar, porque é comum aos quatro
+       caminhos. Se falhar não se desfaz nada nem se bloqueia o fecho: é um
+       campo opcional, e perder a corrida inteira por causa dele seria pior
+       do que ficar sem a hora. */
+    let run = savedRun;
+    try {
+      run = await persistRunStartTime(savedRun);
+      if (run !== savedRun && run?.id) {
+        const store = useAppStore.getState();
+        store.setRuns(store.runs.map(r => (r.id === run.id ? { ...r, start_time: run.start_time } : r)));
+      }
+    } catch (err) {
+      console.warn('Hora de início da corrida não gravada', err);
+      run = savedRun;
+    }
+
     if (!isRaceMode) {
-      finishCreateAndGoToCalendar(savedRun, label);
+      finishCreateAndGoToCalendar(run, label);
       return;
     }
-    savedRaceRunRef.current = savedRun;
+    savedRaceRunRef.current = run;
     try {
       await persistRaceLinkAndMemories();
     } catch (err) {
@@ -1884,15 +1931,29 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </>
           )}
 
-          <div className="mb-4">
-            <label htmlFor="rr-data-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da corrida</label>
-            <input id="rr-data-da-corrida"
-              type="date"
-              value={runDate}
-              max={todayISO()}
-              onChange={e => { setRunDate(e.target.value); setIsFormDirty(true); }}
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-            />
+          {/* Data · Hora — a hora ao lado da data, opcional. É ela que diz à
+              Carol que se treinou às 22:30 (sono) ou à hora da prova na
+              última semana (specs/plano-de-prova.md, "A véspera e a hora"). */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <div className="min-w-0">
+              <label htmlFor="rr-data-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da corrida</label>
+              <input id="rr-data-da-corrida"
+                type="date"
+                value={runDate}
+                max={todayISO()}
+                onChange={e => { setRunDate(e.target.value); setIsFormDirty(true); }}
+                className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+              />
+            </div>
+            <div className="min-w-0">
+              <label htmlFor="rr-hora-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
+              <input id="rr-hora-da-corrida"
+                type="time"
+                value={runStartTime}
+                onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
+                className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+              />
+            </div>
           </div>
 
           {renderEffortField()}
