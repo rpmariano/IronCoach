@@ -23,6 +23,9 @@ Deno.test("computeRaceEve: sem hora não há horário; sem peso não há gramas;
   assertEquals(eve.carbLoading, null);
   assertEquals(eve.longRace, false);
   assertEquals(computeRaceEve({ startTime: "25:00" }).schedule, null);
+  // sem tempo previsto, a distância decide: meia é longa, 10 km não
+  assertEquals(computeRaceEve({ weightKg: 70, distanceKm: 21.1 }).carbLoading, { low: 700, high: 840 });
+  assertEquals(computeRaceEve({ weightKg: 70, distanceKm: 10 }).carbLoading, null);
   assertEquals(minutesOfDay("07:30"), 450);
   assertEquals(clock(-30), "23:30");
 });

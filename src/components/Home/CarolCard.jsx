@@ -56,6 +56,7 @@ function buildEve(race, profile) {
     startTime: race.start_time,
     weightKg: profile?.weight_kg,
     plannedFinishSeconds: Number(race.target_time_seconds) > 0 ? Number(race.target_time_seconds) : null,
+    distanceKm: race.distance_km ?? null,
   });
 }
 
@@ -146,7 +147,8 @@ export function useCoachDailyMessages() {
     else if (waterGoal && !mentionsWater && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
     // No dia da prova, o aviso abre com ela — o resto (a água, o que o
     // servidor tenha a dizer) vem a seguir, não à frente.
-    if (raceToday) {
+    // (O servidor não a prefixa: se algum dia o fizer, "Hoje é …" não se repete.)
+    if (raceToday && !/^Hoje é /.test(warning)) {
       warning = [describeRaceDayShort(eveToday, raceToday.name, firstKmPaceLabel), warning].filter(Boolean).join(' ');
     }
     if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning });
@@ -158,11 +160,10 @@ export function useCoachDailyMessages() {
        Prova (…)" por cima das horas da véspera seria dizer duas vezes a
        mesma coisa, a segunda pior. */
     const tomorrowNonRest = activePlanItems.tomorrow.filter((i) => i.kind !== 'descanso');
-    const raceTomorrowName = raceTomorrow ? raceNameForDate(raceEvents, tomorrow) : null;
     const prep = raceTomorrow
       ? describeRaceEveShort(eveTomorrow, raceTomorrow.name, raceTomorrow.distance_km || null)
       : tomorrowNonRest.length
-        ? `Amanhã o plano aponta para: ${tomorrowNonRest.map((i) => formatItemSummary(i, raceTomorrowName)).join(' e ')}.`
+        ? `Amanhã o plano aponta para: ${tomorrowNonRest.map((i) => formatItemSummary(i, raceNameForDate(raceEvents, tomorrow))).join(' e ')}.`
         : clean(dailySummary?.tomorrow_prep);
     if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep });
 

@@ -102,7 +102,9 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
   const kmCount = Math.ceil(distanceKm);
   const lastKmLength = distanceKm - (kmCount - 1); // o último km pode ser parcial (21.1 → 0.1)
   const decisionKm = Math.max(1, Math.round(distanceKm * 0.7));
-  const finalFrom = Math.max(1, Math.floor(distanceKm * 0.9));
+  // O troço final são os últimos 10% (mínimo 1 km): o km cujo FIM ainda está
+  // a 90% pertence ao bloco anterior — daí o +1 (revisão pré-deploy).
+  const finalFrom = Math.max(1, Math.floor(distanceKm * 0.9) + 1);
 
   // Troços do percurso por km: o segmento com marco cai no km que o contém.
   const routeByKm = new Map<number, RouteSegmentInput>();

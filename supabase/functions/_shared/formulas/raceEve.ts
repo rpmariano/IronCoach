@@ -10,6 +10,7 @@ export interface RaceEveInput {
   startTime?: string | null;      // "09:00" ou "09:00:00" (hora local); null = desconhecida
   weightKg?: number | string | null;
   plannedFinishSeconds?: number | null; // decide a carga de hidratos (> 90 min)
+  distanceKm?: number | string | null;  // recurso: sem tempo previsto, meia ou mais é prova longa
 }
 
 export interface Range { low: number; high: number }
@@ -94,7 +95,10 @@ export function computeRaceEve(input: RaceEveInput): RaceEve {
       warmup: clock(start - WARMUP_BEFORE_MIN),
     };
   }
-  const longRace = (input.plannedFinishSeconds ?? 0) > LONG_RACE_SECONDS;
+  const dist = input.distanceKm != null ? Number(String(input.distanceKm).replace(",", ".")) : NaN;
+  const longRace = input.plannedFinishSeconds != null && input.plannedFinishSeconds > 0
+    ? input.plannedFinishSeconds > LONG_RACE_SECONDS
+    : Number.isFinite(dist) && dist > 15;
   return {
     schedule,
     weightKg,

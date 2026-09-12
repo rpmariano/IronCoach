@@ -49,6 +49,14 @@ export function isRacePriority(raw: string | null | undefined): raw is RacePrior
   return raw === 'a' || raw === 'b' || raw === 'c';
 }
 
+// ─── Treinos que não cabem na véspera nem na antevéspera de uma prova ─────
+// Uma lista só, lida pelo runProposeTrainingPlan (que os recusa) e pelo
+// alerta de ajuste do Início (utils/planDivergence.js) — antes eram duas
+// listas que já divergiam (specs/plano-de-prova.md, "O plano tem de saber
+// da prova").
+export const PRE_RACE_HARD_RUN_TYPES: readonly string[] = ["longo", "tempo", "fartlek", "intervalos", "subidas"];
+export const PRE_RACE_EASY_DAYS = 2;
+
 // ─── Categoria de distância de prova ─────────────────────────────────────
 // Fronteiras exatas da doutrina (Bloco 1 #1/#2, src/coach-knowledge/
 // 01-objetivo-viabilidade.md). Espelhada até agora em 3 sítios

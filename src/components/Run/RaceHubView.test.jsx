@@ -348,7 +348,8 @@ describe('RaceHubView — plano para o dia', () => {
     expect(linhas).toHaveTextContent('km 0 a 1');
     // Os km consecutivos com o mesmo ritmo agrupam-se — o último troço fecha
     // na distância real, com vírgula decimal.
-    expect(linhas).toHaveTextContent('km 17 a 21,1');
+    // os últimos 10% (mínimo 1 km): da meia, do km 18 em diante
+    expect(linhas).toHaveTextContent('km 18 a 21,1');
     expect(linhas).toHaveTextContent('5.26/km');
     // Os rótulos do plano, do arranque ao final.
     expect(linhas).toHaveTextContent('controlar');

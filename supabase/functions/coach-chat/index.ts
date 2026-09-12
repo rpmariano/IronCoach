@@ -5,7 +5,7 @@
 // na tabela coach_messages para persistência entre sessões.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
@@ -126,8 +126,9 @@ const RUN_TRAINING_TYPES = [
 // válido num dia com prova agendada; o servidor insere-o se o modelo o
 // esquecer.
 const PLAN_RUN_TRAINING_TYPES = [...RUN_TRAINING_TYPES, "prova"];
-// Treinos que não cabem na véspera nem na antevéspera de uma prova.
-const HARD_RUN_TYPES = new Set(["longo", "tempo", "fartlek", "intervalos", "subidas"]);
+// Treinos que não cabem na véspera nem na antevéspera de uma prova — a
+// lista é partilhada com o alerta de ajuste do cliente (vocabulary.ts).
+const HARD_RUN_TYPES = new Set(PRE_RACE_HARD_RUN_TYPES);
 
 // Tipos de refeição da estimativa de macros opcional (meal_items) — usados
 // tanto no schema das tools abaixo como no frontend (src/components/Home/
@@ -906,7 +907,7 @@ export function buildRaceEveContext(
   daysUntil: number,
 ): string | null {
   if (!race) return null;
-  const eve = computeRaceEve({ startTime: race.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds });
+  const eve = computeRaceEve({ startTime: race.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds, distanceKm: race.distance_km ?? null });
   const when = daysUntil <= 0 ? "é hoje" : daysUntil === 1 ? "é amanhã" : `é daqui a ${daysUntil} dias`;
   const lines: string[] = [`=== VÉSPERA E MANHÃ DA PROVA (${when}; calculado pela app — usa ESTAS horas e quantidades) ===`];
   const sc = eve.schedule;
@@ -2172,7 +2173,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     } else if (item.training_type === "prova") {
       return `Erro no treino ${n}: training_type=prova só num dia com prova agendada, e ${item.planned_date} não tem nenhuma.`;
     }
-    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= 2);
+    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= PRE_RACE_EASY_DAYS);
     if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
       return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}" — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
@@ -4709,7 +4710,7 @@ async function handler(req: Request): Promise<Response> {
           routeSummary: nextRaceForPlan.web_info?.route_summary ?? null,
         });
         racePlanContext = buildRacePlanContext(plan, nextRaceForPlan.name ?? null, daysUntilPlan);
-        if (daysUntilPlan <= 2) {
+        if (daysUntilPlan <= PRE_RACE_EASY_DAYS) {
           raceEveContext = buildRaceEveContext(nextRaceForPlan, profile, plan?.plannedFinishSeconds ?? null, daysUntilPlan);
         }
       }

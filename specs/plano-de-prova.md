@@ -60,8 +60,9 @@ descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
    contexto e apresenta o plano na voz dela, troço a troço, com os porquês
    — não uma lista seca, mas também sem omitir números. Se o objetivo é
    ambicioso, diz-o e explica o ponto de decisão.
-3. **Carol na manhã** (`race_morning`): duas frases e um único número, o
-   ritmo do primeiro km.
+3. **Carol na manhã** (`race_morning`): duas frases e, no máximo, dois
+   números: o ritmo do primeiro km e, se ainda não comeu, a hora do
+   pequeno-almoço.
 4. **Balanço** (`race_after`): com parciais registados (`runs.details.splits`),
    o cliente manda-os no `race_outcome` e o servidor compara km a km com o
    plano — é daí que sai a causa concreta de um "aquém" ("arrancaste a 5.05
@@ -109,11 +110,14 @@ o cartão do Início mostra e as que o `coach-daily-summary` recebe.
   recebe a véspera no contexto e a estratégia nutricional fala dela.
 - **Plano de treino**: o dia da prova é a prova — item `corrida` com
   `training_type = 'prova'`, distância da prova, notas a apontar para o
-  plano do hub. O `runProposeTrainingPlan` valida: qualquer item noutro
-  formato no dia da prova é erro; sem item nesse dia, o servidor insere-o;
-  na véspera e antevéspera só recuperação ou descanso (longo, intervalos,
-  tempo, sprints e ginásio são recusados). Registar a prova conclui esse
-  item. As sugestões alimentares da véspera e do dia seguem a véspera.
+  plano do hub. O `runProposeTrainingPlan` valida: uma corrida nesse dia
+  normaliza-se para `prova`; ginásio ou descanso nesse dia é erro; sem item
+  nesse dia, o servidor insere-o; na véspera e antevéspera só recuperação
+  ou descanso — a lista do que é recusado (`longo`, `tempo`, `fartlek`,
+  `intervalos`, `subidas` e ginásio) vive em `vocabulary.ts` e é a mesma
+  que o alerta do Início usa. Registar a prova conclui esse item. As
+  sugestões alimentares da véspera e do dia seguem a véspera, que entra no
+  prompt a dois dias da prova.
 - **Alerta de ajuste**: o cliente deteta quando a realidade se afastou do
   plano (`utils/planDivergence.js`): prova dentro do período do plano sem
   item de prova, treino no dia da prova, treino forte a dois dias da prova,

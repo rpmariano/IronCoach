@@ -14,7 +14,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
-import { computeRaceEve, describeRaceEveShort, describeRaceDayShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
+import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
@@ -764,7 +764,7 @@ Deno.serve(async (req) => {
     if (nextRace?.date) {
       const daysToRace = Math.round((Date.parse(nextRace.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
       if (daysToRace >= 0 && daysToRace <= 1) {
-        const eve = computeRaceEve({ startTime: nextRace.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds: nextRace.target_time_seconds ?? null });
+        const eve = computeRaceEve({ startTime: nextRace.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds: nextRace.target_time_seconds ?? null, distanceKm: nextRace.distance_km ?? null });
         raceEveObj = eve;
         raceEveDays = daysToRace;
         raceEveForSummary = {
@@ -809,7 +809,9 @@ Deno.serve(async (req) => {
     const tomorrowPrepMsg = raceEveObj && nextRace && raceEveDays === 1
       ? describeRaceEveShort(raceEveObj, nextRace.name, nextRace.distance_km ? Number(nextRace.distance_km) : null)
       : buildTomorrowPrepMessage(tomorrowPlanItems);
-    const raceDayWarning = raceEveObj && nextRace && raceEveDays === 0 ? describeRaceDayShort(raceEveObj, nextRace.name, null) : null;
+    // No dia da prova é o cliente que abre o aviso com a prova (tem o ritmo
+    // do primeiro km, que aqui não há); prefixar também aqui duplicava a
+    // frase (apanhado na revisão pré-deploy).
 
     // Conceito educativo do dia — determinístico, sem risco de repetição a curto prazo
     const todayConcept = DAILY_CONCEPTS[dayOfYear(today) % DAILY_CONCEPTS.length];
@@ -838,7 +840,7 @@ Deno.serve(async (req) => {
       user_id: userId,
       date: today,
       recap: generated.recap || null,
-      warnings: raceDayWarning ? `${raceDayWarning} ${warningsMsg || ""}`.trim() : warningsMsg,
+      warnings: warningsMsg,
       meal_suggestion: generated.meal_suggestion || null,
       tomorrow_prep: tomorrowPrepMsg,
       race_readiness: generated.race_readiness || null,

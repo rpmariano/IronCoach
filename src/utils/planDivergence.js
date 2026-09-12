@@ -24,12 +24,14 @@
 
 import { todayISO } from '../lib/utils';
 import { formatDayMonth, planItemTitle, isRacePlanItem } from './homeModels';
+import { PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from '@formulas/vocabulary.ts';
 
-/** Trabalho duro que não tem lugar nos dois dias antes de uma prova
- *  (doutrina do taper — specs/plano-de-prova.md). */
-export const HARD_RUN_TYPES = ['longo', 'intervalos', 'tempo', 'sprints', 'fartlek'];
+/** Trabalho duro que não tem lugar nos dois dias antes de uma prova — a
+ *  MESMA lista que o servidor recusa no runProposeTrainingPlan
+ *  (specs/plano-de-prova.md). */
+export const HARD_RUN_TYPES = PRE_RACE_HARD_RUN_TYPES;
 /** Quantos dias antes da prova é que já só cabe recuperação ou descanso. */
-export const RACE_EVE_DAYS = 2;
+export const RACE_EVE_DAYS = PRE_RACE_EASY_DAYS;
 /** A janela das sessões falhadas, e quantas são precisas para valer aviso. */
 export const MISSED_LOOKBACK_DAYS = 7;
 export const MISSED_MIN = 2;
@@ -74,9 +76,14 @@ export function detectPlanDivergence({
   // As provas por correr que caem dentro do período de um plano aceite. Uma
   // prova já concluída não se planeia; uma prova fora do período do plano é
   // assunto do próximo plano, não deste.
+  // Só provas por correr (hoje ou depois): uma prova de ontem por marcar
+  // como concluída já não se ajusta — é para registar, não para planear.
   const races = (raceEvents || [])
-    .filter((r) => r && r.status !== 'concluida' && dayOf(r.date) && inPlanPeriod(dayOf(r.date)))
+    .filter((r) => r && r.status !== 'concluida' && dayOf(r.date) && dayOf(r.date) >= today && inPlanPeriod(dayOf(r.date)))
     .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
+  // Para os motivos ligados à prova só contam itens pendentes e por
+  // acontecer: os intervalos feitos anteontem já não se mudam.
+  const upcoming = items.filter((i) => i.status === 'pendente' && dayOf(i.planned_date) >= today);
 
   const reasons = [];
   const parts = [];
@@ -87,7 +94,7 @@ export function detectPlanDivergence({
 
   for (const race of races) {
     const date = dayOf(race.date);
-    const onDay = items.filter((i) => dayOf(i.planned_date) === date);
+    const onDay = upcoming.filter((i) => dayOf(i.planned_date) === date);
 
     // 1. A prova não está no plano.
     if (!onDay.some(isRacePlanItem)) {
@@ -107,7 +114,7 @@ export function detectPlanDivergence({
     // 3. Trabalho duro na véspera e na antevéspera.
     for (let gap = 1; gap <= RACE_EVE_DAYS; gap += 1) {
       const eve = addDays(date, -gap);
-      for (const item of items.filter((i) => dayOf(i.planned_date) === eve)) {
+      for (const item of upcoming.filter((i) => dayOf(i.planned_date) === eve)) {
         const hardRun = item.kind === 'corrida' && HARD_RUN_TYPES.includes(item.training_type);
         if (!hardRun && item.kind !== 'ginasio') continue;
         push(
