@@ -67,6 +67,36 @@ descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
    plano — é daí que sai a causa concreta de um "aquém" ("arrancaste a 5.05
    quando o plano dizia 5.35").
 
+## A véspera e a hora (decidido 2026-09-12)
+
+A hora passa a ser um dado de primeira: `start_time` (time, hora local,
+opcional) em `race_events`, `runs` e `workout_sessions` — migração
+`20260912230000_start_times.sql`. Nos formulários: "Hora de partida" na
+prova (agenda), "Hora" no registo de corrida e no de ginásio.
+
+Com a hora de partida a Carol deixa de aconselhar em abstrato. O coach-chat
+calcula a véspera e a manhã (`buildRaceEveContext`, fórmula pura, com o peso
+do perfil quando existe) e a Carol apresenta-a na véspera a seguir ao plano,
+com horas e quantidades:
+
+- **Jantar da véspera**: hidratos complexos (arroz, massa, batata, pão),
+  2 a 4 g/kg, pouca fibra e pouca gordura, nada de novo; a carga de hidratos
+  (10-12 g/kg/dia nas 24-48 h) só em provas acima de 90 min (doutrina 4.3).
+- **Água**: a base de 30-40 ml/kg no dia, e 5-7 ml/kg nas 4 h antes da
+  partida, aos goles; parar 45 min antes.
+- **Sono**: 8 h no alvo (7 no mínimo), com a hora de deitar calculada a
+  partir da hora de acordar; a noite mais importante é a anterior à véspera.
+- **Descontrair**: nada de treino além de 15-20 min muito fáceis, material
+  preparado à noite, ecrãs cedo fora, sem experiências novas.
+- **Manhã**: acordar 3 h antes da partida (2 h 30 no mínimo), pequeno-almoço
+  2 h 30 a 3 h antes (1-2 g/kg de hidratos, pouca fibra), chegada 60 min
+  antes, aquecimento 25 min antes.
+
+Sem hora de partida a Carol diz que não a tem e pergunta-a — e o cartão do
+plano no hub pede-a. A hora dos treinos (corrida e ginásio) entra nas
+linhas que a Carol lê ("às 07:30"): treinos tarde a cortar o sono, e na
+última semana o conselho de treinar à hora da prova.
+
 ## Fora de âmbito
 
 Meteorologia, perfil altimétrico do site (só o qualitativo dos segmentos),

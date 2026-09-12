@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3120,7 +3120,7 @@ Deno.test("buildSplitsComparisonContext: os km com desvio e a leitura (arranque 
 Deno.test("véspera e manhã apontam para o plano; o balanço manda usar os parciais", () => {
   assertStringIncludes(buildProactiveInstruction("race_eve", null), "PLANO PARA O DIA");
   assertStringIncludes(buildProactiveInstruction("race_eve", null), "Não inventes troços nem ritmos");
-  assertStringIncludes(buildProactiveInstruction("race_morning", null), "o único número permitido é o ritmo do primeiro km");
+  assertStringIncludes(buildProactiveInstruction("race_morning", null), "os únicos números permitidos são o ritmo do primeiro km");
   assertStringIncludes(raceAfterInstruction(outcome({ verdict: "aquem", target_seconds: 6300 })), "PARCIAIS FACE AO PLANO PARA O DIA");
 });
 
@@ -3137,4 +3137,73 @@ Deno.test("buildSystemInstruction injeta o plano e os parciais quando existem", 
   assertStringIncludes(sys, "=== PLANO PARA O DIA DA PROVA");
   assertStringIncludes(sys, "responde com ESTE plano");
   assertStringIncludes(sys, "=== PARCIAIS FACE AO PLANO PARA O DIA ===\nteste");
+});
+
+// ── A véspera e a hora (specs/plano-de-prova.md, "A véspera e a hora") ────────
+Deno.test("hhmm: corta os segundos do `time` do Postgres e aceita HH:MM", () => {
+  assertEquals(hhmm("09:00:00"), "09:00");
+  assertEquals(hhmm("07:30"), "07:30");
+  assertEquals(hhmm(null), "");
+});
+
+Deno.test("buildRaceEveContext: com hora e peso, horas e gramas concretas", () => {
+  const ctx = buildRaceEveContext({ name: "Meia de Lisboa", start_time: "09:00:00", distance_km: 21.1 }, { weight_kg: 70 }, 6720, 1)!;
+  assertStringIncludes(ctx, "=== VÉSPERA E MANHÃ DA PROVA (é amanhã;");
+  assertStringIncludes(ctx, "Partida: 09:00.");
+  assertStringIncludes(ctx, "deitar às 22:00 para acordar às 06:00 (3 h antes; 2 h 30 no mínimo)");
+  assertStringIncludes(ctx, "Manhã: acordar 06:00 · pequeno-almoço 06:15 (2 h 45 antes; hidratos 70-140 g (1-2 g/kg)");
+  assertStringIncludes(ctx, "água 350-490 ml entre as 05:00 e as 08:15");
+  assertStringIncludes(ctx, "chegada 08:00 · aquecimento 08:35");
+  assertStringIncludes(ctx, "ecrãs fora a partir das 21:00");
+  assertStringIncludes(ctx, "Jantar da véspera (até às 19:30): hidratos complexos (arroz, massa, batata, pão) 140-280 g (2-4 g/kg), proteína 21-28 g (0.3-0.4 g/kg)");
+  // 1:52:00 > 90 min → carga de hidratos
+  assertStringIncludes(ctx, "Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes (700-840 g hoje)");
+  assertStringIncludes(ctx, "Água hoje: a base de 30-40 ml/kg (2.1-2.8 L)");
+  assertEquals(ctx.includes("Sem peso no perfil"), false);
+});
+
+Deno.test("buildRaceEveContext: sem hora manda perguntar; sem peso fica por kg; prova curta sem carga", () => {
+  const ctx = buildRaceEveContext({ name: "Corrida das Vindimas", start_time: null, distance_km: 10 }, { weight_kg: null }, 2820, 0)!;
+  assertStringIncludes(ctx, "(é hoje;");
+  assertStringIncludes(ctx, "Hora de partida: DESCONHECIDA. Pergunta-lha");
+  assertEquals(ctx.includes("acordar às"), false);
+  assertStringIncludes(ctx, "Jantar da véspera: hidratos complexos (arroz, massa, batata, pão) 2-4 g/kg");
+  assertStringIncludes(ctx, "Carga de hidratos: NÃO — prova abaixo de 90 min");
+  assertStringIncludes(ctx, "Sem peso no perfil");
+  assertEquals(buildRaceEveContext(null, null, null, 1), null);
+});
+
+Deno.test("a hora dos treinos entra nas linhas que a Carol lê — corrida e ginásio", () => {
+  const runLine = summariseRuns([{ date: "2026-09-10", start_time: "21:30:00", kind: "treino", training_type: "continuo", distance_km: 10, duration_seconds: 3000 }])[0];
+  assertStringIncludes(runLine, "- 2026-09-10 às 21:30: Treino (Contínuo)");
+  const noTime = summariseRuns([{ date: "2026-09-10", kind: "simples", distance_km: 5, duration_seconds: 1500 }])[0];
+  assertStringIncludes(noTime, "- 2026-09-10: Simples");
+  const gym = summariseSessions([{ date: "2026-09-09", start_time: "07:15:00", name: "Pernas", kind: "forca", workout_session_sets: [] }])[0];
+  assertEquals(gym.startTime, "07:15:00");
+  assertStringIncludes(formatSessionLine(gym), "- 2026-09-09 às 07:15: Pernas");
+});
+
+Deno.test("buildRaceEventsContext: a partida com hora, ou o pedido dela; a última semana treina à hora da prova", () => {
+  const today = "2026-09-08";
+  const withTime = buildRaceEventsContext([{ date: "2026-09-13", name: "Meia", race_type: "estrada", distance_km: 21.1, target_time_seconds: 6720, start_time: "09:00:00" }], today, 40, "medio", [])!;
+  assertStringIncludes(withTime, "partida às 09:00");
+  assertStringIncludes(withTime, "última semana: treinos à hora da partida (09:00)");
+  const without = buildRaceEventsContext([{ date: "2026-10-13", name: "Meia", race_type: "estrada", distance_km: 21.1, target_time_seconds: 6720 }], today, 40, "medio", [])!;
+  assertStringIncludes(without, "partida: hora por marcar (pergunta-lha)");
+  assertEquals(without.includes("última semana"), false);
+});
+
+Deno.test("véspera e manhã: as instruções mandam usar o bloco da preparação", () => {
+  const eve = buildProactiveInstruction("race_eve", null);
+  assertStringIncludes(eve, "VÉSPERA E MANHÃ DA PROVA");
+  assertStringIncludes(eve, "o sono (quantas horas, a que horas deitar e acordar)");
+  assertStringIncludes(eve, "Quatro ou cinco bolhas");
+  assertStringIncludes(buildProactiveInstruction("race_morning", null), "a hora do pequeno-almoço do bloco VÉSPERA E MANHÃ");
+  const args: unknown[] = new Array(34).fill(null);
+  args[1] = BIO_BASE;
+  args[27] = undefined;
+  args[33] = "=== VÉSPERA E MANHÃ DA PROVA ===\nteste";
+  // deno-lint-ignore no-explicit-any
+  const sys = (buildSystemInstruction as any)(...args) as string;
+  assertStringIncludes(sys, "=== VÉSPERA E MANHÃ DA PROVA ===\nteste");
 });

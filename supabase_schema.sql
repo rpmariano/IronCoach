@@ -776,3 +776,12 @@ create policy "race memories own folder update" on storage.objects for update
   using (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "race memories own folder delete" on storage.objects for delete
   using (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================================
+-- Hora de início — prova, corrida e sessão de ginásio (specs/plano-de-prova.md,
+-- "A véspera e a hora"). Ver supabase/migrations/20260912230000_start_times.sql.
+-- `time` sem fuso, em hora local do atleta; tudo nullable.
+-- ============================================================================
+alter table public.race_events add column if not exists start_time time;
+alter table public.runs add column if not exists start_time time;
+alter table public.workout_sessions add column if not exists start_time time;

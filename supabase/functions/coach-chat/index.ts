@@ -556,11 +556,14 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `primeiro km e porquê, onde controlar, onde aguentar, o ponto de decisão e o que o decide, o final, o abastecimento nos km certos — e cita ` +
     `os troços do percurso pelo nome quando o plano os tiver. Se o objetivo for ambicioso, diz-o e explica como se decide a meio. Não ` +
     `inventes troços nem ritmos que não estejam no plano. Sem plano (sem objetivo marcado), pede-lhe o objetivo de tempo em vez de ritmos ` +
-    `ao acaso. Depois, curto e ao caso dele: jantar e hidratação de hoje, hora de acordar, pequeno-almoço, aquecimento. Fecha com uma frase ` +
-    `sobre o caminho percorrido, com um número real do histórico (semanas de preparação, volume, o treino longo mais comprido). Três ou quatro bolhas.`,
+    `ao acaso. Depois, a PREPARAÇÃO, com o mesmo peso que o plano — usa o bloco VÉSPERA E MANHÃ DA PROVA: o jantar de hoje (hidratos ` +
+    `complexos, as gramas, o que evitar), a água (quanto, quando parar), o sono (quantas horas, a que horas deitar e acordar), como descontrair ` +
+    `(o que não fazer), e a manhã hora a hora (acordar, pequeno-almoço, chegada, aquecimento). Sem hora de partida, pergunta-lha e dá tudo em ` +
+    `intervalos. Fecha com uma frase sobre o caminho percorrido, com um número real do histórico (semanas de preparação, volume, o treino longo ` +
+    `mais comprido). Quatro ou cinco bolhas — plano, preparação, manhã, fecho.`,
   race_morning:
-    `É a manhã da prova. Curta: duas frases. Sem dados nem lista — o único número permitido é o ritmo do primeiro km do PLANO PARA O DIA, ` +
-    `se o houver. Uma frase sobre hoje e uma sobre ele.`,
+    `É a manhã da prova. Curta: duas frases. Sem dados nem lista — os únicos números permitidos são o ritmo do primeiro km do PLANO PARA O DIA ` +
+    `e, se ele ainda não tiver comido, a hora do pequeno-almoço do bloco VÉSPERA E MANHÃ. Uma frase sobre hoje e uma sobre ele.`,
   // Só o caso SEM corrida registada — com registo, o cliente manda o
   // veredicto calculado (race_outcome) e a instrução é a de
   // raceAfterInstruction, por veredicto.
@@ -823,6 +826,64 @@ export function raceAfterInstruction(o: RaceOutcome | null): string {
     ? ` Foi RECORDE PESSOAL na ${RACE_CATEGORY_LABELS[o.category || ""] || "distância"} (melhor anterior ${formatHms(o.previous_best_seconds)}, batido por ${absHms(o.official_seconds! - o.previous_best_seconds)}): diz-lho com o número — é excecional e merece ser reconhecido, seja qual for o veredicto face ao objetivo.`
     : "";
   return common + body + record;
+}
+
+/** "09:00" a partir de "09:00:00" (Postgres `time`) ou de "09:00". */
+export function hhmm(t: unknown): string {
+  return typeof t === "string" ? t.slice(0, 5) : "";
+}
+
+function minutesOf(t: unknown): number | null {
+  const v = hhmm(t);
+  const m = /^(\d{2}):(\d{2})$/.exec(v);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+function clock(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+function grams(weightKg: number | null, perKgLow: number, perKgHigh: number): string {
+  if (!weightKg) return `${perKgLow}-${perKgHigh} g/kg`;
+  return `${Math.round(weightKg * perKgLow)}-${Math.round(weightKg * perKgHigh)} g (${perKgLow}-${perKgHigh} g/kg)`;
+}
+
+/** A véspera e a manhã da prova com horas e quantidades (specs/plano-de-prova.md,
+ *  "A véspera e a hora"): sono, jantar, água, descontrair e a manhã, todos
+ *  contados a partir da hora de partida e do peso. Sem hora, o bloco diz-o e
+ *  manda perguntá-la — sem inventar horas. Doutrina: 04-nutricao-treino-prova
+ *  (#1 antes do treino, #3 carga de hidratos), 04-nutricao-base-diaria (#6). */
+export function buildRaceEveContext(
+  race: { name?: string | null; start_time?: string | null; distance_km?: number | string | null } | null,
+  profile: { weight_kg?: number | string | null } | null,
+  plannedFinishSeconds: number | null,
+  daysUntil: number,
+): string | null {
+  if (!race) return null;
+  const weight = profile?.weight_kg != null ? Number(profile.weight_kg) : null;
+  const weightKg = weight && Number.isFinite(weight) && weight > 0 ? weight : null;
+  const start = minutesOf(race.start_time);
+  const longRace = (plannedFinishSeconds ?? 0) > 90 * 60;
+  const lines: string[] = [`=== VÉSPERA E MANHÃ DA PROVA (${daysUntil === 0 ? "é hoje" : "é amanhã"}; calculado pela app — usa ESTAS horas e quantidades) ===`];
+  if (start == null) {
+    lines.push("Hora de partida: DESCONHECIDA. Pergunta-lha antes de dar horas de acordar, de pequeno-almoço ou de deitar — sem a hora, fala em intervalos (\"3 h antes da partida\") e pede-lhe que a marque na prova.");
+  } else {
+    const wake = start - 180;
+    const bed = wake - 8 * 60;
+    lines.push(`Partida: ${clock(start)}.`);
+    lines.push(`Sono: 8 h no alvo, 7 no mínimo — deitar às ${clock(bed)} para acordar às ${clock(wake)} (3 h antes; 2 h 30 no mínimo). A noite que mais conta é a anterior à véspera: se hoje é a véspera, a de ontem já foi.`);
+    lines.push(`Manhã: acordar ${clock(wake)} · pequeno-almoço ${clock(start - 165)} (2 h 45 antes; hidratos ${grams(weightKg, 1, 2)}, pouca fibra, pouca gordura, o de sempre) · água ${weightKg ? `${Math.round(weightKg * 5)}-${Math.round(weightKg * 7)} ml` : "5-7 ml/kg"} entre as ${clock(start - 240)} e as ${clock(start - 45)}, aos goles · chegada ${clock(start - 60)} · aquecimento ${clock(start - 25)}.`);
+    lines.push(`Descontrair: nada de treino além de 15-20 min muito fáceis; material preparado antes de jantar; ecrãs fora a partir das ${clock(bed - 60)}; nada de novo (comida, sapatilhas, roupa).`);
+  }
+  lines.push(`Jantar da véspera${start != null ? ` (até às ${clock(start - 180 - 8 * 60 - 150)})` : ""}: hidratos complexos (arroz, massa, batata, pão) ${grams(weightKg, 2, 4)}, proteína ${grams(weightKg, 0.3, 0.4)}, pouca fibra e pouca gordura, nada de novo.`);
+  lines.push(longRace
+    ? `Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes${weightKg ? ` (${Math.round(weightKg * 10)}-${Math.round(weightKg * 12)} g hoje)` : ""}, fibra abaixo de 10-15 g/dia.`
+    : `Carga de hidratos: NÃO — prova abaixo de 90 min; comer normal, com o jantar acima. Encher-se só traz peso (3 g de água por g de glicogénio).`);
+  lines.push(`Água hoje: a base de 30-40 ml/kg${weightKg ? ` (${(weightKg * 0.03).toFixed(1)}-${(weightKg * 0.04).toFixed(1)} L)` : ""}, repartida pelo dia; não é para beber litros à noite.`);
+  if (!weightKg) lines.push("Sem peso no perfil: as quantidades ficam por kg — pede-lhe o peso se quiseres dar gramas.");
+  return lines.join("\n");
 }
 
 /** O que fica na memória de longo prazo dela sobre esta prova (coach_notes,
@@ -1133,6 +1194,7 @@ export type GymSessionSummary = {
   avgHr: number | null;
   maxHr: number | null;
   exertion: number | null;
+  startTime: string | null;
 };
 
 // Resume sessões de treino para o coach. Volume = Σ reps×carga sobre séries
@@ -1172,6 +1234,7 @@ export function summariseSessions(sessions: any[]): GymSessionSummary[] {
       avgHr: s.avg_hr ?? null,
       maxHr: s.max_hr ?? null,
       exertion: s.exertion ?? null,
+      startTime: s.start_time ?? null,
     };
   });
 }
@@ -1196,7 +1259,7 @@ export function formatSessionLine(r: GymSessionSummary): string {
   const kindLabel = r.kind === "aula" ? " (aula)" : "";
   const cats = r.categories.length ? ` [${r.categories.join(", ")}]` : "";
   const detail = parts.length ? ` — ${parts.join(", ")}` : " — sem detalhes registados";
-  return `- ${r.date}: ${r.name}${kindLabel}${cats}${detail}`;
+  return `- ${r.date}${r.startTime ? ` às ${hhmm(r.startTime)}` : ""}: ${r.name}${kindLabel}${cats}${detail}`;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1375,7 +1438,7 @@ export function summariseRuns(runs: any[]): string[] {
       ? `FC média ${Math.round(details.avg_heart_rate_bpm)} bpm`
       : null;
     const parts = [distance, duration, pace, cadStr, hrStr].filter(Boolean);
-    return `- ${r.date}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
+    return `- ${r.date}${r.start_time ? ` às ${hhmm(r.start_time)}` : ""}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
 
@@ -1880,7 +1943,7 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
 
   const { data, error } = await sb
     .from("runs")
-    .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+    .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
     .eq("user_id", userId)
     .gte("date", start_date)
     .lte("date", end_date)
@@ -2737,6 +2800,11 @@ export function buildRaceEventsContext(
     const effectiveLevel = e.experience_level || profileLevel;
     const extras = [
       e.location ? `local: ${e.location}` : null,
+      // A hora de partida decide a véspera e a manhã (ver buildRaceEveContext);
+      // sem ela a Carol pergunta-a em vez de aconselhar em abstrato.
+      e.start_time ? `partida às ${hhmm(e.start_time)}` : `partida: hora por marcar (pergunta-lha)`,
+      // Na última semana o corpo habitua-se à hora: treinar à hora da prova.
+      e.start_time && daysUntil >= 0 && daysUntil <= 7 ? `última semana: treinos à hora da partida (${hhmm(e.start_time)})` : null,
       e.distance_km ? `distância: ${e.distance_km} km` : null,
       e.target_time_seconds ? `tempo-alvo: ${formatHms(e.target_time_seconds)}` : null,
       paceStr ? `ritmo-alvo: ${paceStr}/km` : null,
@@ -3223,6 +3291,8 @@ export function buildSystemInstruction(
   // parciais face ao plano — ver buildRacePlanContext / buildSplitsComparisonContext.
   racePlanContext: string | null = null,
   splitsContext: string | null = null,
+  // A véspera e a manhã com horas (prova a ≤ 1 dia) — ver buildRaceEveContext.
+  raceEveContext: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -4151,6 +4221,9 @@ export function buildSystemInstruction(
   if (splitsContext) {
     sys += `\n\n${splitsContext}`;
   }
+  if (raceEveContext) {
+    sys += `\n\n${raceEveContext}`;
+  }
 
   if (proactiveTrigger) {
     sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
@@ -4357,7 +4430,7 @@ async function handler(req: Request): Promise<Response> {
     const { data: gymSessions, error: err_gymSessions } = await sb
       .from("workout_sessions")
       .select(
-        "date, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
+        "date, start_time, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
           "workout_session_sets(reps, weight)",
       )
       .eq("user_id", userId)
@@ -4377,7 +4450,7 @@ async function handler(req: Request): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -4455,7 +4528,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
-      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info")
+      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -4491,6 +4564,7 @@ async function handler(req: Request): Promise<Response> {
     // deno-lint-ignore no-explicit-any
     const nextRaceForPlan = (upcomingRaces || []).find((e: any) => typeof e.date === "string" && e.date >= todayISO);
     let racePlanContext: string | null = null;
+    let raceEveContext: string | null = null;
     if (nextRaceForPlan) {
       const daysUntilPlan = Math.round((new Date(nextRaceForPlan.date + "T00:00:00Z").getTime() - new Date(todayISO + "T00:00:00Z").getTime()) / 86400000);
       if (daysUntilPlan <= 7) {
@@ -4506,6 +4580,9 @@ async function handler(req: Request): Promise<Response> {
           routeSummary: nextRaceForPlan.web_info?.route_summary ?? null,
         });
         racePlanContext = buildRacePlanContext(plan, nextRaceForPlan.name ?? null, daysUntilPlan);
+        if (daysUntilPlan <= 1) {
+          raceEveContext = buildRaceEveContext(nextRaceForPlan, profile, plan?.plannedFinishSeconds ?? null, daysUntilPlan);
+        }
       }
     }
 
@@ -4842,6 +4919,7 @@ async function handler(req: Request): Promise<Response> {
       raceOutcome,
       racePlanContext,
       splitsContext,
+      raceEveContext,
     );
 
     let finalSystemInstruction = systemInstruction;
