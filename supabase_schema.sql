@@ -785,3 +785,13 @@ create policy "race memories own folder delete" on storage.objects for delete
 alter table public.race_events add column if not exists start_time time;
 alter table public.runs add column if not exists start_time time;
 alter table public.workout_sessions add column if not exists start_time time;
+
+-- ============================================================================
+-- runs.race_id só pode apontar para uma prova do próprio atleta — policy
+-- restritiva (revisão pré-deploy 2026-09-12). Ver
+-- supabase/migrations/20260912233000_runs_race_id_own_race.sql.
+-- ============================================================================
+drop policy if exists "runs race_id own race" on public.runs;
+create policy "runs race_id own race" on public.runs
+  as restrictive for all using (true)
+  with check (race_id is null or exists (select 1 from public.race_events r where r.id = race_id and r.user_id = auth.uid()));

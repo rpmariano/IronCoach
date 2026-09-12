@@ -755,6 +755,10 @@ Deno.serve(async (req) => {
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
       bodyAssessments: bodyAssessments || [], acwr, tdee,
+      // Calculado logo acima mas nunca passado: a regra de segunda-feira
+      // ("semana_passada_plano") era código morto e a janela extra de 7 dias
+      // da query era lida em vão (apanhado na revisão pré-deploy 2026-09-12).
+      lastWeekPlan,
     });
 
     const warningsMsg = buildWarningsMessage(
