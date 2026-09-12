@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
+import { todayISO } from '../../lib/utils';
 import CarolCard from './CarolCard';
 
 describe('CarolCard — o cartão da Carol no Início', () => {
@@ -60,7 +61,10 @@ describe('CarolCard — o cartão da Carol no Início', () => {
   });
 
   it('o aviso de hoje junta o plano de hoje e a água por registar', () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // O mesmo relógio que o cartão (hora local), não o UTC de toISOString():
+    // entre as 00:00 e a 01:00 de Lisboa os dois dias diferem e o plano
+    // "de hoje" caía em ontem.
+    const today = todayISO();
     useAppStore.setState({
       profile: { id: 'u1', water_goal_ml: 2500 },
       coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: today }],
@@ -68,6 +72,16 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     });
     render(<CarolCard />);
     expect(screen.getByText(/Para hoje tens agendado: Corrida \(longo, 16 km\)\. Ainda não registaste água hoje\./)).toBeInTheDocument();
+  });
+
+  it('não repete a água quando o aviso do servidor já fala dela', () => {
+    useAppStore.setState({
+      profile: { id: 'u1', water_goal_ml: 2500 },
+      dailySummary: { date: '2026-08-11', recap: null, warnings: 'Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', meal_suggestion: null, tomorrow_prep: null },
+    });
+    render(<CarolCard />);
+    expect(screen.getByText('Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.')).toBeInTheDocument();
+    expect(screen.queryByText(/Ainda não registaste água hoje\./)).not.toBeInTheDocument();
   });
 
   it('"Atualizar" força uma nova geração', () => {

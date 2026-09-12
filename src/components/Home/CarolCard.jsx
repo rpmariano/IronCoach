@@ -49,6 +49,11 @@ export function useCoachDailyMessages() {
 
   return useMemo(() => {
     const list = [];
+    // Os rótulos das secções são a Carol a falar, não crachás de módulo: todos
+    // em ciano (--coach), só o aviso em --warn. Antes cada um levava a cor do
+    // seu módulo — o --gym (#9ec3d2) de "Preparar amanhã" tem quase a
+    // luminância do texto corrido e desaparecia; o âmbar do conceito do dia
+    // roubava a cor que é "da prova, só da prova" (bug relatado 2026-09-12).
     if (clean(dailySummary?.recap)) list.push({ key: 'recap', label: 'Recapitulação', color: 'var(--coach)', text: clean(dailySummary.recap) });
 
     // Aviso de hoje: o do servidor, senão o plano de hoje; a água junta-se.
@@ -56,19 +61,25 @@ export function useCoachDailyMessages() {
     let warning = clean(dailySummary?.warnings) || (nonRest.length ? `Para hoje tens agendado: ${nonRest.map(formatItemSummary).join(' e ')}.` : '');
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
     const waterGoal = profile?.water_goal_ml;
-    if (waterGoal && waterTotal === 0) warning = `${warning} Ainda não registaste água hoje.`.trim();
-    else if (waterGoal && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
+    // O servidor vê os mesmos registos de água e muitas vezes já os comenta
+    // no aviso ("Ainda não registaste consumo de água hoje. Começa a
+    // hidratar-te…"); juntar-lhe a frase local dizia a mesma coisa duas
+    // vezes seguidas (bug relatado 2026-09-12). A frase local fica só para
+    // quando o aviso não fala de água — que é o caso sem resumo do dia.
+    const mentionsWater = /\b(água|agua|hidrat)/i.test(warning);
+    if (waterGoal && !mentionsWater && waterTotal === 0) warning = `${warning} Ainda não registaste água hoje.`.trim();
+    else if (waterGoal && !mentionsWater && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
     if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning });
 
-    if (clean(dailySummary?.meal_suggestion)) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--nutrition)', text: clean(dailySummary.meal_suggestion) });
+    if (clean(dailySummary?.meal_suggestion)) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: clean(dailySummary.meal_suggestion) });
 
     const tomorrowNonRest = activePlanItems.tomorrow.filter((i) => i.kind !== 'descanso');
     const prep = tomorrowNonRest.length
       ? `Amanhã o plano aponta para: ${tomorrowNonRest.map(formatItemSummary).join(' e ')}.`
       : clean(dailySummary?.tomorrow_prep);
-    if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--gym)', text: prep });
+    if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep });
 
-    if (clean(dailySummary?.daily_concept?.body)) list.push({ key: 'daily_concept', label: dailySummary.daily_concept.title || 'Conceito do dia', color: 'var(--race)', text: clean(dailySummary.daily_concept.body) });
+    if (clean(dailySummary?.daily_concept?.body)) list.push({ key: 'daily_concept', label: dailySummary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: clean(dailySummary.daily_concept.body) });
     return list;
   }, [dailySummary, activePlanItems, waterLogs, profile, today]);
 }
@@ -132,9 +143,11 @@ export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach
               {first.text}
             </p>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {messages.map((m) => (
-                <div key={m.key}>
+            <div className="flex flex-col">
+              {/* Um fio entre secções: é o que as separa em blocos sem voltar
+                  ao carrossel — a cor do rótulo sozinha não chegava. */}
+              {messages.map((m, i) => (
+                <div key={m.key} style={i ? { borderTop: '1px solid rgba(34,211,238,.12)', marginTop: 10, paddingTop: 10 } : undefined}>
                   <div className="text-[11px] font-extrabold uppercase" style={{ color: m.color, letterSpacing: 'var(--tracking-label)' }}>{m.label}</div>
                   <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}>{m.text}</p>
                 </div>
