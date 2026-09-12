@@ -210,6 +210,11 @@ function buildDemoData() {
         id: 'demo-race-3', date: inDays(0), name: 'São Silvestre de Lisboa',
         location: 'Lisboa', race_type: 'estrada', distance_km: 10,
         experience_level: 'medio', status: 'agendada',
+        /* A hora de partida (specs/plano-de-prova.md, "A véspera e a hora"):
+           é esta prova que deixa ver "· 09:00" no cabeçalho do hub e
+           "Partida às 09:00" no cartão do plano. A demo-race-4 fica de
+           propósito sem hora, para se ver também o pedido. */
+        start_time: '09:00',
         target_time: '48:00', target_time_seconds: 2880, target_pace_seconds_per_km: 288,
         /* Percurso extraído do site (o que o enrich-race-event devolve): é
            esta prova que deixa ver o cartão "Plano para o dia" com os troços
@@ -236,10 +241,23 @@ function buildDemoData() {
     waterLogs: [],
     meals: [],
     runs: [
-      { id: 'demo-run-1', date: inDays(-2), distance_km: 8, duration_seconds: 2400, kind: 'treino', training_type: 'continuo' },
-      { id: 'demo-run-2', date: inDays(-5), distance_km: 12, duration_seconds: 3900, kind: 'treino', training_type: 'longo' },
+      /* Uma de manhã e outra à noite: é assim que se vê a hora nos cartões do
+         Calendário, e é a diferença que a Carol lê (um treino às 22:10 corta
+         o sono) — specs/plano-de-prova.md, "A véspera e a hora". A BD devolve
+         'HH:MM:SS', por isso a demo escreve-o na mesma grafia. */
+      { id: 'demo-run-1', date: inDays(-2), start_time: '07:30:00', distance_km: 8, duration_seconds: 2400, kind: 'treino', training_type: 'continuo' },
+      { id: 'demo-run-2', date: inDays(-5), start_time: '22:10:00', distance_km: 12, duration_seconds: 3900, kind: 'treino', training_type: 'longo' },
     ],
-    gymSessions: [],
+    gymSessions: [
+      /* Uma sessão só, para a hora ser visível também no Ginásio — o demo não
+         tinha nenhuma e o cartão do Calendário ficava sem nada para mostrar. */
+      {
+        id: 'demo-gym-1', date: inDays(-1), start_time: '19:00:00', kind: 'forca',
+        name: 'Peito e Tríceps', categories: ['Peito', 'Tríceps'],
+        duration_seconds: 3600, calories_kcal: 340, exertion: 7,
+        workout_session_sets: [],
+      },
+    ],
     bodyAssessments: [],
     coachPlans: [],
     coachPlanItems: [],
