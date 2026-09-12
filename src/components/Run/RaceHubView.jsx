@@ -24,10 +24,12 @@ import {
   Star,
 } from 'lucide-react';
 import Button from '../shared/Button';
+import PremiumModal from '../shared/PremiumModal';
 import Warning from '../shared/Warning';
 import RunIcon from '../shared/RunIcon';
 import RaceTrail from '../shared/RaceTrail';
 import SectionLabel from '../shared/SectionLabel';
+import AchievementCard from '../shared/AchievementCard';
 import { Sheet } from '../shared/Sheet';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
@@ -35,6 +37,8 @@ import RaceWebInfoSections from './RaceWebInfoSections';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun } from '../../utils/run';
+import { classifyRaceOutcome, describeRaceOutcome } from '../../utils/raceOutcome';
+import { computeAchievements, achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { experienceLevelLabel } from '../../utils/experience';
 import './RaceHubView.css';
 
@@ -48,9 +52,11 @@ export default function RaceHubView({
   onFetchWebInfo,
   fetchingWebInfo = false,
   onGoToEdit,
+  onMarkCompleted,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [showVdotHelp, setShowVdotHelp] = useState(false);
+  const [confirmCompleted, setConfirmCompleted] = useState(false);
 
   const plan = useMemo(() => {
     return calculateRaceTrainingPlan({
@@ -127,6 +133,67 @@ export default function RaceHubView({
     store.openRaceRun(race.id);
   };
 
+  /* "Marcar como concluída" sem registo (spec §1, a saída secundária): no
+     hub vive no cartão "Prova & Recuperação" — e, passada a data, no estado
+     pós-prova. Só a partir do DIA da prova (pedido 2026-09-12): antes disso
+     o botão fica visível mas desativado, para se perceber onde vai
+     aparecer. Sai de cena quando já há corrida ligada (aí a prova conclui-se
+     pelo registo) ou quando já está concluída. Pede confirmação: é um estado
+     que não se desfaz a partir daqui. */
+  const isMarkedCompleted = race?.status === 'concluida';
+  const showMarkCompleted = !!onMarkCompleted && !!race?.id && !raceRun && !isMarkedCompleted;
+  const canMarkCompleted = showMarkCompleted && daysToRace <= 0;
+  const markCompletedButton = showMarkCompleted ? (
+    <div className="space-y-1">
+      <Button
+        variant="light"
+        onClick={() => setConfirmCompleted(true)}
+        disabled={!canMarkCompleted}
+        type="button"
+        data-testid="race-hub-mark-completed"
+        className={`w-full text-xs ${canMarkCompleted ? 'text-[var(--ok)]' : ''}`}
+        icon={<CheckCircle2 size={14} />}
+      >
+        Marcar como concluída
+      </Button>
+      {!canMarkCompleted && (
+        <p className="text-[11px] text-center text-[var(--text-4)]">Disponível a partir do dia da prova.</p>
+      )}
+    </div>
+  ) : null;
+  const confirmCompletedModal = showMarkCompleted ? (
+    <PremiumModal
+      isOpen={confirmCompleted}
+      onClose={() => setConfirmCompleted(false)}
+      title="Marcar a prova como concluída?"
+      icon={Trophy}
+      theme="race"
+      variant="dialog"
+      maxWidth="max-w-sm"
+    >
+      <div className="p-6">
+        <p className="text-[13px] text-[var(--text-3)] mb-6 leading-relaxed">
+          «{race.name}» fica concluída sem corrida registada. Se ainda quiseres guardar o tempo e as memórias, usa antes "Registar a prova".
+        </p>
+        <div className="space-y-3">
+          <Button
+            onClick={() => { setConfirmCompleted(false); onMarkCompleted(race); }}
+            type="button"
+            variant="module"
+            moduleColor="var(--mod-prova)"
+            className="w-full"
+            icon={<CheckCircle2 size={14} />}
+          >
+            Sim, concluída
+          </Button>
+          <Button onClick={() => setConfirmCompleted(false)} type="button" variant="ghost" className="w-full">
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    </PremiumModal>
+  ) : null;
+
   /* ── Galeria de memórias (spec §4) ──────────────────────────────────────
      Os caminhos estão em race_events; o bucket é privado, por isso as URLs
      assinam-se na hora, tal como as fotos dos outros registos. */
@@ -159,6 +226,31 @@ export default function RaceHubView({
     })();
     return () => { cancelled = true; };
   }, [hasMemories, memoryPaths]);
+
+  /* ── Conquistas desta prova (specs/gamificacao-provas.md §2) ────────────
+     Entre as memórias e o balanço: o que esta prova deu, e numa linha
+     discreta o que ficou para a próxima. A lista sai do mesmo
+     computeAchievements do Início e do Perfil — o hub não tem régua
+     própria. O palmarés precisa de TODAS as provas para contar; o store é a
+     fonte, mas a prova aberta entra sempre, mesmo que o store esteja vazio
+     (é o caso dos testes que montam o hub à mão). */
+  const storeRaceEvents = useAppStore((s) => s.raceEvents);
+  const palmaresRaces = useMemo(() => {
+    const all = storeRaceEvents || [];
+    if (!race?.id) return all;
+    return all.some((e) => e?.id === race.id) ? all : [...all, race];
+  }, [storeRaceEvents, race]);
+
+  const raceOutcome = useMemo(
+    () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile }) : null),
+    [race, raceRun, runs, profile],
+  );
+  const achievements = useMemo(
+    () => (raceRun ? computeAchievements({ raceEvents: palmaresRaces, runs, profile }) : []),
+    [raceRun, palmaresRaces, runs, profile],
+  );
+  const raceAchievements = achievementsForRace(achievements, race?.id);
+  const raceMissed = raceRun ? missedInRace(achievements, race?.id) : [];
 
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
   // "Adesão ao plano" e "Lesões" do mock não têm fonte no modelo de dados —
@@ -221,7 +313,9 @@ export default function RaceHubView({
           <div aria-hidden="true" className="absolute pointer-events-none" style={{ right: -40, top: -40, width: 200, height: 200, background: 'radial-gradient(circle, rgba(251,191,36,.2) 0%, transparent 70%)' }} />
 
           <div className="relative">
-            <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.08em', color: 'var(--race)' }}>
+            {/* O rótulo do herói diz o mesmo que a conquista "Prova
+                concluída" logo abaixo — o testid distingue-os. */}
+            <div data-testid="race-hub-eyebrow" className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.08em', color: 'var(--race)' }}>
               Prova concluída
             </div>
             <h1 className="text-[16px] font-extrabold mt-1" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
@@ -288,6 +382,11 @@ export default function RaceHubView({
                 >
                   Registar a prova
                 </button>
+                {/* Data passada mas ainda "agendada": a saída secundária
+                    também aqui, porque o cartão das fases já não se mostra
+                    neste estado. */}
+                {markCompletedButton && <div className="mt-2">{markCompletedButton}</div>}
+                {confirmCompletedModal}
               </>
             )}
           </div>
@@ -367,8 +466,30 @@ export default function RaceHubView({
           </Sheet>
         )}
 
-        {/* 2. Balanço da Carol — o texto é o do motor (carolAnalysis), que
-            neste estado já escreve sobre a prova no passado. */}
+        {/* 1c. Conquistas — o que esta prova deu ao palmarés, e o que ficou
+            para a próxima. Só com a corrida registada: sem números não há
+            conquista nenhuma para mostrar. */}
+        {raceRun && raceAchievements.length > 0 && (
+          <>
+            <SectionLabel tone="race" style={{ margin: '16px 2px 0' }}>Conquistas</SectionLabel>
+            <div data-testid="race-hub-achievements" className="flex flex-col gap-2" style={{ marginTop: 8 }}>
+              {raceAchievements.map((a) => <AchievementCard key={a.key} achievement={a} showDate={false} />)}
+            </div>
+          </>
+        )}
+        {raceRun && raceMissed.length > 0 && (
+          <div data-testid="race-hub-achievements-missed" style={{ marginTop: raceAchievements.length ? 8 : 12 }}>
+            {raceMissed.map((a) => (
+              <p key={a.key} className="text-[11.5px] leading-[1.45]" style={{ color: 'var(--text-4)', padding: '0 2px' }}>
+                {describeMissedInRace(a, raceOutcome)}
+              </p>
+            ))}
+          </div>
+        )}
+
+        {/* 2. Balanço da Carol — com a corrida registada é o balanço da
+            prova em si (describeRaceOutcome, a mesma régua do resto); sem
+            ela fica o texto do motor, que é o único que existe. */}
         <div style={{ borderRadius: 22, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 16, marginTop: 12 }}>
           <div className="flex items-center gap-2.5">
             <CoachAvatar size={28} />
@@ -376,8 +497,8 @@ export default function RaceHubView({
               Balanço da Carol
             </span>
           </div>
-          <p className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-2)' }}>
-            {carolAnalysis.overviewText}
+          <p data-testid="race-hub-balance" className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-2)' }}>
+            {raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
           </p>
         </div>
 
@@ -799,6 +920,12 @@ export default function RaceHubView({
                         </div>
                       )}
                     </div>
+
+                    {/* O estado da prova decide-se aqui, na 5.ª "fase": ver
+                        markCompletedButton acima. */}
+                    {phase.id === 'race_recovery' && markCompletedButton && (
+                      <div className="mt-2">{markCompletedButton}</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -806,6 +933,8 @@ export default function RaceHubView({
           })}
         </div>
       </div>
+
+      {confirmCompletedModal}
 
       {/* ─── 4. Informação Oficial do Site da Prova & Extração ─────────────── */}
       <div className="rh-web-info-card mb-4">

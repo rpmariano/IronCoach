@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeAchievements, achievementsForRace, missedInRace, completedRaces } from './achievements';
+import { computeAchievements, achievementsForRace, missedInRace, describeMissedInRace, completedRaces } from './achievements';
 
 /* O Palmarés (specs/gamificacao-provas.md). O que estes testes guardam é
    sobretudo a régua: uma prova só conta quando está concluída E tem corrida
@@ -185,5 +185,40 @@ describe('computeAchievements — concluída sem corrida ligada não conta', () 
     expect(a.prova_concluida.unlocked).toBe(false);
     expect(a.objetivo_batido.unlocked).toBe(false);
     expect(completedRaces({ raceEvents: [race], runs: TREINOS, profile: PROFILE })).toEqual([]);
+  });
+});
+
+describe('missedInRace / describeMissedInRace — o que ficou para a próxima', () => {
+  const antiga = meia({ id: 'r0', name: 'Meia do Estoril', date: '2026-05-10', target_time_seconds: 7200 });
+  const nova = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
+  const runs = [
+    ...TREINOS,
+    // A do Estoril foi mais rápida (6938): Lisboa não bate recorde nenhum.
+    corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 6938, details: { official_time_seconds: 6938 } }),
+    corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } }),
+  ];
+  const lista = computeAchievements({ raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA });
+
+  it('uma conquista dada por OUTRA prova conta como não dada nesta', () => {
+    // O objetivo foi batido na do Estoril (6938 < 7200), não em Lisboa.
+    expect(byKey(lista).objetivo_batido.raceId).toBe('r0');
+    expect(missedInRace(lista, 'r1').map((x) => x.key)).toEqual(['objetivo_batido', 'recorde_pessoal']);
+    expect(missedInRace(lista, 'r0').map((x) => x.key)).toEqual(['recorde_pessoal']);
+  });
+
+  it('a linha diz de quanto foi, com o número', () => {
+    const outcome = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE })[0].outcome;
+    const [objetivo, recorde] = missedInRace(lista, 'r1');
+    expect(describeMissedInRace(objetivo, outcome)).toBe('Objetivo batido fica para a próxima: ficaste a 1:42');
+    expect(describeMissedInRace(recorde, outcome)).toBe('Recorde pessoal fica para a próxima: 1:04 acima do teu melhor na meia');
+  });
+
+  it('sem objetivo marcado e sem histórico, diz o que falta em vez de um número', () => {
+    const semNada = meia({ id: 'r9', name: 'Meia Solta', date: '2026-09-10' });
+    const run = corrida({ id: 'run9', race_id: 'r9', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } });
+    const outcome = completedRaces({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE })[0].outcome;
+    const perdidas = missedInRace(computeAchievements({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }), 'r9');
+    expect(describeMissedInRace(perdidas[0], outcome)).toBe('Objetivo batido fica para a próxima: esta prova não tinha objetivo marcado');
+    expect(describeMissedInRace(perdidas[1], outcome)).toBe('Recorde pessoal fica para a próxima: precisa de duas provas na mesma distância');
   });
 });

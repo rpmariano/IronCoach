@@ -185,5 +185,24 @@ export const PERDIDAS_NA_PROVA = ['objetivo_batido', 'recorde_pessoal'];
 
 export function missedInRace(list, raceId) {
   if (!raceId) return [];
-  return (list || []).filter((a) => !a.unlocked && PERDIDAS_NA_PROVA.includes(a.key));
+  return (list || []).filter((a) => PERDIDAS_NA_PROVA.includes(a.key) && a.raceId !== raceId);
+}
+
+/** A linha discreta do hub: o que esta prova não deu, com o número de quanto
+ *  faltou — nunca uma repreensão, é o que a treinadora diria a seguir. */
+export function describeMissedInRace(achievement, outcome) {
+  if (!achievement) return '';
+  if (achievement.key === 'objetivo_batido') {
+    if (outcome?.targetSeconds && outcome?.deltaTargetSeconds > 0) {
+      return `Objetivo batido fica para a próxima: ficaste a ${formatDelta(outcome.deltaTargetSeconds)}`;
+    }
+    return 'Objetivo batido fica para a próxima: esta prova não tinha objetivo marcado';
+  }
+  if (achievement.key === 'recorde_pessoal') {
+    if (outcome?.previousBestSeconds && outcome?.deltaBestSeconds > 0) {
+      return `Recorde pessoal fica para a próxima: ${formatDelta(outcome.deltaBestSeconds)} acima do teu melhor na ${raceCategoryLabel(outcome.category)}`;
+    }
+    return 'Recorde pessoal fica para a próxima: precisa de duas provas na mesma distância';
+  }
+  return `${achievement.name} fica para a próxima`;
 }
