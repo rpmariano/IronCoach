@@ -71,7 +71,7 @@ descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
 
 A hora passa a ser um dado de primeira: `start_time` (time, hora local,
 opcional) em `race_events`, `runs` e `workout_sessions` — migração
-`20260912230000_start_times.sql`. Nos formulários: "Hora de partida" na
+`20260912212930_start_times.sql`. Nos formulários: "Hora de partida" na
 prova (agenda), "Hora" no registo de corrida e no de ginásio.
 
 Com a hora de partida a Carol deixa de aconselhar em abstrato. O coach-chat

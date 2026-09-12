@@ -723,7 +723,7 @@ create policy "admin delete unknown logs" on unknown_app_image_logs for delete u
 
 -- ============================================================================
 -- Onboarding — marca de "arranque concluído" no perfil (ponto 8 do redesenho
--- 2026-09). Ver supabase/migrations/20260911180000_profile_onboarding_done.sql
+-- 2026-09). Ver supabase/migrations/20260912171232_profile_onboarding_done.sql
 -- e src/utils/onboarding.js (a coluna nunca decide sozinha: só sem registos
 -- nem prova é que o arranque aparece).
 -- ============================================================================
@@ -731,7 +731,7 @@ alter table public.profiles
   add column if not exists onboarding_done boolean not null default false;
 
 -- ============ prova concluída: a corrida liga-se à prova + memórias ============
--- Ver supabase/migrations/20260912100000_race_completion.sql e
+-- Ver supabase/migrations/20260912171242_race_completion.sql e
 -- specs/prova-concluida.md. Registar a prova é registar uma corrida com
 -- kind = 'competicao' e race_id; as MEMÓRIAS (diploma, medalha, fotografias)
 -- ficam na prova, não na corrida — são do dia, não do registo desportivo.
@@ -779,7 +779,7 @@ create policy "race memories own folder delete" on storage.objects for delete
 
 -- ============================================================================
 -- Hora de início — prova, corrida e sessão de ginásio (specs/plano-de-prova.md,
--- "A véspera e a hora"). Ver supabase/migrations/20260912230000_start_times.sql.
+-- "A véspera e a hora"). Ver supabase/migrations/20260912212930_start_times.sql.
 -- `time` sem fuso, em hora local do atleta; tudo nullable.
 -- ============================================================================
 alter table public.race_events add column if not exists start_time time;
@@ -789,7 +789,7 @@ alter table public.workout_sessions add column if not exists start_time time;
 -- ============================================================================
 -- runs.race_id só pode apontar para uma prova do próprio atleta — policy
 -- restritiva (revisão pré-deploy 2026-09-12). Ver
--- supabase/migrations/20260912233000_runs_race_id_own_race.sql.
+-- supabase/migrations/20260912222014_runs_race_id_own_race.sql.
 -- ============================================================================
 drop policy if exists "runs race_id own race" on public.runs;
 create policy "runs race_id own race" on public.runs

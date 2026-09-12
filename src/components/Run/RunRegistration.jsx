@@ -83,7 +83,7 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 // memórias e vivem na prova, não na corrida.
 const MAX_RACE_PHOTOS = 6;
 // Espelha o file_size_limit do bucket race-memories
-// (supabase/migrations/20260912100000_race_completion.sql): o cliente diz
+// (supabase/migrations/20260912171242_race_completion.sql): o cliente diz
 // porque recusou em vez de deixar o upload falhar com um 413 sem explicação.
 const MAX_MEMORY_BYTES = 2097152;
 const RACE_MEMORIES_BUCKET = 'race-memories';

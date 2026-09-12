@@ -4439,7 +4439,7 @@ async function handler(req: Request): Promise<Response> {
       const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
       return jsonResponse({
         busy: true,
-        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)`,
+        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso.`,
       }, 409);
     } else {
       lockedUserId = userId;
