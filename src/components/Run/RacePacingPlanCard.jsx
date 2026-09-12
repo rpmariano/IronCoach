@@ -39,16 +39,6 @@ const LABEL_COLOR = {
 
 const FUEL_LABEL = { agua: 'água', hidratos: 'hidratos' };
 
-/* Num troço plano com nome, o motor acrescenta " Troço: <nome>." à
-   instrução — texto pensado para a Carol o dizer em voz corrida. Aqui o nome
-   do troço já está na linha em itálico logo acima, por isso a cauda sai:
-   lida duas vezes seguidas, a mesma frase parece um erro. */
-function instructionWithoutRoute(row) {
-  if (!row.route) return row.instruction;
-  const tail = ` Troço: ${row.route}.`;
-  return row.instruction.endsWith(tail) ? row.instruction.slice(0, -tail.length) : row.instruction;
-}
-
 export default function RacePacingPlanCard({
   plan,
   race,
@@ -188,7 +178,7 @@ export default function RacePacingPlanCard({
                   {row.label}
                 </span>
                 {' · '}
-                {instructionWithoutRoute(row)}
+                {row.instruction}
               </p>
             </div>
           ))}

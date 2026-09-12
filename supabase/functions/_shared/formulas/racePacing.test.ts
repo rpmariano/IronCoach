@@ -80,12 +80,14 @@ Deno.test("percurso conhecido: a subida desacelera 8% e cita o troço; a descida
   assertEquals(up.fromKm, 6);
   assertEquals(up.toKm, 7);
   assertEquals(up.paceSecPerKm, Math.round((6720 / 21.1) * 1.08));
-  assertStringIncludes(up.instruction, "Calçada da Ajuda");
+  assertEquals(up.route, "subida da Calçada da Ajuda");
+  assertStringIncludes(up.instruction, "Subida: desacelera");
+  assertEquals(up.instruction.includes("Calçada"), false);
   const down = plan.rows.find((r) => r.label === "descida")!;
   assertEquals(down.fromKm, 9);
   assertEquals(down.paceSecPerKm, Math.round((6720 / 21.1) * 0.96));
-  // o km da partida tem o troço no texto mas mantém o ritmo de arranque
-  assertStringIncludes(plan.rows[0].instruction, "Praça do Comércio");
+  // o km da partida leva o troço em `route` e mantém o ritmo de arranque
+  assertEquals(plan.rows[0].route, "Partida na Praça do Comércio");
   assertEquals(plan.rows[0].paceSecPerKm, 326);
   assertEquals(plan.notes.some((n) => n.includes("Não conheço")), false);
 });

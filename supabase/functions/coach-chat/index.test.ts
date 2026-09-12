@@ -3083,7 +3083,7 @@ Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e 
   assertStringIncludes(ctx, "Primeiro km: 5.26/km. Ponto de decisão: km 15.");
   assertStringIncludes(ctx, "Percurso: conhecido");
   assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
-  assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida (subida da Calçada da Ajuda)");
+  assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
   assertStringIncludes(ctx, "Abastecimento: km 5 água");
   assertEquals(buildRacePlanContext(null, "X", 1), null);
 });

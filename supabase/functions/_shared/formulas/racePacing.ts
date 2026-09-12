@@ -156,22 +156,22 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     let pace = basePace + delta;
     let route: string | null = null;
     const seg = routeByKm.get(km);
+    // O nome do troço vai em `route` (o cartão mostra-o em itálico, o prompt
+    // da Carol na própria linha); a instrução não o repete.
     if (seg) {
       route = seg.description;
       if (seg.elevation === "sobe") {
         pace = pace * (1 + hillUp);
         label = "subida";
         instruction = isTrail
-          ? `Subida (${seg.description}): esforço constante, a andar se a inclinação o pedir — o ritmo não conta aqui.`
-          : `Subida (${seg.description}): desacelera para manter o esforço, o tempo recupera-se depois.`;
+          ? "Subida: esforço constante, a andar se a inclinação o pedir — o ritmo não conta aqui."
+          : "Subida: desacelera para manter o esforço, o tempo recupera-se depois.";
       } else if (seg.elevation === "desce") {
         pace = pace * (1 + hillDown);
         label = "descida";
         instruction = isTrail
-          ? `Descida (${seg.description}): controlada, passada curta — não é para forçar.`
-          : `Descida (${seg.description}): deixa correr sem forçar, sem travar com os quadríceps.`;
-      } else {
-        instruction = `${instruction} Troço: ${seg.description}.`;
+          ? "Descida: controlada, passada curta — não é para forçar."
+          : "Descida: deixa correr sem forçar, sem travar com os quadríceps.";
       }
     }
 
