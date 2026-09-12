@@ -23,7 +23,7 @@ export function UnsavedChangesModal({
       maxWidth="max-w-[320px]"
     >
       <div className="p-6">
-        <p className="text-[13px] text-slate-300 mb-6 leading-relaxed">
+        <p className="text-[13px] text-[var(--text-3)] mb-6 leading-relaxed">
           {message}
         </p>
 
@@ -36,7 +36,7 @@ export function UnsavedChangesModal({
             isLoading={isSaving}
             className="w-full"
           >
-            {isSaving ? 'A guardar...' : 'Gravar e sair'}
+            {isSaving ? 'A guardar…' : 'Gravar e sair'}
           </Button>
 
           <Button

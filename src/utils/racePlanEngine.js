@@ -10,7 +10,7 @@
 // - Minetti / ITRA / Naismith (Conversão D+)
 
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
-import { parseDurationToSeconds, formatDuration, parsePaceToSeconds, formatPace, racePriorityLabel } from './run';
+import { formatPace } from './run';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';

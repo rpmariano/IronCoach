@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { publicUrl } from '../../lib/utils';
-import { Loader2 } from 'lucide-react';
 import Button from '../shared/Button';
+import AppBackground from '../Layout/AppBackground';
 export default function Auth() {
   const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
@@ -61,25 +61,26 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-transparent text-slate-800 fade-in">
-      <div className="card rounded-3xl p-6 max-w-sm w-full shadow-lg border border-[var(--brd-700)] space-y-4">
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-transparent text-[var(--text-1)] fade-in">
+      <AppBackground />
+      <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
         <div className="flex items-center gap-2 justify-center mb-1">
           <img src={publicUrl('logo.png')} alt="IronCoach" className="w-10 h-10 rounded-xl object-cover" />
           <h1 className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>IronCoach</h1>
         </div>
-        <p className="text-xs text-slate-500 text-center">
+        <p className="text-xs text-[var(--text-3)] text-center">
           {authMode === 'signin' ? 'Entra na tua conta' : 'Cria a tua conta'}
         </p>
 
         {/* Info & Error alerts */}
         {infoMsg && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 text-xs rounded-xl p-3">
+          <div className="bg-[var(--tint-ok-bg)] border border-[var(--tint-ok-bd)] text-[var(--ok)] text-xs rounded-xl p-3">
             {infoMsg}
           </div>
         )}
         {errorMsg && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-500 text-xs rounded-xl p-3">
+          <div className="bg-[var(--tint-danger-bg)] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs rounded-xl p-3">
             {errorMsg}
           </div>
         )}
@@ -87,26 +88,26 @@ export default function Auth() {
         {/* Email & Password Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Email</label>
+            <label className="text-[11px] font-semibold text-[var(--text-3)] mb-1 block">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="exemplo@email.com"
               required
-              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold text-slate-600 mb-1 block">Palavra-passe</label>
+            <label className="text-[11px] font-semibold text-[var(--text-3)] mb-1 block">Palavra-passe</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)]"
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
@@ -116,15 +117,15 @@ export default function Auth() {
             isLoading={loading}
             className="w-full"
           >
-            {authMode === 'signin' ? 'Entrar' : 'Criar Conta'}
+            {authMode === 'signin' ? 'Entrar' : 'Criar conta'}
           </Button>
         </form>
 
         {/* Divider */}
         <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-slate-200"></div>
-          <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase tracking-wider">ou</span>
-          <div className="flex-grow border-t border-slate-200"></div>
+          <div className="flex-grow border-t border-[var(--border-glass)]"></div>
+          <span className="flex-shrink mx-3 text-[11px] text-[var(--text-3)] uppercase tracking-wider">ou</span>
+          <div className="flex-grow border-t border-[var(--border-glass)]"></div>
         </div>
 
         {/* Google OAuth */}
@@ -153,7 +154,7 @@ export default function Auth() {
             setErrorMsg(null);
             setInfoMsg(null);
           }}
-          className="w-full text-center font-medium text-xs text-slate-500 hover:text-slate-700 transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--accent)] outline-none"
+          className="w-full min-h-[44px] text-center font-medium text-xs text-[var(--text-3)] hover:text-[var(--text-2)] transition py-2 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] outline-none"
         >
           {authMode === 'signin' ? 'Ainda não tens conta? Criar conta' : 'Já tens conta? Entrar'}
         </button>

@@ -1,0 +1,29 @@
+<!-- @dsCard group="Components" viewport="700x460" name="Patterns" subtitle="ScreenFrame + AppHeader + ContextHeader, Orbit, RaceTrail" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg-app);font-family:var(--font-sans);color:var(--text-1);padding:16px 18px;box-sizing:border-box}*{box-sizing:border-box}</style></head>
+<body><div id="root"></div>
+<script type="text/babel">
+const NS = window.IronCoach || {};
+const { ScreenFrame, AppHeader, ContextHeader, Orbit, OrbitLegend, RaceTrail, GlassCard, SectionLabel, BottomNav, Button } = NS;
+const I = (d) => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+function App(){ if(!ScreenFrame) return <div style={{color:'var(--text-4)',fontSize:12}}>Bundle não carregado — definir o tipo do ficheiro como Design System.</div>;
+  const rings=[{label:'Calorias',value:1980,target:2400,color:'var(--nutrition)'},{label:'Proteína',value:112,target:160,unit:'g',color:'var(--body)'},{label:'Água',value:1.6,target:2.5,unit:'L',display:'1,6',targetDisplay:'2,5',color:'var(--run)'}];
+  return <div style={{display:'flex',gap:20,alignItems:'flex-start'}}>
+    <div style={{transform:'scale(.5)',transformOrigin:'top left',width:195,height:422,flexShrink:0}}>
+      <ScreenFrame header={<AppHeader/>} footer={<BottomNav active={0} fabIcon={I('M12 5v14M5 12h14')} items={[{icon:I('M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z'),label:'Início'},{icon:I('M8 2v4M16 2v4M3 10h18'),label:'Calendário'},{icon:I('M3 3h7v9H3zM14 3h7v5h-7z'),label:'Dashboard'},{icon:I('M12 8V4H8M4 8h16v12H4z'),label:'Coach'}]}/>}>
+        <SectionLabel>Para onde vou</SectionLabel>
+        <GlassCard tone="race" glow><div style={{fontSize:11,fontWeight:800,color:'var(--race)',textTransform:'uppercase',letterSpacing:'.05em'}}>Meia de Lisboa</div><div style={{fontSize:17,fontWeight:900,marginTop:4}}>Base aeróbica</div><RaceTrail current={6} startLabel="28 jul" endLabel="8 mar"/></GlassCard>
+        <SectionLabel>Como estou</SectionLabel>
+        <GlassCard style={{display:'flex',alignItems:'center',gap:16}}><Orbit rings={rings} animate={false}/><OrbitLegend rings={rings}/></GlassCard>
+      </ScreenFrame>
+    </div>
+    <div style={{flex:1,display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{borderRadius:16,overflow:'hidden',border:'1px solid var(--border-glass-strong)'}}><ContextHeader eyebrow="Registo" title="Corrida" tone="run" close action={<Button tone="run" variant="tinted" size="sm">Guardar</Button>}/></div>
+      <GlassCard tone="race" glow><RaceTrail current={6} startLabel="28 jul" endLabel="8 mar"/></GlassCard>
+      <GlassCard style={{display:'flex',alignItems:'center',gap:16}}><Orbit rings={rings} size={100} animate={false}/><OrbitLegend rings={rings}/></GlassCard>
+    </div>
+  </div>; }
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

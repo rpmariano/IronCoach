@@ -38,18 +38,18 @@ describe('CoachInsightModal', () => {
   it('renderiza o modal com o título, mensagem, módulo e métrica com bom contraste', () => {
     render(<CoachInsightModal insights={sampleInsights} onClose={mockOnClose} />);
 
-    expect(screen.getByText('Insights do Coach')).toBeInTheDocument();
+    expect(screen.getByText('Insights da Carol')).toBeInTheDocument();
     expect(screen.getByText('Carga de Treino Excessiva (ACWR)')).toBeInTheDocument();
     expect(screen.getByText(/O teu ACWR está em 1.79/i)).toBeInTheDocument();
     expect(screen.getByText('corrida')).toBeInTheDocument();
     expect(screen.getByText(/ACWR: 1.8/i)).toBeInTheDocument();
-    expect(screen.getByText('Falar com o Coach')).toBeInTheDocument();
+    expect(screen.getByText('Falar com a Carol')).toBeInTheDocument();
   });
 
-  it('ao clicar em "Falar com o Coach", marca como entendido, define intenção e navega para o coach', () => {
+  it('ao clicar em "Falar com a Carol", marca como entendido, define intenção e navega para o coach', () => {
     render(<CoachInsightModal insights={sampleInsights} onClose={mockOnClose} />);
 
-    fireEvent.click(screen.getByText('Falar com o Coach'));
+    fireEvent.click(screen.getByText('Falar com a Carol'));
 
     expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'understood');
     expect(mockSetCoachIntent).toHaveBeenCalledWith(expect.objectContaining({

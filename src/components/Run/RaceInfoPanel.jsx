@@ -57,7 +57,7 @@ export default function RaceInfoPanel({ ev }) {
   return (
     <div className="space-y-2.5 pt-1" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+        <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider">
           Informação da Prova
         </span>
         <Button

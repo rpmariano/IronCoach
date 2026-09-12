@@ -68,17 +68,33 @@ echo ""
 
 cd "$REPO_ROOT"
 
-if [ "$LOCAL_REF" != "refs/heads/master" ] && [ "$LOCAL_REF" != "refs/heads/main" ]; then
+# `--maxWorkers=2`: nesta máquina o Vitest com o paralelismo por omissão dá
+# 2-4 timeouts aleatórios (Perfil.test.jsx e afins) e o push era bloqueado
+# por testes que passam à segunda; com dois workers é estável. No CI (Ubuntu)
+# o hook não corre, por isso isto não o afeta.
+VITEST_WORKERS="--maxWorkers=2"
+# Acima de MAX_RELATED_FILES ficheiros a lista deixa de caber na linha de
+# comandos do Windows ("The command line is too long") e o `vitest related`
+# nem chegava a arrancar — o hook dava os testes como falhados sem os ter
+# corrido (aconteceu no merge de 293 ficheiros para master, 2026-09-12).
+# Um diff desse tamanho merece a suite inteira de qualquer forma.
+MAX_RELATED_FILES=40
+CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . || true)
+
+if [ "$LOCAL_REF" != "refs/heads/master" ] && [ "$LOCAL_REF" != "refs/heads/main" ] && [ "$CHANGED_COUNT" -le "$MAX_RELATED_FILES" ]; then
     echo "${YELLOW}   (Otimização DEV: a correr apenas testes relacionados com ficheiros alterados)${NC}"
     if [ -z "$CHANGED_FILES" ]; then
         TEST_CMD="echo 'Nenhum ficheiro alterado para testar.'"
     else
         # Converter newlines para espaços para o eval não interpretar ficheiros como comandos shell separados
         CHANGED_FILES_SPACES=$(echo "$CHANGED_FILES" | tr '\n' ' ')
-        TEST_CMD="npx vitest related --run --passWithNoTests $CHANGED_FILES_SPACES"
+        TEST_CMD="npx vitest related --run --passWithNoTests $VITEST_WORKERS $CHANGED_FILES_SPACES"
     fi
 else
-    TEST_CMD="npx vitest run"
+    if [ "$CHANGED_COUNT" -gt "$MAX_RELATED_FILES" ]; then
+        echo "${YELLOW}   ($CHANGED_COUNT ficheiros alterados — a correr a suite inteira)${NC}"
+    fi
+    TEST_CMD="npx vitest run $VITEST_WORKERS"
 fi
 
 if eval "$TEST_CMD" 2>&1; then

@@ -2,19 +2,39 @@ import React from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
+import ChartFrame from './ChartFrame';
 
-export default function IntensityDonut({ distribution = {}, targetLowPct = 80, className = '' }) {
+/* Ponto 6 do redesenho. Duas mudanças:
+
+   1. O "80%" deixou de ser desenhado dentro do anel por um plugin de canvas
+      (`centerTextPlugin`, `ctx.fillText`) e passa a ser o número grande do
+      ChartFrame, em HTML. O anel fica só com as duas fatias.
+
+   2. Paleta (ponto 6, "paleta das séries de dados"). O Z3+ estava em
+      #f97316, laranja, que não é nenhuma das oito cores e lia-se como
+      âmbar da prova. Passa a: Z1-Z2 no ciano da corrida (a cor do módulo) e
+      Z3+ no mesmo ciano a 40% quando a distribuição está dentro do alvo —
+      é só a outra parte do mesmo bolo — ou no coral --warn quando está
+      acima do alvo, porque aí é mesmo um aviso. Nunca âmbar: o âmbar é da
+      prova. */
+
+const RUN = '#2ee0ff';           // --run
+const RUN_SOFT = 'rgba(46, 224, 255, 0.4)';
+const WARN = '#fb7c4d';          // --warn
+
+export default function IntensityDonut({ distribution = {}, targetLowPct, className = '' }) {
   const { lowIntensityPct = 0, highIntensityPct = 0 } = distribution;
+  const target = targetLowPct ?? distribution.targetLowPct ?? 80;
+  const targetHigh = 100 - target;
+  const overTarget = highIntensityPct > targetHigh;
+  const highColor = overTarget ? WARN : RUN_SOFT;
 
   const data = {
-    labels: ['Baixa Intensidade', 'Alta Intensidade'],
+    labels: ['Z1-Z2', 'Z3+'],
     datasets: [
       {
         data: [lowIntensityPct, highIntensityPct],
-        backgroundColor: [
-          '#14b8a6', // soft blue-green (teal-500)
-          '#f97316'  // warm orange-red (orange-500)
-        ],
+        backgroundColor: [RUN, highColor],
         borderWidth: 0,
         hoverOffset: 4
       }
@@ -35,54 +55,32 @@ export default function IntensityDonut({ distribution = {}, targetLowPct = 80, c
         borderWidth: 1,
         padding: 10,
         callbacks: {
-          label: (context) => {
-            return ` ${context.label}: ${context.raw}%`;
-          }
+          label: (context) => ` ${context.label}: ${context.raw}%`
         }
       }
     }
   };
 
-  // Custom plugin to draw center text
-  const centerTextPlugin = {
-    id: 'centerText',
-    beforeDraw: (chart) => {
-      const { width, height, ctx } = chart;
-      ctx.restore();
-      const fontSize = (height / 114).toFixed(2);
-      ctx.font = `bold ${fontSize}em system-ui`;
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#f8fafc';
-      
-      const text = `${lowIntensityPct}%`;
-      const textX = Math.round((width - ctx.measureText(text).width) / 2);
-      const textY = height / 2;
-      
-      ctx.fillText(text, textX, textY);
-      ctx.save();
-    }
-  };
-
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] flex flex-col items-center ${className}`}>
-      <div className="flex flex-wrap items-start w-full mb-3">
-        <h3 className="text-[12px] font-bold text-slate-200 flex-1">Distribuição de Intensidade</h3>
-        <MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />
+    <ChartFrame
+      className={className}
+      label="Distribuição de intensidade"
+      info={<MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />}
+      value={lowIntensityPct}
+      unit="% em Z1-Z2"
+      valueColor={overTarget ? 'var(--warn)' : 'var(--text-1)'}
+      delta={{ text: `alvo ${target}%`, tone: overTarget ? 'warn' : 'ok' }}
+      legend={[
+        { label: 'Z1-Z2 (fácil)', color: RUN },
+        { label: `Z3+ (forte) ${highIntensityPct}%`, color: highColor },
+      ]}
+      height={168}
+    >
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 160, height: 160 }}>
+          <Doughnut data={data} options={options} />
+        </div>
       </div>
-      <div className="w-48 h-48 relative">
-        <Doughnut data={data} options={options} plugins={[centerTextPlugin]} />
-      </div>
-      <div className="flex justify-center items-center gap-4 mt-5 text-[11px] text-slate-300 font-medium w-full">
-        <span className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-teal-500"></div> Z1-Z2
-        </span>
-        <span className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-orange-500"></div> Z3+
-        </span>
-      </div>
-      <p className="text-[11px] text-slate-400 mt-2 text-center">
-        Objetivo: {targetLowPct}% baixa intensidade
-      </p>
-    </div>
+    </ChartFrame>
   );
 }

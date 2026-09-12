@@ -1,10 +1,34 @@
 @import "tailwindcss";
+/* Tokens do redesenho de setembro de 2026 (direção 6c) — fonte de verdade
+   para cor, tipo, espaço e movimento. Copiados de
+   specs/design-handoff-2026-09/design-system/tokens/. As variáveis legadas
+   abaixo (--green, --mod-*, --surf-*, …) mantêm-se enquanto o código as usa,
+   apontadas para os tokens sempre que há correspondência. */
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/motion.css";
 
 :root {
-  color-scheme: only light;
+  color-scheme: dark;
 
   /* Brand Colors — Monocromático (Accent mapeado para Green-dark) */
-  --accent:#38bdf8; --accent-dark:#1e333d; --accent-glow:var(--green-glow); --accent-ink:#7dd3fc;
+  /* --accent era a nona cor: um azul-céu (#38bdf8) sem significado próprio,
+     em ~35 sítios — chips selecionados, anéis de foco de campo, botões de
+     registo dos calendários, o toggle de lembretes do Perfil. Cada um passou
+     para a cor do seu contexto (impeccable polish, 2026-09-11): a cor do
+     módulo dentro de um ecrã de módulo, var(--focus-ring) nos estados de
+     foco, --coach na Carol e nos ecrãs sem módulo (Auth, Admin).
+     Fica aqui como ALIAS documentado de --coach para nada partir. Sobra UM
+     uso: o variant="primary" de src/components/shared/Button.jsx, que
+     CreatedRecordModal.test.jsx procura pelo nome da classe.
+     --accent-on é a tinta que se lê sobre ele (8,91:1); antes o "primary"
+     tinha --text-1 por cima da cor cheia, o que dava 2,06:1. */
+  --accent: var(--coach);
+  --accent-on: var(--coach-ink);
+  --accent-dark: var(--coach-deep);   /* hover do "primary": escuro, aceita texto claro (5,36:1) */
+  --accent-glow: var(--glow-pill);
+  --accent-ink: var(--coach-soft);
   --chrome:#eccea4; --chrome-dark:#c9a860; --chrome-glow:#f5ddb8;
   --blue:#6f9cb2; --blue-dark:#2c4e60; --blue-glow:#6f9cb2;
   --green:#5a8fa3; --green-dark:#2d4a57; --green-glow:#5a8fa3;
@@ -24,20 +48,30 @@
   --surf-detail: #f8fafc;
   --surf-success-soft: #e6f4ea;
   --text-main: #0f172a;
-  --color-error: #ef4444;
-  --color-alert: #f97316;
-  --color-warn: #eab308;
-  --color-success: #047857;
-  --card-shadow: 0 1px 0 0 rgba(255,255,255,.8) inset, 0 8px 20px -10px rgba(15,23,42,.14), 0 1px 3px rgba(15,23,42,.06);
-  --groove-shadow: inset 0 1px 3px rgba(15,23,42,.1);
-  --thumb-shadow: 0 2px 5px rgba(15,23,42,.18), 0 1px 0 rgba(255,255,255,.5) inset;
+  /* Aliases de compatibilidade — ponto 3 do redesenho ("cor com significado").
+     Não são cores próprias: apontam para os tokens de significado em
+     tokens/colors.css. Aviso e alerta são a MESMA coisa (coral --warn); o
+     âmbar que --color-warn tinha passou a ser exclusivo da prova. */
+  --color-error: var(--danger);
+  --color-alert: var(--warn);
+  --color-warn: var(--warn);
+  --color-success: var(--ok);
+  --card-shadow: var(--shadow-card);
+  /* --groove-shadow/--thumb-shadow saíram com o .seg-nav (ponto 4): eram
+     sombras claras, herdadas do UI anterior, e só o antigo subnav as usava. */
 
   /* Cores unificadas de Módulo para ícones e calendário (pequenos toques de cor) */
-  --mod-prova: #fbbf24;
-  --mod-corrida: #3b82f6;
-  --mod-ginasio: #d97706;
-  --mod-nutricao: #059669;
-  --mod-corpo: #6366f1;
+  /* Aliases de compatibilidade: os quatro módulos passam a ser exatamente os
+     tokens do handoff (--run/--gym/--nutrition/--body). O --mod-ginasio era
+     âmbar (#d97706) e o --mod-corrida um azul genérico — ambos fora do
+     esquema de oito cores/oito significados. O nome legado fica porque 113
+     sítios em src/components ainda lhe chamam assim (calendários, chips,
+     --focus-ring dos registos, botões "module"). */
+  --mod-prova: var(--race);
+  --mod-corrida: var(--run);
+  --mod-ginasio: var(--gym);
+  --mod-nutricao: var(--nutrition);
+  --mod-corpo: var(--body);
   --mod-descanso: #64748b;
 
   /* Gradiente de identidade de cada módulo (ecrãs de criar/editar/visualizar
@@ -47,38 +81,65 @@
      (--race-from/-to). Antes as quatro estavam todas mapeadas para o mesmo
      --green partilhado ("estética monocromática"), o que fazia os ecrãs de
      registo de Corrida/Ginásio/Corpo/Nutrição ficarem todos com o mesmo tom
-     neutro em vez da cor própria de cada módulo. */
-  --mod-nutricao-from:#065f46; --mod-nutricao-to:var(--mod-nutricao);
-  --mod-corpo-from:#3730a3;    --mod-corpo-to:var(--mod-corpo);
-  --mod-ginasio-from:#92400e;  --mod-ginasio-to:var(--mod-ginasio);
-  --mod-corrida-from:#1e40af;  --mod-corrida-to:var(--mod-corrida);
+     neutro em vez da cor própria de cada módulo.
+     O -from deixou de ser um hex à parte: é a mesma matiz misturada com o
+     fundo da app, para o gradiente escurecer sem mudar de cor. */
+  --mod-nutricao-from:color-mix(in srgb, var(--nutrition) 55%, var(--bg-app));
+  --mod-nutricao-to:var(--mod-nutricao);
+  --mod-corpo-from:color-mix(in srgb, var(--body) 55%, var(--bg-app));
+  --mod-corpo-to:var(--mod-corpo);
+  --mod-ginasio-from:color-mix(in srgb, var(--gym) 55%, var(--bg-app));
+  --mod-ginasio-to:var(--mod-ginasio);
+  --mod-corrida-from:color-mix(in srgb, var(--run) 55%, var(--bg-app));
+  --mod-corrida-to:var(--mod-corrida);
 
   /* Coach permanece com a sua cor única de destaque */
-  --mod-coach-from:#155e75;              --mod-coach-to:#06b6d4;
+  --mod-coach-from:var(--coach-deep);    --mod-coach-to:var(--coach);
 
   /* Premium Provas */
-  --race-from: #ca8a04;
-  --race-to: #fbbf24;
-  --race-glow: rgba(245, 158, 11, 0.3);
+  --race-from: var(--race-deep);
+  --race-to: var(--race);
+  --race-glow: rgba(251, 191, 36, 0.35);
 
-  /* Cores de dados (macros + métricas) */
-  --data-calorias:#dd3c4f;
-  --data-proteina:#3c6cdd;
-  --data-hidratos:#8b8118;
-  --data-gordura:#dd3cb7;
-  --data-calories: #dd3c4f;
-  --data-protein: #3c6cdd;
-  --data-carbs: #8b8118;
-  --data-fat: #dd3cb7;
-  --data-peso:#dd3c71;
-  --data-proteina-ink: #7295ec;
-  --data-hidratos-ink: #c9bb3a;
-  --data-gordura-ink:  #e879c5;
-  --mod-nutricao-ink:  #34d399;
+  /* Cores de dados (macros + métricas) — ponto 6 do redesenho, "paleta das
+     séries de dados". Deixaram de ser uma paleta própria (azul/ocre/magenta
+     inventados) e passaram a ALIASES das oito cores com significado: a app
+     tem oito cores, não doze. Quem manda é o mock "Dashboard · Nutrição",
+     que mostra proteína a rosa (--body), hidratos a violeta (--nutrition) e
+     gordura a ciano (--run); e o mock "Dashboard · Corpo", que mostra
+     gordura a rosa e músculo a violeta. Nenhuma série usa âmbar nem coral:
+     o âmbar é da prova e o coral é aviso.
+
+     O âmbar entra só como --data-alvo — a linha do alvo calórico e os dias
+     que ficam fora dele, no mock "Calorias vs. alvo". Aí não é uma série:
+     é a meta, e a meta é a prova.
+
+     Duas séries partilham cor (proteína/gordura-corporal em --body;
+     hidratos/massa-magra em --nutrition) mas nunca aparecem no mesmo
+     gráfico: macros em MacroComplianceChart, composição em
+     StackedAreaChart. */
+  --data-calorias: var(--nutrition);
+  --data-proteina: var(--body);
+  --data-hidratos: var(--nutrition);
+  --data-gordura:  var(--run);
+  --data-calories: var(--nutrition);
+  --data-protein: var(--body);
+  --data-carbs: var(--nutrition);
+  --data-fat: var(--run);
+  --data-peso: var(--body);
+  --data-magra: var(--nutrition);
+  --data-alvo: var(--race);
+  --data-proteina-ink: var(--body);
+  --data-hidratos-ink: var(--nutrition);
+  --data-gordura-ink:  var(--run);
+  /* "ink" das macros = a própria cor, lida sobre a tinta a 16% (handoff:
+     "texto sobre tinta a 16% é a própria cor"). O da nutrição estava a
+     apontar para o verde do --ok, que é outro significado. */
+  --mod-nutricao-ink:  var(--nutrition);
 }
 
 html, body {
-  background-color: #0b1120;
+  background-color: var(--bg-app);
   min-height: 100vh;
   /* Rede de segurança contra qualquer elemento que transborde horizontalmente
      (bug-018: "Nova Prova" cortada do lado esquerdo em Android). Sem isto,
@@ -92,54 +153,95 @@ html, body {
 }
 
 body {
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  color: #f8fafc;
+  font-family: var(--font-sans);
+  color: var(--text-1);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ===== Overrides de cor — portados do legado ===== */
-/* [class~="text-white"] { color:#0f172a !important; } */
-/* [class~="text-slate-200"] { color:#1e293b !important; } */
-/* [class~="text-slate-300"] { color:#e2e8f0 !important; } */
-/* [class~="text-slate-400"] { color:#475569 !important; } */
-/* [class~="text-slate-500"] { color:#516071 !important; } */
-[class~="text-slate-600"] { color:#5c6b7d !important; }
-[class~="text-emerald-400"] { color:#047857 !important; }
-[class~="text-red-400"] { color:#b91c1c !important; }
-[class~="text-[var(--accent)]"] { color: var(--accent-ink) !important; }
+/* ===== Os overrides de cor saíram daqui (impeccable colorize, 2026-09-11) =====
+   Havia dois blocos de `[class~="…"] { … !important }` — "Overrides de cor —
+   portados do legado" (aqui) e "OVERRIDES DARK MODE (PREMIUM)" (no fim do
+   ficheiro) — que reescreviam ~1 800 classes de paleta Tailwind espalhadas por
+   src/components. Era uma segunda camada de tema invisível a quem lê o JSX: um
+   `text-slate-800` era claro, não escuro, e um `text-emerald-400` saía verde
+   ESCURO sobre fundo escuro. Os ecrãs passaram a pedir os tokens pelo nome
+   (`text-[var(--text-1)]`, `bg-[var(--surface-glass)]`, …) e os overrides
+   desapareceram.
 
-/* [class~="bg-neutral-950"],[class*="bg-neutral-950/"] { background-color:var(--surf-950) !important; } */
-/* [class~="bg-neutral-900"],[class*="bg-neutral-900/"] { background-color:var(--surf-900) !important; } */
-/* [class~="bg-neutral-800"] { background-color:var(--surf-800) !important; } */
-[class~="bg-neutral-700"] { background-color:var(--surf-700) !important; }
-[class~="border-neutral-800"] { border-color:var(--brd-800) !important; }
-[class~="border-neutral-700"] { border-color:var(--brd-700) !important; }
+   Tabela de mapeamento — coluna do meio é o que o override produzia até aqui,
+   logo o que a migração tinha de preservar:
+
+     CLASSE LEGADA              O QUE DAVA ATÉ AQUI            TOKEN NOVO
+     text-slate-900 e 800       #f8fafc, #f1f5f9               --text-1 (#f8fafc)
+     text-slate-100             #f1f5f9 (Tailwind)             --text-1
+     text-neutral-50            #fafafa (Tailwind)             --text-1
+     text-slate-700 e 200       #e2e8f0                        --text-2 (#e2e8f0)
+     text-slate-600, 500 e 400  #cbd5e1                        --text-3 (#cbd5e1)
+     text-slate-300             #cbd5e1 (Tailwind)             --text-3
+     placeholder de slate-N     #94a3b8 (Tailwind)             --text-muted (o placeholder
+                                                               não pode pesar como valor)
+     text-emerald-N             #047857 (ERRADO: verde escuro) --ok (#34d399)
+     text-red-N e text-rose-N   #b91c1c (ERRADO: vermelho escuro) --danger (#f87171)
+     text-amber-N               Tailwind                       --race e --race-ink
+     text-cyan-N                Tailwind                       --coach e --coach-soft
+     text-sky-N e text-blue-N   Tailwind                       --run (água e corrida)
+     text-var(--accent)         var(--accent-ink) #7dd3fc      cor do módulo do ecrã
+                                                               (o próprio --accent passou a
+                                                               alias de --coach — ver o topo)
+
+     bg-white                   rgba(255,255,255,.02)          --surface-faint
+     bg-slate-50 e variantes    rgba(255,255,255,.03)          --surface-soft
+     bg-white a 40%             rgba(255,255,255,.04)          --surface-dim
+     bg-slate-100, bg-white 5%  rgba(255,255,255,.05)          --surface-glass
+     bg-white a 60%             rgba(255,255,255,.06)          --surface-raised
+     bg-white a 80%             rgba(255,255,255,.08)          --surface-glass-hover
+     bg-slate-200, bg-white 10% rgba(255,255,255,.10)          --surface-strong
+     bg-neutral-950, 900 e 800  #0a0a0a, #171717, #262626      --bg-app, --bg-sheet, --surface-strong
+     bg-neutral-700             var(--surf-700) #dbe2ec        --surface-glass-hover
+                                (ERRADO: caixa clara sobre escuro)
+     bg de emerald/red/amber/   Tailwind                       --tint-SIGNIFICADO-bg
+       cyan/sky
+
+     border-slate-50 e 100      rgba(255,255,255,.03 e .05)    --border-faint (.05)
+     border-slate-200 e vars    rgba(255,255,255,.10)          --border-glass
+     border-slate-300           rgba(255,255,255,.15)          --border-glass-strong (.14)
+     border-slate-400 e 500     #94a3b8 (Tailwind)             --border-control (tem de se ver)
+     border-slate-600 e 700     Tailwind                       --border-glass e -strong
+     border-neutral-800 e 700   var(--brd-800) #d3dae4         --border-glass e -strong
+                                (ERRADO: moldura clara do tema antigo)
+     border dos significados    Tailwind                       --tint-SIGNIFICADO-bd
+
+   As classes de paleta que sobram em src/components estão (a) dentro de
+   comentários que contam esta história e (b) em DesignSystem, que é bancada. */
 
 /* ===== Carta / card =====
    Fundo alinhado com .module-card-contrast e com o glass premium inline
    (bg-white/5) usado nos cartões BI — a passagem para o dark mode "deep-teal"
    (ver commit 91a4411) atualizou essa classe e as utilities Tailwind via
-   overrides acima, mas deixou esta por migrar: o branco a 40% ainda vinha do
+   os overrides que entretanto saíram (tabela acima), mas deixou esta por migrar: o branco a 40% ainda vinha do
    tema claro original, o que dava um retângulo cinzento "lavado" por cima do
    fundo escuro em todos os ecrãs que usam className="card" sem uma cor de
    fundo própria (Login, Corrida/Ginásio/Corpo BI, calendários, Água). */
+/* Cartão de vidro (redesenho 2026-09): 5% de branco, borda a 10%, sem moldura
+   branca nem sombra interior — a borda a 80% era o que fazia de cada cartão
+   uma ilha sobre o fundo escuro. O que separa cartões é o espaço. */
 .card {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-card);
 }
 
 .module-card-contrast {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-card));
+  -webkit-backdrop-filter: blur(var(--blur-card));
+  border: 1px solid var(--border-glass);
   border-radius: 20px;
   padding: 16px 20px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  box-shadow: var(--shadow-card);
   transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s;
   overflow: hidden;
 }
@@ -147,6 +249,22 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
 }
+
+/* ===== Fundo da app (AppBackground.jsx) =====
+   Fixo, centrado na mesma coluna max-w-md do header e da nav, e em z-index
+   negativo para ficar por baixo de todo o conteúdo em fluxo normal (o
+   contentor do Layout não cria stacking context — se algum dia criar, o
+   fundo continua por baixo do conteúdo desse contentor). O SVG das curvas
+   tem viewBox 390×844 e estica ao ecrã, como nos mocks. */
+.app-bg {
+  position: fixed; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 28rem;
+  z-index: -1; pointer-events: none; overflow: hidden;
+  background: var(--bg-app);
+}
+.app-bg__ambient { position: absolute; inset: 0; background: var(--grad-ambient); }
+.app-bg__contours { position: absolute; inset: 0; width: 100%; height: 100%; }
+.app-bg__fade { position: absolute; inset: 0; background: var(--grad-fade); }
 
 /* ===== Separadores que também se deslizam (Dashboard, Perfil) =====
    Mesma mecânica dos carrosséis do Início (WeeklyPlanCard/CoachDailySummaryCard):
@@ -174,11 +292,27 @@ body {
 .fade-in { animation: fadeIn .25s ease-out; }
 @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
 
-.animate-bottom-sheet-overlay { animation: bottomSheetOverlayFade .28s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-@keyframes bottomSheetOverlayFade { from { opacity: 0; } to { opacity: 1; } }
+/* "O conteúdo segue a pílula" — ponto 4 do handoff, animação 8 de
+   `IronCoach - Animacoes.dc.html`. O painel do separador que fica ativo entra
+   do lado de onde veio (--tab-enter-from, ±14px) em --dur-tab-content
+   (280ms). Aplicada/reiniciada por useTabEnter.js; sob
+   prefers-reduced-motion o token --dur-tab-content baixa para 120ms
+   (tokens/motion.css) — a entrada continua a existir, mais curta.
 
-.animate-bottom-sheet-slide { animation: bottomSheetSlideUp .32s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-@keyframes bottomSheetSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+   A animação vai nos FILHOS do painel, não no painel: os painéis são as
+   células de um carrossel com scroll-snap (.tab-swipe-page) e o snap lê a
+   caixa já transformada — animar a própria célula punha o transform a
+   discutir com o scroll suave que a troca de separador dispara ao mesmo
+   tempo. */
+.tab-enter > * { animation: tabEnter var(--dur-tab-content) var(--ease-out); }
+@keyframes tabEnter {
+  from { transform: translateX(var(--tab-enter-from, 14px)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+/* .animate-bottom-sheet-overlay / -slide sairam daqui (impeccable polish):
+   a persiana e o popup animam-se com as regras proprias de Sheet.jsx e
+   PremiumModal.jsx; nenhum JSX pedia estas duas classes. */
 
 /* Onda brilhante do botão flutuante de insights da Carol (CoachInsightButton):
    dois anéis a nascer do centro do botão e a dissipar-se para fora, em loop,
@@ -200,130 +334,218 @@ body {
   100% { transform: scale(2.1); opacity: 0; }
 }
 
-/* ===== Seg-nav (sub-navegação deslizante) ===== */
-.seg-nav { box-shadow: var(--groove-shadow); }
-.seg-thumb {
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
-  box-shadow: var(--thumb-shadow);
-}
-/* Posições do thumb: tab 1=0%, tab 2=100%, tab 3=200% */
-.seg-nav.at-1 .seg-thumb { transform: translateX(0%); }
-.seg-nav.at-2 .seg-thumb { transform: translateX(100%); }
-.seg-nav.at-3 .seg-thumb { transform: translateX(200%); }
-
-.seg-btn.active { color:#09090b !important; }
-.seg-btn:not(.active) { border: 1px solid rgba(148,163,184,.18); color:var(--green) !important; }
+/* O antigo .seg-nav/.seg-thumb/.seg-btn (thumb a saltar de 100% em 100% com
+   uma transição CSS) saiu no ponto 4 do handoff: os subnavs passaram todos
+   pelo componente SubNav.jsx, com a minhoca do useElasticPillIndicator. */
 
 /* ===== Barra inferior (vbar) ===== */
 .vbar-btn { min-height:44px; }
-.vbar-btn.active { color:var(--chrome-dark) !important; }
-.vbar-btn:not(.active) { color:var(--green) !important; }
+/* As regras `.vbar-btn.active` / `:not(.active)` saíram no ponto 4: nenhum
+   botão da barra chegou a ter a classe `.active`, por isso o
+   `:not(.active) { color: var(--green) !important }` aplicava-se a todos e
+   ganhava ao style inline — a barra ficava #5a8fa3 em vez do --brand
+   (#7fb3c7) dos mocks, e o estado ativo não se via mesmo quando pintado.
+   A cor passa a vir do inline de VBarBtn e o estado da minhoca. */
 
 /* ===== FAB menu ===== */
+/* Ponto 9: o "+" RODA 45° e vira "×" — não se troca o glifo (handoff,
+   Interactions & Behavior: «FAB: roda 45° ao abrir»). Trocar o ícone fazia
+   o botão piscar; rodar mostra que é o mesmo botão a mudar de estado. */
+.fab-icon { transition: transform var(--dur-tap) var(--ease-out); }
 .fab-open .fab-icon { transform: rotate(45deg); }
 
-/* ===== Copo de água ===== */
-.water-glass {
-  position:relative; margin:0 auto;
-  border-radius:18px 18px 34px 34px;
-  border:2px solid color-mix(in srgb, var(--blue) 40%, transparent);
-  background:color-mix(in srgb, var(--blue) 7%, transparent);
-  overflow:hidden;
-  box-shadow: inset 0 0 24px color-mix(in srgb, var(--blue) 12%, transparent);
+/* As pílulas do menu entram de baixo para cima — a mais próxima do "+"
+   primeiro, que é de onde o menu nasce. O menu do FAB pertence à família da
+   persiana (animação 5 do ficheiro de animações, que o nomeia a par das seis
+   refeições): --dur-sheet-open, com o mesmo desfasamento das barras. */
+.fab-item {
+  animation: fabItemIn var(--dur-sheet-open) var(--ease-out) both;
+  animation-delay: calc(var(--fab-i, 0) * var(--stagger-bars));
 }
-.water-glass-fill {
-  position:absolute; left:-2px; right:-2px; bottom:0;
-  background:linear-gradient(180deg, var(--blue-glow), var(--blue));
-  transition:height 1.1s cubic-bezier(.4,0,.2,1);
+@keyframes fabItemIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-.water-wave-svg {
-  position:absolute; left:0; top:-9px; width:200%; height:18px;
-  animation:waterWaveScroll 4.5s linear infinite;
-}
-.water-wave-svg path { fill:var(--blue-glow); }
-.water-wave-svg.w2 { animation-duration:7s; animation-direction:reverse; opacity:.55; top:-6px; }
-.water-wave-svg.w2 path { fill:var(--blue); }
-@keyframes waterWaveScroll { from{transform:translateX(0);} to{transform:translateX(-100px);} }
-.water-glass-label {
-  position:absolute; inset:0;
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  pointer-events:none;
-}
-.water-glass-ml { font-weight:800; color:#0f172a; line-height:1; }
-.water-glass-ml small { font-weight:700; color:#e2e8f0; margin-left:2px; }
-.water-glass-pct { font-weight:700; color:#1e293b; margin-top:3px; }
 
-/* ===== Coach bubbles ===== */
-.coach-bubble-user  { background:var(--accent); color:#09090b; border-radius:18px 18px 4px 18px; }
-.coach-bubble-model { background:var(--surf-800); border:1px solid var(--brd-800); border-radius:18px 18px 18px 4px; }
-.md-body strong { font-weight:700; }
-.md-body em     { font-style:italic; }
-.md-body ul     { list-style:disc inside; margin:.375rem 0; }
-.md-body ol     { list-style:decimal inside; margin:.375rem 0; }
-.md-body li     { margin-left:.75rem; }
-.md-body code   { font-family:monospace; font-size:.75rem; background:rgba(0,0,0,.07); border-radius:4px; padding:0 4px; }
+/* ===== Toque: scale .98 em 120ms, em toda a ação =====
+   Handoff, Interactions & Behavior: «Toque: scale .98 em 120 ms».
+   Usa a propriedade independente `scale` e NÃO `transform`: metade dos
+   controlos da app já usa transform para se posicionar (o "+" com
+   -translate-x-1/2, a âncora da minhoca, os pontos dos carrosséis) e um
+   `transform: scale()` global apagava-lhes a translação — o botão saltava
+   para o lado ao ser tocado.
+   Exclusões: `.vbar-btn` (a barra inferior tem a sua própria resposta ao
+   toque e leva dentro a âncora que a minhoca MEDE — encolhê-la a meio do
+   toque falseava a medição) e `.no-tap-scale`, para o mesmo motivo nos
+   pontos dos carrosséis. */
+button:not(.vbar-btn):not(.no-tap-scale),
+[role="button"]:not(.no-tap-scale),
+a[href]:not(.no-tap-scale) {
+  transition: scale var(--dur-tap) var(--ease-out);
+}
+button:not(.vbar-btn):not(.no-tap-scale):active,
+[role="button"]:not(.no-tap-scale):active,
+a[href]:not(.no-tap-scale):active {
+  scale: .98;
+}
+
+/* ===== A Carol respira (animação 7) =====
+   Halo lento no avatar, só quando há assunto por resolver — «a Carol chama,
+   não alarma» (CAROL.md §5). --dur-breathe (2600ms), TRÊS ciclos e para: um
+   halo eterno passava a alarme, que é justamente o que se quer evitar. */
+.coach-breathing {
+  animation: coachBreathe var(--dur-breathe) ease-in-out 3;
+}
+@keyframes coachBreathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, .4); }
+  50%      { box-shadow: 0 0 0 7px rgba(34, 211, 238, 0); }
+}
+
+/* ===== Um impulso, nunca um loop =====
+   O botão "Propostas por rever" do Chat estava em `animate-bounce` — um
+   salto infinito. Um elemento que salta para sempre deixa de chamar e
+   passa a incomodar (e não há como o parar). Fica UM impulso ao montar,
+   em --dur-confirm, que é o tempo do resto dos "isto mudou" da app. */
+.coach-nudge { animation: coachNudge var(--dur-confirm) var(--ease-out) 1 both; }
+@keyframes coachNudge {
+  0%   { transform: translateY(6px); opacity: .4; }
+  60%  { transform: translateY(-2px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+/* ===== Registo confirmado (animação 6) =====
+   Check com impulso elástico (--ease-spring, --dur-confirm, overshoot 1.12),
+   halo a dissipar-se e a etiqueta a subir ao sair. O ecrã volta ao seu
+   caminho normal aos --dur-confirm-exit (900ms) — quem conta esse tempo é o
+   RecordConfirmation.jsx, não o CSS. */
+.record-confirm-check { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+@keyframes recordConfirmPop {
+  0%   { transform: scale(.2); opacity: 0; }
+  45%  { transform: scale(1.12); opacity: 1; }
+  60%  { transform: scale(.97); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.record-confirm-halo { animation: recordConfirmHalo var(--dur-confirm-exit) var(--ease-out) both; }
+@keyframes recordConfirmHalo {
+  0%        { transform: scale(.6); opacity: .55; }
+  60%, 100% { transform: scale(2.1); opacity: 0; }
+}
+.record-confirm-label { animation: recordConfirmLabel var(--dur-confirm) var(--ease-out) both; }
+@keyframes recordConfirmLabel {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* O bloco "Copo de água" saiu daqui (impeccable polish). Era o desenho do
+   WaterTracker.jsx, que nenhum ecrã importa desde o redesenho — a água
+   regista-se na persiana (WaterSheet.jsx). Eram onze regras nas cores
+   legadas --blue/--blue-glow, duas delas com texto em hex do tema claro
+   (#0f172a, #1e293b), ilegível sobre fundo escuro se voltasse a ser usado. */
+
+/* ===== Bolhas do chat da Carol (mock "Coach", redesenho 2026-09) =====
+   A dela em tinta ciano, a do atleta em vidro neutro. Raio 20 com o canto
+   "de onde vem" a 6. */
+.coach-bubble-user  { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #f1f5f9; border-radius: 20px 20px 6px 20px; }
+.coach-bubble-model { background: rgba(34,211,238,.09); border: 1px solid rgba(34,211,238,.26); color: var(--text-2); border-radius: 20px 20px 20px 6px; }
+/* "a escrever…" — três pontos a respirar ao lado do texto */
+.coach-typing-dot {
+  display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--coach); opacity: .35;
+  animation: coachTyping 1s ease-in-out infinite;
+}
+@keyframes coachTyping {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-2px); }
+}
+/* As regras .md-body sairam daqui (impeccable polish): nenhuma vista
+   renderiza markdown — as bolhas do chat são texto simples. */
 
 /* ===== Utilitários ===== */
 .no-scrollbar::-webkit-scrollbar { display:none; }
 .no-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
-.tap-44 { min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-.tap-h-44 { min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
-
-.range-chip {
-  min-height: 44px;
-  border-radius: 12px;
-  padding: 0.5rem;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.3);
-  color: var(--text-main) !important;
-}
-.range-chip.active {
-  background: rgba(255, 255, 255, 0.8) !important;
-  color: #0f172a !important;
-  border-color: rgba(255, 255, 255, 1) !important;
-  font-weight: 700;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+/* Piso de toque nos campos do Perfil. O handoff pede "44px mínimo em
+   qualquer ação" (ponto 2) e o Field do design system desenha-se a 48;
+   os campos do Perfil vinham do legado a ~36px de altura. Regra em vez de
+   uma classe por campo: são vinte, e o que muda é o piso, não o desenho —
+   quem já passa dos 44 (o textarea, os botões) não sente nada.
+   Só o Perfil: as grelhas de métricas avançadas dos registos têm dezenas
+   de campos minúsculos de propósito e mudá-las é decisão de desenho, não
+   de auditoria. */
+[data-screen="perfil"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+[data-screen="perfil"] select,
+[data-screen="perfil"] textarea {
+  min-height: var(--tap);
 }
 
+.tap-44 { min-width:var(--tap); min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
+.tap-h-44 { min-height:var(--tap); display:inline-flex; align-items:center; justify-content:center; }
+
+/* Alvo de toque de 44px num controlo cujo DESENHO é mais pequeno — ícones de
+   ajuda de 18px, o "x" de remover um print, os interruptores de 44×24. O
+   handoff (ponto 2) pede "nos ícones pequenos mantém o desenho e alarga só a
+   área tocável": esta área invisível fica centrada por cima do controlo e é
+   ele que continua a receber o toque, sem que nada mude de tamanho no ecrã.
+   Só em controlos isolados — dois destes lado a lado sobrepunham-se. */
+.tap-area-44 { position: relative; }
+.tap-area-44::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: var(--tap); height: var(--tap);
+  transform: translate(-50%, -50%);
+}
+
+/* .range-chip / .range-chip.active sairam daqui (impeccable polish). Eram do
+   tema claro — fundo branco a 30/80% e texto #0f172a — e nenhum ecra as
+   usa: os seletores de periodo dos dashboards passaram a Chip.jsx. A unica
+   mencao que sobra e o dump de codigo antigo em
+   src/components/DesignSystem/buttonsData.js, que e bancada. */
+
+/* Foco de teclado — handoff, "Fidelity": anel de 2px na cor do contexto.
+   O anel não está desenhado nos mocks, por isso é esta regra global que o
+   define para todos os controlos. --focus-ring tem por omissão o ciano da
+   Carol e é redefinida no contentor de cada ecrã com identidade própria
+   (registos de corrida/ginásio/nutrição/corpo/prova, separadores do Perfil),
+   para o anel falar a cor do sítio onde se está. */
+:root { --focus-ring: var(--coach); }
 :focus-visible {
-  outline: 3px solid var(--green);
+  outline: 2px solid var(--focus-ring, var(--coach));
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
+/* ===== Loops param quando ninguém vê =====
+   Os únicos ciclos infinitos que ficam na app são decoração ou espera: a
+   onda do botão de insights, o halo da Carol e os três pontos do
+   "a escrever…". Com a página em segundo plano não há nada a comunicar —
+   `data-page-hidden` vem de utils/pageVisibility.js, ligado no main.jsx. */
+html[data-page-hidden] .coach-wave-ring,
+html[data-page-hidden] .coach-typing-dot,
+html[data-page-hidden] .coach-breathing {
+  animation-play-state: paused;
 }
 
+/* ===== Movimento reduzido =====
+   O que muda é o QUÊ, não um "desliga tudo". As durações já vivem nos
+   tokens (tokens/motion.css redefine --dur-* sob prefers-reduced-motion:
+   tudo a 120ms ou a zero) e os tempos calculados em JS já lêem
+   prefersReducedMotion() (RecordConfirmation, Sheet, Coach, RaceTrail,
+   useElasticPillIndicator, introAnimations).
 
-/* ===== OVERRIDES DARK MODE (PREMIUM) ===== */
-[class~="text-slate-900"], [class*="text-slate-900/"] { color: #f8fafc !important; }
-[class~="text-slate-800"], [class*="text-slate-800/"] { color: #f1f5f9 !important; }
-[class~="text-slate-700"], [class*="text-slate-700/"] { color: #e2e8f0 !important; }
-[class~="text-slate-600"], [class*="text-slate-600/"] { color: #cbd5e1 !important; }
-[class~="text-slate-500"], [class*="text-slate-500/"] { color: #cbd5e1 !important; }
-[class~="text-slate-400"], [class*="text-slate-400/"] { color: #cbd5e1 !important; }
+   A regra que aqui estava — `*, *::before, *::after` com
+   animation-duration e transition-duration a .01ms !important — passava
+   por cima dessa intenção e apagava o feedback que CARREGA significado:
+   o check da confirmação de registo, a persiana a abrir, a entrada de
+   separador (useTabEnter). "Menos e mais suave", não "nada".
 
-[class~="bg-slate-50"], [class*="bg-slate-50/"] { background-color: rgba(255, 255, 255, 0.03) !important; }
-[class~="bg-slate-100"], [class*="bg-slate-100/"] { background-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="bg-slate-200"], [class*="bg-slate-200/"] { background-color: rgba(255, 255, 255, 0.1) !important; }
-[class~="bg-white"] { background-color: rgba(255, 255, 255, 0.02) !important; }
-[class~="bg-white/80"] { background-color: rgba(255, 255, 255, 0.08) !important; }
-[class~="bg-white/60"] { background-color: rgba(255, 255, 255, 0.06) !important; }
-[class~="bg-white/50"] { background-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="bg-white/40"] { background-color: rgba(255, 255, 255, 0.04) !important; }
-
-[class~="border-slate-50"], [class*="border-slate-50/"] { border-color: rgba(255, 255, 255, 0.03) !important; }
-[class~="border-slate-100"], [class*="border-slate-100/"] { border-color: rgba(255, 255, 255, 0.05) !important; }
-[class~="border-slate-200"], [class*="border-slate-200/"] { border-color: rgba(255, 255, 255, 0.1) !important; }
-[class~="border-slate-300"], [class*="border-slate-300/"] { border-color: rgba(255, 255, 255, 0.15) !important; }
+   Fica só o que os tokens não alcançam: os LOOPS decorativos, que
+   nenhuma duração encurta porque se repetem para sempre. */
+@media (prefers-reduced-motion: reduce) {
+  /* Onda do botão de insights: um impulso e para, em vez de pulsar sem fim. */
+  .coach-wave-ring { animation-iteration-count: 1 !important; }
+  /* Halo da Carol: já eram três ciclos — aqui, um. */
+  .coach-breathing { animation-iteration-count: 1 !important; }
+  /* Ornamento puro: o pulsar dos esqueletos. Repousa no estado inicial,
+     por isso `none` não deixa nada a meio. */
+  .animate-pulse { animation: none !important; }
+}

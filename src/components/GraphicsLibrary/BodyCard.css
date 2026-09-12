@@ -9,7 +9,7 @@
   overflow: hidden;
   box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);
   transition: transform 0.2s, box-shadow 0.2s;
-  border: 1px solid rgba(255,255,255,0.85);
+  border: 1px solid var(--border-glass);
 }
 
 .body-card-wrapper:hover { box-shadow: 0 12px 35px -8px rgba(0,0,0,0.08); }

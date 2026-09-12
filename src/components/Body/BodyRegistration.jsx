@@ -3,12 +3,14 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { ScanLine, X, ImagePlus, Camera, PencilLine, Loader2, MessageSquare } from 'lucide-react';
-import { useToast } from '../shared/ToastProvider';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
+import { ScanLine, X, ImagePlus, Camera, PencilLine, MessageSquare } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
-import Card from '../shared/Card';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
@@ -33,7 +35,6 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-body
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
   const isEditing = !!assessmentIdToEdit;
@@ -58,7 +59,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
+     (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
+     registo manual e a edição são gravações, não análises de imagem, e
+     ficam com o `errorMsg` de sempre. */
+  const analysis = useAnalysis();
+  const isAnalyzing = analysis.isAnalyzing;
 
   // Manual
   const [metrics, setMetrics] = useState({});
@@ -132,17 +138,25 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // de "Gravar e sair" a caminho de outro separador (navGuard
   // intercetado), respeita esse destino em vez de o substituir — por isso
   // o alvo pendente é lido ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Avaliação registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'body', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(date);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(date);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
@@ -177,7 +191,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com métricas/observações diferentes das gravadas dispara
-    // "Guardar e Reanalisar" já na primeira renderização.
+    // "Guardar e reanalisar" já na primeira renderização.
     setOriginalSnapshot(analyticalSignature(a.notes, canonicalMetrics));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -260,8 +274,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast(needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
-      finishCreateAndGoToCalendar(savedAssessment);
+      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -297,11 +310,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // ----------------------------------
   // ANALISAR AVALIAÇÃO POR FOTO (IA — analyze-body)
   // ----------------------------------
-  const handleAnalyzePhotos = async () => {
-    if (!photos.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    setErrorMsg('');
-    try {
+  // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete.
+  const analyzePhotosTask = async () => {
+    {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: {
           images: photos.map(p => p.base64),
@@ -314,14 +325,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
-      showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(data?.assessment);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setIsAnalyzing(false);
+      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
     }
+  };
+
+  const handleAnalyzePhotos = () => {
+    if (!photos.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(analyzePhotosTask);
   };
 
   // ----------------------------------
@@ -348,8 +359,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (data?.error) throw new Error(data.error);
 
       setBodyAssessments([data.assessment, ...bodyAssessments]);
-      showToast('Avaliação registada');
-      finishCreateAndGoToCalendar(data?.assessment);
+      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
@@ -358,8 +368,37 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
+  const primaryAction = isEditing ? (
+    <CoachAnalyzeButton
+      onClick={handleSaveEdit}
+      disabled={isSaving}
+      busy={isSaving}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
+    />
+  ) : entryMethod === 'foto' ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzePhotos}
+      disabled={!photos.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar avaliação"
+    />
+  ) : (
+    <CoachAnalyzeButton
+      onClick={handleSaveManual}
+      disabled={isSaving}
+      busy={isSaving}
+      label="Analisar avaliação"
+    />
+  );
+
   return (
-    <div className="space-y-4 fade-in">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    <div
+      className="space-y-4 fade-in"
+      style={{ '--focus-ring': 'var(--mod-corpo-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       <div
         className="module-card-contrast"
         // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
@@ -374,35 +413,59 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <ScanLine className="w-5 h-5" style={{ color: 'var(--mod-corpo-to)' }} />
-            <h2 className="text-sm font-semibold text-white">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Avaliação' : 'Nova Avaliação'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            // O circulo continua a desenhar-se com 32px; o que cresce para
+            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+            className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <X size={16} />
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+              <X size={16} />
+            </span>
           </button>
         </div>
 
+        {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão). */}
+        {isAnalyzing && <AnalysisSkeleton />}
+
+        {analysis.hasFailed && (
+          <AnalysisFailure
+            detail={analysis.error}
+            onRetry={analysis.retry}
+            onManual={!isEditing && entryMethod === 'foto'
+              ? () => { setEntryMethod('manual'); analysis.reset(); }
+              : undefined}
+          >
+            Os prints ficaram guardados. Podes tentar outra vez ou escrever os valores — eu faço as contas na mesma.
+          </AnalysisFailure>
+        )}
+
+        <div
+          aria-busy={isAnalyzing || undefined}
+          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+        >
         <div className="grid grid-cols-2 gap-2 mb-4">
           <input
             type="date"
+            aria-label="Data da avaliação"
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
           />
-          <div className="flex items-center justify-center text-[11px] text-slate-500">Data da pesagem</div>
+          <div className="flex items-center justify-center text-[11px] text-[var(--text-3)]">Data da pesagem</div>
         </div>
 
         {/* Como queres registar? — escondido a editar: editar é sempre pelos
             campos, sem foto nova (mesmo padrão da Nutrição/Ginásio). */}
         {!isEditing && (
           <div className="mb-4">
-            <label className="text-[11px] text-slate-500 mb-1.5 block">Como queres registar?</label>
+            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
             <div className="flex gap-1.5">
               <Chip
                 active={entryMethod === 'foto'}
@@ -435,13 +498,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
                     <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Print ${i+1}`} />
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
                       <button
                         onClick={() => removePhoto(i)}
                         aria-label={`Remover print ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-slate-500 hover:text-red-500 transition"
+                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
                       >
-                        <span className="bg-white/90 border border-slate-200 rounded-full p-1 shadow-sm flex items-center justify-center">
+                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
                           <X size={14} />
                         </span>
                       </button>
@@ -449,7 +512,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                   ))}
                 </div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-slate-500">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
+                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
                 </div>
                 {photos.length < MAX_PHOTOS && (
                   <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corpo-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corpo-to)]/5 transition mb-4">
@@ -460,11 +523,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 )}
               </>
             ) : (
-              <label className="block border-2 border-dashed border-slate-300 rounded-xl py-6 text-center cursor-pointer hover:border-slate-400 transition mb-4 bg-white/50">
+              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                <ImagePlus className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                <p className="text-xs text-slate-600 font-semibold">Escolhe os prints da app Renpho Health</p>
-                <p className="text-[10px] text-slate-500 mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+                <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app Renpho Health</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
               </label>
             )}
           </>
@@ -472,13 +535,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           <div className="grid grid-cols-2 gap-2 mb-4">
             {BODY_METRICS.map(m => (
               <label key={m.key} className="block">
-                <span className="text-[10px] text-slate-500 block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
+                <span className="text-[11px] text-[var(--text-3)] block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
                 <input
                   type="number"
                   step={m.dec > 0 ? '0.1' : '1'}
                   value={metrics[m.key] ?? ''}
                   onChange={e => { handleMetricChange(m.key, e.target.value); setIsFormDirty(true); }}
-                  className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
+                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
                 />
               </label>
             ))}
@@ -486,14 +549,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         )}
 
         <div className="mb-4">
-          <label className="text-[11px] text-slate-500 mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
-          <textarea
+          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
+          <textarea id="br-observacoes-opcional-ex-em-jejum-a"
             rows={2}
             maxLength={500}
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto da pesagem..."
-            className="w-full bg-white/5 border border-white/10 text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-400 outline-none focus:border-[var(--mod-corpo-to)] resize-none"
+            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-corpo-to)] resize-none"
           />
         </div>
 
@@ -506,7 +569,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           return (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={() => {
                 useAppStore.getState().dismissIntervention(editingAssessment.id, notes);
                 useAppStore.setState({
@@ -526,37 +589,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           );
         })()}
 
-        {/* Ação */}
-        {isEditing ? (
-          <CoachAnalyzeButton
-            onClick={handleSaveEdit}
-            disabled={isSaving}
-            busy={isSaving}
-            label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-          />
-        ) : entryMethod === 'foto' ? (
-          <CoachAnalyzeButton
-            onClick={handleAnalyzePhotos}
-            disabled={!photos.length || isAnalyzing}
-            busy={isAnalyzing}
-            label="Analisar Avaliação"
-          />
-        ) : (
-          <CoachAnalyzeButton
-            onClick={handleSaveManual}
-            disabled={isSaving}
-            busy={isSaving}
-            label="Analisar Avaliação"
-          />
-        )}
-
-        {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+        </div>
       </div>
 
       {/* Modal de confirmação de saída com alterações por gravar */}
@@ -567,6 +607,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+
+      <ActionBar>{primaryAction}</ActionBar>
     </div>
   );
 }

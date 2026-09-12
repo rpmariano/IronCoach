@@ -1,5 +1,4 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import Card from '../shared/Card';
 import {
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
   Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
@@ -399,7 +398,6 @@ export function PlanDayCard({
                   </div>
                 )}
 
-
               </div>
             ))}
           </div>
@@ -485,7 +483,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-[var(--surface-strong)] border border-[var(--border-faint)] shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>
@@ -519,7 +517,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
         <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
       </span>
       <span className="wpc-pending-link">
-        Ver no chat <ChevronRight size={12} strokeWidth={3} />
+        Ver no chat <ChevronRight size={12} />
       </span>
     </button>
   );
@@ -532,7 +530,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
           <div className="wpc-glow-coach"></div>
           <div className="wpc-content">
             <h2 className="wpc-proposal-title">Plano</h2>
-            <p className="text-xs font-semibold text-slate-600 mt-1">
+            <p className="text-xs font-semibold text-[var(--text-3)] mt-1">
               Sem treinos acordados. Pede ao Coach um plano — as sugestões aparecem no chat para aceitares ou recusares.
             </p>
           </div>
@@ -568,7 +566,6 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
   return (
     <div className="flex flex-col gap-3">
 
-
       <div className="wpc-card">
         <div className="wpc-glow-coach"></div>
         <div className="wpc-content">
@@ -580,8 +577,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
                 useAppStore.getState().setCoachIntent('adapt_plan');
                 onNav('coach');
               }}
-              className="text-xs font-semibold px-2 py-1 rounded-md"
-              style={{ color: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 15%, transparent)' }}
+              className="tap-h-44 text-xs font-semibold px-2 py-1 rounded-md"
+              style={{ color: 'var(--coach)', background: 'color-mix(in srgb, var(--coach) 15%, transparent)' }}
             >
               Adaptar Plano
             </button>
@@ -616,7 +613,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
         
         {days.length > 1 && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-white/10 border border-white/5 shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
+            <div className="flex items-center gap-1.5 pointer-events-auto bg-[var(--surface-strong)] border border-[var(--border-faint)] shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
               <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
             </div>
           </div>

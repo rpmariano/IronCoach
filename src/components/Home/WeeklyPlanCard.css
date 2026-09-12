@@ -4,13 +4,13 @@
 .wpc-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-raised);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--border-glass);
   border-radius: 28px;
   padding: 24px;
-  box-shadow: 0 16px 40px rgba(0,0,0,0.3), inset 0 2px 10px rgba(255, 255, 255, 0.6);
+  box-shadow: var(--shadow-card);
   width: 100%;
   min-height: 220px;
   display: flex;
@@ -30,7 +30,7 @@
   right: -40px;
   width: 150px;
   height: 150px;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--coach) 10%, transparent) 0%, rgba(255, 255, 255, 0) 70%);
   z-index: 0;
   pointer-events: none;
 }
@@ -54,7 +54,7 @@
 .wpc-lbl {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #cbd5e1;
+  color: var(--text-3);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -62,7 +62,7 @@
 .wpc-coach-link {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #06b6d4;
+  color: var(--coach);
   cursor: pointer;
   background: transparent;
   border: none;
@@ -70,7 +70,7 @@
 }
 
 .wpc-coach-link:hover {
-  color: #38bdf8;
+  color: var(--coach);
 }
 
 .wpc-carousel {
@@ -93,8 +93,8 @@
 .wpc-day-card {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-soft);
+  border: 1px solid var(--border-glass);
   border-radius: 20px;
   padding: 16px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
@@ -114,8 +114,8 @@
 .wpc-day-card.nutri,
 .wpc-day-card.rest,
 .wpc-day-card.empty {
-  border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-glass);
+  background: var(--surface-soft);
 }
 
 .wpc-day-card.is-today {
@@ -124,9 +124,9 @@
 }
 
 .wpc-day-card.is-overdue {
-  border-color: rgba(239, 68, 68, 0.8);
+  border-color: color-mix(in srgb, var(--danger) 80%, transparent);
   border-width: 2px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(239, 68, 68, 0.05) 100%);
+  background: linear-gradient(135deg, var(--border-glass) 0%, color-mix(in srgb, var(--danger) 5%, transparent) 100%);
 }
 
 /* Day Card Inner Glows Removed */
@@ -162,39 +162,39 @@
 }
 
 .wpc-icon-wrap.run {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--mod-corrida);
   border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.gym {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--mod-ginasio);
   border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.corpo {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--mod-corpo);
   border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.nutri {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--mod-nutricao);
   border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.rest {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface-glass);
   color: var(--mod-descanso);
   border: 1px solid var(--brd-800);
 }
 
 .wpc-icon-wrap.empty {
-  background: rgba(255, 255, 255, 0.02);
-  color: #cbd5e1;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface-faint);
+  color: var(--text-3);
+  border: 1px solid var(--border-hairline);
 }
 
 .wpc-day-info {
@@ -204,14 +204,14 @@
 .wpc-day-title {
   font-size: 0.85rem;
   font-weight: 800;
-  color: #f8fafc;
+  color: var(--text-1);
   display: flex;
   align-items: center;
 }
 
 .wpc-day-date {
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-3);
   margin-left: 6px;
 }
 
@@ -219,12 +219,12 @@
   margin-left: 8px;
   padding: 2px 6px;
   border-radius: 6px;
-  font-size: 0.6rem;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: rgba(6, 182, 212, 0.15);
-  color: #38bdf8;
+  background: color-mix(in srgb, var(--coach) 15%, transparent);
+  color: var(--coach);
   vertical-align: middle;
 }
 
@@ -232,12 +232,12 @@
   margin-left: 8px;
   padding: 2px 6px;
   border-radius: 6px;
-  font-size: 0.6rem;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
   vertical-align: middle;
   display: inline-flex;
   align-items: center;
@@ -249,36 +249,37 @@
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  min-height: var(--tap);
   padding: 10px 14px;
   border-radius: 14px;
-  background: rgba(6, 182, 212, 0.08);
-  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: color-mix(in srgb, var(--coach) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--coach) 20%, transparent);
   margin-bottom: 14px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #38bdf8;
+  color: var(--coach);
   cursor: pointer;
   text-align: left;
   transition: all 0.2s;
 }
 
 .wpc-pending-banner:hover {
-  background: rgba(6, 182, 212, 0.14);
+  background: color-mix(in srgb, var(--coach) 14%, transparent);
 }
 
 .wpc-pending-link {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: #0891b2;
+  background: var(--coach-deep);
   color: white;
   padding: 4px 10px;
   border-radius: 999px;
   font-weight: 800;
-  font-size: 0.65rem;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  box-shadow: 0 2px 6px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--coach) 20%, transparent);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -286,7 +287,7 @@
 .wpc-day-summary {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-3);
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
@@ -307,18 +308,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(52, 211, 153, 0.14);
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.38);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+  border: 1px solid color-mix(in srgb, var(--ok) 38%, transparent);
 }
 
 .wpc-chevron {
-  color: #cbd5e1;
+  color: var(--text-3);
   transition: color 0.2s;
 }
 
 .wpc-day-header:hover .wpc-chevron {
-  color: #cbd5e1;
+  color: var(--text-3);
 }
 
 /* ======== EXPANDED DETAILS ======== */
@@ -342,7 +343,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #cbd5e1;
+  color: var(--text-3);
 }
 
 .wpc-detail-title.run { color: var(--mod-corrida); }
@@ -364,31 +365,31 @@
 }
 
 .wpc-pill-status.success {
-  background: rgba(52, 211, 153, 0.1);
-  color: #34d399;
-  border-color: rgba(4, 120, 87, 0.2);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 20%, transparent);
 }
 
 .wpc-pill-status.danger {
-  background: rgba(255, 255, 255, 0.03);
-  color: #cbd5e1;
+  background: var(--surface-soft);
+  color: var(--text-3);
 }
 
 .wpc-pill-status.danger-red {
-  background: rgba(220, 38, 38, 0.1);
-  color: #dc2626;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
 }
 
 .wpc-past-warning {
   font-size: 0.7rem;
   font-weight: 700;
-  color: #ef4444;
+  color: var(--danger);
 }
 
 /* Info Boxes (Cartões internos em branco puro) */
 .wpc-info-box {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-glass);
   border-radius: 16px;
   padding: 14px 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -400,7 +401,7 @@
   gap: 6px;
   font-size: 0.75rem;
   font-weight: 800;
-  color: #cbd5e1;
+  color: var(--text-3);
   margin-bottom: 6px;
 }
 
@@ -430,13 +431,13 @@
 
 .wpc-info-box-text {
   font-size: 0.8rem;
-  color: #f8fafc;
+  color: var(--text-1);
   line-height: 1.5;
   font-weight: 500;
 }
 
 .wpc-info-box-disclaimer {
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--mod-nutricao-ink);
   opacity: 0.8;
   margin-top: 6px;
@@ -449,12 +450,12 @@
 .wpc-nutri-total-value {
   display: flex; align-items: baseline; justify-content: center; gap: 5px;
   font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1;
-  font-variant-numeric: tabular-nums; color: #f8fafc;
+  font-variant-numeric: tabular-nums; color: var(--text-1);
 }
-.wpc-nutri-total-value small { font-size: 12px; font-weight: 700; color: rgba(203,213,225,.75); }
+.wpc-nutri-total-value small { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--text-3) 75%, transparent); }
 .wpc-nutri-total-label {
-  font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
-  color: rgba(203,213,225,.5); margin-top: 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-3) 50%, transparent); margin-top: 6px;
 }
 
 .wpc-macro-rings { display: flex; justify-content: space-between; gap: 6px; margin: 14px 0 4px; }
@@ -464,26 +465,26 @@
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center; font-variant-numeric: tabular-nums;
 }
-.wpc-macro-ring-center span { font-size: 14px; font-weight: 800; line-height: 1; color: #f8fafc; }
-.wpc-macro-ring-center small { font-size: 9px; font-weight: 700; color: rgba(203,213,225,.6); margin-top: 2px; }
+.wpc-macro-ring-center span { font-size: 14px; font-weight: 800; line-height: 1; color: var(--text-1); }
+.wpc-macro-ring-center small { font-size: 11px; font-weight: 700; color: color-mix(in srgb, var(--text-3) 60%, transparent); margin-top: 2px; }
 .wpc-macro-ring-label {
-  font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
-  color: rgba(203,213,225,.6); margin-top: 7px;
+  font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--text-3) 60%, transparent); margin-top: 7px;
 }
-.wpc-nutri-ring-legend { font-size: 9.5px; color: rgba(203,213,225,.42); text-align: center; margin: 8px 0 14px; }
+.wpc-nutri-ring-legend { font-size: 11px; color: color-mix(in srgb, var(--text-3) 42%, transparent); text-align: center; margin: 8px 0 14px; }
 
 .wpc-nutri-meals { display: flex; flex-direction: column; }
 .wpc-nutri-meal-row {
-  display: flex; gap: 11px; padding: 12px 0; border-top: 1px solid rgba(255,255,255,.08);
+  display: flex; gap: 11px; padding: 12px 0; border-top: 1px solid var(--border-hairline);
 }
-.wpc-nutri-meal-row:last-child { border-bottom: 1px solid rgba(255,255,255,.08); }
+.wpc-nutri-meal-row:last-child { border-bottom: 1px solid var(--border-hairline); }
 .wpc-nutri-meal-icon {
-  width: 20px; height: 20px; flex: none; margin-top: 1px; color: rgba(203,213,225,.6);
+  width: 20px; height: 20px; flex: none; margin-top: 1px; color: color-mix(in srgb, var(--text-3) 60%, transparent);
   display: flex; align-items: center; justify-content: center;
 }
 .wpc-nutri-meal-icon.is-main { color: var(--mod-nutricao-ink); }
-.wpc-nutri-meal-name { font-size: 12px; font-weight: 800; color: #f8fafc; }
-.wpc-nutri-meal-text { font-size: 12.5px; line-height: 1.5; color: #cbd5e1; margin-top: 3px; text-wrap: pretty; }
+.wpc-nutri-meal-name { font-size: 12px; font-weight: 800; color: var(--text-1); }
+.wpc-nutri-meal-text { font-size: 12.5px; line-height: 1.5; color: var(--text-3); margin-top: 3px; text-wrap: pretty; }
 
 /* Glass Buttons */
 .wpc-actions {
@@ -499,6 +500,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  /* Piso de toque do ponto 2 do handoff: "Concluir"/"Cancelar" e
+     "Aceitar"/"Recusar" ficavam a 43px so pelo padding. */
+  min-height: var(--tap);
   padding: 12px 0;
   border-radius: 14px;
   font-size: 0.8rem;
@@ -517,32 +521,32 @@
 }
 
 .wpc-btn-primary {
-  background: rgba(5, 150, 105, 0.1);
-  border-color: rgba(5, 150, 105, 0.2);
-  color: #34d399;
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 20%, transparent);
+  color: var(--ok);
 }
 
 .wpc-btn-primary:hover {
-  background: rgba(5, 150, 105, 0.15);
-  border-color: rgba(5, 150, 105, 0.3);
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 30%, transparent);
 }
 
 .wpc-btn-secondary {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.05);
-  color: #cbd5e1;
+  background: var(--surface-soft);
+  border-color: var(--surface-glass);
+  color: var(--text-3);
 }
 
 .wpc-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--surface-raised);
+  border-color: var(--border-glass);
 }
 
 /* Proposal Card Specifics */
 .wpc-proposal-title {
   font-size: 0.75rem;
   font-weight: 800;
-  color: #06b6d4;
+  color: var(--coach);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 8px;
@@ -550,7 +554,7 @@
 
 .wpc-proposal-summary {
   font-size: 0.85rem;
-  color: #f8fafc;
+  color: var(--text-1);
   font-weight: 500;
   margin-bottom: 16px;
 }

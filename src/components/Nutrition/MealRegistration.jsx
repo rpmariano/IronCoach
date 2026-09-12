@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, Loader2, Plus, MessageSquare } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, PencilLine, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import SectionLabel from '../shared/SectionLabel';
+import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -44,7 +48,6 @@ function getDefaultMealType() {
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
   const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
-  const { showToast } = useToast();
 
   
 
@@ -70,7 +73,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  /* Ponto 7 do redesenho: espera e erro da análise num só estado
+     (src/utils/useAnalysis.js). Antes eram três booleanos independentes
+     (isAnalyzing, isFinalizing, isSaving) e um errorMsg partilhado com as
+     validações do formulário — uma falha de rede lia-se como um campo mal
+     preenchido e não havia forma de repetir sem refazer tudo. `errorMsg`
+     fica, mas só para as validações locais (nome do alimento, gramas,
+     número de fotos). */
+  const analysis = useAnalysis();
+  const isAnalyzing = analysis.isAnalyzing;
 
   // Manual — "Adicionar alimento" só acrescenta {name, grams} a uma lista
   // local, sem tocar no servidor nem no Gemini. Só ao premir "Analisar
@@ -80,7 +92,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [manualItems, setManualItems] = useState([]); // [{ key, name, grams, dbId? }]
   const [itemName, setItemName] = useState('');
   const [itemGrams, setItemGrams] = useState('');
-  const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
@@ -89,7 +100,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // refeição não mexem na análise, e nesses casos guardar é um update direto,
   // sem custo de API. É por passar pelo Coach que acrescentar um alimento
   // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
-  const [isSaving, setIsSaving] = useState(false);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -155,17 +165,25 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
   // ANTES de handleClose() o consumir.
-  const finishCreateAndGoToCalendar = (createdRecord) => {
+  /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
+     elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
+     destino de sempre. O CreatedRecordModal continua lá — traz o cartão
+     analisado e o "Falar com a Carol", que o atleta precisa de ver. */
+  const [confirmation, setConfirmation] = useState(null);
+
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    handleClose();
-    if (!hadPendingNav) {
-      setNavGuard(null);
-      if (createdRecord) {
-        useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+    setConfirmation({ label, done: () => {
+      handleClose();
+      if (!hadPendingNav) {
+        setNavGuard(null);
+        if (createdRecord) {
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+        }
+        useAppStore.getState().setPendingCalendarDate(date);
+        useAppStore.getState().setActiveTab('calendario');
       }
-      useAppStore.getState().setPendingCalendarDate(date);
-      useAppStore.getState().setActiveTab('calendario');
-    }
+    } });
   };
 
   // Assinatura do que é analítico, para comparar o antes com o agora.
@@ -203,7 +221,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com alimentos/observações diferentes dos gravados dispara
-    // "Guardar e Reanalisar" já na primeira renderização.
+    // "Guardar e reanalisar" já na primeira renderização.
     setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, canonicalItems));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,43 +295,40 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // ----------------------------------
   // ANALISAR REFEIÇÃO POR FOTO (IA — analyze-meal)
   // ----------------------------------
-  const handleAnalyzePhotos = async () => {
-    if (!photos.length || isAnalyzing) return;
-    setIsAnalyzing(true);
-    setErrorMsg('');
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: {
-          images: photos.map(p => p.base64),
-          mime_type: 'image/jpeg',
-          date,
-          meal_type: mealType,
-          notes: notes.trim() || null,
-        },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+  // A tarefa em si, separada do gesto: é ela que o "Tentar de novo" repete,
+  // com as MESMAS fotos, data, tipo e observações (useAnalysis guarda-a).
+  const analyzePhotosTask = async () => {
+    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+      body: {
+        images: photos.map(p => p.base64),
+        mime_type: 'image/jpeg',
+        date,
+        meal_type: mealType,
+        notes: notes.trim() || null,
+      },
+    });
+    if (error) throw new Error(error);
+    if (data?.error) throw new Error(data.error);
 
-      // A resposta traz meal e items em separado — o store espera-os juntos,
-      // tal como loadInitialData os carrega (select('*, meal_items(*)')).
-      const mealWithItems = { ...data.meal, meal_items: data.items || [] };
-      if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
-        console.warn('Aviso: análise retornou 0 itens', data);
-      }
-      setMeals([...meals, mealWithItems]);
-      showToast('Refeição registada');
-      finishCreateAndGoToCalendar(mealWithItems);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha na análise. Tenta novamente.');
-    } finally {
-      setIsAnalyzing(false);
+    // A resposta traz meal e items em separado — o store espera-os juntos,
+    // tal como loadInitialData os carrega (select('*, meal_items(*)')).
+    const mealWithItems = { ...data.meal, meal_items: data.items || [] };
+    if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
+      console.warn('Aviso: análise retornou 0 itens', data);
     }
+    setMeals([...meals, mealWithItems]);
+    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada');
+  };
+
+  const handleAnalyzePhotos = () => {
+    if (!photos.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(analyzePhotosTask);
   };
 
   // ----------------------------------
   // REGISTO MANUAL — adicionar é só local; a estimativa de nutrientes e o
-  // comentário do Coach só acontecem ao premir "Analisar Refeição". As
+  // comentário do Coach só acontecem ao premir "Analisar refeição". As
   // gramas são opcionais: quando não indicadas, o Coach estima a porção
   // típica a partir da descrição do alimento + das observações da refeição
   // (ex.: "fiambre" com a observação "1 fatia" dá o mesmo resultado que
@@ -338,32 +353,27 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setIsFormDirty(true);
   };
 
-  const handleFinalizeManual = async () => {
-    if (!manualItems.length || isFinalizing) return;
-    setIsFinalizing(true);
-    setErrorMsg('');
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
-        body: {
-          mode: 'manual',
-          date,
-          meal_type: mealType,
-          notes: notes.trim() || null,
-          items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
-        },
-      });
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+  const finalizeManualTask = async () => {
+    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+      body: {
+        mode: 'manual',
+        date,
+        meal_type: mealType,
+        notes: notes.trim() || null,
+        items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
+      },
+    });
+    if (error) throw new Error(error);
+    if (data?.error) throw new Error(data.error);
 
-      setMeals([...meals, data.meal]);
-      showToast('Refeição registada');
-      finishCreateAndGoToCalendar(data?.meal);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha a analisar a refeição. Tenta novamente.');
-    } finally {
-      setIsFinalizing(false);
-    }
+    setMeals([...meals, data.meal]);
+    finishCreateAndGoToCalendar(data?.meal, 'Refeição registada');
+  };
+
+  const handleFinalizeManual = () => {
+    if (!manualItems.length || isAnalyzing) return;
+    setErrorMsg('');
+    analysis.run(finalizeManualTask);
   };
 
   // ----------------------------------
@@ -374,15 +384,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   //     um alimento novo ao editar.
   //   • Só a data/tipo mudaram → update direto, sem chamada ao Gemini.
   // ----------------------------------
-  const handleSaveEdit = async () => {
-    if (isSaving) return;
-    if (needsReanalysis && !manualItems.length) {
-      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
-      return;
-    }
-    setIsSaving(true);
-    setErrorMsg('');
-    try {
+  const saveEditTask = async () => {
+    {
       let savedMeal = null;
       if (needsReanalysis) {
         const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
@@ -410,18 +413,52 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       }
 
       if (profile?.id) await loadInitialData(profile.id);
-      showToast(needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
-      finishCreateAndGoToCalendar(savedMeal);
-    } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
-    } finally {
-      setIsSaving(false);
+      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
     }
   };
 
+  const handleSaveEdit = () => {
+    if (isAnalyzing) return;
+    if (needsReanalysis && !manualItems.length) {
+      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
+      return;
+    }
+    setErrorMsg('');
+    analysis.run(saveEditTask);
+  };
+
+  /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
+     no fim do formulário, onde ficava abaixo da dobra. Os rótulos são os de
+     sempre. */
+  const primaryAction = isEditing ? (
+    <CoachAnalyzeButton
+      onClick={handleSaveEdit}
+      disabled={isAnalyzing || (needsReanalysis && !manualItems.length)}
+      busy={isAnalyzing}
+      label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
+    />
+  ) : entryMethod === 'foto' ? (
+    <CoachAnalyzeButton
+      onClick={handleAnalyzePhotos}
+      disabled={!photos.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar refeição"
+    />
+  ) : (
+    <CoachAnalyzeButton
+      onClick={handleFinalizeManual}
+      disabled={!manualItems.length || isAnalyzing}
+      busy={isAnalyzing}
+      label="Analisar refeição"
+    />
+  );
+
   return (
-    <div className="fade-in pb-8">
+    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
+    <div
+      className="fade-in"
+      style={{ '--focus-ring': 'var(--mod-nutricao-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       <div
         className="module-card-contrast relative overflow-hidden"
         // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
@@ -436,28 +473,62 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         <div className="flex items-center justify-between gap-2 mb-4">
           <div className="flex items-center gap-2">
             <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-            <h2 className="text-sm font-semibold text-slate-800">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
           </div>
           <button
             onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
             type="button"
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+            // O circulo continua a desenhar-se com 32px; o que cresce para
+            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+            className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <X size={16} />
+            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+              <X size={16} />
+            </span>
           </button>
         </div>
 
+        {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
+            aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
+            nada do que o atleta escreveu ou fotografou se apaga. */}
+        {isAnalyzing && <AnalysisSkeleton />}
+
+        {/* Ponto 7 — ERRO. Texto do mock "Refeição · análise falhou", na voz
+            da Carol (CAROL.md: nunca "Desculpa, não consegui analisar").
+            "Tentar de novo" repete a MESMA chamada com os mesmos dados;
+            "Escrever" passa ao modo manual sem perder foto, data, tipo nem
+            observações. */}
+        {analysis.hasFailed && (
+          <AnalysisFailure
+            detail={analysis.error}
+            onRetry={analysis.retry}
+            onManual={!isEditing && entryMethod === 'foto'
+              ? () => { setEntryMethod('manual'); analysis.reset(); }
+              : undefined}
+          >
+            {photos.length > 0
+              ? 'As fotos ficaram guardadas. Podes tentar outra vez ou escrever o que comeste — eu calculo na mesma.'
+              : 'O que escreveste ficou guardado. Podes tentar outra vez.'}
+          </AnalysisFailure>
+        )}
+
+        <div
+          data-testid="meal-form-fields"
+          aria-busy={isAnalyzing || undefined}
+          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+        >
         <div className="grid grid-cols-[1fr_auto] items-center gap-3 mb-4">
           <input
             type="date"
+            aria-label="Data da refeição"
             value={date}
             max={format(new Date(), 'yyyy-MM-dd')}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--accent)] shadow-sm transition"
+            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
           />
-          <div className="text-[11px] text-slate-500 mr-2">Data da refeição</div>
+          <div className="text-[11px] text-[var(--text-3)] mr-2">Data da refeição</div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-5">
@@ -482,7 +553,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             campos, sem foto nova (mesmo padrão da Corrida). */}
         {!isEditing && (
           <div className="mb-5">
-            <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Como queres registar?</label>
+            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Como queres registar?</label>
             <div className="flex gap-1.5">
               <Chip
                 active={entryMethod === 'foto'}
@@ -515,13 +586,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
                     <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-slate-200" alt={`Foto ${i+1}`} />
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Foto da refeição ${i + 1}`} />
                       <button
                         onClick={() => removePhoto(i)}
                         aria-label={`Remover foto ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-slate-500 hover:text-red-500 transition"
+                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
                       >
-                        <span className="bg-white/90 border border-slate-200 rounded-full p-1 shadow-sm flex items-center justify-center">
+                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
                           <X size={14} />
                         </span>
                       </button>
@@ -529,22 +600,22 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   ))}
                 </div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-slate-500">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
-                  <button onClick={clearPhotos} className="text-[11px] text-slate-500 hover:text-red-500 flex items-center gap-1 transition">
+                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
+                  <button onClick={clearPhotos} className="tap-h-44 text-[11px] text-[var(--text-3)] hover:text-[var(--danger)] flex items-center gap-1 transition">
                     <Trash2 size={14} /> Limpar todas
                   </button>
                 </div>
                 {photos.length < MAX_PHOTOS && (
                   <div className="grid grid-cols-2 gap-2 mb-4">
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--accent)]/70 hover:bg-[var(--accent)]/5 transition bg-white/50">
+                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                       <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
-                      <Camera size={16} className="text-[var(--accent)]" />
-                      <span className="text-xs font-semibold text-[var(--accent)]">Tirar foto</span>
+                      <Camera size={16} className="text-[var(--nutrition)]" />
+                      <span className="text-xs font-semibold text-[var(--nutrition)]">Tirar foto</span>
                     </label>
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--accent)]/70 hover:bg-[var(--accent)]/5 transition bg-white/50">
+                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                       <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                      <ImagePlus size={16} className="text-[var(--accent)]" />
-                      <span className="text-xs font-semibold text-[var(--accent)]">Da galeria</span>
+                      <ImagePlus size={16} className="text-[var(--nutrition)]" />
+                      <span className="text-xs font-semibold text-[var(--nutrition)]">Da galeria</span>
                     </label>
                   </div>
                 )}
@@ -552,48 +623,85 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2 mb-3">
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-300 rounded-xl py-8 text-center cursor-pointer hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition bg-white/50">
+                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                     <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
-                    <Camera size={24} className="text-slate-400" />
-                    <p className="text-xs text-slate-500 font-medium">Tirar foto</p>
+                    <Camera size={24} className="text-[var(--text-3)]" />
+                    <p className="text-xs text-[var(--text-3)] font-medium">Tirar foto</p>
                   </label>
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-slate-300 rounded-xl py-8 text-center cursor-pointer hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 transition bg-white/50">
+                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
                     <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                    <ImagePlus size={24} className="text-slate-400" />
-                    <p className="text-xs text-slate-500 font-medium">Da galeria</p>
+                    <ImagePlus size={24} className="text-[var(--text-3)]" />
+                    <p className="text-xs text-[var(--text-3)] font-medium">Da galeria</p>
                   </label>
                 </div>
-                <p className="text-[10px] text-slate-500 text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
-                <p className="text-[10px] text-slate-500 text-center mb-5 leading-relaxed">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
+                <p className="text-[11px] text-[var(--text-3)] text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
+                <p className="text-[11px] text-[var(--text-3)] text-center mb-5 leading-relaxed">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
               </>
             )}
           </>
         ) : (
           <div className="mb-4">
+            {/* As fotos não se perdem ao cair para o modo manual (mock
+                "Refeição · análise falhou": "2 fotos guardadas"). Ficam à
+                vista, e voltar a "Foto (IA)" encontra-as lá. */}
+            {photos.length > 0 && (
+              <div
+                data-testid="saved-photos"
+                className="mb-3"
+                style={{
+                  borderRadius: 'var(--radius-xl)',
+                  background: 'rgba(255,255,255,.05)',
+                  border: '1px solid rgba(255,255,255,.11)',
+                  padding: '14px 16px',
+                }}
+              >
+                <div className="flex items-center gap-[7px] text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--text-muted)' }}>
+                  <ImageIcon size={14} /> {photos.length} foto{photos.length === 1 ? '' : 's'} guardada{photos.length === 1 ? '' : 's'}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  {photos.map((ph, i) => (
+                    <img
+                      key={i}
+                      src={ph.dataUrl}
+                      alt={`Foto da refeição ${i + 1}`}
+                      className="object-cover"
+                      style={{ width: 62, height: 62, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)' }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {photos.length > 0 && !isEditing && (
+              <SectionLabel style={{ margin: '4px 2px 8px' }}>Ou escreve os alimentos</SectionLabel>
+            )}
+
             {/* Também disponível a editar: como guardar passa pelo Coach
                 quando os alimentos mudam, os valores nutricionais de um
                 alimento novo são estimados na mesma chamada. */}
-            <div className="rounded-xl border border-slate-200 bg-white/50 p-3 mb-3">
-              <p className="text-[12px] font-bold text-slate-500 mb-2.5">Adicionar alimento</p>
+            <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3">
+              <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">Adicionar alimento</p>
                 <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
                   <input
                     type="text"
+                    aria-label="Nome do alimento a adicionar"
                     placeholder="Ex.: peito de frango grelhado"
                     value={itemName}
                     onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
                   />
                   <div className="relative w-24">
                     <input
                       type="number" min="1" step="1"
+                      aria-label="Gramas do alimento a adicionar (opcional)"
                       placeholder="g (opcional)"
                       value={itemGrams}
                       onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
                     />
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-500 mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
+                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
                 <AddButton
                   onClick={handleAddItem}
                   disabled={!itemName.trim()}
@@ -607,32 +715,34 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             {manualItems.length > 0 && (
               <div className="space-y-1.5 mb-3">
                 {manualItems.map(item => (
-                  <div key={item.key} className="flex items-center gap-2 bg-white border border-slate-200/80 rounded-xl px-3 py-2">
+                  <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
                     {isEditing ? (
                       <>
                         <input
                           type="text"
+                          aria-label={`Nome do alimento: ${item.name}`}
                           value={item.name}
                           onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
-                          className="flex-1 text-xs font-bold text-slate-800 outline-none bg-transparent"
+                          className="flex-1 text-xs font-bold text-[var(--text-1)] outline-none bg-transparent"
                         />
                         <input
                           type="number" min="1"
+                          aria-label={`Gramas de ${item.name}`}
                           value={item.grams}
                           onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
-                          className="w-14 text-xs text-slate-600 text-right outline-none bg-transparent"
+                          className="w-14 text-xs text-[var(--text-3)] text-right outline-none bg-transparent"
                         />
-                        <span className="text-[10px] text-slate-400">g</span>
+                        <span className="text-[11px] text-[var(--text-3)]">g</span>
                       </>
                     ) : (
                       <div className="flex-1">
-                        <p className="text-xs font-bold text-slate-800 capitalize">{item.name}</p>
-                        <p className="text-[10px] text-slate-400">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
+                        <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
+                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
                       </div>
                     )}
                     <button
                       onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}
-                      className="tap-44 text-slate-400 hover:text-red-500 shrink-0"
+                      className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"
                       aria-label={`Remover ${item.name}`}
                     >
                       <Trash2 size={14} />
@@ -640,7 +750,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   </div>
                 ))}
                 {(!isEditing || needsReanalysis) && (
-                  <p className="text-[10px] text-slate-400 text-right px-1">Valores nutricionais calculados ao analisar</p>
+                  <p className="text-[11px] text-[var(--text-3)] text-right px-1">Valores nutricionais calculados ao analisar</p>
                 )}
               </div>
             )}
@@ -648,14 +758,14 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         )}
 
         <div className="mb-5">
-          <label className="text-[11px] text-slate-500 mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
-          <textarea
+          <label htmlFor="mr-observacoes-opcional-ex-big-mac-bi" className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
+          <textarea id="mr-observacoes-opcional-ex-big-mac-bi"
             rows="2"
             maxLength="500"
             placeholder="Detalhes que mudam os valores nutricionais..."
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-[13px] text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--accent)] resize-none shadow-sm transition"
+            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] resize-none shadow-sm transition"
           />
         </div>
 
@@ -668,7 +778,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           return (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={() => {
                 useAppStore.getState().dismissIntervention(editingMeal.id, notes);
                 useAppStore.setState({
@@ -688,47 +798,28 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           );
         })()}
 
-        {/* Ações */}
-        {isEditing ? (
-            <CoachAnalyzeButton
-              onClick={handleSaveEdit}
-              disabled={isSaving || (needsReanalysis && !manualItems.length)}
-              busy={isSaving}
-              label={needsReanalysis ? "Guardar e Reanalisar" : "Guardar Alterações"}
-            />
-        ) : entryMethod === 'foto' ? (
-          <CoachAnalyzeButton
-            onClick={handleAnalyzePhotos}
-            disabled={!photos.length || isAnalyzing}
-            busy={isAnalyzing}
-            label="Analisar Refeição"
-          />
-        ) : (
-          <CoachAnalyzeButton
-            onClick={handleFinalizeManual}
-            disabled={!manualItems.length || isFinalizing}
-            busy={isFinalizing}
-            label="Analisar Refeição"
-          />
-        )}
-
-        {errorMsg && <p className="text-red-500 text-[13px] font-medium mt-3 text-center">{errorMsg}</p>}
+        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+        </div>
       </div>
 
       {/* Modal de confirmação de saída com alterações por gravar */}
       <UnsavedChangesModal
         isOpen={showUnsavedModal}
-        isSaving={isSaving || isFinalizing}
+        isSaving={isAnalyzing}
         onSaveAndLeave={isEditing ? handleSaveEdit : handleFinalizeManual}
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
+
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+
+      <ActionBar>{primaryAction}</ActionBar>
     </div>
   );
 }

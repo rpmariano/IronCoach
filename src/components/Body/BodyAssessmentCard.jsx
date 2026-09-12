@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Loader2, Scale, Droplet, Activity, Award, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Scale, Droplet, Activity, Award, PencilLine } from 'lucide-react';
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -50,10 +50,10 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
 
   // Pílulas Coloridas com Ícones
   const metricChips = [
-    weight ? { key: 'w', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Scale size={14} className="text-slate-500" />, label: weight } : null,
-    bodyFat ? { key: 'fat', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Droplet size={14} className="text-slate-500" />, label: bodyFat } : null,
-    muscle ? { key: 'musc', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: assessment.skeletal_muscle_pct ? getBodyIcon('skeletal_muscle_pct', 14, "text-slate-500") : getBodyIcon('muscle_mass_kg', 14, "text-slate-500"), label: muscle } : null,
-    bmi ? { key: 'bmi', colorClass: 'bg-slate-100 text-slate-800 border-slate-200', icon: <Activity size={14} className="text-slate-500" />, label: bmi } : null,
+    weight ? { key: 'w', colorClass: 'bg-[var(--surface-glass)] text-[var(--text-1)] border-[var(--border-glass)]', icon: <Scale size={14} className="text-[var(--text-3)]" />, label: weight } : null,
+    bodyFat ? { key: 'fat', colorClass: 'bg-[var(--surface-glass)] text-[var(--text-1)] border-[var(--border-glass)]', icon: <Droplet size={14} className="text-[var(--text-3)]" />, label: bodyFat } : null,
+    muscle ? { key: 'musc', colorClass: 'bg-[var(--surface-glass)] text-[var(--text-1)] border-[var(--border-glass)]', icon: assessment.skeletal_muscle_pct ? getBodyIcon('skeletal_muscle_pct', 14, "text-[var(--text-3)]") : getBodyIcon('muscle_mass_kg', 14, "text-[var(--text-3)]"), label: muscle } : null,
+    bmi ? { key: 'bmi', colorClass: 'bg-[var(--surface-glass)] text-[var(--text-1)] border-[var(--border-glass)]', icon: <Activity size={14} className="text-[var(--text-3)]" />, label: bmi } : null,
   ].filter(Boolean);
 
   return (
@@ -64,21 +64,21 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200/60 flex items-center justify-center text-[var(--mod-corpo)] shrink-0">
+          <div className="w-10 h-10 rounded-full bg-[var(--surface-soft)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--mod-corpo)] shrink-0">
             <ScanLine size={20} />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-slate-800 leading-tight">
+            <h4 className="text-sm font-bold text-[var(--text-1)] leading-tight">
               Avaliação Corporal
             </h4>
-            <p className="text-xs text-slate-400 font-medium">
+            <p className="text-xs text-[var(--text-3)] font-medium">
               {formattedDate}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-slate-800">
+          <span className="text-sm font-bold text-[var(--text-1)]">
             {weight || '—'}
           </span>
           {/* A linha inteira é clicável, mas o chevron é o controlo real —
@@ -88,7 +88,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
             type="button"
             aria-label={expanded ? 'Fechar detalhes da avaliação' : 'Ver detalhes da avaliação'}
             aria-expanded={expanded}
-            className="tap-44 text-slate-400 hover:text-slate-600 shrink-0"
+            className="tap-44 text-[var(--text-3)] hover:text-[var(--text-1)] shrink-0"
           >
             {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -97,7 +97,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="space-y-3 pt-2 border-t border-slate-200/60 fade-in">
+        <div className="space-y-3 pt-2 border-t border-[var(--border-glass)] fade-in">
           {/* Pílulas Coloridas com Ícones */}
           {metricChips.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -111,31 +111,31 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
           )}
 
           {/* Observações — só leitura; alterar é pelo botão "Editar" */}
-          <div className="bg-white border border-slate-200/60 rounded-xl p-3 shadow-xs">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-              <MessageSquare size={14} className="text-slate-400" /> Observações
+          <div className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-2)]">
+              <MessageSquare size={14} className="text-[var(--text-3)]" /> Observações
             </div>
-            <p className="text-xs text-slate-500 italic mt-1">
+            <p className="text-xs text-[var(--text-3)] italic mt-1">
               {assessment.notes || 'Sem observações.'}
             </p>
           </div>
 
           {/* Full Metrics Breakdown */}
           <div className="space-y-1.5">
-            <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-1">Todas as Métricas</h5>
+            <h5 className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider px-1">Todas as Métricas</h5>
             <div className="grid grid-cols-2 gap-1.5">
               {BODY_METRICS.map(m => {
                 const val = assessment[m.key];
                 if (val === null || val === undefined) return null;
                 return (
-                  <div key={m.key} className="bg-white border border-slate-200/60 rounded-xl p-2.5 flex items-center justify-between shadow-xs">
+                  <div key={m.key} className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-2.5 flex items-center justify-between shadow-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="shrink-0 flex items-center justify-center mr-0.5" style={{ color: m.color }}>
                         {getBodyIcon(m.key, 14)}
                       </span>
-                      <span className="text-[11px] font-medium text-slate-700 truncate">{m.label}</span>
+                      <span className="text-[11px] font-medium text-[var(--text-2)] truncate">{m.label}</span>
                     </div>
-                    <span className="text-xs font-bold text-slate-800 shrink-0 ml-1">
+                    <span className="text-xs font-bold text-[var(--text-1)] shrink-0 ml-1">
                       {val} {m.unit}
                     </span>
                   </div>
@@ -146,18 +146,18 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
 
           {/* ANÁLISE DO COACH */}
           {coachCommentary && (
-            <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <div className="bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed font-normal">
+              <p className="text-xs text-[var(--text-2)] leading-relaxed font-normal">
                 {coachCommentary}
               </p>
             </div>
           )}
 
-          {/* Falar com a Coach se a análise indicar intervenção */}
+          {/* Falar com a Carol se a análise indicar intervenção */}
           {Boolean(
             coachCommentary &&
             /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
@@ -165,7 +165,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
           ) && (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={(e) => {
                 e.stopPropagation();
                 useAppStore.getState().dismissIntervention(assessment.id, coachCommentary);
@@ -185,7 +185,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           )}

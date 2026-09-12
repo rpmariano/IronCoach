@@ -4,11 +4,12 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
-import { CalendarPlus, RotateCcw, CheckCircle, Pencil, Trash2, Check, Loader2, Link as LinkIcon, AlertTriangle, X, Sparkles, RefreshCw, Sliders, Trophy } from 'lucide-react';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import Warning from '../shared/Warning';
+import { CalendarPlus, CheckCircle, Trash2, Check, Loader2, AlertTriangle, X, Sparkles, Sliders } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
-import RaceWebInfoSections from './RaceWebInfoSections';
 import RaceHubView from './RaceHubView';
 import RaceLevelSuggestion from './RaceLevelSuggestion';
 import {
@@ -24,13 +25,14 @@ import {
   parsePaceToSeconds,
   formatPace,
 } from '../../utils/run';
-import { EXPERIENCE_LEVELS, experienceLevelLabel, experienceLevelDescription } from '../../utils/experience';
+import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { useCarouselHaptics } from '../../utils/haptics';
+import RecordConfirmation from '../shared/RecordConfirmation';
 import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
@@ -90,6 +92,16 @@ const PAGE_KEYS = ['hub', 'details'];
 export default function RunAgenda({ onClose }) {
   const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
   const { showToast } = useToast();
+
+  // Prova declarada no passo 6 do arranque (Onboarding.jsx). Chega com nome,
+  // data, distância e terreno; falta-lhe o local e o objetivo de tempo, que
+  // race_events exige e o arranque não pergunta — é por isso que o onboarding
+  // entrega aqui em vez de gravar sozinho. Lido UMA vez, na inicialização do
+  // rascunho, e limpo do store logo a seguir.
+  const racePrefillRef = useRef(useAppStore.getState().racePrefill);
+  useEffect(() => {
+    if (racePrefillRef.current) useAppStore.getState().setRacePrefill(null);
+  }, []);
 
   const editingEventId = editingRaceId;
   const isFormOpen = true;
@@ -179,6 +191,10 @@ export default function RunAgenda({ onClose }) {
   // alterações por gravar — null quando o pedido veio do próprio botão
   // "Cancelar" do formulário, sem navegação nenhuma envolvida.
   const [leavePrompt, setLeavePrompt] = useState(null);
+  /* Ponto 9, animação 6: o check de "Registo confirmado" também aqui — a
+     prova é o quinto registo. Substitui o toast "Prova guardada", que
+     dizia exatamente o mesmo em letra pequena. */
+  const [confirmation, setConfirmation] = useState(null);
 
   // Qual dos dois campos (tempo/ritmo) foi o último a ser escrito à mão —
   // é a partir dele que se recalcula o outro quando a distância muda.
@@ -292,6 +308,17 @@ export default function RunAgenda({ onClose }) {
           // (bug relatado 2026-08-30, ainda visível depois da correção
           // original por esta via).
           created_at: ev.created_at || null,
+          /* Também não são campos do formulário, pela mesma razão: o hub
+             embutido precisa deles para saber se a prova já foi registada
+             (id → runs.race_id), se está concluída, e o que há para mostrar
+             na galeria de memórias (specs/prova-concluida.md §4). O payload
+             de gravação é explícito (ver handleSaveForm), por isso nada
+             disto vai parar a um UPDATE por engano. */
+          id: ev.id,
+          status: ev.status || null,
+          diploma_path: ev.diploma_path || null,
+          medal_path: ev.medal_path || null,
+          photo_paths: ev.photo_paths || [],
         };
         setDraft(persisted ? { ...canonical, ...persisted } : canonical);
         // A prova já gravada tem o nível "respondido" para a categoria com
@@ -307,9 +334,13 @@ export default function RunAgenda({ onClose }) {
         setActivePage('hub');
       }
     } else {
-      setDraft(persisted ? { ...EMPTY_DRAFT, ...persisted } : EMPTY_DRAFT);
+      const prefill = racePrefillRef.current;
+      const partida = prefill ? { ...EMPTY_DRAFT, ...prefill } : EMPTY_DRAFT;
+      setDraft(persisted ? { ...partida, ...persisted } : partida);
       setExperienceLevelCategoryKey(null);
-      setIsDirty(!!persisted);
+      // Vindo do arranque há mesmo alterações por gravar — o aviso de saída
+      // vale tanto para elas como para as escritas à mão.
+      setIsDirty(!!persisted || !!prefill);
       setActivePage('details');
       setTimeout(() => {
         scrollToRef.current(1, true);
@@ -589,7 +620,7 @@ export default function RunAgenda({ onClose }) {
         if (error) throw error;
         if (data) {
           setRaceEvents([...raceEvents, data]);
-          // Site preenchido, mas o atleta não pediu "Obter Informação" antes
+          // Site preenchido, mas o atleta não pediu "Obter informação" antes
           // de gravar (web_info continua null) — pede-o agora, em segundo
           // plano, em vez de obrigar a voltar a esta prova só para lembrar
           // de o fazer. Já persiste sozinho (race_event_id), tal como o
@@ -610,7 +641,15 @@ export default function RunAgenda({ onClose }) {
           }
         }
       }
-      showToast('Prova guardada');
+      /* "Gravar e sair" a caminho de outro separador: o destino já foi
+         escolhido pelo atleta e saveAndLeave leva-o lá já a seguir — um
+         check de 900 ms pelo meio só atrasava (e este ecrã desmontava com
+         ele, deixando o rascunho por limpar). Nesse caso fecha-se direto. */
+      if (leavePrompt?.target) {
+        handleCloseForm();
+        return true;
+      }
+      setConfirmation({ label: 'Prova guardada', done: () => {
       handleCloseForm();
       // Gravar uma prova NOVA vai sempre para o Calendário, aberto no dia
       // da prova — independentemente de onde a criação foi iniciada (ex.:
@@ -626,11 +665,12 @@ export default function RunAgenda({ onClose }) {
       // esse destino a seguir — sem esta guarda, ficava pendingCalendarDate
       // por aplicar (só à próxima visita ao Calendário) sem nunca lá se
       // chegar agora.
-      if (!editingEventId && !leavePrompt?.target) {
+      if (!editingEventId) {
         setNavGuard(null);
         useAppStore.getState().setPendingCalendarDate(draft.date);
         useAppStore.getState().setActiveTab('calendario');
       }
+      } });
       return true;
     } catch (err) {
       console.error('Error saving race event:', err);
@@ -641,7 +681,7 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
-  // "Eliminar Prova" — só existe a editar uma prova já gravada (uma prova
+  // "Eliminar prova" — só existe a editar uma prova já gravada (uma prova
   // nova ainda sem id não tem o que apagar na BD; "Cancelar"/fechar já
   // descarta o rascunho). Confirmação via ConfirmDeleteModal, não
   // window.confirm — consistente com RunCard/GymSessionCard/MealCard/
@@ -711,7 +751,7 @@ export default function RunAgenda({ onClose }) {
       variant="dialog"
     >
       <div className="p-6 space-y-6">
-        <p className="text-sm text-slate-600 leading-relaxed text-center">
+        <p className="text-sm text-[var(--text-3)] leading-relaxed text-center">
           {validationError}
         </p>
         <div className="flex justify-center">
@@ -731,9 +771,15 @@ export default function RunAgenda({ onClose }) {
   if (!isFormOpen) return null;
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-10 fade-in">
+    // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
+    // A prova é dourada; paddingBottom abre espaço para a ActionBar fixa.
+    <div
+      className="w-full max-w-lg mx-auto fade-in"
+      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+    >
       {leaveModal}
       {validationModal}
+      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
@@ -756,21 +802,25 @@ export default function RunAgenda({ onClose }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <CalendarPlus size={16} style={{ color: 'var(--mod-prova)' }} />
-              <h2 className="text-sm font-semibold text-slate-800">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
+              <h2 className="text-sm font-semibold text-[var(--text-1)]">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
             </div>
             <button
               onClick={attemptCloseForm}
               type="button"
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors shrink-0"
+              // O circulo continua a desenhar-se com 32px; o que cresce para
+              // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+              className="tap-44 shrink-0"
               title="Fechar"
               aria-label="Fechar"
             >
-              <X size={16} />
+              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+                <X size={16} />
+              </span>
             </button>
           </div>
 
           {/* Subnav AAA — idêntico ao Perfil / Dashboard */}
-          <div className="relative flex gap-2 p-1.5 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
+          <div className="relative flex gap-2 p-1.5 bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
             {/* Sliding indicator com tint translúcido e borda âmbar */}
             <div
               className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
@@ -794,8 +844,8 @@ export default function RunAgenda({ onClose }) {
                   scrollTo(PAGE_KEYS.indexOf(t.key));
                 }}
                 style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-colors duration-300 ${
-                  activePage === t.key ? '' : 'text-slate-400 hover:text-slate-200'
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 min-h-[44px] text-xs font-bold rounded-xl transition-colors duration-300 ${
+                  activePage === t.key ? '' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'
                 }`}
               >
                 <t.icon size={14} /> {t.label}
@@ -850,16 +900,6 @@ export default function RunAgenda({ onClose }) {
                 >
                   Editar Detalhes
                 </Button>
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-prova)"
-                  onClick={handleSaveForm}
-                  disabled={isSubmitting || !draft.name.trim()}
-                  className="flex-1 text-xs"
-                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                >
-                  Guardar Prova
-                </Button>
               </div>
             </div>
 
@@ -868,23 +908,23 @@ export default function RunAgenda({ onClose }) {
               {/* 1.1 Data · 1.2 Local */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Data <span className="text-red-400">*</span></label>
-                  <input
+                  <label htmlFor="ra-data" className="text-[11px] text-[var(--text-3)] mb-1 block">Data <span className="text-[var(--danger)]">*</span></label>
+                  <input id="ra-data"
                     type="date"
                     value={draft.date}
                     onChange={e => { updateDraft('date', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Local <span className="text-red-400">*</span></label>
-                  <input
+                  <label htmlFor="ra-local" className="text-[11px] text-[var(--text-3)] mb-1 block">Local <span className="text-[var(--danger)]">*</span></label>
+                  <input id="ra-local"
                     type="text"
                     maxLength={120}
                     placeholder="Ex.: Lisboa"
                     value={draft.location}
                     onChange={e => { updateDraft('location', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
               </div>
@@ -892,22 +932,22 @@ export default function RunAgenda({ onClose }) {
               {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Nome da prova <span className="text-red-400">*</span></label>
-                  <input
+                  <label htmlFor="ra-nome-da-prova" className="text-[11px] text-[var(--text-3)] mb-1 block">Nome da prova <span className="text-[var(--danger)]">*</span></label>
+                  <input id="ra-nome-da-prova"
                     type="text"
                     maxLength={120}
                     placeholder="Ex.: Meia Maratona de Lisboa"
                     value={draft.name}
                     onChange={e => { updateDraft('name', e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Tipo <span className="text-red-400">*</span></label>
-                  <select
+                  <label htmlFor="ra-tipo" className="text-[11px] text-[var(--text-3)] mb-1 block">Tipo <span className="text-[var(--danger)]">*</span></label>
+                  <select id="ra-tipo"
                     value={draft.race_type}
                     onChange={e => { updateTerrain(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   >
                     {RACE_TERRAIN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                   </select>
@@ -917,11 +957,11 @@ export default function RunAgenda({ onClose }) {
               {/* Distância · D+ (só em Trail) */}
               <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Distância <span className="text-red-400">*</span></label>
-                  <select
+                  <label htmlFor="ra-distancia" className="text-[11px] text-[var(--text-3)] mb-1 block">Distância <span className="text-[var(--danger)]">*</span></label>
+                  <select id="ra-distancia"
                     value={draft.distance_km}
                     onChange={e => { updateDistance(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   >
                     {RACE_DISTANCE_OPTIONS.map(opt => (
                       <option key={opt.km} value={opt.km}>{opt.label}</option>
@@ -930,8 +970,8 @@ export default function RunAgenda({ onClose }) {
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">
-                    <label className="text-[11px] text-slate-500 mb-1 block">D+ (desnível, m) <span className="text-red-400">*</span></label>
-                    <input
+                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">D+ (desnível, m) <span className="text-[var(--danger)]">*</span></label>
+                    <input id="ra-d-desnivel-m"
                       type="number"
                       min="0"
                       step="1"
@@ -939,7 +979,7 @@ export default function RunAgenda({ onClose }) {
                       placeholder="Ex.: 1200"
                       value={draft.elevation_gain_m}
                       onChange={e => { updateElevation(e.target.value) }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                     />
                   </div>
                 )}
@@ -947,31 +987,38 @@ export default function RunAgenda({ onClose }) {
 
               {/* Nível do atleta para esta prova */}
               <ExperienceLevelHelp
-                label={<>O teu nível para esta prova <span className="text-red-400">*</span></>}
+                label={<>O teu nível para esta prova <span className="text-[var(--danger)]">*</span></>}
                 variant="dark"
                 context="prova"
                 raceType={draft.race_type}
                 distanceKm={parseFormNumber(draft.distance_km)}
                 elevationGainM={parseFormNumber(draft.elevation_gain_m)}
+                fieldId="ra-nivel-para-esta-prova"
               >
                 <select
+                  id="ra-nivel-para-esta-prova"
                   value={draft.experience_level}
                   onChange={e => handleChooseExperienceLevel(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                 >
                   <option value="">Escolhe...</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Pode ser diferente do teu nível geral no Perfil — ex.: avançado em estrada, iniciante nesta primeira prova de trail.'}
                 </p>
+                {/* Era âmbar dentro do ecrã da prova (que é todo âmbar):
+                    um aviso passa a coral, no bloco Warning. */}
                 {experienceLevelStale && (
-                  <p className="text-[11px] text-amber-500 mt-1.5 flex items-start gap-1.5">
-                    <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                    <span>Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.</span>
-                  </p>
+                  <Warning
+                    title="Nível por confirmar"
+                    icon={<AlertTriangle size={12} />}
+                    className="mt-1.5"
+                  >
+                    Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.
+                  </Warning>
                 )}
                 {/* Nível medido a partir do histórico de treino — proposta,
                     nunca substituição (Bloco 8, specs/nivel-por-prova.md). */}
@@ -989,15 +1036,15 @@ export default function RunAgenda({ onClose }) {
 
               {/* Prioridade da prova */}
               <div>
-                <label className="text-[11px] text-slate-500 mb-1 block">Prioridade desta prova <span className="text-red-400">*</span></label>
-                <select
+                <label htmlFor="ra-prioridade-desta-prova" className="text-[11px] text-[var(--text-3)] mb-1 block">Prioridade desta prova <span className="text-[var(--danger)]">*</span></label>
+                <select id="ra-prioridade-desta-prova"
                   value={draft.race_priority}
                   onChange={e => { updateDraft('race_priority', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                 >
                   {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {racePriorityDescription(draft.race_priority)}
                 </p>
               </div>
@@ -1005,60 +1052,60 @@ export default function RunAgenda({ onClose }) {
               {/* Objetivo de tempo total · Objetivo de pace */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Objetivo tempo total <span className="text-red-400">*</span></label>
-                  <input
+                  <label htmlFor="ra-objetivo-tempo-total" className="text-[11px] text-[var(--text-3)] mb-1 block">Objetivo tempo total <span className="text-[var(--danger)]">*</span></label>
+                  <input id="ra-objetivo-tempo-total"
                     type="text"
                     maxLength={60}
                     placeholder="Ex.: 1:45:00"
                     value={draft.target_time}
                     onChange={e => { handleTargetTimeChange(e.target.value) }}
                     onBlur={normalizeTargetTimeOnBlur}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label className="text-[11px] text-slate-500 mb-1 block">Objetivo pace <span className="text-red-400">*</span></label>
-                  <input
+                  <label htmlFor="ra-objetivo-pace" className="text-[11px] text-[var(--text-3)] mb-1 block">Objetivo pace <span className="text-[var(--danger)]">*</span></label>
+                  <input id="ra-objetivo-pace"
                     type="text"
                     maxLength={20}
                     placeholder="Ex.: 5.20 /km"
                     value={draft.target_pace}
                     onChange={e => { handleTargetPaceChange(e.target.value) }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
+              <p className="text-[11px] text-[var(--text-3)] -mt-1.5">Preenche um dos dois — o outro é calculado a partir da distância escolhida.</p>
 
               {/* Site da prova (opcional) */}
               <div>
-                <label className="text-[11px] text-slate-500 mb-1 block">Site da prova (opcional)</label>
-                <input
+                <label htmlFor="ra-site-da-prova-opcional" className="text-[11px] text-[var(--text-3)] mb-1 block">Site da prova (opcional)</label>
+                <input id="ra-site-da-prova-opcional"
                   type="url"
                   maxLength={200}
                   placeholder="https://..."
                   value={draft.website}
                   onChange={e => { updateDraft('website', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)]"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                 />
               </div>
 
               {/* Notas (opcional) */}
               <div>
-                <label className="text-[11px] text-slate-500 mb-1 block">Notas (opcional)</label>
-                <textarea
+                <label htmlFor="ra-notas-opcional" className="text-[11px] text-[var(--text-3)] mb-1 block">Notas (opcional)</label>
+                <textarea id="ra-notas-opcional"
                   rows={2}
                   maxLength={300}
                   placeholder="Logística, nutrição planeada..."
                   value={draft.notes}
                   onChange={e => { updateDraft('notes', e.target.value) }}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[var(--mod-prova)] resize-none"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)] resize-none"
                 />
               </div>
 
               {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col gap-1.5 mt-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] flex flex-col gap-1.5 mt-1">
+                  <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação do Coach
                   </span>
                   {viability.flags.length > 0 ? (
@@ -1069,7 +1116,7 @@ export default function RunAgenda({ onClose }) {
                       </p>
                     ))
                   ) : (
-                    <p className="text-[11px] font-medium flex items-center gap-1.5 text-emerald-600">
+                    <p className="text-[11px] font-medium flex items-center gap-1.5 text-[var(--ok)]">
                       <CheckCircle size={12} />
                       Preparação adequada para a prova
                     </p>
@@ -1077,7 +1124,9 @@ export default function RunAgenda({ onClose }) {
                 </div>
               )}
 
-              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {/* Menos uma coluna do que antes: "Guardar prova" subiu para a
+                  ActionBar fixa, aqui só ficam as ações secundárias. */}
+              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 {editingEventId && (
                   <Button
                     variant="light-danger"
@@ -1098,22 +1147,29 @@ export default function RunAgenda({ onClose }) {
                 >
                   Cancelar
                 </Button>
-                <Button
-                  variant="module"
-                  moduleColor="var(--mod-prova)"
-                  onClick={handleSaveForm}
-                  disabled={isSubmitting || !draft.name.trim()}
-                  type="button"
-                  className="text-xs"
-                  icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                >
-                  Guardar Prova
-                </Button>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Barra de ação fixa (ponto 2 do handoff): "Guardar prova" era o
+          terceiro botão de uma fila no fim de cada uma das duas páginas do
+          carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
+          é uma só, sempre visível, seja qual for a página. */}
+      <ActionBar>
+        <Button
+          variant="module"
+          moduleColor="var(--mod-prova)"
+          onClick={handleSaveForm}
+          disabled={isSubmitting || !draft.name.trim()}
+          type="button"
+          className="w-full text-xs"
+          icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+        >
+          Guardar prova
+        </Button>
+      </ActionBar>
     </div>
   );
 }

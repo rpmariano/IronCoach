@@ -56,7 +56,12 @@ function formatDatePT(isoStr) {
 
 export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false, hideActions = false }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const effortColors = ['bg-sky-400', 'bg-cyan-400', 'bg-teal-400', 'bg-emerald-400', 'bg-green-400', 'bg-lime-400', 'bg-yellow-400', 'bg-amber-400', 'bg-orange-500', 'bg-rose-500'];
+  /* Escala de esforço (RPE 1-10). Tinha três degraus amarelo/âmbar/laranja
+     (bg-yellow-400, bg-amber-400 = exatamente o âmbar da prova) — ponto 3 do
+     redesenho: o âmbar é da prova e mais nada. A rampa passa a ir do ciano da
+     corrida ao verde do "dentro do alvo" e daí ao coral do aviso e ao vermelho,
+     sem tocar no âmbar. */
+  const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
 
   const { profile, loadInitialData, runs, setRuns } = useAppStore();
   const { showToast } = useToast();
@@ -150,18 +155,18 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
   const totalSteps = details.total_steps;
 
   const activeChips = [
-    distStr ? { key: 'dist', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Route size={14} className="text-slate-500" />, label: distStr } : null,
-    durStr ? { key: 'dur', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Timer size={14} className="text-slate-500" />, label: durStr } : null,
-    paceStr ? { key: 'pace', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Gauge size={14} className="text-slate-500" />, label: paceStr } : null,
-    sweatLoss ? { key: 'sweat', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Droplet size={14} className="text-slate-500" />, label: `${sweatLoss} ml transpiração` } : null,
-    totalSteps ? { key: 'steps', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Footprints size={14} className="text-slate-500" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
-    elevation ? { key: 'elev', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Navigation size={14} className="text-slate-500" />, label: `${elevation}m Desnível` } : null,
-    cadence ? { key: 'cad', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Zap size={14} className="text-slate-500" />, label: `${cadence} spm méd` } : null,
-    maxCadence ? { key: 'maxcad', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Zap size={14} className="text-slate-500" />, label: `${maxCadence} spm máx` } : null,
-    calories ? { key: 'cal', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Flame size={14} className="text-slate-500" />, label: `${calories} kcal` } : null,
-    vo2max ? { key: 'vo2', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <Activity size={14} className="text-slate-500" />, label: `VO2 máx ${vo2max}` } : null,
-    avgHr ? { key: 'avghr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <HeartPulse size={14} className="text-slate-500" />, label: `${avgHr} bpm méd` } : null,
-    maxHr ? { key: 'maxhr', colorClass: 'bg-white/10 text-slate-200 border-white/10', icon: <TrendingUp size={14} className="text-slate-500" />, label: `${maxHr} bpm máx` } : null,
+    distStr ? { key: 'dist', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Route size={14} className="text-[var(--text-3)]" />, label: distStr } : null,
+    durStr ? { key: 'dur', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Timer size={14} className="text-[var(--text-3)]" />, label: durStr } : null,
+    paceStr ? { key: 'pace', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Gauge size={14} className="text-[var(--text-3)]" />, label: paceStr } : null,
+    sweatLoss ? { key: 'sweat', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Droplet size={14} className="text-[var(--text-3)]" />, label: `${sweatLoss} ml transpiração` } : null,
+    totalSteps ? { key: 'steps', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Footprints size={14} className="text-[var(--text-3)]" />, label: `${totalSteps.toLocaleString('pt-PT')} passos` } : null,
+    elevation ? { key: 'elev', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Navigation size={14} className="text-[var(--text-3)]" />, label: `${elevation}m Desnível` } : null,
+    cadence ? { key: 'cad', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Zap size={14} className="text-[var(--text-3)]" />, label: `${cadence} spm méd` } : null,
+    maxCadence ? { key: 'maxcad', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Zap size={14} className="text-[var(--text-3)]" />, label: `${maxCadence} spm máx` } : null,
+    calories ? { key: 'cal', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Flame size={14} className="text-[var(--text-3)]" />, label: `${calories} kcal` } : null,
+    vo2max ? { key: 'vo2', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Activity size={14} className="text-[var(--text-3)]" />, label: `VO2 máx ${vo2max}` } : null,
+    avgHr ? { key: 'avghr', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <HeartPulse size={14} className="text-[var(--text-3)]" />, label: `${avgHr} bpm méd` } : null,
+    maxHr ? { key: 'maxhr', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <TrendingUp size={14} className="text-[var(--text-3)]" />, label: `${maxHr} bpm máx` } : null,
   ].filter(Boolean);
 
   return (
@@ -172,24 +177,24 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
         className="flex items-center justify-between cursor-pointer select-none"
       >
         <div className="flex items-start gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
+          <div className="w-10 h-10 rounded-full bg-[var(--surface-glass)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
             <RunIcon className="w-5 h-5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="text-sm font-bold text-slate-800 leading-tight">
+              <h4 className="text-sm font-bold text-[var(--text-1)] leading-tight">
                 {run.title || run.name || 'Corrida'}
               </h4>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200/60">
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] border border-[var(--border-glass)]">
                 {kindLabel}
               </span>
               {run.photo_paths?.length > 0 && (
-                <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+                <span className="text-[11px] text-[var(--text-3)] font-medium flex items-center gap-0.5">
                   <ImageIcon size={12} /> {run.photo_paths.length}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">
+            <p className="text-xs text-[var(--text-3)] font-medium mt-0.5">
               {formatDatePT(run.date)}
             </p>
           </div>
@@ -197,7 +202,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
         <div className="flex items-center gap-3">
           {distStr && (
-            <span className="text-sm font-bold text-slate-800">
+            <span className="text-sm font-bold text-[var(--text-1)]">
               {distStr}
             </span>
           )}
@@ -208,7 +213,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             type="button"
             aria-label={expanded ? 'Fechar detalhes da corrida' : 'Ver detalhes da corrida'}
             aria-expanded={expanded}
-            className="tap-44 text-slate-400 hover:text-slate-600 shrink-0"
+            className="tap-44 text-[var(--text-3)] hover:text-[var(--text-1)] shrink-0"
           >
             {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
           </button>
@@ -217,7 +222,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
       {/* Expanded Content */}
       {expanded && (
-        <div className="space-y-3 pt-2 border-t border-slate-200/60 fade-in">
+        <div className="space-y-3 pt-2 border-t border-[var(--border-glass)] fade-in">
           {/* Pílulas Coloridas com Ícones */}
           {activeChips.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -233,16 +238,16 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           {/* Prints / Photos Section */}
           {run.photo_paths?.length > 0 && (
             <div className="space-y-1.5">
-              <span className="text-[11px] font-bold text-slate-500">Prints</span>
+              <span className="text-[11px] font-bold text-[var(--text-3)]">Prints</span>
               {photosLoading ? (
-                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-3)] py-2">
                   <Loader2 size={14} className="animate-spin" /> A carregar prints...
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {photos.map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                      <img src={url} alt="Print" className="w-20 h-20 object-cover rounded-xl border border-slate-200 shadow-xs hover:opacity-95 transition" />
+                      <img src={url} alt="Print" className="w-20 h-20 object-cover rounded-xl border border-[var(--border-glass)] shadow-xs hover:opacity-95 transition" />
                     </a>
                   ))}
                 </div>
@@ -254,18 +259,18 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           {Array.isArray(hrZones) && hrZones.length > 0 && (() => {
             const maxMinutes = Math.max(...hrZones.map(z => Number(z.minutes) || 0), 1);
             return (
-              <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-1.5">
-                <span className="text-[11px] font-bold text-slate-500 block mb-1">Zonas de FC</span>
+              <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs space-y-1.5">
+                <span className="text-[11px] font-bold text-[var(--text-3)] block mb-1">Zonas de FC</span>
                 {[...hrZones].sort((a, b) => (a.zone || 0) - (b.zone || 0)).map((z, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold text-slate-600 w-6 shrink-0">Z{z.zone}</span>
-                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <span className="text-[11px] font-bold text-[var(--text-3)] w-6 shrink-0">Z{z.zone}</span>
+                    <div className="flex-1 h-2 rounded-full bg-[var(--surface-glass)] overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-rose-400"
+                        className="h-full rounded-full bg-[var(--run)]"
                         style={{ width: `${Math.max(4, ((Number(z.minutes) || 0) / maxMinutes) * 100)}%` }}
                       />
                     </div>
-                    <span className="text-[11px] text-slate-500 font-medium w-14 text-right shrink-0">{Number(z.minutes).toFixed(0)} min</span>
+                    <span className="text-[11px] text-[var(--text-3)] font-medium w-14 text-right shrink-0">{Number(z.minutes).toFixed(0)} min</span>
                   </div>
                 ))}
               </div>
@@ -274,17 +279,17 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
           {/* Splits/voltas — troço a troço, lido do relógio (details.splits) */}
           {Array.isArray(splits) && splits.length > 0 && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 block mb-1.5">Splits</span>
+            <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs">
+              <span className="text-[11px] font-bold text-[var(--text-3)] block mb-1.5">Splits</span>
               <div className="space-y-1">
                 {splits.map((s, i) => {
                   const splitPace = s.distance_km && s.time_seconds ? s.time_seconds / s.distance_km : null;
                   return (
-                    <div key={i} className="flex items-center justify-between text-[11px] text-slate-600">
-                      <span className="font-bold text-slate-500 w-6 shrink-0">{i + 1}.</span>
+                    <div key={i} className="flex items-center justify-between text-[11px] text-[var(--text-3)]">
+                      <span className="font-bold text-[var(--text-3)] w-6 shrink-0">{i + 1}.</span>
                       <span className="flex-1">{s.distance_km ? `${Number(s.distance_km).toFixed(2)} km` : '—'}</span>
                       <span className="flex-1 text-center">{s.time_seconds ? formatDuration(s.time_seconds) : '—'}</span>
-                      <span className="flex-1 text-right text-slate-400">{splitPace ? `${formatPace(splitPace)}/km` : ''}</span>
+                      <span className="flex-1 text-right text-[var(--text-3)]">{splitPace ? `${formatPace(splitPace)}/km` : ''}</span>
                     </div>
                   );
                 })}
@@ -294,37 +299,37 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
           {/* Biomecânica de Corrida */}
           {(details.ground_contact_time_ms || details.vertical_oscillation_cm || details.asymmetry_pct || details.leg_stiffness_kn_m) && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-2">
-              <span className="text-[11px] font-bold text-slate-700 block">Biomecânica de Corrida</span>
+            <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs space-y-2">
+              <span className="text-[11px] font-bold text-[var(--text-2)] block">Biomecânica de Corrida</span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.ground_contact_time_ms && (
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Contacto Solo</span>
-                    <span className="font-bold text-slate-700">{details.ground_contact_time_ms} ms</span>
+                  <div className="bg-[var(--surface-soft)] p-2 rounded-lg border border-[var(--border-faint)]">
+                    <span className="text-[11px] text-[var(--text-3)] block">Contacto Solo</span>
+                    <span className="font-bold text-[var(--text-2)]">{details.ground_contact_time_ms} ms</span>
                   </div>
                 )}
                 {details.flight_time_ms && (
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Tempo Voo</span>
-                    <span className="font-bold text-slate-700">{details.flight_time_ms} ms</span>
+                  <div className="bg-[var(--surface-soft)] p-2 rounded-lg border border-[var(--border-faint)]">
+                    <span className="text-[11px] text-[var(--text-3)] block">Tempo Voo</span>
+                    <span className="font-bold text-[var(--text-2)]">{details.flight_time_ms} ms</span>
                   </div>
                 )}
                 {details.vertical_oscillation_cm && (
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Oscilação Vertical</span>
-                    <span className="font-bold text-slate-700">{details.vertical_oscillation_cm} cm</span>
+                  <div className="bg-[var(--surface-soft)] p-2 rounded-lg border border-[var(--border-faint)]">
+                    <span className="text-[11px] text-[var(--text-3)] block">Oscilação Vertical</span>
+                    <span className="font-bold text-[var(--text-2)]">{details.vertical_oscillation_cm} cm</span>
                   </div>
                 )}
                 {details.asymmetry_pct !== undefined && details.asymmetry_pct !== null && (
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Assimetria</span>
-                    <span className="font-bold text-slate-700">{details.asymmetry_pct}%</span>
+                  <div className="bg-[var(--surface-soft)] p-2 rounded-lg border border-[var(--border-faint)]">
+                    <span className="text-[11px] text-[var(--text-3)] block">Assimetria</span>
+                    <span className="font-bold text-[var(--text-2)]">{details.asymmetry_pct}%</span>
                   </div>
                 )}
                 {details.leg_stiffness_kn_m && (
-                  <div className="bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <span className="text-[10px] text-slate-400 block">Rigidez (Stiffness)</span>
-                    <span className="font-bold text-slate-700">{details.leg_stiffness_kn_m} kN/m</span>
+                  <div className="bg-[var(--surface-soft)] p-2 rounded-lg border border-[var(--border-faint)]">
+                    <span className="text-[11px] text-[var(--text-3)] block">Rigidez (Stiffness)</span>
+                    <span className="font-bold text-[var(--text-2)]">{details.leg_stiffness_kn_m} kN/m</span>
                   </div>
                 )}
               </div>
@@ -333,19 +338,19 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
           {/* Limiares Fisiológicos FC */}
           {(details.aerobic_threshold_bpm || details.anaerobic_threshold_bpm) && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs space-y-2">
-              <span className="text-[11px] font-bold text-slate-700 block">Limiares Fisiológicos (FC)</span>
+            <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs space-y-2">
+              <span className="text-[11px] font-bold text-[var(--text-2)] block">Limiares Fisiológicos (FC)</span>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {details.aerobic_threshold_bpm && (
-                  <div className="bg-emerald-50/60 border border-emerald-100 p-2 rounded-lg">
-                    <span className="text-[10px] text-emerald-700 font-medium block">Limiar Aeróbio (FC LA)</span>
-                    <span className="font-bold text-emerald-900">{details.aerobic_threshold_bpm} bpm</span>
+                  <div className="bg-[var(--tint-ok-bg)] border border-[var(--tint-ok-bd)] p-2 rounded-lg">
+                    <span className="text-[11px] text-[var(--ok)] font-medium block">Limiar Aeróbio (FC LA)</span>
+                    <span className="font-bold text-[var(--ok)]">{details.aerobic_threshold_bpm} bpm</span>
                   </div>
                 )}
                 {details.anaerobic_threshold_bpm && (
-                  <div className="bg-rose-50/60 border border-rose-100 p-2 rounded-lg">
-                    <span className="text-[10px] text-rose-700 font-medium block">Limiar Anaeróbio (FC LAn)</span>
-                    <span className="font-bold text-rose-900">{details.anaerobic_threshold_bpm} bpm</span>
+                  <div className="bg-[var(--tint-danger-bg)] border border-[var(--tint-danger-bd)] p-2 rounded-lg">
+                    <span className="text-[11px] text-[var(--danger)] font-medium block">Limiar Anaeróbio (FC LAn)</span>
+                    <span className="font-bold text-[var(--danger)]">{details.anaerobic_threshold_bpm} bpm</span>
                   </div>
                 )}
               </div>
@@ -354,17 +359,17 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
           {/* Transpiração & Hidratação */}
           {details.sweat_loss_ml && (
-            <div className="bg-sky-50/60 border border-sky-200/80 rounded-xl p-3 shadow-xs flex items-center justify-between">
+            <div className="bg-[var(--tint-run-bg)] border border-[var(--tint-run-bd)] rounded-xl p-3 shadow-xs flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-sky-100 rounded-lg text-sky-600">
+                <div className="p-2 bg-[var(--tint-run-bg)] rounded-lg text-[var(--run)]">
                   <Droplet size={18} />
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-sky-900 block">Perda por Transpiração</span>
-                  <span className="text-[11px] text-sky-700">Estimado: <strong>{details.sweat_loss_ml} ml</strong></span>
+                  <span className="text-xs font-bold text-[var(--run)] block">Perda por Transpiração</span>
+                  <span className="text-[11px] text-[var(--run)]">Estimado: <strong>{details.sweat_loss_ml} ml</strong></span>
                 </div>
               </div>
-              <span className="text-[10px] font-semibold bg-sky-200/70 text-sky-800 px-2 py-1 rounded-full">
+              <span className="text-[11px] font-semibold bg-[var(--tint-run-bg)] text-[var(--run)] px-2 py-1 rounded-full">
                 Repor ~{Math.round(details.sweat_loss_ml * 1.5)} ml
               </span>
             </div>
@@ -373,12 +378,14 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           {/* Esforço Bar */}
           {run.effort_rpe && (
             <div className="space-y-1">
-              <span className="text-[11px] font-bold text-slate-500">Esforço</span>
+              <span className="text-[11px] font-bold text-[var(--text-3)]">Esforço</span>
               <div className="flex gap-1">
                 {Array(10).fill(0).map((_, i) => (
                   <div 
                     key={i} 
-                    className={`flex-1 h-2 rounded-full ${i < run.effort_rpe ? effortColors[i] : 'bg-white/10'}`} 
+                    className="flex-1 h-2 rounded-full"
+                    style={{ background: i < run.effort_rpe ? effortColors[i] : 'rgba(255,255,255,.10)' }}
+                    
                   />
                 ))}
               </div>
@@ -387,26 +394,26 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
 
           {/* Observações */}
           {run.notes && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-3 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-500 block mb-1">Observações</span>
-              <p className="text-xs text-slate-700 italic">{run.notes}</p>
+            <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-3 shadow-xs">
+              <span className="text-[11px] font-bold text-[var(--text-3)] block mb-1">Observações</span>
+              <p className="text-xs text-[var(--text-2)] italic">{run.notes}</p>
             </div>
           )}
 
           {/* Análise do Coach */}
           {coachCommentary && (
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-2 shadow-xs">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise do Coach
               </div>
-              <div className="text-xs text-slate-700 font-normal">
+              <div className="text-xs text-[var(--text-2)] font-normal">
                 <CoachText>{coachCommentary}</CoachText>
               </div>
             </div>
           )}
 
-          {/* Falar com a Coach se a análise indicar intervenção */}
+          {/* Falar com a Carol se a análise indicar intervenção */}
           {Boolean(
             coachCommentary &&
             /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
@@ -414,7 +421,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
           ) && (
             <Button
               variant="module"
-              moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
+              moduleColor="var(--grad-coach-legible)"
               onClick={(e) => {
                 e.stopPropagation();
                 useAppStore.getState().dismissIntervention(run.id, coachCommentary);
@@ -434,7 +441,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             >
               <div className="flex items-center justify-center gap-2 w-full">
                 <MessageSquare size={16} />
-                <span>Falar com a Coach</span>
+                <span>Falar com a Carol</span>
               </div>
             </Button>
           )}

@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.min.js"></script>
+<style>
+  body { margin:0; background:#141922; font-family: ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#7dd3fc; } a:hover { color:#38bdf8; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
+</style>
+</helmet>
+
+<div style="padding:56px; display:flex; flex-direction:column; gap:40px; background:#141922; min-height:100vh; box-sizing:border-box">
+
+  <div style="display:flex; flex-direction:column; gap:8px; max-width:900px">
+    <div style="display:inline-flex; align-items:center; gap:10px">
+      <span style="font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#5a8fa3">Recriação fiel do código atual</span>
+      <span style="height:1px; flex:1; background:rgba(255,255,255,.12)"></span>
+    </div>
+    <h1 style="margin:0; font-size:30px; font-weight:900; letter-spacing:-.02em; color:#f8fafc">IronCoach — estado atual</h1>
+    <p style="margin:0; font-size:14px; line-height:1.6; color:#94a3b8; text-wrap:pretty; max-width:640px">Reconstruído a partir de <code style="font-family:ui-monospace,monospace; font-size:12.5px; color:#cbd5e1">src/styles/globals.css</code>, <code style="font-family:ui-monospace,monospace; font-size:12.5px; color:#cbd5e1">Layout.jsx</code>, <code style="font-family:ui-monospace,monospace; font-size:12.5px; color:#cbd5e1">Home.jsx</code>, <code style="font-family:ui-monospace,monospace; font-size:12.5px; color:#cbd5e1">OverviewDashboard.jsx</code> e <code style="font-family:ui-monospace,monospace; font-size:12.5px; color:#cbd5e1">RaceHubView.jsx</code>. Dados de exemplo; tudo o resto — cores, raios, sombras, tamanhos — vem do repositório.</p>
+  </div>
+
+  <div style="display:flex; gap:32px; flex-wrap:wrap; align-items:flex-start">
+
+    <!-- ══ ECRÃ 1 — INÍCIO ══ -->
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <div style="display:flex; align-items:baseline; gap:10px">
+        <span style="font-size:13px; font-weight:800; color:#f8fafc">Início</span>
+        <span style="font-size:11px; color:#64748b; font-family:ui-monospace,monospace">Home.jsx</span>
+      </div>
+      <div style="position:relative; width:430px; height:932px; border-radius:44px; overflow:hidden; background:#0b1120; border:1px solid rgba(255,255,255,.14); box-shadow:0 40px 90px -20px rgba(0,0,0,.7)">
+
+        <!-- header -->
+        <div style="position:absolute; top:0; left:0; right:0; z-index:20; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); -webkit-backdrop-filter:blur(48px); border-bottom:1px solid rgba(255,255,255,.1)">
+          <header style="padding:16px 16px 12px; display:flex; align-items:center; justify-content:space-between">
+            <div style="display:flex; align-items:center; gap:8px">
+              <div style="width:36px; height:36px; border-radius:12px; background:linear-gradient(135deg,#1e333d,#2d4a57); display:flex; align-items:center; justify-content:center; color:#eccea4"><i data-lucide="activity" style="width:18px;height:18px"></i></div>
+              <div>
+                <h1 style="margin:0; font-size:16px; font-weight:700; letter-spacing:-.02em; line-height:1; color:#5a8fa3">IronCoach</h1>
+                <p style="margin:4px 0 0; font-size:11px; line-height:1; color:#b9c3d1">domingo, 6 de setembro</p>
+              </div>
+            </div>
+            <button style="min-height:44px; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; padding-left:14px; padding-right:16px; border-radius:9999px; background:linear-gradient(135deg,#d97706,#fbbf24); color:#fff; border:none; box-shadow:0 2px 10px rgba(251,191,36,.25); cursor:pointer"><i data-lucide="user" style="width:14px;height:14px"></i> Perfil</button>
+          </header>
+        </div>
+
+        <!-- main -->
+        <div style="position:absolute; inset:0; overflow-y:auto; padding:89px 16px 112px; display:flex; flex-direction:column; gap:24px; box-sizing:border-box">
+
+          <!-- CoachDailySummaryCard -->
+          <div style="position:relative; overflow:hidden; background:rgba(255,255,255,.06); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:28px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); min-height:220px; box-sizing:border-box">
+            <div style="position:absolute; right:-50px; top:-50px; width:180px; height:180px; background:radial-gradient(circle, rgba(6,182,212,.15) 0%, transparent 70%); pointer-events:none; z-index:1"></div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; position:relative; z-index:2">
+              <span style="font-size:10.4px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:.05em; display:flex; align-items:center; gap:6px"><i data-lucide="sparkles" style="width:13px;height:13px;color:#22d3ee"></i> Resumo do Coach</span>
+              <button style="width:26px; height:26px; border-radius:999px; display:flex; align-items:center; justify-content:center; color:#38bdf8; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); cursor:pointer"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i></button>
+            </div>
+            <div style="position:relative; z-index:2; margin-top:12px; min-height:64px">
+              <div style="display:flex; align-items:flex-start; gap:10px">
+                <span style="width:30px; height:30px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; background:rgba(34,211,238,.15); color:#22d3ee"><i data-lucide="history" style="width:15px;height:15px"></i></span>
+                <div style="min-width:0">
+                  <div style="font-size:10.9px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; color:#22d3ee">Recapitulação</div>
+                  <p style="margin:0; font-size:13.3px; line-height:1.45; color:#e2e8f0; font-weight:500">Ontem cumpriste os 12 km em rodagem longa com pace médio de 5:38/km — dentro da zona que te pedi. A ingestão ficou 220 kcal abaixo do alvo, o que para um dia longo é pouco: hoje come com mais calma ao almoço.</p>
+                  <div style="display:flex; align-items:center; gap:2px; margin-top:4px; font-size:11.5px; font-weight:700; color:#7dd3fc; cursor:pointer">Ler mais <i data-lucide="chevron-down" style="width:13px;height:13px"></i></div>
+                </div>
+              </div>
+              <div style="display:flex; justify-content:center; margin-top:14px; gap:6px">
+                <span style="width:16px; height:6px; border-radius:99px; background:#22d3ee"></span>
+                <span style="width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.25)"></span>
+                <span style="width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.25)"></span>
+                <span style="width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.25)"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- NextRaceCard -->
+          <div style="position:relative">
+            <div style="position:relative; overflow:hidden; background:rgba(255,255,255,.06); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:28px; padding:16px 16px 36px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); display:flex; flex-direction:column; justify-content:space-between; gap:12px; min-height:220px; box-sizing:border-box">
+              <div style="position:absolute; right:-50px; top:-50px; width:180px; height:180px; background:radial-gradient(circle, rgba(251,191,36,.2) 0%, transparent 70%); pointer-events:none; z-index:1"></div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:16px; z-index:2">
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0">
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                    <span style="background:linear-gradient(135deg,#d97706,#fbbf24); color:#fff; font-size:11.2px; font-weight:800; padding:4px 12px; border-radius:8px; box-shadow:0 2px 10px rgba(251,191,36,.4); letter-spacing:.03em; text-transform:uppercase">estrada</span>
+                    <span style="border:1.5px solid rgba(251,191,36,.5); color:#fbbf24; background:rgba(251,191,36,.15); font-size:11.2px; font-weight:800; padding:3px 11px; border-radius:8px; text-transform:uppercase; letter-spacing:.03em">Principal</span>
+                    <span style="background:rgba(15,23,42,.55); border:1px solid rgba(255,255,255,.14); color:#e2e8f0; font-size:11.2px; font-weight:800; padding:4px 10px; border-radius:8px; box-shadow:inset 0 1px 3px rgba(255,255,255,.06)">21,1 km</span>
+                    <div style="display:flex; gap:4px; padding:4px 6px; background:rgba(255,255,255,.1); border-radius:12px; align-items:center; border:1px solid rgba(0,0,0,.05); margin-left:auto">
+                      <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;opacity:.2"></div>
+                      <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;opacity:1;box-shadow:0 0 6px #f59e0b"></div>
+                      <div style="width:8px;height:8px;border-radius:50%;background:#10b981;opacity:.2"></div>
+                    </div>
+                  </div>
+                  <h2 style="margin:0; font-size:19.2px; font-weight:900; color:#f8fafc; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Meia de Lisboa</h2>
+                  <div style="font-size:12.8px; color:#cbd5e1; font-weight:600; display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+                    <div style="display:flex; align-items:center; gap:4px"><i data-lucide="calendar" style="width:14px;height:14px"></i>8 Mar 2027</div>
+                    <div style="display:flex; align-items:center; gap:4px"><i data-lucide="map-pin" style="width:14px;height:14px"></i>Lisboa</div>
+                  </div>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; border-left:2px solid rgba(217,119,6,.15); padding-left:12px; min-width:70px; flex-shrink:0; z-index:2">
+                  <span style="font-size:28.8px; font-weight:900; color:#f59e0b; line-height:1">183</span>
+                  <span style="font-size:10.4px; font-weight:800; color:#d97706; text-transform:uppercase; letter-spacing:.05em; margin-top:2px">dias</span>
+                </div>
+              </div>
+              <div style="width:100%; z-index:2; display:flex; flex-direction:column; justify-content:flex-end">
+                <div style="width:100%; display:flex; flex-direction:column; gap:6px">
+                  <div style="height:8px; background:rgba(255,255,255,.1); border-radius:8px; position:relative">
+                    <div style="height:100%; width:34%; background:linear-gradient(90deg,#fbbf24 0%,#d97706 100%); border-radius:8px"></div>
+                    <div style="position:absolute; top:50%; left:34%; transform:translate(-50%,-50%); width:24px; height:24px; background:#fff; border:3px solid #d97706; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.15); display:flex; align-items:center; justify-content:center; color:#d97706"><i data-lucide="footprints" style="width:12px;height:12px"></i></div>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; font-size:11.2px; font-weight:700; color:#cbd5e1">
+                    <span style="text-align:left; white-space:nowrap">Início do Plano</span>
+                    <span style="background:rgba(251,191,36,.12); border:1px solid rgba(251,191,36,.35); color:#fbbf24; font-size:10.4px; font-weight:800; padding:2px 9px; border-radius:9999px; letter-spacing:.02em; box-shadow:0 2px 6px rgba(0,0,0,.2); white-space:nowrap">Semana 6 de 18</span>
+                    <span style="text-align:right; white-space:nowrap">Meta</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style="position:absolute; bottom:12px; left:0; right:0; display:flex; justify-content:center; z-index:10">
+              <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.1); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,.05); box-shadow:0 1px 3px rgba(0,0,0,.2); padding:6px 8px; border-radius:9999px">
+                <span style="width:16px; height:6px; border-radius:99px; background:#fbbf24"></span>
+                <span style="width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.3)"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- HydrationOptionA -->
+          <div style="position:relative">
+            <div style="position:relative; overflow:hidden; background:rgba(255,255,255,.06); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:28px; padding:16px 16px 36px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); display:flex; flex-direction:column; justify-content:space-between; gap:12px; min-height:220px; box-sizing:border-box">
+              <div style="position:absolute; top:-50px; right:-50px; width:180px; height:180px; background:radial-gradient(circle, rgba(14,165,233,.15) 0%, rgba(253,253,249,0) 70%); pointer-events:none"></div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; z-index:2">
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0">
+                  <div style="display:flex; align-items:center; gap:12px">
+                    <span style="font-size:12px; font-weight:800; color:#cbd5e1; letter-spacing:.5px; text-transform:uppercase">Hidratação Diária</span>
+                    <span style="background:rgba(6,182,212,.15); color:#0891b2; font-size:10.4px; font-weight:800; padding:4px 8px; border-radius:12px; text-transform:uppercase">hoje</span>
+                  </div>
+                  <div style="display:flex; gap:16px">
+                    <div style="display:flex; align-items:center; font-size:13.6px; font-weight:600; color:#cbd5e1">
+                      <i data-lucide="droplets" style="width:16px;height:16px;margin-right:6px;color:#0ea5e9"></i>
+                      <span style="font-size:16.8px; font-weight:800; color:#f8fafc">Faltam 900 ml</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; color:#cbd5e1; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:50%"><i data-lucide="bell" style="width:16px;height:16px"></i></div>
+                <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; border-left:2px solid rgba(14,165,233,.15); padding-left:12px; min-width:70px; flex-shrink:0">
+                  <span style="font-size:28.8px; font-weight:900; color:#0ea5e9; line-height:1">1600</span>
+                  <span style="font-size:12px; font-weight:800; color:#0284c7; text-transform:uppercase; letter-spacing:.05em; margin-top:4px">ml</span>
+                </div>
+              </div>
+              <div style="width:100%; z-index:2; display:flex; flex-direction:column; gap:10px; justify-content:flex-end">
+                <div style="width:100%">
+                  <div style="position:relative; height:8px; background:rgba(255,255,255,.1); border-radius:8px; margin-bottom:8px">
+                    <div style="position:absolute; top:0; left:0; height:100%; width:64%; background:linear-gradient(90deg,#38bdf8,#0ea5e9); border-radius:6px"></div>
+                    <div style="position:absolute; top:50%; left:64%; transform:translate(-50%,-50%); width:24px; height:24px; background:#fff; border:3px solid #0ea5e9; border-radius:50%; box-shadow:0 2px 8px rgba(14,165,233,.2); display:flex; align-items:center; justify-content:center; color:#0ea5e9"><i data-lucide="droplets" style="width:12px;height:12px"></i></div>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#cbd5e1">
+                    <span>Início</span><span style="color:#0ea5e9; font-weight:800">64%</span><span>Meta</span>
+                  </div>
+                </div>
+                <div style="display:flex; gap:6px; width:100%">
+                  <button style="flex:1; background:#f0f9ff; color:#0ea5e9; border:1px solid #bae6fd; border-radius:8px; padding:6px 2px; font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap">+ 200 ml</button>
+                  <button style="flex:1; background:#f0f9ff; color:#0ea5e9; border:1px solid #bae6fd; border-radius:8px; padding:6px 2px; font-size:12px; font-weight:800; cursor:pointer; white-space:nowrap">+ 250 ml</button>
+                </div>
+              </div>
+            </div>
+            <div style="position:absolute; bottom:12px; left:0; right:0; display:flex; justify-content:center; z-index:10">
+              <div style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.1); backdrop-filter:blur(12px); border:1px solid rgba(255,255,255,.05); padding:6px 8px; border-radius:9999px">
+                <span style="width:16px; height:6px; border-radius:99px; background:#0ea5e9"></span>
+                <span style="width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.3)"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- WeeklyPlanCard (topo) -->
+          <div style="position:relative; overflow:hidden; background:rgba(255,255,255,.06); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:28px; padding:20px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); box-sizing:border-box">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px">
+              <span style="font-size:10.4px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:.05em; display:flex; align-items:center; gap:6px"><i data-lucide="calendar-days" style="width:13px;height:13px;color:#5a8fa3"></i> Plano da semana</span>
+              <span style="font-size:10.4px; font-weight:800; color:#34d399; background:rgba(52,211,153,.14); border:1px solid rgba(52,211,153,.38); padding:3px 9px; border-radius:9999px">Aceite</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px">
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">S</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(59,130,246,.16); border:1px solid rgba(59,130,246,.35); display:flex; align-items:center; justify-content:center; color:#3b82f6"><i data-lucide="footprints" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">T</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(217,119,6,.16); border:1px solid rgba(217,119,6,.35); display:flex; align-items:center; justify-content:center; color:#d97706"><i data-lucide="dumbbell" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">Q</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(59,130,246,.16); border:1px solid rgba(59,130,246,.35); display:flex; align-items:center; justify-content:center; color:#3b82f6"><i data-lucide="footprints" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">Q</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(100,116,139,.16); border:1px solid rgba(100,116,139,.35); display:flex; align-items:center; justify-content:center; color:#64748b"><i data-lucide="moon" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">S</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(217,119,6,.16); border:1px solid rgba(217,119,6,.35); display:flex; align-items:center; justify-content:center; color:#d97706"><i data-lucide="dumbbell" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#64748b">S</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(100,116,139,.16); border:1px solid rgba(100,116,139,.35); display:flex; align-items:center; justify-content:center; color:#64748b"><i data-lucide="moon" style="width:15px;height:15px"></i></span></div>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px"><span style="font-size:10px; font-weight:800; color:#fbbf24">D</span><span style="width:32px; height:32px; border-radius:10px; background:rgba(59,130,246,.28); border:2px solid #3b82f6; display:flex; align-items:center; justify-content:center; color:#93c5fd"><i data-lucide="footprints" style="width:15px;height:15px"></i></span></div>
+            </div>
+            <div style="margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,.08)">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+                <div style="min-width:0">
+                  <div style="font-size:13px; font-weight:800; color:#f8fafc">Rodagem longa · 16 km</div>
+                  <div style="font-size:11.5px; color:#cbd5e1; margin-top:3px">Zona 2, pace 5:45–6:00/km</div>
+                </div>
+                <i data-lucide="chevron-down" style="width:16px;height:16px;color:#94a3b8;flex-shrink:0"></i>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:12px">
+                <button style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:38px; border-radius:12px; border:1px solid rgba(52,211,153,.38); background:rgba(52,211,153,.14); color:#34d399; font-size:12.5px; font-weight:800; cursor:pointer"><i data-lucide="check" style="width:14px;height:14px"></i> Concluir</button>
+                <button style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:38px; border-radius:12px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:#cbd5e1; font-size:12.5px; font-weight:800; cursor:pointer"><i data-lucide="x" style="width:14px;height:14px"></i> Cancelar</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- bottom nav -->
+        <div style="position:absolute; bottom:0; left:0; right:0; z-index:40; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; padding:6px 0 8px; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); -webkit-backdrop-filter:blur(48px); border-top:1px solid rgba(255,255,255,.1); box-shadow:0 -4px 20px rgba(0,0,0,.5)">
+          <div style="position:relative; min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#c9a860; font-weight:700">
+            <span style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:20px; height:3px; border-radius:9999px; background:#5a8fa3"></span>
+            <i data-lucide="layout-grid" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Início</span>
+          </div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="calendar" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Calendário</span></div>
+          <div></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="layout-dashboard" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Dashboard</span></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="bot" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Coach</span></div>
+          <div style="position:absolute; left:50%; transform:translateX(-50%); top:-22px; width:56px; height:56px; border-radius:9999px; display:flex; align-items:center; justify-content:center; border:4px solid #fff; color:#fff; background:linear-gradient(135deg,#d97706,#fbbf24); box-shadow:0 4px 20px rgba(251,191,36,.4), 0 0 0 2.5px #2d4a57"><i data-lucide="plus" style="width:24px;height:24px"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ECRÃ 2 — DASHBOARD / VISÃO GERAL ══ -->
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <div style="display:flex; align-items:baseline; gap:10px">
+        <span style="font-size:13px; font-weight:800; color:#f8fafc">Dashboard · Visão Geral</span>
+        <span style="font-size:11px; color:#64748b; font-family:ui-monospace,monospace">OverviewDashboard.jsx</span>
+      </div>
+      <div style="position:relative; width:430px; height:932px; border-radius:44px; overflow:hidden; background:#0b1120; border:1px solid rgba(255,255,255,.14); box-shadow:0 40px 90px -20px rgba(0,0,0,.7)">
+
+        <div style="position:absolute; top:0; left:0; right:0; z-index:20; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); border-bottom:1px solid rgba(255,255,255,.1)">
+          <header style="padding:16px 16px 12px; display:flex; align-items:center; justify-content:space-between">
+            <div style="display:flex; align-items:center; gap:8px">
+              <div style="width:36px; height:36px; border-radius:12px; background:linear-gradient(135deg,#1e333d,#2d4a57); display:flex; align-items:center; justify-content:center; color:#eccea4"><i data-lucide="activity" style="width:18px;height:18px"></i></div>
+              <div>
+                <h1 style="margin:0; font-size:16px; font-weight:700; letter-spacing:-.02em; line-height:1; color:#5a8fa3">IronCoach</h1>
+                <p style="margin:4px 0 0; font-size:11px; line-height:1; color:#b9c3d1">domingo, 6 de setembro</p>
+              </div>
+            </div>
+            <button style="min-height:44px; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; padding-left:14px; padding-right:16px; border-radius:9999px; background:linear-gradient(135deg,#d97706,#fbbf24); color:#fff; border:none; box-shadow:0 2px 10px rgba(251,191,36,.25); cursor:pointer"><i data-lucide="user" style="width:14px;height:14px"></i> Perfil</button>
+          </header>
+        </div>
+
+        <div style="position:absolute; inset:0; overflow-y:auto; padding:89px 16px 112px; display:flex; flex-direction:column; gap:16px; box-sizing:border-box">
+
+          <!-- subnav -->
+          <div style="position:relative; display:flex; gap:8px; padding:8px; background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); overflow:hidden">
+            <div style="position:absolute; top:6px; bottom:6px; left:8px; width:calc((100% - 48px)/5); border-radius:8px; background:color-mix(in srgb, #0ea5e9 32%, transparent); border:1px solid color-mix(in srgb, #0ea5e9 55%, transparent)"></div>
+            <div style="position:relative; z-index:10; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px 0; font-size:12px; font-weight:600; border-radius:8px; color:#0ea5e9"><i data-lucide="layout-dashboard" style="width:14px;height:14px"></i><span style="font-size:10px">Visão Geral</span></div>
+            <div style="position:relative; z-index:10; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px 0; font-size:12px; font-weight:600; border-radius:8px; color:#cbd5e1"><i data-lucide="footprints" style="width:14px;height:14px"></i><span style="font-size:10px">Corrida</span></div>
+            <div style="position:relative; z-index:10; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px 0; font-size:12px; font-weight:600; border-radius:8px; color:#cbd5e1"><i data-lucide="dumbbell" style="width:14px;height:14px"></i><span style="font-size:10px">Ginásio</span></div>
+            <div style="position:relative; z-index:10; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px 0; font-size:12px; font-weight:600; border-radius:8px; color:#cbd5e1"><i data-lucide="utensils" style="width:14px;height:14px"></i><span style="font-size:10px">Nutrição</span></div>
+            <div style="position:relative; z-index:10; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:6px 0; font-size:12px; font-weight:600; border-radius:8px; color:#cbd5e1"><i data-lucide="user" style="width:14px;height:14px"></i><span style="font-size:10px">Corpo</span></div>
+          </div>
+
+          <p style="margin:8px 4px 0; font-size:10px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.1em">Visão Estratégica</p>
+
+          <!-- RaceReadinessCard -->
+          <div style="width:100%; background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:16px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); box-sizing:border-box">
+            <div style="width:100%; text-align:left; display:flex; align-items:flex-start; gap:16px">
+              <div style="position:relative; flex-shrink:0; width:80px; height:80px">
+                <svg viewBox="0 0 88 88" style="width:80px; height:80px; transform:rotate(-90deg)">
+                  <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8"></circle>
+                  <circle cx="44" cy="44" r="36" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" stroke-dasharray="226.2" stroke-dashoffset="72.4"></circle>
+                </svg>
+                <div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center">
+                  <span style="font-size:20px; font-weight:900; line-height:1; color:#fbbf24">68%</span>
+                  <span style="font-size:9px; color:#cbd5e1; font-weight:600; margin-top:2px">Prontidão</span>
+                </div>
+              </div>
+              <div style="flex:1; min-width:0">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px">
+                  <i data-lucide="trophy" style="width:14px;height:14px;color:#fbbf24;flex-shrink:0"></i>
+                  <span style="font-size:10px; color:#fbbf24; font-weight:700; text-transform:uppercase; letter-spacing:.1em">Próxima Prova</span>
+                </div>
+                <p style="margin:0; font-size:14px; font-weight:700; color:#fff; line-height:1.2">Meia de Lisboa</p>
+                <p style="margin:2px 0 0; font-size:11px; color:#cbd5e1; font-weight:500">Faltam 183 dias</p>
+                <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between">
+                  <div><span style="font-size:11px; font-weight:700; color:#fbbf24">Prontidão Média</span><span style="font-size:11px; color:#cbd5e1; font-weight:500"> — 21.1km</span></div>
+                  <i data-lucide="chevron-right" style="width:16px;height:16px;color:#cbd5e1"></i>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:8px">
+              <div style="background:rgba(255,255,255,.05); border-radius:12px; padding:10px; border:1px solid rgba(255,255,255,.1)"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px"><span style="font-size:10px; color:#cbd5e1; font-weight:600">🏃 Carga (ACWR)</span><span style="font-size:10px; font-weight:700; color:#34d399">82%</span></div><div style="height:4px; border-radius:99px; background:rgba(255,255,255,.1)"><div style="height:100%; width:82%; border-radius:99px; background:#10b981"></div></div></div>
+              <div style="background:rgba(255,255,255,.05); border-radius:12px; padding:10px; border:1px solid rgba(255,255,255,.1)"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px"><span style="font-size:10px; color:#cbd5e1; font-weight:600">⚡ Energia</span><span style="font-size:10px; font-weight:700; color:#fbbf24">54%</span></div><div style="height:4px; border-radius:99px; background:rgba(255,255,255,.1)"><div style="height:100%; width:54%; border-radius:99px; background:#f59e0b"></div></div></div>
+              <div style="background:rgba(255,255,255,.05); border-radius:12px; padding:10px; border:1px solid rgba(255,255,255,.1)"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px"><span style="font-size:10px; color:#cbd5e1; font-weight:600">🥗 Calorias</span><span style="font-size:10px; font-weight:700; color:#fbbf24">61%</span></div><div style="height:4px; border-radius:99px; background:rgba(255,255,255,.1)"><div style="height:100%; width:61%; border-radius:99px; background:#f59e0b"></div></div></div>
+              <div style="background:rgba(255,255,255,.05); border-radius:12px; padding:10px; border:1px solid rgba(255,255,255,.1)"><div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px"><span style="font-size:10px; color:#cbd5e1; font-weight:600">📈 VDOT</span><span style="font-size:10px; font-weight:700; color:#34d399">77%</span></div><div style="height:4px; border-radius:99px; background:rgba(255,255,255,.1)"><div style="height:100%; width:77%; border-radius:99px; background:#10b981"></div></div></div>
+            </div>
+          </div>
+
+          <!-- SmartInsightsBanner -->
+          <div style="width:100%; background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:16px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); box-sizing:border-box; display:flex; flex-direction:column; gap:10px">
+            <span style="font-size:10px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:.1em; display:flex; align-items:center; gap:6px"><i data-lucide="lightbulb" style="width:13px;height:13px;color:#22d3ee"></i> Insights</span>
+            <div style="display:flex; gap:10px; align-items:flex-start"><span style="width:6px;height:6px;border-radius:99px;background:#f59e0b;margin-top:6px;flex-shrink:0"></span><p style="margin:0; font-size:12.5px; line-height:1.5; color:#e2e8f0">A tua disponibilidade energética está 2 semanas abaixo de 30 kcal/kg. Aumenta a ingestão nos dias de qualidade.</p></div>
+            <div style="display:flex; gap:10px; align-items:flex-start"><span style="width:6px;height:6px;border-radius:99px;background:#10b981;margin-top:6px;flex-shrink:0"></span><p style="margin:0; font-size:12.5px; line-height:1.5; color:#e2e8f0">Volume semanal a subir de forma consistente há 4 semanas — ACWR em 1.12, zona segura.</p></div>
+          </div>
+
+          <p style="margin:8px 4px 0; font-size:10px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.1em">Estado Atual</p>
+
+          <!-- Pilares -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+            <div style="background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.2), inset 0 1px 6px rgba(255,255,255,.4); text-align:left">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px"><div style="display:flex; align-items:center; gap:6px"><span style="font-size:16px; line-height:1">🏃</span><span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.08em">Corrida</span></div><i data-lucide="chevron-right" style="width:12px;height:12px;color:#64748b"></i></div>
+              <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:4px"><span style="font-size:20px; font-weight:900; color:#fff; line-height:1">42.6</span><span style="font-size:11px; color:#cbd5e1; font-weight:600">km esta sem.</span></div>
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap"><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px; background:#d1fae5; color:#065f46">🟢 ACWR Ótimo</span></div>
+              <p style="margin:0; font-size:10px; color:#cbd5e1; font-weight:500; line-height:1.35">4 corridas esta semana</p>
+            </div>
+            <div style="background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.2), inset 0 1px 6px rgba(255,255,255,.4); text-align:left">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px"><div style="display:flex; align-items:center; gap:6px"><span style="font-size:16px; line-height:1">🏋️</span><span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.08em">Ginásio</span></div><i data-lucide="chevron-right" style="width:12px;height:12px;color:#64748b"></i></div>
+              <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:4px"><span style="font-size:20px; font-weight:900; color:#fff; line-height:1">8.4k</span><span style="font-size:11px; color:#cbd5e1; font-weight:600">kg vol.</span></div>
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap"><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px; background:#d1fae5; color:#065f46">2 sessões</span></div>
+              <p style="margin:0; font-size:10px; color:#cbd5e1; font-weight:500; line-height:1.35">4 200 kg/sessão em média</p>
+            </div>
+            <div style="background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.2), inset 0 1px 6px rgba(255,255,255,.4); text-align:left">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px"><div style="display:flex; align-items:center; gap:6px"><span style="font-size:16px; line-height:1">🥗</span><span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.08em">Nutrição</span></div><i data-lucide="chevron-right" style="width:12px;height:12px;color:#64748b"></i></div>
+              <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:4px"><span style="font-size:20px; font-weight:900; color:#fff; line-height:1">88%</span><span style="font-size:11px; color:#cbd5e1; font-weight:600">calorias</span></div>
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap"><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px; background:#fef3c7; color:#92400e">🟡 Baixa ingestão</span></div>
+              <p style="margin:0; font-size:10px; color:#cbd5e1; font-weight:500; line-height:1.35">EA: 28 kcal/kg</p>
+            </div>
+            <div style="background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:12px; box-shadow:0 8px 20px rgba(0,0,0,.2), inset 0 1px 6px rgba(255,255,255,.4); text-align:left">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px"><div style="display:flex; align-items:center; gap:6px"><span style="font-size:16px; line-height:1">👤</span><span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.08em">Corpo</span></div><i data-lucide="chevron-right" style="width:12px;height:12px;color:#64748b"></i></div>
+              <div style="display:flex; align-items:baseline; gap:4px; margin-bottom:4px"><span style="font-size:20px; font-weight:900; color:#fff; line-height:1">72.4</span><span style="font-size:11px; color:#cbd5e1; font-weight:600">kg</span></div>
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap"><span style="font-size:10px; font-weight:700; padding:2px 6px; border-radius:6px; background:#e0f2fe; color:#075985">📉 Em perda</span><span style="font-size:10px; color:#cbd5e1; font-weight:500">-0.3 kg/sem</span></div>
+              <p style="margin:0; font-size:10px; color:#cbd5e1; font-weight:500; line-height:1.35">1 avaliação esta semana</p>
+            </div>
+          </div>
+
+          <p style="margin:8px 4px 0; font-size:10px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:.1em">Análise Cruzada</p>
+          <div style="width:100%; background:rgba(255,255,255,.05); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.6); border-radius:16px; padding:16px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); box-sizing:border-box; display:flex; align-items:center; justify-content:space-between">
+            <span style="font-size:12.5px; font-weight:700; color:#e2e8f0">Carga vs. Disponibilidade Energética</span>
+            <i data-lucide="chevron-down" style="width:16px;height:16px;color:#94a3b8"></i>
+          </div>
+        </div>
+
+        <div style="position:absolute; bottom:0; left:0; right:0; z-index:40; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; padding:6px 0 8px; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); border-top:1px solid rgba(255,255,255,.1); box-shadow:0 -4px 20px rgba(0,0,0,.5)">
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="layout-grid" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Início</span></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="calendar" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Calendário</span></div>
+          <div></div>
+          <div style="position:relative; min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#c9a860; font-weight:700"><span style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:20px; height:3px; border-radius:9999px; background:#5a8fa3"></span><i data-lucide="layout-dashboard" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Dashboard</span></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="bot" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Coach</span></div>
+          <div style="position:absolute; left:50%; transform:translateX(-50%); top:-22px; width:56px; height:56px; border-radius:9999px; display:flex; align-items:center; justify-content:center; border:4px solid #fff; color:#fff; background:linear-gradient(135deg,#d97706,#fbbf24); box-shadow:0 4px 20px rgba(251,191,36,.4), 0 0 0 2.5px #2d4a57"><i data-lucide="plus" style="width:24px;height:24px"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ECRÃ 3 — HUB DE PROVA ══ -->
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <div style="display:flex; align-items:baseline; gap:10px">
+        <span style="font-size:13px; font-weight:800; color:#f8fafc">Hub de Prova</span>
+        <span style="font-size:11px; color:#64748b; font-family:ui-monospace,monospace">RaceHubView.jsx</span>
+      </div>
+      <div style="position:relative; width:430px; height:932px; border-radius:44px; overflow:hidden; background:#0b1120; border:1px solid rgba(255,255,255,.14); box-shadow:0 40px 90px -20px rgba(0,0,0,.7)">
+
+        <div style="position:absolute; top:0; left:0; right:0; z-index:20; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); border-bottom:1px solid rgba(255,255,255,.1)">
+          <header style="padding:16px 16px 12px; display:flex; align-items:center; justify-content:space-between">
+            <div style="display:flex; align-items:center; gap:8px">
+              <div style="width:36px; height:36px; border-radius:12px; background:linear-gradient(135deg,#1e333d,#2d4a57); display:flex; align-items:center; justify-content:center; color:#eccea4"><i data-lucide="activity" style="width:18px;height:18px"></i></div>
+              <div>
+                <h1 style="margin:0; font-size:16px; font-weight:700; letter-spacing:-.02em; line-height:1; color:#5a8fa3">IronCoach</h1>
+                <p style="margin:4px 0 0; font-size:11px; line-height:1; color:#b9c3d1">domingo, 6 de setembro</p>
+              </div>
+            </div>
+            <button style="min-height:44px; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:700; padding-left:14px; padding-right:16px; border-radius:9999px; background:linear-gradient(135deg,#d97706,#fbbf24); color:#fff; border:none; box-shadow:0 2px 10px rgba(251,191,36,.25); cursor:pointer"><i data-lucide="user" style="width:14px;height:14px"></i> Perfil</button>
+          </header>
+        </div>
+
+        <div style="position:absolute; inset:0; overflow-y:auto; padding:89px 16px 112px; display:flex; flex-direction:column; gap:16px; box-sizing:border-box">
+
+          <!-- hero -->
+          <div style="position:relative; overflow:hidden; background:rgba(255,255,255,.06); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:28px; padding:24px; box-shadow:0 16px 40px rgba(0,0,0,.3), inset 0 2px 10px rgba(255,255,255,.6); display:flex; flex-direction:column; gap:16px; box-sizing:border-box">
+            <div style="position:absolute; right:-40px; top:-40px; width:200px; height:200px; background:radial-gradient(circle, rgba(251,191,36,.22) 0%, transparent 70%); pointer-events:none; z-index:1"></div>
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; z-index:2">
+              <div style="flex:1; min-width:0">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+                  <span style="background:linear-gradient(135deg,#d97706,#fbbf24); color:#fff; font-size:10.4px; font-weight:800; padding:2px 10px; border-radius:8px; text-transform:uppercase; letter-spacing:.05em; box-shadow:0 2px 8px rgba(217,119,6,.3)">estrada</span>
+                  <span style="font-size:10.4px; font-weight:800; padding:2px 10px; border-radius:8px; text-transform:uppercase; letter-spacing:.05em; border:1px solid rgba(251,191,36,.5); background:rgba(251,191,36,.15); color:#fbbf24">Principal</span>
+                  <span style="background:rgba(15,23,42,.55); border:1px solid rgba(255,255,255,.14); color:#e2e8f0; font-size:10.4px; font-weight:800; padding:3px 10px; border-radius:8px; box-shadow:inset 0 1px 3px rgba(255,255,255,.06)">21,1 km</span>
+                </div>
+                <h1 style="margin:4px 0 0; font-size:23.2px; font-weight:900; color:#f8fafc; line-height:1.2">Meia de Lisboa</h1>
+                <div style="font-size:12.8px; color:#cbd5e1; font-weight:600; display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:4px">
+                  <div style="display:flex; align-items:center; gap:4px"><i data-lucide="calendar" style="width:13px;height:13px;color:#fbbf24"></i><span>8 Mar 2027</span></div>
+                  <div style="display:flex; align-items:center; gap:4px"><i data-lucide="map-pin" style="width:13px;height:13px;color:#fbbf24"></i><span>Lisboa</span></div>
+                </div>
+              </div>
+              <div style="display:flex; gap:5px; padding:4px 8px; background:rgba(255,255,255,.08); border-radius:12px; align-items:center; border:1px solid rgba(255,255,255,.15)">
+                <div style="width:8px;height:8px;border-radius:50%;background:#ef4444;opacity:.2"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;opacity:1;box-shadow:0 0 8px #f59e0b"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#10b981;opacity:.2"></div>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px; z-index:2">
+              <div style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:12px 14px; display:flex; flex-direction:column; justify-content:center">
+                <span style="font-size:9.9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8">Contagem para a Prova</span>
+                <div style="font-size:28.8px; font-weight:900; color:#fbbf24; line-height:1.1; margin-top:2px">183</div>
+                <span style="font-size:11.2px; font-weight:700; color:#e2e8f0; margin-top:2px">Dias restantes</span>
+              </div>
+              <div style="background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:12px 14px; display:flex; flex-direction:column; justify-content:center">
+                <span style="font-size:9.9px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8">Fase de Treino</span>
+                <div style="font-size:18.4px; font-weight:900; color:#fbbf24; line-height:1.25; margin-top:2px">Base Aeróbica</div>
+                <span style="font-size:11.2px; font-weight:700; color:#e2e8f0; margin-top:2px">Sem. 6 de 18</span>
+              </div>
+            </div>
+
+            <div style="width:100%; display:flex; flex-direction:column; gap:6px; margin-top:6px; z-index:2">
+              <div style="height:8px; background:rgba(255,255,255,.12); border-radius:8px; position:relative">
+                <div style="height:100%; width:34%; background:linear-gradient(90deg,#fbbf24 0%,#d97706 100%); border-radius:8px"></div>
+                <div style="position:absolute; top:50%; left:34%; transform:translate(-50%,-50%); width:26px; height:26px; background:#fff; border:3px solid #d97706; border-radius:50%; box-shadow:0 2px 10px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; color:#d97706"><i data-lucide="footprints" style="width:14px;height:14px"></i></div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; font-size:11.2px; font-weight:700; color:#94a3b8">
+                <span style="text-align:left; white-space:nowrap">Início (28 Jul)</span>
+                <span style="text-align:center; white-space:nowrap; color:#fbbf24; font-weight:800">Fase: Base Aeróbica</span>
+                <span style="text-align:right; white-space:nowrap">Meta (8 Mar)</span>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; z-index:2">
+              <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:8px 12px; display:flex; flex-direction:column">
+                <span style="font-size:9.6px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.05em">Distância</span>
+                <span style="font-size:13.6px; font-weight:800; color:#f8fafc; margin-top:2px">21.1 km</span>
+              </div>
+              <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:8px 12px; display:flex; flex-direction:column">
+                <span style="font-size:9.6px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.05em">Nível</span>
+                <span style="font-size:13.6px; font-weight:800; color:#f8fafc; margin-top:2px">Intermédio</span>
+              </div>
+              <div style="grid-column:1 / -1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:8px 12px; display:flex; flex-direction:column; align-items:center; text-align:center">
+                <span style="font-size:9.6px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.05em">Objetivo</span>
+                <span style="font-size:13.6px; font-weight:800; color:#f8fafc; margin-top:2px">Total: 1h52 | Pace: 5:18/km</span>
+              </div>
+              <div style="grid-column:1 / -1; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:14px; padding:8px 12px; display:flex; flex-direction:column; align-items:center; text-align:center; position:relative">
+                <div style="width:100%; display:flex; align-items:center; justify-content:center; position:relative">
+                  <span style="font-size:9.6px; font-weight:800; text-transform:uppercase; color:#94a3b8; letter-spacing:.05em">Previsão (VDOT)</span>
+                  <span style="position:absolute; right:0; top:50%; transform:translateY(-50%); color:#cbd5e1; padding:4px; border-radius:99px; display:flex"><i data-lucide="info" style="width:14px;height:14px"></i></span>
+                </div>
+                <span style="font-size:13.6px; font-weight:800; color:#f8fafc; margin-top:2px">Total: 1h56 | Pace: 5:30/km</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Carol box -->
+          <div style="background:rgba(255,255,255,.06); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,.8); border-radius:24px; padding:20px; box-shadow:0 16px 40px rgba(0,0,0,.25), inset 0 2px 10px rgba(255,255,255,.5); position:relative; overflow:hidden; box-sizing:border-box">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; row-gap:8px; column-gap:10px; margin-bottom:12px">
+              <div style="display:flex; align-items:center; gap:8px; font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; line-height:1.35; color:#fbbf24; flex:1 1 auto; min-width:170px">
+                <div style="width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#d97706,#fbbf24); display:flex; align-items:center; justify-content:center; color:#fff; box-shadow:0 2px 8px rgba(217,119,6,.4); flex-shrink:0"><i data-lucide="sparkles" style="width:15px;height:15px"></i></div>
+                <span>Evolução &amp; Prontidão</span>
+              </div>
+              <span style="flex:1 0 100%; display:flex; justify-content:center; white-space:nowrap"><span style="font-size:10px; font-weight:800; padding:4px 10px; border-radius:9999px; background:rgba(245,158,11,.2); color:#fcd34d; border:1px solid rgba(245,158,11,.4)">Prontidão Média (68%)</span></span>
+            </div>
+            <p style="margin:0; font-size:13.6px; line-height:1.5; color:#e2e8f0; font-weight:500">Estás na semana 6 de 18, ainda em construção de base. O volume subiu de forma sustentada, mas a ingestão calórica tem ficado curta nos dias longos — é o principal travão à prontidão neste momento. Mantém as duas sessões de ginásio.</p>
+            <div style="margin-top:16px; padding:12px; border-radius:12px; background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.3); display:flex; flex-direction:column; gap:8px">
+              <span style="font-size:10px; font-weight:700; color:#fbbf24; text-transform:uppercase; letter-spacing:.1em; display:flex; align-items:center; gap:8px"><i data-lucide="alert-triangle" style="width:12px;height:12px;flex-shrink:0"></i> Alertas de Viabilidade</span>
+              <p style="margin:0; font-size:12px; color:#fde68a; line-height:1.5">• O teu volume médio recente (38 km/sem) está abaixo do recomendado para esta distância.</p>
+            </div>
+          </div>
+
+          <!-- fases -->
+          <div style="display:flex; flex-direction:column; gap:10px">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0">
+              <span style="font-size:12px; font-weight:900; text-transform:uppercase; letter-spacing:.08em; color:#cbd5e1; display:flex; align-items:center; gap:8px"><span style="width:6px; height:14px; border-radius:99px; background:#fbbf24; display:inline-block; flex-shrink:0"></span> Macrociclo de Treino (18 Semanas)</span>
+            </div>
+            <div style="background:rgba(255,255,255,.05); border:1px solid rgba(251,191,36,.4); border-radius:18px; padding:14px 16px">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px">
+                <div style="min-width:0"><div style="font-size:13px; font-weight:800; color:#fbbf24">1. Base Aeróbica</div><div style="font-size:11px; color:#94a3b8; margin-top:2px">Sem. 1–8 · em curso</div></div>
+                <i data-lucide="chevron-up" style="width:16px;height:16px;color:#94a3b8"></i>
+              </div>
+              <p style="margin:10px 0 0; font-size:12.5px; line-height:1.5; color:#e2e8f0">Consolidar volume em Zona 2 e frequência de 4 saídas semanais. Classificação da fase até agora: Bom · 74%.</p>
+            </div>
+            <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:18px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:8px">
+              <div><div style="font-size:13px; font-weight:800; color:#cbd5e1">2. Construção Específica</div><div style="font-size:11px; color:#64748b; margin-top:2px">Sem. 9–14</div></div>
+              <i data-lucide="chevron-down" style="width:16px;height:16px;color:#64748b"></i>
+            </div>
+            <div style="background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1); border-radius:18px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:8px">
+              <div><div style="font-size:13px; font-weight:800; color:#cbd5e1">3. Afinação &amp; Taper</div><div style="font-size:11px; color:#64748b; margin-top:2px">Sem. 15–18</div></div>
+              <i data-lucide="chevron-down" style="width:16px;height:16px;color:#64748b"></i>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute; bottom:0; left:0; right:0; z-index:40; display:grid; grid-template-columns:repeat(5,1fr); align-items:center; padding:6px 0 8px; background:rgba(15,23,42,.7); backdrop-filter:blur(48px); border-top:1px solid rgba(255,255,255,.1); box-shadow:0 -4px 20px rgba(0,0,0,.5)">
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="layout-grid" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Início</span></div>
+          <div style="position:relative; min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#c9a860; font-weight:700"><span style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:20px; height:3px; border-radius:9999px; background:#5a8fa3"></span><i data-lucide="calendar" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Calendário</span></div>
+          <div></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="layout-dashboard" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Dashboard</span></div>
+          <div style="min-height:44px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:4px 0; color:#5a8fa3; font-weight:500"><i data-lucide="bot" style="width:20px;height:20px"></i><span style="font-size:10px; line-height:1">Coach</span></div>
+          <div style="position:absolute; left:50%; transform:translateX(-50%); top:-22px; width:56px; height:56px; border-radius:9999px; display:flex; align-items:center; justify-content:center; border:4px solid #fff; color:#fff; background:linear-gradient(135deg,#d97706,#fbbf24); box-shadow:0 4px 20px rgba(251,191,36,.4), 0 0 0 2.5px #2d4a57"><i data-lucide="plus" style="width:24px;height:24px"></i></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  draw() {
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+  }
+  componentDidMount() {
+    this.draw();
+    this._t = setInterval(() => {
+      if (document.querySelector('[data-lucide]')) this.draw();
+    }, 400);
+    setTimeout(() => clearInterval(this._t), 8000);
+  }
+  componentDidUpdate() { this.draw(); }
+  componentWillUnmount() { clearInterval(this._t); }
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,31 +1,34 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React from 'react';
 import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
+import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 
-const ACWR_TONE_COLOR = { danger: 'text-[#DC3545]', caution: 'text-[#FFC107]', safe: 'text-[#28A745]', neutral: 'text-slate-400' };
+/* Ponto 6 do redesenho:
+   - O "Média 4s" era escrito com `ctx.fillText` em cima da tela. A linha
+     tracejada fica (é forma), o texto sai e passa a item de legenda em HTML.
+   - Os ticks dos dois eixos deixam de escrever; o valor da última semana é
+     o número grande e os extremos vão para os cantos, em HTML.
+   - A barra estava num gradiente âmbar (#d97706 → #f59e0b) apesar do
+     comentário dizer --gym: o âmbar é da prova. Passa ao ardósia do
+     ginásio, com as semanas antigas mais apagadas (tintas da cor do
+     módulo, como no mock "Dashboard · Ginásio"). */
+
+const TONE_COLOR = { danger: 'var(--danger)', caution: 'var(--warn)', safe: 'var(--ok)', neutral: 'var(--text-4)' };
+const GYM_RGB = '158, 195, 210';   // --gym #9ec3d2
 
 export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' }) {
-  const chartRef = useRef(null);
-  const [gradient, setGradient] = useState(null);
+  const values = weeklyData.map(d => Number(d.volumeLoad || 0));
+  const maxVal = values.length ? Math.max(...values) : 0;
+  const last = values.length ? values[values.length - 1] : 0;
+  const prev = values.length > 1 ? values[values.length - 2] : null;
 
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (chart) {
-      const ctx = chart.ctx;
-      const bg = ctx.createLinearGradient(0, 0, 0, 400);
-      bg.addColorStop(0, '#d97706'); // --mod-ginasio
-      bg.addColorStop(1, 'rgba(217, 119, 6, 0.2)');
-      setGradient(bg);
-    }
-  }, []);
-
-  // Compute 4-week average if there are enough data points
   let avg4w = null;
-  if (weeklyData.length >= 4) {
-    const last4 = weeklyData.slice(-4);
-    avg4w = last4.reduce((sum, d) => sum + d.volumeLoad, 0) / 4;
+  if (values.length >= 4) {
+    avg4w = values.slice(-4).reduce((s, v) => s + v, 0) / 4;
   }
 
   const avgLinePlugin = {
@@ -34,7 +37,6 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       if (avg4w === null) return;
       const { ctx, chartArea, scales } = chart;
       if (!chartArea) return;
-      
       const yPos = scales.y.getPixelForValue(avg4w);
       if (yPos > chartArea.bottom || yPos < chartArea.top) return;
 
@@ -43,15 +45,11 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       ctx.moveTo(chartArea.left, yPos);
       ctx.lineTo(chartArea.right, yPos);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = '#94a3b8'; // slate-400
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.45)';
       ctx.setLineDash([5, 5]);
       ctx.stroke();
-      
-      // Label
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.font = '10px system-ui';
-      ctx.fillText('Média 4s', chartArea.right - 48, yPos - 5);
       ctx.restore();
+      // Sem rótulo: o "Média 4s" vive na legenda em HTML do ChartFrame.
     }
   };
 
@@ -59,24 +57,26 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
     labels: weeklyData.map(d => d.weekLabel),
     datasets: [
       {
-        label: 'Volume-Carga',
-        data: weeklyData.map(d => d.volumeLoad),
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(245, 158, 11, 0.7)';
-          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-          gradient.addColorStop(0, 'rgba(217, 119, 6, 0.2)');
-          gradient.addColorStop(1, 'rgba(245, 158, 11, 0.85)');
-          return gradient;
-        },
+        label: 'Volume-carga',
+        data: values,
+        // Tintas da cor do ginásio: a semana mais recente cheia, as
+        // anteriores progressivamente mais apagadas (mínimo 40%).
+        backgroundColor: values.map((_, i) => {
+          const t = values.length > 1 ? i / (values.length - 1) : 1;
+          return `rgba(${GYM_RGB}, ${(0.4 + 0.6 * t).toFixed(2)})`;
+        }),
         borderRadius: 6,
       }
     ]
   };
 
+  const introBars = useIntroAnimation('bi-bars');
+
   const options = {
     responsive: true,
+    /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
+       direita, --dur-bars com --stagger-bars — uma vez por sessão. */
+    animation: barGrowAnimation(introBars),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -90,33 +90,46 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       }
     },
     scales: {
-      x: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, beginAtZero: true, ticks: { color: 'rgba(255, 255, 255, 0.5)' } }
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
+      y: {
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        beginAtZero: true,
+        ticks: { display: false },
+        border: { display: false },
+      }
     }
   };
 
+  let acwrHint;
+  let acwrTone = 'neutral';
+  if (acwr) {
+    const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
+    acwrTone = tone;
+    acwrHint = acwr.hasEnoughData ? `ACWR ${acwr.ratio.toFixed(2).replace('.', ',')}` : `ACWR ${label}`;
+  }
+
+  const delta = prev !== null && Math.abs(last - prev) >= 1
+    ? { text: `${last > prev ? '+' : '−'}${fmtNumber(Math.abs(last - prev), 0)} kg`, tone: last >= prev ? 'ok' : 'warn' }
+    : undefined;
+
+  const legend = [{ label: 'Volume-carga semanal', color: 'var(--gym)' }];
+  if (avg4w !== null) legend.push({ label: `Média 4 semanas · ${fmtNumber(avg4w, 0)} kg`, color: 'rgba(248,250,252,.45)', shape: 'dash' });
+
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      <div className="flex justify-between items-start mb-3 gap-2">
-        <div className="flex flex-wrap items-start flex-1">
-          <h3 className="text-[12px] font-bold text-slate-200 leading-tight">Volume-Carga Semanal (kg)</h3>
-          <MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />
-        </div>
-        {acwr && (() => {
-          const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
-          return (
-            <div className="text-right">
-              <span className="text-[10px] text-slate-500 block">ACWR</span>
-              <span className={`text-xs font-bold ${ACWR_TONE_COLOR[tone]}`}>
-                {acwr.hasEnoughData ? acwr.ratio.toFixed(2) : label}
-              </span>
-            </div>
-          );
-        })()}
-      </div>
-      <div className="h-64 relative">
-        <Bar ref={chartRef} data={data} options={options} plugins={[avgLinePlugin]} />
-      </div>
-    </div>
+    <ChartFrame
+      className={className}
+      label="Volume-carga semanal"
+      info={<MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />}
+      hint={acwrHint}
+      value={fmtNumber(last, 0)}
+      unit="kg esta semana"
+      valueColor={acwrTone === 'neutral' ? 'var(--text-1)' : TONE_COLOR[acwrTone]}
+      delta={delta}
+      axis={maxVal > 0 ? { min: '0 kg', max: `${fmtNumber(maxVal, 0)} kg` } : undefined}
+      legend={legend}
+      height={208}
+    >
+      <Bar data={data} options={options} plugins={[avgLinePlugin]} />
+    </ChartFrame>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useAppStore } from '../../store';
+import { useAppStore, selectCoachHasPendingTopic } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Bot, Send, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
@@ -9,6 +9,9 @@ import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
+import CoachAvatar from './CoachAvatar';
+import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
+import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 // Chave única — o chat da Carol é uma conversa só, não um registo por id
@@ -42,14 +45,16 @@ function getFirstName(displayName) {
 // Variantes do aviso de demora (handleAsyncFallback) — mesmo espírito do
 // "Banco de Humor" do system prompt da Carol: leve, situacional, nunca
 // sempre a mesma frase (antes era só a dos agachamentos, repetida em toda
-// a demora de resposta). Escolhida ao acaso a cada aviso.
+// a demora de resposta). Escolhida ao acaso a cada aviso. Na voz dela
+// (CAROL.md): sem emoji, sem exclamação, e nunca a pedir desculpa pelo
+// sistema — diz o que se passa e o que fazer entretanto.
 const WAITING_MESSAGES = [
-  (name) => `Calma ${name}, isto está a demorar um bocadinho mais do que o costume — aproveita para fazer uns agachamentos enquanto preparo a resposta :)`,
-  (name) => `${name}, a ligação está com o ritmo de um treino regenerativo hoje. Aproveita para alongar os gémeos enquanto termino de pensar.`,
-  (name) => `Um segundo, ${name} — estou a analisar os teus dados com mais calma do que o costume. Aproveita para beber água.`,
-  (name) => `${name}, isto está a demorar tanto como o último quilómetro de um treino longo. Já não falta muito, prometo.`,
-  (name) => `Desculpa a demora, ${name} — parece que hoje até o servidor precisou de um dia de descanso ativo.`,
-  (name) => `${name}, estou a processar tudo com mais cuidado do que o costume. Aproveita para fazer uma prancha de 30 segundos enquanto esperas.`,
+  (name) => `${name}, isto está a demorar mais do que o costume. Aproveita para fazer uns agachamentos enquanto termino.`,
+  (name) => `${name}, a ligação está hoje ao ritmo de um treino regenerativo. Alonga os gémeos enquanto acabo de pensar.`,
+  (name) => `Um segundo, ${name}. Estou a rever os teus dados com mais calma do que o habitual. Bebe água entretanto.`,
+  (name) => `${name}, isto está a demorar tanto como o último quilómetro de um treino longo. Já não falta muito.`,
+  (name) => `${name}, hoje até o servidor precisou de um dia de descanso ativo. A resposta vem a caminho.`,
+  (name) => `${name}, estou a processar tudo com mais cuidado do que o costume. Faz uma prancha de 30 segundos enquanto esperas.`,
 ];
 
 function pickWaitingMessage(firstName) {
@@ -83,6 +88,8 @@ export default function Coach() {
     runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes
   } = useAppStore();
   const { showToast } = useToast();
+  // Liga o halo do avatar (ponto 9, animação 7).
+  const hasPendingTopic = useAppStore(selectCoachHasPendingTopic);
 
   const pendingPlans = (coachPlans || []).filter(p => p.status === 'proposto');
   const pendingGoalProposals = coachGoalProposals || [];
@@ -98,7 +105,7 @@ export default function Coach() {
   // atleta escrever nada (handleProactiveIntervention e
   // handleAdaptPlanCheckin, abaixo) — só o payload muda entre as duas.
   const sendCoachInitiatedPayload = async (payload) => {
-    if (coachLoading) return;
+    if (coachLoading) return null;
     setCoachLoading(true);
     setCoachSuggestions([]);
     const requestStartedAt = new Date().toISOString();
@@ -114,14 +121,16 @@ export default function Coach() {
         } else {
           handleImmediateFailure();
         }
-        return;
+        return null;
       }
 
+      // live: entra bolha a bolha, precedida de "a escrever…" (ver revealMessage).
       if (data?.model_message?.content) {
         addCoachMessage({
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: data.model_message.content
+          content: data.model_message.content,
+          live: true,
         });
       }
       if (Array.isArray(data?.suggestions)) {
@@ -146,8 +155,10 @@ export default function Coach() {
         if (freshProfile) setProfile(freshProfile);
       }
       setCoachLoading(false);
+      return data;
     } catch (err) {
       await handleAsyncFallback(requestStartedAt);
+      return null;
     }
   };
 
@@ -213,6 +224,34 @@ export default function Coach() {
       );
     }
   }, [coachIntent]);
+
+  // ── Mensagens por iniciativa dela (CAROL.md §3 e §7) ────────────────────
+  // 3 dias sem registo, véspera/manhã/depois da prova: ao abrir o chat, se
+  // houver um destes momentos e ainda não tiver sido dito, a Carol escreve
+  // primeiro. Decisão em utils/coachProactive.js; o texto é do coach-chat
+  // (proactive_trigger). Corre uma vez por montagem e cede a vez a qualquer
+  // intenção já em curso (intervenção, adaptar plano, nota da memória). Só
+  // fica marcado como enviado quando o servidor responde de facto — se ele
+  // saltar (ela falou há pouco), volta a tentar na próxima abertura.
+  useEffect(() => {
+    if (coachIntent || coachLoading) return;
+    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
+    if (!candidate || wasProactiveSent(profile?.id, candidate)) return;
+    sendCoachInitiatedPayload({
+      message: '',
+      proactive_trigger: candidate.trigger,
+      proactive_details: candidate.details,
+      // Só no balanço da prova com a corrida registada: o veredicto calculado
+      // pela app (utils/raceOutcome.js), para o servidor escrever o balanço
+      // com os números certos — superado / perto / aquém.
+      ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
+      userData: profile || {},
+      activeInsights: activeInsightsPayload(),
+    }).then((data) => {
+      if (data && !data.skipped) markProactiveSent(profile?.id, candidate);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fecha só a secção respondida — se a outra proposta (objetivos/plano)
   // ainda estiver pendente, a persiana continua aberta a mostrá-la (ver
@@ -298,6 +337,49 @@ export default function Coach() {
 
   const isFirstRender = useRef(true);
 
+  // ── Ritmo humano (CAROL.md §5) ──────────────────────────────────────────
+  // reveal[id] = nº de bolhas já visíveis de uma mensagem nova da Carol; sem
+  // entrada = mensagem inteira (histórico, avisos, e o que já cá estava ao
+  // montar — trocar de separador não a faz "escrever" outra vez). Uma
+  // mensagem é UM registo em coach_messages; a divisão em bolhas é só de
+  // apresentação (splitIntoBubbles). revealMessage mostra "a escrever…" e vai
+  // soltando as bolhas, uma mensagem de cada vez (revealQueue).
+  const [reveal, setReveal] = useState({});
+  const revealRef = useRef({});
+  const [typingActive, setTypingActive] = useState(false);
+  const revealQueue = useRef(Promise.resolve());
+  const mountedRef = useRef(true);
+  const seenIds = useRef(null);
+  if (seenIds.current === null) seenIds.current = new Set((coachMessages || []).map((m) => m.id));
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  const setVisibleChunks = (id, n) => {
+    revealRef.current = { ...revealRef.current, [id]: n };
+    setReveal(revealRef.current);
+  };
+  const revealMessage = async (msg) => {
+    const chunks = splitIntoBubbles(msg.content);
+    if (prefersReducedMotion() || chunks.length === 0) {
+      setVisibleChunks(msg.id, chunks.length);
+      return;
+    }
+    setVisibleChunks(msg.id, 0);
+    setTypingActive(true);
+    for (let i = 0; i < chunks.length; i++) {
+      await new Promise((resolve) => setTimeout(resolve, i === 0 ? typingDelayFor(chunks[i]) : BUBBLE_GAP_MS));
+      if (!mountedRef.current) return;
+      setVisibleChunks(msg.id, i + 1);
+    }
+    setTypingActive(false);
+  };
+  useEffect(() => {
+    for (const m of coachMessages || []) {
+      if (m.role === 'user' || !m.live || seenIds.current.has(m.id)) continue;
+      seenIds.current.add(m.id);
+      revealQueue.current = revealQueue.current.then(() => revealMessage(m));
+    }
+  }, [coachMessages]);
+
   // Auto-scroll to bottom when messages or loading state changes
   useEffect(() => {
     if (isFirstRender.current) {
@@ -306,7 +388,7 @@ export default function Coach() {
     } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [coachMessages, coachLoading, coachSuggestions]);
+  }, [coachMessages, coachLoading, coachSuggestions, reveal, typingActive]);
 
   // Adjust textarea height on input change
   const handleInputChange = (e) => {
@@ -354,7 +436,7 @@ export default function Coach() {
     removeCoachMessage(waitingId);
 
     if (modelRow) {
-      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content });
+      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, live: true });
       // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
       // goals_updated do payload síncrono (nem as sugestões rápidas, que só
       // vêm nesse payload e não ficam persistidas) — por isso verificamos
@@ -378,7 +460,7 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: '**Erro:** Não foi possível obter uma resposta do Coach. Tenta novamente.'
+        content: 'Não foi possível obter uma resposta do Coach. Tenta outra vez.'
       });
     }
     setCoachLoading(false);
@@ -396,7 +478,7 @@ export default function Coach() {
     addCoachMessage({
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: 'Não consegui enviar a tua mensagem — parece ter havido uma falha de rede ou de comunicação com o servidor. Verifica a ligação e tenta outra vez.'
+      content: 'A tua mensagem não saiu: falha de rede ou de ligação ao servidor. Verifica a ligação e envia outra vez.'
     });
     setCoachLoading(false);
   };
@@ -461,7 +543,8 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data?.model_message?.content || 'Desculpa, não consegui obter uma resposta de momento.'
+        content: data?.model_message?.content || 'Não consegui responder agora. Tenta outra vez.',
+        live: true,
       });
       if (Array.isArray(data?.suggestions)) {
         setCoachSuggestions(data.suggestions);
@@ -503,18 +586,14 @@ export default function Coach() {
       {/* Header section */}
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
-            style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-          >
-            <Bot className="w-5 h-5" style={{ color: '#fff' }} />
-          </div>
+          {/* Ponto 9, animação 7: o halo só respira quando há assunto por
+              resolver — três ciclos e para. */}
+          <CoachAvatar size={36} radius={12} breathing={hasPendingTopic} />
           <div>
-            <h2 className="text-sm font-bold text-white leading-none">Coach IronCoach</h2>
-            <p className="text-[10px] text-slate-400 mt-0.5">Nutrição · Ginásio · Corrida</p>
+            <h2 className="text-base font-bold leading-none tracking-tight" style={{ color: 'var(--coach-soft)' }}>Carol</h2>
+            <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--text-4)' }}>a tua treinadora</p>
           </div>
         </div>
-
       </div>
 
 
@@ -524,22 +603,17 @@ export default function Coach() {
         {/* Empty State */}
         {coachMessages.length === 0 && !coachLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
-            <div
-              className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-sm"
-              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
-            >
-              <Bot className="w-8 h-8" style={{ color: '#fff' }} />
-            </div>
-            <h3 className="text-sm font-bold text-white mb-1">O teu coach está pronto</h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-5 max-w-xs">
-              Pergunta sobre nutrição, treino ou corrida. Tenho acesso aos teus dados de hoje e ao teu perfil.
+            <CoachAvatar size={64} radius={24} className="mb-4" />
+            <h3 className="text-sm font-bold text-white mb-1">Sou a Carol, a tua treinadora.</h3>
+            <p className="text-xs text-[var(--text-3)] leading-relaxed mb-5 max-w-xs">
+              Tenho os teus dados de hoje e o teu perfil à frente. Pergunta-me sobre o treino, a alimentação ou a prova.
             </p>
             <div className="space-y-2 w-full max-w-xs text-left">
               {defaultSuggestions.map((s, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSend(s)}
-                  className="w-full text-left text-xs rounded-xl px-3.5 py-2.5 transition font-medium"
+                  className="w-full min-h-[44px] text-left text-xs rounded-xl px-3.5 py-2.5 transition font-medium"
                   style={{
                     color: 'var(--mod-coach-to)',
                     border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -558,7 +632,7 @@ export default function Coach() {
           <div className="flex justify-center mb-4 mt-2">
             <button
               onClick={() => setHoursToShow(prev => prev + 24)}
-              className="text-xs rounded-xl px-4 py-2.5 transition font-medium"
+              className="tap-h-44 text-xs rounded-xl px-4 py-2.5 transition font-medium"
               style={{
                 color: 'var(--mod-coach-to)',
                 border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -570,7 +644,11 @@ export default function Coach() {
           </div>
         )}
 
-        {/* Message Bubbles */}
+        {/* Bolhas — CAROL.md §5: uma ideia por bolha. Uma mensagem dela é UM
+            registo em coach_messages; a divisão em 2-3 bolhas é só de
+            apresentação (splitIntoBubbles), por isso o histórico recarregado
+            lê-se igual ao que chegou ao vivo. As novas entram uma bolha de
+            cada vez, precedidas de "a escrever…" (ver revealMessage). */}
         {visibleMessages.map((msg, idx) => {
           const isUser = msg.role === 'user';
           let msgDate = null;
@@ -580,23 +658,26 @@ export default function Coach() {
             msgDate = new Date(parseInt(msg.id, 10));
           }
           const timeStr = msgDate && !isNaN(msgDate) ? format(msgDate, "dd MMM 'às' HH:mm", { locale: pt }) : '';
+          // Ancorada por id (waiting-*) em vez do texto — o conteúdo varia
+          // entre reformulações do aviso de demora (ver WAITING_MESSAGES).
+          const isWaiting = typeof msg.id === 'string' && msg.id.startsWith('waiting-');
+          const chunks = isUser ? [msg.content] : splitIntoBubbles(msg.content);
+          const shown = reveal[msg.id] === undefined ? chunks.length : Math.min(reveal[msg.id], chunks.length);
+          if (shown === 0) return null;
 
           return (
-            <div key={idx} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-              <div
-                // Ancorada por id (waiting-*) em vez do texto — o conteúdo varia
-                // entre reformulações do aviso de demora (ver WAITING_MESSAGES).
-                data-testid={typeof msg.id === 'string' && msg.id.startsWith('waiting-') ? 'coach-waiting-message' : undefined}
-                className={`max-w-[85%] px-4 py-2.5 text-sm leading-relaxed ${
-                  isUser
-                    ? 'bg-[var(--accent)] text-neutral-50 font-semibold rounded-[18px_18px_4px_18px]'
-                    : 'bg-neutral-900/80 border border-neutral-800 text-slate-300 rounded-[18px_18px_18px_4px] shadow-sm'
-                }`}
-              >
-                {isUser ? msg.content : <CoachText>{msg.content}</CoachText>}
-              </div>
-              {timeStr && (
-                <span className="text-[10px] text-slate-500 mt-1 mx-1 px-1">
+            <div key={idx} className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
+              {chunks.slice(0, shown).map((chunk, cIdx) => (
+                <div
+                  key={cIdx}
+                  data-testid={isWaiting ? 'coach-waiting-message' : undefined}
+                  className={`max-w-[85%] px-[15px] py-[13px] text-[13px] leading-normal ${isUser ? 'coach-bubble-user font-semibold' : 'coach-bubble-model'}`}
+                >
+                  {isUser ? chunk : <CoachText>{chunk}</CoachText>}
+                </div>
+              ))}
+              {timeStr && shown === chunks.length && (
+                <span className="text-[11px] mt-0.5 mx-1 px-1" style={{ color: 'var(--text-muted)' }}>
                   {timeStr}
                 </span>
               )}
@@ -604,26 +685,29 @@ export default function Coach() {
           );
         })}
 
-
-        {/* Loading Indicator */}
-        {coachLoading && (
-          <div className="flex justify-start">
-            <div className="bg-neutral-900/80 border border-neutral-800 rounded-[18px_18px_18px_4px] px-4 py-3 shadow-sm flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
-              <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse delay-150" />
-              <span className="w-2 h-2 rounded-full bg-slate-400 animate-pulse delay-300" />
+        {/* "a escrever…" — CAROL.md §5: precede cada mensagem dela, 600 a
+            900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
+        {(coachLoading || typingActive) && (
+          <div className="flex justify-start" data-testid="coach-typing">
+            <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
+              <span className="text-[11px] font-semibold" style={{ color: 'var(--coach-soft)' }}>a escrever…</span>
+              <span className="flex items-center gap-1" aria-hidden="true">
+                <span className="coach-typing-dot" />
+                <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
+                <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
+              </span>
             </div>
           </div>
         )}
 
         {/* Contextual Suggestions after response */}
-        {!coachLoading && coachSuggestions.length > 0 && (
+        {!coachLoading && !typingActive && coachSuggestions.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {coachSuggestions.map((s, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSend(s)}
-                className="text-left text-xs rounded-xl px-3 py-2 transition font-medium"
+                className="min-h-[44px] text-left text-xs rounded-xl px-3 py-2 transition font-medium"
                 style={{
                   color: 'var(--mod-coach-to)',
                   border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
@@ -640,7 +724,7 @@ export default function Coach() {
       </div>
 
       {/* Input Box Footer */}
-      <div className="shrink-0 border-t border-neutral-800 pt-3 mt-1 relative">
+      <div className="shrink-0 border-t border-[var(--border-glass)] pt-3 mt-1 relative">
         {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
@@ -660,10 +744,10 @@ export default function Coach() {
                 setActiveProposalSheetPlan(pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
-              className="text-white font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 animate-bounce hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed disabled:animate-none"
-              style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}
+              className="text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 min-h-[44px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'var(--grad-coach-legible)' }}
             >
-              <Sparkles className="w-4 h-4 text-white" />
+              <Sparkles className="w-4 h-4" />
               <span>
                 {pendingGoalProposals.length > 0 && pendingPlans.length > 0
                   ? `Propostas por rever (${pendingGoalProposals.length + pendingPlans.length})`
@@ -684,8 +768,9 @@ export default function Coach() {
             // envia. Pedido explícito do utilizador 2026-08-31: uma
             // mensagem mais longa (várias linhas) enviava-se a meio sem
             // querer ao carregar em Enter para mudar de linha.
+            aria-label="Mensagem para a Carol"
             placeholder="Escreve a tua pergunta..."
-            className="flex-1 bg-neutral-900 border border-neutral-800 rounded-2xl px-4 py-3 text-sm text-slate-300 placeholder-slate-600 outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
+            className="flex-1 bg-[var(--bg-sheet)] border border-[var(--border-glass)] rounded-2xl px-4 py-3 text-sm text-[var(--text-3)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
             style={{ minHeight: '44px' }}
           />
           <button
@@ -694,8 +779,8 @@ export default function Coach() {
             aria-label="Enviar pergunta ao Coach"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
-                ? 'bg-neutral-800 text-slate-500 cursor-not-allowed'
-                : 'text-slate-950 font-bold'
+                ? 'bg-[var(--surface-strong)] text-[var(--text-3)] cursor-not-allowed'
+                : 'text-[var(--coach-ink)] font-bold'
             }`}
             style={{
               background: !inputStr.trim() || coachLoading ? undefined : 'var(--mod-coach-to)'

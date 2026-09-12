@@ -12,10 +12,10 @@ export default function KPICard({
 }) {
   const getStatusColor = () => {
     switch(status) {
-      case 'safe': return '#28A745';
-      case 'caution': return '#FFC107';
-      case 'danger': return '#DC3545';
-      default: return '#6C757D';
+      case 'safe': return 'var(--ok)';
+      case 'caution': return 'var(--warn)';
+      case 'danger': return 'var(--danger)';
+      default: return 'var(--text-4)';
     }
   };
 
@@ -28,12 +28,12 @@ export default function KPICard({
   // Sem `status` explícito (ex.: peso, BF%), mantém o critério antigo:
   // sinal do delta é que decide a cor.
   const deltaColorClass = status !== 'neutral'
-    ? (status === 'danger' ? 'text-[#DC3545]' : status === 'caution' ? 'text-[#FFC107]' : status === 'safe' ? 'text-[#28A745]' : 'text-slate-400')
-    : (isPositive ? 'text-[#28A745]' : isNegative ? 'text-[#DC3545]' : 'text-slate-400');
+    ? (status === 'danger' ? 'text-[var(--danger)]' : status === 'caution' ? 'text-[var(--warn)]' : status === 'safe' ? 'text-[var(--ok)]' : 'text-[var(--text-3)]')
+    : (isPositive ? 'text-[var(--ok)]' : isNegative ? 'text-[var(--danger)]' : 'text-[var(--text-3)]');
 
   return (
     <div 
-      className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden ${className}`}
+      className={`bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] relative overflow-hidden ${className}`}
     >
       {moduleColor && (
         <div 
@@ -43,13 +43,13 @@ export default function KPICard({
       )}
       
       <div className="flex justify-between items-start mb-2">
-        <span className="text-[12px] font-medium text-slate-400">{label}</span>
-        {Icon && <Icon className="w-4 h-4 text-slate-400" />}
+        <span className="text-[12px] font-medium text-[var(--text-3)]">{label}</span>
+        {Icon && <Icon className="w-4 h-4 text-[var(--text-3)]" />}
       </div>
       
       <div className="flex items-baseline gap-1 mb-1">
         <span className="text-2xl font-bold text-white">{value}</span>
-        {unit && <span className="text-xs text-slate-400 font-medium">{unit}</span>}
+        {unit && <span className="text-xs text-[var(--text-3)] font-medium">{unit}</span>}
       </div>
       
       <div className="flex items-center justify-between mt-2">

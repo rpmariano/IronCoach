@@ -14,6 +14,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -566,13 +567,15 @@ async function generateGymCoachNotes(
     : ``;
 
   const prompt =
-    `És um treinador de ginásio experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma sessão. ` +
+    `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a sessão de ginásio que ele acabou de registar. ` +
     `Escreve uma análise técnica curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
     `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n` +
     crossActivitiesSection + planSection + `\n` +
     `REGRAS:\n` +
     `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo — cada frase tem de estar ancorada num número ou comparação concreta.\n` +
+    `- Se os dados mostrarem um recorde de carga ou de volume face ao histórico, é a PRIMEIRA frase, com o número. Fora disso, não se elogia por rotina.\n` +
     `- Se o esforço percebido (RPE) não bater certo com a duração/intensidade, assinala isso.\n` +
     `- Termina com uma sugestão pequena e concreta para a próxima sessão do mesmo tipo (ou sugere clicar no botão "Falar com a Coach" se precisares de intervir no plano).\n` +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;

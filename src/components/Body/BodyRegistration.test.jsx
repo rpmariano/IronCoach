@@ -57,11 +57,11 @@ describe('BodyRegistration — cartão único: alternar entre Foto e Manual', ()
 
     expect(screen.queryByText(/Escolhe os prints da app Renpho Health/)).not.toBeInTheDocument();
     expect(screen.getByText('Peso (kg)')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Analisar Avaliação/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar avaliação/i })).toBeInTheDocument();
   });
 });
 
-describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', () => {
+describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -76,7 +76,7 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
     fireEvent.change(screen.getByPlaceholderText('Contexto da pesagem...'), { target: { value: 'em jejum' } });
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -92,7 +92,7 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
@@ -104,7 +104,7 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await waitFor(() => expect(useAppStore.getState().activeTab).toBe('calendario'));
     // BodyRegistration usa a data de hoje por omissão (sem dateIso a prefill).
@@ -116,7 +116,7 @@ describe('BodyRegistration — Analisar Avaliação por foto (analyze-body)', ()
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
     fireEvent.change(screen.getByLabelText('Gordura corporal (%)'), { target: { value: '18.2' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -160,7 +160,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
@@ -172,7 +172,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await screen.findByText('Falha a gravar avaliação.');
     expect(onClose).not.toHaveBeenCalled();
@@ -208,14 +208,14 @@ describe('BodyRegistration — editar avaliação existente', () => {
     expect(screen.getByText('Editar Avaliação')).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
-    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
 
   it('mudar uma métrica passa pelo Coach e regenera o resumo', async () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '77.0' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -231,7 +231,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(screen.getByPlaceholderText(/Contexto da pesagem/), { target: { value: 'pesado em jejum' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -243,7 +243,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: '2026-01-09' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
 
     await waitFor(() => expect(mocks.updateAssessment).toHaveBeenCalledTimes(1));
     const [payload, id] = mocks.updateAssessment.mock.calls[0];
@@ -257,7 +257,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '77.0' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -413,7 +413,7 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     const { unmount } = render(<BodyRegistration onClose={onClose} />);
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Avaliação/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
@@ -424,5 +424,22 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     render(<BodyRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(null);
+  });
+});
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('BodyRegistration — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    render(<BodyRegistration onClose={() => {}} />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar avaliação/i }));
   });
 });

@@ -191,8 +191,12 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(mocks.updates.length).toBe(1));
 
-    expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--mod-prova)' });
-    expect(screen.getByRole('button', { name: /Metas/ })).not.toHaveStyle({ color: 'var(--mod-prova)' });
+    // O separador ativo pinta-se no tom do seu assunto (ponto 4 do handoff, e
+    // o mock "Perfil"): Pessoal em --gym, Metas em --race. Antes eram os
+    // quatro em --mod-prova. O que importa aqui continua a ser o mesmo — só
+    // um separador fica aceso, e é o que o aviso mandou abrir.
+    expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--gym)' });
+    expect(screen.getByRole('button', { name: /Metas/ })).toHaveStyle({ color: 'var(--text-muted)' });
   });
 });
 
@@ -359,5 +363,149 @@ describe('Perfil — Altura (height_cm) sem pontuação', () => {
 
     await waitFor(() => expect(mocks.updates.length).toBe(1));
     expect(mocks.updates[0]).toEqual({ height_cm: 175 });
+  });
+});
+
+
+// Ponto 2 do handoff: a ação de cada separador do Perfil vive na barra de
+// ação fixa (ActionBar), não no fim do carrossel — antes ficava abaixo da
+// dobra, à altura do separador mais alto dos quatro.
+describe('Perfil — ação na ActionBar', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      runs: [],
+    });
+  });
+
+  it('mostra "Guardar alterações" dentro da barra', () => {
+    render(<Perfil />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar altera/ }));
+  });
+
+  it('no separador Equipamento a barra passa a "Adicionar sapatilhas"', async () => {
+    render(<Perfil />);
+    // O rótulo visível continua a ser "Equipa." (abreviatura do mock), mas o
+    // nome acessível é agora "Equipamento" — o srLabel do SubNav.
+    fireEvent.click(screen.getByRole('button', { name: /Equipamento/ }));
+    const botao = await screen.findByRole('button', { name: /Adicionar sapatilhas/ });
+    expect(screen.getByTestId('action-bar')).toContainElement(botao);
+    expect(screen.queryByRole('button', { name: /Guardar altera/ })).not.toBeInTheDocument();
+  });
+});
+
+/* Auditoria a11y (passagem "harden"): as etiquetas do Perfil eram só
+   visuais — 17 campos chegavam ao leitor de ecrã sem nome. Cada uma passou
+   a ter htmlFor com o id do campo. getByLabelText falha se a ligação se
+   perder num refactor futuro. */
+describe('Perfil — etiquetas programáticas', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      runs: [],
+    });
+  });
+
+  it('encontra os campos pelo nome da etiqueta', () => {
+    render(<Perfil />);
+    expect(screen.getByLabelText('Nome')).toHaveValue('Atleta');
+    expect(screen.getByLabelText('Género')).toHaveValue('M');
+    expect(screen.getByLabelText('Altura (cm)')).toHaveValue(180);
+    expect(screen.getByLabelText(/Calorias \(kcal\/dia\)/)).toHaveValue(2100);
+  });
+
+  it('nenhum input/select do Perfil fica sem nome acessível', () => {
+    const { container } = render(<Perfil />);
+    const semNome = [...container.querySelectorAll('input, select, textarea')].filter((el) => {
+      if (el.getAttribute('aria-label')) return false;
+      if (el.id && container.querySelector(`label[for="${el.id}"]`)) return false;
+      if (el.closest('label')) return false;
+      return true;
+    });
+    expect(semNome.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
+  });
+});
+
+/* O Palmarés no topo do separador Pessoal (specs/gamificacao-provas.md §5,
+   opção B). Sem separador novo: o arquivo do que já aconteceu vem antes do
+   nome e da idade, e "Ver tudo" abre a persiana com o detalhe e as provas. */
+describe('Perfil — Palmarés', () => {
+  const PROVA = {
+    id: 'race-1',
+    name: 'Meia de Lisboa',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    race_type: 'estrada',
+    status: 'concluida',
+    target_time_seconds: 6900,
+  };
+  const CORRIDA = {
+    id: 'run-1',
+    kind: 'competicao',
+    race_id: 'race-1',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    duration_seconds: 6822,
+    details: { official_time_seconds: 6822 },
+  };
+
+  const montar = ({ raceEvents = [], runs = [] } = {}) => {
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      raceEvents,
+      runs,
+      editingRaceId: null,
+    });
+    render(<Perfil />);
+  };
+
+  it('sem provas, as cinco conquistas mostram-se bloqueadas e o resumo diz porquê', () => {
+    montar();
+    expect(screen.getByTestId('palmares-resumo')).toHaveTextContent('Ainda sem provas concluídas');
+    expect(screen.getByTestId('palmares-card')).toHaveTextContent('Sequência');
+  });
+
+  it('com uma prova, o resumo conta as conquistas e diz desde quando', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+    // Prova concluída + objetivo batido (6822 <= 6900).
+    expect(screen.getByTestId('palmares-resumo')).toHaveTextContent('2 de 5 conquistas · desde maio de 2026');
+  });
+
+  it('"Ver tudo" abre a persiana com as conquistas e as provas concluídas', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+
+    const verTudo = screen.getByTestId('palmares-ver-tudo');
+    expect(verTudo).toHaveStyle({ minHeight: '44px' });
+    fireEvent.click(verTudo);
+
+    const persiana = screen.getByTestId('palmares-sheet');
+    expect(persiana).toHaveTextContent('Palmarés');
+    expect(persiana).toHaveTextContent('Objetivo batido');
+    expect(persiana).toHaveTextContent('Precisa de duas provas na mesma distância');
+    expect(persiana).toHaveTextContent('Provas concluídas');
+    expect(screen.getByTestId('palmares-prova-race-1')).toHaveTextContent('1:53:42');
+  });
+
+  it('tocar numa prova leva ao hub dela', () => {
+    montar({ raceEvents: [PROVA], runs: [CORRIDA] });
+    fireEvent.click(screen.getByTestId('palmares-ver-tudo'));
+    fireEvent.click(screen.getByTestId('palmares-prova-race-1'));
+
+    expect(useAppStore.getState().editingRaceId).toBe('race-1');
   });
 });

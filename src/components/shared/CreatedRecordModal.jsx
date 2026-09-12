@@ -161,22 +161,22 @@ export default function CreatedRecordModal() {
           <Button
             onClick={handleGoToChat}
             variant="module"
-            moduleColor="linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))"
-            className="w-full text-white shadow-lg shadow-[var(--mod-coach-to)]/20 border-transparent font-semibold"
+            moduleColor="var(--grad-coach-legible)"
+            className="w-full shadow-lg shadow-[var(--mod-coach-to)]/20 border-transparent font-semibold"
           >
             <div className="flex items-center justify-center gap-2 w-full">
               <MessageSquare size={18} />
-              <span>Falar com a Coach</span>
+              <span>Falar com a Carol</span>
             </div>
           </Button>
         )}
 
-        {/* Fechar, Atualizar Registo e Eliminar juntos no mesmo frame — o
+        {/* Fechar, Atualizar registo e Eliminar juntos no mesmo frame — o
             "Eliminar avaliação" do cartão acima ficava isolado lá em cima
             (e inerte, por causa do pointer-events-none do preview) enquanto
             estes dois viviam num rodapé à parte. "Fechar" é agora o botão
             com mais destaque dos três (é a ação normal de sair deste ecrã
-            de sucesso); "Atualizar Registo" e "Eliminar" ficam secundários. */}
+            de sucesso); "Atualizar registo" e "Eliminar" ficam secundários. */}
         <div className="space-y-3 pt-2">
           <Button
             onClick={handleClose}
@@ -193,7 +193,7 @@ export default function CreatedRecordModal() {
           >
             <div className="flex items-center justify-center gap-2 w-full">
               <Edit2 size={18} />
-              <span>Atualizar Registo</span>
+              <span>Atualizar registo</span>
             </div>
           </Button>
 

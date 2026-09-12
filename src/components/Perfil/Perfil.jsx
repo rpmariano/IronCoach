@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints, Plus } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -11,12 +11,32 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import PalmaresCard from './PalmaresCard';
+import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
+import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { useCarouselHaptics } from '../../utils/haptics';
-import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
+import SubNav from '../shared/SubNav';
+import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
 
 const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
+
+/* Os quatro separadores do Perfil no SubNav (ponto 4 do handoff). O tom é o do
+   assunto de cada um — Pessoal ginásio, Metas a prova, Equipamento corrida,
+   Coach a Carol — como o mock "Perfil" e os três "Submenus do Perfil" mostram,
+   em vez de o âmbar da prova em todos. "Equipa." é a abreviatura do mock:
+   quatro rótulos por extenso em 348px cairiam abaixo dos 11px (auditoria,
+   achado 1). */
+const TABS = [
+  { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
+  { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
+  // srLabel: "Equipa." lê-se "equipa" num leitor de ecrã, que é outra coisa.
+  // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
+  // Geral"); faltava aqui.
+  { key: 'equipamento', label: 'Equipa.', srLabel: 'Equipamento', icon: <Footprints size={14} />, tone: 'run' },
+  { key: 'coach', label: 'Coach', icon: <Bot size={14} />, tone: 'coach' },
+];
 
 // Apenas os 4 objetivos corporais com intervenção direta via treino + nutrição.
 // Os restantes (IMC, BMR, água corporal, etc.) são métricas derivadas — foram
@@ -52,8 +72,8 @@ const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 function CoachBadge() {
   return (
     <span title="Meta definida pelo Coach"
-      className="px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-white"
-      style={{ background: 'linear-gradient(135deg, var(--mod-coach-from), var(--mod-coach-to))' }}>
+      className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-[var(--coach-ink)]"
+      style={{ background: 'var(--grad-coach-legible)' }}>
       Coach
     </span>
   );
@@ -67,7 +87,7 @@ const DEFAULT_REMINDER_END_HOUR = 22;
 const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setEditingRaceId } = useAppStore();
   const [tab, setTab] = useState('perfil');
 
   // Local state form (draft)
@@ -121,10 +141,13 @@ export default function Perfil() {
   );
   scrollToRef.current = scrollTo;
 
-  // Indicador do subnav em "pílula elástica" — ver useElasticPillIndicator
-  // (mesma mecânica do Dashboard.jsx, que usa o mesmo hook partilhado).
-  const subnavRef = useRef(null);
-  const { indicatorStyle, setItemRef } = useElasticPillIndicator(subnavRef, tabIndex);
+  // "O conteúdo segue a pílula": o separador que fica ativo entra do lado de
+  // onde veio, 14px e uma pitada de opacidade, em 280ms.
+  const setPageRef = useTabEnter(tabIndex);
+
+  // O armário de sapatilhas grava-se a si próprio; a barra do separador
+  // Equipamento só lhe pede para abrir o formulário de um par novo.
+  const shoeCabinetRef = useRef(null);
 
   // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
   // sincroniza o scroll nesses casos.
@@ -133,31 +156,15 @@ export default function Perfil() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabIndex]);
 
-  // O carrossel (tab-swipe-carousel, align-items:flex-start) fica sempre com
-  // a altura do separador mais alto dos 4 — "Guardar alterações" ficava
-  // sempre a essa distância fixa do topo, mesmo num separador bem mais curto
-  // (ex.: "Metas"), com um vão enorme e vazio até ao botão. Aqui só se
-  // ajusta a ALTURA do próprio carrossel à do separador atualmente visível —
-  // não mexe na classe partilhada tab-swipe-carousel (o Dashboard usa a
-  // mesma), só num estilo inline específico deste componente.
+  // A ação de cada separador vive agora na ActionBar fixa (ponto 2 do
+  // handoff). Antes ficava no fim do carrossel e, como o carrossel
+  // (tab-swipe-carousel, align-items:flex-start) tem sempre a altura do
+  // separador mais alto dos 4, "Guardar alterações" aparecia à mesma
+  // distância fixa do topo mesmo num separador curto — com um vão enorme
+  // até lá, e muitas vezes abaixo da dobra. Media-se então a altura do
+  // separador visível para encolher o carrossel; com o botão fora do
+  // scroll, essa medição deixou de ter razão de ser.
   const pageRefs = useRef([]);
-  const [carouselHeight, setCarouselHeight] = useState(null);
-  useEffect(() => {
-    const el = pageRefs.current[tabIndex];
-    if (!el) return;
-    setCarouselHeight(el.offsetHeight);
-    // jsdom (testes) não implementa ResizeObserver — sem ele só perde-se o
-    // acompanhamento de alterações de altura dentro do separador (ex.: abrir
-    // os campos extra dos lembretes de água), a medição inicial acima já
-    // corre sempre.
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) setCarouselHeight(entry.contentRect.height);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tabIndex]);
 
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
      por gravar. Depender da identidade do objeto `profile` não servia: o
@@ -386,59 +393,41 @@ export default function Perfil() {
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       isLoading={isSaving}
-      // text-amber-950 sobrepõe-se ao text-white do variant="module" (ver
-      // Button.jsx, className é o último a entrar no cn()/twMerge) — dourado
-      // (#fbbf24) é claro demais para branco em cima dar contraste WCAG AA,
-      // mesmo raciocínio já registado no botão "Guardar" de RunAgenda.jsx.
-      className="w-full mt-4 text-xs py-3 text-amber-950"
+      // A tinta vem do próprio Button (resolveModuleInk, a partir do
+      // moduleColor) — dourado (#fbbf24) é claro demais para branco em cima.
+      className="w-full text-xs"
     >
       Guardar alterações
     </Button>
   );
 
+  // Equipamento não escreve no rascunho partilhado (o armário grava-se a si
+  // próprio, par a par) — a ação da barra nesse separador é a do mock:
+  // abrir o formulário de um par novo.
+  const addShoesButton = (
+    <Button
+      variant="module"
+      moduleColor="var(--mod-corrida)"
+      onClick={() => shoeCabinetRef.current?.openNew()}
+      className="w-full text-xs"
+    >
+      <Plus size={14} /> Adicionar sapatilhas
+    </Button>
+  );
+
   return (
-    <div className="space-y-4 fade-in pb-8">
-      {/* Subnav — mesmo vidro do separador de módulo do Dashboard */}
-      <div ref={subnavRef} className="relative flex gap-2 p-2 bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl mb-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
-        {/* Indicador "pílula elástica" — tint translúcido em vez de
-            preenchimento sólido, a condizer com o resto da app (ver
-            useElasticPillIndicator e Dashboard.jsx, que usa o mesmo hook).
-            rounded-lg (não -xl) e p-2 (não -1.5): com o contentor a
-            rounded-2xl (16px), uma pílula com raio maior do que sobra depois
-            do preenchimento ficava com o canto cortado pelo overflow-hidden,
-            mais visível na pílula da direita. */}
-        {indicatorStyle && (
-          <div
-            aria-hidden="true"
-            className="absolute top-1 bottom-1 rounded-lg border"
-            style={{
-              left: indicatorStyle.left,
-              width: indicatorStyle.width,
-              transition: indicatorStyle.transition,
-              background: 'color-mix(in srgb, var(--mod-prova) 32%, transparent)',
-              borderColor: 'color-mix(in srgb, var(--mod-prova) 55%, transparent)',
-            }}
-          />
-        )}
-        {[
-          { key: 'perfil', label: 'Pessoal', icon: User },
-          { key: 'metas', label: 'Metas', icon: Target },
-          { key: 'equipamento', label: 'Equipa.', icon: Footprints },
-          { key: 'coach', label: 'Coach', icon: Bot },
-        ].map((t, i) => (
-          <button
-            key={t.key}
-            ref={setItemRef(i)}
-            onClick={() => requestTabChange(t.key)}
-            style={tab === t.key ? { color: 'var(--mod-prova)' } : undefined}
-            className={`relative z-10 flex-1 flex items-center justify-center gap-1 py-2 text-[11px] font-semibold rounded-lg transition-colors duration-300 ${
-              tab === t.key ? '' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-            }`}
-          >
-            <t.icon size={13} /> {t.label}
-          </button>
-        ))}
-      </div>
+    // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
+    // O Perfil é dourado como a prova — a mesma cor do indicador dos
+    // separadores e do "Guardar alterações".
+    <div data-screen="perfil" className="space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+      {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
+          separador ativo, ícone + rótulo nos quatro. */}
+      <SubNav
+        items={TABS}
+        activeIndex={tabIndex}
+        onChange={(i, item) => requestTabChange(item.key)}
+        className="mb-4"
+      />
 
       {leaveModal}
 
@@ -450,30 +439,35 @@ export default function Perfil() {
         onScroll={handleScroll}
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
-        style={carouselHeight != null ? { height: carouselHeight, overflowY: 'hidden', transition: 'height 0.2s ease' } : undefined}
       >
-      <div ref={(el) => { pageRefs.current[0] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[0] = el; setPageRef(0)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Pessoal</h2>
+          {/* O Palmarés à cabeça do "quem sou" (specs/gamificacao-provas.md
+              §5): o que já aconteceu vem antes do nome e da idade. */}
+          <PalmaresCard onOpenRace={setEditingRaceId} />
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
-              <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Pessoal</h2>
+              <User size={16} className="text-[var(--gym)]" />
+              <h3 className="text-sm font-semibold">Pessoal</h3>
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Nome</label>
+                <label htmlFor="perfil-nome" className="text-[11px] text-[var(--text-3)] block mb-1">Nome</label>
                 <input
+                  id="perfil-nome"
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Género</label>
+                <label htmlFor="perfil-genero" className="text-[11px] text-[var(--text-3)] block mb-1">Género</label>
                 <select
+                  id="perfil-genero"
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -481,34 +475,36 @@ export default function Perfil() {
                 </select>
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">
+                <label htmlFor="perfil-nascimento" className="text-[11px] text-[var(--text-3)] block mb-1">
                   Data de nascimento
                   {ageFromBirthDate(draft.birth_date) != null && (
-                    <span className="text-slate-400"> · {ageFromBirthDate(draft.birth_date)} anos</span>
+                    <span className="text-[var(--text-3)]"> · {ageFromBirthDate(draft.birth_date)} anos</span>
                   )}
                 </label>
                 <input
+                  id="perfil-nascimento"
                   type="date"
                   max={todayISO()}
                   value={draft.birth_date || ''}
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
               </div>
-              <ExperienceLevelHelp label="Nível como corredor" variant="dark">
+              <ExperienceLevelHelp label="Nível como corredor" variant="dark" fieldId="perfil-nivel">
                 <select
+                  id="perfil-nivel"
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
                 </select>
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Calibra a linguagem e os limiares de treino do Coach.'}
@@ -524,18 +520,19 @@ export default function Perfil() {
               <button
                 type="button"
                 onClick={() => requestTabChange('coach')}
-                className="w-full flex items-center justify-between gap-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2.5 text-left hover:bg-slate-50/70 transition"
+                className="w-full min-h-[44px] flex items-center justify-between gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-left hover:bg-[var(--surface-glass)] transition"
               >
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-[var(--text-3)]">
                   Restrições alimentares e alergias agora vivem na aba{' '}
                   <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Coach</span>
                   , junto da Memória do Coach.
                 </span>
-                <ChevronRight size={14} className="text-slate-500 shrink-0" />
+                <ChevronRight size={14} className="text-[var(--text-3)] shrink-0" />
               </button>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">FC em repouso (bpm)</label>
+                <label htmlFor="perfil-fc-repouso" className="text-[11px] text-[var(--text-3)] block mb-1">FC em repouso (bpm)</label>
                 <input
+                  id="perfil-fc-repouso"
                   type="number"
                   min="25"
                   max="120"
@@ -543,9 +540,9 @@ export default function Perfil() {
                   placeholder="Ex.: 52"
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
                 />
-                <p className="text-[10px] text-slate-600 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
                   frequência cardíaca mais precisas e permite ao Coach detetar
                   fadiga acumulada — uma subida sustentada face ao teu normal é
@@ -556,35 +553,36 @@ export default function Perfil() {
           </div>
           
           <div className="module-card-contrast">
-            <p className="text-[11px] text-slate-500 mb-3">Sessão iniciada como <b className="text-slate-300">{session?.user?.email}</b></p>
-            <button onClick={handleSignOut} className="w-full border border-red-500/40 text-red-400 text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-red-500/10 transition">
+            <p className="text-[11px] text-[var(--text-3)] mb-3">Sessão iniciada como <b className="text-[var(--text-3)]">{session?.user?.email}</b></p>
+            <button onClick={handleSignOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition">
               <LogOut size={14} /> Terminar sessão
             </button>
           </div>
       </div>
 
-      <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[1] = el; setPageRef(1)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Metas</h2>
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
-              <User size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Avaliação Corporal</h2>
+              <User size={16} className="text-[var(--gym)]" />
+              <h3 className="text-sm font-semibold">Avaliação Corporal</h3>
             </div>
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Altura (cm)</label>
-                <input type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
+                <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 block mb-1">Peso atual (kg)</label>
-                <input type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60" />
+                <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
+                <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
               </div>
             </div>
             
             <div className="flex items-center gap-2 mb-3 mt-1">
-              <Target size={14} className="text-[var(--accent)]" />
-              <h3 className="text-xs font-semibold text-slate-300">Objetivos corporais</h3>
+              <Target size={14} className="text-[var(--gym)]" />
+              <h4 className="text-xs font-semibold text-[var(--text-3)]">Objetivos corporais</h4>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BODY_METRICS.map(m => {
@@ -592,16 +590,16 @@ export default function Perfil() {
                 const isCoach = flagKey && draft[flagKey];
                 return (
                   <div key={m.key}>
-                    <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                    <label htmlFor={`perfil-goal-${m.key}`} className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                       {m.label}{m.unit ? ` (${m.unit})` : ''}
                       {isCoach && <CoachBadge />}
                     </label>
-                    <input type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
+                    <input id={`perfil-goal-${m.key}`} type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
                       onChange={e => {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
                       }}
-                      className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                      className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                       style={isCoach ? coachFieldStyle : plainFieldStyle} />
                   </div>
                 );
@@ -611,58 +609,58 @@ export default function Perfil() {
 
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-4">
-              <Target size={16} className="text-[var(--accent)]" />
-              <h2 className="text-sm font-semibold">Nutrição & Água</h2>
+              <Target size={16} className="text-[var(--gym)]" />
+              <h3 className="text-sm font-semibold">Nutrição &amp; Água</h3>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-calorias" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Calorias (kcal/dia)
                   {draft.calorie_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.calorie_goal || ''}
+                <input id="perfil-calorias" type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-proteina" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Proteína (g/dia)
                   {draft.protein_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.protein_goal || ''}
+                <input id="perfil-proteina" type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-hidratos" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Hidratos (g/dia)
                   {draft.carbs_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.carbs_goal || ''}
+                <input id="perfil-hidratos" type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-gordura" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Gordura (g/dia)
                   {draft.fat_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" value={draft.fat_goal || ''}
+                <input id="perfil-gordura" type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
-                <label className="text-[11px] text-slate-500 flex items-center gap-1.5 mb-1">
+                <label htmlFor="perfil-agua" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Meta água (ml/dia)
                   {draft.water_goal_set_by_coach && <CoachBadge />}
                 </label>
-                <input type="number" step="50" value={draft.water_goal_ml || ''}
+                <input id="perfil-agua" type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-slate-50/50 rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
             </div>
@@ -670,12 +668,12 @@ export default function Perfil() {
             {/* Toggle global de autorização — cobre todos os objetivos (nutrição,
                 água, corpo). O Coach propõe sempre em texto primeiro e pede
                 confirmação; só grava quando o atleta diz que sim. */}
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5">
                   <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Permite que o Coach grave metas diretamente no teu perfil (nutrição, água e objetivos corporais)
                   quando concordares com a sugestão dele no chat. Os campos alterados pelo Coach ficam marcados com
                   "Coach"; editá-los à mão devolve o controlo a ti.
@@ -684,20 +682,20 @@ export default function Perfil() {
               <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
                 aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
                 aria-pressed={!!draft.coach_can_set_nutrition_goals}
-                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
-                  draft.coach_can_set_nutrition_goals ? '' : 'bg-slate-200 dark:bg-neutral-800'
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+                  draft.coach_can_set_nutrition_goals ? '' : 'bg-[var(--surface-strong)]'
                 }`}
                 style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.coach_can_set_nutrition_goals ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: '#ffffff' }}></span>
+                }`} style={{ backgroundColor: draft.coach_can_set_nutrition_goals ? 'var(--coach-ink)' : 'var(--text-1)' }}></span>
               </button>
             </div>
 
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-200 dark:border-neutral-800">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
               <div className="pr-4">
-                <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-blue-400" /> Lembretes de água</p>
-                <p className="text-[11px] text-slate-500 mt-1">
+                <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--run)]" /> Lembretes de água</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
                 </p>
               </div>
@@ -705,21 +703,21 @@ export default function Perfil() {
                 aria-label={draft.water_reminder_enabled ? 'Desativar lembretes de água' : 'Ativar lembretes de água'}
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
-                className={`w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
-                  draft.water_reminder_enabled ? 'bg-[var(--accent)]' : 'bg-slate-200 dark:bg-neutral-800'
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
+                  draft.water_reminder_enabled ? 'bg-[var(--mod-prova)]' : 'bg-[var(--surface-strong)]'
                 }`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.water_reminder_enabled ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: '#ffffff' }}></span>
+                }`} style={{ backgroundColor: draft.water_reminder_enabled ? 'var(--race-ink)' : 'var(--text-1)' }}></span>
               </button>
             </div>
 
             {draft.water_reminder_enabled && (
               <div className="mt-3 space-y-3 fade-in">
                 <div>
-                  <label className="text-[11px] text-slate-500 block mb-1">Frequência (minutos)</label>
-                  <select value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                  <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-[var(--text-3)] block mb-1">Frequência (minutos)</label>
+                  <select id="perfil-lembrete-intervalo" value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -727,21 +725,21 @@ export default function Perfil() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Início</label>
-                    <select value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                    <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">Início</label>
+                    <select id="perfil-lembrete-inicio" value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-500 block mb-1">Fim</label>
-                    <select value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/60">
+                    <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Fim</label>
+                    <select id="perfil-lembrete-fim" value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
+                <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                   {reminderStartHour === reminderEndHour
                     ? 'Início igual ao fim: lembretes durante as 24 horas.'
                     : reminderStartHour > reminderEndHour
@@ -757,11 +755,13 @@ export default function Perfil() {
           no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
-      <div ref={(el) => { pageRefs.current[2] = el; }} className="tab-swipe-page space-y-4">
-          <ShoeCabinet />
+      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Equipamento</h2>
+          <ShoeCabinet ref={shoeCabinetRef} />
       </div>
 
-      <div ref={(el) => { pageRefs.current[3] = el; }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Coach</h2>
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
@@ -770,6 +770,35 @@ export default function Perfil() {
               caminhos seria redundante e o botão daqui nunca funcionou.
               A própria Edge Function suggest-goals foi removida a
               2026-08-23, já sem nada que a chamasse. */}
+          {/* "Rever o arranque com a Carol" — os seis passos do onboarding
+              outra vez, preenchidos a partir do perfil e da Memória do Coach
+              (ponto 8 do handoff; texto do mock "Perfil · Coach"). Abre o
+              mesmo componente de ecrã inteiro do primeiro acesso; ao terminar
+              volta para aqui. */}
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
+            style={{
+              minHeight: 'var(--tap)',
+              padding: 15,
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--tint-coach-bg)',
+              border: '1px solid var(--tint-coach-bd)',
+            }}
+          >
+            <CoachAvatar size={36} radius={11} />
+            <span className="flex-1 min-w-0">
+              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--coach-soft)' }}>
+                Rever o arranque com a Carol
+              </span>
+              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+                Os seis passos outra vez, com as respostas que já deste
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+
           <CoachMemoryCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.
@@ -781,9 +810,9 @@ export default function Perfil() {
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
               <Utensils size={16} className="text-[var(--mod-coach-to)]" />
-              <h2 className="text-sm font-semibold">Restrições Alimentares</h2>
+              <h3 className="text-sm font-semibold">Restrições Alimentares</h3>
             </div>
-            <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+            <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
               Regra absoluta que o Coach nunca contraria — ao contrário da Memória, aqui é a
               Carol que calcula por trás as metas de nutrientes certas para cada restrição.
             </p>
@@ -802,7 +831,7 @@ export default function Perfil() {
                     className={`tap-h-44 px-3 rounded-xl text-xs font-semibold border transition active:scale-95 ${
                       ativa
                         ? 'bg-[var(--mod-coach-to)]/20 border-[var(--mod-coach-to)]/60 text-[var(--mod-coach-to)]'
-                        : 'bg-slate-50/50 border-slate-200 text-slate-400'
+                        : 'bg-[var(--surface-soft)] border-[var(--border-glass)] text-[var(--text-3)]'
                     }`}
                   >
                     {r.label}
@@ -810,19 +839,20 @@ export default function Perfil() {
                 );
               })}
             </div>
-            <p className="text-[10px] text-slate-600 mt-1">
+            <p className="text-[11px] text-[var(--text-3)] mt-1">
               Podes escolher mais que uma. Vegetariano e vegano excluem-se —
               escolher um desliga o outro. Sem nada selecionado, o Coach
               assume que comes de tudo.
             </p>
             <input
               type="text"
+              aria-label="Alergias ou alimentos a evitar"
               placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
               value={draft.dietary_notes || ''}
               onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
-              className="w-full mt-2 bg-slate-50/50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
+              className="w-full mt-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
             />
-            <p className="text-[10px] text-slate-600 mt-1">
+            <p className="text-[11px] text-[var(--text-3)] mt-1">
               O Coach trata isto como regra absoluta e nunca sugere nada que
               a contrarie.
             </p>
@@ -838,11 +868,15 @@ export default function Perfil() {
       </div>
       </div>
 
-      {/* Um só botão, fora do carrossel — Pessoal/Metas/Coach partilham o
-          mesmo rascunho, por isso "Guardar alterações" já grava tudo o
-          que estiver por gravar em qualquer um deles, não só no visível.
-          O Equipamento é a exceção: grava-se a si próprio, par a par. */}
-      {saveButton}
+      {/* Barra de ação fixa (ponto 2 do handoff) — um só botão, fora do
+          scroll. Pessoal/Metas/Coach partilham o mesmo rascunho, por isso
+          "Guardar alterações" grava tudo o que estiver por gravar em
+          qualquer um deles, não só no separador visível. O Equipamento é a
+          exceção: grava-se a si próprio, par a par, e a barra passa a ser
+          "Adicionar sapatilhas" (mock "Perfil · Equipamento"). */}
+      <ActionBar>
+        {tab === 'equipamento' ? addShoesButton : saveButton}
+      </ActionBar>
     </div>
   );
 }

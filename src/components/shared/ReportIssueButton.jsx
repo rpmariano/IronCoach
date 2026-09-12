@@ -161,7 +161,7 @@ export default function ReportIssueButton() {
         onClick={handleOpen}
         aria-label="Reportar um problema"
         title="Reportar um problema"
-        className="tap-44 fixed bottom-24 left-3 z-30 w-9 h-9 rounded-full flex items-center justify-center bg-white/10 backdrop-blur-xl border border-white/10 text-slate-400 hover:text-slate-100 hover:bg-white/20 active:scale-95 transition shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
+        className="tap-44 fixed bottom-24 left-3 z-30 w-9 h-9 rounded-full flex items-center justify-center bg-[var(--surface-strong)] backdrop-blur-xl border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-white/20 active:scale-95 transition shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
       >
         <Bug size={15} />
       </button>
@@ -176,9 +176,9 @@ export default function ReportIssueButton() {
         variant="dialog"
         maxWidth="max-w-lg"
       >
-        <div className="p-6 space-y-4 bg-neutral-900 text-slate-200">
+        <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Título <span className="text-red-400">*</span></label>
+            <label className="text-xs font-semibold text-[var(--text-3)]">Título <span className="text-[var(--danger)]">*</span></label>
             <input
               type="text"
               autoFocus
@@ -186,32 +186,32 @@ export default function ReportIssueButton() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Resume o problema numa frase curta..."
               maxLength={80}
-              className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-slate-200 outline-none"
+              className="w-full min-h-[44px] bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none"
               disabled={submitting}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">O que aconteceu?</label>
+            <label className="text-xs font-semibold text-[var(--text-3)]">O que aconteceu?</label>
             <textarea
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Descreve o problema — o que fizeste e o que esperavas que acontecesse..."
-              className="w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-xs text-slate-200 outline-none resize-none"
+              className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
               disabled={submitting}
             />
           </div>
 
           {/* File Upload Section */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300">
+            <label className="text-xs font-semibold text-[var(--text-3)]">
               Adicionar imagens ou vídeos (opcional)
             </label>
-            <label className="flex flex-col items-center justify-center gap-2 w-full bg-neutral-950 border-2 border-dashed border-neutral-700 rounded-xl py-6 px-3 cursor-pointer hover:border-slate-500 transition">
-              <Upload size={18} className="text-slate-400" />
-              <span className="text-xs text-slate-400">Clica para selecionar ficheiros</span>
-              <span className="text-[10px] text-slate-500">PNG, JPG, GIF, MP4, WebM (máx. 50MB cada)</span>
+            <label className="flex flex-col items-center justify-center gap-2 w-full bg-[var(--bg-app)] border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 px-3 cursor-pointer hover:border-[var(--border-control)] transition">
+              <Upload size={18} className="text-[var(--text-3)]" />
+              <span className="text-xs text-[var(--text-3)]">Clica para selecionar ficheiros</span>
+              <span className="text-[11px] text-[var(--text-3)]">PNG, JPG, GIF, MP4, WebM (máx. 50MB cada)</span>
               <input
                 type="file"
                 multiple
@@ -225,18 +225,19 @@ export default function ReportIssueButton() {
             {/* File Preview */}
             {files.length > 0 && (
               <div className="space-y-2">
-                <div className="text-xs text-slate-400">{files.length} ficheiro(s) selecionado(s)</div>
+                <div className="text-xs text-[var(--text-3)]">{files.length} ficheiro(s) selecionado(s)</div>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
                   {files.map((file, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between bg-neutral-950 border border-neutral-700 rounded-lg p-2.5 text-xs"
+                      className="flex items-center justify-between bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-lg p-2.5 text-xs"
                     >
-                      <span className="truncate text-slate-300">{file.name}</span>
+                      <span className="truncate text-[var(--text-3)]">{file.name}</span>
                       <button
                         onClick={() => handleRemoveFile(index)}
                         disabled={submitting}
-                        className="shrink-0 p-1 text-slate-400 hover:text-red-400 disabled:opacity-50"
+                        aria-label={`Remover ${file.name}`}
+                        className="tap-44 shrink-0 text-[var(--text-3)] hover:text-[var(--danger)] disabled:opacity-50"
                       >
                         <X size={14} />
                       </button>
@@ -248,9 +249,9 @@ export default function ReportIssueButton() {
 
             {/* Upload Progress */}
             {submitting && uploadProgress > 0 && uploadProgress < 100 && (
-              <div className="w-full bg-neutral-950 rounded-lg overflow-hidden border border-neutral-700">
+              <div className="w-full bg-[var(--bg-app)] rounded-lg overflow-hidden border border-[var(--border-glass-strong)]">
                 <div
-                  className="h-1.5 bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
+                  className="h-1.5 bg-[var(--run)] transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -267,9 +268,9 @@ export default function ReportIssueButton() {
               onClick={handleSubmit}
               disabled={submitting}
               className="flex-1"
-              icon={submitting ? <div className="w-4 h-4 border-2 border-slate-700 border-t-white rounded-full animate-spin" /> : <Send size={15} />}
+              icon={submitting ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <Send size={15} />}
             >
-              {submitting ? 'A enviar...' : 'Enviar report'}
+              {submitting ? 'A enviar…' : 'Enviar report'}
             </Button>
           </div>
         </div>

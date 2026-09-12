@@ -1,16 +1,22 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
 import { useAppStore } from '../../store';
-import { TrendingUp, BarChart3, Mountain, Activity, Target, Zap, Timer, HeartPulse } from 'lucide-react';
+import { TrendingUp, Mountain, Activity, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
-import { format, subDays, startOfWeek, startOfMonth, parseISO, eachDayOfInterval } from 'date-fns';
+import { format, subDays, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
+import RunIcon from '../shared/RunIcon';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import ACWRChart from '../BI/ACWRChart';
+import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
+import ChartFrame from '../BI/ChartFrame';
+import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
+import VerdictLine from '../BI/VerdictLine';
+import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
 import { computeBestPace } from '@formulas/bestPace.ts';
@@ -42,7 +48,7 @@ function getBestPaceData(allRuns, targetKm) {
 }
 
 export default function RunDashboard() {
-  const { runs, profile, raceEvents = [] } = useAppStore();
+  const { runs, profile, raceEvents = [], setOpenCreationMode } = useAppStore();
   const [activeRange, setActiveRange] = useState('mes');
 
   // BI Data processing
@@ -140,14 +146,16 @@ export default function RunDashboard() {
         {
           label: 'Distância (km)',
           data,
+          // Ponto 6, paleta das séries: era azul genérico (59,130,246).
+          // Passa ao ciano da corrida (--run #2ee0ff), em tinta.
           backgroundColor: (context) => {
             const chart = context.chart;
             const { ctx, chartArea } = chart;
-            if (!chartArea) return 'rgba(59, 130, 246, 0.6)';
-            
+            if (!chartArea) return 'rgba(46, 224, 255, 0.6)';
+
             const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-            gradient.addColorStop(0, 'rgba(59, 130, 246, 0.2)');
-            gradient.addColorStop(1, 'rgba(59, 130, 246, 0.8)');
+            gradient.addColorStop(0, 'rgba(46, 224, 255, 0.25)');
+            gradient.addColorStop(1, 'rgba(46, 224, 255, 0.9)');
             return gradient;
           },
           borderRadius: 6,
@@ -160,13 +168,19 @@ export default function RunDashboard() {
     // dependências, o que rebentava o componente ao montar (ReferenceError).
   }, [periodRuns, activeRange]);
 
+  // Ponto 6: os ticks deixam de escrever dentro da tela. O total do período
+  // é o número grande do ChartFrame e os extremos do eixo vão para os
+  // cantos, em HTML.
+  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars. */
+  const introBars = useIntroAnimation('bi-bars');
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
+    animation: barGrowAnimation(introBars),
     scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: 'rgba(255,255,255,0.5)' } },
-      x: { grid: { display: false }, ticks: { color: 'rgba(255,255,255,0.5)' } }
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
     }
   };
 
@@ -179,26 +193,41 @@ export default function RunDashboard() {
   // gravados — ver comentário em runWatchMetrics.ts.
   const watchMetrics = useMemo(() => computeRunWatchMetrics(periodRuns), [periodRuns]);
 
+  /* Ponto 6 do redesenho: a frase de veredicto. O dashboard tem de dizer se
+     está bem ou mal antes de mostrar um único número (auditoria, achado 6).
+     As regras vivem em utils/dashboardVerdicts.js — aqui só se juntam os
+     dados que o biEngine já calculou acima. */
+  const verdict = useMemo(() => runVerdict({
+    acwr: acwrData,
+    weeklyVolume: acwrWeeklyData,
+    vdotTrend,
+    distribution,
+    runCount: periodRuns.length,
+  }), [acwrData, acwrWeeklyData, vdotTrend, distribution, periodRuns.length]);
+
   const renderBucket = (label, b) => {
     if (!b) {
       return (
-        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
-          <p className="text-xs text-slate-400 font-medium">{label}</p>
-          <p className="text-xs text-slate-500">Sem dados</p>
+        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-xs text-[var(--text-3)]">Sem dados</p>
         </div>
       );
     }
     return (
-      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-white/10 last:border-0">
+      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
         <div>
-          <p className="text-xs text-slate-300 font-medium">{label}</p>
-          <p className="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5 flex items-center gap-1.5">
             {formatDatePT(b.date)}
             {b.source === 'run' && b.runCount > 0 && (
               <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
             )}
             {b.source === 'split' && (
-              <span className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 text-[9px] font-bold uppercase tracking-wide">split</span>
+              <span
+                className="px-1 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide"
+                style={{ background: 'var(--tint-run-bg)', color: 'var(--run)' }}
+              >split</span>
             )}
           </p>
         </div>
@@ -207,15 +236,43 @@ export default function RunDashboard() {
     );
   };
 
+  /* Ponto 7 do redesenho: sem corridas no período, o dashboard não mostra
+     gráficos a zero (uma barra a zero lê-se como "correste zero", não como
+     "não sei") nem os cartões partidos que o ponto 6 assinalou — mostra o
+     cartão de convite do mock "Dashboard · sem dados" e a moldura do
+     gráfico vazia. O veredicto e o filtro de período ficam: é pelo filtro
+     que se chega a um período com dados. */
+  const isEmpty = periodRuns.length === 0;
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-4 fade-in">
+        <VerdictLine text={verdict.text} tone={verdict.tone} />
+        <TimeFilterBar activeRange={activeRange} onChange={setActiveRange} module="corrida" />
+        <EmptyModuleState
+          tone="run"
+          icon={<RunIcon className="w-[22px] h-[22px]" />}
+          actionLabel="Registar corrida"
+          onAction={() => setOpenCreationMode('run')}
+        >
+          Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
+        </EmptyModuleState>
+        <EmptyChartFrame label="Distância por dia" unit="km no período" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 fade-in">
+      {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
+      <VerdictLine text={verdict.text} tone={verdict.tone} />
+
       {/* 1. TimeFilterBar */}
       <TimeFilterBar
         activeRange={activeRange}
         onChange={setActiveRange}
+        module="corrida"
       />
-
-
 
       {/* 2. KPICard row (2x2 grid) */}
       <div className="grid grid-cols-2 gap-3">
@@ -265,18 +322,18 @@ export default function RunDashboard() {
       {(distribution.lowIntensityPct > 0 || distribution.highIntensityPct > 0) ? (
         <IntensityDonut distribution={distribution} />
       ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <Activity className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-xs font-medium text-slate-500">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <Activity className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
         </div>
       )}
 
       {scatterData.length > 0 ? (
         <ScatterTrendChart data={scatterData} />
       ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <HeartPulse className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-          <p className="text-xs font-medium text-slate-500">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <HeartPulse className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
+          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
         </div>
       )}
 
@@ -298,26 +355,26 @@ export default function RunDashboard() {
         />
       )}
 
-      {/* 7. Daily Distance Bar Chart */}
-      {periodRuns.length === 0 ? (
-        <div className="min-h-[25vh] flex flex-col items-center justify-center text-center px-6 py-6">
-          <BarChart3 className="w-10 h-10 text-slate-500 mb-3" />
-          <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-            Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <p className="text-[11px] font-semibold text-slate-200 mb-3 uppercase tracking-wider">Distância por dia</p>
-          <div className="h-44">
-            <Bar data={chartData} options={chartOptions} />
-          </div>
-        </div>
+      {/* 7. Daily Distance Bar Chart — o caso "sem corridas no período" já
+          saiu antes (EmptyModuleState), por isso aqui há sempre dados. */}
+      {chartData && (
+        <ChartFrame
+          label="Distância por dia"
+          value={fmtNumber(totalDist, 1)}
+          unit="km no período"
+          valueColor="var(--run)"
+          delta={{ text: `${periodRuns.length} ${periodRuns.length === 1 ? 'corrida' : 'corridas'}`, tone: 'neutral' }}
+          axis={{ min: '0 km', max: `${fmtNumber(Math.max(...chartData.datasets[0].data, 0), 1)} km` }}
+          legend={[{ label: 'Distância diária', color: 'var(--run)' }]}
+          height={176}
+        >
+          <Bar data={chartData} options={chartOptions} />
+        </ChartFrame>
       )}
 
       {/* 8. Recordes: Melhor pace de sempre */}
-      <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <h2 className="text-[11px] font-semibold text-slate-200 mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
+      <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
         <div className="space-y-1">
           {renderBucket('5 km+', b5)}
           {renderBucket('10 km+', b10)}
@@ -327,12 +384,12 @@ export default function RunDashboard() {
 
       {/* 9. Watch Metrics Card (if any data) */}
       {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
-        <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-semibold text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
-              <Mountain className="w-3.5 h-3.5 text-slate-400" /> Desnível, calorias e cadência
+            <h2 className="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 uppercase tracking-wider">
+              <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" /> Desnível, calorias e cadência
             </h2>
-            <p className="text-[10px] text-slate-400 capitalize">
+            <p className="text-[11px] text-[var(--text-3)] capitalize">
               {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
             </p>
           </div>
@@ -341,19 +398,19 @@ export default function RunDashboard() {
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalElevation > 0 ? Math.round(watchMetrics.totalElevation) : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Desnível (m)</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Desnível (m)</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.totalCalories > 0 ? Math.round(watchMetrics.totalCalories) : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Calorias</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Calorias</p>
             </div>
             <div>
               <p className="text-base font-extrabold text-white leading-none">
                 {watchMetrics.avgCadence !== null ? watchMetrics.avgCadence : '-'}
               </p>
-              <p className="text-[10px] text-slate-400 mt-1">Cadência (spm)</p>
+              <p className="text-[11px] text-[var(--text-3)] mt-1">Cadência (spm)</p>
             </div>
           </div>
         </div>

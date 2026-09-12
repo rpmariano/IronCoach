@@ -6,7 +6,7 @@ import MealRegistration from './MealRegistration';
 
 // analyze-meal é a única coisa que estes testes exercitam de facto —
 // "Adicionar alimento" no manual é puramente local (sem chamadas ao
-// servidor), só "Analisar Refeição" toca no Gemini, seja por foto ou manual.
+// servidor), só "Analisar refeição" toca no Gemini, seja por foto ou manual.
 // Editar passa pelo Gemini quando os dados analíticos mudam (alimentos ou
 // observações); mudar só a data/tipo é update direto de meals.
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateMeal: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn() }));
@@ -40,10 +40,10 @@ const selectPhoto = async () => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'refeicao.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
-  await screen.findByAltText('Foto 1');
+  await screen.findByAltText('Foto da refeição 1');
 };
 
-describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () => {
+describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -59,7 +59,7 @@ describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () 
     fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Big Mac' } });
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -77,7 +77,7 @@ describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () 
     render(<MealRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().meals).toEqual([{ ...newMeal, meal_items: items }]);
@@ -88,7 +88,7 @@ describe('MealRegistration — Analisar Refeição por foto (analyze-meal)', () 
     render(<MealRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -117,7 +117,7 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
 
     expect(screen.queryByText(/Podes juntar várias fotos/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Analisar Refeição/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeInTheDocument();
   });
 });
 
@@ -160,7 +160,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     expect(screen.getByText('Porção estimada pelo Coach')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -182,7 +182,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('ao "Analisar Refeição", envia todos os alimentos numa só chamada em modo manual', async () => {
+  it('ao "Analisar refeição", envia todos os alimentos numa só chamada em modo manual', async () => {
     const finalMeal = { id: 'meal-2', coach_notes: 'Boa fonte de proteína.', meal_items: [{ id: 'item-1' }, { id: 'item-2' }] };
     mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
     render(<MealRegistration onClose={onClose} />);
@@ -191,7 +191,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     addItem('Ovos', 100);
     addItem('Aveia', 40);
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -213,7 +213,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     goManual();
     addItem('Ovos', 100);
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
 
     await screen.findByText('Falha a analisar a refeição.');
     expect(onClose).not.toHaveBeenCalled();
@@ -224,7 +224,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     render(<MealRegistration onClose={onClose} />);
     goManual();
 
-    expect(screen.getByRole('button', { name: /Analisar Refeição/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeDisabled();
   });
 });
 
@@ -268,14 +268,14 @@ describe('MealRegistration — editar refeição existente', () => {
     // chama o Coach, e é ele que estima os valores nutricionais do novo item.
     expect(screen.getByRole('button', { name: /Adicionar alimento/i })).toBeInTheDocument();
     // Sem nada alterado ainda, guardar não precisa do Coach.
-    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
 
   it('mudar só o tipo de refeição faz update direto, sem chamar o Gemini', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
 
     await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
     const [mealPayload, mealId] = mocks.updateMeal.mock.calls[0];
@@ -289,7 +289,7 @@ describe('MealRegistration — editar refeição existente', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -312,7 +312,7 @@ describe('MealRegistration — editar refeição existente', () => {
     fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), {
       target: { value: 'hambúrguer do McDonald\'s, não caseiro' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -325,7 +325,7 @@ describe('MealRegistration — editar refeição existente', () => {
 
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Brócolos' } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -338,7 +338,7 @@ describe('MealRegistration — editar refeição existente', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Remover Frango/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -353,7 +353,7 @@ describe('MealRegistration — editar refeição existente', () => {
     fireEvent.click(screen.getByRole('button', { name: /Remover Arroz/i }));
     fireEvent.click(screen.getByRole('button', { name: /Remover Frango/i }));
 
-    expect(screen.getByRole('button', { name: /Guardar e Reanalisar/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Guardar e reanalisar/ })).toBeDisabled();
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
@@ -362,7 +362,7 @@ describe('MealRegistration — editar refeição existente', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.change(screen.getByDisplayValue('100'), { target: { value: '120' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await screen.findByText('Falha na estimativa.');
     expect(onClose).not.toHaveBeenCalled();
@@ -540,7 +540,7 @@ describe('MealRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Rascunho Antigo');
 
     await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Refeição/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
@@ -550,5 +550,151 @@ describe('MealRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     // Próxima refeição nova: sem vestígios do rascunho gravado.
     render(<MealRegistration onClose={onClose} />);
     expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('');
+  });
+});
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('MealRegistration — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, meals: [] });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    render(<MealRegistration onClose={() => {}} />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar refeição/i }));
+  });
+});
+
+
+/* Ponto 7 do redesenho 6c — os dois estados que faltavam (auditoria, achado
+   10: "nenhum estado de espera ou de erro"). Handoff, "Interactions &
+   Behavior": «Espera: esqueleto + spinner no botão ("A analisar…"). Erro:
+   Warning coral com "Tentar de novo" e alternativa manual; dados do
+   utilizador nunca se perdem.» O texto do erro é o do mock "Refeição ·
+   análise falhou", na voz da Carol (CAROL.md: nunca "Desculpa, não consegui
+   analisar"). */
+describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, meals: [] });
+  });
+
+  // (a) ESPERA
+  it('enquanto analisa: botão "A analisar…" desativado, esqueleto à vista e formulário bloqueado mas visível', async () => {
+    let resolveInvoke;
+    mocks.invoke.mockReturnValue(new Promise((resolve) => { resolveInvoke = resolve; }));
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Bife com arroz' } });
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+
+    const busyButton = await screen.findByRole('button', { name: /A analisar/ });
+    expect(busyButton).toBeDisabled();
+    expect(screen.getByTestId('analysis-skeleton')).toBeInTheDocument();
+
+    // O formulário não desaparece: continua lá, com o que o atleta escreveu.
+    const fields = screen.getByTestId('meal-form-fields');
+    expect(fields).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Bife com arroz');
+    expect(screen.getByAltText('Foto da refeição 1')).toBeInTheDocument();
+
+    await act(async () => {
+      resolveInvoke({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
+    });
+  });
+
+  // (b) ERRO + "Tentar de novo"
+  it('ao falhar: aviso com o texto do mock e "Tentar de novo" que repete a chamada com os mesmos dados', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+
+    await screen.findByTestId('analysis-failure');
+    expect(screen.getByText('Não consegui analisar')).toBeInTheDocument();
+    expect(screen.getByText(/As fotos ficaram guardadas/)).toBeInTheDocument();
+    // Nunca pede desculpa (CAROL.md, "O que evitar").
+    expect(screen.queryByText(/Desculpa/i)).not.toBeInTheDocument();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+
+    // Ponto 2: as duas ações do aviso respeitam o piso de toque de 44px.
+    // (O style do "Tentar de novo" já substituiu o minHeight do
+    // WarningAction uma vez — 24px medidos no browser; ver Warning.jsx.)
+    const retryButton = screen.getByRole('button', { name: /Tentar de novo/ });
+    expect(retryButton).toHaveStyle({ minHeight: 'var(--tap)' });
+    expect(screen.getByRole('button', { name: 'Escrever' })).toHaveStyle({ minHeight: 'var(--tap)' });
+
+    const firstBody = mocks.invoke.mock.calls[0][1].body;
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    // Mesmos dados: a mesma foto, a mesma data, o mesmo tipo de refeição.
+    expect(mocks.invoke.mock.calls[1][1].body).toEqual(firstBody);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  // (b) ERRO + alternativa manual
+  it('a alternativa manual passa ao modo de escrita e preserva foto, data, tipo e observações', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'Big Mac' } });
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+    await screen.findByTestId('analysis-failure');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Escrever' }));
+
+    // Passou ao modo manual…
+    expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
+    // …e nada se perdeu: as fotos ficam guardadas (mock: "2 fotos guardadas"),
+    // as observações e o tipo de refeição também.
+    expect(screen.getByTestId('saved-photos')).toHaveTextContent('1 foto guardada');
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Big Mac');
+    expect(screen.getByRole('button', { name: /^Almoço$/i })).toBeInTheDocument();
+    // O aviso sai assim que há um caminho novo à frente.
+    expect(screen.queryByTestId('analysis-failure')).not.toBeInTheDocument();
+  });
+
+  // (c) O texto escrito sobrevive ao erro
+  it('o que o atleta escreveu sobrevive a uma análise falhada, no ecrã e no rascunho persistido', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Timeout na análise.' });
+
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'com molho extra' } });
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Ovos' } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+    await screen.findByTestId('analysis-failure');
+
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('com molho extra');
+    expect(screen.getByText('Ovos')).toBeInTheDocument();
+    expect(useAppStore.getState().meals).toEqual([]);
+
+    // A mensagem técnica fica — é ela que distingue um timeout de um 401
+    // num relatório de bug.
+    expect(screen.getByTestId('analysis-failure-detail')).toHaveTextContent('Timeout na análise.');
+
+    // E o rascunho persistido cobre o erro: fechar e reabrir não perde nada.
+    await waitFor(() => {
+      const raw = localStorage.getItem('ironcoach:refeicao-rascunho:nova');
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw).notes).toBe('com molho extra');
+    }, { timeout: 2000 });
   });
 });

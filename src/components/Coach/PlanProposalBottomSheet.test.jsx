@@ -36,7 +36,7 @@ describe('PlanProposalBottomSheet', () => {
     render(<PlanProposalBottomSheet plan={mockPlan} items={mockItems} onRespondPlan={() => {}} onClose={() => {}} />);
     expect(screen.getByText('Nova Proposta de Plano')).toBeInTheDocument();
     expect(screen.getByText(/Período: 2026-08-15 a 2026-08-20/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar plano/i })).toBeInTheDocument();
   });
 
   it('anéis de macros de uma sugestão alimentar sem meal_macros usam as metas reais do perfil, não os defaults (regressão: profile não chegava ao PlanDayCard)', () => {
@@ -99,7 +99,7 @@ describe('PlanProposalBottomSheet', () => {
   it('renderiza proposta de objetivos com botão de aceitar objetivos', () => {
     render(<PlanProposalBottomSheet goalProposal={mockGoalProposal} profile={mockProfile} onRespondGoal={() => {}} onClose={() => {}} />);
     expect(screen.getByText('Proposta de Objetivos')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aceitar Objetivos/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar objetivos/i })).toBeInTheDocument();
   });
 
   it('mostra plano e objetivos juntos na mesma persiana quando ambos estão pendentes', () => {
@@ -115,8 +115,8 @@ describe('PlanProposalBottomSheet', () => {
       />
     );
     expect(screen.getByText('Propostas do Coach')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aceitar Objetivos/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Aceitar Plano/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar objetivos/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Aceitar plano/i })).toBeInTheDocument();
   });
 
   it('responder aos objetivos não invoca onRespondPlan nem fecha a persiana inteira', () => {
@@ -134,7 +134,7 @@ describe('PlanProposalBottomSheet', () => {
         onClose={onClose}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: /Aceitar Objetivos/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Aceitar objetivos/i }));
     expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
     expect(onRespondPlan).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();

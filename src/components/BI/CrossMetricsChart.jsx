@@ -2,14 +2,28 @@ import React from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
+import ChartFrame from './ChartFrame';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
+
+/* Ponto 6 do redesenho: a legenda do Chart.js (desenhada na tela) e os
+   `title` dos dois eixos y saem; passam a HTML no ChartFrame, com o valor
+   atual das duas séries como número grande e como delta. As cores das
+   séries continuam a vir de quem chama (CrossAnalysisSection), já nas
+   cores dos módulos. */
 
 export default function CrossMetricsChart({ title, helpText, leftData, rightData, className = '' }) {
+  const leftPoints = leftData?.data || [];
+  const rightPoints = rightData?.data || [];
+  const lastLeft = leftPoints.length ? Number(leftPoints[leftPoints.length - 1].y) : null;
+  const lastRight = rightPoints.length ? Number(rightPoints[rightPoints.length - 1].y) : null;
+  const labels = leftPoints.map(d => d.x);
+
   const data = {
-    labels: leftData.data.map(d => d.x),
+    labels: leftPoints.map((_, i) => i),
     datasets: [
       {
         label: leftData.label,
-        data: leftData.data.map(d => d.y),
+        data: leftPoints.map(d => d.y),
         borderColor: leftData.color,
         backgroundColor: leftData.color,
         yAxisID: 'yLeft',
@@ -19,7 +33,7 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       },
       {
         label: rightData.label,
-        data: rightData.data.map(d => d.y),
+        data: rightPoints.map(d => d.y),
         borderColor: rightData.color,
         backgroundColor: rightData.color,
         yAxisID: 'yRight',
@@ -34,11 +48,7 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: {
-        position: 'top',
-        align: 'end',
-        labels: { boxWidth: 12, usePointStyle: true }
-      },
+      legend: { display: false },
       tooltip: {
         backgroundColor: 'rgba(15, 23, 42, 0.9)',
         titleColor: '#f8fafc',
@@ -49,6 +59,7 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         mode: 'index',
         intersect: false,
         callbacks: {
+          title: (items) => labels[items?.[0]?.dataIndex] || '',
           label: (context) => {
             const isLeft = context.datasetIndex === 0;
             const unit = isLeft ? leftData.unit : rightData.unit;
@@ -58,40 +69,43 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       }
     },
     scales: {
-      x: { grid: { display: false } },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
       yLeft: {
         type: 'linear',
-        display: true,
         position: 'left',
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        title: { display: !!leftData.unit, text: leftData.unit }
+        ticks: { display: false },
+        border: { display: false },
       },
       yRight: {
         type: 'linear',
-        display: true,
         position: 'right',
         grid: { display: false },
-        title: { display: !!rightData.unit, text: rightData.unit }
+        ticks: { display: false },
+        border: { display: false },
       }
     },
-    interaction: {
-      mode: 'nearest',
-      axis: 'x',
-      intersect: false
-    }
+    interaction: { mode: 'nearest', axis: 'x', intersect: false }
   };
 
   return (
-    <div className={`bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] ${className}`}>
-      {(title || helpText) && (
-        <div className="flex flex-wrap items-start mb-3">
-          {title && <h3 className="text-[12px] font-bold text-slate-200">{title}</h3>}
-          {helpText && <MetricInfo text={helpText} />}
-        </div>
-      )}
-      <div className="h-64 relative">
-        <Line data={data} options={options} />
-      </div>
-    </div>
+    <ChartFrame
+      className={className}
+      label={title}
+      info={helpText ? <MetricInfo text={helpText} /> : undefined}
+      value={lastLeft !== null ? fmtNumber(lastLeft, 1) : '—'}
+      unit={leftData.unit || leftData.label}
+      valueColor={leftData.color}
+      delta={lastRight !== null
+        ? { text: `${rightData.label} ${fmtNumber(lastRight, 1)}`, tone: 'neutral' }
+        : undefined}
+      legend={[
+        { label: leftData.label, color: leftData.color, shape: 'line' },
+        { label: rightData.label, color: rightData.color, shape: 'line' },
+      ]}
+      height={200}
+    >
+      <Line data={data} options={options} />
+    </ChartFrame>
   );
 }

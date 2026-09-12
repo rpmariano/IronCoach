@@ -13,6 +13,6 @@
 .ccc-progress { stroke-dasharray: 251; transition: stroke-dashoffset 0.5s ease; }
 .ccc-inner-text { font-size: 0.9rem; font-weight: 900; color: #1e293b; z-index: 2; }
 
-.ccc-lbl { font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+.ccc-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 .ccc-val { font-size: 1.3rem; font-weight: 900; color: #1e293b; line-height: 1.1; }
 .ccc-target { font-size: 0.75rem; color: #64748b; font-weight: 600; margin-top: 2px; }

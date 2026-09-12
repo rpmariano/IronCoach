@@ -214,3 +214,21 @@ Deno.test("sem refeições nem água, os totais de hoje ficam a zero, não undef
   assertEquals(ctx.hoje_ate_agora.agua_ml, 0);
   assertEquals(ctx.hoje_ate_agora.refeicoes_registadas, []);
 });
+
+// ─── CAROL.md §3: semana cumprida a 100% → uma frase de reconhecimento ──────
+import { computeLastWeekAdherence } from "./index.ts";
+import { assertEquals as eqLastWeek } from "jsr:@std/assert@1";
+
+Deno.test("computeLastWeekAdherence: corrida conta com corrida no dia, ginásio com sessão, descanso conta sempre", () => {
+  const items = [
+    { planned_date: "2026-09-07", kind: "corrida" },
+    { planned_date: "2026-09-08", kind: "ginasio" },
+    { planned_date: "2026-09-09", kind: "descanso" },
+    { planned_date: "2026-09-10", kind: "corrida" },
+  ];
+  const runs = [{ date: "2026-09-07" }];
+  const gym = [{ date: "2026-09-08" }];
+  eqLastWeek(computeLastWeekAdherence(items, runs, gym), { itens: 4, com_registo: 3 });
+  eqLastWeek(computeLastWeekAdherence(items, [...runs, { date: "2026-09-10" }], gym), { itens: 4, com_registo: 4 });
+  eqLastWeek(computeLastWeekAdherence([], [], []), { itens: 0, com_registo: 0 });
+});

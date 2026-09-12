@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Sparkles, AlertOctagon } from 'lucide-react';
+import Warning, { WarningAction } from '../shared/Warning';
 import { getRacePrediction } from '../../utils/biEngine';
 import { assessRaceLevelTriage } from '@formulas/raceLevelTriage.ts';
 
@@ -92,7 +93,7 @@ export default function RaceLevelSuggestion({
 
   if (result.level == null) {
     return (
-      <p className="text-[10px] text-slate-400 mt-1.5 flex items-start gap-1.5">
+      <p className="text-[11px] text-[var(--text-3)] mt-1.5 flex items-start gap-1.5">
         <Sparkles size={12} className="shrink-0 mt-0.5 opacity-60" />
         <span>Ainda sem dados suficientes dos últimos treinos (menos de 3 das últimas 4 semanas com registo) para sugerir automaticamente o teu nível para esta prova.</span>
       </p>
@@ -114,44 +115,40 @@ export default function RaceLevelSuggestion({
   // Excêntrica) — avisa com firmeza em vez de propor uma ação de um clique.
   if (result.level === 'sub_iniciante') {
     return (
-      <div className="mt-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 flex items-start gap-2">
-        <AlertOctagon size={14} className="shrink-0 mt-0.5 text-red-500" />
-        <p className="text-[11px] leading-snug text-red-700">
-          Pelos teus últimos treinos ({evidence || 'sem registo suficiente'}), a tua preparação
-          está abaixo do que esta prova exige — mesmo para o nível Iniciante. Considera reduzir o
-          objetivo, mudar a prioridade da prova para Secundária/Treino, ou dar mais tempo à
-          preparação antes de escolheres um nível aqui.
-        </p>
-      </div>
+      <Warning tone="danger" title="Preparação insuficiente" icon={<AlertOctagon size={14} />} className="mt-1.5">
+        Pelos teus últimos treinos ({evidence || 'sem registo suficiente'}), a tua preparação
+        está abaixo do que esta prova exige — mesmo para o nível Iniciante. Considera reduzir o
+        objetivo, mudar a prioridade da prova para Secundária/Treino, ou dar mais tempo à
+        preparação antes de escolheres um nível aqui.
+      </Warning>
     );
   }
 
+  /* Ponto 3: a sugestão era âmbar sobre fundo âmbar claro — o âmbar é da
+     prova. "Bate certo" é o verde do dentro-do-alvo; "não bate certo" é o
+     coral do aviso. Os textos são os mesmos. */
   const matchesDeclared = declaredLevel && declaredLevel === result.level;
   if (matchesDeclared) {
     return (
-      <p className="text-[10px] text-emerald-600 mt-1.5 flex items-start gap-1.5">
-        <Sparkles size={12} className="shrink-0 mt-0.5" />
-        <span>Pelos teus últimos treinos ({evidence}), o nível que escolheste bate certo.</span>
-      </p>
+      <Warning tone="ok" title="Nível confirmado" icon={<Sparkles size={12} />} className="mt-1.5">
+        Pelos teus últimos treinos ({evidence}), o nível que escolheste bate certo.
+      </Warning>
     );
   }
 
   return (
-    <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 flex items-start gap-2">
-      <Sparkles size={14} className="shrink-0 mt-0.5 text-amber-500" />
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] leading-snug text-amber-800">
-          Pelos teus últimos treinos ({evidence}), classificas-te como{' '}
-          <strong>{levelLabel(result.level)}</strong> para esta prova.
-        </p>
-        <button
-          type="button"
-          onClick={() => onUseLevel(result.level)}
-          className="mt-1 text-[11px] font-semibold text-amber-700 underline underline-offset-2 active:opacity-70"
-        >
+    <Warning
+      title="Nível sugerido"
+      icon={<Sparkles size={14} />}
+      className="mt-1.5"
+      actions={
+        <WarningAction onClick={() => onUseLevel(result.level)}>
           Usar nível {levelLabel(result.level)}
-        </button>
-      </div>
-    </div>
+        </WarningAction>
+      }
+    >
+      Pelos teus últimos treinos ({evidence}), classificas-te como{' '}
+      <strong>{levelLabel(result.level)}</strong> para esta prova.
+    </Warning>
   );
 }

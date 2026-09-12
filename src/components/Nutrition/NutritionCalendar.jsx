@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { dayNutrientStatus, dayWaterGoalMet } from '../../utils/nutrition';
 import { CALENDAR_NO_DATA_DOT } from '../../lib/utils';
-import { ChevronLeft, ChevronRight, Flame, Camera } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Camera } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import MealCard from './MealCard';
@@ -72,33 +72,33 @@ export default function NutritionCalendar({ onRegisterClick }) {
       {/* Botão de Registo */}
       <Button 
         variant="module"
-        moduleColor="var(--accent)"
+        moduleColor="var(--mod-nutricao)"
         onClick={onRegisterClick}
         className="w-full text-sm rounded-2xl shadow-lg"
         size="lg"
         icon={<Camera size={20} />}
       >
-        Registar Refeição
+        Registar refeição
       </Button>
 
       {/* Calendar Grid */}
       <div className="card rounded-2xl p-4">
         {/* Header no interior do cartão */}
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronLeft size={16} />
           </button>
-          <h2 className="text-[15px] font-semibold text-slate-800 capitalize">
+          <h2 className="text-[15px] font-semibold text-[var(--text-1)] capitalize">
             {format(currentDate, 'MMM yyyy', { locale: pt })}
           </h2>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronRight size={16} />
           </button>
         </div>
 
         <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center mb-1">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <div key={i} className="text-[10px] text-slate-500">{d}</div>
+            <div key={i} className="text-[11px] text-[var(--text-3)]">{d}</div>
           ))}
         </div>
         <div className="grid grid-cols-7 gap-y-2 gap-x-1 text-center">
@@ -114,25 +114,25 @@ export default function NutritionCalendar({ onRegisterClick }) {
             const dayStr = format(date, 'yyyy-MM-dd');
             const { status, waterMet } = dayInfo.get(dayStr) || { status: 'none', waterMet: false };
             const statusColor =
-              status === 'ok' ? 'bg-emerald-500' :
-              status === 'over' ? 'bg-red-500' :
+              status === 'ok' ? 'bg-[var(--ok)]' :
+              status === 'over' ? 'bg-[var(--danger)]' :
               CALENDAR_NO_DATA_DOT;
 
             return (
               <div key={date.toString()} className="flex justify-center">
                 <button
                   onClick={() => setSelectedDate(date)}
-                  className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl text-xs transition ${
-                    isSelected ? 'bg-neutral-900 shadow-md' :
-                    'text-slate-600 hover:bg-slate-100'
+                  className={`relative flex flex-col items-center justify-center w-11 h-11 rounded-xl text-xs transition ${
+                    isSelected ? 'bg-[var(--bg-sheet)] shadow-md' :
+                    'text-[var(--text-3)] hover:bg-[var(--surface-glass)]'
                   }`}
-                  style={isSelected ? { color: '#0f172a' } : undefined}
+                  style={isSelected ? { color: 'var(--text-1)' } : undefined}
                 >
                   <span className="leading-none">{format(date, 'd')}</span>
                   {/* Altura fixa para os dias sem ponto de água não saltarem. */}
                   <span className="flex flex-col items-center gap-[2px] mt-1 h-2.5">
                     <span className={`w-1 h-1 rounded-full ${statusColor}`} />
-                    {waterMet && <span className="w-1 h-1 rounded-full bg-sky-400" />}
+                    {waterMet && <span className="w-1 h-1 rounded-full bg-[var(--run)]" />}
                   </span>
                 </button>
               </div>
@@ -141,27 +141,27 @@ export default function NutritionCalendar({ onRegisterClick }) {
         </div>
 
         {/* Legend */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-6 pt-4 border-t border-slate-100 px-1">
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Objetivos cumpridos
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-6 pt-4 border-t border-[var(--border-faint)] px-1">
+          <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-3)]">
+            <span className="w-2 h-2 rounded-full bg-[var(--ok)]"></span> Objetivos cumpridos
           </span>
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-red-500"></span> Excedeu um macro ou ficou abaixo da proteína
+          <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-3)]">
+            <span className="w-2 h-2 rounded-full bg-[var(--danger)]"></span> Excedeu um macro ou ficou abaixo da proteína
           </span>
-          <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-sky-400"></span> Objetivo de água atingido
+          <span className="flex items-center gap-1.5 text-[11px] text-[var(--text-3)]">
+            <span className="w-2 h-2 rounded-full bg-[var(--run)]"></span> Objetivo de água atingido
           </span>
         </div>
       </div>
 
       {/* Day Meals */}
       <div className="mt-6">
-        <h3 className="text-[13px] font-semibold text-slate-500 mb-3 uppercase tracking-wide">
+        <h3 className="text-[13px] font-semibold text-[var(--text-3)] mb-3 uppercase tracking-wide">
           {format(selectedDate, 'dd MMM yyyy', { locale: pt })}
         </h3>
         <div className="space-y-3">
         {dayMeals.length === 0 ? (
-          <p className="text-xs text-slate-500 text-center py-6">Sem refeições registadas neste dia.</p>
+          <p className="text-xs text-[var(--text-3)] text-center py-6">Sem refeições registadas neste dia.</p>
         ) : (
           dayMeals.map(meal => (
             <MealCard key={meal.id} meal={meal} onEdit={setEditingMealId} />

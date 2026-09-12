@@ -437,3 +437,166 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
     expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe('');
   });
 });
+
+// ─── CAROL.md — a Carol no chat (handoff 2026-09, ponto 10) ────────────────
+
+function baseCarolState() {
+  return {
+    profile: { id: 'user-1', display_name: 'Rui' },
+    coachMessages: [],
+    coachLoading: false,
+    coachSuggestions: [],
+    coachPlans: [],
+    coachPlanItems: [],
+    coachGoalProposals: [],
+    coachIntent: null,
+    runs: [], meals: [], gymSessions: [], bodyAssessments: [], raceEvents: [], shoes: [], insightStates: {},
+    session: { user: { id: 'user-1' } },
+    setCoachIntent: (intent) => useAppStore.setState({ coachIntent: intent }),
+    reloadCoachPlans: vi.fn().mockResolvedValue([]),
+    reloadCoachGoalProposals: vi.fn().mockResolvedValue([]),
+    respondToPlan: vi.fn().mockResolvedValue(true),
+    respondToGoalProposal: vi.fn().mockResolvedValue(true),
+  };
+}
+
+describe('Coach — CAROL.md §5: ritmo humano na escrita', () => {
+  const originalMatchMedia = window.matchMedia;
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it('a resposta chega precedida de "a escrever…" e entra uma ideia por bolha, 400 ms entre elas', async () => {
+    // Sem prefers-reduced-motion: a animação corre.
+    window.matchMedia = () => ({ matches: false });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: {
+        model_message: { id: 'm1', content: 'Não gostei dos teus almoços esta semana.\n\nA ingestão ficou 12% abaixo do alvo nos dias longos.' },
+        suggestions: ['Que faço ao almoço?'],
+        plan_proposed: false, goal_proposed: false, goals_updated: false,
+      },
+      error: null,
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    // Chegou, mas ainda não se lê: está "a escrever…".
+    expect(screen.getByTestId('coach-typing')).toHaveTextContent('a escrever…');
+    expect(screen.queryByText(/Não gostei dos teus almoços/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Que faço ao almoço?')).not.toBeInTheDocument();
+
+    // 1.ª bolha ao fim do "a escrever…" (600-900 ms); a 2.ª ainda não.
+    await act(async () => { await vi.advanceTimersByTimeAsync(900); });
+    expect(screen.getByText(/Não gostei dos teus almoços/)).toBeInTheDocument();
+    expect(screen.queryByText(/12% abaixo do alvo/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('coach-typing')).toBeInTheDocument();
+
+    // 2.ª bolha 400 ms depois; o indicador some e as sugestões aparecem.
+    await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+    expect(screen.getByText(/12% abaixo do alvo/)).toBeInTheDocument();
+    expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
+    expect(screen.getByText('Que faço ao almoço?')).toBeInTheDocument();
+  });
+
+  it('com prefers-reduced-motion as bolhas aparecem de imediato, sem "a escrever…"', async () => {
+    window.matchMedia = () => ({ matches: true });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Primeira ideia.\n\nSegunda ideia.' }, suggestions: [], plan_proposed: false, goal_proposed: false, goals_updated: false },
+      error: null,
+    });
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    await waitFor(() => expect(screen.getByText(/Segunda ideia/)).toBeInTheDocument());
+    expect(screen.getByText(/Primeira ideia/)).toBeInTheDocument();
+    expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
+  });
+
+  it('o histórico já carregado lê-se inteiro — só as mensagens novas "escrevem"', () => {
+    window.matchMedia = () => ({ matches: false });
+    useAppStore.setState({
+      coachMessages: [
+        { id: 'h1', role: 'user', content: 'Como correu a semana?', created_at: new Date().toISOString() },
+        { id: 'h2', role: 'model', content: 'Ficaste curto nos dias longos.\n\nÉ a terceira semana.', created_at: new Date().toISOString(), live: true },
+      ],
+    });
+    renderCoach();
+    expect(screen.getByText(/Ficaste curto nos dias longos/)).toBeInTheDocument();
+    expect(screen.getByText(/É a terceira semana/)).toBeInTheDocument();
+    expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
+  });
+});
+
+describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('3 dias sem registo: ao abrir o chat a Carol escreve primeiro ("Estás bem?") — e só uma vez', async () => {
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    useAppStore.setState({ runs: [{ id: 'r1', date: fiveDaysAgo, distance_km: 8, duration_seconds: 2400 }] });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'p1', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' },
+      error: null,
+    });
+
+    const { unmount } = renderCoach();
+    await waitFor(() => expect(screen.getByText(/Estás bem\?/)).toBeInTheDocument());
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.proactive_trigger).toBe('silence');
+    expect(body.message).toBe('');
+    expect(body.proactive_details).toMatch(/há 5 dias/);
+
+    // Segunda abertura: já foi dito, não volta a perguntar.
+    unmount();
+    renderCoach();
+    await act(async () => { await Promise.resolve(); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it('se o servidor saltar (ela falou há pouco), não fica marcado — volta a tentar na abertura seguinte', async () => {
+    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, proactive: 'silence', model_message: null, suggestions: [] }, error: null });
+
+    const { unmount } = renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/Estás bem/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+
+    unmount();
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+  });
+
+  it('sem registos e sem provas, abrir o chat não dispara nada', async () => {
+    renderCoach();
+    await act(async () => { await Promise.resolve(); });
+    expect(invokeEdgeFunctionWithTimeout).not.toHaveBeenCalled();
+    expect(screen.getByText(/Sou a Carol, a tua treinadora/)).toBeInTheDocument();
+  });
+});

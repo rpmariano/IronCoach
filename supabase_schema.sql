@@ -721,3 +721,58 @@ create policy "admin read unknown logs" on unknown_app_image_logs for select usi
 create policy "admin update unknown logs" on unknown_app_image_logs for update using (public.is_admin());
 create policy "admin delete unknown logs" on unknown_app_image_logs for delete using (public.is_admin());
 
+-- ============================================================================
+-- Onboarding — marca de "arranque concluído" no perfil (ponto 8 do redesenho
+-- 2026-09). Ver supabase/migrations/20260911180000_profile_onboarding_done.sql
+-- e src/utils/onboarding.js (a coluna nunca decide sozinha: só sem registos
+-- nem prova é que o arranque aparece).
+-- ============================================================================
+alter table public.profiles
+  add column if not exists onboarding_done boolean not null default false;
+
+-- ============ prova concluída: a corrida liga-se à prova + memórias ============
+-- Ver supabase/migrations/20260912100000_race_completion.sql e
+-- specs/prova-concluida.md. Registar a prova é registar uma corrida com
+-- kind = 'competicao' e race_id; as MEMÓRIAS (diploma, medalha, fotografias)
+-- ficam na prova, não na corrida — são do dia, não do registo desportivo.
+alter table public.runs
+  add column if not exists race_id uuid references public.race_events(id) on delete set null;
+create index if not exists runs_race_idx on public.runs(race_id);
+
+alter table public.race_events
+  add column if not exists diploma_path text,
+  add column if not exists medal_path text,
+  add column if not exists photo_paths text[] not null default '{}';
+alter table public.race_events
+  drop constraint if exists race_events_photo_paths_max;
+alter table public.race_events
+  add constraint race_events_photo_paths_max check (cardinality(photo_paths) <= 6);
+
+-- ============ storage: memórias da prova (bucket privado) ============
+-- 2 MB por ficheiro; imagens comprimidas no cliente, o PDF do diploma vai
+-- inteiro. Caminho: <uid>/<race_id>/diploma.<ext> | medal.jpg | photo-<n>.jpg.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'race-memories',
+  'race-memories',
+  false,
+  2097152,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'application/pdf']
+)
+on conflict (id) do update
+  set file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "race memories own folder select" on storage.objects;
+drop policy if exists "race memories own folder insert" on storage.objects;
+drop policy if exists "race memories own folder update" on storage.objects;
+drop policy if exists "race memories own folder delete" on storage.objects;
+
+create policy "race memories own folder select" on storage.objects for select
+  using (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "race memories own folder insert" on storage.objects for insert
+  with check (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "race memories own folder update" on storage.objects for update
+  using (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "race memories own folder delete" on storage.objects for delete
+  using (bucket_id = 'race-memories' and (storage.foldername(name))[1] = auth.uid()::text);

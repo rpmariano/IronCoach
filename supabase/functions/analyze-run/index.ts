@@ -17,6 +17,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -528,7 +529,7 @@ async function generateCoachNotes(
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
       (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
       (weeklyVolumeStr ? `- Volume semanal: ${weeklyVolumeStr}\n` : "") +
-      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " (novo recorde pessoal!)\n" : "\n"}` : "") +
+      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " (novo recorde pessoal)\n" : "\n"}` : "") +
       (trendStr ? `- Tendência: ${trendStr}\n` : "")
     : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação.\n`;
 
@@ -568,13 +569,14 @@ async function generateCoachNotes(
     : ``;
 
   const prompt =
-    `És um treinador de corrida experiente e direto, a dar feedback escrito a um atleta amador logo a seguir a uma corrida. ` +
+    `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a corrida que ele acabou de registar. ` +
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
     `REGRAS OBRIGATÓRIAS:\n` +
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
-    `- Se a corrida de hoje é um novo recorde pessoal de pace, assinala isso claramente logo no início.\n` +
+    `- Se a corrida de hoje é um novo recorde pessoal de pace, é a PRIMEIRA frase — com o número e a diferença para o recorde anterior. É o momento de reconhecer; noutro dia qualquer, não se elogia por rotina.\n` +
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +

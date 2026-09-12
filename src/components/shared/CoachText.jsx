@@ -1,16 +1,9 @@
 import React from 'react';
 
-const MEAL_EMOJIS = {
-  'pequeno-almoço:': '☕ Pequeno-almoço:',
-  'almoço:': '🥗 Almoço:',
-  'lanche pré-treino:': '⚡ Lanche pré-treino:',
-  'lanche pós-treino:': '💪 Lanche pós-treino:',
-  'lanche da manhã:': '🍎 Lanche da manhã:',
-  'lanche da tarde:': '🍎 Lanche da tarde:',
-  'lanche:': '🍎 Lanche:',
-  'jantar:': '🍽️ Jantar:',
-  'ceia:': '🌙 Ceia:'
-};
+// Os nomes das refeições levavam um emoji à frente (☕ 🥗 🍎 …). Saíram com o
+// redesenho de 2026-09: a Carol não usa emojis (CAROL.md, "O que evitar") e
+// a app não usa caracteres unicode como ícones. Fica só a quebra de linha
+// antes de cada refeição, que é o que torna a sugestão legível.
 const MEAL_REGEX = /(Pequeno-almoço:|Almoço:|Lanche pré-treino:|Lanche pós-treino:|Lanche da manhã:|Lanche da tarde:|Lanche:|Jantar:|Ceia:)/gi;
 
 export default function CoachText({ children }) {
@@ -26,11 +19,8 @@ export default function CoachText({ children }) {
   const listRegex = new RegExp(`^[-*]\\s+${MEAL_NAMES}`, 'gim');
   text = text.replace(listRegex, '$1');
 
-  // 2. Aplicar formatação das refeições (emojis no início da refeição)
-  text = text.replace(MEAL_REGEX, (match) => {
-    const key = match.toLowerCase();
-    return '\n' + (MEAL_EMOJIS[key] || match);
-  });
+  // 2. Cada refeição começa em linha nova
+  text = text.replace(MEAL_REGEX, (match) => '\n' + match);
 
   // 3. Quebrar texto corrido em parágrafos duplos para melhor leitura
   text = text.replace(/([.!?])\s+(?=[A-ZÀ-ÖØ-Þ])/g, '$1\n\n');
@@ -68,7 +58,7 @@ export default function CoachText({ children }) {
         // Listas com marcas
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           return (
-            <li key={lineIdx} className="ml-4 list-disc my-1 marker:text-emerald-500">
+            <li key={lineIdx} className="ml-4 list-disc my-1 marker:text-[var(--ok)]">
               {formattedLine}
             </li>
           );

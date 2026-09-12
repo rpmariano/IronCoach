@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { todayISO, addDaysISO } from '../lib/utils';
+import { todayISO } from '../lib/utils';
+import { markOnboardingDoneLocally } from '../utils/onboarding';
 
 const getInitialDashboardTab = () => {
   try {
@@ -39,7 +40,15 @@ export const useAppStore = create((set, get) => ({
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
   planItemPrefill: null,
-  
+  // Prova que o registo de corrida vai concluir — posto por quem abre o
+  // "modo prova" do RunRegistration (hub, cartão do Início, agenda) mesmo
+  // antes de navegar para lá, e consumido UMA vez ao montar. Campo próprio
+  // em vez de mais uma chave no planItemPrefill: esse pertence ao plano de
+  // treino e é ele que dispara completePlanItem() ao gravar — uma prova da
+  // agenda não é um item de plano e não pode acabar a marcar um.
+  // Ver specs/prova-concluida.md §3.
+  runRacePrefill: null,
+
   // Coach State
   coachMessages: [],
   coachLoading: false,
@@ -79,6 +88,11 @@ export const useAppStore = create((set, get) => ({
   }),
   openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
   editingRaceId: null,
+  // Corrida a abrir em EDIÇÃO no ecrã de topo (openCreationMode === 'run').
+  // Só o hub da prova a usa, para reabrir o registo já gravado quando o
+  // atleta quer acrescentar as memórias; o Calendário continua a ter o seu
+  // próprio estado local para editar corridas de dentro do calendário.
+  editingRunId: null,
   // Data (YYYY-MM-DD) a abrir no Calendário — posto por RunAgenda ao gravar
   // uma prova NOVA, para o Calendário abrir logo nesse dia em vez do de
   // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
@@ -116,6 +130,36 @@ export const useAppStore = create((set, get) => ({
   },
   setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  /* Abre o registo de corrida em MODO PROVA (specs/prova-concluida.md §3).
+     Ponto único das três entradas — hub da prova, cartão do Início e cartão
+     da agenda — para o prefill, o separador e o ecrã de topo ficarem sempre
+     no mesmo estado. setActiveTab pode ser recusado por um navGuard (um
+     formulário com alterações por gravar); nesse caso não se abre nada, tal
+     como o "+" da barra inferior já faz (Layout.jsx). */
+  openRaceRun: (raceId, runId = null) => {
+    if (!raceId) return false;
+    set({ runRacePrefill: { raceId }, editingRunId: runId, editingRaceId: null, openCreationMode: null });
+    if (!get().setActiveTab('corrida')) { set({ runRacePrefill: null, editingRunId: null }); return false; }
+    set({ openCreationMode: 'run' });
+    return true;
+  },
+  setEditingRunId: (id) => set({ editingRunId: id || null }),
+  // Onboarding (ponto 8 do redesenho 2026-09). No primeiro acesso é App.jsx
+  // que o decide sozinho, a partir do perfil e dos registos (ver
+  // utils/onboarding.js) — esta flag é só a REENTRADA de propósito, pelo
+  // cartão "Rever o arranque com a Carol" em Perfil · Coach.
+  onboardingOpen: false,
+  setOnboardingOpen: (open) => set({ onboardingOpen: !!open }),
+  // Campos do passo 6 do arranque à espera do formulário de Prova, que os
+  // consome uma vez ao montar (RunAgenda.jsx). race_events exige local,
+  // objetivo de tempo e ritmo-alvo — o arranque não os pergunta, por isso
+  // entrega o que tem e o formulário que já existe recolhe o resto.
+  racePrefill: null,
+  setRacePrefill: (values) => set({ racePrefill: values || null }),
+  // Persiana de registar água (Home/WaterSheet.jsx), aberta pelo FAB —
+  // redesenho 2026-09: a órbita do Início é só leitura, o registo vive aqui.
+  waterSheetOpen: false,
+  setWaterSheetOpen: (open) => set({ waterSheetOpen: !!open }),
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
   
@@ -139,6 +183,8 @@ export const useAppStore = create((set, get) => ({
   setCoachPlanItems: (items) => set({ coachPlanItems: items }),
   setPlanItemPrefill: (item) => set({ planItemPrefill: item }),
   clearPlanItemPrefill: () => set({ planItemPrefill: null }),
+  setRunRacePrefill: (value) => set({ runRacePrefill: value || null }),
+  clearRunRacePrefill: () => set({ runRacePrefill: null }),
   setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
   clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
   newlyCreatedRecord: null,
@@ -515,6 +561,38 @@ export const useAppStore = create((set, get) => ({
     }
   },
   
+  /* Fecha o arranque: grava as respostas do onboarding no perfil e marca-o
+     como feito. Serve dois casos — o fim dos seis passos (com `updates`) e a
+     marcação silenciosa de quem já tinha dados antes desta coluna existir
+     (sem `updates`, ver utils/onboarding.js).
+
+     Tolerância deliberada ao erro: `profiles.onboarding_done` pode ainda não
+     existir na base de dados quando este código chega ao browser (a migração
+     20260911180000 e o deploy do frontend são independentes). Nesse caso o
+     UPDATE inteiro falha — e com ele perdiam-se também as respostas. Por isso
+     repete-se o UPDATE sem a coluna nova, e a marca fica na mesma em
+     localStorage por utilizador: o arranque não volta a aparecer neste
+     dispositivo, que é o que o atleta nota. O store é atualizado sempre,
+     mesmo com a base de dados a recusar, para a interface seguir em frente. */
+  markOnboardingDone: async (updates = {}) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    markOnboardingDoneLocally(userId);
+    set((state) => ({ profile: { ...state.profile, ...updates, onboarding_done: true } }));
+    if (!userId) return false;
+
+    const { error } = await supabase.from('profiles').update({ ...updates, onboarding_done: true }).eq('id', userId);
+    if (!error) return true;
+
+    console.error('Erro a gravar onboarding_done (a coluna já existe?):', error);
+    if (Object.keys(updates).length === 0) return false;
+    const { error: fallbackError } = await supabase.from('profiles').update(updates).eq('id', userId);
+    if (fallbackError) {
+      console.error('Erro a gravar as respostas do arranque:', fallbackError);
+      return false;
+    }
+    return true;
+  },
+
   snoozeWaterReminder: async (userId, scope = 'next') => {
     try {
       // lisbon time helper
@@ -598,3 +676,16 @@ export const useAppStore = create((set, get) => ({
     }
   }
 }));
+
+// ── Seletores ────────────────────────────────────────────────────────────
+// "Assuntos a resolver" com a Carol (handoff 2026-09, State Management:
+// coachHasPendingTopic liga o halo e o cartão "A Carol precisa de falar
+// contigo"): uma intervenção em aberto conta um; cada proposta de plano ou
+// de objetivos por decidir conta mais um.
+export const selectCoachPendingTopics = (state) => {
+  const intervention = ['needed', 'in_progress'].includes(state.profile?.coach_intervention_status) ? 1 : 0;
+  const plans = (state.coachPlans || []).filter((p) => p.status === 'proposto').length;
+  const goals = (state.coachGoalProposals || []).filter((g) => g.status === 'proposto').length;
+  return intervention + plans + goals;
+};
+export const selectCoachHasPendingTopic = (state) => selectCoachPendingTopics(state) > 0;

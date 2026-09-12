@@ -2,42 +2,63 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
+/* Ponto 3 do redesenho: cada tema passa à cor do seu significado. O 'gym'
+   era âmbar (#a16207 → #eab308) — o âmbar é da prova; o 'warning' era
+   laranja e passa ao coral; o 'run' era roxo e o 'nutri' verde (que é o
+   --ok), ambos fora do esquema. O subtítulo lê-se sobre a cor cheia, por
+   isso é a tinta escura do tom em vez de um branco esbatido.
+
+   O título e o subtítulo ficam em cima da PONTA ESCURA do gradiente (135deg
+   começa no canto superior esquerdo, que é onde o texto vive), e a ponta
+   escura era uma mistura a 55% com o fundo da app: aí a tinta do tom dava
+   2,46:1 (corpo), 2,66 (nutrição), 2,70 (danger), 2,75 (warn), 3,35 (ginásio),
+   3,62 (corrida) — nenhum chegava a AA. `deep()` mantém o gradiente na mesma
+   matéria e no mesmo sentido, mas pára a 15% do caminho para o fundo: o pior
+   caso passa a 4,53:1 e o melhor a 7,52:1. A prova e a Carol continuam com os
+   seus gradientes próprios (--grad-race já dava 5,73:1; --grad-coach-legible
+   é o --grad-coach travado no degrau que a tinta ainda lê). */
+const deep = (c) => `color-mix(in srgb, ${c} 85%, var(--bg-app))`;
+
 const THEMES = {
   coach: {
-    bg: 'linear-gradient(135deg, var(--mod-coach-from, #155e75), var(--mod-coach-to, #06b6d4))',
-    sub: 'text-cyan-100'
+    bg: 'var(--grad-coach-legible)',
+    subColor: 'var(--coach-ink)'
+  },
+  race: {
+    bg: 'var(--grad-race)',
+    subColor: 'var(--race-ink)'
   },
   run: {
-    bg: 'linear-gradient(135deg, #7e22ce, #c026d3)',
-    sub: 'text-purple-100'
+    bg: `linear-gradient(135deg, ${deep('var(--run)')}, var(--run))`,
+    subColor: 'var(--run-ink)'
   },
   gym: {
-    bg: 'linear-gradient(135deg, #a16207, #eab308)',
-    sub: 'text-yellow-100'
+    bg: `linear-gradient(135deg, ${deep('var(--gym)')}, var(--gym))`,
+    subColor: 'var(--gym-ink)'
   },
   nutri: {
-    bg: 'linear-gradient(135deg, #047857, #10b981)',
-    sub: 'text-green-100'
+    bg: `linear-gradient(135deg, ${deep('var(--nutrition)')}, var(--nutrition))`,
+    subColor: 'var(--nutrition-ink)'
   },
   body: {
-    bg: 'linear-gradient(135deg, #be123c, #f43f5e)',
-    sub: 'text-rose-100'
+    bg: `linear-gradient(135deg, ${deep('var(--body)')}, var(--body))`,
+    subColor: 'var(--body-ink)'
   },
   danger: {
-    bg: 'linear-gradient(135deg, #991b1b, #ef4444)',
-    sub: 'text-red-100'
+    bg: `linear-gradient(135deg, ${deep('var(--danger)')}, var(--danger))`,
+    subColor: 'var(--danger-ink)'
   },
   warning: {
-    bg: 'linear-gradient(135deg, #c2410c, #f97316)',
-    sub: 'text-orange-100'
+    bg: `linear-gradient(135deg, ${deep('var(--warn)')}, var(--warn))`,
+    subColor: 'var(--warn-ink)'
   },
   info: {
-    bg: 'linear-gradient(135deg, #1d4ed8, #3b82f6)',
-    sub: 'text-blue-100'
+    bg: 'var(--grad-coach-legible)',
+    subColor: 'var(--coach-ink)'
   },
   neutral: {
-    bg: 'linear-gradient(135deg, #334155, #64748b)',
-    sub: 'text-slate-200'
+    bg: 'linear-gradient(135deg, var(--brand-deep-1), var(--brand-deep-2))',
+    subColor: 'var(--text-2)'
   }
 };
 
@@ -185,7 +206,7 @@ export default function PremiumModal({
     <div className={`fixed inset-0 z-[100] flex ${isDialog ? 'items-center justify-center p-4' : 'flex-col justify-end'}`}>
       {/* Backdrop */}
       <div 
-        className={`fixed inset-0 bg-slate-900/40 transition-all duration-400 ease-in-out ${overlayAnimation}`}
+        className={`fixed inset-0 bg-[var(--bg-scrim)] transition-all duration-400 ease-in-out ${overlayAnimation}`}
         onClick={handleDismiss}
         aria-hidden="true"
       />
@@ -197,7 +218,7 @@ export default function PremiumModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
-        className={`relative z-10 w-full ${maxWidth} bg-neutral-900/80 backdrop-blur-[20px] border border-white/10 flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
+        className={`relative z-10 w-full ${maxWidth} bg-[var(--bg-sheet)] backdrop-blur-[20px] border border-[var(--border-glass)] flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
           isDialog ? 'rounded-2xl max-h-[90vh]' : 'rounded-t-[28px] max-h-[90vh] pb-safe'
         }`}
         style={transformStyle}
@@ -207,7 +228,7 @@ export default function PremiumModal({
           <div 
             title="Toca para fechar persiana" 
             onClick={handleDismiss}
-            className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-white/40 z-20 cursor-pointer" 
+            className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-[var(--surface-dim)] z-20 cursor-pointer" 
           />
         )}
 
@@ -219,27 +240,33 @@ export default function PremiumModal({
           <div className="flex items-center gap-3 pr-2">
             {Icon && (
               <div className="w-10 h-10 shrink-0 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 shadow-sm">
-                <Icon className="w-5 h-5 text-white" strokeWidth={2.5} />
+                <Icon className="w-5 h-5" style={{ color: activeTheme.subColor }} strokeWidth={2.5} />
               </div>
             )}
             <div className="flex-1 min-w-0 pr-4">
-              {title && <h3 id="modal-title" className={`text-base font-bold leading-tight truncate ${activeTheme.sub.replace('100', '50')}`}>{title}</h3>}
-              {subtitle && <p className={`text-[12.5px] mt-0.5 leading-snug font-medium ${activeTheme.sub}`}>{subtitle}</p>}
+              {title && <h3 id="modal-title" className="text-base font-bold leading-tight truncate" style={{ color: activeTheme.subColor }}>{title}</h3>}
+              {subtitle && <p className="text-[12.5px] mt-0.5 leading-snug font-medium" style={{ color: activeTheme.subColor, opacity: .82 }}>{subtitle}</p>}
             </div>
           </div>
           <button
             onClick={handleDismiss}
-            className="w-8 h-8 shrink-0 rounded-full bg-black/15 flex items-center justify-center text-white active:scale-95 transition-transform hover:bg-black/25"
+            // O circulo mantem os 32px de desenho; a area tocavel e de 44.
+            className="tap-44 shrink-0 active:scale-95 transition-transform"
             aria-label="Fechar"
           >
-            <X size={18} strokeWidth={2.5} />
+            {/* Era branco sobre um scrim preto a 15% — por cima de um
+                cabeçalho claro isso desaparecia. Mesma insignia do ícone do
+                título (branco a 20%) e a tinta do tom por cima. */}
+            <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30" style={{ color: activeTheme.subColor }}>
+              <X size={18} />
+            </span>
           </button>
         </div>
 
         {/* Content */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto overscroll-contain bg-slate-50"
+          className="flex-1 overflow-y-auto overscroll-contain bg-[var(--surface-soft)]"
         >
           {children}
         </div>

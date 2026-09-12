@@ -2,11 +2,18 @@ import { computeItemNutrients, computeMealNutrients } from '@formulas/mealNutrie
 import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
 import { todayISO } from '../lib/utils';
 
+/* Cores das macros — ponto 6 do redesenho ("paleta das séries de dados").
+   Eram quatro cores inventadas (#dd3c4f/#3c6cdd/#8b8118/#dd3cb7), fora das
+   oito com significado. Passam a ser as do mock "Dashboard · Nutrição":
+   proteína rosa (--body), hidratos violeta (--nutrition), gordura ciano
+   (--run), calorias violeta (--nutrition, o módulo). Ficam em hexadecimal
+   e não em var(--x) porque o Chart.js pinta em <canvas> e não resolve
+   variáveis CSS — os valores são os mesmos de tokens/colors.css. */
 export const MACROS = [
-  { key: 'calories', goalKey: 'calorie_goal', label: 'Calorias', unit: 'kcal', color: '#dd3c4f' },
-  { key: 'protein', goalKey: 'protein_goal', label: 'Proteína', unit: 'g', color: '#3c6cdd' },
-  { key: 'carbs', goalKey: 'carbs_goal', label: 'Hidratos', unit: 'g', color: '#8b8118' },
-  { key: 'fat', goalKey: 'fat_goal', label: 'Gordura', unit: 'g', color: '#dd3cb7' },
+  { key: 'calories', goalKey: 'calorie_goal', label: 'Calorias', unit: 'kcal', color: '#c77dff' },
+  { key: 'protein', goalKey: 'protein_goal', label: 'Proteína', unit: 'g', color: '#ff5fa8' },
+  { key: 'carbs', goalKey: 'carbs_goal', label: 'Hidratos', unit: 'g', color: '#c77dff' },
+  { key: 'fat', goalKey: 'fat_goal', label: 'Gordura', unit: 'g', color: '#2ee0ff' },
 ];
 
 export const MICROS = [

@@ -103,6 +103,7 @@ O projeto inclui um sistema de qualidade e auditoria automatizado na pasta `.age
 ### 3.4. Corrida (`Run`)
 - Registo de treinos de corrida (Distância, Ritmo/Pace médio e Duração).
 - Listagem de próximas provas agendadas e contagem decrescente de dias.
+- **Registo do dia da prova (decidido 2026-09-12, ver `specs/prova-concluida.md`)**: a corrida de competição liga-se à prova agendada por `runs.race_id`; registá-la conclui a prova; o `RunRegistration` tem um "modo prova" com a prova pré-preenchida, o resultado (tempo oficial, posição), como correu, e as memórias (diploma, medalha, até 6 fotografias, bucket `race-memories`, 2 MB por ficheiro). "Concluída" sem registo fica como ação secundária. Gamificação decidida em `specs/gamificacao-provas.md`: cinco conquistas calculadas dos dados, o momento ao guardar, o Início no dia a seguir, a Carol a citar, e o Palmarés como cartão em Perfil · Pessoal com persiana "Ver tudo".
 - Gráfico de distância percorrida semanalmente.
 - Calendário histórico: ponto verde nos dias com corrida registada, cinzento nos restantes.
 - **Registo de nova corrida — um único cartão, forma de introdução à escolha**: os campos comuns (Treino/Competição, tipo de treino ou disciplina, data, RPE, nome) ficam sempre visíveis; um seletor "Como queres registar?" (Foto/IA por omissão, ou Manual) decide o resto do cartão. **As duas formas passam pelo Coach** — não há caminho de registo sem análise.

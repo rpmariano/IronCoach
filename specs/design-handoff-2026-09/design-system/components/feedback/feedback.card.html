@@ -1,0 +1,30 @@
+<!-- @dsCard group="Components" viewport="700x400" name="Feedback" subtitle="Warning, CoachNote, ChatBubble, CoachAvatar, Sheet, Dialog" -->
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="../../_ds_bundle.js"></script>
+<style>body{margin:0;background:var(--bg-app);font-family:var(--font-sans);color:var(--text-1);padding:16px 18px;box-sizing:border-box}*{box-sizing:border-box}</style></head>
+<body><div id="root"></div>
+<script type="text/babel">
+const NS = window.IronCoach || {};
+const { Warning, CoachNote, ChatBubble, CoachAvatar, Sheet, Dialog, Button } = NS;
+const Tri = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg>;
+function App(){ if(!Warning) return <div style={{color:'var(--text-4)',fontSize:12}}>Bundle não carregado — definir o tipo do ficheiro como Design System.</div>;
+  return <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      <Warning title="Energia disponível" icon={<Tri/>}>Abaixo de 30 kcal/kg há duas semanas. É o que está a segurar a prontidão nos 68%.</Warning>
+      <Warning tone="ok" title="Volume semanal">A subir de forma consistente há 4 semanas — ACWR em 1.12, zona segura.</Warning>
+      <CoachNote>Não sabes ao certo? Diz por baixo. Corrijo assim que tiver três corridas registadas.</CoachNote>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}><ChatBubble from="coach">Bom dia. Antes da rodagem longa quero falar de uma coisa.</ChatBubble><ChatBubble from="athlete">Sim, ao almoço tenho tido pouco tempo.</ChatBubble></div>
+      <div style={{display:'flex',gap:12,alignItems:'center'}}><CoachAvatar size={30}/><CoachAvatar size={38} breathing/><CoachAvatar size={56}/><span style={{fontSize:11,color:'var(--text-4)'}}>30 · 38 (a respirar) · 56 — retrato por fazer</span></div>
+    </div>
+    <div style={{display:'flex',flexDirection:'column',gap:12}}>
+      <div style={{position:'relative',width:'100%',height:176,borderRadius:18,overflow:'hidden',background:'var(--bg-app)',border:'1px solid var(--border-glass-strong)'}}>
+        <Sheet eyebrow="Sugestão alimentar · domingo" title="~2150 kcal" maxHeight={150}><div style={{fontSize:12.5,color:'var(--text-3)',padding:'10px 0'}}>Pequeno-almoço · Omelete de 2 ovos com espinafres…</div></Sheet>
+      </div>
+      <div style={{position:'relative',width:'100%',height:176,borderRadius:18,overflow:'hidden',background:'var(--bg-app)',border:'1px solid var(--border-glass-strong)'}}>
+        <Dialog title="Dispensar o aviso da Carol?" actions={<><Button tone="coach" variant="tinted" size="sm" style={{flex:1}}>Dispensar</Button><Button variant="secondary" size="sm" style={{flex:1}}>Cancelar</Button></>}>O aviso deixa de aparecer no Início.</Dialog>
+      </div>
+    </div>
+  </div>; }
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

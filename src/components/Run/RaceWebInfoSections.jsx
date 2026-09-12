@@ -22,19 +22,19 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
 
   const cardClass = isDark
     ? 'p-3.5 rounded-2xl bg-white/[0.04] border border-white/[0.08] space-y-2'
-    : 'p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2';
+    : 'p-3 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] space-y-2';
 
   const titleClass = isDark
-    ? 'text-[11px] font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1.5'
-    : 'text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5';
+    ? 'text-[11px] font-extrabold text-[var(--race)] uppercase tracking-wider flex items-center gap-1.5'
+    : 'text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5';
 
   const textClass = isDark
-    ? 'text-xs text-slate-200 leading-relaxed'
-    : 'text-[11px] text-slate-600 leading-relaxed';
+    ? 'text-xs text-[var(--text-2)] leading-relaxed'
+    : 'text-[11px] text-[var(--text-3)] leading-relaxed';
 
   const subItemClass = isDark
-    ? 'p-2.5 rounded-xl bg-black/25 border border-white/5 space-y-1'
-    : 'p-2 rounded-lg bg-white border border-slate-200/60 space-y-0.5';
+    ? 'p-2.5 rounded-xl bg-black/25 border border-[var(--border-faint)] space-y-1'
+    : 'p-2 rounded-lg bg-[var(--surface-faint)] border border-[var(--border-glass)] space-y-0.5';
 
   return (
     <div className="space-y-3.5 fade-in">
@@ -42,23 +42,23 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {info.schedule && info.schedule.length > 0 && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <Clock size={13} className="text-amber-400" /> Horários & Partidas
+            <Clock size={13} className="text-[var(--race)]" /> Horários & Partidas
           </span>
           <div className="space-y-2 pt-1">
             {info.schedule.map((s, i) => (
               <div key={i} className={subItemClass}>
-                <p className="text-xs font-bold text-slate-100">
+                <p className="text-xs font-bold text-[var(--text-1)]">
                   {s.label}
                 </p>
                 {s.when && (
-                  <p className="text-[11px] text-amber-300 font-semibold flex items-center gap-1.5">
-                    <Calendar size={11} className="shrink-0 text-amber-400" />
+                  <p className="text-[11px] text-[var(--race)] font-semibold flex items-center gap-1.5">
+                    <Calendar size={11} className="shrink-0 text-[var(--race)]" />
                     {s.when}
                   </p>
                 )}
                 {s.where && (
-                  <p className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                    <MapPin size={11} className="shrink-0 text-slate-400" />
+                  <p className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5">
+                    <MapPin size={11} className="shrink-0 text-[var(--text-3)]" />
                     {s.where}
                   </p>
                 )}
@@ -72,7 +72,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {info.required_documents && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <FileText size={13} className="text-amber-400" /> Documentos Necessários
+            <FileText size={13} className="text-[var(--race)]" /> Documentos Necessários
           </span>
           <div className={subItemClass}>
             <p className={textClass}>{info.required_documents}</p>
@@ -84,7 +84,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {info.category_info && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <Award size={13} className="text-amber-400" /> Para o Teu Escalão
+            <Award size={13} className="text-[var(--race)]" /> Para o Teu Escalão
           </span>
           <div className={subItemClass}>
             <p className={textClass}>{info.category_info}</p>
@@ -96,7 +96,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {info.gear_recommendations && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <Shirt size={13} className="text-amber-400" /> Equipamento
+            <Shirt size={13} className="text-[var(--race)]" /> Equipamento
           </span>
           <div className={subItemClass}>
             <p className={textClass}>{info.gear_recommendations}</p>
@@ -108,7 +108,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {info.logistics && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <Car size={13} className="text-amber-400" /> Deslocação & Acessos
+            <Car size={13} className="text-[var(--race)]" /> Deslocação & Acessos
           </span>
           <div className={subItemClass}>
             <p className={textClass}>{info.logistics}</p>
@@ -120,7 +120,7 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
       {(info.route_summary || info.route_segments) && (
         <div className={cardClass}>
           <span className={titleClass}>
-            <Route size={13} className="text-amber-400" /> Percurso & Altimetria
+            <Route size={13} className="text-[var(--race)]" /> Percurso & Altimetria
           </span>
           {info.route_summary && (
             <div className={subItemClass}>
@@ -133,16 +133,16 @@ export default function RaceWebInfoSections({ info, variant = 'dark' }) {
 
       {/* ─── 7. Avisos / Regulamento ─────────────────────────────────────── */}
       {info.caveats && (
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-amber-400" />
-          <p className="text-xs text-amber-200 font-medium leading-relaxed">
+        <div className="p-3 rounded-xl bg-[var(--tint-race-bg)] border border-[var(--tint-race-bd)] flex items-start gap-2">
+          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-[var(--race)]" />
+          <p className="text-xs text-[var(--race)] font-medium leading-relaxed">
             {info.caveats}
           </p>
         </div>
       )}
 
-      <p className="text-[10px] text-slate-400 pt-1">
-        Obtido de <span className="text-slate-300 font-medium">{info.source_url}</span> · {formatFetchedAt(info.fetched_at)}
+      <p className="text-[11px] text-[var(--text-3)] pt-1">
+        Obtido de <span className="text-[var(--text-3)] font-medium">{info.source_url}</span> · {formatFetchedAt(info.fetched_at)}
       </p>
     </div>
   );

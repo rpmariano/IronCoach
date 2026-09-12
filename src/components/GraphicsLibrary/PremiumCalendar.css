@@ -21,7 +21,7 @@
 
 /* B2 CAPSULE BUTTON */
 .pc-day-btn-capsule {
-  width: 42px; height: 46px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.8);
+  width: 42px; height: 46px; border-radius: 14px; border: 1px solid var(--border-glass-strong);
   background: rgba(255,255,255,0.4); font-size: 0.85rem; font-weight: 700; color: #e2e8f0;
   display: flex; flex-direction: column; align-items: center; justify-content: space-between;
   padding: 6px 0; cursor: pointer; transition: transform 0.2s, background 0.2s, color 0.2s;

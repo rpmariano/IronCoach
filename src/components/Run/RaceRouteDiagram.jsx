@@ -16,10 +16,20 @@ const MARGIN_Y = 22;
 const MIN_X = 22;
 const MAX_X = 98;
 const MAX_SEGMENTS = 30;
+/* Largura da viewBox. O SVG desenha-se a 1:1 (width 100% mas altura fixa em
+   px igual à da viewBox, com preserveAspectRatio meet → escala 1), por isso
+   um user unit é um pixel e o tamanho da letra aqui é o tamanho real no
+   ecrã. Os rótulos ("Partida", "Chegada", "12 km") estão a 11px — piso do
+   ponto 2 do handoff — e o traçado continua entre MIN_X e MAX_X: o espaço
+   extra até VIEW_W é margem para o texto, que é o que o handoff manda fazer
+   quando um gráfico fica apertado (aumentar a margem, nunca encolher a
+   letra). */
+const VIEW_W = 180;
+const LABEL_FONT = 11;
 
 const ELEVATION_COLOR = {
-  sobe: '#f97316',   // laranja — a subir
-  desce: '#38bdf8',  // azul — a descer
+  sobe: 'var(--warn)',   // coral — a subir
+  desce: 'var(--run)',   // ciano — a descer
   plano: 'var(--mod-prova)',
 };
 
@@ -44,13 +54,13 @@ export default function RaceRouteDiagram({ segments }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-[10px] text-slate-500 flex items-center gap-1.5">
+      <p className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5">
         <Info size={11} className="shrink-0" />
         Esquema aproximado reconstruído a partir da descrição do site — não é um mapa geograficamente exato.
       </p>
 
-      <div className="rounded-xl border border-slate-200 bg-white/60 py-3 overflow-hidden">
-        <svg viewBox={`0 0 120 ${height}`} width="100%" height={Math.min(height, 420)} preserveAspectRatio="xMidYMin meet" role="img" aria-label="Esquema do percurso da prova">
+      <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-raised)] py-3 overflow-hidden">
+        <svg viewBox={`0 0 ${VIEW_W} ${height}`} width="100%" height={height} preserveAspectRatio="xMidYMin meet" role="img" aria-label="Esquema do percurso da prova">
           {points.slice(0, -1).map((p, i) => {
             const next = points[i + 1];
             const color = ELEVATION_COLOR[shown[i]?.elevation] || ELEVATION_COLOR.plano;
@@ -71,14 +81,14 @@ export default function RaceRouteDiagram({ segments }) {
                 <circle
                   cx={p.x} cy={p.y}
                   r={isStart || isEnd ? 4 : 2.5}
-                  fill={isStart ? '#22c55e' : isEnd ? 'var(--mod-prova)' : '#fff'}
-                  stroke={isEnd ? 'var(--mod-prova)' : '#94a3b8'}
+                  fill={isStart ? 'var(--ok)' : isEnd ? 'var(--mod-prova)' : 'var(--text-1)'}
+                  stroke={isEnd ? 'var(--mod-prova)' : 'var(--text-4)'}
                   strokeWidth={1.5}
                 />
-                {isStart && <text x={p.x + 8} y={p.y + 3} fontSize="7" fill="#64748b">Partida</text>}
-                {isEnd && <text x={p.x + 8} y={p.y + 3} fontSize="7" fill="#64748b">Chegada</text>}
+                {isStart && <text x={p.x + 10} y={p.y + 4} fontSize={LABEL_FONT} fill="var(--text-muted)">Partida</text>}
+                {isEnd && <text x={p.x + 10} y={p.y + 4} fontSize={LABEL_FONT} fill="var(--text-muted)">Chegada</text>}
                 {!isStart && !isEnd && seg?.km_marker != null && (
-                  <text x={p.x + 7} y={p.y + 2.5} fontSize="6" fill="#94a3b8">{seg.km_marker} km</text>
+                  <text x={p.x + 10} y={p.y + 4} fontSize={LABEL_FONT} fill="var(--text-4)">{seg.km_marker} km</text>
                 )}
               </g>
             );
@@ -88,8 +98,8 @@ export default function RaceRouteDiagram({ segments }) {
 
       <ol className="space-y-1.5">
         {shown.map((seg, i) => (
-          <li key={i} className="text-[11px] text-slate-600 flex gap-2">
-            <span className="text-slate-400 shrink-0 tabular-nums w-10">
+          <li key={i} className="text-[11px] text-[var(--text-3)] flex gap-2">
+            <span className="text-[var(--text-3)] shrink-0 tabular-nums w-10">
               {seg.km_marker != null ? `${seg.km_marker} km` : `#${i + 1}`}
             </span>
             <span>{seg.description}</span>
@@ -97,7 +107,7 @@ export default function RaceRouteDiagram({ segments }) {
         ))}
       </ol>
       {truncated && (
-        <p className="text-[10px] text-slate-400">
+        <p className="text-[11px] text-[var(--text-3)]">
           + {segments.length - MAX_SEGMENTS} troços não mostrados aqui.
         </p>
       )}

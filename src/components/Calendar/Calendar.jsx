@@ -17,6 +17,7 @@ import GymRegistration from '../Gym/GymRegistration';
 import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 import CreatedRecordModal from '../shared/CreatedRecordModal';
+import { Dialog } from '../shared/Sheet';
 
 export default function Calendar() {
   const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
@@ -50,7 +51,11 @@ export default function Calendar() {
   const [editingGymId, setEditingGymId] = useState(null);
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingBodyId, setEditingBodyId] = useState(null);
-  const [racePrefillActive, setRacePrefillActive] = useState(false);
+  // Prova cuja eliminação está por confirmar. Era um window.confirm — o
+  // popup do sistema não fala a língua da app, não diz o que se perde e
+  // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog
+  // partilhado, como "Dispensar o aviso da Carol?" no Início.
+  const [raceToDelete, setRaceToDelete] = useState(null);
 
   const daysInMonth = useMemo(() => {
     return eachDayOfInterval({
@@ -148,7 +153,6 @@ export default function Calendar() {
   };
 
   const handleDeleteRace = async (id) => {
-    if (!window.confirm("Eliminar prova?")) return;
     const previous = [...raceEvents];
     setRaceEvents(raceEvents.filter(e => e.id !== id));
     try {
@@ -158,25 +162,24 @@ export default function Calendar() {
     } catch (err) {
       console.error(err);
       setRaceEvents(previous);
+      showToast('Não consegui eliminar a prova. Tenta outra vez.', 'error');
     }
   };
 
-  const handleCompleteRace = (ev) => {
-    useAppStore.setState({ planItemPrefill: {
-      kind: 'corrida',
-      isRace: true,
-      planned_date: ev.date,
-      title: ev.name,
-      target_distance_km: ev.distance_km,
-      target_duration: ev.target_time_seconds,
-      elevation_gain_m: ev.elevation_gain_m,
-      race_type: ev.race_type
-    }});
-    setRacePrefillActive(true);
+  const confirmDeleteRace = () => {
+    const alvo = raceToDelete;
+    setRaceToDelete(null);
+    if (alvo) handleDeleteRace(alvo.id);
   };
 
+  /* Registar a prova abre o registo de corrida em MODO PROVA, pelo store
+     (specs/prova-concluida.md §3) — ecrã de topo no separador Corrida, como
+     as outras duas entradas. Antes disto era um planItemPrefill montado à
+     mão que abria o formulário aqui dentro, sem ligação nenhuma à prova: a
+     corrida ficava órfã e o hub só a encontrava por coincidência de data. */
+  const handleRegisterRace = (ev) => useAppStore.getState().openRaceRun(ev.id);
+
   if (editingRunId) return <RunRegistration onClose={() => setEditingRunId(null)} runIdToEdit={editingRunId} />;
-  if (racePrefillActive) return <RunRegistration onClose={() => { setRacePrefillActive(false); useAppStore.setState({ planItemPrefill: null }); }} runIdToEdit={null} />;
   if (editingGymId) return <GymRegistration onClose={() => setEditingGymId(null)} sessionIdToEdit={editingGymId} />;
   if (editingMealId) return <MealRegistration onClose={() => setEditingMealId(null)} mealIdToEdit={editingMealId} />;
   if (editingBodyId) return <BodyRegistration onClose={() => setEditingBodyId(null)} assessmentIdToEdit={editingBodyId} />;
@@ -196,24 +199,28 @@ export default function Calendar() {
     <div className="space-y-4 fade-in pb-8">
       
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
-      <div className="rounded-[28px] p-5 bg-white/40 backdrop-blur-[20px] border border-white/80 shadow-[0_10px_40px_rgba(0,0,0,0.05),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+      <div className="rounded-[28px] p-5 bg-[var(--surface-dim)] backdrop-blur-[20px] border border-[var(--border-glass)] shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-between mb-5">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronLeft size={16} />
           </button>
-          <span className="text-[15px] font-bold capitalize text-slate-900 tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-slate-400 hover:text-slate-800 transition">
+          <span className="text-[15px] font-bold capitalize text-[var(--text-1)] tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
+          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronRight size={16} />
           </button>
         </div>
 
-        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4">
+        {/* -mx-4: as sete células a 44px (piso de toque) precisam de
+            7x44 + 6x4 = 332px e o interior do cartão só dá 301 — a grelha
+            sai 16px para cada lado do padding do cartão, que lhe passa a
+            dar 333. O cabeçalho dos dias sai com ela, senão desalinhava. */}
+        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center mb-4 -mx-4">
           {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d, i) => (
-            <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wide" key={i}>{d}</span>
+            <span className="text-[11px] font-extrabold text-[var(--text-2)] uppercase tracking-wide" key={i}>{d}</span>
           ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center">
+        <div className="grid grid-cols-7 gap-y-3 gap-x-1 text-center -mx-4">
           {Array.from({ length: firstWeekday }).map((_, i) => (
             <div key={`empty-${i}`} className="flex justify-center items-center"></div>
           ))}
@@ -233,12 +240,12 @@ export default function Calendar() {
               <div className="flex justify-center items-center" key={dayStr}>
                 <button
                   onClick={() => setSelectedDate(date)}
-                  className={`w-[42px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
+                  className={`w-[44px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
-                      ? 'bg-white border-[var(--green)] text-slate-900 shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
+                      ? 'bg-[var(--surface-faint)] border-[var(--green)] text-[var(--text-1)] shadow-[0_4px_15px_rgba(0,0,0,0.08)] scale-[1.05] font-black' 
                       : dayRaces.length > 0
                         ? 'bg-[linear-gradient(135deg,var(--race-from),var(--race-to))] border-transparent text-white shadow-[0_2px_8px_var(--race-glow)] hover:opacity-90'
-                        : 'bg-white border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-slate-700 hover:bg-slate-50'
+                        : 'bg-[var(--surface-faint)] border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.04)] text-[var(--text-2)] hover:bg-[var(--surface-soft)]'
                   }`}
                 >
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
@@ -250,7 +257,7 @@ export default function Calendar() {
                     {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corpo)]" />}
                     
                     {!dayRaces.length && !dayRuns.length && !dayGym.length && !dayMeals.length && !dayBody.length && isSelected && (
-                       <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-slate-300/50" />
+                       <span className="flex-[0_0_14px] mx-auto rounded-[2px] bg-[var(--text-3)] opacity-50" />
                     )}
                   </div>
                 </button>
@@ -260,7 +267,7 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div className="mt-6 p-3 bg-white/50 rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+        <div className="mt-6 p-3 bg-[var(--surface-glass)] rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[11px] font-semibold text-[var(--text-3)] shadow-sm">
           <div className="flex items-center gap-1.5">
             <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-prova)]"></span>
             <span>Prova</span>
@@ -286,19 +293,27 @@ export default function Calendar() {
 
       {/* Selected Date Details */}
       <div className="space-y-3">
-        <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide px-1 pt-2">
+        <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide px-1 pt-2">
           {format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
         </h3>
 
         {!hasRecords && (
-          <div className="rounded-2xl p-6 bg-white/40 border border-white/80 border-dashed flex flex-col items-center justify-center text-slate-500 shadow-[inset_0_2px_10px_rgba(255,255,255,0.6)]">
+          <div className="rounded-2xl p-6 bg-[var(--surface-dim)] border border-white/15 border-dashed flex flex-col items-center justify-center text-[var(--text-3)]">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
             <p className="text-[11px]">Sem registos neste dia</p>
           </div>
         )}
 
         {selectedRaces.map(race => (
-          <RaceCard key={race.id} ev={race} onEdit={setEditingRaceId} onToggleStatus={() => handleCompleteRace(race)} onDelete={handleDeleteRace} />
+          <RaceCard
+            key={race.id}
+            ev={race}
+            onEdit={setEditingRaceId}
+            onRegisterRace={handleRegisterRace}
+            onViewRun={setEditingRunId}
+            onToggleStatus={handleToggleRaceStatus}
+            onDelete={() => setRaceToDelete(race)}
+          />
         ))}
         {selectedRuns.map(run => (
           <RunCard key={run.id} run={run} onEdit={setEditingRunId} onDelete={handleDeleteRun} />
@@ -314,6 +329,28 @@ export default function Calendar() {
         ))}
       </div>
       
+      {raceToDelete && (
+        <Dialog
+          title="Eliminar esta prova?"
+          tone="race"
+          onClose={() => setRaceToDelete(null)}
+          actions={(
+            <>
+              <button type="button" onClick={confirmDeleteRace} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+                Eliminar
+              </button>
+              <button type="button" onClick={() => setRaceToDelete(null)} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+                Cancelar
+              </button>
+            </>
+          )}
+        >
+          <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
+            {raceToDelete.name ? `"${raceToDelete.name}" sai do calendário` : 'A prova sai do calendário'} e o plano deixa de a ter como alvo. Os treinos já registados ficam.
+          </p>
+        </Dialog>
+      )}
+
       <CreatedRecordModal />
     </div>
   );

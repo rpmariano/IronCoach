@@ -41,26 +41,26 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
   }, [crossData]);
 
   return (
-    <div className="bg-white/5 backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.2)] overflow-hidden">
+    <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.2)] overflow-hidden">
       {/* Toggle button */}
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition"
+        className="w-full min-h-[44px] flex items-center justify-between px-4 py-3 hover:bg-[var(--surface-glass)] transition"
       >
         <div className="flex items-center gap-2">
-          <BarChart2 className="w-4 h-4 text-indigo-400" />
+          <BarChart2 className="w-4 h-4 text-[var(--run)]" />
           <span className="text-sm font-bold text-white">Análise Cruzada</span>
-          <span className="text-[10px] text-slate-400 font-medium ml-1">Interações entre pilares</span>
+          <span className="text-[11px] text-[var(--text-3)] font-medium ml-1">Interações entre pilares</span>
         </div>
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-[var(--text-3)] transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {/* Expandable content */}
       <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
         <div className="overflow-hidden">
-          <div className="px-4 pb-4 space-y-4 pt-2 border-t border-white/10">
+          <div className="px-4 pb-4 space-y-4 pt-2 border-t border-[var(--border-glass)]">
 
             {/* Weight vs VDOT */}
             {vdotVsWeightData.length > 0 ? (
@@ -71,20 +71,20 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   leftData={{
                     label: 'Peso (kg)',
                     data: vdotVsWeightData.map(d => ({ x: d.date, y: d.left })),
-                    color: '#6366f1',
+                    color: '#ff5fa8', // --body
                     unit: 'kg'
                   }}
                   rightData={{
                     label: 'VDOT',
                     data: vdotVsWeightData.map(d => ({ x: d.date, y: d.right })),
-                    color: '#c026d3',
+                    color: '#2ee0ff', // --run
                     unit: ''
                   }}
                 />
               </>
             ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                <p className="text-xs text-slate-400">Regista avaliações corporais e corridas com tempo para ver a relação Peso vs VDOT.</p>
+              <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-4 text-center">
+                <p className="text-xs text-[var(--text-3)]">Regista avaliações corporais e corridas com tempo para ver a relação Peso vs VDOT.</p>
               </div>
             )}
 
@@ -97,13 +97,13 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   leftData={{
                     label: 'Volume Ginásio (kg)',
                     data: crossData.gymLoadVsRunRPE.map(d => ({ x: d.date, y: d.gymVolume })),
-                    color: '#facc15',
+                    color: '#9ec3d2', // --gym (era #facc15, amarelo reservado ao âmbar da prova)
                     unit: 'kg'
                   }}
                   rightData={{
                     label: 'Esforço Corrida (RPE)',
                     data: crossData.gymLoadVsRunRPE.map(d => ({ x: d.date, y: d.runRPE })),
-                    color: '#3b82f6',
+                    color: '#2ee0ff', // --run
                     unit: 'RPE'
                   }}
                 />
@@ -112,8 +112,8 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                 )}
               </>
             ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl p-4 text-center">
-                <p className="text-xs text-slate-400">Regista treinos de ginásio e corridas com RPE para analisar a interferência entre modalidades.</p>
+              <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl p-4 text-center">
+                <p className="text-xs text-[var(--text-3)]">Regista treinos de ginásio e corridas com RPE para analisar a interferência entre modalidades.</p>
               </div>
             )}
 

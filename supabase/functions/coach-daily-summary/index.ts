@@ -19,6 +19,7 @@ import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -207,6 +208,8 @@ export function buildDailySummaryContext(params: {
   recentGym: any[];
   // deno-lint-ignore no-explicit-any
   planItems: any[];
+  // Só à segunda-feira: quantos itens do plano da semana passada têm registo.
+  lastWeekPlan?: { itens: number; com_registo: number } | null;
   // deno-lint-ignore no-explicit-any
   nextRace: any;
   // deno-lint-ignore no-explicit-any
@@ -214,7 +217,7 @@ export function buildDailySummaryContext(params: {
   acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null };
   tdee?: number | null;
 }) {
-  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee } = params;
+  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee, lastWeekPlan } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
 
@@ -299,6 +302,7 @@ export function buildDailySummaryContext(params: {
        de Acompanhamento" do coach-chat e o planningFrameSection dos analyze-*.
        Sem isto o resumo diário falava de plano e de preparação de prova a quem
        não tem nem uma coisa nem outra. */
+    semana_passada_plano: lastWeekPlan ?? undefined,
     modo_acompanhamento: (planItems || []).length > 0
       ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
       : (nextRace ? "PROVA_SEM_PLANO" : "LIVRE"),
@@ -313,6 +317,27 @@ export function buildDailySummaryContext(params: {
       )
     } : null,
   };
+}
+
+/** Semana cumprida? Um item de corrida conta como feito se há uma corrida
+ *  nesse dia; ginásio se há sessão nesse dia; descanso conta sempre. É a
+ *  leitura mais simples possível de propósito — o reconhecimento de
+ *  segunda-feira é uma frase, não uma auditoria. */
+export function computeLastWeekAdherence(
+  items: { planned_date: string; kind: string }[],
+  runs: { date: string }[],
+  gym: { date: string }[],
+): { itens: number; com_registo: number } {
+  const runDays = new Set(runs.map((r) => r.date));
+  const gymDays = new Set(gym.map((g) => g.date));
+  let done = 0;
+  for (const it of items) {
+    if (it.kind === "descanso") done++;
+    else if (it.kind === "corrida") { if (runDays.has(it.planned_date)) done++; }
+    else if (it.kind === "ginasio") { if (gymDays.has(it.planned_date)) done++; }
+    else if (runDays.has(it.planned_date) || gymDays.has(it.planned_date)) done++;
+  }
+  return { itens: items.length, com_registo: done };
 }
 
 function formatWorkoutItemName(i: any): string {
@@ -529,9 +554,10 @@ const RESPONSE_SCHEMA = {
 // deno-lint-ignore no-explicit-any
 async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string): Promise<any> {
   const prompt =
-    `És a Carol, Coach de um atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
-    `conteúdos independentes para o cartão diário do Início. Português (PT), tom direto e próximo, ` +
-    `nunca genérico. Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
+    `És a Carol, a treinadora deste atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
+    `conteúdos independentes para o cartão diário do Início, em primeira pessoa. Nunca genérico. ` +
+    `Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS A PREENCHER:\n\n` +
     `1. recap — mensagem do Coach ao atleta (máx. 3 frases). ` +
@@ -539,6 +565,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `(b) se "proxima_prova" existir, inclui uma observação concreta sobre a preparação para a prova ` +
     `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
     `(c) uma sugestão prática para os próximos dias. ` +
+    `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
+    `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
     `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
@@ -689,15 +717,22 @@ Deno.serve(async (req) => {
     // Encontra os treinos de todos os planos aceites relevantes para os próximos dias
     const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
     let planItems: any[] = [];
+    let lastWeekItems: any[] = [];
     if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
         .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
         .eq("user_id", userId)
         .in("plan_id", acceptedPlanIds)
-        .in("planned_date", [today, addDaysISO(today, 1), addDaysISO(today, 2)])
+        // Semana passada incluída só para a regra de segunda-feira (CAROL.md
+        // §3: "semana cumprida a 100% → uma frase de reconhecimento"); o resto
+        // do resumo continua a olhar de hoje para a frente (planItems).
+        .gte("planned_date", addDaysISO(today, -7))
+        .lte("planned_date", addDaysISO(today, 2))
         .neq("status", "cancelado");
-      planItems = fetchedItems || [];
+      const allItems = fetchedItems || [];
+      planItems = allItems.filter((i: any) => i.planned_date >= today);
+      lastWeekItems = allItems.filter((i: any) => i.planned_date < today);
     }
 
     const tomorrow = addDaysISO(today, 1);
@@ -712,6 +747,10 @@ Deno.serve(async (req) => {
     // custo do treino (ver computeTDEE acima).
     const tdee        = computeTDEE(profile, acwr.acute_km_per_day * 7);
 
+    const isMonday = new Date(today + "T00:00:00Z").getUTCDay() === 1;
+    const lastWeekPlan = isMonday && lastWeekItems.length > 0
+      ? computeLastWeekAdherence(lastWeekItems, recentRuns || [], recentGym || [])
+      : null;
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,

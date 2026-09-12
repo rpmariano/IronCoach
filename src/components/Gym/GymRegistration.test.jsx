@@ -64,11 +64,11 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
 
     expect(screen.queryByText(/Escolhe os prints da app de treino/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 45m')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Analisar Treino/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
   });
 });
 
-describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
+describe('GymRegistration — Analisar treino por foto (analyze-gym)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -84,7 +84,7 @@ describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
     fireEvent.change(screen.getByPlaceholderText('Contexto do treino...'), { target: { value: 'treino pesado' } });
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -103,7 +103,7 @@ describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
     render(<GymRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
@@ -114,7 +114,7 @@ describe('GymRegistration — Analisar Treino por foto (analyze-gym)', () => {
     render(<GymRegistration onClose={onClose} />);
     await selectPhoto();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -140,7 +140,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
     fireEvent.click(screen.getByRole('button', { name: '7' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -159,7 +159,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     render(<GymRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
@@ -170,7 +170,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     render(<GymRegistration onClose={onClose} />);
     goManual();
 
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await screen.findByText('Falha a gravar treino.');
     expect(onClose).not.toHaveBeenCalled();
@@ -221,14 +221,14 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(reps).toHaveLength(2);
     expect(reps[0]).toHaveValue(10);
     expect(reps[1]).toHaveValue(8);
-    expect(screen.getByRole('button', { name: /Guardar Alterações/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
 
   it('mudar só o nome faz update direto, sem chamar o Gemini', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     fireEvent.change(screen.getByDisplayValue('Peito e Tríceps'), { target: { value: 'Push A' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar Alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
 
     await waitFor(() => expect(mocks.updateSession).toHaveBeenCalledTimes(1));
     const [payload, sessionId] = mocks.updateSession.mock.calls[0];
@@ -249,7 +249,7 @@ describe('GymRegistration — editar sessão existente', () => {
     fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: 'Fondos' } });
     fireEvent.change(screen.getAllByPlaceholderText('Reps')[2], { target: { value: '15' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [fnName, { body }] = mocks.invoke.mock.calls[0];
@@ -268,7 +268,7 @@ describe('GymRegistration — editar sessão existente', () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: '9' }));
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -280,7 +280,7 @@ describe('GymRegistration — editar sessão existente', () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: 'dor no ombro a meio' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     const [, { body }] = mocks.invoke.mock.calls[0];
@@ -292,7 +292,7 @@ describe('GymRegistration — editar sessão existente', () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     fireEvent.change(screen.getAllByPlaceholderText('Reps')[0], { target: { value: '12' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar e Reanalisar/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
@@ -470,7 +470,7 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     expect(screen.getByPlaceholderText('Nome do treino').value).toBe('Rascunho Antigo');
 
     await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Analisar Treino/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
@@ -480,5 +480,22 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     // Próximo treino novo: sem vestígios do rascunho gravado.
     render(<GymRegistration onClose={onClose} />);
     expect(screen.getByPlaceholderText('Nome do treino').value).toBe('');
+  });
+});
+
+
+// Ponto 2 do handoff: a ação primária de cada ecrã de registo vive na barra
+// de ação fixa (ActionBar), não no fim do formulário — antes ficava sempre
+// abaixo da dobra.
+describe('GymRegistration — ação primária na ActionBar', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, workoutSessions: [] });
+  });
+
+  it('renderiza o botão primário dentro da barra de ação fixa', () => {
+    render(<GymRegistration onClose={() => {}} />);
+    const bar = screen.getByTestId('action-bar');
+    expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar treino/i }));
   });
 });

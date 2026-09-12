@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { Footprints, Plus, Pencil, Trash2, Archive, RotateCcw, Sparkles, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -9,15 +9,20 @@ import Button from '../shared/Button';
 import {
   wearStatus, shoeLabel, WEAR_LEVEL_LABELS, REFERENCE_WEIGHT_KG,
 } from '../../utils/shoes';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
 
 // Tom de cada nível de desgaste. 'ok' é deliberadamente discreto — a maior
 // parte dos pares está em bom estado e não precisa de chamar a atenção.
+/* Ponto 3 do redesenho: 'atencao' era âmbar e 'substituir' laranja — duas
+   cores só para dizer a mesma coisa (aviso), e uma delas era a da prova.
+   Passam as duas ao coral --warn e distinguem-se pela força da tinta;
+   'excedida' é o vermelho do erro, 'ok' o verde do dentro-do-alvo. */
 const LEVEL_STYLES = {
-  sem_estimativa: { bar: '#64748b', text: 'text-slate-400', chip: 'bg-slate-800 text-slate-400 border-slate-700' },
-  ok:             { bar: '#10b981', text: 'text-emerald-400', chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
-  atencao:        { bar: '#f59e0b', text: 'text-amber-400', chip: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-  substituir:     { bar: '#f97316', text: 'text-orange-400', chip: 'bg-orange-500/15 text-orange-300 border-orange-500/30' },
-  excedida:       { bar: '#ef4444', text: 'text-red-400', chip: 'bg-red-500/15 text-red-300 border-red-500/30' },
+  sem_estimativa: { bar: 'var(--text-muted)', color: 'var(--text-4)', chipBg: 'rgba(255,255,255,.05)', chipBd: 'rgba(255,255,255,.10)' },
+  ok:             { bar: 'var(--ok)',     color: 'var(--ok)',     chipBg: 'var(--tint-ok-bg)',     chipBd: 'var(--tint-ok-bd)' },
+  atencao:        { bar: 'var(--warn)',   color: 'var(--warn)',   chipBg: 'var(--tint-warn-bg)',   chipBd: 'var(--tint-warn-bd)' },
+  substituir:     { bar: 'var(--warn)',   color: 'var(--warn)',   chipBg: 'rgba(251,124,77,.22)',  chipBd: 'rgba(251,124,77,.55)' },
+  excedida:       { bar: 'var(--danger)', color: 'var(--danger)', chipBg: 'var(--tint-danger-bg)', chipBd: 'var(--tint-danger-bd)' },
 };
 
 const MONTHS = [
@@ -47,7 +52,10 @@ function startedOnLabel(iso) {
   return monthName ? `${monthName} de ${y}` : y;
 }
 
-export default function ShoeCabinet() {
+/* forwardRef: o "Adicionar sapatilhas" do separador Equipamento vive agora na
+   ActionBar fixa do Perfil (ponto 2 do handoff) e precisa de abrir o mesmo
+   formulário que o botão "Adicionar" do cabeçalho deste cartão. */
+const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
   const { shoes, runs, profile, addShoe, updateShoe, deleteShoe } = useAppStore();
   const { showToast } = useToast();
 
@@ -77,6 +85,8 @@ export default function ShoeCabinet() {
     setForm(emptyForm);
     setFormOpen(true);
   };
+
+  useImperativeHandle(ref, () => ({ openNew }), []);
 
   const openEdit = (shoe) => {
     const [y, m] = (shoe.started_on || '').split('-');
@@ -215,27 +225,28 @@ export default function ShoeCabinet() {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Footprints size={16} className="text-[var(--mod-corrida)]" />
-          <h2 className="text-sm font-semibold">Armário de Sapatilhas</h2>
+          <h3 className="text-sm font-semibold">Armário de Sapatilhas</h3>
         </div>
         <button
           onClick={openNew}
-          className="tap-h-44 flex items-center gap-1 text-[11px] font-bold px-3 rounded-full bg-white/10 border border-white/10 text-slate-200 hover:bg-white/20 active:scale-95 transition"
+          className="tap-h-44 flex items-center gap-1 text-[11px] font-bold px-3 rounded-full bg-[var(--surface-strong)] border border-[var(--border-glass)] text-[var(--text-2)] hover:bg-white/20 active:scale-95 transition"
         >
           <Plus size={13} /> Adicionar
         </button>
       </div>
 
-      <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+      <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
         Os km de cada par somam-se sozinhos a partir das corridas em que o
         escolheres. A vida útil mostrada já está ajustada ao teu peso
-        {weightKg ? ` (${weightKg} kg)` : ''} — um corredor mais pesado gasta
+        {/* Vírgula decimal, como o resto da app (design-system: "72,4 kg"). */}
+        {weightKg ? ` (${fmtNumber(weightKg)} kg)` : ''} — um corredor mais pesado gasta
         a entressola mais depressa.
       </p>
 
       {active.length === 0 && retired.length === 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
-          <Footprints size={24} className="mx-auto mb-2 text-slate-600" />
-          <p className="text-[11px] text-slate-500">
+        <div className="rounded-2xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-6 text-center">
+          <Footprints size={24} className="mx-auto mb-2 text-[var(--text-3)]" />
+          <p className="text-[11px] text-[var(--text-3)]">
             Ainda não tens sapatilhas no armário. Adiciona um par para
             começares a contar os km.
           </p>
@@ -257,7 +268,7 @@ export default function ShoeCabinet() {
 
       {retired.length > 0 && (
         <div className="mt-4">
-          <p className="text-[10px] uppercase font-bold tracking-wide text-slate-600 mb-2">
+          <p className="text-[11px] uppercase font-bold tracking-wide text-[var(--text-3)] mb-2">
             Aposentadas
           </p>
           <div className="space-y-2.5 opacity-60">
@@ -286,18 +297,20 @@ export default function ShoeCabinet() {
         variant="dialog"
         maxWidth="max-w-lg"
       >
-        <div className="p-6 space-y-4 bg-neutral-900 text-slate-200">
+        <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Marca">
+            <Field label="Marca" htmlFor="shoe-marca">
               <input
+                id="shoe-marca"
                 value={form.brand}
                 onChange={e => setField('brand', e.target.value)}
                 placeholder="Nike"
                 className={inputClass}
               />
             </Field>
-            <Field label="Modelo">
+            <Field label="Modelo" htmlFor="shoe-modelo">
               <input
+                id="shoe-modelo"
                 value={form.model}
                 onChange={e => setField('model', e.target.value)}
                 placeholder="Pegasus 40"
@@ -306,9 +319,11 @@ export default function ShoeCabinet() {
             </Field>
           </div>
 
-          <Field label="Início de utilização">
+          <Field label="Início de utilização" htmlFor="shoe-inicio-mes">
             <div className="grid grid-cols-2 gap-3">
               <select
+                id="shoe-inicio-mes"
+                aria-label="Mês de início de utilização"
                 value={form.startMonth}
                 onChange={e => setField('startMonth', e.target.value)}
                 className={inputClass}
@@ -318,6 +333,7 @@ export default function ShoeCabinet() {
                 ))}
               </select>
               <select
+                aria-label="Ano de início de utilização"
                 value={form.startYear}
                 onChange={e => setField('startYear', e.target.value)}
                 className={inputClass}
@@ -330,8 +346,10 @@ export default function ShoeCabinet() {
           <Field
             label="Km que já tinham ao registar"
             hint="Deixa a zero se o par é novo."
+            htmlFor="shoe-km-iniciais"
           >
             <input
+              id="shoe-km-iniciais"
               type="number" min="0" step="1" inputMode="decimal"
               value={form.initial_km}
               onChange={e => setField('initial_km', e.target.value)}
@@ -340,15 +358,15 @@ export default function ShoeCabinet() {
             />
           </Field>
 
-          <div className="space-y-1.5 pt-1 border-t border-neutral-800">
+          <div className="space-y-1.5 pt-1 border-t border-[var(--border-glass)]">
             <div className="flex items-center justify-between pt-3">
-              <label className="text-xs font-semibold text-slate-300">
+              <label htmlFor="shoe-vida-util" className="text-xs font-semibold text-[var(--text-3)]">
                 Vida útil (km)
               </label>
               <button
                 onClick={handleAskCarol}
                 disabled={askingCarol || saving}
-                className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition disabled:opacity-50"
+                className="flex items-center gap-1.5 min-h-[44px] text-[11px] font-bold px-2.5 py-1.5 rounded-lg border transition disabled:opacity-50"
                 style={{
                   background: 'color-mix(in srgb, var(--mod-coach-to) 15%, transparent)',
                   borderColor: 'color-mix(in srgb, var(--mod-coach-to) 40%, transparent)',
@@ -356,24 +374,25 @@ export default function ShoeCabinet() {
                 }}
               >
                 {askingCarol
-                  ? <><div className="w-3 h-3 border-2 border-slate-600 border-t-current rounded-full animate-spin" /> A perguntar...</>
+                  ? <><div className="w-3 h-3 border-2 border-[var(--border-glass-strong)] border-t-current rounded-full animate-spin" /> A perguntar...</>
                   : <><Sparkles size={12} /> Perguntar à Carol</>}
               </button>
             </div>
             <input
+              id="shoe-vida-util"
               type="number" min="1" step="1" inputMode="numeric"
               value={form.lifespan_km}
               onChange={e => setForm(f => ({ ...f, lifespan_km: e.target.value, lifespan_source: 'manual' }))}
               placeholder="Ex.: 700"
               className={inputClass}
             />
-            <p className="text-[10px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
               Valor de referência para um corredor de {REFERENCE_WEIGHT_KG} kg — a app
               ajusta-o ao teu peso. A Carol consegue estimá-lo a partir da marca e
               modelo; se não conhecer o par, escreve-o à mão.
             </p>
             {form.lifespan_notes && (
-              <p className="text-[10px] italic mt-1 leading-relaxed" style={{ color: 'var(--mod-coach-to)' }}>
+              <p className="text-[11px] italic mt-1 leading-relaxed" style={{ color: 'var(--mod-coach-to)' }}>
                 {form.lifespan_notes}
               </p>
             )}
@@ -391,7 +410,7 @@ export default function ShoeCabinet() {
               isLoading={saving}
               className="flex-1"
             >
-              {saving ? 'A guardar...' : 'Guardar'}
+              {saving ? 'A guardar…' : 'Guardar'}
             </Button>
           </div>
         </div>
@@ -411,16 +430,21 @@ export default function ShoeCabinet() {
       />
     </div>
   );
-}
+});
 
-const inputClass = 'w-full bg-neutral-950 border border-neutral-700 rounded-xl py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-[var(--mod-corrida)]/60';
+export default ShoeCabinet;
 
-function Field({ label, hint, children }) {
+const inputClass = 'w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-sm text-[var(--text-2)] outline-none focus:border-[var(--mod-corrida)]/60';
+
+/* `htmlFor` liga a etiqueta ao campo que o Field embrulha — sem isto a
+   etiqueta é só visual e o campo chega ao leitor de ecrã sem nome
+   (auditoria a11y). Quem usa passa o mesmo id ao controlo em children. */
+function Field({ label, hint, htmlFor, children }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-slate-300">{label}</label>
+      <label className="text-xs font-semibold text-[var(--text-3)]" htmlFor={htmlFor}>{label}</label>
       {children}
-      {hint && <p className="text-[10px] text-slate-500">{hint}</p>}
+      {hint && <p className="text-[11px] text-[var(--text-3)]">{hint}</p>}
     </div>
   );
 }
@@ -433,43 +457,46 @@ function ShoeRow({ shoe, wear, onEdit, onToggleRetired, onDelete }) {
   const barPct = wear.pct == null ? 0 : Math.min(100, wear.pct);
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3.5 space-y-2.5">
+    <div className="rounded-2xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3.5 space-y-2.5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[13px] font-bold text-slate-100 truncate">{shoeLabel(shoe)}</p>
-          <p className="text-[10px] text-slate-500 truncate">
+          <p className="text-[13px] font-bold text-[var(--text-1)] truncate">{shoeLabel(shoe)}</p>
+          <p className="text-[11px] text-[var(--text-3)] truncate">
             {[startedOnLabel(shoe.started_on), shoe.shoe_category].filter(Boolean).join(' · ') || '—'}
           </p>
         </div>
         {/* Mesmo aposentado, o chip mostra o desgaste com que o par ficou —
             que estão aposentados já se percebe pelo cabeçalho da secção e
             pela opacidade; repetir isso aqui não acrescentava nada. */}
-        <span className={`shrink-0 text-[9px] font-bold px-2 py-0.5 rounded border ${style.chip}`}>
+        <span
+          className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded border"
+          style={{ background: style.chipBg, borderColor: style.chipBd, color: style.color }}
+        >
           {WEAR_LEVEL_LABELS[wear.level]}
         </span>
       </div>
 
       {wear.level === 'sem_estimativa' ? (
-        <p className="text-[11px] text-slate-400">
-          <span className="font-bold text-slate-200">{wear.km} km</span> acumulados ·
-          <span className="text-slate-500"> sem vida útil definida</span>
+        <p className="text-[11px] text-[var(--text-3)]">
+          <span className="font-bold text-[var(--text-2)]">{wear.km} km</span> acumulados ·
+          <span className="text-[var(--text-3)]"> sem vida útil definida</span>
         </p>
       ) : (
         <>
           <div className="flex items-baseline justify-between text-[11px]">
-            <span className="text-slate-300">
-              <span className="font-bold text-slate-100">{wear.km}</span> / {wear.lifespanKm} km
+            <span className="text-[var(--text-3)]">
+              <span className="font-bold text-[var(--text-1)]">{wear.km}</span> / {wear.lifespanKm} km
             </span>
-            <span className={`font-bold ${style.text}`}>{wear.pct}%</span>
+            <span className="font-bold" style={{ color: style.color }}>{wear.pct}%</span>
           </div>
-          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div className="h-1.5 rounded-full bg-[var(--surface-strong)] overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{ width: `${barPct}%`, background: style.bar }}
             />
           </div>
           {!retired && (wear.level === 'substituir' || wear.level === 'excedida') && (
-            <p className={`flex items-start gap-1.5 text-[10px] leading-relaxed ${style.text}`}>
+            <p className="flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: style.color }}>
               <AlertTriangle size={12} className="shrink-0 mt-px" />
               {wear.level === 'excedida'
                 ? `Já passaste a vida útil estimada em ${Math.abs(wear.remainingKm)} km. Correr com a entressola gasta aumenta o risco de lesão — está na hora de trocar.`
@@ -496,10 +523,10 @@ function RowAction({ icon: Icon, label, onClick, danger }) {
   return (
     <button
       onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded-lg border transition active:scale-95 ${
+      className={`flex-1 flex items-center justify-center gap-1 min-h-[44px] text-[11px] font-semibold py-1.5 rounded-lg border transition active:scale-95 ${
         danger
-          ? 'border-red-500/25 text-red-400/90 hover:bg-red-500/10'
-          : 'border-white/10 text-slate-300 hover:bg-white/10'
+          ? 'border-[var(--tint-danger-bd)] text-[var(--danger)] hover:bg-[var(--tint-danger-bg)]'
+          : 'border-[var(--border-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)]'
       }`}
     >
       <Icon size={11} /> {label}

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2814,4 +2814,256 @@ Deno.test("buildMealMacros: tipos todos distintos continuam a passar", () => {
     { tipo: "jantar", texto: "150g de peixe com arroz" },
   ]);
   assertEquals(out?.kcal, 2000);
+});
+
+// ─── CAROL.md — personalidade e comportamento (handoff 2026-09, ponto 10) ────
+// O prompt é texto: a única forma de garantir que as regras de tom não caem
+// num retoque futuro é afirmá-las aqui. Ver specs/design-handoff-2026-09/
+// design/CAROL.md e _shared/carolTone.ts.
+
+// 27 argumentos posicionais até suggestionAdherencePanel; os extras entram a
+// seguir (lastExchangeHoursAgo, proactiveTrigger, proactiveDetails).
+// deno-lint-ignore no-explicit-any
+function sysCarol(...extra: any[]): string {
+  return buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, false, null, null, null, null, null, null, null, null, null, null, null, null,
+    ...extra,
+  );
+}
+
+Deno.test("CAROL.md: o prompt proíbe emojis e exclamações e já não pede emojis", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Nunca uses emojis. Nunca.");
+  assertStringIncludes(sys, "Pontos de exclamação: praticamente nunca");
+  assertEquals(sys.includes("Usa emojis"), false);
+  assertEquals(sys.includes("💪"), false);
+  assertEquals(sys.includes("❌"), false);
+  assertEquals(sys.includes("😊"), false);
+});
+
+Deno.test("CAROL.md: opinião primeiro, sem elogios automáticos, sem frases de manual, sem pedir desculpa pelo sistema", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Opinião primeiro, número depois");
+  assertStringIncludes(sys, "Sem elogios automáticos");
+  assertStringIncludes(sys, "Lembra-te de te hidratar");
+  assertStringIncludes(sys, "Nunca pedes desculpa pelo sistema");
+  assertStringIncludes(sys, "É uma treinadora, não um assistente".replace("É", "És"));
+});
+
+Deno.test("CAROL.md: o banco de humor deixou de ter exclamações e o exemplo com emoji", () => {
+  const sys = sysCarol();
+  const bank = sys.split("## Banco de Humor")[1].split("## Formato das Respostas")[0];
+  assertEquals(bank.includes("!"), false, "exclamação no banco de humor");
+  assertEquals(bank.includes("emoji a suar"), false);
+  assertStringIncludes(bank, "O humor nunca suspende as regras de tom");
+});
+
+Deno.test("CAROL.md: memória citada, reação a eventos e 'ela fala de si' entram no prompt", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "Memória visível");
+  assertStringIncludes(sys, "Da última vez disseste que");
+  assertStringIncludes(sys, "## Reação ao que Aconteceu");
+  assertStringIncludes(sys, "Aconteceu alguma coisa?");
+  assertStringIncludes(sys, "Peso a descer mais de 1 kg por semana");
+  assertStringIncludes(sys, "## Ela Fala de Si");
+  assertStringIncludes(sys, "nunca em duas conversas seguidas");
+});
+
+Deno.test("CAROL.md §2: um pedido irrealista recebe discordância com números, não uma pergunta em vez de opinião", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "dizes que não concordas e porquê");
+  assertEquals(sys.includes("não recuses de imediato"), false);
+});
+
+Deno.test("última troca: >24h pede retoma do assunto; <24h só regista as horas; null é a primeira conversa; undefined não diz nada", () => {
+  const long = sysCarol(30);
+  assertStringIncludes(long, "Última troca nesta conversa: há 30 horas.");
+  assertStringIncludes(long, "retoma o último assunto em aberto");
+  const short = sysCarol(2);
+  assertStringIncludes(short, "Última troca nesta conversa: há 2 horas.");
+  assertEquals(short.includes("retoma o último assunto em aberto, com citação, antes de responderes"), false);
+  assertStringIncludes(sysCarol(1), "há 1 hora.");
+  assertStringIncludes(sysCarol(null), "é a primeira conversa");
+  assertEquals(sysCarol().includes("Última troca nesta conversa"), false);
+});
+
+Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto do cliente e a proibição de ferramentas", () => {
+  for (const t of PROACTIVE_TRIGGERS) {
+    const sys = sysCarol(undefined, t, "Prova amanhã: \"Meia de Lisboa\".");
+    assertStringIncludes(sys, `=== MENSAGEM POR INICIATIVA TUA (${t}) ===`);
+    assertStringIncludes(sys, "Contexto: Prova amanhã");
+    assertStringIncludes(sys, "não chames ferramentas");
+    assertStringIncludes(sys, "não é uma notificação do sistema");
+  }
+  assertStringIncludes(sysCarol(undefined, "silence", null), "Estás bem?");
+  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados, sem números");
+  assertStringIncludes(sysCarol(undefined, "race_after", null), "sem balanço inventado");
+  assertStringIncludes(buildProactiveUserTurn("race_eve"), "race_eve");
+  assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
+});
+
+Deno.test("shouldSkipProactive: salta se a Carol foi a última a falar há menos de 6h; não salta se o atleta já respondeu ou se passou o silêncio", () => {
+  const now = Date.parse("2026-09-11T09:00:00Z");
+  const recent = new Date(now - 2 * 3600000).toISOString();
+  const old = new Date(now - (PROACTIVE_QUIET_HOURS + 1) * 3600000).toISOString();
+  assertEquals(shouldSkipProactive([{ role: "model", created_at: recent }], now), true);
+  assertEquals(shouldSkipProactive([{ role: "model", created_at: old }], now), false);
+  assertEquals(shouldSkipProactive([{ role: "user", created_at: recent }, { role: "model", created_at: recent }], now), false);
+  assertEquals(shouldSkipProactive([], now), false);
+  assertEquals(shouldSkipProactive(null, now), false);
+});
+
+// ── Balanço da prova (race_after com corrida registada) ─────────────────────
+// A história do canvas: Meia de Lisboa, objetivo 1:52:00, final 1:53:42,
+// previsão do treino 2:01:22, melhor anterior 1:57:46.
+function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
+  return {
+    race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
+    official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
+    ...overrides,
+  };
+}
+
+Deno.test("parseRaceOutcome: aceita o payload do cliente e normaliza campo a campo", () => {
+  const parsed = parseRaceOutcome({
+    race_id: "r1", name: "  Meia de Lisboa ", date: "2027-03-08", race_type: "estrada", distance_km: "21.1", category: "meia",
+    official_seconds: 6822.4, target_seconds: 6720, predicted_seconds: 7281.6, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    position: "412", effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
+  });
+  assertEquals(parsed?.name, "Meia de Lisboa");
+  assertEquals(parsed?.distance_km, 21.1);
+  assertEquals(parsed?.official_seconds, 6822);
+  assertEquals(parsed?.predicted_seconds, 7282);
+  assertEquals(parsed?.position, 412);
+  assertEquals(parsed?.verdict, "perto");
+  assertEquals(parsed?.is_personal_record, true);
+});
+
+Deno.test("parseRaceOutcome: lixo cai para null, não para erro", () => {
+  assertEquals(parseRaceOutcome(null), null);
+  assertEquals(parseRaceOutcome("perto"), null);
+  assertEquals(parseRaceOutcome({ verdict: "genial" }), null);
+  // com veredicto mas sem tempo oficial não há balanço possível
+  assertEquals(parseRaceOutcome({ verdict: "superado" }), null);
+  const loose = parseRaceOutcome({ verdict: "aquem", official_seconds: 6822, category: "marathon", basis: "sorte", vs_training: "muito", date: "ontem", race_type: "pista", is_personal_record: "sim", position: -3 });
+  assertEquals(loose?.category, null);
+  assertEquals(loose?.basis, null);
+  assertEquals(loose?.vs_training, null);
+  assertEquals(loose?.date, null);
+  assertEquals(loose?.race_type, null);
+  assertEquals(loose?.is_personal_record, false);
+  assertEquals(loose?.position, null);
+  // sem registo: só o veredicto chega
+  assertEquals(parseRaceOutcome({ verdict: "sem_registo" })?.verdict, "sem_registo");
+});
+
+Deno.test("buildRaceOutcomeContext: os números e o veredicto, em maiúsculas onde a Carol tem de reparar", () => {
+  const ctx = buildRaceOutcomeContext(outcome());
+  assertStringIncludes(ctx, "Prova: Meia de Lisboa, 2027-03-08, Estrada, 21.1 km (meia).");
+  assertStringIncludes(ctx, "Tempo oficial: 1:53:42 (5.23/km) · posição 412 · RPE 8.");
+  assertStringIncludes(ctx, "Objetivo: 1:52:00 → 1:42 ACIMA do objetivo (1,5%).");
+  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (2026-10-11) → RECORDE PESSOAL por 4:04.");
+  assertStringIncludes(ctx, "Veredicto: PERTO DO OBJETIVO.");
+});
+
+Deno.test("buildRaceOutcomeContext: objetivo batido, sem previsão nem histórico", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ verdict: "superado", target_seconds: 6900, predicted_seconds: null, vs_training: null, previous_best_seconds: null, previous_best_date: null, is_personal_record: false }));
+  assertStringIncludes(ctx, "Objetivo: 1:55:00 → 1:18 ABAIXO do objetivo (batido).");
+  assertStringIncludes(ctx, "Previsão pelo treino: sem corridas anteriores que a sustentem.");
+  assertStringIncludes(ctx, "Melhor anterior na meia: nenhum — primeira prova nesta distância.");
+  assertStringIncludes(ctx, "Veredicto: OBJETIVO SUPERADO.");
+});
+
+Deno.test("buildRaceOutcomeContext: sem objetivo a régua é a previsão, e diz-se", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ verdict: "aquem", basis: "previsao", target_seconds: null, predicted_seconds: 6000, vs_training: "abaixo" }));
+  assertStringIncludes(ctx, "Objetivo: nenhum marcado para esta prova.");
+  assertStringIncludes(ctx, "13:42 mais lento do que a previsão — ABAIXO do que o treino perspetivava.");
+  assertStringIncludes(ctx, "Veredicto: AQUÉM (face à previsão do treino — não havia objetivo marcado).");
+});
+
+Deno.test("raceAfterInstruction: superado acima do treino elogia a sério e permite UM ponto de exclamação", () => {
+  const txt = raceAfterInstruction(outcome({ verdict: "superado", target_seconds: 6900, vs_training: "acima" }));
+  assertStringIncludes(txt, "ACIMA do que o treino perspetivava");
+  assertStringIncludes(txt, "Elogia a sério");
+  assertStringIncludes(txt, "7:40 mais rápido");
+  assertStringIncludes(txt, "um ponto de exclamação é permitido");
+  assertStringIncludes(txt, "RECORDE PESSOAL na meia (melhor anterior 1:57:46, batido por 4:04)");
+});
+
+Deno.test("raceAfterInstruction: superado dentro do esperado reconhece a consistência, não um milagre", () => {
+  const txt = raceAfterInstruction(outcome({ verdict: "superado", target_seconds: 6900, vs_training: "dentro", is_personal_record: false }));
+  assertStringIncludes(txt, "respondeu à preparação como era esperado");
+  assertStringIncludes(txt, "a consistência do treino, não um milagre no dia");
+  assertEquals(txt.includes("RECORDE PESSOAL"), false);
+});
+
+Deno.test("raceAfterInstruction: superado abaixo da previsão — o objetivo era conservador", () => {
+  const txt = raceAfterInstruction(outcome({ verdict: "superado", target_seconds: 7200, predicted_seconds: 6400, vs_training: "abaixo", is_personal_record: false }));
+  assertStringIncludes(txt, "o objetivo era conservador");
+  assertStringIncludes(txt, "7:02 mais lento do que a previsão");
+});
+
+Deno.test("raceAfterInstruction: perto congratula, pergunta se para a próxima é para fazer melhor, e traz as duas respostas", () => {
+  const txt = raceAfterInstruction(outcome());
+  assertStringIncludes(txt, "Ficou PERTO do objetivo — a 1:42.");
+  assertStringIncludes(txt, "Congratula-o");
+  assertStringIncludes(txt, "se para a próxima é para fazer melhor");
+  assertStringIncludes(txt, "então vamos lá treinar");
+  assertStringIncludes(txt, "\"Sim, para a próxima quero melhor\" e \"Por agora fico por aqui\"");
+});
+
+Deno.test("raceAfterInstruction: aquém levanta a cabeça, procura a explicação na memória e nos dados, e volta aos treinos", () => {
+  const txt = raceAfterInstruction(outcome({ verdict: "aquem", target_seconds: 6300, vs_training: "dentro", is_personal_record: false }));
+  assertStringIncludes(txt, "Ficou AQUÉM do objetivo — a 8:42");
+  assertStringIncludes(txt, "(1) levanta-lhe a cabeça primeiro");
+  assertStringIncludes(txt, "(2) procura uma explicação honesta nas ocorrências do treino");
+  assertStringIncludes(txt, "usa a tua MEMÓRIA (as notas de longo prazo)");
+  assertStringIncludes(txt, "em vez de inventar uma causa");
+  assertStringIncludes(txt, "(3) fecha a olhar para a frente: voltar aos treinos, cabeça levantada, seguimos");
+});
+
+Deno.test("raceAfterInstruction: sem registo (ou sem veredicto) é o race_after de sempre — perguntar e pedir o registo", () => {
+  const txt = raceAfterInstruction(null);
+  assertStringIncludes(txt, "ainda não há corrida registada");
+  assertStringIncludes(txt, "sem balanço inventado");
+  assertEquals(raceAfterInstruction(outcome({ verdict: "sem_registo" })), txt);
+});
+
+Deno.test("buildProactiveInstruction(race_after) com veredicto: bloco de números + instrução por veredicto; só o 'perto' abre as sugestões", () => {
+  const near = buildProactiveInstruction("race_after", "Prova \"Meia de Lisboa\" foi ontem.", outcome());
+  assertStringIncludes(near, "=== BALANÇO DA PROVA");
+  assertStringIncludes(near, "Veredicto: PERTO DO OBJETIVO.");
+  assertStringIncludes(near, "\"suggestions\" leva só as duas respostas indicadas acima.");
+  assertEquals(near.includes("\"suggestions\" fica vazio."), false);
+
+  const beaten = buildProactiveInstruction("race_after", null, outcome({ verdict: "superado", target_seconds: 6900 }));
+  assertStringIncludes(beaten, "\"suggestions\" fica vazio.");
+  assertStringIncludes(beaten, "Elogia a sério");
+
+  // sem veredicto, nada muda face ao que já existia
+  const plain = buildProactiveInstruction("race_after", "Prova \"X\" foi há 2 dias.");
+  assertEquals(plain.includes("=== BALANÇO DA PROVA"), false);
+  assertStringIncludes(plain, "ainda não há corrida registada");
+  assertStringIncludes(plain, "\"suggestions\" fica vazio.");
+  // o veredicto é ignorado fora do race_after
+  assertEquals(buildProactiveInstruction("silence", null, outcome()).includes("BALANÇO DA PROVA"), false);
+});
+
+Deno.test("raceOutcomeNote: a memória de longo prazo da prova, curta e com o veredicto", () => {
+  assertEquals(
+    raceOutcomeNote(outcome()),
+    "Prova «Meia de Lisboa» (2027-03-08, meia): 1:53:42; objetivo 1:52:00 — ficou perto (a 1:42); acima do que o treino previa (2:01:22); recorde pessoal na meia.",
+  );
+  assertEquals(
+    raceOutcomeNote(outcome({ verdict: "superado", target_seconds: 6900, predicted_seconds: null, vs_training: null, is_personal_record: false })),
+    "Prova «Meia de Lisboa» (2027-03-08, meia): 1:53:42; objetivo 1:55:00 — objetivo batido (1:18 abaixo).",
+  );
+  assertEquals(
+    raceOutcomeNote(outcome({ verdict: "concluida", basis: null, target_seconds: null, predicted_seconds: null, vs_training: null, is_personal_record: false })),
+    "Prova «Meia de Lisboa» (2027-03-08, meia): 1:53:42; sem objetivo marcado.",
+  );
+  assertEquals(raceOutcomeNote(outcome()).length <= 501, true);
 });
