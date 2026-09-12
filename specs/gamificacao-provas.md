@@ -59,6 +59,53 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    desde outubro de 2026"), a lista completa e as provas concluídas
    (nome, data, tempo, ícones das conquistas). Sem separador novo.
 
+## A Carol no balanço (decidido 2026-09-12)
+
+A régua é uma só, `src/utils/raceOutcome.js` (`classifyRaceOutcome`), e é a
+mesma para as conquistas, para o balanço curto do hub e para a Carol:
+
+| Eixo | Regra | Valores |
+|---|---|---|
+| Objetivo | tempo oficial face a `target_time_seconds` | `superado` (≤ objetivo), `perto` (até 3% acima), `aquem` |
+| Treino | tempo oficial face à previsão de Riegel calculada só com as corridas ANTERIORES à prova (`getRacePrediction`) | `acima` (≥ 2% mais rápido), `dentro` (±2%), `abaixo` |
+| Histórico | melhor anterior na mesma categoria de distância, entre competições | `isPersonalRecord` |
+
+Sem objetivo, a régua passa a ser a previsão (`basis: 'previsao'`); sem
+nenhuma das duas, `concluida`. Sem corrida ligada, `sem_registo`.
+
+O gatilho `race_after` (`coachProactive.js`) dispara com a corrida ligada do
+próprio dia da prova até 7 dias depois (chave por corrida, para o "como
+correu?" anterior não calar o balanço) e leva o veredicto no body
+(`race_outcome`). Sem corrida, mantém-se: de 1 a 3 dias, pergunta e pede o
+registo. O coach-chat valida (`parseRaceOutcome`), escreve o bloco
+"BALANÇO DA PROVA" com os números e dá a instrução por veredicto
+(`raceAfterInstruction`):
+
+- **Objetivo superado** — elogia-se. Acima do que o treino perspetivava:
+  elogio a sério, com a previsão e a diferença, e o próximo objetivo pode
+  subir (um ponto de exclamação permitido). Dentro do esperado: elogia o
+  objetivo cumprido e reconhece o mérito certo, a consistência do treino,
+  não um milagre no dia. Abaixo da previsão: o objetivo era conservador,
+  diz-se sem rodeios.
+- **Perto do objetivo** — congratula ("foi por pouco"), uma explicação
+  concreta se os dados a mostrarem, e a pergunta direta: para a próxima é
+  para fazer melhor? Este é o único turno proativo com sugestões: "Sim,
+  para a próxima quero melhor" / "Por agora fico por aqui". Ao sim, a
+  resposta é "então vamos lá treinar" com um caminho concreto.
+- **Aquém** — não se finge. Ordem: (1) levantar a cabeça com números reais
+  (a prova terminada, o ciclo cumprido); (2) procurar a explicação honesta
+  nas ocorrências do treino — treinos falhados, volume, fadiga/ACWR, lesão,
+  sono, alimentação, contexto de vida — usando a memória de longo prazo
+  (`coach_notes`) e os dados das últimas semanas; sem causa nos dados,
+  pergunta o que aconteceu no dia em vez de inventar; (3) fechar a olhar
+  para a frente: voltar aos treinos, cabeça levantada, seguimos.
+- **Recorde pessoal** reconhece-se sempre, com o número, seja qual for o
+  veredicto.
+
+Depois do balanço, a prova fica na memória de longo prazo dela (uma nota
+`outro` com tempo, objetivo, veredicto e recorde — `raceOutcomeNote`), para
+o próximo balanço e o próximo objetivo terem esta como referência.
+
 ## Fora de âmbito
 
 Partilha social, níveis/pontos, notificações push. Se um dia houver

@@ -65,7 +65,7 @@ Três mensagens por ciclo de prova, em primeira pessoa, no chat — não cards, 
 
 1. **Véspera da prova**: o que fazer hoje e amanhã de manhã, e uma frase sobre o caminho percorrido.
 2. **Manhã da prova**: curta. Duas frases. Sem dados.
-3. **Depois da prova**: o balanço (já existe no hub) também enviado como mensagem dela, com opinião sobre o que correu bem e o que falhou.
+3. **Depois da prova**: o balanço (já existe no hub) também enviado como mensagem dela, com opinião sobre o que correu bem e o que falhou. Com a corrida registada, o veredicto vem calculado (superado / perto / aquém, e acima ou dentro do que o treino perspetivava) e a instrução muda com ele — ver `specs/gamificacao-provas.md`, "A Carol no balanço".
 
 ## O que evitar
 

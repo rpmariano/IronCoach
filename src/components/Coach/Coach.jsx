@@ -235,12 +235,16 @@ export default function Coach() {
   // saltar (ela falou há pouco), volta a tentar na próxima abertura.
   useEffect(() => {
     if (coachIntent || coachLoading) return;
-    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents });
+    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
     if (!candidate || wasProactiveSent(profile?.id, candidate)) return;
     sendCoachInitiatedPayload({
       message: '',
       proactive_trigger: candidate.trigger,
       proactive_details: candidate.details,
+      // Só no balanço da prova com a corrida registada: o veredicto calculado
+      // pela app (utils/raceOutcome.js), para o servidor escrever o balanço
+      // com os números certos — superado / perto / aquém.
+      ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
     }).then((data) => {

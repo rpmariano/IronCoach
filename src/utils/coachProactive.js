@@ -2,7 +2,8 @@
    - 3 dias sem qualquer registo → "Estás bem?" no chat, em nome dela.
    - Véspera da prova → o que fazer hoje e amanhã de manhã.
    - Manhã da prova → curta, duas frases, sem dados.
-   - Depois da prova → o balanço, com opinião.
+   - Depois da prova → o balanço, com opinião (e com o veredicto calculado
+     em utils/raceOutcome.js quando a corrida da prova está registada).
    Este ficheiro só DECIDE qual (se alguma) se aplica agora e devolve a
    chave que a torna única — o texto é escrito pelo modelo no coach-chat
    (proactive_trigger), a partir do contexto real do atleta. A chave evita
@@ -10,7 +11,15 @@
    utilizador (ver markProactiveSent) e o servidor ainda recusa se ela tiver
    falado há menos de 6 horas. */
 
+import { findRaceRun, formatDuration } from './run';
+import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
+
 export const SILENCE_DAYS = 3;
+/** Depois da prova, com a corrida registada, o balanço vale durante uma
+ *  semana — depois disso já é história, não é "o balanço". Sem corrida
+ *  registada, a Carol só pergunta como correu durante 3 dias. */
+export const RACE_AFTER_DAYS_WITH_RUN = 7;
+export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 const STORAGE_PREFIX = 'ironcoach:carol-proativa:';
 const DAY_MS = 86400000;
 
@@ -39,7 +48,7 @@ function daysBetween(fromIso, toIso) {
 /** Escolhe a mensagem proativa para este momento, ou null. Prioridade: manhã
  *  da prova > véspera > depois da prova > silêncio — o dia da prova manda
  *  em tudo o resto. `now` é injetável para os testes. */
-export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents }, now = new Date()) {
+export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
@@ -62,18 +71,8 @@ export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments
     };
   }
 
-  const after = races.find((r) => {
-    const gap = daysBetween(r.date.slice(0, 10), today);
-    return gap >= 1 && gap <= 3;
-  });
-  if (after) {
-    const gap = daysBetween(after.date.slice(0, 10), today);
-    return {
-      trigger: 'race_after',
-      key: `race_after:${after.id}`,
-      details: `Prova "${after.name}" foi há ${gap} dia${gap === 1 ? '' : 's'} (${after.date.slice(0, 10)}).${after.status === 'concluida' ? ' Está marcada como concluída.' : ' Ainda não está marcada como concluída.'}`,
-    };
-  }
+  const afterCandidate = pickRaceAfter({ races, runs, profile, today });
+  if (afterCandidate) return afterCandidate;
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
   if (last) {
@@ -87,6 +86,61 @@ export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments
     }
   }
   return null;
+}
+
+/* O balanço depois da prova (specs/gamificacao-provas.md, "A Carol no
+   balanço"). Duas situações, com chaves diferentes para a segunda não ficar
+   calada por causa da primeira:
+   - COM a corrida registada e ligada à prova (findRaceRun): do próprio dia da
+     prova até 7 dias depois. A chave leva o id da corrida — se a Carol já
+     tinha perguntado "como correu?" antes do registo, o balanço a sério
+     ainda dispara. Leva o veredicto calculado (raceOutcome) para o servidor
+     escrever o balanço com os números certos: superado / perto / aquém, e
+     acima ou dentro do que o treino perspetivava.
+   - SEM corrida registada: de 1 a 3 dias depois, como antes — ela pergunta
+     como correu e pede o registo.
+   A prova mais recente ganha. */
+function pickRaceAfter({ races, runs, profile, today }) {
+  const past = races
+    .map((r) => ({ race: r, gap: daysBetween(r.date.slice(0, 10), today) }))
+    .filter(({ gap }) => gap >= 0 && gap <= RACE_AFTER_DAYS_WITH_RUN)
+    .sort((a, b) => a.gap - b.gap);
+  for (const { race, gap } of past) {
+    const run = findRaceRun(runs, race);
+    const dayLabel = gap === 0 ? 'hoje' : `há ${gap} dia${gap === 1 ? '' : 's'}`;
+    if (run) {
+      const outcome = classifyRaceOutcome({ race, run, runs, profile });
+      const time = outcome.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
+      return {
+        trigger: 'race_after',
+        key: `race_after:${race.id}:${run.id || 'corrida'}`,
+        details: `Prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}). Corrida registada${time ? `: ${time}` : ''}.`,
+        raceOutcome: buildRaceOutcomePayload(outcome, race, run),
+        raceId: race.id,
+      };
+    }
+    if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
+      return {
+        trigger: 'race_after',
+        key: `race_after:${race.id}:sem-registo`,
+        details: `Prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}).${race.status === 'concluida' ? ' Está marcada como concluída mas' : ''} Ainda não tem a corrida registada.`,
+        raceOutcome: null,
+        raceId: race.id,
+      };
+    }
+  }
+  return null;
+}
+
+/** A prova cujo balanço a Carol ainda não fez — para o Início chamar por ele
+ *  ("o balanço da prova") enquanto o chat não for aberto. null se não há
+ *  balanço pendente, se já foi dito, ou se outro momento (véspera/manhã de
+ *  outra prova) tem prioridade. */
+export function pendingRaceBalance({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
+  const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
+  if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
+  if (wasProactiveSent(profile?.id, candidate)) return null;
+  return (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
 }
 
 function storageKey(userId) {

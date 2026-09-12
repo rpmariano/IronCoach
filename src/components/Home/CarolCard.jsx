@@ -73,7 +73,11 @@ export function useCoachDailyMessages() {
   }, [dailySummary, activePlanItems, waterLogs, profile, today]);
 }
 
-export default function CarolCard({ pendingTopics = 0, onOpenCoach, onDismissTopic }) {
+/* `topic`: um assunto que ela quer tratar sem ser uma intervenção — hoje, "o
+   balanço da prova" nos dias a seguir a uma prova registada (specs/
+   gamificacao-provas.md §3). Mostra-se com o mesmo cabeçalho "A Carol precisa
+   de falar contigo", mas sem o semblante preocupado: é uma boa notícia. */
+export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach, onDismissTopic }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
   const [expanded, setExpanded] = useState(false);
@@ -89,12 +93,17 @@ export default function CarolCard({ pendingTopics = 0, onOpenCoach, onDismissTop
   return (
     <GlassCard tone="coach" radius={20} padding="14px 15px" className="flex flex-col gap-[11px]" data-testid="carol-card">
       <button type="button" onClick={onOpenCoach} className="flex items-center gap-2.5 w-full text-left min-h-[44px] -my-1.5">
-        <CoachAvatar size={30} mood={pendingTopics > 0 ? 'concerned' : 'neutral'} breathing={pendingTopics > 0} />
+        <CoachAvatar size={30} mood={pendingTopics > 0 ? 'concerned' : 'neutral'} breathing={pendingTopics > 0 || !!topic} />
         <div className="flex-1 min-w-0">
           {pendingTopics > 0 ? (
             <>
               <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>A Carol precisa de falar contigo</div>
               <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>{pendingTopics === 1 ? '1 assunto a resolver' : `${pendingTopics} assuntos a resolver`}</div>
+            </>
+          ) : topic ? (
+            <>
+              <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>A Carol precisa de falar contigo</div>
+              <div className="text-[11px] mt-0.5" data-testid="carol-card-topic" style={{ color: 'var(--text-4)' }}>{topic}</div>
             </>
           ) : (
             <>

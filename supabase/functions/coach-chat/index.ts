@@ -556,19 +556,244 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `percorrido, com um número real do histórico (semanas de preparação, volume, o treino longo mais comprido). Duas ou três bolhas.`,
   race_morning:
     `É a manhã da prova. Curta: duas frases. Sem dados, sem números, sem lista. Uma frase sobre hoje e uma sobre ele.`,
+  // Só o caso SEM corrida registada — com registo, o cliente manda o
+  // veredicto calculado (race_outcome) e a instrução é a de
+  // raceAfterInstruction, por veredicto.
   race_after:
-    `A prova já passou. Faz o balanço em primeira pessoa, com opinião: o que correu bem e o que falhou, com os números da corrida registada como ` +
-    `competição se existir nos dados (tempo, pace, comparação com o objetivo). Se não houver registo da prova, pergunta como correu e pede-lhe ` +
-    `que a registe — sem balanço inventado. Sem parabéns automáticos: reconhece o que foi excecional, se foi.`,
+    `A prova já passou e ainda não há corrida registada para ela. Pergunta-lhe como correu e pede-lhe que registe a prova ` +
+    `(tempo oficial, como se sentiu) — sem balanço inventado e sem parabéns automáticos: ainda não sabes o que aconteceu.`,
 };
 
-/** Bloco injetado no fim do prompt do sistema num turno por iniciativa dela. */
-export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null): string {
+// ── Balanço da prova (race_after com a corrida registada) ─────────────────
+// specs/gamificacao-provas.md, "A Carol no balanço". O cliente calcula o
+// resultado com a régua única (src/utils/raceOutcome.js): face ao OBJETIVO
+// (superado / perto / aquém), face ao que o TREINO perspetivava (a previsão
+// de Riegel só com as corridas anteriores à prova: acima / dentro / abaixo)
+// e face ao MELHOR ANTERIOR na mesma distância (recorde pessoal). Vem no
+// body como `race_outcome`; aqui valida-se e escreve-se o bloco de contexto
+// e a instrução do turno — o texto é da Carol, o veredicto não é dela.
+export type RaceVerdict = "sem_registo" | "concluida" | "superado" | "perto" | "aquem";
+const RACE_VERDICTS: readonly RaceVerdict[] = ["sem_registo", "concluida", "superado", "perto", "aquem"];
+const RACE_CATEGORIES = new Set(["5k", "10k", "meia", "maratona", "ultra"]);
+const RACE_CATEGORY_LABELS: Record<string, string> = { "5k": "5 km", "10k": "10 km", meia: "meia", maratona: "maratona", ultra: "ultra" };
+
+export interface RaceOutcome {
+  race_id: string | null;
+  name: string | null;
+  date: string | null;
+  race_type: string | null;
+  distance_km: number | null;
+  category: string | null;
+  official_seconds: number | null;
+  target_seconds: number | null;
+  predicted_seconds: number | null;
+  previous_best_seconds: number | null;
+  previous_best_date: string | null;
+  position: number | null;
+  effort_rpe: number | null;
+  verdict: RaceVerdict;
+  basis: "objetivo" | "previsao" | null;
+  vs_training: "acima" | "dentro" | "abaixo" | null;
+  is_personal_record: boolean;
+}
+
+function posNum(v: unknown): number | null {
+  const n = typeof v === "string" ? parseFloat(v) : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function shortStr(v: unknown, max = 80): string | null {
+  return typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+}
+
+/** Valida o `race_outcome` do body. Tudo o que não bater certo cai para
+ *  null (o campo) ou para "sem balanço" (o objeto inteiro) — o turno
+ *  continua a funcionar como o race_after de sempre. */
+export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const verdict = typeof r.verdict === "string" && (RACE_VERDICTS as readonly string[]).includes(r.verdict)
+    ? r.verdict as RaceVerdict
+    : null;
+  if (!verdict) return null;
+  const official = posNum(r.official_seconds);
+  if (verdict !== "sem_registo" && !official) return null;
+  const category = typeof r.category === "string" && RACE_CATEGORIES.has(r.category) ? r.category : null;
+  const basis = r.basis === "objetivo" || r.basis === "previsao" ? r.basis : null;
+  const vs = r.vs_training === "acima" || r.vs_training === "dentro" || r.vs_training === "abaixo" ? r.vs_training : null;
+  const date = shortStr(r.date, 10);
+  return {
+    race_id: shortStr(r.race_id, 64),
+    name: shortStr(r.name),
+    date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null,
+    race_type: r.race_type === "estrada" || r.race_type === "trail" ? r.race_type : null,
+    distance_km: posNum(r.distance_km),
+    category,
+    official_seconds: official ? Math.round(official) : null,
+    target_seconds: posNum(r.target_seconds) ? Math.round(posNum(r.target_seconds)!) : null,
+    predicted_seconds: posNum(r.predicted_seconds) ? Math.round(posNum(r.predicted_seconds)!) : null,
+    previous_best_seconds: posNum(r.previous_best_seconds) ? Math.round(posNum(r.previous_best_seconds)!) : null,
+    previous_best_date: (() => { const d = shortStr(r.previous_best_date, 10); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; })(),
+    position: posNum(r.position) ? Math.round(posNum(r.position)!) : null,
+    effort_rpe: posNum(r.effort_rpe),
+    verdict,
+    basis,
+    vs_training: vs,
+    is_personal_record: r.is_personal_record === true,
+  };
+}
+
+function absHms(seconds: number): string {
+  return formatHms(Math.abs(Math.round(seconds)));
+}
+function pctOf(delta: number, ref: number): string {
+  return `${(Math.abs(delta) / ref * 100).toFixed(1).replace(".", ",")}%`;
+}
+
+/** O bloco de dados que a Carol recebe — números e veredicto, sem adjetivos.
+ *  Os adjetivos são dela, guiados por raceAfterInstruction. */
+export function buildRaceOutcomeContext(o: RaceOutcome): string {
+  const lines: string[] = ["=== BALANÇO DA PROVA (calculado pela app a partir dos registos — usa ESTES números) ==="];
+  const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
+  lines.push(`Prova: ${o.name || "(sem nome)"}${o.date ? `, ${o.date}` : ""}${o.race_type ? `, ${RACE_TYPE_LABELS[o.race_type] || o.race_type}` : ""}${o.distance_km ? `, ${o.distance_km} km` : ""}${cat ? ` (${cat})` : ""}.`);
+  if (o.verdict === "sem_registo" || !o.official_seconds) {
+    lines.push("Corrida da prova: ainda não registada.");
+    return lines.join("\n");
+  }
+  const pace = o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(o.official_seconds / o.distance_km))}/km)` : "";
+  lines.push(`Tempo oficial: ${formatHms(o.official_seconds)}${pace}${o.position ? ` · posição ${o.position}` : ""}${o.effort_rpe ? ` · RPE ${o.effort_rpe}` : ""}.`);
+  if (o.target_seconds) {
+    const d = o.official_seconds - o.target_seconds;
+    lines.push(`Objetivo: ${formatHms(o.target_seconds)} → ` + (d <= 0
+      ? `${absHms(d)} ABAIXO do objetivo (batido${d === 0 ? " em cima da hora" : ""}).`
+      : `${absHms(d)} ACIMA do objetivo (${pctOf(d, o.target_seconds)}).`));
+  } else {
+    lines.push("Objetivo: nenhum marcado para esta prova.");
+  }
+  if (o.predicted_seconds) {
+    const d = o.official_seconds - o.predicted_seconds;
+    const band = o.vs_training === "acima" ? "ACIMA do que o treino perspetivava" : o.vs_training === "dentro" ? "DENTRO do que o treino perspetivava" : "ABAIXO do que o treino perspetivava";
+    lines.push(`Previsão pelo treino (Riegel, só corridas anteriores à prova): ${formatHms(o.predicted_seconds)} → ${absHms(d)} ${d <= 0 ? "mais rápido" : "mais lento"} do que a previsão — ${band}.`);
+  } else {
+    lines.push("Previsão pelo treino: sem corridas anteriores que a sustentem.");
+  }
+  if (o.previous_best_seconds) {
+    const d = o.official_seconds - o.previous_best_seconds;
+    lines.push(`Melhor anterior na ${cat || "distância"}: ${formatHms(o.previous_best_seconds)}${o.previous_best_date ? ` (${o.previous_best_date})` : ""} → ` + (o.is_personal_record
+      ? `RECORDE PESSOAL por ${absHms(d)}.`
+      : `${absHms(d)} mais lento; sem recorde.`));
+  } else {
+    lines.push(`Melhor anterior na ${cat || "distância"}: nenhum — primeira prova nesta distância.`);
+  }
+  const verdictLabel: Record<RaceVerdict, string> = {
+    sem_registo: "SEM REGISTO",
+    concluida: "CONCLUÍDA (sem objetivo nem previsão para comparar)",
+    superado: o.basis === "previsao" ? "OBJETIVO SUPERADO (face à previsão do treino — não havia objetivo marcado)" : "OBJETIVO SUPERADO",
+    perto: o.basis === "previsao" ? "PERTO (face à previsão do treino — não havia objetivo marcado)" : "PERTO DO OBJETIVO",
+    aquem: o.basis === "previsao" ? "AQUÉM (face à previsão do treino — não havia objetivo marcado)" : "AQUÉM DO OBJETIVO",
+  };
+  lines.push(`Veredicto: ${verdictLabel[o.verdict]}.`);
+  return lines.join("\n");
+}
+
+/** A instrução do turno por veredicto — o que o utilizador pediu à letra:
+ *  objetivo superado elogia-se, e o elogio depende de ter sido acima do que
+ *  o treino perspetivava ou dentro do esperado; perto congratula-se e
+ *  pergunta-se se para a próxima é para fazer melhor; aquém levanta-se a
+ *  cabeça, procura-se a explicação nas ocorrências do treino (memória e
+ *  dados) e volta-se aos treinos. */
+export function raceAfterInstruction(o: RaceOutcome | null): string {
+  if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
+  const common =
+    `A prova já passou e a corrida está registada: os números do bloco BALANÇO DA PROVA são os que contam — não os recalcules nem os contradigas. ` +
+    `Faz o balanço em primeira pessoa, com opinião, em duas ou três bolhas (parágrafos curtos). `;
+  const dTarget = o.target_seconds ? absHms(o.official_seconds! - o.target_seconds) : null;
+  const dPred = o.predicted_seconds ? absHms(o.official_seconds! - o.predicted_seconds) : null;
+  let body: string;
+  switch (o.verdict) {
+    case "superado": {
+      if (o.vs_training === "acima") {
+        body =
+          `O objetivo foi batido E o resultado ficou ACIMA do que o treino perspetivava (a previsão vinha das corridas de treino). Elogia a sério, e diz porquê: ` +
+          `cita o objetivo, o tempo e a previsão (${dPred} mais rápido do que ela). Diz-lhe o que isto revela — rendeu mais na prova do que os treinos indicavam — ` +
+          `e o que muda para a frente: o próximo objetivo pode ser mais ambicioso. Aqui um ponto de exclamação é permitido, se te sair natural — um.`;
+      } else if (o.vs_training === "abaixo") {
+        body =
+          `O objetivo foi batido, mas o tempo ficou ABAIXO do que o treino previa (${dPred} mais lento do que a previsão): o objetivo era conservador. ` +
+          `Elogia o objetivo cumprido, e diz-lho sem rodeios: havia mais dentro dele; para a próxima o objetivo pode subir. Cita a previsão.`;
+      } else {
+        body =
+          `O objetivo foi batido, e o resultado é o que o treino perspetivava: respondeu à preparação como era esperado. Elogia — o objetivo foi cumprido — ` +
+          `mas reconhece o mérito certo: a consistência do treino, não um milagre no dia. ` +
+          (o.predicted_seconds ? `Diz-lhe que a previsão estava certa e o que isso significa para o próximo ciclo.` : `Diz-lhe o que isto significa para o próximo ciclo.`);
+      }
+      break;
+    }
+    case "perto":
+      body =
+        `Ficou PERTO do objetivo — a ${dTarget ?? dPred}. Congratula-o: foi por pouco, e a prova foi feita. Se os dados mostrarem uma explicação concreta para a ` +
+        `diferença (ritmo de partida, treino, condições, fadiga), diz uma; se não, não inventes. Depois pergunta-lhe, diretamente, se para a próxima é para fazer melhor. ` +
+        `Se ele responder que sim, a tua resposta seguinte é "então vamos lá treinar", com um caminho concreto (a próxima prova, o que muda no treino). ` +
+        `Neste turno, e só neste, "suggestions" leva exatamente duas respostas curtas na voz dele: "Sim, para a próxima quero melhor" e "Por agora fico por aqui".`;
+      break;
+    case "aquem":
+      body =
+        `Ficou AQUÉM do objetivo — a ${dTarget ?? dPred} — e não se finge o contrário. Ordem obrigatória: ` +
+        `(1) levanta-lhe a cabeça primeiro: reconhece o que foi feito com números reais — a prova terminada, a distância, o ciclo de treino cumprido, o que houver no contexto; ` +
+        `(2) procura uma explicação honesta nas ocorrências do treino: treinos falhados ou volume abaixo do plano, fadiga (ACWR), lesão ou limitação física, sono, alimentação, ` +
+        `contexto de vida — usa a tua MEMÓRIA (as notas de longo prazo) e os dados das últimas semanas; cita o que encontrares, e se não encontrares nada nos dados, ` +
+        `pergunta-lhe o que aconteceu no dia em vez de inventar uma causa; ` +
+        `(3) fecha a olhar para a frente: voltar aos treinos, cabeça levantada, seguimos — uma frase concreta sobre o próximo passo, não um slogan.`;
+      break;
+    default:
+      body =
+        `A prova foi concluída e há tempo registado, mas não há objetivo nem previsão para comparar. Reconhece a prova com os números (tempo, pace) e uma opinião ` +
+        `sobre o que eles dizem do nível atual; sem juízo sobre um "objetivo" que não existiu.`;
+  }
+  const record = o.is_personal_record && o.previous_best_seconds
+    ? ` Foi RECORDE PESSOAL na ${RACE_CATEGORY_LABELS[o.category || ""] || "distância"} (melhor anterior ${formatHms(o.previous_best_seconds)}, batido por ${absHms(o.official_seconds! - o.previous_best_seconds)}): diz-lho com o número — é excecional e merece ser reconhecido, seja qual for o veredicto face ao objetivo.`
+    : "";
+  return common + body + record;
+}
+
+/** O que fica na memória de longo prazo dela sobre esta prova (coach_notes,
+ *  categoria "outro") — para o próximo balanço, e o próximo objetivo, terem
+ *  este como referência. Até 500 caracteres (limite de runSaveCoachNote). */
+export function raceOutcomeNote(o: RaceOutcome): string {
+  const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
+  const parts: string[] = [];
+  parts.push(`Prova «${o.name || "sem nome"}»${o.date ? ` (${o.date}${cat ? `, ${cat}` : ""})` : cat ? ` (${cat})` : ""}: ${formatHms(o.official_seconds || 0)}`);
+  if (o.target_seconds) {
+    const d = o.official_seconds! - o.target_seconds;
+    const label = o.verdict === "superado" ? "objetivo batido" : o.verdict === "perto" ? "ficou perto" : "ficou aquém";
+    parts.push(`objetivo ${formatHms(o.target_seconds)} — ${label} (${d <= 0 ? "" : "a "}${absHms(d)}${d <= 0 ? " abaixo" : ""})`);
+  } else {
+    parts.push("sem objetivo marcado");
+  }
+  if (o.predicted_seconds && o.vs_training) {
+    parts.push(`${o.vs_training} do que o treino previa (${formatHms(o.predicted_seconds)})`);
+  }
+  if (o.is_personal_record) parts.push(`recorde pessoal na ${cat || "distância"}`);
+  return parts.join("; ").slice(0, 500) + ".";
+}
+
+/** Bloco injetado no fim do prompt do sistema num turno por iniciativa dela.
+ *  `raceOutcome` só conta no race_after: com ele, o bloco de números e a
+ *  instrução por veredicto entram antes das regras do turno. */
+export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null, raceOutcome: RaceOutcome | null = null): string {
+  const withOutcome = trigger === "race_after" && !!raceOutcome && raceOutcome.verdict !== "sem_registo";
+  const instruction = trigger === "race_after" ? raceAfterInstruction(withOutcome ? raceOutcome : null) : PROACTIVE_INSTRUCTIONS[trigger];
+  // No "perto" a pergunta pede resposta — as duas sugestões são a resposta
+  // (ver raceAfterInstruction); em todos os outros turnos dela não há
+  // "perguntas de seguimento" a oferecer.
+  const suggestionsRule = withOutcome && raceOutcome!.verdict === "perto"
+    ? `"suggestions" leva só as duas respostas indicadas acima.`
+    : `"suggestions" fica vazio.`;
   return `=== MENSAGEM POR INICIATIVA TUA (${trigger}) ===\n` +
     `O atleta não escreveu nada: esta mensagem parte de ti, em nome próprio — não é uma notificação do sistema. ` +
     (details ? `Contexto: ${details}\n` : `\n`) +
-    `${PROACTIVE_INSTRUCTIONS[trigger]}\n` +
-    `Regras deste turno: não chames ferramentas; não proponhas plano nem objetivos; "suggestions" fica vazio. ` +
+    (withOutcome ? `${buildRaceOutcomeContext(raceOutcome!)}\n` : ``) +
+    `${instruction}\n` +
+    `Regras deste turno: não chames ferramentas; não proponhas plano nem objetivos; ${suggestionsRule} ` +
     `Sem cumprimento de manual ("Olá, como estás?") — vai direto ao assunto. Uma ideia por parágrafo.`;
 }
 
@@ -2922,6 +3147,8 @@ export function buildSystemInstruction(
   // CAROL.md §3/§7: turno por iniciativa dela (ver PROACTIVE_TRIGGERS).
   proactiveTrigger: ProactiveTrigger | null = null,
   proactiveDetails: string | null = null,
+  // O veredicto da prova (race_after com corrida registada) — ver RaceOutcome.
+  raceOutcome: RaceOutcome | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -3844,7 +4071,7 @@ export function buildSystemInstruction(
   }
 
   if (proactiveTrigger) {
-    sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails)}`;
+    sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
   }
 
   if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
@@ -3949,6 +4176,12 @@ async function handler(req: Request): Promise<Response> {
       proactiveTrigger && typeof body.proactive_details === "string"
         ? (body.proactive_details.slice(0, 300).trim() || null)
         : null;
+    // O veredicto da prova, calculado pelo cliente com a régua única
+    // (src/utils/raceOutcome.js) — só faz sentido no balanço depois da prova.
+    // Vem validado campo a campo (parseRaceOutcome); o que não bater certo
+    // cai para o race_after de sempre, sem números.
+    const raceOutcome: RaceOutcome | null =
+      proactiveTrigger === "race_after" ? parseRaceOutcome(body.race_outcome) : null;
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
@@ -4467,6 +4700,7 @@ async function handler(req: Request): Promise<Response> {
       lastExchangeHoursAgo,
       proactiveTrigger,
       proactiveDetails,
+      raceOutcome,
     );
 
     let finalSystemInstruction = systemInstruction;
@@ -4734,9 +4968,12 @@ async function handler(req: Request): Promise<Response> {
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
       // Numa mensagem por iniciativa dela não há "perguntas de seguimento"
-      // a oferecer — é ela que está à espera de resposta.
-      suggestions = !proactiveTrigger && Array.isArray(parsed.suggestions)
-        ? parsed.suggestions.filter((s: unknown) => typeof s === "string" && s.trim()).slice(0, 3)
+      // a oferecer — é ela que está à espera de resposta. A exceção é o
+      // balanço "perto do objetivo": a pergunta ("para a próxima é para fazer
+      // melhor?") vem com as duas respostas (ver raceAfterInstruction).
+      const allowSuggestions = !proactiveTrigger || (proactiveTrigger === "race_after" && raceOutcome?.verdict === "perto");
+      suggestions = allowSuggestions && Array.isArray(parsed.suggestions)
+        ? parsed.suggestions.filter((s: unknown) => typeof s === "string" && s.trim()).slice(0, proactiveTrigger ? 2 : 3)
         : [];
     } catch {
       // JSON inválido/cortado (ex.: resposta truncada a meio) — nunca mostrar
@@ -4754,6 +4991,21 @@ async function handler(req: Request): Promise<Response> {
       .insert({ user_id: userId, role: "model", content: replyText })
       .select()
       .single();
+
+    // O balanço feito, a prova fica na memória de longo prazo dela (uma nota
+    // "outro" com tempo, objetivo e veredicto) — é o que permite ao próximo
+    // balanço dizer "na última ficaste aquém por…" e ao próximo objetivo ter
+    // este como referência. runSaveCoachNote trata do teto de notas e da
+    // repetição (a mesma nota duas vezes não é erro); qualquer falha aqui
+    // fica só no log, o balanço já foi dito.
+    if (proactiveTrigger === "race_after" && raceOutcome && raceOutcome.verdict !== "sem_registo") {
+      try {
+        const noteResult = await runSaveCoachNote(sb, userId, { category: "outro", note: raceOutcomeNote(raceOutcome) });
+        if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
+      } catch (noteErr) {
+        console.warn("Nota do balanço da prova não guardada:", noteErr);
+      }
+    }
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);

@@ -274,7 +274,11 @@ export default function RaceHubView({
       ? formatPace(Math.round(finalSeconds / Number(raceRun.distance_km)))
       : null;
     // "−2:18" = bateste a previsão por 2:18; "+" = ficaste acima dela.
-    const predSeconds = Number(prediction?.predictedSeconds || 0);
+    // A previsão que conta aqui é a do TREINO — só corridas anteriores à
+    // prova (raceOutcome.predictedSeconds); a `prediction` geral inclui a
+    // própria corrida da prova, que sendo a mais rápida "previa-se" a si
+    // mesma e dava sempre "−0:00". Sem treino anterior, a linha não aparece.
+    const predSeconds = raceRun ? Number(raceOutcome?.predictedSeconds || 0) : Number(prediction?.predictedSeconds || 0);
     const diff = finalSeconds > 0 && predSeconds > 0 ? Math.round(finalSeconds - predSeconds) : null;
     const diffLabel = diff === null
       ? null
