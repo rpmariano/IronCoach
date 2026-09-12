@@ -39,6 +39,7 @@ import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
+import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -120,6 +121,13 @@ const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
   "intervalos", "subidas", "trail", "tecnico",
 ];
+// No PLANO há mais um tipo: "prova" — o dia da prova é a prova, não um
+// treino (specs/plano-de-prova.md, "O plano tem de saber da prova"). Só é
+// válido num dia com prova agendada; o servidor insere-o se o modelo o
+// esquecer.
+const PLAN_RUN_TRAINING_TYPES = [...RUN_TRAINING_TYPES, "prova"];
+// Treinos que não cabem na véspera nem na antevéspera de uma prova.
+const HARD_RUN_TYPES = new Set(["longo", "tempo", "fartlek", "intervalos", "subidas"]);
 
 // Tipos de refeição da estimativa de macros opcional (meal_items) — usados
 // tanto no schema das tools abaixo como no frontend (src/components/Home/
@@ -249,8 +257,10 @@ const PROPOSE_PLAN_TOOL = {
             },
             training_type: {
               type: "STRING",
-              enum: RUN_TRAINING_TYPES,
-              description: "Só para kind=corrida. Tipo de treino de corrida.",
+              enum: PLAN_RUN_TRAINING_TYPES,
+              description:
+                "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
+                "agendada (o servidor exige-o nesse dia e recusa treinos fortes na véspera e na antevéspera).",
             },
             categories: {
               type: "ARRAY",
@@ -877,31 +887,18 @@ export function raceAfterInstruction(o: RaceOutcome | null): string {
 
 /** "09:00" a partir de "09:00:00" (Postgres `time`) ou de "09:00". */
 export function hhmm(t: unknown): string {
-  return typeof t === "string" ? t.slice(0, 5) : "";
+  return sharedHhmm(t);
 }
 
-function minutesOf(t: unknown): number | null {
-  const v = hhmm(t);
-  const m = /^(\d{2}):(\d{2})$/.exec(v);
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
-}
-
-function clock(minutes: number): string {
-  const m = ((minutes % 1440) + 1440) % 1440;
-  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}
-
-function grams(weightKg: number | null, perKgLow: number, perKgHigh: number): string {
-  if (!weightKg) return `${perKgLow}-${perKgHigh} g/kg`;
-  return `${Math.round(weightKg * perKgLow)}-${Math.round(weightKg * perKgHigh)} g (${perKgLow}-${perKgHigh} g/kg)`;
+function rangeG(r: { low: number; high: number } | null, perKgLow: number, perKgHigh: number, unit = "g"): string {
+  if (!r) return `${perKgLow}-${perKgHigh} ${unit}/kg`;
+  return `${r.low}-${r.high} ${unit} (${perKgLow}-${perKgHigh} ${unit}/kg)`;
 }
 
 /** A véspera e a manhã da prova com horas e quantidades (specs/plano-de-prova.md,
- *  "A véspera e a hora"): sono, jantar, água, descontrair e a manhã, todos
- *  contados a partir da hora de partida e do peso. Sem hora, o bloco diz-o e
- *  manda perguntá-la — sem inventar horas. Doutrina: 04-nutricao-treino-prova
- *  (#1 antes do treino, #3 carga de hidratos), 04-nutricao-base-diaria (#6). */
+ *  "A véspera e a hora"). Os números vêm da fórmula partilhada
+ *  (_shared/formulas/raceEve.ts) — os mesmos que o cartão do Início mostra;
+ *  aqui só se escreve o bloco. Sem hora, diz-o e manda perguntá-la. */
 export function buildRaceEveContext(
   race: { name?: string | null; start_time?: string | null; distance_km?: number | string | null } | null,
   profile: { weight_kg?: number | string | null } | null,
@@ -909,27 +906,25 @@ export function buildRaceEveContext(
   daysUntil: number,
 ): string | null {
   if (!race) return null;
-  const weight = profile?.weight_kg != null ? Number(profile.weight_kg) : null;
-  const weightKg = weight && Number.isFinite(weight) && weight > 0 ? weight : null;
-  const start = minutesOf(race.start_time);
-  const longRace = (plannedFinishSeconds ?? 0) > 90 * 60;
-  const lines: string[] = [`=== VÉSPERA E MANHÃ DA PROVA (${daysUntil === 0 ? "é hoje" : "é amanhã"}; calculado pela app — usa ESTAS horas e quantidades) ===`];
-  if (start == null) {
+  const eve = computeRaceEve({ startTime: race.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds });
+  const when = daysUntil <= 0 ? "é hoje" : daysUntil === 1 ? "é amanhã" : `é daqui a ${daysUntil} dias`;
+  const lines: string[] = [`=== VÉSPERA E MANHÃ DA PROVA (${when}; calculado pela app — usa ESTAS horas e quantidades) ===`];
+  const sc = eve.schedule;
+  if (!sc) {
     lines.push("Hora de partida: DESCONHECIDA. Pergunta-lha antes de dar horas de acordar, de pequeno-almoço ou de deitar — sem a hora, fala em intervalos (\"3 h antes da partida\") e pede-lhe que a marque na prova.");
   } else {
-    const wake = start - 180;
-    const bed = wake - 8 * 60;
-    lines.push(`Partida: ${clock(start)}.`);
-    lines.push(`Sono: 8 h no alvo, 7 no mínimo — deitar às ${clock(bed)} para acordar às ${clock(wake)} (3 h antes; 2 h 30 no mínimo). A noite que mais conta é a anterior à véspera: se hoje é a véspera, a de ontem já foi.`);
-    lines.push(`Manhã: acordar ${clock(wake)} · pequeno-almoço ${clock(start - 165)} (2 h 45 antes; hidratos ${grams(weightKg, 1, 2)}, pouca fibra, pouca gordura, o de sempre) · água ${weightKg ? `${Math.round(weightKg * 5)}-${Math.round(weightKg * 7)} ml` : "5-7 ml/kg"} entre as ${clock(start - 240)} e as ${clock(start - 45)}, aos goles · chegada ${clock(start - 60)} · aquecimento ${clock(start - 25)}.`);
-    lines.push(`Descontrair: nada de treino além de 15-20 min muito fáceis; material preparado antes de jantar; ecrãs fora a partir das ${clock(bed - 60)}; nada de novo (comida, sapatilhas, roupa).`);
+    lines.push(`Partida: ${sc.start}.`);
+    lines.push(`Sono: ${eve.sleepHours.target} h no alvo, ${eve.sleepHours.min} no mínimo — deitar às ${sc.bed} para acordar às ${sc.wake} (3 h antes; 2 h 30 no mínimo). A noite que mais conta é a anterior à véspera: se hoje é a véspera, a de ontem já foi.`);
+    lines.push(`Manhã: acordar ${sc.wake} · pequeno-almoço ${sc.breakfast} (2 h 45 antes; hidratos ${rangeG(eve.breakfastCarbsG, 1, 2)}, pouca fibra, pouca gordura, o de sempre) · água ${eve.preRaceWaterMl ? `${eve.preRaceWaterMl.low}-${eve.preRaceWaterMl.high} ml` : "5-7 ml/kg"} entre as ${sc.waterFrom} e as ${sc.waterUntil}, aos goles · chegada ${sc.arrival} · aquecimento ${sc.warmup}.`);
+    lines.push(`Descontrair: nada de treino além de 15-20 min muito fáceis; material preparado antes de jantar; ecrãs fora a partir das ${sc.screensOff}; nada de novo (comida, sapatilhas, roupa).`);
   }
-  lines.push(`Jantar da véspera${start != null ? ` (até às ${clock(start - 180 - 8 * 60 - 150)})` : ""}: hidratos complexos (arroz, massa, batata, pão) ${grams(weightKg, 2, 4)}, proteína ${grams(weightKg, 0.3, 0.4)}, pouca fibra e pouca gordura, nada de novo.`);
-  lines.push(longRace
-    ? `Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes${weightKg ? ` (${Math.round(weightKg * 10)}-${Math.round(weightKg * 12)} g hoje)` : ""}, fibra abaixo de 10-15 g/dia.`
+  lines.push(`Jantar da véspera${sc ? ` (até às ${sc.dinnerBy})` : ""}: hidratos complexos (arroz, massa, batata, pão) ${rangeG(eve.dinnerCarbsG, 2, 4)}, proteína ${rangeG(eve.dinnerProteinG, 0.3, 0.4)}, pouca fibra e pouca gordura, nada de novo.`);
+  lines.push(eve.longRace
+    ? `Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes${eve.carbLoading ? ` (${eve.carbLoading.low}-${eve.carbLoading.high} g hoje)` : ""}, fibra abaixo de 10-15 g/dia.`
     : `Carga de hidratos: NÃO — prova abaixo de 90 min; comer normal, com o jantar acima. Encher-se só traz peso (3 g de água por g de glicogénio).`);
-  lines.push(`Água hoje: a base de 30-40 ml/kg${weightKg ? ` (${(weightKg * 0.03).toFixed(1)}-${(weightKg * 0.04).toFixed(1)} L)` : ""}, repartida pelo dia; não é para beber litros à noite.`);
-  if (!weightKg) lines.push("Sem peso no perfil: as quantidades ficam por kg — pede-lhe o peso se quiseres dar gramas.");
+  lines.push(`Água hoje: a base de 30-40 ml/kg${eve.dayWaterL ? ` (${eve.dayWaterL.low.toFixed(1)}-${eve.dayWaterL.high.toFixed(1)} L)` : ""}, repartida pelo dia; não é para beber litros à noite.`);
+  if (!eve.weightKg) lines.push("Sem peso no perfil: as quantidades ficam por kg — pede-lhe o peso se quiseres dar gramas.");
+  lines.push("Sugestões alimentares (propose_training_plan/save_meal_suggestions) para a véspera e para o dia da prova seguem ESTE bloco, não a rotina habitual.");
   return lines.join("\n");
 }
 
@@ -2091,6 +2086,40 @@ const MAX_PLAN_ITEMS = 14;
 // 'proposto' e os respetivos itens. Ao contrário das outras três ferramentas,
 // esta ESCREVE — daí a validação apertada de cada campo antes do insert.
 // Ver specs/plano-de-treino.md §3 e §5.1.
+function addDaysISO(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function daysBetweenISO(fromIso: string, toIso: string): number {
+  return Math.round((Date.parse(toIso + "T00:00:00Z") - Date.parse(fromIso + "T00:00:00Z")) / 86400000);
+}
+
+type ScheduledRace = { id: string; name: string; date: string; distance_km: number | null };
+/** Provas agendadas do atleta entre duas datas; [] se a consulta falhar
+ *  (o plano segue sem a guarda, com aviso no log). */
+// deno-lint-ignore no-explicit-any
+export async function fetchScheduledRaces(sb: any, userId: string, fromISO: string, toISO: string): Promise<ScheduledRace[]> {
+  try {
+    const res = await sb
+      .from("race_events")
+      .select("id, name, date, distance_km")
+      .eq("user_id", userId)
+      .eq("status", "agendada")
+      .gte("date", fromISO)
+      .lte("date", toISO);
+    if (!res || res.error) {
+      if (res?.error) console.warn("Provas do período não lidas:", res.error.message);
+      return [];
+    }
+    // deno-lint-ignore no-explicit-any
+    return (res.data || []).map((r: any) => ({ id: r.id, name: r.name || "Prova", date: r.date, distance_km: r.distance_km != null ? Number(r.distance_km) : null }));
+  } catch (err) {
+    console.warn("Provas do período não lidas:", err);
+    return [];
+  }
+}
+
 // deno-lint-ignore no-explicit-any
 export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
@@ -2106,6 +2135,13 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
   }
 
+  // As provas agendadas no período (e até 2 dias depois, para a véspera de
+  // uma prova logo a seguir ao plano): o dia da prova é a prova, e os dois
+  // dias antes são leves. Numa falha da consulta o plano segue sem esta
+  // guarda — é uma validação, não o registo.
+  const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, 2));
+  const racesInPeriod = racesInPeriodOrAfter.filter((r) => r.date >= period_start && r.date <= period_end);
+
   // Valida tudo ANTES de gravar seja o que for — um item inválido a meio
   // deixaria um plano meio criado, que o atleta veria como proposta legítima.
   const rows = [];
@@ -2120,8 +2156,25 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (item.kind !== "corrida" && item.kind !== "ginasio" && item.kind !== "descanso") {
       return `Erro no treino ${n}: kind tem de ser "corrida", "ginasio" ou "descanso".`;
     }
-    if (item.kind === "corrida" && item.training_type && !RUN_TRAINING_TYPES.includes(item.training_type)) {
-      return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${RUN_TRAINING_TYPES.join(", ")}.`;
+    if (item.kind === "corrida" && item.training_type && !PLAN_RUN_TRAINING_TYPES.includes(item.training_type)) {
+      return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${PLAN_RUN_TRAINING_TYPES.join(", ")}.`;
+    }
+    // ── O plano tem de saber da prova (specs/plano-de-prova.md) ──────────
+    const raceThatDay = racesInPeriod.find((r) => r.date === item.planned_date);
+    if (raceThatDay) {
+      if (item.kind !== "corrida") {
+        return `Erro no treino ${n}: ${item.planned_date} é o dia da prova "${raceThatDay.name}" — nesse dia só há a prova (kind=corrida, training_type=prova), não ${item.kind}.`;
+      }
+      // Corrida no dia da prova É a prova: normaliza-se, sem chatear o modelo.
+      item.training_type = "prova";
+      if (!(Number(item.target_distance_km) > 0) && raceThatDay.distance_km) item.target_distance_km = raceThatDay.distance_km;
+      if (typeof item.notes !== "string" || !item.notes.trim()) item.notes = `Prova: ${raceThatDay.name}. O plano de ritmo está no hub da prova.`;
+    } else if (item.training_type === "prova") {
+      return `Erro no treino ${n}: training_type=prova só num dia com prova agendada, e ${item.planned_date} não tem nenhuma.`;
+    }
+    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= 2);
+    if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
+      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}" — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
@@ -2155,6 +2208,25 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       meal_macros: buildMealMacros(item),
     });
   }
+
+  // Uma prova no período sem item nesse dia entra sozinha — o plano nunca
+  // pode fingir que o dia da prova é um dia qualquer.
+  for (const race of racesInPeriod) {
+    if (rows.some((r) => r.planned_date === race.date)) continue;
+    rows.push({
+      user_id: userId,
+      planned_date: race.date,
+      kind: "corrida",
+      training_type: "prova",
+      categories: [],
+      target_distance_km: race.distance_km ? Number(race.distance_km) : null,
+      target_duration_min: null,
+      notes: `Prova: ${race.name}. O plano de ritmo está no hub da prova.`,
+      meal_suggestion: null,
+      meal_macros: null,
+    });
+  }
+  rows.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
 
   // Se o atleta confirmou que quer substituir o plano de treino ativo, a
   // proposta REGISTA qual é (supersedes_plan_id) mas não o mexe já: a
@@ -4005,6 +4077,11 @@ export function buildSystemInstruction(
     `Depois de criares a proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
+    `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
+    `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
+    `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
+    `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
     `que sentir. Para cada dia kind=corrida, combina na notes, sempre que o histórico o permita:\n` +
@@ -4632,7 +4709,7 @@ async function handler(req: Request): Promise<Response> {
           routeSummary: nextRaceForPlan.web_info?.route_summary ?? null,
         });
         racePlanContext = buildRacePlanContext(plan, nextRaceForPlan.name ?? null, daysUntilPlan);
-        if (daysUntilPlan <= 1) {
+        if (daysUntilPlan <= 2) {
           raceEveContext = buildRaceEveContext(nextRaceForPlan, profile, plan?.plannedFinishSeconds ?? null, daysUntilPlan);
         }
       }
@@ -4995,7 +5072,17 @@ async function handler(req: Request): Promise<Response> {
     // confrontar já ao abrir a conversa; aqui foi o atleta que decidiu vir
     // falar com ela, por isso ela atende como quem abre a porta, não como
     // quem dispara um alarme.
-    const planCheckinPrompt =
+    // Motivos detetados pela app (utils/planDivergence.js): prova sem item no
+    // plano, treino no dia da prova, treino forte na véspera, sessões
+    // falhadas. Vêm como textos curtos; a Carol começa por eles.
+    const planDivergence: string[] = Array.isArray(body.plan_divergence)
+      ? (body.plan_divergence as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim().slice(0, 200)).slice(0, 6)
+      : [];
+    const planCheckinPrompt = planDivergence.length > 0
+      ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
+        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
+        `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
+        `as sessões falhadas reorganizadas sem as empilhar. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
       `O atleta abriu propositadamente o chat ao clicar no botão "Adaptar Plano" — foi ele que veio ter ` +
       `contigo, não surgiu nenhum alerta automático a chamar-te. ` +
       (alreadyTalkedToday

@@ -97,6 +97,32 @@ plano no hub pede-a. A hora dos treinos (corrida e ginásio) entra nas
 linhas que a Carol lê ("às 07:30"): treinos tarde a cortar o sono, e na
 última semana o conselho de treinar à hora da prova.
 
+## O plano tem de saber da prova (decidido 2026-09-13)
+
+A véspera é uma fórmula partilhada, `_shared/formulas/raceEve.ts`
+(`computeRaceEve`): as horas e as gramas que a Carol diz no chat são as que
+o cartão do Início mostra e as que o `coach-daily-summary` recebe.
+
+- **Cartão do Início**: na véspera, "Preparar amanhã" é a prova (partida,
+  jantar, deitar, acordar, pequeno-almoço, chegada), não o item do plano; no
+  dia, "Aviso de hoje" abre com a prova e a hora. O `coach-daily-summary`
+  recebe a véspera no contexto e a estratégia nutricional fala dela.
+- **Plano de treino**: o dia da prova é a prova — item `corrida` com
+  `training_type = 'prova'`, distância da prova, notas a apontar para o
+  plano do hub. O `runProposeTrainingPlan` valida: qualquer item noutro
+  formato no dia da prova é erro; sem item nesse dia, o servidor insere-o;
+  na véspera e antevéspera só recuperação ou descanso (longo, intervalos,
+  tempo, sprints e ginásio são recusados). Registar a prova conclui esse
+  item. As sugestões alimentares da véspera e do dia seguem a véspera.
+- **Alerta de ajuste**: o cliente deteta quando a realidade se afastou do
+  plano (`utils/planDivergence.js`): prova dentro do período do plano sem
+  item de prova, treino no dia da prova, treino forte a dois dias da prova,
+  duas ou mais sessões falhadas nos últimos 7 dias. Sem tabela nova. O
+  Início mostra "A Carol precisa de falar contigo · o plano precisa de um
+  ajuste"; abrir o chat entra no "Adaptar plano" com os motivos
+  (`plan_divergence` no body), e a Carol explica o que muda e propõe o plano
+  ajustado. A mesma deteção não volta a chamar enquanto o plano não mudar.
+
 ## Fora de âmbito
 
 Meteorologia, perfil altimétrico do site (só o qualitativo dos segmentos),

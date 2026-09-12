@@ -3232,3 +3232,84 @@ Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou 
   assertStringIncludes(buildRaceFollowupContext("parar")!, "sem insistir");
   assertEquals(buildRaceFollowupContext(null), null);
 });
+
+// ── O plano tem de saber da prova ───────────────────────────────────────────
+// Um cliente falso que responde a race_events e delega o resto no de sempre.
+// deno-lint-ignore no-explicit-any
+function makePlanSbWithRaces(races: any[]) {
+  const { sb, calls } = makePlanSb();
+  const chain = (data: unknown) => {
+    const q = {
+      eq: () => q, gte: () => q, lte: () => q,
+      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data, error: null }),
+    };
+    return q;
+  };
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => table === "race_events" ? { select: () => chain(races) } : inner(table);
+  return { sb, calls };
+}
+
+Deno.test("plano com prova no período: o dia da prova vira 'prova' e uma prova esquecida entra sozinha", async () => {
+  const { sb, calls } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "semana da prova",
+    items: [
+      { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
+      { planned_date: "2026-08-15", kind: "corrida", training_type: "continuo", target_distance_km: 10 },
+    ],
+  });
+  assertEquals(result.startsWith("Erro"), false, result);
+  const raceItem = calls.itemInserts.find((r) => r.planned_date === "2026-08-15");
+  assertEquals(raceItem.training_type, "prova");
+  assertStringIncludes(raceItem.notes, "Prova: Corrida do Tejo");
+
+  const { sb: sb2, calls: calls2 } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
+  const r2 = await runProposeTrainingPlan(sb2, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "sem a prova",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertEquals(r2.startsWith("Erro"), false, r2);
+  const inserted = calls2.itemInserts.find((r) => r.planned_date === "2026-08-15");
+  assertEquals(inserted.training_type, "prova");
+  assertEquals(inserted.target_distance_km, 10);
+});
+
+Deno.test("plano com prova: ginásio no dia da prova, treino forte na véspera e 'prova' sem prova são erros", async () => {
+  const races = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }];
+  const gymOnRaceDay = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-15", kind: "ginasio", categories: ["Pernas"], target_duration_min: 45 }],
+  });
+  assertStringIncludes(gymOnRaceDay, "dia da prova");
+  const hardEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
+  });
+  assertStringIncludes(hardEve, "a 1 dia(s) da prova");
+  const easyEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "recuperacao", target_distance_km: 3 }],
+  });
+  assertEquals(easyEve.startsWith("Erro"), false, easyEve);
+  const provaSemProva = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-12", kind: "corrida", training_type: "prova", target_distance_km: 10 }],
+  });
+  assertStringIncludes(provaSemProva, "só num dia com prova agendada");
+});
+
+Deno.test("sem provas (ou com a consulta a falhar) o plano segue como sempre", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+  assertEquals(result.startsWith("Erro"), false, result);
+  assertEquals(calls.itemInserts.length, 2);
+});
+
+Deno.test("a véspera no coach-chat lê da fórmula partilhada (mesmos números)", () => {
+  const ctx = buildRaceEveContext({ name: "Meia", start_time: "09:00:00" }, { weight_kg: 70 }, 6720, 1)!;
+  assertStringIncludes(ctx, "deitar às 22:00 para acordar às 06:00");
+  assertStringIncludes(ctx, "hidratos 70-140 g (1-2 g/kg)");
+  assertStringIncludes(ctx, "Sugestões alimentares (propose_training_plan/save_meal_suggestions) para a véspera");
+});
