@@ -77,3 +77,72 @@ describe('RecordConfirmation', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
+
+/* A conquista nova (specs/gamificacao-provas.md §1): entra 300 ms depois do
+   check e prolonga a confirmação até 1,6 s, porque há mais para ler. */
+describe('RecordConfirmation — a conquista nova da prova', () => {
+  const Medalha = (props) => <svg data-testid="icone-conquista" {...props} />;
+  const CONQUISTA = {
+    key: 'recorde_pessoal',
+    name: 'Recorde pessoal',
+    detail: 'Meia: 1:53:42, 4:04 abaixo do anterior',
+    tone: 'run',
+    Icon: Medalha,
+  };
+
+  beforeEach(() => {
+    window.matchMedia = () => ({ matches: false });
+  });
+
+  it('o cartão só entra aos 300 ms, depois do check', () => {
+    vi.useFakeTimers();
+    render(<RecordConfirmation label="Meia de Lisboa concluída" tone="race" achievement={CONQUISTA} onDone={() => {}} />);
+
+    expect(screen.queryByTestId('record-confirmation-achievement')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(300); });
+
+    const cartao = screen.getByTestId('record-confirmation-achievement');
+    expect(cartao).toHaveTextContent('Nova conquista');
+    expect(cartao).toHaveTextContent('Recorde pessoal');
+    expect(cartao).toHaveTextContent('Meia: 1:53:42, 4:04 abaixo do anterior');
+  });
+
+  it('com conquista, a confirmação só sai aos 1,6 s', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT); });
+    expect(onDone).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(1600 - DUR_CONFIRM_EXIT); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('havendo mais do que uma, mostra a primeira e conta o resto', () => {
+    vi.useFakeTimers();
+    render(<RecordConfirmation tone="race" achievement={{ ...CONQUISTA, extra: '+1 conquista' }} onDone={() => {}} />);
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(screen.getByTestId('record-confirmation-achievement')).toHaveTextContent('+1 conquista');
+  });
+
+  it('sem conquista nenhuma, o registo de todos os dias sai aos 900 ms como sempre', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation onDone={onDone} />);
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('record-confirmation-achievement')).not.toBeInTheDocument();
+  });
+
+  it('com prefers-reduced-motion o cartão não espera pelos 300 ms', () => {
+    window.matchMedia = () => ({ matches: true });
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+
+    act(() => { vi.advanceTimersByTime(DUR_TAP); });
+    expect(screen.getByTestId('record-confirmation-achievement')).toBeInTheDocument();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});

@@ -15,6 +15,7 @@ import {
 } from '../../utils/run';
 import { shoeLabel } from '../../utils/shoes';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
+import { computeAchievements, achievementsForRace } from '../../utils/achievements';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -874,6 +875,23 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     store.setRaceEvents(store.raceEvents.map(e => (e.id === raceId ? { ...e, ...patch } : e)));
   };
 
+  /* A conquista que ESTA prova acabou de dar (specs/gamificacao-provas.md
+     §1). Corre depois de a corrida estar gravada, ligada à prova e a prova
+     concluída — por isso lê o store, que já tem as três coisas, em vez de
+     recalcular com os dados do formulário. Havendo mais do que uma, mostra-se
+     a primeira e conta-se o resto; a lista completa fica no hub, para onde o
+     atleta vai a seguir. */
+  const novaConquistaDaProva = () => {
+    const store = useAppStore.getState();
+    const novas = achievementsForRace(
+      computeAchievements({ raceEvents: store.raceEvents, runs: store.runs, profile }),
+      raceId,
+    ).filter((a) => a.isNew);
+    if (!novas.length) return null;
+    const resto = novas.length - 1;
+    return { ...novas[0], extra: resto > 0 ? `+${resto} conquista${resto > 1 ? 's' : ''}` : null };
+  };
+
   /* Modo prova: a confirmação é a da prova (âmbar, troféu, o nome dela) e o
      destino é o HUB, não o Calendário — é lá que estão o tempo final ao lado
      do objetivo, o balanço da Carol e a galeria das memórias. */
@@ -882,6 +900,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setConfirmation({
       label: `${raceEvent?.name || 'Prova'} concluída`,
       tone: 'race',
+      achievement: novaConquistaDaProva(),
       done: () => {
         handleClose();
         if (!hadPendingNav) {
@@ -2311,7 +2330,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} onDone={confirmation.done} />}
     </div>
   );
 }

@@ -766,6 +766,24 @@ describe('RunRegistration — modo prova', () => {
     expect(screen.getByText('Meia de Lisboa concluída')).toBeInTheDocument();
   });
 
+  /* specs/gamificacao-provas.md §1: com a prova concluída e a corrida
+     ligada, o palmarés ganha "Prova concluída" — e a confirmação mostra-a
+     300 ms depois do troféu, antes de levar o atleta ao hub. */
+  it('a conquista que a prova acabou de dar entra na confirmação', async () => {
+    entrarPeloPrefill();
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    const cartao = await screen.findByTestId('record-confirmation-achievement');
+    expect(cartao).toHaveTextContent('Nova conquista');
+    expect(cartao).toHaveTextContent('Prova concluída');
+    expect(cartao).toHaveTextContent('1.ª prova');
+  });
+
   it('se o upload falhar, a corrida fica gravada e a memória oferece "Tentar de novo"', async () => {
     entrarPeloPrefill();
     mocks.uploadError = { message: 'rede' };
