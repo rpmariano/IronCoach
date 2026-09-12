@@ -209,6 +209,57 @@ function buildDemoData() {
   };
 }
 
+/* Variante de ?demo=true&palmares=1 — o atleta que já correu e ainda não
+   marcou a próxima (specs/gamificacao-provas.md). É o único estado onde o
+   Início mostra "Prova concluída · ontem": com uma prova por correr ou por
+   registar, o cartão volta a olhar para a frente, que é a função dele. Serve
+   também para ver o hub pós-prova com conquistas e o Palmarés do Perfil com
+   umas desbloqueadas e outras ainda por fazer. */
+function buildPalmaresDemoData() {
+  const today = new Date();
+  const inDays = (n) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  return {
+    raceEvents: [
+      {
+        id: 'demo-palmares-1', date: inDays(-160), name: 'Meia do Estoril',
+        location: 'Estoril', race_type: 'estrada', distance_km: 21.0975,
+        experience_level: 'medio', status: 'concluida',
+        target_time: '2:00:00', target_time_seconds: 7200,
+      },
+      {
+        id: 'demo-palmares-2', date: inDays(-70), name: 'Trail da Arrábida',
+        location: 'Setúbal', race_type: 'trail', distance_km: 18, elevation_gain_m: 740,
+        experience_level: 'medio', status: 'concluida',
+        target_time: '2:20:00', target_time_seconds: 8400,
+      },
+      {
+        id: 'demo-palmares-3', date: inDays(-1), name: 'Corrida das Vindimas',
+        location: 'Palmela', race_type: 'estrada', distance_km: 10,
+        experience_level: 'medio', status: 'concluida',
+        target_time: '47:00', target_time_seconds: 2820, target_pace_seconds_per_km: 282,
+      },
+    ],
+    waterLogs: [],
+    meals: [],
+    runs: [
+      { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-palmares-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
+      { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-palmares-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
+      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-palmares-3', distance_km: 10, duration_seconds: 2766, details: { official_time_seconds: 2766 } },
+      { id: 'demo-pr-t1', date: inDays(-8), distance_km: 12, duration_seconds: 3960, kind: 'treino', training_type: 'continuo' },
+      { id: 'demo-pr-t2', date: inDays(-15), distance_km: 16, duration_seconds: 5400, kind: 'treino', training_type: 'longo' },
+      { id: 'demo-pr-t3', date: inDays(-30), distance_km: 10, duration_seconds: 3180, kind: 'treino', training_type: 'intervalado' },
+    ],
+    gymSessions: [],
+    bodyAssessments: [],
+    coachPlans: [],
+    coachPlanItems: [],
+  };
+}
+
 // Variante de ?demo=true&onboarding=1: um atleta mesmo acabado de chegar —
 // sem registos e sem provas. É a segunda metade da regra de arranque (a
 // primeira é onboarding_done a false, posto no perfil demo).
@@ -312,7 +363,14 @@ export default function App() {
         // inicialização única fora do fluxo normal de dados — os setters
         // existem para respostas do Supabase, não para semear um estado
         // fictício de propósito.
-        useAppStore.setState(forcarOnboarding ? buildEmptyDemoData() : buildDemoData());
+        // ?demo=true&palmares=1 — provas já corridas e nenhuma marcada: o
+        // dia a seguir no Início, o hub com conquistas e o Palmarés cheio.
+        const verPalmares = params.get('palmares') === '1';
+        useAppStore.setState(
+          forcarOnboarding ? buildEmptyDemoData()
+            : verPalmares ? buildPalmaresDemoData()
+              : buildDemoData(),
+        );
         setIsInitializing(false);
       } else {
         setSession(null);
