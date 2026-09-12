@@ -3,6 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
+import { pendingRaceBalance } from '../../utils/coachProactive';
 import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
 import SectionLabel from '../shared/SectionLabel';
@@ -54,6 +55,15 @@ export default function Home() {
   }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates]);
 
   const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
+
+  /* O balanço da prova (specs/gamificacao-provas.md §3): no dia a seguir, a
+     Carol chama por ele a partir do cartão de topo enquanto o chat não for
+     aberto. Só quando não há assuntos por resolver — uma intervenção pesa
+     mais do que um balanço. */
+  const raceBalance = useMemo(
+    () => (pendingTopics > 0 ? null : pendingRaceBalance({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile })),
+    [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile],
+  );
 
   const openCoach = () => {
     if (interventionPending) setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
@@ -118,7 +128,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
-      <CarolCard pendingTopics={pendingTopics} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
+      <CarolCard pendingTopics={pendingTopics} topic={raceBalance ? 'o balanço da prova' : null} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
