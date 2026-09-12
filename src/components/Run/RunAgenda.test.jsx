@@ -239,7 +239,14 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       const baseCard = screen.getByText('Base Aeróbica').closest('.rh-phase-card');
       expect(within(baseCard).getByText('Não Realizada')).toBeInTheDocument();
       expect(within(baseCard).queryByText('Concluída')).not.toBeInTheDocument();
-      expect(screen.getByText(/Sem\. 1 de 6/)).toBeInTheDocument();
+      // Semana 5 (não 1): `currentWeek` conta pelo calendário ideal do
+      // macrociclo (mesmo eixo das fases), não pelos dias decorridos desde
+      // o início efetivo comprimido — ver bug relatado 2026-09-11 em
+      // racePlanEngine.js. Nesta prova (14 dias à frente, taper de 2
+      // semanas) hoje é o 1.º dia do Taper, que começa na semana 5 de 6; o
+      // valor antigo ("Sem. 1 de 6") contradizia a própria fase ativa
+      // (Polimento/Taper, mostrada ao lado) em vez de bater certo com ela.
+      expect(screen.getByText(/Sem\. 5 de 6/)).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -321,6 +328,18 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
     });
     expect(useAppStore.getState().pendingCalendarDate).toBe(expectedDate);
+  });
+
+  it('a editar uma prova sem mexer em nada, "Guardar prova" está desativado — inclusive sobre o Hub, que é só de leitura (relatado 2026-09-12)', () => {
+    useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
+    renderAgenda();
+    // Abre no Hub ("Treino e Evolução"): nada para gravar.
+    expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
+    expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeEnabled();
   });
 
   it('a editar uma prova: ao gravar, volta ao separador de origem sem tocar no Calendário', async () => {

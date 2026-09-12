@@ -207,7 +207,25 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     // totalWeeks×7). Só diverge — e só para menos — quando comprimido.
     const totalDaysAvailable = Math.max(1, Math.round((raceDateObj.getTime() - effectiveStartDateObj.getTime()) / 86400000));
     progressPercentage = Math.max(0, Math.min(100, Math.round((daysElapsed / totalDaysAvailable) * 100)));
-    currentWeek = Math.min(totalWeeks, Math.floor(daysElapsed / 7) + 1);
+
+    // `currentWeek` NÃO conta a partir do início efetivo (comprimido) — conta
+    // a partir do `planStartDate` ideal, o mesmo eixo de calendário que
+    // `computePhaseWindows` usa para desenhar as fases (base/build/peak/
+    // taper) e o trilho/track do Início e do Hub. Antes usava
+    // `daysElapsed`/`effectiveStartDate` como o `progressPercentage` acima —
+    // certo para "quanto da preparação REAL já foi treinado" (é para isso
+    // que o `progressPercentage` serve, doutrina do bug 2026-08-29), mas
+    // errado aqui: com uma prova comprimida (registada tarde), dava uma
+    // "semana X de Y" e uma posição no trilho muito atrasadas face à fase
+    // realmente ativa (`currentPhase`, sempre calculada pelo calendário
+    // ideal) — ex. título "Polimento (Taper)" a 2 dias da prova com o
+    // trilho a marcar "semana 2 de 6" ainda na Base (bug relatado
+    // 2026-09-11, prova "Corrida do Tejo"). `currentWeek` não fabrica
+    // treino nenhum — isso continua a cargo de `resolvePhaseState`
+    // (`effectiveStartISO` marca "skipped" o que for anterior ao início
+    // real), este é só o número mostrado.
+    const daysSincePlanStart = Math.max(0, Math.round((todayDateObj.getTime() - planStartDateObj.getTime()) / 86400000));
+    currentWeek = Math.max(1, Math.min(totalWeeks, Math.floor(daysSincePlanStart / 7) + 1));
   }
 
   // ─── Análise Holística da Carol sobre a Evolução do Treino ───────────────────
@@ -400,9 +418,12 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     planEndDate,
     // Início REAL da preparação e se o macrociclo teve de ser comprimido
     // (prova registada depois do início ideal) — ver comentário acima de
-    // `effectiveStartDate`. `daysToStart`/`currentWeek`/`progressPercentage`
-    // já refletem isto; estes três campos ficam disponíveis para quem
-    // precisar de explicar a compressão em vez de só sofrer o efeito dela.
+    // `effectiveStartDate`. `daysToStart`/`progressPercentage` já refletem
+    // isto (a compressão reduz o tempo realmente disponível); `currentWeek`
+    // NÃO — conta sempre pelo calendário ideal (ver comentário junto ao seu
+    // cálculo, acima), para se manter alinhado com `currentPhase` e com o
+    // trilho/track. Estes campos ficam disponíveis para quem precisar de
+    // explicar a compressão em vez de só sofrer o efeito dela.
     effectiveStartDate,
     isCompressed,
     effectiveWeeksAvailable,

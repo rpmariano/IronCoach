@@ -15,6 +15,10 @@ const getInitialDashboardTab = () => {
   return 'hub';
 };
 
+// O pedido do resumo diário em curso, se houver — ver loadDailySummary.
+// Fora do estado do store porque não é coisa que a UI leia; é só a trava.
+let dailySummaryInFlight = null;
+
 export const useAppStore = create((set, get) => ({
   // Auth & Profile State
   session: null,
@@ -510,23 +514,41 @@ export const useAppStore = create((set, get) => ({
   // em memória, a não ser que force=true (botão "Atualizar" do card) ou
   // reload=true (montagem do Início, para apanhar o resumo gerado por outra
   // sessão/dispositivo no mesmo dia). Ver specs/plano-de-treino.md §11.
+  //
+  // Um pedido de cada vez: enquanto um está em curso, uma segunda chamada
+  // (sem force) junta-se a ele em vez de disparar outro. Em desenvolvimento o
+  // StrictMode monta o CarolCard duas vezes e saíam DOIS pedidos ao
+  // coach-daily-summary a 3 s um do outro — duas chamadas ao modelo, pagas,
+  // pelo mesmo resumo (app_logs, 2026-09-11 23:18). Com force, espera-se
+  // que o em curso acabe e pede-se de novo — o "Atualizar" não deve ficar
+  // com a resposta de um pedido que já ia a meio.
   loadDailySummary: async ({ force = false, reload = false } = {}) => {
     const today = todayISO();
     const current = get().dailySummary;
     if (!force && !reload && current?.date === today) return current;
 
-    set({ dailySummaryLoading: true });
-    try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
-      if (error) { console.error('Error loading daily summary:', error); return null; }
-      if (data?.summary) {
-        set({ dailySummary: data.summary });
-        return data.summary;
-      }
-      return null;
-    } finally {
-      set({ dailySummaryLoading: false });
+    if (dailySummaryInFlight) {
+      if (!force) return dailySummaryInFlight;
+      await dailySummaryInFlight.catch(() => null);
     }
+
+    const run = (async () => {
+      set({ dailySummaryLoading: true });
+      try {
+        const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
+        if (error) { console.error('Error loading daily summary:', error); return null; }
+        if (data?.summary) {
+          set({ dailySummary: data.summary });
+          return data.summary;
+        }
+        return null;
+      } finally {
+        set({ dailySummaryLoading: false });
+        if (dailySummaryInFlight === run) dailySummaryInFlight = null;
+      }
+    })();
+    dailySummaryInFlight = run;
+    return run;
   },
 
   // Hydration Actions

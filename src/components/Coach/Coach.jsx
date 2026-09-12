@@ -101,25 +101,32 @@ export default function Coach() {
     reloadCoachGoalProposals();
   }, []);
 
-  // Motor partilhado das duas conversas que a própria Carol inicia sem o
-  // atleta escrever nada (handleProactiveIntervention e
-  // handleAdaptPlanCheckin, abaixo) — só o payload muda entre as duas.
-  const sendCoachInitiatedPayload = async (payload) => {
+  // Motor partilhado das conversas que a própria Carol inicia sem o atleta
+  // escrever nada (handleProactiveIntervention, handleAdaptPlanCheckin e a
+  // mensagem proativa ao abrir o chat, abaixo) — só o payload muda.
+  // `silent`: numa falha imediata não deixa bolha nenhuma. É para a mensagem
+  // proativa: o atleta não enviou nada, e "A tua mensagem não saiu" a
+  // aparecer sozinha ao abrir o chat era exatamente o incidente de
+  // 2026-09-12 (o servidor recusou com 409 `busy` a segunda de duas chamadas
+  // gémeas ao montar, e o cliente anunciou uma falha de rede que não houve).
+  const sendCoachInitiatedPayload = async (payload, { silent = false } = {}) => {
     if (coachLoading) return null;
     setCoachLoading(true);
     setCoachSuggestions([]);
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt);
+        } else if (silent) {
+          setCoachLoading(false);
         } else {
-          handleImmediateFailure();
+          handleImmediateFailure(isBusy ? error : undefined);
         }
         return null;
       }
@@ -233,10 +240,17 @@ export default function Coach() {
   // intenção já em curso (intervenção, adaptar plano, nota da memória). Só
   // fica marcado como enviado quando o servidor responde de facto — se ele
   // saltar (ela falou há pouco), volta a tentar na próxima abertura.
+  // Uma tentativa por montagem, a sério: em desenvolvimento o StrictMode
+  // corre este efeito duas vezes seguidas e o `coachLoading` do fecho ainda é
+  // o do primeiro render (false nas duas) — saíam dois pedidos gémeos, o
+  // segundo levava 409 do lock do servidor. O ref sobrevive à dupla
+  // invocação porque a instância do componente é a mesma.
+  const proactiveAttempted = useRef(false);
   useEffect(() => {
-    if (coachIntent || coachLoading) return;
+    if (coachIntent || coachLoading || proactiveAttempted.current) return;
     const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
     if (!candidate || wasProactiveSent(profile?.id, candidate)) return;
+    proactiveAttempted.current = true;
     sendCoachInitiatedPayload({
       message: '',
       proactive_trigger: candidate.trigger,
@@ -247,7 +261,7 @@ export default function Coach() {
       ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
-    }).then((data) => {
+    }, { silent: true }).then((data) => {
       if (data && !data.skipped) markProactiveSent(profile?.id, candidate);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -474,11 +488,14 @@ export default function Coach() {
   // nunca vai chegar, e o aviso de "demora" (pensado para pedidos lentos mas
   // em curso) seria enganador aqui. Informa já e liberta o campo para o
   // atleta poder tentar de novo de imediato.
-  const handleImmediateFailure = () => {
+  // `message` opcional: o texto do servidor quando ele recusou de propósito
+  // (409 `busy` — "Calma Rui, ainda estou a preparar a resposta…"), que é
+  // dela e para mostrar tal e qual; sem isso, o aviso genérico de rede.
+  const handleImmediateFailure = (message) => {
     addCoachMessage({
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: 'A tua mensagem não saiu: falha de rede ou de ligação ao servidor. Verifica a ligação e envia outra vez.'
+      content: message || 'A tua mensagem não saiu: falha de rede ou de ligação ao servidor. Verifica a ligação e envia outra vez.'
     });
     setCoachLoading(false);
   };
@@ -524,7 +541,7 @@ export default function Coach() {
         activeInsights: insightsContext
       };
 
-      const { data, error, isTimeout } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -532,7 +549,7 @@ export default function Coach() {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt);
         } else {
-          handleImmediateFailure();
+          handleImmediateFailure(isBusy ? error : undefined);
         }
         return;
       }
