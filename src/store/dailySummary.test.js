@@ -69,4 +69,40 @@ describe('loadDailySummary', () => {
     await useAppStore.getState().loadDailySummary();
     expect(useAppStore.getState().dailySummaryLoading).toBe(false);
   });
+
+  it('duas chamadas ao mesmo tempo (StrictMode a montar o Início duas vezes) fazem UM pedido — 2026-09-11, app_logs', async () => {
+    let resolve;
+    mocks.invoke.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const first = useAppStore.getState().loadDailySummary();
+    const second = useAppStore.getState().loadDailySummary({ reload: true });
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+
+    resolve({ data: { summary: SUMMARY, cached: false }, error: null });
+    await expect(first).resolves.toEqual(SUMMARY);
+    await expect(second).resolves.toEqual(SUMMARY);
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().dailySummaryLoading).toBe(false);
+
+    // Terminado o pedido, a trava solta-se: com o resumo de hoje já em
+    // memória não há novo pedido; sem ele haveria.
+    await useAppStore.getState().loadDailySummary();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('force durante um pedido em curso espera por ele e pede de novo — não fica com a resposta a meio', async () => {
+    let resolve;
+    mocks.invoke.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    mocks.invoke.mockResolvedValueOnce({ data: { summary: { ...SUMMARY, recap: 'Atualizado.' }, cached: false }, error: null });
+    const first = useAppStore.getState().loadDailySummary();
+    const forced = useAppStore.getState().loadDailySummary({ force: true });
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+
+    resolve({ data: { summary: SUMMARY, cached: true }, error: null });
+    await expect(first).resolves.toEqual(SUMMARY);
+    const result = await forced;
+    expect(result.recap).toBe('Atualizado.');
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(mocks.invoke).toHaveBeenLastCalledWith('coach-daily-summary', { body: { force: true } });
+    expect(useAppStore.getState().dailySummaryLoading).toBe(false);
+  });
 });
