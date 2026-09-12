@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatDayLabel, formatDayMonth, planItemTitle, dayTitle, dayStatus, pendingSession,
   parseMealSuggestion, mealsForDay, previewMeal, buildTrailModel, buildOrbitRings, hasAnyRecord,
+  isRacePlanItem, raceForDate, raceNameForDate,
 } from './homeModels';
 
 describe('homeModels — o que o Início mostra (ponto 5)', () => {
@@ -18,6 +19,41 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(planItemTitle({ isRace: true, title: 'Meia de Lisboa', target_distance_km: 21.1 })).toBe('Prova · Meia de Lisboa · 21.1 km');
     expect(dayTitle([{ kind: 'descanso' }])).toBe('Descanso');
     expect(dayTitle([{ kind: 'corrida', training_type: 'longo', target_distance_km: 16 }, { kind: 'ginasio', categories: ['core'] }])).toBe('Rodagem longa · 16 km + core');
+  });
+
+  /* ── O dia da prova no plano (specs/plano-de-prova.md) ─────────────────── */
+  it('o item de prova é a corrida com training_type "prova" (e a grafia antiga)', () => {
+    expect(isRacePlanItem({ kind: 'corrida', training_type: 'prova' })).toBe(true);
+    expect(isRacePlanItem({ kind: 'corrida', training_type: 'competicao' })).toBe(true);
+    expect(isRacePlanItem({ kind: 'corrida', training_type: 'longo' })).toBe(false);
+    expect(isRacePlanItem({ kind: 'ginasio', training_type: 'prova' })).toBe(false);
+    expect(isRacePlanItem(null)).toBe(false);
+  });
+
+  it('a prova do dia vem da agenda, mesmo já concluída', () => {
+    const races = [{ id: 'r1', date: '2026-09-13', name: 'Corrida do Tejo', status: 'concluida' }];
+    expect(raceForDate(races, '2026-09-13')?.id).toBe('r1');
+    expect(raceNameForDate(races, '2026-09-13')).toBe('Corrida do Tejo');
+    expect(raceNameForDate(races, '2026-09-14')).toBeNull();
+    expect(raceNameForDate(races, null)).toBeNull();
+  });
+
+  it('o item de prova mostra "Prova" e o nome da prova desse dia', () => {
+    const item = { kind: 'corrida', training_type: 'prova', target_distance_km: 10 };
+    expect(planItemTitle(item, 'Corrida do Tejo')).toBe('Prova · Corrida do Tejo · 10 km');
+    // Sem prova na agenda para esse dia, o rótulo ainda diz o que é.
+    expect(planItemTitle(item)).toBe('Prova · 10 km');
+    expect(dayTitle([item, { kind: 'ginasio', categories: ['core'] }], 'Corrida do Tejo'))
+      .toBe('Prova · Corrida do Tejo · 10 km + core');
+  });
+
+  it('o dia da prova leva o badge âmbar e não oferece "Registar sessão"', () => {
+    const today = '2026-09-13';
+    const item = { kind: 'corrida', training_type: 'prova', status: 'pendente' };
+    expect(dayStatus({ dateISO: today, items: [item] }, today)).toEqual({ label: 'Prova', tone: 'race' });
+    expect(pendingSession({ dateISO: today, items: [item] }, today)).toBeNull();
+    // Já concluído volta ao badge normal.
+    expect(dayStatus({ dateISO: today, items: [{ ...item, status: 'concluido' }] }, today)).toEqual({ label: 'Concluído', tone: 'ok' });
   });
 
   it('estado do dia: aceite, concluído, em atraso, descanso, prova', () => {

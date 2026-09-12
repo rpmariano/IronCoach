@@ -37,6 +37,10 @@ const TRAINING_TYPE_LABELS = {
   tempo: 'Tempo',
   fartlek: 'Fartlek',
   subidas: 'Subidas',
+  // 'prova' é o tipo que o servidor grava no dia da prova (specs/
+  // plano-de-prova.md, "O plano tem de saber da prova"); 'competicao' é a
+  // grafia antiga, que ainda existe em planos gravados antes disso.
+  prova: 'Prova',
   competicao: 'Prova',
 };
 
@@ -44,11 +48,41 @@ function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
-/** Título de um item do plano, como o mock: "Rodagem longa · 16 km". */
-export function planItemTitle(item) {
+/* ── O dia da prova no plano (specs/plano-de-prova.md) ──────────────────────
+   O dia da prova deixou de ser um treino qualquer: é um item `corrida` com
+   `training_type = 'prova'`. Duas coisas mudam onde ele aparece — o rótulo
+   ("Prova", com o nome da prova desse dia quando o há) e o tom, que passa
+   ao âmbar reservado à prova. O item NÃO é a prova da agenda (`isRace`,
+   injetado no calendário do plano): é a linha do plano de treino que a
+   prova ocupa, e é essa que o registo da corrida vem concluir. */
+
+/** É o item do plano que representa a prova? */
+export function isRacePlanItem(item) {
+  return !!item && item.kind === 'corrida' && (item.training_type === 'prova' || item.training_type === 'competicao');
+}
+
+/** A prova agendada nesta data, ou null. Serve para dar nome (e destino) ao
+ *  item de prova do plano — por isso não filtra por estado: uma prova já
+ *  concluída continua a ser a prova daquele dia. */
+export function raceForDate(raceEvents, dateISO) {
+  if (!dateISO) return null;
+  return (raceEvents || []).find((r) => r && typeof r.date === 'string' && r.date.slice(0, 10) === dateISO) || null;
+}
+
+/** Só o nome, para os rótulos. */
+export function raceNameForDate(raceEvents, dateISO) {
+  return raceForDate(raceEvents, dateISO)?.name || null;
+}
+
+/** Título de um item do plano, como o mock: "Rodagem longa · 16 km".
+ *  `raceName` é o nome da prova desse dia, quando o item é o da prova. */
+export function planItemTitle(item, raceName = null) {
   if (!item) return '';
   if (item.isRace) {
     return ['Prova', item.title, item.target_distance_km ? `${item.target_distance_km} km` : null].filter(Boolean).join(' · ');
+  }
+  if (isRacePlanItem(item)) {
+    return ['Prova', raceName, item.target_distance_km ? `${item.target_distance_km} km` : null].filter(Boolean).join(' · ');
   }
   if (item.kind === 'corrida') {
     const type = item.training_type ? (TRAINING_TYPE_LABELS[item.training_type] || capitalize(item.training_type)) : 'Corrida';
@@ -66,9 +100,9 @@ export function trainingItems(items = []) {
 }
 
 /** Título do dia inteiro: os treinos separados por " + ", ou "Descanso". */
-export function dayTitle(items = []) {
+export function dayTitle(items = [], raceName = null) {
   const t = trainingItems(items);
-  return t.length ? t.map(planItemTitle).join(' + ') : 'Descanso';
+  return t.length ? t.map((i) => planItemTitle(i, raceName)).join(' + ') : 'Descanso';
 }
 
 /** Estado do dia para o badge: tom e texto. */
@@ -76,6 +110,8 @@ export function dayStatus(day, today) {
   const items = day?.items || [];
   const t = trainingItems(items);
   if (items.some((i) => i.isRace && i.status !== 'concluido')) return { label: 'Prova', tone: 'race' };
+  // O dia da prova no plano vale o mesmo badge âmbar que a prova da agenda.
+  if (items.some((i) => isRacePlanItem(i) && i.status === 'pendente')) return { label: 'Prova', tone: 'race' };
   if (t.length === 0) return { label: 'Descanso', tone: 'neutral' };
   if (t.every((i) => i.status === 'concluido')) return { label: 'Concluído', tone: 'ok' };
   if (t.every((i) => i.status === 'cancelado')) return { label: 'Cancelado', tone: 'neutral' };
@@ -83,10 +119,12 @@ export function dayStatus(day, today) {
   return { label: 'Plano aceite', tone: 'ok' };
 }
 
-/** O treino por registar neste dia (o botão "Registar sessão"), ou null. */
+/** O treino por registar neste dia (o botão "Registar sessão"), ou null. O
+ *  dia da prova não conta: a prova regista-se em modo prova, a partir do hub
+ *  ou do cartão da prova, e é esse registo que conclui o item. */
 export function pendingSession(day, today) {
   if (!day || day.dateISO > today) return null;
-  return trainingItems(day.items).find((i) => !i.isRace && i.status === 'pendente') || null;
+  return trainingItems(day.items).find((i) => !i.isRace && !isRacePlanItem(i) && i.status === 'pendente') || null;
 }
 
 // ─── Refeições sugeridas ────────────────────────────────────────────────────
