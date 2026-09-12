@@ -237,6 +237,17 @@ function buildDemoData() {
         experience_level: 'medio', status: 'agendada',
         target_time: '1:45:00', target_time_seconds: 6300, target_pace_seconds_per_km: 420,
       },
+      /* A prova de AMANHÃ (specs/plano-de-prova.md, "O plano tem de saber da
+         prova"): é com ela que se vê a véspera no cartão da Carol — as horas
+         e as gramas de computeRaceEve em "Preparar amanhã" — e, junto com o
+         plano de demonstração abaixo, o alerta "o plano precisa de um
+         ajuste". */
+      {
+        id: 'demo-race-5', date: inDays(1), name: 'Corrida do Tejo · Noturna',
+        location: 'Lisboa', race_type: 'estrada', distance_km: 10,
+        experience_level: 'medio', status: 'agendada', start_time: '08:30',
+        target_time: '47:00', target_time_seconds: 2820, target_pace_seconds_per_km: 282,
+      },
     ],
     waterLogs: [],
     meals: [],
@@ -259,8 +270,21 @@ function buildDemoData() {
       },
     ],
     bodyAssessments: [],
-    coachPlans: [],
-    coachPlanItems: [],
+    /* Um plano aceite que NÃO sabe da prova (specs/plano-de-prova.md, "O
+       plano tem de saber da prova"): tem o dia de hoje certo — item de
+       prova, para a São Silvestre — mas marcou uma rodagem longa no dia da
+       prova de amanhã e intervalos na véspera dela. É esse plano que faz
+       aparecer o alerta de ajuste no Início, e o item de prova de hoje que
+       deixa ver o cartão âmbar "Prova · São Silvestre de Lisboa · 10 km". */
+    coachPlans: [
+      { id: 'demo-plan-1', status: 'aceite', period_start: inDays(-3), period_end: inDays(7), summary: 'Semana de afinação antes das provas.' },
+    ],
+    coachPlanItems: [
+      { id: 'demo-item-1', plan_id: 'demo-plan-1', planned_date: inDays(0), kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente', notes: 'O plano para o dia está no hub da prova.' },
+      { id: 'demo-item-2', plan_id: 'demo-plan-1', planned_date: inDays(1), kind: 'corrida', training_type: 'longo', target_distance_km: 18, status: 'pendente' },
+      { id: 'demo-item-3', plan_id: 'demo-plan-1', planned_date: inDays(-1), kind: 'corrida', training_type: 'intervalos', target_distance_km: 10, status: 'pendente' },
+      { id: 'demo-item-4', plan_id: 'demo-plan-1', planned_date: inDays(-3), kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45, status: 'pendente' },
+    ],
   };
 }
 
@@ -310,8 +334,21 @@ function buildPalmaresDemoData() {
     ],
     gymSessions: [],
     bodyAssessments: [],
-    coachPlans: [],
-    coachPlanItems: [],
+    /* Um plano aceite que NÃO sabe da prova (specs/plano-de-prova.md, "O
+       plano tem de saber da prova"): tem o dia de hoje certo — item de
+       prova, para a São Silvestre — mas marcou uma rodagem longa no dia da
+       prova de amanhã e intervalos na véspera dela. É esse plano que faz
+       aparecer o alerta de ajuste no Início, e o item de prova de hoje que
+       deixa ver o cartão âmbar "Prova · São Silvestre de Lisboa · 10 km". */
+    coachPlans: [
+      { id: 'demo-plan-1', status: 'aceite', period_start: inDays(-3), period_end: inDays(7), summary: 'Semana de afinação antes das provas.' },
+    ],
+    coachPlanItems: [
+      { id: 'demo-item-1', plan_id: 'demo-plan-1', planned_date: inDays(0), kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente', notes: 'O plano para o dia está no hub da prova.' },
+      { id: 'demo-item-2', plan_id: 'demo-plan-1', planned_date: inDays(1), kind: 'corrida', training_type: 'longo', target_distance_km: 18, status: 'pendente' },
+      { id: 'demo-item-3', plan_id: 'demo-plan-1', planned_date: inDays(-1), kind: 'corrida', training_type: 'intervalos', target_distance_km: 10, status: 'pendente' },
+      { id: 'demo-item-4', plan_id: 'demo-plan-1', planned_date: inDays(-3), kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45, status: 'pendente' },
+    ],
   };
 }
 

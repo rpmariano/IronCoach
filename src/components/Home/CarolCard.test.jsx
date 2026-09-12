@@ -158,6 +158,9 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       expect(aviso.textContent).toMatch(/Primeiro km a 4\.54\./);
       // O resto do aviso vem a seguir, não à frente.
       expect(aviso.textContent).toMatch(/Ainda não registaste água hoje\.$/);
+      // E o item do plano não se repete: a frase da prova já disse o que é
+      // hoje.
+      expect(aviso.textContent).not.toMatch(/Para hoje tens agendado/);
     });
 
     it('dia da prova sem objetivo: a frase fica sem o ritmo do km 1', () => {
@@ -177,6 +180,8 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     });
 
     it('o item de prova do plano de hoje mostra "Prova" e o nome dela', () => {
+      // Com a prova já concluída não há frase da prova a abrir o aviso — é
+      // o item do plano que tem de dizer o que era aquele dia.
       useAppStore.setState({
         profile: { id: 'u1' },
         raceEvents: [race(today, { status: 'concluida' })],

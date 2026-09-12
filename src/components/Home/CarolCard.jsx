@@ -126,7 +126,11 @@ export function useCoachDailyMessages() {
     // Aviso de hoje: o do servidor, senão o plano de hoje; a água junta-se.
     const nonRest = activePlanItems.today.filter((i) => i.kind !== 'descanso');
     const raceTodayName = raceToday ? raceToday.name : raceNameForDate(raceEvents, today);
-    let warning = clean(dailySummary?.warnings) || (nonRest.length ? `Para hoje tens agendado: ${nonRest.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '');
+    // No dia da prova a frase da prova (mais abaixo) já diz o que é o dia —
+    // acrescentar-lhe "Para hoje tens agendado: Prova (…)" era dizer duas
+    // vezes a mesma coisa. O aviso do servidor, esse, mantém-se: é dele.
+    let warning = clean(dailySummary?.warnings)
+      || (!raceToday && nonRest.length ? `Para hoje tens agendado: ${nonRest.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '');
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
     const waterGoal = profile?.water_goal_ml;
     // O servidor vê os mesmos registos de água e muitas vezes já os comenta
