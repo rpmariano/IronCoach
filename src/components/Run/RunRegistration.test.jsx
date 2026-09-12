@@ -632,7 +632,7 @@ describe('RunRegistration — modo prova', () => {
     mocks.uploadError = null;
     onClose.mockClear();
     localStorage.clear();
-    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, shoes: [] });
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
   });
 
   it('abre com a prova pré-preenchida e não deixa editá-la aqui', () => {
@@ -764,6 +764,56 @@ describe('RunRegistration — modo prova', () => {
     const confirmacao = await screen.findByTestId('record-confirmation');
     expect(confirmacao).toHaveAttribute('data-tone', 'race');
     expect(screen.getByText('Meia de Lisboa concluída')).toBeInTheDocument();
+  });
+
+  /* specs/plano-de-prova.md, "O plano tem de saber da prova": o dia da prova
+     é um item `corrida` com `training_type = 'prova'` no plano aceite, e é
+     registar a prova que o conclui — no Início esse dia nem oferece
+     "Registar sessão". */
+  it('registar a prova conclui o item de prova do plano, na data da prova', async () => {
+    entrarPeloPrefill();
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [
+        { id: 'item-prova', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'prova', status: 'pendente' },
+        // Um treino no mesmo dia não é o item da prova — fica como está.
+        { id: 'item-treino', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente' },
+      ],
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(true));
+    const itens = mocks.updates.filter(u => u.table === 'coach_plan_items');
+    expect(itens).toHaveLength(1);
+    expect(itens[0].id).toBe('item-prova');
+    expect(itens[0].payload).toEqual({
+      status: 'concluido',
+      actual_date: hojeISO,
+      completed_run_id: 'run-race-1',
+      completed_session_id: null,
+    });
+  });
+
+  it('sem item de prova no plano, o registo da prova segue na mesma', async () => {
+    entrarPeloPrefill();
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [{ id: 'item-longo', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'longo', status: 'pendente' }],
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'race_events')).toBe(true));
+    expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(false);
   });
 
   /* specs/gamificacao-provas.md §1: com a prova concluída e a corrida

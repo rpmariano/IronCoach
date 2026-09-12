@@ -28,6 +28,7 @@ import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
+import { isRacePlanItem } from '../../utils/homeModels';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -916,6 +917,34 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return patch;
   };
 
+  /* O dia da prova no plano (specs/plano-de-prova.md, "O plano tem de saber
+     da prova"): o plano aceite tem nesse dia um item `corrida` com
+     `training_type = 'prova'`, e é REGISTAR A PROVA que o conclui — o botão
+     "Registar sessão" nem sequer aparece nesse dia, porque o registo que
+     conta é este, em modo prova. Procura-se o item pela data DA PROVA (não
+     pela do formulário: a corrida pode ter sido gravada noutro dia), e a
+     data de conclusão é a do registo, como no caminho normal do plano.
+
+     Falhar aqui não desfaz nada nem trava o fecho: a corrida e a prova já
+     estão gravadas, e um item por marcar é muito menos mau do que perder o
+     registo por causa dele. */
+  const completeRacePlanItem = async () => {
+    // Com prefill do plano, o caminho de sempre já marcou o item.
+    if (!isRaceMode || !raceEvent?.date || completingPlanItemRef.current) return;
+    const store = useAppStore.getState();
+    const raceDate = String(raceEvent.date).slice(0, 10);
+    const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    const item = (store.coachPlanItems || []).find(
+      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === raceDate && isRacePlanItem(i),
+    );
+    if (!item) return;
+    try {
+      await store.completePlanItem(item.id, { actualDate: runDate, runId: savedRaceRunRef.current?.id || null });
+    } catch (err) {
+      console.warn('Item de prova do plano não marcado como concluído', err);
+    }
+  };
+
   const persistRaceLinkAndMemories = async () => {
     const store = useAppStore.getState();
     const linked = await linkRunToRace(savedRaceRunRef.current);
@@ -923,6 +952,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (linked?.id) {
       store.setRuns(store.runs.map(r => (r.id === linked.id ? { ...r, ...linked } : r)));
     }
+    await completeRacePlanItem();
     const patch = await persistRaceMemories();
     store.setRaceEvents(store.raceEvents.map(e => (e.id === raceId ? { ...e, ...patch } : e)));
   };
