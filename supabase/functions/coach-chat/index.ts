@@ -606,7 +606,17 @@ export interface RaceOutcome {
   // Os parciais registados (runs.details.splits), para comparar com o plano
   // para o dia (specs/plano-de-prova.md §4). Vazio quando não há.
   splits: SplitInput[];
+  // As conquistas que esta prova acabou de dar (chaves de utils/achievements.js).
+  achievements_new: string[];
 }
+
+const ACHIEVEMENT_LABELS: Record<string, string> = {
+  prova_concluida: "Prova concluída",
+  objetivo_batido: "Objetivo batido",
+  recorde_pessoal: "Recorde pessoal",
+  primeira_trail: "Primeira de trail",
+  sequencia: "Sequência de provas",
+};
 
 function posNum(v: unknown): number | null {
   const n = typeof v === "string" ? parseFloat(v) : Number(v);
@@ -659,7 +669,37 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
         .filter((sp) => sp.distance_km && sp.time_seconds)
         .slice(0, 60)
       : [],
+    achievements_new: Array.isArray(r.achievements_new)
+      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 5)
+      : [],
   };
+}
+
+/** A resposta dele ao balanço "perto": disse que para a próxima quer melhor,
+ *  ou que fica por aqui. Lê-se da conversa — a pergunta é a última coisa que
+ *  ela disse — e não precisa de flag nenhuma do cliente. */
+export function detectRaceFollowup(
+  recentHistoryDesc: { role: string; content: string }[] | null,
+  message: string,
+): "melhor" | "parar" | null {
+  const last = (recentHistoryDesc || []).find((m) => m.role === "model");
+  if (!last || typeof last.content !== "string") return null;
+  if (!/para a pr[óo]xima/i.test(last.content) || !/melhor/i.test(last.content)) return null;
+  const msg = (message || "").trim().toLowerCase();
+  if (!msg) return null;
+  if (/^sim\b/.test(msg) || /quero melhor|fazer melhor|vamos (a isso|l[áa])/.test(msg)) return "melhor";
+  if (/^n[ãa]o\b/.test(msg) || /fico por aqui|por agora (n[ãa]o|chega)/.test(msg)) return "parar";
+  return null;
+}
+
+export function buildRaceFollowupContext(followup: "melhor" | "parar" | null): string | null {
+  if (followup === "melhor") {
+    return `=== RESPOSTA AO BALANÇO ===\nEle respondeu que para a próxima quer fazer melhor. A tua resposta começa por "então vamos lá treinar" (ou o equivalente na tua voz) e traz um caminho concreto, não um slogan: a próxima prova (qual e quando, se houver na agenda; senão pergunta-lhe qual quer), uma ou duas coisas que mudam no treino (com números do histórico: volume, longo, intensidade), e o primeiro passo desta semana. Se fizer sentido, propõe o plano com as ferramentas.`;
+  }
+  if (followup === "parar") {
+    return `=== RESPOSTA AO BALANÇO ===\nEle disse que por agora fica por aqui. Respeita: uma frase, sem insistir nem moralizar — diz que ficas cá para quando ele quiser, e nada mais.`;
+  }
+  return null;
 }
 
 // ── Plano para o dia da prova (specs/plano-de-prova.md) ─────────────────────
@@ -755,6 +795,9 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   } else {
     lines.push(`Melhor anterior na ${cat || "distância"}: nenhum — primeira prova nesta distância.`);
   }
+  if (o.achievements_new.length) {
+    lines.push(`Conquistas novas desta prova: ${o.achievements_new.map((k) => ACHIEVEMENT_LABELS[k] || k).join(", ")}.`);
+  }
   const verdictLabel: Record<RaceVerdict, string> = {
     sem_registo: "SEM REGISTO",
     concluida: "CONCLUÍDA (sem objetivo nem previsão para comparar)",
@@ -825,7 +868,11 @@ export function raceAfterInstruction(o: RaceOutcome | null): string {
   const record = o.is_personal_record && o.previous_best_seconds
     ? ` Foi RECORDE PESSOAL na ${RACE_CATEGORY_LABELS[o.category || ""] || "distância"} (melhor anterior ${formatHms(o.previous_best_seconds)}, batido por ${absHms(o.official_seconds! - o.previous_best_seconds)}): diz-lho com o número — é excecional e merece ser reconhecido, seja qual for o veredicto face ao objetivo.`
     : "";
-  return common + body + record;
+  const others = o.achievements_new.filter((k) => k !== "recorde_pessoal" && k !== "prova_concluida");
+  const achievements = others.length
+    ? ` Esta prova deu-lhe também: ${others.map((k) => ACHIEVEMENT_LABELS[k] || k).join(", ")} — cita cada uma numa frase, com o que a mereceu (a primeira de trail, ou quantas provas seguidas), sem cerimónia.`
+    : "";
+  return common + body + record + achievements;
 }
 
 /** "09:00" a partir de "09:00:00" (Postgres `time`) ou de "09:00". */
@@ -3293,6 +3340,8 @@ export function buildSystemInstruction(
   splitsContext: string | null = null,
   // A véspera e a manhã com horas (prova a ≤ 1 dia) — ver buildRaceEveContext.
   raceEveContext: string | null = null,
+  // A resposta dele ao balanço "perto" — ver detectRaceFollowup.
+  raceFollowupContext: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -4224,6 +4273,9 @@ export function buildSystemInstruction(
   if (raceEveContext) {
     sys += `\n\n${raceEveContext}`;
   }
+  if (raceFollowupContext) {
+    sys += `\n\n${raceFollowupContext}`;
+  }
 
   if (proactiveTrigger) {
     sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
@@ -4803,6 +4855,11 @@ async function handler(req: Request): Promise<Response> {
       .limit(MAX_HISTORY);
     // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
     const history = (recentHistory || []).slice().reverse();
+    // A resposta ao balanço "perto" ("sim, para a próxima quero melhor")
+    // lê-se da conversa — só em turnos normais, com mensagem do atleta.
+    const raceFollowupContext = !proactiveTrigger && message
+      ? buildRaceFollowupContext(detectRaceFollowup(recentHistory || [], message))
+      : null;
     // Só para o "Adaptar Plano" (is_plan_checkin) decidir entre cumprimentar
     // de novo ou retomar a conversa — comparado em hora de Lisboa, não UTC,
     // para bater certo com o "hoje" que o resto do prompt já usa (linha
@@ -4920,6 +4977,7 @@ async function handler(req: Request): Promise<Response> {
       racePlanContext,
       splitsContext,
       raceEveContext,
+      raceFollowupContext,
     );
 
     let finalSystemInstruction = systemInstruction;

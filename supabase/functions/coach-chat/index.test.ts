@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -2922,7 +2922,7 @@ function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
   return {
     race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
     official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
-    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [],
+    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [], achievements_new: [],
     ...overrides,
   };
 }
@@ -3206,4 +3206,29 @@ Deno.test("véspera e manhã: as instruções mandam usar o bloco da preparaçã
   // deno-lint-ignore no-explicit-any
   const sys = (buildSystemInstruction as any)(...args) as string;
   assertStringIncludes(sys, "=== VÉSPERA E MANHÃ DA PROVA ===\nteste");
+});
+
+// ── Conquistas novas e a resposta ao balanço ────────────────────────────────
+Deno.test("as conquistas novas entram no contexto e na instrução; só as conhecidas passam", () => {
+  const parsed = parseRaceOutcome({ verdict: "perto", official_seconds: 6822, achievements_new: ["primeira_trail", "sequencia", "recorde_pessoal", "lixo", 3] })!;
+  assertEquals(parsed.achievements_new, ["primeira_trail", "sequencia", "recorde_pessoal"]);
+  const o = outcome({ achievements_new: ["prova_concluida", "primeira_trail", "sequencia"] });
+  assertStringIncludes(buildRaceOutcomeContext(o), "Conquistas novas desta prova: Prova concluída, Primeira de trail, Sequência de provas.");
+  const instr = raceAfterInstruction(o);
+  assertStringIncludes(instr, "Esta prova deu-lhe também: Primeira de trail, Sequência de provas");
+  assertEquals(raceAfterInstruction(outcome({ achievements_new: ["prova_concluida"] })).includes("deu-lhe também"), false);
+});
+
+Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou um não claros", () => {
+  const asked = [{ role: "model", content: "Ficaste a 1:42, foi por pouco. Para a próxima é para fazer melhor?" }];
+  assertEquals(detectRaceFollowup(asked, "Sim, para a próxima quero melhor"), "melhor");
+  assertEquals(detectRaceFollowup(asked, "sim"), "melhor");
+  assertEquals(detectRaceFollowup(asked, "Por agora fico por aqui"), "parar");
+  assertEquals(detectRaceFollowup(asked, "Não, chega de provas"), "parar");
+  assertEquals(detectRaceFollowup(asked, "quantos km fiz esta semana?"), null);
+  assertEquals(detectRaceFollowup([{ role: "model", content: "Bom treino ontem." }], "sim"), null);
+  assertEquals(detectRaceFollowup([], "sim"), null);
+  assertStringIncludes(buildRaceFollowupContext("melhor")!, "então vamos lá treinar");
+  assertStringIncludes(buildRaceFollowupContext("parar")!, "sem insistir");
+  assertEquals(buildRaceFollowupContext(null), null);
 });

@@ -76,6 +76,8 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       expect(c.details).toContain('foi hoje');
       expect(c.details).toContain('1:53:42');
       expect(c.raceOutcome).toMatchObject({ race_id: 'r1', name: 'Meia de Lisboa', official_seconds: 6822, target_seconds: 6720, verdict: 'perto', basis: 'objetivo' });
+      // a prova de hoje acabou de ser registada: "prova concluída" é nova
+      expect(c.raceOutcome.achievements_new).toEqual(['prova_concluida']);
     });
 
     it('vale 7 dias, e a chave muda com a corrida — o "como correu?" anterior não cala o balanço', () => {

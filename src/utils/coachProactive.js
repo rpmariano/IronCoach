@@ -13,6 +13,7 @@
 
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
+import { achievementsForRace } from './achievements';
 
 export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
@@ -118,7 +119,12 @@ function pickRaceAfter({ races, runs, profile, today }) {
         trigger: 'race_after',
         key: `race_after:${race.id}:${run.id || 'corrida'}`,
         details: `Prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}). Corrida registada${time ? `: ${time}` : ''}.`,
-        raceOutcome: buildRaceOutcomePayload(outcome, race, run),
+        raceOutcome: {
+          ...buildRaceOutcomePayload(outcome, race, run),
+          // As conquistas que esta prova acabou de dar, pela chave — a Carol
+          // cita-as no balanço (specs/gamificacao-provas.md §4).
+          achievements_new: achievementsForRace({ raceEvents: races, runs, profile }, race.id).filter((a) => a.isNew).map((a) => a.key),
+        },
         raceId: race.id,
       };
     }
