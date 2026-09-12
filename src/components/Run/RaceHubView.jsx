@@ -34,9 +34,11 @@ import { Sheet } from '../shared/Sheet';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
+import RacePacingPlanCard from './RacePacingPlanCard';
+import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun, parseDurationToSeconds } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { experienceLevelLabel } from '../../utils/experience';
@@ -105,6 +107,37 @@ export default function RaceHubView({
   const prediction = useMemo(() =>
     getRacePrediction(race, profile, runs),
   [race, profile, runs]);
+
+  /* ── Plano para o dia (specs/plano-de-prova.md) ─────────────────────────
+     Só nos últimos 7 dias e no próprio dia: antes disso o que interessa é o
+     treino, não o ritmo do km 1. A régua é buildRacePacingPlan
+     (@formulas/racePacing.ts), a mesma que a Carol lê no coach-chat — o hub
+     não tem plano próprio, só lhe dá as entradas.
+
+     O objetivo lê-se de target_time_seconds; o hub também recebe o rascunho
+     da agenda, que só converte o texto ao gravar, por isso target_time
+     (livre, "1:52:00") é o recurso. A previsão é a do treino: para uma prova
+     futura todas as corridas são anteriores a ela. */
+  const showPacingPlan = daysToRace >= 0 && daysToRace <= 7;
+  const pacingPlan = useMemo(() => {
+    if (!showPacingPlan) return null;
+    const targetSeconds = Number(race?.target_time_seconds) > 0
+      ? Number(race.target_time_seconds)
+      : parseDurationToSeconds(race?.target_time);
+    const predictedSeconds = Number(prediction?.predictedSeconds) > 0
+      ? Math.round(prediction.predictedSeconds)
+      : null;
+    return buildRacePacingPlan({
+      distanceKm: race?.distance_km,
+      raceType: race?.race_type,
+      elevationGainM: race?.elevation_gain_m,
+      targetSeconds: targetSeconds > 0 ? targetSeconds : null,
+      predictedSeconds,
+      experienceLevel: race?.experience_level,
+      routeSegments: race?.web_info?.route_segments || null,
+      routeSummary: race?.web_info?.route_summary || null,
+    });
+  }, [showPacingPlan, race, prediction]);
 
   /* ══════ Ponto 7 do redesenho: o hub DEPOIS da prova ══════
      Mock "Hub de prova · depois da prova". Até aqui, uma prova já corrida
@@ -757,6 +790,19 @@ export default function RaceHubView({
         >
           <Trophy size={16} /> Registar a prova
         </button>
+      )}
+
+      {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
+          Abaixo do herói e da contagem, antes das fases: na última semana é
+          esta a pergunta ("a que ritmo vou sair?"), não o macrociclo. */}
+      {showPacingPlan && (
+        <RacePacingPlanCard
+          plan={pacingPlan}
+          race={race}
+          onGoToEdit={onGoToEdit}
+          onFetchWebInfo={onFetchWebInfo}
+          fetchingWebInfo={fetchingWebInfo}
+        />
       )}
 
       {/* ─── 2. Parecer & Análise da Carol sobre a Evolução do Treino ───────── */}
