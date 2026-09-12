@@ -211,6 +211,20 @@ function buildDemoData() {
         location: 'Lisboa', race_type: 'estrada', distance_km: 10,
         experience_level: 'medio', status: 'agendada',
         target_time: '48:00', target_time_seconds: 2880, target_pace_seconds_per_km: 288,
+        /* Percurso extraído do site (o que o enrich-race-event devolve): é
+           esta prova que deixa ver o cartão "Plano para o dia" com os troços
+           nomeados e os ajustes de subida e descida
+           (specs/plano-de-prova.md). */
+        web_info: {
+          source_url: 'https://saosilvestrelisboa.pt',
+          fetched_at: new Date().toISOString(),
+          route_summary: 'Percurso urbano e rápido, com uma subida curta a meio e uma descida longa até ao rio.',
+          route_segments: [
+            { km_marker: 0, description: 'Partida na Praça do Marquês de Pombal', elevation: 'plano' },
+            { km_marker: 3.5, description: 'subida da Avenida da Liberdade', elevation: 'sobe' },
+            { km_marker: 6, description: 'descida para o Terreiro do Paço', elevation: 'desce' },
+          ],
+        },
       },
       {
         id: 'demo-race-4', date: inDays(-2), name: 'Trail dos Moinhos',
