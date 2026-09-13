@@ -104,6 +104,32 @@ export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments
    - SEM corrida registada: de 1 a 3 dias depois, como antes — ela pergunta
      como correu e pede o registo.
    A prova mais recente ganha. */
+/** O candidato do balanço COM corrida registada — o mesmo objeto quer venha
+ *  do chat (pickProactiveTrigger) quer do hub (utils/raceBalance.js), para a
+ *  chave, os números e as conquistas serem sempre os mesmos. null sem
+ *  corrida ligada. `today` só entra no texto ("hoje", "há 2 dias"). */
+export function buildRaceAfterCandidate({ race, run: givenRun, runs = [], raceEvents = [], profile = {}, today = isoDay(new Date()) }) {
+  if (!race?.id || !race?.date) return null;
+  const run = givenRun || findRaceRun(runs, race);
+  if (!run) return null;
+  const gap = daysBetween(race.date.slice(0, 10), today);
+  const dayLabel = gap <= 0 ? 'hoje' : `há ${gap} dia${gap === 1 ? '' : 's'}`;
+  const outcome = classifyRaceOutcome({ race, run, runs, profile });
+  const time = outcome.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
+  return {
+    trigger: 'race_after',
+    key: `race_after:${race.id}:${run.id || 'corrida'}`,
+    details: `Prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}). Corrida registada${time ? `: ${time}` : ''}.`,
+    raceOutcome: {
+      ...buildRaceOutcomePayload(outcome, race, run),
+      // As conquistas que esta prova acabou de dar, pela chave — a Carol
+      // cita-as no balanço (specs/gamificacao-provas.md §4).
+      achievements_new: achievementsForRace({ raceEvents, runs, profile }, race.id).filter((a) => a.isNew).map((a) => a.key),
+    },
+    raceId: race.id,
+  };
+}
+
 function pickRaceAfter({ races, runs, profile, today }) {
   const past = races
     .map((r) => ({ race: r, gap: daysBetween(r.date.slice(0, 10), today) }))
@@ -113,20 +139,7 @@ function pickRaceAfter({ races, runs, profile, today }) {
     const run = findRaceRun(runs, race);
     const dayLabel = gap === 0 ? 'hoje' : `há ${gap} dia${gap === 1 ? '' : 's'}`;
     if (run) {
-      const outcome = classifyRaceOutcome({ race, run, runs, profile });
-      const time = outcome.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
-      return {
-        trigger: 'race_after',
-        key: `race_after:${race.id}:${run.id || 'corrida'}`,
-        details: `Prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}). Corrida registada${time ? `: ${time}` : ''}.`,
-        raceOutcome: {
-          ...buildRaceOutcomePayload(outcome, race, run),
-          // As conquistas que esta prova acabou de dar, pela chave — a Carol
-          // cita-as no balanço (specs/gamificacao-provas.md §4).
-          achievements_new: achievementsForRace({ raceEvents: races, runs, profile }, race.id).filter((a) => a.isNew).map((a) => a.key),
-        },
-        raceId: race.id,
-      };
+      return buildRaceAfterCandidate({ race, run, runs, raceEvents: races, profile, today });
     }
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
       return {

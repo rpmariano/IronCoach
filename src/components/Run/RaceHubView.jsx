@@ -36,6 +36,8 @@ import { supabase } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
+import RaceBalanceCard from './RaceBalanceCard';
+import RaceMuralSheet from './RaceMuralSheet';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -251,6 +253,9 @@ export default function RaceHubView({
   // diploma, a medalha e as fotos DEPOIS de a prova estar concluída, sem
   // reabrir o registo da corrida.
   const [memoriesOpen, setMemoriesOpen] = useState(false);
+  // O mural para partilhar (pedido 2026-09-13): as fotos, o tempo e a
+  // distância numa imagem para o Instagram, composta no telemóvel.
+  const [muralOpen, setMuralOpen] = useState(false);
 
   useEffect(() => {
     if (!hasMemories) { setMemoryUrls({ diploma: null, medal: null, photos: [] }); return undefined; }
@@ -417,7 +422,10 @@ export default function RaceHubView({
                           padding: 11,
                         }}
                       >
-                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Previsão</div>
+                        {/* "+2:18" sozinho não dizia de quê: é a diferença
+                            para o que o TREINO previa (VDOT das corridas
+                            anteriores à prova) — pedido 2026-09-13. */}
+                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>{`Vs. treino (previa ${formatDuration(predSeconds)})`}</div>
                         <div className="text-[14px] font-extrabold mt-1" style={{ color: diff <= 0 ? 'var(--ok)' : 'var(--warn)' }}>{diffLabel}</div>
                       </div>
                     )}
@@ -526,8 +534,23 @@ export default function RaceHubView({
           </button>
         ) : null}
 
+        {raceRun && (
+          <button
+            type="button"
+            data-testid="race-mural-open"
+            onClick={() => setMuralOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-2"
+            style={{ minHeight: 'var(--tap)', marginTop: 10, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
+          >
+            <Star size={15} /> Criar mural para partilhar
+          </button>
+        )}
+
         {memoriesOpen && (
           <RaceMemoriesSheet race={race} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+        )}
+        {muralOpen && (
+          <RaceMuralSheet race={race} run={raceRun} runs={runs} profile={profile} seconds={finalSeconds} memoryUrls={memoryUrls} onClose={() => setMuralOpen(false)} />
         )}
 
         {openPhoto && (
@@ -557,20 +580,19 @@ export default function RaceHubView({
           </div>
         )}
 
-        {/* 2. Balanço da Carol — com a corrida registada é o balanço da
-            prova em si (describeRaceOutcome, a mesma régua do resto); sem
-            ela fica o texto do motor, que é o único que existe. */}
-        <div style={{ borderRadius: 22, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 16, marginTop: 12 }}>
-          <div className="flex items-center gap-2.5">
-            <CoachAvatar size={28} />
-            <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
-              Balanço da Carol
-            </span>
-          </div>
-          <p data-testid="race-hub-balance" className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-2)' }}>
-            {raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
-          </p>
-        </div>
+        {/* 2. Balanço da Carol — o balanço completo, pedido ao coach-chat
+            assim que a corrida está registada (RaceBalanceCard); por baixo,
+            a linha de números da régua única. Sem corrida fica o texto do
+            motor, que é o único que existe. */}
+        <RaceBalanceCard
+          race={race}
+          run={raceRun}
+          runs={runs}
+          profile={profile}
+          numbersLine={raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
+          onLeave={() => leaveTo(null)}
+          onSaved={onMemoriesSaved}
+        />
 
         {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se
             consegue somar dos registos reais. */}

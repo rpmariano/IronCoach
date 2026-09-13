@@ -979,6 +979,52 @@ export function raceOutcomeNote(o: RaceOutcome): string {
   return parts.join("; ").slice(0, 500) + ".";
 }
 
+/* A legenda do mural para o Instagram (pedido 2026-09-13). Na primeira
+   pessoa do ATLETA — é ele que publica —, curta, específica (nome, distância,
+   tempo, e o que a prova deu), sem euforia de plástico. */
+export function buildRaceCaptionPrompt(o: RaceOutcome, firstName: string | null): string {
+  const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
+  const facts: string[] = [];
+  facts.push(`Prova: ${o.name || "prova"}${o.date ? `, ${o.date}` : ""}${cat ? ` (${cat})` : ""}.`);
+  if (o.distance_km) facts.push(`Distância: ${o.distance_km} km.`);
+  facts.push(`Tempo: ${formatHms(o.official_seconds || 0)}.`);
+  if (o.target_seconds) {
+    const d = o.official_seconds! - o.target_seconds;
+    facts.push(`Objetivo: ${formatHms(o.target_seconds)} — ${o.verdict === "superado" ? "batido" : o.verdict === "perto" ? "ficou perto" : "ficou aquém"} (${d <= 0 ? "" : "a "}${absHms(d)}${d <= 0 ? " abaixo" : ""}).`);
+  }
+  if (o.is_personal_record) facts.push(`Recorde pessoal na ${cat || "distância"}.`);
+  if (o.achievements_new?.length) facts.push(`Conquistas novas: ${o.achievements_new.join(", ")}.`);
+  return (
+    `Escreve UMA legenda para o Instagram, em português de Portugal, na primeira pessoa d${firstName ? `e ${firstName}` : "o atleta"} (é ele quem publica, não a treinadora). ` +
+    `Duas ou três frases, concretas e com orgulho sem exagero: o nome da prova, a distância e o tempo entram sempre; o resto só se os factos o sustentarem. ` +
+    `Sem inventar sensações nem condições. No máximo dois emojis, ou nenhum. Termina numa linha à parte com três a cinco hashtags, a última é #IronCoach. ` +
+    `Responde só com a legenda, sem aspas nem explicações.
+
+FACTOS:
+${facts.join("\n")}`
+  );
+}
+
+async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null): Promise<string> {
+  const res = await fetchGeminiWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: buildRaceCaptionPrompt(o, firstName) }] }],
+        generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
+      }),
+    },
+  );
+  if (!res.ok) throw new Error(`Gemini ${res.status}`);
+  const data = await res.json();
+  // deno-lint-ignore no-explicit-any
+  const text = (data?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("").trim();
+  if (!text) throw new Error("Legenda vazia");
+  return text.slice(0, 1200);
+}
+
 /** Bloco injetado no fim do prompt do sistema num turno por iniciativa dela.
  *  `raceOutcome` só conta no race_after: com ele, o bloco de números e a
  *  instrução por veredicto entram antes das regras do turno. */
@@ -4565,6 +4611,21 @@ async function handler(req: Request): Promise<Response> {
     // cai para o race_after de sempre, sem números.
     const raceOutcome: RaceOutcome | null =
       proactiveTrigger === "race_after" ? parseRaceOutcome(body.race_outcome) : null;
+    // O hub da prova pede o balanço assim que a corrida fica registada
+    // (pedido 2026-09-13) — aí a regra "ela falou há pouco, cala-te" não se
+    // aplica: o atleta está a olhar para o sítio onde o balanço vai aparecer.
+    const proactiveForce = proactiveTrigger === "race_after" && body.proactive_force === true;
+
+    // A legenda do mural (specs/gamificacao-provas.md §6): um pedido curto,
+    // sem histórico, sem ferramentas e sem gravar mensagem nenhuma — a Carol
+    // escreve a legenda que o atleta vai colar no Instagram.
+    if (body.race_caption === true) {
+      const captionOutcome = parseRaceOutcome(body.race_outcome);
+      if (!captionOutcome || !captionOutcome.official_seconds) return jsonResponse({ error: "Prova sem tempo para legendar" }, 400);
+      const { data: captionProfile } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null);
+      return jsonResponse({ caption });
+    }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
@@ -5052,7 +5113,7 @@ async function handler(req: Request): Promise<Response> {
       : null;
     // Nunca duas mensagens dela empilhadas: se falou há menos de 6h e o
     // atleta ainda não respondeu, a mensagem proativa fica para outra vez.
-    if (proactiveTrigger && shouldSkipProactive(recentHistory || [], Date.now())) {
+    if (proactiveTrigger && !proactiveForce && shouldSkipProactive(recentHistory || [], Date.now())) {
       return jsonResponse({
         skipped: true,
         proactive: proactiveTrigger,
@@ -5477,6 +5538,17 @@ async function handler(req: Request): Promise<Response> {
         if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
       } catch (noteErr) {
         console.warn("Nota do balanço da prova não guardada:", noteErr);
+      }
+      // E o balanço em si fica na prova (race_events.coach_balance), que é de
+      // onde o hub o lê em qualquer dispositivo. Best-effort: sem a coluna
+      // (migração por aplicar) fica só no log, e o hub usa a cópia local.
+      if (raceOutcome.race_id) {
+        const { error: balanceErr } = await sb
+          .from("race_events")
+          .update({ coach_balance: replyText, coach_balance_at: new Date().toISOString() })
+          .eq("id", raceOutcome.race_id)
+          .eq("user_id", userId);
+        if (balanceErr) console.warn("Balanço não guardado na prova:", balanceErr.message);
       }
     }
 

@@ -25,6 +25,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
+import DurationInput from '../shared/DurationInput';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -1478,12 +1479,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
       <div className="mb-4">
         <label htmlFor="rr-duracao" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
-          {isRepeatType ? 'Duração total (ex.: 43m ou 37:57)' : (runKind === 'competicao' ? 'Tempo pessoal (ex.: 1:11:26)' : 'Duração (ex.: 43m ou 37:57)')}
+          {isRepeatType ? 'Duração total (h:mm:ss)' : (runKind === 'competicao' ? 'Tempo pessoal (h:mm:ss)' : 'Duração (h:mm:ss)')}
         </label>
-        <input id="rr-duracao"
-          type="text"
+        {/* Só dígitos, os ":" nascem sozinhos (DurationInput): o teclado
+            numérico do telemóvel não tem ":". */}
+        <DurationInput id="rr-duracao"
           placeholder="00:00"
-          value={runDuration} onChange={e => { setRunDuration(e.target.value); setIsFormDirty(true); }}
+          value={runDuration} onChange={(v) => { setRunDuration(v); setIsFormDirty(true); }}
           className={`w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-white outline-none transition ${fieldFocusClass}`}
         />
       </div>
@@ -1560,13 +1562,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1.5">
                   Tempo oficial <span className="text-[var(--danger)]">*</span>
                 </label>
-                <input
+                <DurationInput
                   id="rr-tempo-oficial"
-                  type="text"
-                  inputMode="numeric"
                   placeholder="ex.: 1:45:00"
                   value={officialTime}
-                  onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }}
+                  onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }}
                   className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
                 />
               </div>
@@ -1824,7 +1824,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="grid grid-cols-2 gap-2 mb-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
               <div>
                 <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1">Tempo Oficial</label>
-                <input id="rr-tempo-oficial" type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <DurationInput id="rr-tempo-oficial" placeholder="ex: 1:45:00" value={officialTime} onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
                 <label htmlFor="rr-posicao" className="text-[11px] text-[var(--text-3)] block mb-1">Posição</label>

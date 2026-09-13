@@ -61,6 +61,27 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    desde outubro de 2026"), a lista completa e as provas concluídas
    (nome, data, tempo, ícones das conquistas).
 
+## O balanço no hub e o mural (2026-09-13)
+
+- **O balanço completo vive no hub.** Uma linha de números não chegava
+  ("foi por pouco…"): o hub pede o balanço ao coach-chat assim que a corrida
+  está registada (`RaceBalanceCard`, turno `race_after` com
+  `proactive_force`) e mostra-o em parágrafos, com a linha de números por
+  baixo. O servidor guarda-o em `race_events.coach_balance` (migração
+  `20260913200000_race_coach_balance.sql`) e no chat; as respostas do
+  "perto" ("Sim, para a próxima quero melhor") levam ao chat com a resposta
+  já enviada. Se o chat já fez o balanço neste dispositivo, o hub oferece
+  pedi-lo em vez de o repetir.
+- **O mural para o Instagram.** No hub, "Criar mural para partilhar"
+  (`RaceMuralSheet`): três formatos (quadrado 1:1, retrato 4:5, story 9:16),
+  as fotos das memórias (as do dia primeiro, a medalha a fechar, até 4), o
+  nome, a data, o tempo, a distância e o ritmo, e o logótipo da app no canto
+  inferior direito — discreto mas legível. Compõe-se no telemóvel com Canvas
+  (`utils/raceMural.js`): instantâneo, sem custo, e as fotos ficam como o
+  atleta as tirou. Só a legenda é da Carol (coach-chat `race_caption`, na
+  primeira pessoa do atleta, a fechar com #IronCoach). Partilha pelo menu
+  do telemóvel (Web Share com ficheiro) ou guardando a imagem.
+
 ## A Carol no balanço (decidido 2026-09-12)
 
 A régua é uma só, `src/utils/raceOutcome.js` (`classifyRaceOutcome`), e é a
