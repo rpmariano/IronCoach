@@ -16,8 +16,11 @@ import { AchievementIcon } from '../shared/AchievementCard';
    prontidão também, a agenda tem-nas dia a dia e o Palmarés só as
    concluídas: faltava a lista. Os grupos e a ordem vêm de utils/raceList.js.
 
-   No cartão cabem até três de cada grupo; o resto está a um toque, em "Ver
-   todas", numa persiana com as listas completas. Cada linha abre o hub da
+   As próximas e as por registar aparecem sempre todas: são o objetivo, e uma
+   prova marcada para daqui a meses escondida atrás de "Ver todas" parecia
+   não existir (relatado 2026-09-13, duas provas de 2027). Só as concluídas,
+   que são o histórico e crescem, ficam nas três mais recentes, com o resto
+   em "Ver todas", numa persiana com as listas completas. Cada linha abre o hub da
    prova, que é onde se regista, se vê o plano e se juntam as memórias. O
    âmbar é da prova e só da prova. */
 
@@ -154,9 +157,8 @@ export default function RaceListCard() {
     />
   );
 
-  const hidden = Math.max(0, proximas.length - INLINE_MAX)
-    + Math.max(0, porRegistar.length - INLINE_MAX)
-    + Math.max(0, concluidas.length - INLINE_MAX);
+  // Só as concluídas se escondem (ver o comentário do topo).
+  const hidden = Math.max(0, concluidas.length - INLINE_MAX);
 
   const resumo = total
     ? [
@@ -177,8 +179,8 @@ export default function RaceListCard() {
 
         {total > 0 && (
           <div className="mt-2">
-            <Group label="Próximas" tone="race" items={proximas} max={INLINE_MAX} render={renderProxima} />
-            <Group label="Por registar" tone="warn" items={porRegistar} max={INLINE_MAX} render={renderPorRegistar} />
+            <Group label="Próximas" tone="race" items={proximas} render={renderProxima} />
+            <Group label="Por registar" tone="warn" items={porRegistar} render={renderPorRegistar} />
             <Group label="Concluídas" items={concluidas} max={INLINE_MAX} render={renderConcluida} />
           </div>
         )}
