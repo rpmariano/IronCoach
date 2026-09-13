@@ -7,6 +7,7 @@ import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
+import { authEventAction } from './utils/authEvents';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -479,27 +480,34 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (newSession?.user) {
-        setSession(newSession);
+      // A regra vive em utils/authEvents.js: com o mesmo utilizador cujos
+      // dados já estão carregados (o SIGNED_IN ou o TOKEN_REFRESHED que
+      // chegam ao voltar à app), só se atualiza a sessão — nem ecrã de
+      // carregamento, que desmontava um registo a meio, nem recarga por
+      // baixo, que repunha o rascunho de uma prova ou corrida em edição.
+      const userId = newSession?.user?.id || null;
+      const action = authEventAction(_event, {
+        hasUser: !!userId,
+        sameUser: !!userId && loadedUserIdRef.current === userId,
+      });
+      if (action === 'signed-out') {
+        loadedUserIdRef.current = null;
+        setSession(null);
+        return;
+      }
+      if (action === 'ignore') return;
+      setSession(newSession);
+      if (action === 'session-only') return;
+      loadedUserIdRef.current = userId;
+      if (action === 'load-with-loader') {
         // No login (password/registo) o perfil chega antes das listas e, por
         // um instante, um atleta com dados parecia "sem registos" — o
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
-        // carregam, é o loader que se vê; só no SIGNED_IN, para o refresh do
-        // token (TOKEN_REFRESHED) não piscar a app de hora a hora — e só
-        // quando é outro utilizador: o SIGNED_IN que chega ao voltar à app
-        // traz o mesmo, e aí os dados atualizam-se por baixo sem desmontar
-        // o ecrã aberto.
-        const sameUser = loadedUserIdRef.current === newSession.user.id;
-        loadedUserIdRef.current = newSession.user.id;
-        if (_event === 'SIGNED_IN' && !sameUser) {
-          setIsInitializing(true);
-          Promise.resolve(loadInitialData(newSession.user.id)).finally(() => setIsInitializing(false));
-        } else {
-          loadInitialData(newSession.user.id);
-        }
-      } else if (_event === 'SIGNED_OUT') {
-        loadedUserIdRef.current = null;
-        setSession(null);
+        // carregam, é o loader que se vê.
+        setIsInitializing(true);
+        Promise.resolve(loadInitialData(userId)).finally(() => setIsInitializing(false));
+      } else {
+        loadInitialData(userId);
       }
     });
 

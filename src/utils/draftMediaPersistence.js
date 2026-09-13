@@ -111,12 +111,15 @@ export function usePersistedDraftMedia(draftKey, slot, value, setValue) {
     if (!key) return undefined;
     let cancelled = false;
     readyRef.current = false;
+    const startedAt = Date.now();
     Promise.resolve()
       .then(() => draftMediaStore.load(key))
       .catch(() => undefined)
       .then((saved) => {
         if (cancelled) return;
         readyRef.current = true;
+        // Descartado enquanto a leitura corria: não ressuscita.
+        if ((clearedAt.get(draftKey) || 0) >= startedAt) return;
         if (!isEmpty(saved) && isEmpty(valueRef.current)) {
           setValue(saved);
         } else if (!isEmpty(valueRef.current)) {

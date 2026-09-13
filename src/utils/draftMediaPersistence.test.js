@@ -79,6 +79,19 @@ describe('usePersistedDraftMedia', () => {
     expect(draftMediaStore.removeAllFor).toHaveBeenCalledWith('rascunho:nova');
   });
 
+  it('descartar enquanto a leitura corre não deixa as fotos voltar', async () => {
+    memory.set('rascunho:nova::photos', [{ dataUrl: 'antiga' }]);
+    let resolveLoad;
+    draftMediaStore.load = vi.fn(() => new Promise((r) => { resolveLoad = r; }));
+    render(React.createElement(Form));
+    await act(async () => { await Promise.resolve(); });
+    vi.advanceTimersByTime(5);
+    clearDraftMedia('rascunho:nova');
+    await act(async () => { resolveLoad([{ dataUrl: 'antiga' }]); });
+    await flush();
+    expect(screen.getByTestId('count')).toHaveTextContent('0');
+  });
+
   it('sem IndexedDB (o adaptador original no jsdom) não rebenta e não mexe no estado', async () => {
     Object.assign(draftMediaStore, original);
     render(React.createElement(Form));

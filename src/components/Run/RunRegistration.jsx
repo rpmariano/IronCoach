@@ -683,10 +683,26 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      gravadas voltam do servidor. Restaurá-las marca o formulário como
      alterado, para o aviso de saída as proteger. */
   const draftMediaKey = runIdToEdit ? null : draftStorageKey;
-  usePersistedDraftMedia(draftMediaKey, 'runPhotos', runPhotos, (v) => { setRunPhotos(v); setIsFormDirty(true); });
-  usePersistedDraftMedia(draftMediaKey, 'racePhotos', racePhotos, (v) => { setRacePhotos(v); setIsFormDirty(true); });
-  usePersistedDraftMedia(draftMediaKey, 'diploma', diploma, (v) => { setDiploma(v); setIsFormDirty(true); });
-  usePersistedDraftMedia(draftMediaKey, 'medal', medal, (v) => { setMedal(v); setIsFormDirty(true); });
+  // Só o que é NOVO (ainda por enviar) se guarda: as memórias que já estão no
+  // bucket ({ path, url }) voltam do servidor, e guardá-las punha os caminhos
+  // de uma prova no registo de outra — que, ao gravar e depois trocar as
+  // memórias, podia apagar os ficheiros da primeira (revisão pré-deploy
+  // 2026-09-13). As memórias levam o id da prova na chave pela mesma razão.
+  const memorySlot = (name) => `${name}:${raceId || 'sem-prova'}`;
+  const newRunPhotos = useMemo(() => runPhotos.filter((p) => p.base64), [runPhotos]);
+  const newRacePhotos = useMemo(() => racePhotos.filter((p) => p.blob), [racePhotos]);
+  const newDiploma = diploma?.blob ? diploma : null;
+  const newMedal = medal?.blob ? medal : null;
+  usePersistedDraftMedia(draftMediaKey, 'runPhotos', newRunPhotos, (v) => {
+    setRunPhotos((prev) => [...prev.filter((p) => !p.base64), ...v].slice(0, MAX_PHOTOS));
+    setIsFormDirty(true);
+  });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('racePhotos'), newRacePhotos, (v) => {
+    setRacePhotos((prev) => [...prev.filter((p) => !p.blob), ...v].slice(0, MAX_RACE_PHOTOS));
+    setIsFormDirty(true);
+  });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('diploma'), newDiploma, (v) => { setDiploma(v); setIsFormDirty(true); });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('medal'), newMedal, (v) => { setMedal(v); setIsFormDirty(true); });
 
   // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit
