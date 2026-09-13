@@ -56,6 +56,15 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
    fotografias; tempo final ao lado do objetivo com o delta (já existe). A
    Carol reage pelo gatilho `race_after` que já existe (CAROL.md §7) — o
    botão "Falar com a Carol" do hub leva lá.
+   **As memórias são uma oferta, não uma condição** (pedido 2026-09-13):
+   concluir a prova é registar a corrida. O diploma chega por e-mail dias
+   depois, as fotos oficiais também — por isso o bloco "Memórias" do registo
+   é opcional e diz que se pode juntar depois, e o hub tem uma persiana
+   "Memórias" (`RaceMemoriesSheet`, aberta pelo convite "Guardar as
+   memórias da prova" ou pelo "Editar" da galeria) onde se junta, troca ou
+   remove qualquer uma das três sem reabrir o registo da corrida. A lógica
+   de ler, assinar e enviar é uma só (`src/utils/raceMemories.js`); os
+   campos também (`RaceMemoriesFields`).
 5. **Gamificação — fase seguinte, spec própria.** Conquistas calculadas dos
    dados existentes (prova concluída, objetivo batido = tempo oficial ≤
    `target_time_seconds`, recorde pessoal na distância, primeira prova de
