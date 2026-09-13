@@ -145,6 +145,12 @@ export default function RunAgenda({ onClose }) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const activePageIndex = PAGE_KEYS.indexOf(activePage);
+  /* Prova concluída: os detalhes de criação (data, distância, objetivo…)
+     ficam como estavam — mudá-los depois reescrevia o palmarés, a régua do
+     objetivo e o balanço da Carol. O que se edita a partir daqui é o
+     RESULTADO, pelo "Editar o registo" do hub (pedido 2026-09-13). Sem a
+     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
+  const detailsLocked = !!editingEventId && draft.status === 'concluida';
   const scrollRef = useRef(null);
   const scrollToRef = useRef(() => {});
   const pageRefs = useRef([]);
@@ -267,13 +273,13 @@ export default function RunAgenda({ onClose }) {
   };  // Trava a navegação para fora da app enquanto houver alterações por
   // gravar no formulário — mesmo mecanismo usado em Perfil.jsx.
   useEffect(() => {
-    if (!isFormOpen || !isDirty) { setNavGuard(null); return; }
+    if (!isFormOpen || !isDirty || detailsLocked) { setNavGuard(null); return; }
     setNavGuard((intendedTab) => {
       setLeavePrompt({ target: intendedTab });
       return false;
     });
     return () => setNavGuard(null);
-  }, [isFormOpen, isDirty, setNavGuard]);
+  }, [isFormOpen, isDirty, detailsLocked, setNavGuard]);
 
   // Fechar/recarregar o separador do browser também avisa.
   useEffect(() => {
@@ -790,7 +796,8 @@ export default function RunAgenda({ onClose }) {
   // Botão "Cancelar" do formulário — só interrompe com o aviso se houver
   // alterações por gravar; sem navegação pendente nenhuma (target: null).
   const attemptCloseForm = () => {
-    if (isDirty) { setLeavePrompt({ target: null }); return; }
+    // Com os detalhes trancados não há edição por gravar que valha o aviso.
+    if (isDirty && !detailsLocked) { setLeavePrompt({ target: null }); return; }
     handleCloseForm();
   };
 
@@ -901,7 +908,9 @@ export default function RunAgenda({ onClose }) {
             </button>
           </div>
 
-          {/* Subnav AAA — idêntico ao Perfil / Dashboard */}
+          {/* Subnav AAA — idêntico ao Perfil / Dashboard. Prova concluída:
+              só há o hub, a subnav não faz sentido com uma página. */}
+          {!detailsLocked && (
           <div className="relative flex gap-2 p-1.5 bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
             {/* Sliding indicator com tint translúcido e borda âmbar */}
             <div
@@ -934,6 +943,7 @@ export default function RunAgenda({ onClose }) {
               </button>
             ))}
           </div>
+          )}
 
           {/* Páginas lado a lado no carrossel deslizável */}
           <div
@@ -955,7 +965,7 @@ export default function RunAgenda({ onClose }) {
                 fetchingWebInfo={fetchingWebInfo}
                 onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
                 onMemoriesSaved={editingEventId ? handleMemoriesSaved : undefined}
-                onGoToEdit={() => {
+                onGoToEdit={detailsLocked ? undefined : () => {
                   setActivePage('details');
                   scrollTo(1);
                 }}
@@ -973,6 +983,7 @@ export default function RunAgenda({ onClose }) {
                     Eliminar
                   </Button>
                 )}
+                {!detailsLocked && (
                 <Button
                   variant="light"
                   onClick={() => {
@@ -984,10 +995,12 @@ export default function RunAgenda({ onClose }) {
                 >
                   Editar Detalhes
                 </Button>
+                )}
               </div>
             </div>
 
-            {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
+            {/* ─── PÁGINA 2: DETALHES DA PROVA (não existe com a prova concluída) ── */}
+            {!detailsLocked && (
             <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
               {/* 1.1 Data · 1.2 Hora de partida — a hora fica ao lado da data
                   porque é a mesma pergunta ("quando é?"), e é opcional: a
@@ -1245,6 +1258,7 @@ export default function RunAgenda({ onClose }) {
                 </Button>
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1253,6 +1267,7 @@ export default function RunAgenda({ onClose }) {
           terceiro botão de uma fila no fim de cada uma das duas páginas do
           carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
           é uma só, sempre visível, seja qual for a página. */}
+      {!detailsLocked && (
       <ActionBar>
         {/* Só há o que guardar quando algo mudou (isDirty): a barra também
             está por cima do Hub, que é só de leitura, e um "Guardar prova"
@@ -1270,6 +1285,7 @@ export default function RunAgenda({ onClose }) {
           Guardar prova
         </Button>
       </ActionBar>
+      )}
     </div>
   );
 }

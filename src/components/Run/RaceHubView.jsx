@@ -22,6 +22,7 @@ import {
   Zap,
   Info,
   Star,
+  Pencil,
 } from 'lucide-react';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
@@ -355,6 +356,15 @@ export default function RaceHubView({
     // memórias aqui mesmo — a prova já está concluída, o registo da corrida
     // não tem de se reabrir para juntar uma foto.
     const openMemories = () => setMemoriesOpen(true);
+    // O RESULTADO edita-se no registo da corrida, em modo prova (o mesmo
+    // ecrã de registar, com os campos preenchidos) — depois da conclusão é
+    // isto que se muda, não os detalhes de criação da prova (pedido
+    // 2026-09-13). O store já sabe reabrir um registo pela prova.
+    const openRunEdit = () => {
+      const store = useAppStore.getState();
+      store.setEditingRaceId(null);
+      store.openRaceRun(race.id, raceRun.id);
+    };
     const memoriesUserId = useAppStore.getState().profile?.id || profile?.id || null;
 
     return (
@@ -443,6 +453,17 @@ export default function RaceHubView({
                       </div>
                     )}
                   </div>
+                )}
+                {raceRun?.id && (
+                  <button
+                    type="button"
+                    data-testid="race-hub-edit-run"
+                    onClick={openRunEdit}
+                    className="inline-flex items-center justify-center gap-1.5 mt-4"
+                    style={{ minHeight: 'var(--tap)', padding: '0 14px', borderRadius: 12, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.14)', color: 'var(--text-2)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <Pencil size={13} /> Editar o registo
+                  </button>
                 )}
               </>
             ) : (

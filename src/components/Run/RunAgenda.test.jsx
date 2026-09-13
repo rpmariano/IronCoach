@@ -660,7 +660,7 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
   const notas = () => screen.getByPlaceholderText('Logística, nutrição planeada...');
   const botaoGuardar = () => screen.getByRole('button', { name: /Guardar prova/i });
 
-  it('marcar concluída pelo Hub mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {
+  it('marcar concluída pelo Hub tranca os detalhes de criação: sem "Detalhes da prova" nem "Guardar prova", fica "Eliminar"', async () => {
     // Data passada: aí a ação vive no estado pós-prova do hub, já ativa.
     useAppStore.setState({
       raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'agendada' }],
@@ -679,10 +679,28 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
       expect(useAppStore.getState().raceEvents[0].status).toBe('concluida');
     });
 
-    // A nota continua lá e continua por gravar.
-    irPara(/^Detalhes da prova$/i);
-    expect(notas()).toHaveValue('Levar géis extra.');
-    expect(botaoGuardar()).toBeEnabled();
+    // Prova concluída (pedido 2026-09-13): os detalhes de criação não se
+    // editam mais — o resultado edita-se pelo registo da corrida.
+    expect(screen.queryByRole('button', { name: /^Detalhes da prova$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Editar Detalhes/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
+    // E fechar não avisa de alterações por gravar que já não se podem gravar.
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
+  });
+
+  it('uma prova já concluída abre só com o hub e "Eliminar"', () => {
+    useAppStore.setState({
+      raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'concluida' }],
+      editingRaceId: 'race-1',
+    });
+    renderAgenda();
+    expect(screen.getByTestId('race-hub-completed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Detalhes da prova$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Treino e Evolução$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
   });
 
   it('"Obter informação do site" mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {

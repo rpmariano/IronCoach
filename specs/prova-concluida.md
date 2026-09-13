@@ -132,7 +132,13 @@ uma no seu dia do Calendário. Comparadas três portas de entrada (canvas
   o objetivo da prova ao comentário da Carol é um passo seguinte (toca em
   produção ao fazer push a `dev`).
 - Vídeo, partilha social, ficheiros acima de 2 MB.
-- Editar a prova (data, distância, objetivo) a partir do registo.
+- Editar a prova (data, distância, objetivo) a partir do registo. E, ao
+  contrário: **os detalhes de criação de uma prova concluída não se editam**
+  (decisão 2026-09-13) — a agenda esconde "Detalhes da prova", "Editar
+  Detalhes" e "Guardar prova" (`detailsLocked` em `RunAgenda`); fica
+  "Eliminar". O que se edita depois da conclusão é o RESULTADO: o hub tem
+  "Editar o registo" (`race-hub-edit-run`), que reabre o registo da corrida
+  em modo prova pelo `openRaceRun(raceId, runId)` do store.
 
 ## Migração
 
