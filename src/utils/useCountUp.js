@@ -59,8 +59,8 @@ export const easeBack = cubicBezier(0.22, 1, 0.36, 1);
  *
  * @param target   número de destino (não-número ⇒ devolve-se tal e qual)
  * @param options.animate   false (por omissão) mostra já o destino — é o
- *                          comportamento fora da primeira entrada da sessão
- *                          e com `prefers-reduced-motion`
+ *                          comportamento fora da janela de animação do
+ *                          useRevealAnimation e com `prefers-reduced-motion`
  * @param options.duration  ms (por omissão --dur-count, 1400)
  * @returns o valor NUMÉRICO corrente (formatar com `useCountUpText` ou à mão)
  */

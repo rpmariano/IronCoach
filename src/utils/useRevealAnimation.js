@@ -12,8 +12,14 @@ import { prefersReducedMotion } from './coachBubbles';
  * já estavam quietos.
  *
  * A regra passa a ser:
- * - o elemento fica invisível (`visibility: hidden`, sem mexer no layout)
- *   até entrar no ecrã, e a animação corre nesse momento;
+ * - o elemento fica transparente (`opacity: 0`, sem mexer no layout e sem
+ *   sair da ordem do Tab nem da árvore de acessibilidade: focar um botão lá
+ *   dentro faz scroll até ele e revela-o) até entrar no ecrã, e a animação
+ *   corre nesse momento;
+ * - `animate` só fica ligado durante a janela da animação
+ *   (REVEAL_ANIMATION_WINDOW_MS) depois de cada aparecimento: mudar o
+ *   período ou trocar de prova nas setas atualiza os números sem os voltar
+ *   a contar de zero;
  * - volta a correr quando o elemento SAI DE LADO e regressa — é o que
  *   acontece ao trocar de separador no carrossel do Dashboard. Sair por
  *   cima ou por baixo (scroll) não re-arma: contar de novo a cada scroll
@@ -27,6 +33,10 @@ import { prefersReducedMotion } from './coachBubbles';
  * tem de recomeçar a animação (um gráfico do Chart.js só anima ao montar),
  * e `animate` onde se decide se anima.
  */
+
+/** Quanto tempo `animate` fica ligado depois de aparecer: cobre a contagem
+ *  (--dur-count, 1400ms) e as barras (--dur-bars 550ms + desfasamento). */
+export const REVEAL_ANIMATION_WINDOW_MS = 1600;
 
 /** Quanto do elemento tem de estar à vista para contar como "visto". */
 export const REVEAL_MIN_VISIBLE_PX = 80;
@@ -49,6 +59,16 @@ export function useRevealAnimation({ enabled = true } = {}) {
   const ref = useCallback((el) => { if (activeRef.current) setNode(el); }, []);
 
   const [state, setState] = useState(() => ({ shown: !active, play: 0 }));
+  // O `play` cuja animação já acabou. Enquanto for diferente do `play` atual,
+  // anima; e como é o `play` que sobe, o que remonta com o novo `key` monta
+  // já a animar, no mesmo render.
+  const [settledPlay, setSettledPlay] = useState(0);
+
+  useEffect(() => {
+    if (!active || state.play === 0) return undefined;
+    const timer = setTimeout(() => setSettledPlay(state.play), REVEAL_ANIMATION_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [active, state.play]);
 
   useEffect(() => {
     if (!active || !node) return undefined;
@@ -62,16 +82,26 @@ export function useRevealAnimation({ enabled = true } = {}) {
         const needHeight = Math.min(REVEAL_MIN_VISIBLE_PX, box.height * REVEAL_MIN_VISIBLE_RATIO);
         const needWidth = Math.min(REVEAL_MIN_VISIBLE_PX, (box.width || 0) * REVEAL_MIN_VISIBLE_RATIO);
         const seenWidth = seen.width ?? box.width ?? 0;
-        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
         if (entry.isIntersecting && seen.height >= needHeight && seenWidth >= needWidth) {
           setState((s) => (s.shown ? s : { shown: true, play: s.play + 1 }));
         } else {
-          // Re-arma quando saiu DE LADO: por completo, ou ficando só a lasca
-          // que o carrossel deixa a espreitar na margem (a página anterior
-          // fica com uns 16px à vista, e nunca chegava a "sair").
-          const offSideways = box.left < 0 || box.right > viewportWidth;
-          const gone = !entry.isIntersecting || seenWidth < needWidth;
-          if (offSideways && gone) setState((s) => (s.shown ? { shown: false, play: s.play } : s));
+          // Re-arma quando saiu DE LADO, que é a troca de separador no
+          // carrossel. Não basta comparar com a largura da janela: no desktop
+          // a coluna é estreita e centrada, e a página vizinha fica dentro.
+          // - A espreitar (a lasca de 16px na margem): o corte é lateral
+          //   quando o que se vê começa depois ou acaba antes da caixa.
+          // - Fora por completo: se a caixa está dentro da janela na vertical,
+          //   só pode ter sido cortada de lado. Fora por cima ou por baixo é
+          //   scroll, e isso não re-arma.
+          const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+          const seenLeft = seen.left ?? box.left;
+          const seenRight = seen.right ?? box.right;
+          const sliverSideways = entry.isIntersecting && seenWidth < needWidth
+            && (seenLeft > box.left + 1 || seenRight < box.right - 1 || box.left < 0 || box.right > viewportWidth);
+          const verticallyInView = (box.bottom ?? 0) > 0 && (box.top ?? viewportHeight) < viewportHeight;
+          const goneSideways = !entry.isIntersecting && verticallyInView;
+          if (sliverSideways || goneSideways) setState((s) => (s.shown ? { shown: false, play: s.play } : s));
         }
       }
     }, { threshold: THRESHOLDS });
@@ -82,7 +112,7 @@ export function useRevealAnimation({ enabled = true } = {}) {
   return {
     ref,
     playKey: state.play,
-    animate: active && state.play > 0,
-    style: active && !state.shown ? { visibility: 'hidden' } : undefined,
+    animate: active && state.play > 0 && settledPlay !== state.play,
+    style: active && !state.shown ? { opacity: 0 } : undefined,
   };
 }
