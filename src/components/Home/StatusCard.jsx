@@ -2,15 +2,16 @@ import React from 'react';
 import { Camera } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
 import { Orbit, OrbitLegend } from '../shared/Orbit';
-import { useIntroAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 
 /* "Como estou" — a órbita de nutrição do dia, só leitura (mock "Início").
    O registo de água saiu daqui para o FAB. `empty` é o primeiro dia: anéis
    tracejados e o convite a registar a primeira refeição. */
 export default function StatusCard({ rings, empty = false, onRegisterMeal }) {
-  /* Ponto 9: anéis a desenharem-se e valores a contar — à primeira entrada
-     da sessão e mais nenhuma (`introAnimations.js`). */
-  const intro = useIntroAnimation('home-orbit');
+  /* Ponto 9: anéis a desenharem-se e valores a contar quando a órbita
+     aparece no ecrã, e outra vez sempre que se volta ao Início
+     (useRevealAnimation, 2026-09-13). */
+  const reveal = useRevealAnimation();
 
   if (empty) {
     return (
@@ -27,9 +28,9 @@ export default function StatusCard({ rings, empty = false, onRegisterMeal }) {
   }
   return (
     <GlassCard padding="14px 16px" className="flex items-center gap-4" data-testid="status-card">
-      <div className="flex items-center gap-4">
-        <div className="shrink-0" style={{ width: 116, height: 116 }}><Orbit rings={rings} size={116} animate={intro} /></div>
-        <OrbitLegend rings={rings} animate={intro} />
+      <div className="flex items-center gap-4" ref={reveal.ref} style={reveal.style}>
+        <div className="shrink-0" style={{ width: 116, height: 116 }}><Orbit key={reveal.playKey} rings={rings} size={116} animate={reveal.animate} /></div>
+        <OrbitLegend key={`l${reveal.playKey}`} rings={rings} animate={reveal.animate} />
       </div>
     </GlassCard>
   );

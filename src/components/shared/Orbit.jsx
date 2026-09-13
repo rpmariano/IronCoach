@@ -9,7 +9,8 @@ import { useCountUpDisplay } from '../../utils/useCountUp';
    `animate` é a animação 1 do ponto 9 ("anéis que se desenham"): os três
    partem de zero com 80 ms de desfasamento, de fora para dentro, em
    --dur-rings (1100 ms). Quem decide é quem monta o componente — no Início
-   é o useIntroAnimation('rings'), uma vez por sessão. */
+   é o useRevealAnimation do StatusCard: quando a órbita aparece no ecrã, e
+   outra vez ao voltar ao Início. */
 const RADII = [60, 45, 30];
 
 export function Orbit({ rings = [], size = 116, empty = false, animate = false }) {

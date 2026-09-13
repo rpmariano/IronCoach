@@ -59,8 +59,8 @@ export const easeBack = cubicBezier(0.22, 1, 0.36, 1);
  *
  * @param target   número de destino (não-número ⇒ devolve-se tal e qual)
  * @param options.animate   false (por omissão) mostra já o destino — é o
- *                          comportamento fora da primeira entrada da sessão
- *                          e com `prefers-reduced-motion`
+ *                          comportamento fora da janela de animação do
+ *                          useRevealAnimation e com `prefers-reduced-motion`
  * @param options.duration  ms (por omissão --dur-count, 1400)
  * @returns o valor NUMÉRICO corrente (formatar com `useCountUpText` ou à mão)
  */
@@ -69,7 +69,13 @@ export function useCountUp(target, { animate = false, duration = DUR_COUNT } = {
   const finite = Number.isFinite(numeric);
   // O destino é o estado inicial: sem animação (ou sem rAF, como no jsdom dos
   // testes) o número aparece logo no sítio, que é o que se quer.
-  const [value, setValue] = useState(finite ? numeric : 0);
+  // A animar (com rAF), começa já em zero: com o valor final no estado
+  // inicial o primeiro frame pintava-o e só depois o efeito o punha a 0 — um
+  // piscar que ficou à vista quando a contagem passou a correr ao aparecer
+  // no ecrã (useRevealAnimation, 2026-09-13).
+  const [value, setValue] = useState(
+    finite ? (animate && duration > 0 && typeof requestAnimationFrame === 'function' ? 0 : numeric) : 0,
+  );
   const rafRef = useRef(null);
 
   useEffect(() => {

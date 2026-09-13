@@ -4,7 +4,8 @@ import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
-import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
+import { barGrowAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 
 /* Ponto 6 do redesenho:
    - A legenda do Chart.js (desenhada na tela) e os ticks dos dois eixos
@@ -59,13 +60,13 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
     ]
   };
 
-  const introBars = useIntroAnimation('bi-bars');
+  const reveal = useRevealAnimation();
 
   const options = {
     responsive: true,
     /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
-       direita, --dur-bars com --stagger-bars — uma vez por sessão. */
-    animation: barGrowAnimation(introBars),
+       direita, --dur-bars com --stagger-bars — quando o gráfico aparece no ecrã. */
+    animation: barGrowAnimation(reveal.animate),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -111,6 +112,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
 
   return (
     <ChartFrame
+      reveal={reveal}
       className={className}
       label="Adesão às macros"
       info={<MetricInfo text="Compara o que realmente comeste (barras coloridas) com os teus alvos ideais de Nutrição Desportiva (linhas tracejadas). Tens de bater as linhas tracejadas, especialmente a proteína, para garantirmos recuperação máxima!" />}

@@ -9,14 +9,14 @@ import RunIcon from '../shared/RunIcon';
 import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import ACWRChart from '../BI/ACWRChart';
-import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
+import { barGrowAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
 import ChartFrame from '../BI/ChartFrame';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
-import RaceListCard from './RaceListCard';
 import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
@@ -172,13 +172,14 @@ export default function RunDashboard() {
   // Ponto 6: os ticks deixam de escrever dentro da tela. O total do período
   // é o número grande do ChartFrame e os extremos do eixo vão para os
   // cantos, em HTML.
-  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars. */
-  const introBars = useIntroAnimation('bi-bars');
+  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
+     quando o gráfico aparece no ecrã (useRevealAnimation). */
+  const barsReveal = useRevealAnimation();
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    animation: barGrowAnimation(introBars),
+    animation: barGrowAnimation(barsReveal.animate),
     scales: {
       y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
@@ -249,9 +250,6 @@ export default function RunDashboard() {
     return (
       <div className="space-y-4 fade-in">
         <VerdictLine text={verdict.text} tone={verdict.tone} />
-        {/* As provas não dependem do período nem de haver corridas: vêm antes
-            do filtro e ficam também no estado vazio. */}
-        <RaceListCard />
         <TimeFilterBar activeRange={activeRange} onChange={setActiveRange} module="corrida" />
         <EmptyModuleState
           tone="run"
@@ -270,10 +268,6 @@ export default function RunDashboard() {
     <div className="space-y-4 fade-in">
       {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
       <VerdictLine text={verdict.text} tone={verdict.tone} />
-
-      {/* 0b. As tuas provas — todas, num sítio só (pedido 2026-09-13). Antes
-          do filtro de período, porque não obedecem a ele. */}
-      <RaceListCard />
 
       {/* 1. TimeFilterBar */}
       <TimeFilterBar
@@ -367,6 +361,7 @@ export default function RunDashboard() {
           saiu antes (EmptyModuleState), por isso aqui há sempre dados. */}
       {chartData && (
         <ChartFrame
+          reveal={barsReveal}
           label="Distância por dia"
           value={fmtNumber(totalDist, 1)}
           unit="km no período"

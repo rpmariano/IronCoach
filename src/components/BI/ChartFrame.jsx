@@ -1,5 +1,5 @@
 import React from 'react';
-import { useIntroAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUpDisplay } from '../../utils/useCountUp';
 
 /**
@@ -36,6 +36,9 @@ import { useCountUpDisplay } from '../../utils/useCountUp';
  *   axis      { min, max } — extremos do eixo em HTML, nos cantos
  *   height    number — altura da área do gráfico (default 176)
  *   footer    nó — nota livre por baixo
+ *   reveal    o resultado de useRevealAnimation() de quem desenha o gráfico —
+ *             passa-se quando o gráfico precisa de saber se anima (as opções
+ *             do Chart.js vivem lá). Sem ele, a moldura observa-se sozinha.
  */
 
 const DELTA_COLOR = {
@@ -107,18 +110,24 @@ export default function ChartFrame({
   axis,
   height = 176,
   footer,
+  reveal,
   children,
   className = '',
   style,
   ...rest
 }) {
-  /* Ponto 9, animação 2: os KPIs dos dashboards contam à primeira entrada da
-     sessão. Chave única para todos — os quatro dashboards montam juntos
-     (carrossel de scroll-snap) e contam de uma vez só. */
-  const intro = useIntroAnimation('bi-big-number');
+  /* Ponto 9, animações 2 e 4: o número conta e o gráfico cresce quando a
+     moldura APARECE no ecrã, e outra vez quando se volta ao separador
+     (useRevealAnimation, 2026-09-13). Antes era à primeira montagem da
+     sessão: o Dashboard monta os cinco módulos juntos e tudo animava fora
+     do ecrã. O `key` recomeça a contagem e remonta o gráfico, que é a única
+     forma de o Chart.js voltar a animar. */
+  const own = useRevealAnimation({ enabled: !reveal });
+  const r = reveal || own;
 
   return (
     <div
+      ref={r.ref}
       data-testid="chart-frame"
       className={className}
       style={{
@@ -130,6 +139,7 @@ export default function ChartFrame({
         padding: 16,
         boxShadow: 'var(--shadow-card)',
         ...style,
+        ...(r.style || {}),
       }}
       {...rest}
     >
@@ -159,7 +169,7 @@ export default function ChartFrame({
 
       {(value !== undefined && value !== null && value !== '') && (
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 9, flexWrap: 'wrap' }}>
-          <BigNumber value={value} unit={unit} color={valueColor} animate={intro} />
+          <BigNumber key={`n${r.playKey}`} value={value} unit={unit} color={valueColor} animate={r.animate} />
           {delta?.text && (
             <span
               data-testid="chart-frame-delta"
@@ -177,6 +187,7 @@ export default function ChartFrame({
       )}
 
       <div
+        key={`p${r.playKey}`}
         data-testid="chart-frame-plot"
         style={{ position: 'relative', height, marginTop: 12 }}
       >

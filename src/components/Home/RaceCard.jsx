@@ -10,7 +10,7 @@ import GlassCard from '../shared/GlassCard';
 import RaceTrail from '../shared/RaceTrail';
 import CarouselDots from '../shared/CarouselDots';
 import { AchievementChip } from '../shared/AchievementCard';
-import { useIntroAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUpText } from '../../utils/useCountUp';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
@@ -44,7 +44,25 @@ function rotuloDoDia(dias) {
    passa a olhar para trás por uns dias — o tempo, a ordem da prova no
    palmarés, as conquistas que ela deu — e dá as duas saídas que fazem
    sentido, as memórias e a próxima prova. Sem trilho: o ciclo fechou. */
-function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpenRace, onCreateRace }) {
+/* "Todas as provas e o Palmarés" — a porta do Início para o separador Provas
+   (2026-09-13). Só aparece quando quem monta o cartão passa `onOpenAllRaces`:
+   no próprio separador Provas não faz sentido apontar para onde já se está. */
+function AllRacesLink({ onOpen }) {
+  if (!onOpen) return null;
+  return (
+    <button
+      type="button"
+      data-testid="race-card-all"
+      onClick={(e) => { e.stopPropagation(); onOpen(); }}
+      className="w-full flex items-center justify-between mt-2.5 -mb-1 text-[12px] font-extrabold"
+      style={{ minHeight: 44, color: 'var(--race)', borderTop: '1px solid rgba(251,191,36,.18)' }}
+    >
+      Todas as provas e o Palmarés <ChevronRight size={15} />
+    </button>
+  );
+}
+
+function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpenRace, onCreateRace, onOpenAllRaces }) {
   const tempo = outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
   const ritmo = outcome?.officialSeconds && outcome?.distanceKm
     ? `${formatPace(Math.round(outcome.officialSeconds / outcome.distanceKm))}/km`
@@ -109,11 +127,12 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
           <Plus size={15} /> Próxima prova
         </button>
       </div>
+      <AllRacesLink onOpen={onOpenAllRaces} />
     </GlassCard>
   );
 }
 
-export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace }) {
+export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace, onOpenAllRaces }) {
   const today = todayISO();
   // Uma prova está registada quando há uma corrida ligada a ela — por
   // race_id, ou pela data nos registos antigos (ver findRaceRun).
@@ -164,9 +183,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };
   }, [concluida, raceEvents, runs, profile, today, estaRegistada]);
 
-  /* Ponto 9, animação 2: os dias que faltam contam à primeira entrada da
-     sessão. Ao trocar de prova nas setas já não conta — é a mesma leitura. */
-  const intro = useIntroAnimation('home-race-days');
+  /* Ponto 9, animação 2: os dias que faltam contam quando o número aparece
+     no ecrã, e outra vez ao voltar ao Início ou ao separador Provas
+     (useRevealAnimation, 2026-09-13). Ao trocar de prova nas setas não
+     conta — é a mesma leitura. */
+  const daysReveal = useRevealAnimation();
 
   const model = useMemo(() => {
     if (!race) return null;
@@ -184,6 +205,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
         dias={concluidaModel.dias}
         onOpenRace={onOpenRace}
         onCreateRace={onCreateRace}
+        onOpenAllRaces={onOpenAllRaces}
       />
     );
   }
@@ -201,6 +223,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
         <button type="button" onClick={onCreateRace} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
           Marcar a próxima prova
         </button>
+        <AllRacesLink onOpen={onOpenAllRaces} />
       </GlassCard>
     );
   }
@@ -246,8 +269,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               <Trophy size={20} />
             </div>
           ) : (
-            <div className="text-right shrink-0">
-              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
+            <div className="text-right shrink-0" ref={daysReveal.ref} style={daysReveal.style}>
+              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount key={daysReveal.playKey} days={model.days} animate={daysReveal.animate} /></div>
               <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
             </div>
           )}
@@ -273,6 +296,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
           <CarouselDots count={upcoming.length} currentIndex={safeIndex} onSelect={setIndex} ariaLabelPrefix="Ver prova" />
         </div>
       )}
+      <AllRacesLink onOpen={onOpenAllRaces} />
     </GlassCard>
   );
 }

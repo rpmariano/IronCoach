@@ -50,6 +50,7 @@ function retryOnce(load) {
 }
 const loadDashboard = retryOnce(() => import('./components/Dashboard/Dashboard'));
 const loadCalendar = retryOnce(() => import('./components/Calendar/Calendar'));
+const loadRaces = retryOnce(() => import('./components/Run/RacesScreen'));
 const loadCoach = retryOnce(() => import('./components/Coach/Coach'));
 const loadPerfil = retryOnce(() => import('./components/Perfil/Perfil'));
 const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
@@ -62,6 +63,7 @@ const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistra
 
 const Dashboard = lazy(loadDashboard);
 const Calendar = lazy(loadCalendar);
+const RacesScreen = lazy(loadRaces);
 const Coach = lazy(loadCoach);
 const Perfil = lazy(loadPerfil);
 const Admin = lazy(loadAdmin);
@@ -84,6 +86,7 @@ const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandb
    sobra para o chunk chegar; se o atributo um dia mudar, isto simplesmente
    deixa de pré-carregar (o esqueleto do Suspense cobre o caso). */
 const PRELOAD_BY_TAB = {
+  provas: loadRaces,
   calendario: loadCalendar,
   dashboard: loadDashboard,
   coach: loadCoach,
@@ -108,11 +111,11 @@ function usePreloadOnNavTouch() {
         loadRunRegistration(); loadGymRegistration();
         return;
       }
-      // O botão "Perfil" vive no cabeçalho, não no nav. Não há como o
-      // distinguir do logótipo sem lhe tocar no Layout, e não faz mal:
-      // o chunk do Perfil é pequeno e o pior caso é aquecê-lo sem ser
-      // preciso.
-      if (target.closest('header')) loadPerfil();
+      // O Perfil e o Calendário vivem no cabeçalho (o Calendário desde
+      // 2026-09-13, quando a barra ganhou Provas). Não há como os distinguir
+      // do logótipo sem lhes tocar no Layout, e não faz mal: os dois chunks
+      // são pequenos e o pior caso é aquecê-los sem ser preciso.
+      if (target.closest('header')) { loadPerfil(); loadCalendar(); }
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
@@ -290,7 +293,7 @@ function buildDemoData() {
    marcou a próxima (specs/gamificacao-provas.md). É o único estado onde o
    Início mostra "Prova concluída · ontem": com uma prova por correr ou por
    registar, o cartão volta a olhar para a frente, que é a função dele. Serve
-   também para ver o hub pós-prova com conquistas e o Palmarés do Perfil com
+   também para ver o hub pós-prova com conquistas e o Palmarés do separador Provas com
    umas desbloqueadas e outras ainda por fazer. */
 function buildPalmaresDemoData() {
   const today = new Date();
@@ -549,6 +552,7 @@ export default function App() {
             <>
               {activeTab === 'home' && <Home />}
               {activeTab === 'calendario' && <Calendar />}
+              {activeTab === 'provas' && <RacesScreen />}
               {['hub', 'nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
               {activeTab === 'coach' && <Coach />}
               {activeTab === 'perfil' && <Perfil />}

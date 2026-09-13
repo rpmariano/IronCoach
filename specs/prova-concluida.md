@@ -73,21 +73,24 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
 
 ## Onde vivem as provas (2026-09-13)
 
-Até aqui não havia um sítio com todas: o Início e o cartão de prontidão só
-mostram a próxima, a agenda tem-nas dia a dia e o Palmarés só as
-concluídas. O módulo **Corrida** do Dashboard ganha "As tuas provas"
-(`src/components/Run/RaceListCard.jsx`), logo a seguir ao veredicto e antes
-do filtro de período, porque não lhe obedece — e também no estado sem
-corridas. Três grupos, pela régua de `src/utils/raceList.js`:
+A prova é o grande objetivo da app e estava espalhada por quatro sítios: a
+próxima no Início, a lista no Dashboard Corrida, o Palmarés no Perfil e cada
+uma no seu dia do Calendário. Comparadas três portas de entrada (canvas
+"Onde vivem as provas"), o utilizador escolheu a **A**:
 
-- **Próximas** — não concluídas, de hoje em diante, da mais perto para a
-  mais longe, com a contagem ("amanhã", "daqui a 12 dias");
-- **Por registar** — não concluídas e já passadas, sem limite de dias;
-- **Concluídas** — `status = 'concluida'`, da mais recente para trás, com o
-  tempo e as conquistas quando há corrida ligada.
-
-No cartão cabem até três de cada; o resto está em "Ver todas", numa
-persiana. Cada linha abre o hub. "Marcar prova" abre o formulário.
+- **A barra é Início · Provas · Dashboard · Coach.** O Calendário passa para
+  um ícone no cabeçalho, ao lado do Perfil, que deixa o âmbar (o âmbar é só
+  da prova).
+- **O separador Provas** (`src/components/Run/RacesScreen.jsx`) junta, de
+  cima para baixo: o cartão "Para onde vou" (o mesmo do Início), o Palmarés
+  (que sai do Perfil) e "As tuas provas" (`RaceListCard`), com três grupos
+  pela régua de `src/utils/raceList.js` — próximas (de hoje em diante, com a
+  contagem), por registar (passadas e não concluídas, sem limite de dias) e
+  concluídas (com tempo e conquistas quando há corrida ligada). Até três de
+  cada no cartão, o resto em "Ver todas". Cada linha abre o hub.
+- **O Início aponta para lá**: o cartão "Para onde vou" ganha "Todas as
+  provas e o Palmarés".
+- A lista sai do Dashboard Corrida, que volta a ser só números da corrida.
 
 ## Fora de âmbito (agora)
 

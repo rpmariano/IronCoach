@@ -186,7 +186,7 @@ export default function Home() {
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
 
       <SectionLabel>Para onde vou</SectionLabel>
-      <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} />
+      <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} onOpenAllRaces={() => setActiveTab('provas')} />
 
       <SectionLabel>Como estou</SectionLabel>
       <StatusCard rings={rings} />

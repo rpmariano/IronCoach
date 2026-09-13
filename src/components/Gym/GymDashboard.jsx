@@ -8,7 +8,8 @@ import KPICard from '../BI/KPICard';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
-import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
+import { barGrowAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
@@ -147,12 +148,12 @@ export default function GymDashboard() {
     y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
   };
   /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
-     uma vez por sessão. */
-  const introBars = useIntroAnimation('bi-bars');
+     quando cada gráfico aparece no ecrã (useRevealAnimation). */
+  const volReveal = useRevealAnimation();
+  const muscleReveal = useRevealAnimation();
   const baseChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: barGrowAnimation(introBars),
     plugins: { legend: { display: false } }
   };
 
@@ -200,6 +201,7 @@ export default function GymDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartFrame
+              reveal={volReveal}
               label="Volume diário"
               value={fmtNumber(lastDayVolume, 0)}
               unit="kg no último dia com treino"
@@ -208,11 +210,12 @@ export default function GymDashboard() {
               legend={[{ label: 'Volume-carga do dia', color: 'var(--gym)' }]}
               height={192}
             >
-              <Bar data={volChartData} options={{ ...baseChartOptions, scales: darkScalesVertical }} />
+              <Bar data={volChartData} options={{ ...baseChartOptions, animation: barGrowAnimation(volReveal.animate), scales: darkScalesVertical }} />
             </ChartFrame>
 
             {Object.keys(muscleVolume).length > 0 && (
               <ChartFrame
+                reveal={muscleReveal}
                 label="Séries por músculo"
                 value={topMuscle ? topMuscle.sets : '—'}
                 unit={topMuscle ? `séries em ${topMuscle.name}` : undefined}
@@ -221,7 +224,7 @@ export default function GymDashboard() {
                 legend={[{ label: 'Séries no período', color: 'var(--gym)' }]}
                 height={192}
               >
-                <Bar data={muscleChartData} options={{ ...baseChartOptions, indexAxis: 'y', scales: darkScalesHorizontal }} />
+                <Bar data={muscleChartData} options={{ ...baseChartOptions, animation: barGrowAnimation(muscleReveal.animate), indexAxis: 'y', scales: darkScalesHorizontal }} />
               </ChartFrame>
             )}
           </div>

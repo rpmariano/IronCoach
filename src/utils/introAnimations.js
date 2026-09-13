@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { prefersReducedMotion } from './coachBubbles';
 
 /**
+ * NOTA 2026-09-13: os ecrãs já não usam `useIntroAnimation` — a regra "uma
+ * vez por sessão, à montagem" fazia as animações correrem fora do ecrã e
+ * nunca se verem. Passaram a `useRevealAnimation` (animar quando se vê, e
+ * outra vez ao voltar ao separador). Ficam aqui os tempos partilhados, o
+ * `barGrowAnimation` e o hook antigo, que continua testado.
+ *
  * "Uma vez por sessão" — ponto 9 do redesenho 6c.
  *
  * Do ficheiro de animações (`design/IronCoach - Animacoes.dc.html`, painel
