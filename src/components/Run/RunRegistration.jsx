@@ -29,6 +29,7 @@ import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { isRacePlanItem } from '../../utils/homeModels';
 
@@ -675,6 +676,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
   }, { isDirty: isFormDirty });
+
+  /* As fotos do rascunho guardam-se à parte, em IndexedDB
+     (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
+     (relatado 2026-09-13). Só num registo novo: a editar, as fotos já
+     gravadas voltam do servidor. Restaurá-las marca o formulário como
+     alterado, para o aviso de saída as proteger. */
+  const draftMediaKey = runIdToEdit ? null : draftStorageKey;
+  usePersistedDraftMedia(draftMediaKey, 'runPhotos', runPhotos, (v) => { setRunPhotos(v); setIsFormDirty(true); });
+  usePersistedDraftMedia(draftMediaKey, 'racePhotos', racePhotos, (v) => { setRacePhotos(v); setIsFormDirty(true); });
+  usePersistedDraftMedia(draftMediaKey, 'diploma', diploma, (v) => { setDiploma(v); setIsFormDirty(true); });
+  usePersistedDraftMedia(draftMediaKey, 'medal', medal, (v) => { setMedal(v); setIsFormDirty(true); });
 
   // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit

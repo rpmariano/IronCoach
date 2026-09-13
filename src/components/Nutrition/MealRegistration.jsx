@@ -15,6 +15,7 @@ import SectionLabel from '../shared/SectionLabel';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -250,12 +251,18 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
-  // picker não é restaurável depois de recarregar, e não são tipicamente o
-  // que se está a meio de escrever quando se é interrompido.
+  // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
+  // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
     date, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
   }, { isDirty: isFormDirty });
+
+  /* As fotos do rascunho guardam-se à parte, em IndexedDB
+     (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
+     (relatado 2026-09-13). Só num registo novo: a editar, as fotos já
+     gravadas voltam do servidor. Restaurá-las marca o formulário como
+     alterado, para o aviso de saída as proteger. */
+  usePersistedDraftMedia(mealIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
   // Regenera a análise se a data, alimentos ou observações mudaram
   const needsReanalysis = isEditing

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
@@ -375,6 +375,12 @@ export default function App() {
   const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
+  /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
+     ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
+     MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
+     Tratá-lo como um login novo punha o ecrã de carregamento e desmontava
+     tudo — um registo a meio perdia as fotos (relatado 2026-09-13). */
+  const loadedUserIdRef = useRef(null);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -435,6 +441,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
       if (existingSession?.user) {
         setSession(existingSession);
+        loadedUserIdRef.current = existingSession.user.id;
         loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
@@ -478,14 +485,20 @@ export default function App() {
         // um instante, um atleta com dados parecia "sem registos" — o
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
         // carregam, é o loader que se vê; só no SIGNED_IN, para o refresh do
-        // token (TOKEN_REFRESHED) não piscar a app de hora a hora.
-        if (_event === 'SIGNED_IN') {
+        // token (TOKEN_REFRESHED) não piscar a app de hora a hora — e só
+        // quando é outro utilizador: o SIGNED_IN que chega ao voltar à app
+        // traz o mesmo, e aí os dados atualizam-se por baixo sem desmontar
+        // o ecrã aberto.
+        const sameUser = loadedUserIdRef.current === newSession.user.id;
+        loadedUserIdRef.current = newSession.user.id;
+        if (_event === 'SIGNED_IN' && !sameUser) {
           setIsInitializing(true);
           Promise.resolve(loadInitialData(newSession.user.id)).finally(() => setIsInitializing(false));
         } else {
           loadInitialData(newSession.user.id);
         }
       } else if (_event === 'SIGNED_OUT') {
+        loadedUserIdRef.current = null;
         setSession(null);
       }
     });
