@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { prefersReducedMotion } from './coachBubbles';
 
 /**
@@ -35,11 +35,18 @@ export const REVEAL_MIN_VISIBLE_RATIO = 0.3;
 const THRESHOLDS = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1];
 
 export function useRevealAnimation({ enabled = true } = {}) {
-  const [node, setNode] = useState(null);
-  const ref = useCallback((el) => setNode(el), []);
-
   const supported = typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
   const active = enabled && supported && !prefersReducedMotion();
+
+  // O ref só guarda o elemento quando há o que observar. Guardá-lo sempre
+  // forçava um segundo render logo a seguir à montagem — inofensivo no
+  // browser, mas no jsdom o Chart.js tentava atualizar um canvas dado como
+  // desligado e rebentava (NutritionDashboard.test, 2026-09-13). Inativo,
+  // o componente fica exatamente como era.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const [node, setNode] = useState(null);
+  const ref = useCallback((el) => { if (activeRef.current) setNode(el); }, []);
 
   const [state, setState] = useState(() => ({ shown: !active, play: 0 }));
 
