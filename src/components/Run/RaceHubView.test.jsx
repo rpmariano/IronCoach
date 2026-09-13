@@ -64,15 +64,14 @@ describe('RaceHubView — hub depois da prova', () => {
   /* O resultado edita-se no registo da corrida (pedido 2026-09-13): o hub
      reabre-o em modo prova pelo store, com a corrida ligada. */
   it('"Editar o registo" reabre o registo da corrida em modo prova', () => {
-    const originais = { openRaceRun: useAppStore.getState().openRaceRun, setEditingRaceId: useAppStore.getState().setEditingRaceId };
+    const originais = { openRaceRun: useAppStore.getState().openRaceRun };
     const openRaceRun = vi.fn();
-    const setEditingRaceId = vi.fn();
-    useAppStore.setState({ openRaceRun, setEditingRaceId });
+    useAppStore.setState({ openRaceRun });
     try {
       render(<RaceHubView race={RACE} runs={[{ ...RACE_RUN, race_id: 'race-1' }]} profile={PROFILE} />);
 
       fireEvent.click(screen.getByTestId('race-hub-edit-run'));
-      expect(setEditingRaceId).toHaveBeenCalledWith(null);
+      // openRaceRun fecha a prova em edição por si (store).
       expect(openRaceRun).toHaveBeenCalledWith('race-1', 'run-1');
     } finally {
       useAppStore.setState(originais); // o store é partilhado pelos testes seguintes

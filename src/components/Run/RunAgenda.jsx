@@ -283,11 +283,11 @@ export default function RunAgenda({ onClose }) {
 
   // Fechar/recarregar o separador do browser também avisa.
   useEffect(() => {
-    if (!isFormOpen || !isDirty) return;
+    if (!isFormOpen || !isDirty || detailsLocked) return;
     const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [isFormOpen, isDirty]);
+  }, [isFormOpen, isDirty, detailsLocked]);
 
   // Carrega a prova existente para o formulário, ou limpa se for nova — a
   // não ser que haja um rascunho por gravar guardado localmente (ver
@@ -355,7 +355,13 @@ export default function RunAgenda({ onClose }) {
           coach_balance: ev.coach_balance || null,
           coach_balance_at: ev.coach_balance_at || null,
         };
-        setDraft(persisted ? { ...canonical, ...persisted } : canonical);
+        // Prova concluída: os detalhes estão trancados (detailsLocked), por
+        // isso um rascunho por gravar já não tem onde ir — descarta-se, em
+        // vez de ficar invisível a marcar a prova como "suja" para sempre
+        // (revisão pré-deploy 2026-09-13).
+        const locked = ev.status === 'concluida';
+        if (locked && persisted) clearPersistedFormDraft(draftStorageKey);
+        setDraft(persisted && !locked ? { ...canonical, ...persisted } : canonical);
         // A prova já gravada tem o nível "respondido" para a categoria com
         // que foi criada — trata-o como confirmado à partida. Só passa a
         // "por reconfirmar" (experienceLevelStale) se o próprio atleta
@@ -365,7 +371,7 @@ export default function RunAgenda({ onClose }) {
             ? raceLevelCategoryKey(ev.race_type, parseFormNumber(ev.distance_km), parseFormNumber(ev.elevation_gain_m))
             : null
         );
-        setIsDirty(!!persisted);
+        setIsDirty(!!persisted && !locked);
         setActivePage('hub');
       }
     } else {
@@ -385,7 +391,7 @@ export default function RunAgenda({ onClose }) {
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar
   // — sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  usePersistedFormDraft(draftStorageKey, draft, { isDirty });
+  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked });
 
   const handleCloseForm = () => {
     // Funil único por onde passa toda a saída "intencional" desta sessão

@@ -690,7 +690,10 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
   });
 
-  it('uma prova já concluída abre só com o hub e "Eliminar"', () => {
+  it('uma prova já concluída abre só com o hub e "Eliminar", e descarta um rascunho antigo dos detalhes', () => {
+    // Um rascunho por gravar de antes da conclusão já não tem onde ir: não
+    // pode ficar invisível a marcar a prova como "suja" (revisão pré-deploy).
+    localStorage.setItem('ironcoach:prova-rascunho:race-1', JSON.stringify({ notes: 'Levar géis extra.' }));
     useAppStore.setState({
       raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'concluida' }],
       editingRaceId: 'race-1',
@@ -701,6 +704,10 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.queryByRole('button', { name: /^Treino e Evolução$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
+    // O rascunho antigo foi descartado: fechar não avisa, e o localStorage ficou limpo.
+    expect(localStorage.getItem('ironcoach:prova-rascunho:race-1')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
   });
 
   it('"Obter informação do site" mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {

@@ -12,4 +12,4 @@
 alter table public.meals
   add column if not exists meal_time time;
 comment on column public.meals.meal_time is
-  'Hora local a que a refeição foi tomada (opcional). Ordena o dia e entra na análise da Carol.';
+  'Hora local a que a refeição foi tomada (opcional). Ordena o dia no Calendário; a Carol passa a lê-la num passo seguinte.';

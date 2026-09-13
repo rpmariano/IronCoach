@@ -69,8 +69,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   /* Hora da refeição ('HH:MM', hora local; meals.meal_time). Numa refeição
      nova parte da hora atual — a mesma regra que já adivinha o tipo pela
      hora — e o atleta corrige se registou depois. A editar, a que está
-     gravada. É ela que ordena o dia no Calendário e que dá à Carol a
-     que horas se comeu antes da prova (pedido 2026-09-13). */
+     gravada. É ela que ordena o dia no Calendário; dá-la à Carol (a que
+     horas se comeu antes da prova) é o passo seguinte, depois de a coluna
+     existir em produção (pedido 2026-09-13). */
   const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : format(new Date(), 'HH:mm')));
   const [mealType, setMealType] = useState(getDefaultMealType());
   const [notes, setNotes] = useState('');
@@ -573,11 +574,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             />
           </div>
           <div className="min-w-0">
-            <label htmlFor="mr-hora-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
+            <label htmlFor="mr-hora-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora da refeição</label>
             <input
               id="mr-hora-da-refeicao"
               type="time"
-              aria-label="Hora da refeição"
               value={mealTime}
               onChange={e => { setMealTime(e.target.value); setIsFormDirty(true); }}
               className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"

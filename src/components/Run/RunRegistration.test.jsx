@@ -1035,6 +1035,21 @@ describe('RunRegistration — modo prova', () => {
   /* A hora do modo prova não se escreve aqui (o bloco "A prova" é só de
      leitura): herda-se da partida marcada na agenda — specs/plano-de-prova.md,
      "A véspera e a hora". */
+  /* "Editar o registo" do hub numa corrida ligada só pela data (sem race_id):
+     tem de abrir em modo prova na mesma (revisão pré-deploy 2026-09-13). */
+  it('a editar pelo hub, uma corrida ligada só pela data abre em modo prova', () => {
+    useAppStore.setState({
+      profile: PROFILE, shoes: [], raceEvents: [{ ...PROVA, status: 'concluida' }],
+      runs: [{ id: 'run-d', kind: 'competicao', date: PROVA.date, name: 'Meia de Lisboa', distance_km: 21.1, duration_seconds: 6822, details: { official_time_seconds: 6800 } }],
+      runRacePrefill: { raceId: 'race-1' },
+    });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-d" />);
+    expect(screen.getByText('Editar o registo da prova')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tempo oficial/)).toHaveValue('1:53:20');
+    // O prefill foi consumido: o "Nova corrida" seguinte não herda a prova.
+    expect(useAppStore.getState().runRacePrefill).toBeNull();
+  });
+
   it('a corrida herda a hora de partida da prova, num campo à vista que se pode corrigir', async () => {
     useAppStore.setState({
       profile: PROFILE, runs: [], shoes: [],

@@ -360,11 +360,8 @@ export default function RaceHubView({
     // ecrã de registar, com os campos preenchidos) — depois da conclusão é
     // isto que se muda, não os detalhes de criação da prova (pedido
     // 2026-09-13). O store já sabe reabrir um registo pela prova.
-    const openRunEdit = () => {
-      const store = useAppStore.getState();
-      store.setEditingRaceId(null);
-      store.openRaceRun(race.id, raceRun.id);
-    };
+    // openRaceRun já fecha a prova em edição (editingRaceId) por si.
+    const openRunEdit = () => useAppStore.getState().openRaceRun(race.id, raceRun.id);
     const memoriesUserId = useAppStore.getState().profile?.id || profile?.id || null;
 
     return (
