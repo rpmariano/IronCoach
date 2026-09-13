@@ -5,7 +5,7 @@ import { useElasticPillIndicator, SUBNAV_PILL_DURATION } from '../../utils/useEl
    design-system/components/navigation/SubNav.jsx (ponto 4 do handoff).
    Usado nos cinco separadores do Dashboard e nos quatro do Perfil.
 
-   A pílula corre a 320ms (--dur-pill-sub) em vez dos 420+130·distância da
+   A pílula corre a 480ms (--dur-pill-sub) em vez dos 650+170·distância da
    nav inferior: auditoria, achado 5 ("A minhoca em sete sítios") — na nav é
    assinatura, num subnav que se troca quatro vezes seguidas para comparar
    módulos seria espera.

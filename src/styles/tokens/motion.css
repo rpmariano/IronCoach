@@ -6,13 +6,13 @@
 
   --dur-tap: 120ms;
   --dur-tab-content: 280ms;     /* conteúdo a seguir a pílula */
-  --dur-pill-sub: 320ms;        /* minhoca nos subnavs */
+  --dur-pill-sub: 480ms;        /* minhoca nos subnavs (era 320; abrandada 2026-09-13) */
   --dur-sheet-open: 340ms;
   --dur-sheet-close: 240ms;
   --dur-confirm: 420ms;         /* impulso do check */
   --dur-bars: 550ms;            /* barras a crescer, stagger 60ms */
   --dur-confirm-exit: 900ms;
-  --dur-pill-nav-max: 950ms;    /* minhoca na nav inferior: 420 + 130·distância, teto 950 */
+  --dur-pill-nav-max: 1300ms;   /* minhoca na nav inferior: 650 + 170·distância, teto 1300 (era 420+130·d, teto 950) */
   --dur-rings: 1100ms;          /* anéis a desenhar, stagger 80ms */
   --dur-count: 1400ms;          /* números a contar */
   --dur-trail: 1600ms;          /* trilho do macrociclo */

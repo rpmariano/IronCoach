@@ -3,13 +3,16 @@ import { prefersReducedMotion } from './coachBubbles';
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-// "back" com overshoot — a pílula ultrapassa levemente o alvo antes de
-// assentar, o toque elástico ("slime") em vez de um travão seco. O overshoot
-// é parametrizável (ver OVERSHOOT_DEFAULT) mas o handoff fixa 1.70158.
-export const OVERSHOOT_DEFAULT = 1.70158;
-// 45% do tempo a esticar até cobrir origem e destino, 55% a contrair no
-// destino — handoff, "Interactions & Behavior", parágrafo "Minhoca".
-export const STRETCH_RATIO_DEFAULT = 0.45;
+// "back" com overshoot — a pílula ultrapassa o alvo antes de assentar, o
+// toque elástico ("slime") em vez de um travão seco. O handoff fixava
+// 1.70158 (~10% de overshoot); a 2026-09-13 o utilizador achou a minhoca
+// "demasiado rápida" e pediu um efeito mais elástico e retardado — subiu
+// para 2.2 (~13%), e a fase de contrair ganhou tempo (ver STRETCH_RATIO).
+export const OVERSHOOT_DEFAULT = 2.2;
+// 40% do tempo a esticar até cobrir origem e destino, 60% a contrair no
+// destino com o overshoot — era 45/55 no handoff; a contração é a parte
+// elástica, por isso foi ela que ganhou o tempo extra.
+export const STRETCH_RATIO_DEFAULT = 0.40;
 
 const makeEaseOutBack = (overshoot) => {
   const c1 = overshoot;
@@ -17,18 +20,19 @@ const makeEaseOutBack = (overshoot) => {
   return (t) => 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 };
 
-/** Duração da minhoca na nav inferior: `min(950, 420 + 130·distância)` ms,
+/** Duração da minhoca na nav inferior: `min(1300, 650 + 170·distância)` ms,
  *  com a distância contada em separadores (não em pixéis). Um salto de um
- *  separador demora 550ms; o mais longo dos quatro (Início → Coach) 810ms; o
- *  teto de 950ms (`--dur-pill-nav-max`) existe para nunca virar espera. */
+ *  separador demora 820ms; o mais longo dos quatro (Início → Coach) 1160ms;
+ *  o teto de 1300ms (`--dur-pill-nav-max`) existe para nunca virar espera.
+ *  (Era `min(950, 420 + 130·d)` no handoff — abrandada a 2026-09-13.) */
 export const navPillDuration = (fromIndex, toIndex) =>
-  Math.min(950, 420 + 130 * Math.abs(toIndex - fromIndex));
+  Math.min(1300, 650 + 170 * Math.abs(toIndex - fromIndex));
 
-/** Duração da minhoca nos subnavs — 320ms fixos (`--dur-pill-sub`).
- *  Auditoria, achado 5 ("A minhoca em sete sítios"): os 950ms são assinatura
- *  na nav, mas num subnav que o atleta troca quatro vezes seguidas para
- *  comparar módulos tornam-se espera. */
-export const SUBNAV_PILL_DURATION = 320;
+/** Duração da minhoca nos subnavs — 480ms fixos (`--dur-pill-sub`; eram 320).
+ *  Auditoria, achado 5 ("A minhoca em sete sítios"): a duração longa é
+ *  assinatura na nav, mas num subnav que o atleta troca quatro vezes seguidas
+ *  para comparar módulos tornar-se-ia espera — por isso fica bem abaixo. */
+export const SUBNAV_PILL_DURATION = 480;
 export const subPillDuration = () => SUBNAV_PILL_DURATION;
 
 /** Duração quando o sistema pede menos movimento (motion.css leva todos os
@@ -167,7 +171,7 @@ export function useElasticPillIndicator(containerRef, activeIndex, options = {})
       const p = Math.min(1, (now - start) / total);
       let left, right;
       if (p < stretch) {
-        // Fase de esticar (0–45% do trajeto no tempo).
+        // Fase de esticar (0–40% do trajeto no tempo).
         const g = easeOutCubic(p / stretch);
         left = lerp(fromRect.left, spanLeft, g);
         right = lerp(fromRect.left + fromRect.width, spanRight, g);
