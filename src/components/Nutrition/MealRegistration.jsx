@@ -16,6 +16,7 @@ import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
+import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -66,14 +67,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  /* Hora da refeição ('HH:MM', hora local; meals.meal_time). Numa refeição
-     nova parte da hora atual — a mesma regra que já adivinha o tipo pela
-     hora — e o atleta corrige se registou depois. A editar, a que está
-     gravada. É ela que ordena o dia no Calendário; dá-la à Carol (a que
-     horas se comeu antes da prova) é o passo seguinte, depois de a coluna
-     existir em produção (pedido 2026-09-13). */
-  const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : format(new Date(), 'HH:mm')));
+  /* Hora da refeição ('HH:MM', hora local; meals.meal_time) — a hora a que
+     se COMEU, não a de introdução na app (pedido 2026-09-13): numa refeição
+     nova é SUGERIDA pelo tipo (almoço → 13:00, dayOrder.mealNominalTime) e
+     acompanha o tipo enquanto o atleta não lhe tocar; tocada, fica. A
+     editar, a que está gravada. É ela que ordena o dia no Calendário e que
+     diz à Carol a que horas se comeu. */
   const [mealType, setMealType] = useState(getDefaultMealType());
+  const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : mealNominalTime(getDefaultMealType())));
+  const mealTimeTouchedRef = useRef(!!mealIdToEdit);
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
   // Corrida: só um dos dois blocos fica visível/clicável a cada vez.
@@ -250,7 +252,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
     if (persisted.date) setDate(persisted.date);
-    if (persisted.mealTime !== undefined) setMealTime(persisted.mealTime);
+    if (persisted.mealTime !== undefined) { setMealTime(persisted.mealTime); mealTimeTouchedRef.current = true; }
     if (persisted.mealType) setMealType(persisted.mealType);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
     if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
@@ -579,7 +581,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               id="mr-hora-da-refeicao"
               type="time"
               value={mealTime}
-              onChange={e => { setMealTime(e.target.value); setIsFormDirty(true); }}
+              onChange={e => { mealTimeTouchedRef.current = true; setMealTime(e.target.value); setIsFormDirty(true); }}
               className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
             />
           </div>
@@ -593,7 +595,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 key={t.key}
                 active={isActive}
                 variant="nutrition"
-                onClick={() => { setMealType(t.key); setIsFormDirty(true); }}
+                onClick={() => {
+                  setMealType(t.key);
+                  // A hora sugerida segue o tipo enquanto o atleta não a tocar.
+                  if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(t.key));
+                  setIsFormDirty(true);
+                }}
                 className="px-4 py-1.5"
                 type="button"
               >

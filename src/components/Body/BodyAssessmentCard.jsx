@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { normalizeStartTime } from '../../utils/startTime';
 import { ChevronDown, ChevronUp, ScanLine, Trash2, MessageSquare, Scale, Droplet, Activity, Award, PencilLine } from 'lucide-react';
 import { BODY_METRICS } from '../../utils/body';
 import { supabase } from '../../lib/supabase';
@@ -72,7 +73,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
               Avaliação Corporal
             </h4>
             <p className="text-xs text-[var(--text-3)] font-medium">
-              {formattedDate}
+              {[formattedDate, normalizeStartTime(assessment.assessment_time)].filter(Boolean).join(' · ')}
             </p>
           </div>
         </div>

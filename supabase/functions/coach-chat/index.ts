@@ -1814,6 +1814,31 @@ export function computeMealHabits(meals: any[]): Record<string, { name: string; 
   return result;
 }
 
+// A hora habitual de cada refeição (mediana de meals.meal_time por tipo, com
+// pelo menos 2 registos com hora) — é o que deixa a Carol dizer "costumas
+// almoçar às 13:15" e encaixar o pré-treino e a véspera da prova em horas
+// reais (pedido 2026-09-13). Sem hora nos registos, não inventa.
+// deno-lint-ignore no-explicit-any
+export function computeMealTypicalTimes(meals: any[]): Record<string, string> {
+  const minutesByType: Record<string, number[]> = {};
+  for (const meal of meals || []) {
+    const mealType = meal?.meal_type;
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(meal?.meal_time ?? "").trim());
+    if (!mealType || !m) continue;
+    const minutes = Number(m[1]) * 60 + Number(m[2]);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes >= 1440) continue;
+    (minutesByType[mealType] ||= []).push(minutes);
+  }
+  const result: Record<string, string> = {};
+  for (const [mealType, list] of Object.entries(minutesByType)) {
+    if (list.length < 2) continue;
+    const sorted = [...list].sort((a, b) => a - b);
+    const median = sorted[Math.floor((sorted.length - 1) / 2)];
+    result[mealType] = `${String(Math.floor(median / 60)).padStart(2, "0")}:${String(median % 60).padStart(2, "0")}`;
+  }
+  return result;
+}
+
 // deno-lint-ignore no-explicit-any
 function buildMealHabitsPanel(meals: any[], windowDays: number): string | null {
   // Poucos dias com registo → qualquer "padrão" seria ruído, não hábito
@@ -1823,19 +1848,25 @@ function buildMealHabitsPanel(meals: any[], windowDays: number): string | null {
   if (daysWithMeals < MIN_DAYS_FOR_HABITS) return null;
 
   const habits = computeMealHabits(meals);
+  const typicalTimes = computeMealTypicalTimes(meals);
   const entries = Object.entries(habits);
-  if (entries.length === 0) return null;
+  if (entries.length === 0 && Object.keys(typicalTimes).length === 0) return null;
 
   const lines = entries.map(
     ([mealType, foods]) =>
-      `- ${MEAL_TYPE_LABELS_PT[mealType] || mealType}: ${foods.map((f) => `${f.name} (${f.count}x)`).join(", ")}`,
+      `- ${MEAL_TYPE_LABELS_PT[mealType] || mealType}${typicalTimes[mealType] ? ` (costuma ser às ${typicalTimes[mealType]})` : ""}: ${foods.map((f) => `${f.name} (${f.count}x)`).join(", ")}`,
   );
+  // Tipos com hora habitual mas sem alimento repetido: a hora vale por si.
+  for (const [mealType, time] of Object.entries(typicalTimes)) {
+    if (!habits[mealType]) lines.push(`- ${MEAL_TYPE_LABELS_PT[mealType] || mealType}: costuma ser às ${time}`);
+  }
   return (
     `HÁBITOS ALIMENTARES REAIS (últimos ${windowDays} dias, ${daysWithMeals} dias com registo) — usa isto ` +
     `para escolher QUE alimento dentro de cada categoria nas tuas sugestões, aproximando-as do que o atleta ` +
     `já come e gosta, em vez de exemplos genéricos (ex.: se ele come muito atum e quase nunca peixe fresco, ` +
     `sugere atum). Isto NUNCA tem precedência sobre metas de macros nem restrições alimentares — só decide o ` +
-    `QUÊ dentro do que já é adequado:\n${lines.join("\n")}`
+    `QUÊ dentro do que já é adequado. As horas habituais são as horas a que ele realmente come — usa-as para ` +
+    `encaixar o pré-treino, a recuperação e a véspera da prova em horas reais:\n${lines.join("\n")}`
   );
 }
 
@@ -5033,7 +5064,7 @@ async function handler(req: Request): Promise<Response> {
     const { data: habitMeals, error: err_habitMeals } = await sb
       .from("meals")
       .select(
-        "date, meal_type, meal_items(name, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)",
+        "date, meal_type, meal_time, meal_items(name, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)",
       )
       .eq("user_id", userId)
       .gte("date", habitsStartISO)

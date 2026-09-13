@@ -98,16 +98,23 @@ plano no hub pede-a. A hora dos treinos (corrida e ginásio) entra nas
 linhas que a Carol lê ("às 07:30"): treinos tarde a cortar o sono, e na
 última semana o conselho de treinar à hora da prova.
 
-**Onde a hora se vê e se muda (2026-09-13).** Nos três registos ao lado da
-data: "Hora" na corrida e no ginásio, "Hora de partida" na prova (agenda) e
-também no registo em modo prova ("O resultado"), pré-preenchida com a da
-agenda mas da corrida — a partida real pode não ser a anunciada; até aqui a
-herança era invisível. As refeições têm `meals.meal_time` (migração
-`20260913220000_meal_time.sql`; "Hora" ao lado da data, parte da hora atual
-numa refeição nova, gravada por update à parte como as outras); sem ela, o
-tipo diz a hora habitual (pequeno-almoço 08:00, lanche da manhã 11:00,
-almoço 13:00, lanche 17:00, jantar 20:00, ceia 23:00). O Calendário ordena o
-dia pela hora, entre
+**Onde a hora se vê e se muda (2026-09-13).** A regra do utilizador: a hora
+é a da OCORRÊNCIA, nunca a de introdução na app. Corrida, ginásio e
+avaliação corporal têm o campo ao lado da data, vazio por omissão ("Hora",
+"Hora da avaliação"; `body_assessments.assessment_time`, migração
+`20260913223000_body_assessment_time.sql`). A prova tem "Hora de partida"
+na agenda e também no registo em modo prova ("O resultado"), pré-preenchida
+com a da agenda mas da corrida — a partida real pode não ser a anunciada.
+A refeição tem `meals.meal_time` (migração `20260913220000_meal_time.sql`):
+a hora é SUGERIDA pelo tipo escolhido (pequeno-almoço 08:00, lanche da
+manhã 11:00, almoço 13:00, lanche 17:00, jantar 20:00, ceia 23:00), segue o
+tipo enquanto o atleta não lhe tocar, e muda-se à vontade. Todas se gravam
+por update à parte (as analyze-* não as conhecem). A Carol conhece-as: o
+coach-chat lista corridas e treinos com a hora e, nos hábitos alimentares,
+a hora habitual de cada refeição (mediana de `meal_time`,
+`computeMealTypicalTimes`); o coach-daily-summary recebe `start_time` das
+corridas e treinos, "Almoço às 13:10" nas refeições de hoje e a hora das
+avaliações. O Calendário ordena o dia pela hora, entre
 tipos (`src/utils/dayOrder.js`): avaliação corporal de manhã, depois o resto
 pela hora; sem hora, no fim.
 

@@ -13,6 +13,7 @@ import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 
 const BODY_METRICS = [
@@ -51,6 +52,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(todayISO());
+  /* Hora da avaliação ('HH:MM', hora local; body_assessments.assessment_time)
+     — a hora a que a pesagem foi feita, não a de introdução na app, e sem
+     valor por omissão (pedido 2026-09-13). Ordena o dia no Calendário e
+     entra na análise da Carol. */
+  const [assessmentTime, setAssessmentTime] = useState('');
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
   // Corrida e da Nutrição: só um dos dois blocos fica visível/clicável a
@@ -186,6 +192,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (a[m.key] !== null && a[m.key] !== undefined) canonicalMetrics[m.key] = String(a[m.key]);
     }
     setDate(persisted?.date ?? (a.date || todayISO()));
+    // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
+    setAssessmentTime(persisted?.assessmentTime ?? startTimeInputValue(a.assessment_time));
     setNotes(persisted?.notes ?? (a.notes || ''));
     setMetrics(persisted?.metrics ?? canonicalMetrics);
     setEntryMethod(persisted?.entryMethod ?? 'manual');
@@ -210,6 +218,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
     if (persisted.date) setDate(persisted.date);
+    if (persisted.assessmentTime !== undefined) setAssessmentTime(persisted.assessmentTime);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
     if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
     if (persisted.metrics) setMetrics(persisted.metrics);
@@ -220,7 +229,25 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
-  usePersistedFormDraft(draftStorageKey, { date, notes, metrics, entryMethod }, { isDirty: isFormDirty });
+  usePersistedFormDraft(draftStorageKey, { date, assessmentTime, notes, metrics, entryMethod }, { isDirty: isFormDirty });
+
+  /* A hora grava-se por update à parte, como a da corrida e a da refeição:
+     quem insere a linha é a analyze-body, e acrescentar-lhe um campo obriga
+     a mexer numa função que faz deploy em produção a cada push a `dev`. Uma
+     coluna só, sob a RLS "own rows". Falhar aqui não desfaz a avaliação. */
+  const persistAssessmentTime = async (assessment) => {
+    if (!assessment?.id) return assessment;
+    const value = normalizeStartTime(assessmentTime);
+    if (value === normalizeStartTime(assessment.assessment_time)) return assessment;
+    try {
+      const { error } = await supabase.from('body_assessments').update({ assessment_time: value }).eq('id', assessment.id);
+      if (error) throw error;
+      return { ...assessment, assessment_time: value };
+    } catch (err) {
+      console.warn('Hora da avaliação não gravada', err);
+      return assessment;
+    }
+  };
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
      (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
@@ -280,6 +307,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         savedAssessment = currentAssessment ? { ...currentAssessment, date } : { id: assessmentIdToEdit, date };
       }
 
+      savedAssessment = await persistAssessmentTime(savedAssessment);
       if (profile?.id) await loadInitialData(profile.id);
       finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
     } catch (err) {
@@ -331,8 +359,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setBodyAssessments([data.assessment, ...bodyAssessments]);
-      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
+      const saved = await persistAssessmentTime(data.assessment);
+      setBodyAssessments([saved, ...bodyAssessments]);
+      finishCreateAndGoToCalendar(saved, 'Avaliação registada');
     }
   };
 
@@ -365,8 +394,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      setBodyAssessments([data.assessment, ...bodyAssessments]);
-      finishCreateAndGoToCalendar(data?.assessment, 'Avaliação registada');
+      const saved = await persistAssessmentTime(data.assessment);
+      setBodyAssessments([saved, ...bodyAssessments]);
+      finishCreateAndGoToCalendar(saved, 'Avaliação registada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
@@ -456,16 +486,29 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           aria-busy={isAnalyzing || undefined}
           style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
+        {/* Data · Hora — a hora a que a pesagem foi feita, opcional. */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          <input
-            type="date"
-            aria-label="Data da avaliação"
-            value={date}
-            max={todayISO()}
-            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-corpo-to)]"
-          />
-          <div className="flex items-center justify-center text-[11px] text-[var(--text-3)]">Data da pesagem</div>
+          <div className="min-w-0">
+            <label htmlFor="br-data-da-avaliacao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da avaliação</label>
+            <input
+              id="br-data-da-avaliacao"
+              type="date"
+              value={date}
+              max={todayISO()}
+              onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-corpo-to)]"
+            />
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="br-hora-da-avaliacao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora da avaliação</label>
+            <input
+              id="br-hora-da-avaliacao"
+              type="time"
+              value={assessmentTime}
+              onChange={e => { setAssessmentTime(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-corpo-to)]"
+            />
+          </div>
         </div>
 
         {/* Como queres registar? — escondido a editar: editar é sempre pelos

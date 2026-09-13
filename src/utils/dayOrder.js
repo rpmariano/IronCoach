@@ -4,9 +4,9 @@ import { normalizeStartTime } from './startTime';
    não por tipo. As corridas e os treinos de ginásio têm `start_time`
    (specs/plano-de-prova.md, "A véspera e a hora"); as refeições têm
    `meal_time` desde 2026-09-13 e, sem ela (registos antigos), o tipo diz a
-   que horas costumam ser; a avaliação corporal
-   pesa-se de manhã, em jejum. O que não tem hora nenhuma vai para o fim,
-   pela ordem de sempre. */
+   que horas costumam ser; a avaliação corporal tem `assessment_time` e, sem
+   ela, pesa-se de manhã, em jejum. O que não tem hora nenhuma vai para o
+   fim, pela ordem de sempre. */
 
 /** Hora habitual de cada tipo de refeição, em minutos desde a meia-noite —
  *  a mesma janela que `getDefaultMealType` usa para adivinhar o tipo pela
@@ -20,6 +20,14 @@ export const MEAL_NOMINAL_MINUTES = {
   ceia: 23 * 60,
 };
 
+/** A hora habitual do tipo de refeição como 'HH:MM' — é o que o registo
+ *  sugere ao escolher o tipo (o atleta muda se comeu a outra hora). */
+export function mealNominalTime(mealType) {
+  const minutes = MEAL_NOMINAL_MINUTES[mealType];
+  if (minutes === undefined) return '';
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+}
+
 /** 'HH:MM[:SS]' → minutos desde a meia-noite, ou null sem hora. */
 export function minutesOfDay(value) {
   const time = normalizeStartTime(value);
@@ -31,7 +39,7 @@ export function minutesOfDay(value) {
 export function dayRecordMinutes(kind, item) {
   if (kind === 'run' || kind === 'gym') return minutesOfDay(item?.start_time);
   if (kind === 'meal') return minutesOfDay(item?.meal_time) ?? MEAL_NOMINAL_MINUTES[item?.meal_type] ?? null;
-  if (kind === 'body') return 0;
+  if (kind === 'body') return minutesOfDay(item?.assessment_time) ?? 0;
   return null;
 }
 

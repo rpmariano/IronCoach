@@ -70,14 +70,22 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
     expect(body.notes).toBe('Big Mac');
   });
 
-  /* A hora da refeição (pedido 2026-09-13): parte da hora atual, corrige-se,
-     e grava-se por update à parte — a analyze-meal não a conhece. */
-  it('a hora parte da atual, e a escrita grava-se em meals.meal_time a seguir à análise', async () => {
+  /* A hora da refeição (pedido 2026-09-13): é a hora a que se comeu, não a
+     de introdução — sugerida pelo tipo, segue o tipo até ser tocada, e
+     grava-se por update à parte (a analyze-meal não a conhece). */
+  it('a hora é sugerida pelo tipo, segue-o até ser tocada, e grava-se em meals.meal_time a seguir à análise', async () => {
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
     mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
     render(<MealRegistration onClose={onClose} />);
-    expect(screen.getByLabelText('Hora da refeição').value).toMatch(/^\d{2}:\d{2}$/);
+    fireEvent.click(screen.getByRole('button', { name: /^Jantar$/i }));
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('20:00');
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('13:00');
     fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '13:10' } });
+    // Tocada, deixa de seguir o tipo.
+    fireEvent.click(screen.getByRole('button', { name: /^Jantar$/i }));
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('13:10');
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
