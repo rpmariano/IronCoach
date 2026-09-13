@@ -271,7 +271,10 @@ export function buildDailySummaryContext(params: {
     hoje_ate_agora: {
       // deno-lint-ignore no-explicit-any
       // "Almoço às 13:10" — a hora a que se comeu (meals.meal_time), quando existe.
-      refeicoes_registadas: (todayMeals || []).map((m: any) => `${MEAL_TYPE_LABELS[m.meal_type] || m.meal_type}${m.meal_time ? ` às ${hhmmOf(m.meal_time)}` : ""}`),
+      refeicoes_registadas: (todayMeals || []).map((m: any) => {
+        const hora = hhmmOf(m.meal_time);
+        return `${MEAL_TYPE_LABELS[m.meal_type] || m.meal_type}${hora ? ` às ${hora}` : ""}`;
+      }),
       calorias: Math.round(mealTotals.calories),
       proteina_g: Math.round(mealTotals.protein),
       hidratos_g: Math.round(mealTotals.carbs),

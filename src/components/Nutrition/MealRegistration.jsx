@@ -73,8 +73,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      acompanha o tipo enquanto o atleta não lhe tocar; tocada, fica. A
      editar, a que está gravada. É ela que ordena o dia no Calendário e que
      diz à Carol a que horas se comeu. */
-  const [mealType, setMealType] = useState(getDefaultMealType());
-  const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : mealNominalTime(getDefaultMealType())));
+  const [mealType, setMealType] = useState(getDefaultMealType);
+  const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : mealNominalTime(mealType)));
   const mealTimeTouchedRef = useRef(!!mealIdToEdit);
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da

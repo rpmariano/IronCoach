@@ -1860,6 +1860,13 @@ function buildMealHabitsPanel(meals: any[], windowDays: number): string | null {
   for (const [mealType, time] of Object.entries(typicalTimes)) {
     if (!habits[mealType]) lines.push(`- ${MEAL_TYPE_LABELS_PT[mealType] || mealType}: costuma ser às ${time}`);
   }
+  // Só horas, sem alimento repetido: o cabeçalho fala do que há.
+  if (entries.length === 0) {
+    return (
+      `HORAS HABITUAIS DAS REFEIÇÕES (últimos ${windowDays} dias, ${daysWithMeals} dias com registo) — as horas a que ` +
+      `ele realmente come; usa-as para encaixar o pré-treino, a recuperação e a véspera da prova em horas reais:\n${lines.join("\n")}`
+    );
+  }
   return (
     `HÁBITOS ALIMENTARES REAIS (últimos ${windowDays} dias, ${daysWithMeals} dias com registo) — usa isto ` +
     `para escolher QUE alimento dentro de cada categoria nas tuas sugestões, aproximando-as do que o atleta ` +
