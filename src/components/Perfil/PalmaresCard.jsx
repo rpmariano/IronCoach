@@ -7,12 +7,13 @@ import { computeAchievements, achievementsForRace, completedRaces } from '../../
 import { formatDuration } from '../../utils/run';
 import AchievementCard, { AchievementIcon } from '../shared/AchievementCard';
 import SectionLabel from '../shared/SectionLabel';
+import GlassCard from '../shared/GlassCard';
 import { Sheet } from '../shared/Sheet';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
 
-/* O Palmarés no topo do separador Pessoal (specs/gamificacao-provas.md §5,
-   opção B do canvas). Não é um separador novo: é o arquivo do que já
-   aconteceu, à cabeça do "quem sou", antes do nome e da idade.
+/* O Palmarés, no separador Provas (specs/gamificacao-provas.md §5). Nasceu
+   no topo do Perfil · Pessoal; a 2026-09-13 mudou-se para junto das provas
+   (opção A de "Onde vivem as provas"): é o arquivo delas, vive com elas.
 
    A linha das cinco conquistas lê-se de relance — cor quer dizer
    desbloqueada, cadeado quer dizer o caminho ainda por fazer. "Ver tudo"
@@ -54,7 +55,7 @@ export default function PalmaresCard({ onOpenRace }) {
   };
 
   return (
-    <div className="module-card-contrast" data-testid="palmares-card">
+    <GlassCard data-testid="palmares-card">
       <div className="flex items-center gap-2 mb-1">
         <Trophy size={16} style={{ color: 'var(--race)' }} />
         <h3 className="text-sm font-semibold">Palmarés</h3>
@@ -128,6 +129,6 @@ export default function PalmaresCard({ onOpenRace }) {
           )}
         </Sheet>
       )}
-    </div>
+    </GlassCard>
   );
 }

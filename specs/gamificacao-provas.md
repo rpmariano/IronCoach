@@ -9,7 +9,8 @@ memórias em `race_events`). Complementa `PRD.md` §3.4 e CAROL.md §7.
 
 A conquista é um momento, não um bloco fixo. Aparece onde o dia a seguir à
 prova se vive — o registo, o Início, a Carol — e arquiva-se num sítio só, o
-Palmarés do Perfil. Nunca compete com "o que faço hoje".
+Palmarés, que vive no separador Provas desde 2026-09-13 (antes no Perfil).
+Nunca compete com "o que faço hoje".
 
 ## As conquistas (calculadas dos dados, sem tabelas novas)
 
@@ -53,11 +54,12 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    4:04 abaixo do anterior". O prompt recebe as conquistas novas no contexto
    (é uma mudança em `coach-chat`, portanto produção: passo à parte, com o
    cuidado habitual).
-5. **Perfil · Pessoal (opção B)** — cartão "Palmarés" no topo do separador:
+5. **Separador Provas** (era Perfil · Pessoal, opção B, até 2026-09-13; ver
+   specs/prova-concluida.md §"Onde vivem as provas") — cartão "Palmarés":
    as conquistas em linha (44px cada, cor ou cadeado, rótulo curto) e "Ver
    tudo", que abre uma persiana (`Sheet`) com o resumo ("3 de 5 conquistas ·
    desde outubro de 2026"), a lista completa e as provas concluídas
-   (nome, data, tempo, ícones das conquistas). Sem separador novo.
+   (nome, data, tempo, ícones das conquistas).
 
 ## A Carol no balanço (decidido 2026-09-12)
 

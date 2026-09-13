@@ -16,7 +16,6 @@ import RacePredictionChart from '../BI/RacePredictionChart';
 import ChartFrame from '../BI/ChartFrame';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
-import RaceListCard from './RaceListCard';
 import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
@@ -249,9 +248,6 @@ export default function RunDashboard() {
     return (
       <div className="space-y-4 fade-in">
         <VerdictLine text={verdict.text} tone={verdict.tone} />
-        {/* As provas não dependem do período nem de haver corridas: vêm antes
-            do filtro e ficam também no estado vazio. */}
-        <RaceListCard />
         <TimeFilterBar activeRange={activeRange} onChange={setActiveRange} module="corrida" />
         <EmptyModuleState
           tone="run"
@@ -270,10 +266,6 @@ export default function RunDashboard() {
     <div className="space-y-4 fade-in">
       {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
       <VerdictLine text={verdict.text} tone={verdict.tone} />
-
-      {/* 0b. As tuas provas — todas, num sítio só (pedido 2026-09-13). Antes
-          do filtro de período, porque não obedecem a ele. */}
-      <RaceListCard />
 
       {/* 1. TimeFilterBar */}
       <TimeFilterBar

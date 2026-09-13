@@ -14,11 +14,14 @@ import { useTabEnter } from '../../utils/useTabEnter';
 const DASHBOARD_TABS = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'];
 
 /* Índice de cada separador na minhoca da barra (0–3). Os ecrãs sem coluna
-   própria (Perfil, Admin, registos) devolvem -1 e escondem a pílula em vez de
-   a deixarem a apontar para um separador onde o atleta já não está. */
+   própria (Perfil, Calendário, Admin, registos) devolvem -1 e escondem a
+   pílula em vez de a deixarem a apontar para um separador onde o atleta já
+   não está. A barra é Início · Provas · Dashboard · Coach desde 2026-09-13
+   (opção A de "Onde vivem as provas"): a prova é o grande objetivo da app e
+   ganhou coluna; o Calendário passou para o cabeçalho. */
 function navIndexFor(activeTab) {
   if (activeTab === 'home') return 0;
-  if (activeTab === 'calendario') return 1;
+  if (activeTab === 'provas') return 1;
   if (DASHBOARD_TABS.includes(activeTab)) return 2;
   if (activeTab === 'coach') return 3;
   return -1;
@@ -168,13 +171,15 @@ export default function Layout({ children }) {
             {/* Notificações de bug reports — só se renderiza a si própria
                 quando há mensagens por ler (ver BugNotificationsHandler) */}
             <BugNotificationsHandler />
-            <button
-              onClick={() => setActiveTab('perfil')}
-              className="tap-h-44 flex items-center gap-1 text-xs font-bold pl-3.5 pr-4 rounded-full active:scale-95 transition"
-              style={{ background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
-            >
-              <User size={14} /> Perfil
-            </button>
+            {/* O Calendário saiu da barra para aqui (2026-09-13): continua a um
+                toque, mas a barra ficou para o que a app é. */}
+            <HeaderIconBtn label="Calendário" active={activeTab === 'calendario'} onClick={() => setActiveTab('calendario')}>
+              <Calendar size={18} />
+            </HeaderIconBtn>
+            {/* O Perfil deixou o âmbar: o âmbar é só da prova. */}
+            <HeaderIconBtn label="Perfil" active={activeTab === 'perfil'} onClick={() => setActiveTab('perfil')}>
+              <User size={18} />
+            </HeaderIconBtn>
           </div>
         </header>
       </div>
@@ -336,7 +341,7 @@ export default function Layout({ children }) {
         />
 
         <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(0)} />
-        <VBarBtn tab="calendario" icon={<Calendar size={20} />} label="Calendário" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(1)} />
+        <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
@@ -382,6 +387,29 @@ function NavPillAnchor({ pillRef }) {
       className="absolute top-0 left-1/2 -translate-x-1/2 w-[26px] h-[4px]"
       style={{ pointerEvents: 'none' }}
     />
+  );
+}
+
+/* Botão redondo do cabeçalho (Calendário, Perfil): neutro, na cor da marca,
+   44px. O ativo acende-se no mesmo tom, sem âmbar — o âmbar é da prova. */
+function HeaderIconBtn({ label, active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
+      className="flex items-center justify-center rounded-full active:scale-95 transition shrink-0"
+      style={{
+        width: 44,
+        height: 44,
+        color: 'var(--brand)',
+        background: active ? 'rgba(127,179,199,.16)' : 'rgba(255,255,255,.05)',
+        border: `1px solid ${active ? 'rgba(127,179,199,.55)' : 'var(--border-glass-strong)'}`,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
