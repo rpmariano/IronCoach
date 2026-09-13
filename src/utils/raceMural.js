@@ -43,7 +43,7 @@ export function muralDateLabel(dateIso) {
 }
 
 /** Os textos do mural, pela régua de sempre. */
-export function muralTexts({ race, seconds, distanceKm }) {
+export function muralTexts({ race, seconds, distanceKm, classification = '' }) {
   const km = Number(distanceKm) || Number(race?.distance_km) || 0;
   const time = seconds > 0 ? formatDuration(Math.round(seconds)) : '';
   const pace = seconds > 0 && km > 0 ? `${formatPace(Math.round(seconds / km))}/km` : '';
@@ -52,17 +52,33 @@ export function muralTexts({ race, seconds, distanceKm }) {
     name: race?.name || 'A minha prova',
     time,
     stats: [km > 0 ? raceDistanceLabel(km) : '', pace].filter(Boolean).join(' · '),
-    location: race?.location || '',
+    // A classificação (se o diploma a deu) e o local numa linha só.
+    location: [classification, race?.location || ''].filter(Boolean).join(' · '),
   };
 }
 
-/** As fotos que entram e como: as do dia primeiro, a medalha a fechar;
- *  o diploma só se for imagem e não houver mais nada. Até MURAL_MAX_PHOTOS. */
-export function pickMuralPhotos({ photos = [], medal = null, diploma = null, diplomaPath = '' }) {
-  const list = [...photos.filter(Boolean)];
-  if (medal) list.push(medal);
-  if (!list.length && diploma && !/\.pdf$/i.test(diplomaPath || '')) list.push(diploma);
-  return list.slice(0, MURAL_MAX_PHOTOS);
+/** Todas as memórias que PODEM entrar no mural, com nome: as fotos do dia, a
+ *  medalha, e o diploma se for imagem. É daqui que o atleta escolhe. */
+export function muralCandidates({ photos = [], medal = null, diploma = null, diplomaPath = '' }) {
+  const list = photos.filter(Boolean).map((url, i) => ({ id: `photo-${i}`, url, label: `Foto ${i + 1}` }));
+  if (medal) list.push({ id: 'medal', url: medal, label: 'Medalha' });
+  if (diploma && !/\.pdf$/i.test(diplomaPath || '')) list.push({ id: 'diploma', url: diploma, label: 'Diploma' });
+  return list;
+}
+
+/** A escolha por omissão: as do dia primeiro, a medalha a fechar; o diploma
+ *  só se não houver mais nada. Até MURAL_MAX_PHOTOS. */
+export function defaultMuralSelection(candidates) {
+  const withoutDiploma = candidates.filter((c) => c.id !== 'diploma');
+  const base = withoutDiploma.length ? withoutDiploma : candidates;
+  return base.slice(0, MURAL_MAX_PHOTOS).map((c) => c.id);
+}
+
+/** As fotos que entram e como (a escolha por omissão), em URLs. */
+export function pickMuralPhotos(memories) {
+  const candidates = muralCandidates(memories);
+  const chosen = new Set(defaultMuralSelection(candidates));
+  return candidates.filter((c) => chosen.has(c.id)).map((c) => c.url);
 }
 
 /** Onde fica cada foto, em fração da tela: o herói em cima, as outras
@@ -221,7 +237,7 @@ function drawLogo(ctx, logo, { width, height, pad }) {
  * @param distanceKm  a distância da corrida registada (cai para a da prova)
  * @param photoUrls   URLs (assinadas) das fotos escolhidas, já pela ordem
  */
-export async function renderRaceMural({ format = DEFAULT_MURAL_FORMAT, race, seconds, distanceKm, photoUrls = [] }) {
+export async function renderRaceMural({ format = DEFAULT_MURAL_FORMAT, race, seconds, distanceKm, classification = '', photoUrls = [] }) {
   // Uma foto que falhe (rede, CORS) sai do mural em vez de o derrubar.
   const [settled, logo] = await Promise.all([
     Promise.allSettled(photoUrls.slice(0, MURAL_MAX_PHOTOS).map((u) => loadImage(u))),
@@ -230,7 +246,7 @@ export async function renderRaceMural({ format = DEFAULT_MURAL_FORMAT, race, sec
   const images = settled.filter((r) => r.status === 'fulfilled').map((r) => r.value);
   const layout = muralLayout(format, images.length);
   const { width, height, pad, textTop, frames } = layout;
-  const texts = muralTexts({ race, seconds, distanceKm });
+  const texts = muralTexts({ race, seconds, distanceKm, classification });
 
   const canvas = document.createElement('canvas');
   canvas.width = width;

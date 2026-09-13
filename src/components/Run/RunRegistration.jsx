@@ -226,6 +226,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     !initialRace && planItem?.target_duration ? formatDuration(planItem.target_duration) : ''
   );
   const [position, setPosition] = useState('');
+  // O que o diploma traz e a app não calcula (utils/run.js,
+  // RACE_RESULT_FIELDS): grava-se em runs.details por update à parte.
+  const [bibNumber, setBibNumber] = useState('');
+  const [ageGroup, setAgeGroup] = useState('');
+  const [ageGroupPosition, setAgeGroupPosition] = useState('');
+  const [genderPosition, setGenderPosition] = useState('');
+  const [participants, setParticipants] = useState('');
   const [completedRaceType, setCompletedRaceType] = useState(
     raceTypeFromRaceEvent(initialRace) || planItem?.race_type || '10k'
   );
@@ -546,6 +553,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         setOfficialTime(persisted?.officialTime ?? (d.official_time_seconds ? formatDuration(d.official_time_seconds) : ''));
         setPosition(persisted?.position ?? (d.position || ''));
+        setBibNumber(persisted?.bibNumber ?? (d.bib_number != null ? String(d.bib_number) : ''));
+        setAgeGroup(persisted?.ageGroup ?? (d.age_group || ''));
+        setAgeGroupPosition(persisted?.ageGroupPosition ?? (d.age_group_position || ''));
+        setGenderPosition(persisted?.genderPosition ?? (d.gender_position || ''));
+        setParticipants(persisted?.participants ?? (d.participants || ''));
         setCompletedRaceType(persisted?.completedRaceType ?? (d.race_type || '10k'));
         // Uma corrida já ligada a uma prova reabre SEMPRE em modo prova — é
         // assim que se voltam a ver (e a corrigir) as memórias já guardadas.
@@ -659,6 +671,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (persisted.hrZones) setHrZones(persisted.hrZones);
     if (persisted.officialTime !== undefined) setOfficialTime(persisted.officialTime);
     if (persisted.position !== undefined) setPosition(persisted.position);
+    if (persisted.bibNumber !== undefined) setBibNumber(persisted.bibNumber);
+    if (persisted.ageGroup !== undefined) setAgeGroup(persisted.ageGroup);
+    if (persisted.ageGroupPosition !== undefined) setAgeGroupPosition(persisted.ageGroupPosition);
+    if (persisted.genderPosition !== undefined) setGenderPosition(persisted.genderPosition);
+    if (persisted.participants !== undefined) setParticipants(persisted.participants);
     if (persisted.completedRaceType) setCompletedRaceType(persisted.completedRaceType);
     if (persisted.raceId !== undefined) setRaceId(persisted.raceId);
     setIsFormDirty(true);
@@ -682,6 +699,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     hrRecovery, groundContactTime, flightTime, verticalOscillation, asymmetryPct, legStiffness,
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
+    bibNumber, ageGroup, ageGroupPosition, genderPosition, participants,
   }, { isDirty: isFormDirty });
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
@@ -807,6 +825,33 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return { ...run, start_time: value };
   };
 
+  /* A classificação da prova (dorsal, escalão, posições, participantes) toma
+     o caminho da hora, pela mesma razão: vive em runs.details e a
+     analyze-run não a conhece. Só em competição; só o que mudou; e sem
+     entrar na analyticalSignature — não muda análise nenhuma. */
+  const raceResultPatch = () => {
+    const int = (v) => { const n = parseInt(String(v ?? '').trim(), 10); return Number.isFinite(n) && n > 0 ? n : null; };
+    return {
+      bib_number: String(bibNumber || '').trim() || null,
+      age_group: String(ageGroup || '').trim() || null,
+      age_group_position: int(ageGroupPosition),
+      gender_position: int(genderPosition),
+      participants: int(participants),
+    };
+  };
+  const persistRaceResultDetails = async (run) => {
+    if (!run?.id || runKind !== 'competicao') return run;
+    const patch = raceResultPatch();
+    const current = run.details || {};
+    const changed = Object.entries(patch).some(([k, v]) => (current[k] ?? null) !== v);
+    if (!changed) return run;
+    const details = { ...current };
+    Object.entries(patch).forEach(([k, v]) => { if (v === null) delete details[k]; else details[k] = v; });
+    const { error } = await supabase.from('runs').update({ details }).eq('id', run.id);
+    if (error) throw error;
+    return { ...run, details };
+  };
+
   /* Envia o que é novo para o bucket e grava os caminhos na prova, junto
      com o status "concluida" — pelo módulo partilhado com a persiana do hub
      (utils/raceMemories.js), que é quem sabe dos nomes, do upsert e da
@@ -920,6 +965,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
     } catch (err) {
       console.warn('Hora de início da corrida não gravada', err);
+    }
+    try {
+      const withResult = await persistRaceResultDetails(run);
+      if (withResult !== run && withResult?.id) {
+        const store = useAppStore.getState();
+        store.setRuns(store.runs.map(r => (r.id === withResult.id ? { ...r, details: withResult.details } : r)));
+        run = withResult;
+      }
+    } catch (err) {
+      console.warn('Classificação da prova não gravada', err);
       run = savedRun;
     }
 
@@ -1580,6 +1635,37 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }}
                   className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
                 />
+              </div>
+            </div>
+
+            {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
+                posição nele, posição por género, participantes. Tudo
+                opcional; o ritmo médio calcula-se e o clube é do perfil. */}
+            <div data-testid="race-result-fields" className="mb-4">
+              <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="rr-dorsal" className="text-[11px] text-[var(--text-3)] block mb-1.5">Dorsal</label>
+                  <input id="rr-dorsal" type="text" inputMode="numeric" placeholder="ex.: 1234" value={bibNumber} onChange={e => { setBibNumber(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Escalão</label>
+                  <input id="rr-escalao" type="text" placeholder="ex.: M40" value={ageGroup} onChange={e => { setAgeGroup(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5 mt-2.5">
+                <div>
+                  <label htmlFor="rr-pos-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. escalão</label>
+                  <input id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-pos-genero" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. género</label>
+                  <input id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-participantes" className="text-[11px] text-[var(--text-3)] block mb-1.5">Participantes</label>
+                  <input id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
               </div>
             </div>
 

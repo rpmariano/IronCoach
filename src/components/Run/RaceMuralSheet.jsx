@@ -3,14 +3,14 @@ import { Share2, Download, Sparkles, Copy, Check } from 'lucide-react';
 import { Sheet } from '../shared/Sheet';
 import Warning, { WarningAction } from '../shared/Warning';
 import { useAppStore } from '../../store';
-import { MURAL_FORMATS, DEFAULT_MURAL_FORMAT, renderRaceMural, canvasToFile, muralFileName, pickMuralPhotos } from '../../utils/raceMural';
+import { MURAL_FORMATS, DEFAULT_MURAL_FORMAT, MURAL_MAX_PHOTOS, renderRaceMural, canvasToFile, muralFileName, muralCandidates, defaultMuralSelection } from '../../utils/raceMural';
 import { requestRaceCaption } from '../../utils/raceBalance';
 
 /* A persiana do mural (pedido 2026-09-13): escolhe-se o formato, vê-se a
    imagem composta no telemóvel (utils/raceMural.js), pede-se a legenda à
    Carol, e parte-se para o Instagram — pelo menu de partilha do telemóvel,
    ou guardando o ficheiro. */
-export default function RaceMuralSheet({ race, run, runs = [], profile = {}, seconds, memoryUrls, onClose }) {
+export default function RaceMuralSheet({ race, run, runs = [], profile = {}, seconds, classification = '', memoryUrls, onClose }) {
   const { raceEvents } = useAppStore();
   const [format, setFormat] = useState(DEFAULT_MURAL_FORMAT);
   const [preview, setPreview] = useState(null);
@@ -24,18 +24,25 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
   const canvasRef = useRef(null);
   const downloadRef = useRef(null);
 
-  const photoUrls = pickMuralPhotos({
+  // As memórias que podem entrar, e as escolhidas — pela ordem em que se
+  // escolhem, que é a ordem no mural (pedido 2026-09-13: nem sempre se
+  // querem todas). Até MURAL_MAX_PHOTOS.
+  const candidates = muralCandidates({
     photos: memoryUrls?.photos || [],
     medal: memoryUrls?.medal || null,
     diploma: memoryUrls?.diploma || null,
     diplomaPath: race?.diploma_path || '',
   });
+  const [selected, setSelected] = useState(() => defaultMuralSelection(candidates));
+  const toggle = (id) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < MURAL_MAX_PHOTOS ? [...prev, id] : prev));
+  const photoUrls = selected.map((id) => candidates.find((c) => c.id === id)?.url).filter(Boolean);
+  const selectedKey = selected.join('|');
 
   useEffect(() => {
     let cancelled = false;
     setRendering(true);
     setError('');
-    renderRaceMural({ format, race, seconds, distanceKm: run?.distance_km, photoUrls })
+    renderRaceMural({ format, race, seconds, distanceKm: run?.distance_km, classification, photoUrls })
       .then((canvas) => {
         if (cancelled) return;
         canvasRef.current = canvas;
@@ -47,9 +54,9 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
       })
       .finally(() => { if (!cancelled) setRendering(false); });
     return () => { cancelled = true; };
-    // As fotos vêm assinadas de fora; só o formato muda aqui dentro.
+    // As fotos vêm assinadas de fora; aqui mudam o formato e a escolha.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [format, race?.id]);
+  }, [format, race?.id, selectedKey]);
 
   const fileName = muralFileName(race, format);
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
@@ -116,8 +123,38 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
   return (
     <Sheet eyebrow="Mural" eyebrowTone="race" title={race?.name || 'A prova'} onClose={onClose} testId="race-mural-sheet" maxHeight="92dvh">
       <p className="text-[12.5px] leading-[1.5] mt-2" style={{ color: 'var(--text-3)' }}>
-        {photoUrls.length ? `${photoUrls.length} ${photoUrls.length === 1 ? 'fotografia' : 'fotografias'} das memórias, o teu tempo e a distância.` : 'Ainda sem fotografias nas memórias: fica o mural com o teu tempo e a distância.'}
+        {candidates.length ? `Escolhe até ${MURAL_MAX_PHOTOS} fotografias, pela ordem em que as queres. ${photoUrls.length} de ${MURAL_MAX_PHOTOS} escolhidas.` : 'Ainda sem fotografias nas memórias: fica o mural com o teu tempo e a distância.'}
       </p>
+
+      {candidates.length > 0 && (
+        <div className="flex gap-2 mt-3 overflow-x-auto no-scrollbar" role="group" aria-label="Fotografias do mural" style={{ paddingBottom: 2 }}>
+          {candidates.map((c) => {
+            const order = selected.indexOf(c.id);
+            const active = order >= 0;
+            const full = !active && selected.length >= MURAL_MAX_PHOTOS;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                data-testid={`race-mural-photo-${c.id}`}
+                aria-pressed={active}
+                aria-label={`${c.label}${active ? `, ${order + 1}.ª no mural` : ''}`}
+                disabled={full}
+                onClick={() => toggle(c.id)}
+                className="relative shrink-0 rounded-[12px] overflow-hidden disabled:opacity-40"
+                style={{ width: 64, height: 64, border: `2px solid ${active ? 'var(--race)' : 'var(--border-glass-strong)'}`, padding: 0, background: 'rgba(255,255,255,.04)' }}
+              >
+                <img src={c.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: active ? 1 : 0.7 }} />
+                {active && (
+                  <span aria-hidden="true" className="absolute top-1 right-1 flex items-center justify-center text-[11px] font-black" style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--race)', color: 'var(--race-ink)' }}>
+                    {order + 1}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* formatos */}
       <div className="flex gap-2 mt-3" role="group" aria-label="Formato do mural">

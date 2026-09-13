@@ -158,6 +158,41 @@ export function formatDuration(totalSeconds) {
 // forma que "50:00", mas mostrado em bruto fica sem unidade (bug-013:
 // "Total: 50" lê-se como 50 segundos). Junta "min" só quando falta o
 // separador ":" — formatos já em m:ss ou h:mm:ss ficam como estão.
+// ── A classificação da prova (pedido 2026-09-13, "o resto é interessante") ──
+// Vive em runs.details, ao lado de official_time_seconds e position, sem
+// tocar na analyze-run: grava-se por update à parte no RunRegistration, como
+// a hora. Só o que o diploma traz e a app não calcula: dorsal, escalão e
+// posição nele, posição por género, total de participantes. O ritmo médio
+// fica de fora (calcula-se) e o clube também (é do perfil, não da prova).
+export const RACE_RESULT_FIELDS = ['bib_number', 'age_group', 'age_group_position', 'gender_position', 'participants'];
+
+const ordinal = (n) => `${Number(n)}.º`;
+// "1 850": espaço de milhar, como o resto da app (toLocaleString('pt-PT') não
+// agrupa números de quatro dígitos).
+const milhares = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+/** "312.º geral de 1 850 · 41.º M40 · 280.º masculino · dorsal 1234" — só o
+ *  que existe. `gender` é o do perfil ('M'/'F'), para dar nome à posição por
+ *  género; sem ele fica "no género". */
+export function describeRaceClassification(details, gender = null) {
+  if (!details) return '';
+  const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null; };
+  const position = n(details.position);
+  const participants = n(details.participants);
+  const groupPosition = n(details.age_group_position);
+  const genderPosition = n(details.gender_position);
+  const group = typeof details.age_group === 'string' ? details.age_group.trim() : '';
+  const bib = typeof details.bib_number === 'string' ? details.bib_number.trim() : (n(details.bib_number) ? String(details.bib_number) : '');
+  const parts = [];
+  if (position) parts.push(`${ordinal(position)} geral${participants ? ` de ${milhares(participants)}` : ''}`);
+  else if (participants) parts.push(`${milhares(participants)} participantes`);
+  if (groupPosition) parts.push(`${ordinal(groupPosition)} ${group || 'no escalão'}`);
+  else if (group) parts.push(`escalão ${group}`);
+  if (genderPosition) parts.push(`${ordinal(genderPosition)} ${gender === 'M' ? 'masculino' : gender === 'F' ? 'feminino' : 'no género'}`);
+  if (bib) parts.push(`dorsal ${bib}`);
+  return parts.join(' · ');
+}
+
 export function formatTargetTimeLabel(targetTime) {
   const str = (targetTime || '').toString().trim();
   if (!str) return str;

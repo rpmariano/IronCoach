@@ -725,6 +725,28 @@ describe('RunRegistration — modo prova', () => {
     expect(screen.getByText('Adicionar o diploma')).toBeInTheDocument();
   });
 
+  /* Os campos do diploma (pedido 2026-09-13): dorsal, escalão, posições e
+     participantes vão para runs.details por update à parte — a analyze-run
+     não os conhece, como acontece com a hora. */
+  it('os campos do diploma gravam-se em runs.details, só os preenchidos', async () => {
+    entrarPeloPrefill();
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+    fireEvent.change(screen.getByLabelText('Dorsal'), { target: { value: '1234' } });
+    fireEvent.change(screen.getByLabelText('Escalão'), { target: { value: 'M40' } });
+    fireEvent.change(screen.getByLabelText('Pos. escalão'), { target: { value: '41' } });
+    fireEvent.change(screen.getByLabelText('Participantes'), { target: { value: '1850' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.details)).toBe(true));
+    const detalhes = mocks.updates.find(u => u.table === 'runs' && u.payload.details).payload.details;
+    expect(detalhes).toEqual({ bib_number: '1234', age_group: 'M40', age_group_position: 41, participants: 1850 });
+    expect(detalhes).not.toHaveProperty('gender_position');
+  });
+
   it('ao gravar, liga a corrida à prova, conclui a prova e sobe as memórias', async () => {
     entrarPeloPrefill();
     render(<RunRegistration onClose={onClose} />);
