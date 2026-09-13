@@ -87,3 +87,26 @@ describe('Calendário — eliminar prova', () => {
     expect(useAppStore.getState().raceEvents).toHaveLength(0);
   });
 });
+
+/* A ordem do dia (pedido 2026-09-13): pela hora, entre tipos — o ginásio
+   das 07:00 antes do almoço, a corrida das 18:30 depois. */
+describe('Calendário — o dia por ordem cronológica', () => {
+  it('intercala corridas, treinos e refeições pela hora', () => {
+    useAppStore.setState({
+      raceEvents: [],
+      runs: [{ id: 'run-1', kind: 'treino', name: 'Corrida da tarde', date: iso(HOJE), start_time: '18:30:00', distance_km: 10, duration_seconds: 3000, details: {} }],
+      gymSessions: [{ id: 'gym-1', name: 'Ginásio da manhã', date: iso(HOJE), start_time: '07:00:00', categories: ['Pernas'], exercises: [] }],
+      meals: [{ id: 'meal-1', date: iso(HOJE), meal_type: 'almoco', name: 'Almoço', meal_items: [], total_calories: 600 }],
+      bodyAssessments: [],
+      pendingCalendarDate: null,
+    });
+    renderCalendario();
+
+    const ginasio = screen.getByText('Ginásio da manhã');
+    const almoco = screen.getByText('Almoço');
+    const corrida = screen.getByText('Corrida da tarde');
+    const antes = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(antes(ginasio, almoco)).toBe(true);
+    expect(antes(almoco, corrida)).toBe(true);
+  });
+});

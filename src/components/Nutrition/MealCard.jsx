@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
+import { normalizeStartTime } from '../../utils/startTime';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
@@ -94,7 +95,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
               {mealTypeLabel(meal.meal_type)}
             </h4>
             <p className="text-xs text-[var(--text-3)] font-medium">
-              {formattedDate} · {items.length} item(s)
+              {[formattedDate, normalizeStartTime(meal.meal_time)].filter(Boolean).join(' · ')} · {items.length} item(s)
             </p>
           </div>
         </div>

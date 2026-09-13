@@ -15,6 +15,7 @@ import SectionLabel from '../shared/SectionLabel';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -65,6 +66,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  /* Hora da refeição ('HH:MM', hora local; meals.meal_time). Numa refeição
+     nova parte da hora atual — a mesma regra que já adivinha o tipo pela
+     hora — e o atleta corrige se registou depois. A editar, a que está
+     gravada. É ela que ordena o dia no Calendário; dá-la à Carol (a que
+     horas se comeu antes da prova) é o passo seguinte, depois de a coluna
+     existir em produção (pedido 2026-09-13). */
+  const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : format(new Date(), 'HH:mm')));
   const [mealType, setMealType] = useState(getDefaultMealType());
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
@@ -213,6 +221,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       grams: it.quantity_grams,
     }));
     setDate(persisted?.date ?? (meal.date || format(new Date(), 'yyyy-MM-dd')));
+    // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
+    setMealTime(persisted?.mealTime ?? startTimeInputValue(meal.meal_time));
     setMealType(persisted?.mealType ?? (meal.meal_type || 'almoco'));
     setNotes(persisted?.notes ?? (meal.notes || ''));
     setManualItems(persisted?.manualItems ?? canonicalItems);
@@ -240,6 +250,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
     if (persisted.date) setDate(persisted.date);
+    if (persisted.mealTime !== undefined) setMealTime(persisted.mealTime);
     if (persisted.mealType) setMealType(persisted.mealType);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
     if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
@@ -254,8 +265,28 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
+    date, mealTime, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
   }, { isDirty: isFormDirty });
+
+  /* A hora grava-se por update à parte, a seguir, pela mesma razão da hora
+     da corrida (RunRegistration.persistRunStartTime): quem insere a linha
+     em `meals` é a analyze-meal, e acrescentar-lhe um campo obriga a mexer
+     numa função que faz deploy em produção a cada push a `dev`. Uma coluna
+     só, sob a RLS "own rows". Falhar aqui não desfaz a refeição: fica sem
+     hora e avisa-se na consola. */
+  const persistMealTime = async (meal) => {
+    if (!meal?.id) return meal;
+    const value = normalizeStartTime(mealTime);
+    if (value === normalizeStartTime(meal.meal_time)) return meal;
+    try {
+      const { error } = await supabase.from('meals').update({ meal_time: value }).eq('id', meal.id);
+      if (error) throw error;
+      return { ...meal, meal_time: value };
+    } catch (err) {
+      console.warn('Hora da refeição não gravada', err);
+      return meal;
+    }
+  };
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
      (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
@@ -319,7 +350,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
     // A resposta traz meal e items em separado — o store espera-os juntos,
     // tal como loadInitialData os carrega (select('*, meal_items(*)')).
-    const mealWithItems = { ...data.meal, meal_items: data.items || [] };
+    const mealWithItems = await persistMealTime({ ...data.meal, meal_items: data.items || [] });
     if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
       console.warn('Aviso: análise retornou 0 itens', data);
     }
@@ -373,8 +404,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (error) throw new Error(error);
     if (data?.error) throw new Error(data.error);
 
-    setMeals([...meals, data.meal]);
-    finishCreateAndGoToCalendar(data?.meal, 'Refeição registada');
+    const savedMeal = await persistMealTime(data.meal);
+    setMeals([...meals, savedMeal]);
+    finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');
   };
 
   const handleFinalizeManual = () => {
@@ -419,6 +451,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         savedMeal = currentMeal ? { ...currentMeal, date, meal_type: mealType } : { id: mealIdToEdit, date, meal_type: mealType };
       }
 
+      savedMeal = await persistMealTime(savedMeal);
       if (profile?.id) await loadInitialData(profile.id);
       finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
     }
@@ -526,16 +559,30 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           aria-busy={isAnalyzing || undefined}
           style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
-        <div className="grid grid-cols-[1fr_auto] items-center gap-3 mb-4">
-          <input
-            type="date"
-            aria-label="Data da refeição"
-            value={date}
-            max={format(new Date(), 'yyyy-MM-dd')}
-            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
-          />
-          <div className="text-[11px] text-[var(--text-3)] mr-2">Data da refeição</div>
+        {/* Data · Hora — como na corrida e no ginásio. A hora ordena o dia
+            no Calendário e diz à Carol a que horas se comeu. */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="min-w-0">
+            <label htmlFor="mr-data-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da refeição</label>
+            <input
+              id="mr-data-da-refeicao"
+              type="date"
+              value={date}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
+            />
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="mr-hora-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora da refeição</label>
+            <input
+              id="mr-hora-da-refeicao"
+              type="time"
+              value={mealTime}
+              onChange={e => { setMealTime(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-5">

@@ -136,6 +136,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const runRacePrefillRef = useRef(
     !runIdToEdit ? useAppStore.getState().runRacePrefill : null
   );
+  /* A editar pelo "Editar o registo" do hub: a corrida pode estar ligada à
+     prova só pela DATA (findRaceRun: competição do mesmo dia sem race_id,
+     registada antes de haver ligação). Sem isto abria o formulário de
+     sempre, sem modo prova (revisão pré-deploy 2026-09-13). O id da prova
+     que o hub mandou serve de recurso quando o registo não tem race_id — e
+     ao gravar, linkRunToRace deixa-a ligada de vez. */
+  const editPrefillRaceIdRef = useRef(
+    runIdToEdit ? (useAppStore.getState().runRacePrefill?.raceId || null) : null
+  );
   const initialRace = runRacePrefillRef.current?.raceId
     ? (useAppStore.getState().raceEvents || []).find(e => e.id === runRacePrefillRef.current.raceId) || null
     : null;
@@ -574,7 +583,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setCompletedRaceType(persisted?.completedRaceType ?? (d.race_type || '10k'));
         // Uma corrida já ligada a uma prova reabre SEMPRE em modo prova — é
         // assim que se voltam a ver (e a corrigir) as memórias já guardadas.
-        setRaceId(persisted?.raceId ?? (r.race_id || null));
+        setRaceId(persisted?.raceId ?? (r.race_id || editPrefillRaceIdRef.current || null));
 
         // Distância, duração, RPE, tipo e métricas são dados ANALÍTICOS:
         // mudá-los muda a análise, e guardar passa pelo Coach para a
@@ -1690,6 +1699,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
                 />
               </div>
+            </div>
+
+            {/* Hora de partida — vem preenchida da agenda, mas é a desta
+                corrida (runs.start_time): a partida real pode não ser a
+                anunciada. Até aqui a herança era invisível e o atleta não a
+                via nem a corrigia (relatado 2026-09-13). É ela que ordena o
+                dia no Calendário e que a Carol usa na véspera e no balanço. */}
+            <div className="grid grid-cols-2 gap-2.5 mb-4 items-end">
+              <div>
+                <label htmlFor="rr-hora-da-prova" className="text-[11px] text-[var(--text-3)] block mb-1.5">Hora de partida</label>
+                <input
+                  id="rr-hora-da-prova"
+                  type="time"
+                  value={runStartTime}
+                  onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
+                  className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-[var(--text-1)] outline-none focus:border-[var(--race)] transition"
+                />
+              </div>
+              <p className="text-[11px] leading-[1.45] pb-2.5" style={{ color: 'var(--text-4)' }}>
+                A hora a que partiste. Ordena o dia no Calendário e entra na análise da Carol.
+              </p>
             </div>
 
             {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
