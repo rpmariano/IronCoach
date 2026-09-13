@@ -55,16 +55,19 @@ function MessageAction({ action, onOpenRace }) {
   if (!action?.raceId) return null;
   // Sem callback (o cartão montado sozinho), abre o hub pelo store.
   const open = onOpenRace || ((id) => useAppStore.getState().setEditingRaceId(id));
+  // Um bloco a toda a largura: encavalitava-se no "Ler mais" quando era inline.
   return (
-    <button
-      type="button"
-      data-testid="carol-card-action"
-      onClick={() => open(action.raceId)}
-      className="inline-flex items-center justify-center gap-2 mt-2 rounded-[11px] text-[12.5px] font-extrabold"
-      style={{ minHeight: 44, padding: '0 14px', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
-    >
-      {action.label}
-    </button>
+    <div className="mt-2">
+      <button
+        type="button"
+        data-testid="carol-card-action"
+        onClick={() => open(action.raceId)}
+        className="w-full inline-flex items-center justify-center gap-2 rounded-[11px] text-[12.5px] font-extrabold"
+        style={{ minHeight: 44, padding: '0 14px', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
+      >
+        {action.label}
+      </button>
+    </div>
   );
 }
 
