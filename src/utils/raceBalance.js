@@ -88,3 +88,18 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
 export function balanceParagraphs(text) {
   return String(text || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 }
+
+/** A legenda do mural, pela Carol (coach-chat, `race_caption`): na primeira
+ *  pessoa do atleta, com os números da régua. Sem histórico e sem gravar
+ *  mensagem nenhuma. */
+export async function requestRaceCaption({ race, run, runs, raceEvents, profile }) {
+  const candidate = buildRaceAfterCandidate({ race, run, runs, raceEvents, profile });
+  if (!candidate) throw new Error('Sem corrida registada para esta prova.');
+  const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+    body: JSON.stringify({ message: '', race_caption: true, race_outcome: candidate.raceOutcome }),
+  });
+  if (error) throw error;
+  const caption = typeof data?.caption === 'string' ? data.caption.trim() : '';
+  if (!caption) throw new Error('A Carol não escreveu a legenda.');
+  return caption;
+}

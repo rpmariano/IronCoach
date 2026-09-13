@@ -37,6 +37,7 @@ import RaceWebInfoSections from './RaceWebInfoSections';
 import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
 import RaceBalanceCard from './RaceBalanceCard';
+import RaceMuralSheet from './RaceMuralSheet';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -252,6 +253,9 @@ export default function RaceHubView({
   // diploma, a medalha e as fotos DEPOIS de a prova estar concluída, sem
   // reabrir o registo da corrida.
   const [memoriesOpen, setMemoriesOpen] = useState(false);
+  // O mural para partilhar (pedido 2026-09-13): as fotos, o tempo e a
+  // distância numa imagem para o Instagram, composta no telemóvel.
+  const [muralOpen, setMuralOpen] = useState(false);
 
   useEffect(() => {
     if (!hasMemories) { setMemoryUrls({ diploma: null, medal: null, photos: [] }); return undefined; }
@@ -530,8 +534,23 @@ export default function RaceHubView({
           </button>
         ) : null}
 
+        {raceRun && (
+          <button
+            type="button"
+            data-testid="race-mural-open"
+            onClick={() => setMuralOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-2"
+            style={{ minHeight: 'var(--tap)', marginTop: 10, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
+          >
+            <Star size={15} /> Criar mural para partilhar
+          </button>
+        )}
+
         {memoriesOpen && (
           <RaceMemoriesSheet race={race} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+        )}
+        {muralOpen && (
+          <RaceMuralSheet race={race} run={raceRun} runs={runs} profile={profile} seconds={finalSeconds} memoryUrls={memoryUrls} onClose={() => setMuralOpen(false)} />
         )}
 
         {openPhoto && (
