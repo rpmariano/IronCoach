@@ -41,7 +41,7 @@ import RaceMuralSheet from './RaceMuralSheet';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun, parseDurationToSeconds, describeRaceClassification } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { experienceLevelLabel } from '../../utils/experience';
@@ -330,6 +330,7 @@ export default function RaceHubView({
     const finalTime = finalSeconds > 0 ? formatDuration(Math.round(finalSeconds)) : null;
     // O que o diploma trouxe (dorsal, escalão, posições, participantes).
     const classification = describeRaceClassification(raceRun?.details, profile?.gender);
+    const officialTimes = describeRaceTimes(raceRun?.details);
     const finalPace = finalSeconds > 0 && Number(raceRun?.distance_km) > 0
       ? formatPace(Math.round(finalSeconds / Number(raceRun.distance_km)))
       : null;
@@ -408,6 +409,11 @@ export default function RaceHubView({
                 {classification && (
                   <div data-testid="race-classification" className="text-[12px] mt-1.5" style={{ color: 'var(--text-4)' }}>
                     {classification}
+                  </div>
+                )}
+                {officialTimes && (
+                  <div data-testid="race-official-times" className="text-[12px] mt-1" style={{ color: 'var(--text-4)' }}>
+                    {officialTimes}
                   </div>
                 )}
 

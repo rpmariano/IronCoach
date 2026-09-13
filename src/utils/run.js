@@ -164,7 +164,7 @@ export function formatDuration(totalSeconds) {
 // a hora. Só o que o diploma traz e a app não calcula: dorsal, escalão e
 // posição nele, posição por género, total de participantes. O ritmo médio
 // fica de fora (calcula-se) e o clube também (é do perfil, não da prova).
-export const RACE_RESULT_FIELDS = ['bib_number', 'age_group', 'age_group_position', 'gender_position', 'participants'];
+export const RACE_RESULT_FIELDS = ['bib_number', 'age_group', 'age_group_position', 'gender_position', 'participants', 'gun_time_seconds', 'official_splits'];
 
 const ordinal = (n) => `${Number(n)}.º`;
 // "1 850": espaço de milhar, como o resto da app (toLocaleString('pt-PT') não
@@ -190,6 +190,19 @@ export function describeRaceClassification(details, gender = null) {
   else if (group) parts.push(`escalão ${group}`);
   if (genderPosition) parts.push(`${ordinal(genderPosition)} ${gender === 'M' ? 'masculino' : gender === 'F' ? 'feminino' : 'no género'}`);
   if (bib) parts.push(`dorsal ${bib}`);
+  return parts.join(' · ');
+}
+
+/** "Tempo bruto 51:51 · passagem aos 5 km 25:15" — o que o diploma trouxe
+ *  além do tempo de chip (que é o tempo oficial). '' sem nada. */
+export function describeRaceTimes(details) {
+  if (!details) return '';
+  const parts = [];
+  const gun = Number(details.gun_time_seconds);
+  if (Number.isFinite(gun) && gun > 0) parts.push(`tempo bruto ${formatDuration(Math.round(gun))}`);
+  (Array.isArray(details.official_splits) ? details.official_splits : [])
+    .filter((s) => s && Number(s.km) > 0 && Number(s.seconds) > 0)
+    .forEach((s) => parts.push(`passagem aos ${Number(s.km)} km ${formatDuration(Math.round(Number(s.seconds)))}`));
   return parts.join(' · ');
 }
 
