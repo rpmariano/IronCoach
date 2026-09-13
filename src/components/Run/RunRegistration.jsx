@@ -870,12 +870,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      O tempo oficial e a posição vão aqui também: o caminho por fotos (os
      prints do relógio) não os mandava à analyze-run e o que o atleta tinha
      escrito — ou aplicado do diploma — perdia-se (relatado 2026-09-13). No
-     caminho manual já vão no pedido; aqui só se confirma que ficaram. */
+     caminho manual já vão no pedido. Mas SÓ quando têm valor: em competição
+     a analyze-run lê-os dos prints e devolve-os em details, e um `null`
+     aqui apagava essa leitura (revisão pré-deploy 2026-09-13); apagar de
+     propósito faz-se pelo caminho manual, onde o null vai no pedido. */
   const raceResultPatch = () => {
     const int = (v) => { const n = parseInt(String(v ?? '').trim(), 10); return Number.isFinite(n) && n > 0 ? n : null; };
+    const officialSeconds = officialTime ? (parseDurationToSeconds(officialTime) || null) : null;
     return {
-      official_time_seconds: officialTime ? (parseDurationToSeconds(officialTime) || null) : null,
-      position: int(position),
+      ...(officialSeconds ? { official_time_seconds: officialSeconds } : {}),
+      ...(int(position) ? { position: int(position) } : {}),
       bib_number: String(bibNumber || '').trim() || null,
       age_group: String(ageGroup || '').trim() || null,
       age_group_position: int(ageGroupPosition),
@@ -1120,6 +1124,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (createdRun.notes) setRunNotes(createdRun.notes);
       if (createdRun.name) setRunName(createdRun.name);
 
+      // Em competição a analyze-run lê o tempo oficial e a posição dos prints
+      // (quando lá estão): ficam no formulário como os outros, para rever.
+      if (extractedDetails.official_time_seconds && !officialTime) setOfficialTime(formatDuration(extractedDetails.official_time_seconds));
+      if (extractedDetails.position && !position) setPosition(String(extractedDetails.position));
       if (extractedDetails.elevation_gain_m) setElevationGain(extractedDetails.elevation_gain_m);
       if (extractedDetails.cadence_spm) setCadence(extractedDetails.cadence_spm);
       if (extractedDetails.max_cadence_spm) setMaxCadence(extractedDetails.max_cadence_spm);

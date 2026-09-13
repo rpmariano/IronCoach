@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readDiploma, diplomaFormValues, describeDiplomaReading, diplomaDetailsPatch, applyDiplomaToRun } from './diplomaReading';
+import { readDiploma, diplomaFormValues, describeDiplomaReading, diplomaDetails, diplomaDetailsPatch, applyDiplomaToRun } from './diplomaReading';
 
 /* A Carol lê o diploma (pedido 2026-09-13), calibrado com a Corrida do Tejo:
    chip 51:27, bruto 51:51, 1668.º geral, 226.º no escalão, 5 km em 25:15. */
@@ -74,6 +74,8 @@ describe('diplomaDetailsPatch / applyDiplomaToRun', () => {
     });
     // Nada de novo: não há o que gravar.
     expect(diplomaDetailsPatch(details, TEJO).changed).toBe(false);
+    // O formulário deriva das mesmas chaves — uma regra só.
+    expect(Object.keys(diplomaDetails(TEJO))).toEqual(['official_time_seconds', 'position', 'age_group_position', 'gun_time_seconds', 'official_splits']);
     expect(diplomaDetailsPatch(null, null)).toEqual({ details: {}, changed: false });
   });
 

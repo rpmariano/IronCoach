@@ -17,9 +17,11 @@ export function useDiplomaReading() {
   // Trocar de imagem a meio de uma leitura: só a resposta ao pedido mais
   // recente conta (revisão pré-deploy 2026-09-13).
   const requestRef = useRef(0);
+  const clear = () => { requestRef.current += 1; setState(null); };
 
   const ask = async (memory) => {
-    if (!memory || memory.isPdf) return;
+    // Trocar a imagem por um PDF: a leitura anterior já não é deste ficheiro.
+    if (!memory || memory.isPdf) { clear(); return; }
     const requestId = ++requestRef.current;
     setState({ status: 'reading', reading: null, error: '' });
     try {
@@ -32,7 +34,6 @@ export function useDiplomaReading() {
       setState({ status: 'failed', reading: null, error: err?.message || 'Não consegui ler o diploma.' });
     }
   };
-  const clear = () => { requestRef.current += 1; setState(null); };
   const markApplying = () => setState((prev) => (prev ? { ...prev, applying: true, error: '' } : prev));
   const markApplied = () => setState((prev) => (prev ? { ...prev, status: 'applied', applying: false, error: '' } : prev));
   const failApply = (message) => setState((prev) => (prev ? { ...prev, applying: false, error: message || 'Não consegui gravar. Tenta outra vez.' } : prev));
@@ -73,7 +74,7 @@ export default function DiplomaReadingCard({
       </div>
 
       {status === 'reading' && (
-        <div role="status" aria-label="A ler o diploma" className="flex flex-col gap-2 mt-2">
+        <div aria-label="A ler o diploma" className="flex flex-col gap-2 mt-2">
           <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
           <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
         </div>
@@ -109,7 +110,7 @@ export default function DiplomaReadingCard({
               Ignorar
             </button>
           </div>
-          {error && <p role="alert" className="text-[12px] leading-[1.5] mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
+          {error && <p data-testid="diploma-reading-error" className="text-[12px] leading-[1.5] mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
         </>
       )}
 

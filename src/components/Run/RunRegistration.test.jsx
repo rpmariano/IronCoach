@@ -768,6 +768,27 @@ describe('RunRegistration — modo prova', () => {
     expect(mocks.invoke.mock.calls[0][1].body.images).toEqual(['AAA']);
   });
 
+  it('numa competição fora da agenda, o tempo oficial que a analyze-run leu dos prints não se apaga com o campo vazio', async () => {
+    // Em modo prova o tempo oficial é obrigatório; fora da agenda é opcional
+    // e é a analyze-run que o lê dos prints (competição) — um null no update
+    // à parte apagava-o (revisão pré-deploy 2026-09-13).
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-9', kind: 'competicao', distance_km: 10, duration_seconds: 3088, details: { official_time_seconds: 3087, position: 1668, avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useAppStore.getState().runs.some(r => r.id === 'run-9')).toBe(true));
+    // Nenhum update a runs.details apagou o que a IA leu.
+    const detalhes = mocks.updates.filter(u => u.table === 'runs' && u.payload.details);
+    expect(detalhes.every(u => u.payload.details.official_time_seconds === 3087 && u.payload.details.position === 1668)).toBe(true);
+  });
+
   /* A Carol lê o diploma (pedido 2026-09-13): ao juntar a imagem, a
      analyze-diploma devolve a leitura e o atleta aplica-a ao registo. */
   it('ao juntar o diploma, a Carol lê-o e "Aplicar" preenche o registo com o tempo de chip', async () => {
