@@ -59,19 +59,29 @@ describe('RaceListCard', () => {
     expect(useAppStore.getState().editingRaceId).toBe('feita');
   });
 
-  it('com mais de três num grupo, o resto está em "Ver todas", na persiana', () => {
-    montar([1, 10, 20, 30, 40].map((d) => race(`p${d}`, d)));
+  // Relatado 2026-09-13: cinco provas agendadas, e as duas de 2027 só
+  // apareciam em "Ver todas" — pareciam não existir.
+  it('as próximas aparecem todas, por mais longe que estejam', () => {
+    montar([1, 40, 80, 150, 180].map((d) => race(`p${d}`, d)));
 
-    // No cartão só as três mais perto.
-    expect(screen.getByTestId('race-list-card')).not.toHaveTextContent('Prova p40');
-    expect(screen.getByTestId('race-list-card')).toHaveTextContent('Prova p20');
+    const cartao = screen.getByTestId('race-list-card');
+    ['p1', 'p40', 'p80', 'p150', 'p180'].forEach((id) => expect(cartao).toHaveTextContent(`Prova ${id}`));
+    expect(screen.getByTestId('race-list-resumo')).toHaveTextContent('5 por fazer');
+    expect(screen.queryByTestId('race-list-ver-todas')).not.toBeInTheDocument();
+  });
+
+  it('das concluídas ficam as três mais recentes, e o resto está em "Ver todas"', () => {
+    montar([10, 20, 30, 40, 50].map((d) => race(`c${d}`, -d, { status: 'concluida' })));
+
+    const cartao = screen.getByTestId('race-list-card');
+    expect(cartao).toHaveTextContent('Prova c30');
+    expect(cartao).not.toHaveTextContent('Prova c40');
 
     fireEvent.click(screen.getByTestId('race-list-ver-todas'));
     const persiana = screen.getByTestId('race-list-sheet');
-    expect(within(persiana).getByText('Prova p40')).toBeInTheDocument();
-    expect(within(persiana).getByText('Prova p30')).toBeInTheDocument();
+    expect(within(persiana).getByText('Prova c50')).toBeInTheDocument();
 
-    fireEvent.click(within(persiana).getByTestId('race-list-p40'));
-    expect(useAppStore.getState().editingRaceId).toBe('p40');
+    fireEvent.click(within(persiana).getByTestId('race-list-c50'));
+    expect(useAppStore.getState().editingRaceId).toBe('c50');
   });
 });

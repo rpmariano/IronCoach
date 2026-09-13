@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { useAppStore } from './store';
@@ -7,6 +7,7 @@ import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
+import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -375,6 +376,12 @@ export default function App() {
   const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
+  /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
+     ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
+     MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
+     Tratá-lo como um login novo punha o ecrã de carregamento e desmontava
+     tudo — um registo a meio perdia as fotos (relatado 2026-09-13). */
+  const loadedUserIdRef = useRef(null);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -397,6 +404,35 @@ export default function App() {
   // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
   // é usado no JSX.
   const isCreatingOrEditing = !!openCreationMode || !!editingRaceId || onboardingOpen;
+
+  /* Voltar à app com nenhum formulário aberto atualiza os dados, no máximo
+     uma vez por minuto (utils/authEvents.js, shouldReloadOnVisible). Com um
+     registo, uma corrida em edição ou uma prova aberta não — recarregar por
+     baixo repunha o rascunho com os valores do servidor. */
+  const formOpenRef = useRef(false);
+  formOpenRef.current = isCreatingOrEditing || !!editingRunId;
+  const lastVisibleReloadRef = useRef(Date.now());
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const userId = loadedUserIdRef.current;
+      // Formulário aberto: os ecrãs de topo (registo, prova, onboarding) e,
+      // para os que abrem por dentro de outro ecrã (editar uma corrida a
+      // partir do Calendário), a guarda de navegação que todos os
+      // formulários com rascunho põem enquanto têm alterações por gravar
+      // (terceira revisão pré-deploy, 2026-09-13).
+      const formOpen = formOpenRef.current || !!useAppStore.getState().navGuard;
+      if (!shouldReloadOnVisible({
+        visible: document.visibilityState === 'visible',
+        userId,
+        formOpen,
+        sinceLastMs: Date.now() - lastVisibleReloadRef.current,
+      })) return;
+      lastVisibleReloadRef.current = Date.now();
+      loadInitialData(userId);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [loadInitialData]);
 
   // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
   // o ecrã de topo em vez de sair da app inteira — ver o comentário
@@ -435,6 +471,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
       if (existingSession?.user) {
         setSession(existingSession);
+        loadedUserIdRef.current = existingSession.user.id;
         loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
@@ -472,21 +509,34 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      if (newSession?.user) {
-        setSession(newSession);
+      // A regra vive em utils/authEvents.js: com o mesmo utilizador cujos
+      // dados já estão carregados (o SIGNED_IN ou o TOKEN_REFRESHED que
+      // chegam ao voltar à app), só se atualiza a sessão — nem ecrã de
+      // carregamento, que desmontava um registo a meio, nem recarga por
+      // baixo, que repunha o rascunho de uma prova ou corrida em edição.
+      const userId = newSession?.user?.id || null;
+      const action = authEventAction(_event, {
+        hasUser: !!userId,
+        sameUser: !!userId && loadedUserIdRef.current === userId,
+      });
+      if (action === 'signed-out') {
+        loadedUserIdRef.current = null;
+        setSession(null);
+        return;
+      }
+      if (action === 'ignore') return;
+      setSession(newSession);
+      if (action === 'session-only') return;
+      loadedUserIdRef.current = userId;
+      if (action === 'load-with-loader') {
         // No login (password/registo) o perfil chega antes das listas e, por
         // um instante, um atleta com dados parecia "sem registos" — o
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
-        // carregam, é o loader que se vê; só no SIGNED_IN, para o refresh do
-        // token (TOKEN_REFRESHED) não piscar a app de hora a hora.
-        if (_event === 'SIGNED_IN') {
-          setIsInitializing(true);
-          Promise.resolve(loadInitialData(newSession.user.id)).finally(() => setIsInitializing(false));
-        } else {
-          loadInitialData(newSession.user.id);
-        }
-      } else if (_event === 'SIGNED_OUT') {
-        setSession(null);
+        // carregam, é o loader que se vê.
+        setIsInitializing(true);
+        Promise.resolve(loadInitialData(userId)).finally(() => setIsInitializing(false));
+      } else {
+        loadInitialData(userId);
       }
     });
 

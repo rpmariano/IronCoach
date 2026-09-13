@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
+import { draftMediaStore } from '../../utils/draftMediaPersistence';
 
 // analyze-run é a única coisa que estes testes exercitam de facto — supabase
 // (usado só pelo registo manual/Provas, não pelo caminho de IA) fica com um
@@ -858,6 +859,58 @@ describe('RunRegistration — modo prova', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
     await waitFor(() => expect(screen.getByTestId('record-confirmation')).toBeInTheDocument());
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+
+  /* Revisão pré-deploy 2026-09-13: o rascunho guardava as memórias já no
+     bucket, com uma chave sem a prova — iam parar ao registo de outra. */
+  it('as memórias que já estão no bucket não se guardam no rascunho; as novas guardam-se com o id da prova', async () => {
+    const original = { ...draftMediaStore };
+    draftMediaStore.load = vi.fn(async () => undefined);
+    draftMediaStore.save = vi.fn(async () => {});
+    draftMediaStore.remove = vi.fn(async () => {});
+    try {
+      useAppStore.setState({
+        profile: PROFILE, runs: [], shoes: [], coachPlans: [], coachPlanItems: [],
+        raceEvents: [{ ...PROVA, diploma_path: 'user-1/race-1/diploma.jpg' }],
+        runRacePrefill: { raceId: 'race-1' },
+      });
+      render(<RunRegistration onClose={onClose} />);
+      await screen.findByAltText('Diploma da prova');
+      await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+      expect(draftMediaStore.save).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.change(inputDaEtiqueta('Adicionar a medalha'), { target: { files: [ficheiroImagem('medalha.jpg')] } });
+      });
+      await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+      expect(draftMediaStore.save).toHaveBeenCalledWith(
+        'ironcoach:corrida-rascunho:nova::medal:race-1',
+        expect.objectContaining({ mime: 'image/jpeg' }),
+      );
+      expect(draftMediaStore.save.mock.calls.every(([, value]) => !JSON.stringify(value ?? null).includes('diploma.jpg'))).toBe(true);
+    } finally {
+      Object.assign(draftMediaStore, original);
+    }
+  });
+
+  it('as fotos restauradas do rascunho juntam-se às que já estão na prova, sem as descartar', async () => {
+    const original = { ...draftMediaStore };
+    const nova = { dataUrl: 'data:image/jpeg;base64,AAA', blob: new Blob(['x'], { type: 'image/jpeg' }), mime: 'image/jpeg' };
+    draftMediaStore.load = vi.fn(async (key) => (key.endsWith('::racePhotos:race-1') ? [nova] : undefined));
+    draftMediaStore.save = vi.fn(async () => {});
+    draftMediaStore.remove = vi.fn(async () => {});
+    try {
+      useAppStore.setState({
+        profile: PROFILE, runs: [], shoes: [], coachPlans: [], coachPlanItems: [],
+        raceEvents: [{ ...PROVA, photo_paths: ['user-1/race-1/photo-1.jpg', 'user-1/race-1/photo-2.jpg'] }],
+        runRacePrefill: { raceId: 'race-1' },
+      });
+      render(<RunRegistration onClose={onClose} />);
+      // Duas do servidor e a nova do rascunho, venha primeiro quem vier.
+      await waitFor(() => expect(screen.getByTestId('race-photos-counter')).toHaveTextContent('3 de 6'));
+    } finally {
+      Object.assign(draftMediaStore, original);
+    }
   });
 
   it('editar uma corrida já ligada a uma prova reabre em modo prova', () => {

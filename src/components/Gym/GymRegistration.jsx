@@ -14,6 +14,7 @@ import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 
 const GYM_KINDS = [
@@ -347,13 +348,19 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar —
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  // Fotos ficam de fora de propósito: são grandes, a seleção do ficheiro/
-  // picker não é restaurável depois de recarregar, e não são tipicamente o
-  // que se está a meio de escrever quando se é interrompido.
+  // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
+  // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
     date, startTime, kind, categories, customCategory, name, notes, entryMethod,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
   }, { isDirty: isFormDirty });
+
+  /* As fotos do rascunho guardam-se à parte, em IndexedDB
+     (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
+     (relatado 2026-09-13). Só num registo novo: a editar, as fotos já
+     gravadas voltam do servidor. Restaurá-las marca o formulário como
+     alterado, para o aviso de saída as proteger. */
+  usePersistedDraftMedia(sessionIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
   // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
   // ou o nome não justifica uma chamada ao Gemini.

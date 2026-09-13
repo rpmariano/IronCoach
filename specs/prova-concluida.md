@@ -86,8 +86,9 @@ uma no seu dia do Calendário. Comparadas três portas de entrada (canvas
   (que sai do Perfil) e "As tuas provas" (`RaceListCard`), com três grupos
   pela régua de `src/utils/raceList.js` — próximas (de hoje em diante, com a
   contagem), por registar (passadas e não concluídas, sem limite de dias) e
-  concluídas (com tempo e conquistas quando há corrida ligada). Até três de
-  cada no cartão, o resto em "Ver todas". Cada linha abre o hub.
+  concluídas (com tempo e conquistas quando há corrida ligada). As próximas e as por registar aparecem
+  todas; das concluídas, as três mais recentes, e o resto em "Ver todas"
+  (2026-09-13: provas de 2027 escondidas pareciam não existir). Cada linha abre o hub.
 - **O Início aponta para lá**: o cartão "Para onde vou" ganha "Todas as
   provas e o Palmarés".
 - A lista sai do Dashboard Corrida, que volta a ser só números da corrida.

@@ -29,6 +29,7 @@ import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { isRacePlanItem } from '../../utils/homeModels';
 
@@ -598,7 +599,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (cancelled) return;
       if (current.diploma) setDiploma(prev => (prev?.blob ? prev : current.diploma));
       if (current.medal) setMedal(prev => (prev?.blob ? prev : current.medal));
-      if (current.photos.length) setRacePhotos(prev => (prev.some(p => p.blob) ? prev : current.photos));
+      // Juntam-se às novas, nunca se escolhe uma das listas: com o restauro
+      // do rascunho (IndexedDB, local e rápido) as fotos novas chegam quase
+      // sempre antes das assinaturas, e descartar as do servidor fazia-as sair
+      // do bucket ao gravar (revisão pré-deploy 2026-09-13).
+      if (current.photos.length) {
+        setRacePhotos(prev => [...current.photos, ...prev.filter(p => p.blob)].slice(0, MAX_RACE_PHOTOS));
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -675,6 +682,33 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
   }, { isDirty: isFormDirty });
+
+  /* As fotos do rascunho guardam-se à parte, em IndexedDB
+     (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
+     (relatado 2026-09-13). Só num registo novo: a editar, as fotos já
+     gravadas voltam do servidor. Restaurá-las marca o formulário como
+     alterado, para o aviso de saída as proteger. */
+  const draftMediaKey = runIdToEdit ? null : draftStorageKey;
+  // Só o que é NOVO (ainda por enviar) se guarda: as memórias que já estão no
+  // bucket ({ path, url }) voltam do servidor, e guardá-las punha os caminhos
+  // de uma prova no registo de outra — que, ao gravar e depois trocar as
+  // memórias, podia apagar os ficheiros da primeira (revisão pré-deploy
+  // 2026-09-13). As memórias levam o id da prova na chave pela mesma razão.
+  const memorySlot = (name) => `${name}:${raceId || 'sem-prova'}`;
+  const newRunPhotos = useMemo(() => runPhotos.filter((p) => p.base64), [runPhotos]);
+  const newRacePhotos = useMemo(() => racePhotos.filter((p) => p.blob), [racePhotos]);
+  const newDiploma = diploma?.blob ? diploma : null;
+  const newMedal = medal?.blob ? medal : null;
+  usePersistedDraftMedia(draftMediaKey, 'runPhotos', newRunPhotos, (v) => {
+    setRunPhotos((prev) => [...prev.filter((p) => !p.base64), ...v].slice(0, MAX_PHOTOS));
+    setIsFormDirty(true);
+  });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('racePhotos'), newRacePhotos, (v) => {
+    setRacePhotos((prev) => [...prev.filter((p) => !p.blob), ...v].slice(0, MAX_RACE_PHOTOS));
+    setIsFormDirty(true);
+  });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('diploma'), newDiploma, (v) => { setDiploma(v); setIsFormDirty(true); });
+  usePersistedDraftMedia(draftMediaKey, memorySlot('medal'), newMedal, (v) => { setMedal(v); setIsFormDirty(true); });
 
   // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
   const needsReanalysis = !!runIdToEdit

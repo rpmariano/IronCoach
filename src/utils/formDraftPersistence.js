@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { clearDraftMedia } from './draftMediaPersistence';
 
 // Faz um rascunho de formulário sobreviver a um recarregamento da página —
 // comum em Android quando a app volta a primeiro plano depois de ter
@@ -90,6 +91,9 @@ export function clearPersistedFormDraft(key) {
     clearTimeout(timer);
     pendingTimers.delete(key);
   }
+  // As fotos do mesmo rascunho vivem à parte, em IndexedDB
+  // (draftMediaPersistence.js) — vão juntas.
+  clearDraftMedia(key);
   try {
     localStorage.removeItem(key);
   } catch (_) {
