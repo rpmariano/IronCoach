@@ -34,6 +34,7 @@ import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../ut
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { useCarouselHaptics } from '../../utils/haptics';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import DurationInput from '../shared/DurationInput';
 import { todayISO } from '../../lib/utils';
 
 function formatDatePT(isoStr) {
@@ -1145,12 +1146,10 @@ export default function RunAgenda({ onClose }) {
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
                   <label htmlFor="ra-objetivo-tempo-total" className="text-[11px] text-[var(--text-3)] mb-1 block">Objetivo tempo total <span className="text-[var(--danger)]">*</span></label>
-                  <input id="ra-objetivo-tempo-total"
-                    type="text"
-                    maxLength={60}
+                  <DurationInput id="ra-objetivo-tempo-total"
                     placeholder="Ex.: 1:45:00"
                     value={draft.target_time}
-                    onChange={e => { handleTargetTimeChange(e.target.value) }}
+                    onChange={handleTargetTimeChange}
                     onBlur={normalizeTargetTimeOnBlur}
                     className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
                   />

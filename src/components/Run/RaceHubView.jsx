@@ -417,7 +417,10 @@ export default function RaceHubView({
                           padding: 11,
                         }}
                       >
-                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Previsão</div>
+                        {/* "+2:18" sozinho não dizia de quê: é a diferença
+                            para o que o TREINO previa (VDOT das corridas
+                            anteriores à prova) — pedido 2026-09-13. */}
+                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>{`Vs. treino (previa ${formatDuration(predSeconds)})`}</div>
                         <div className="text-[14px] font-extrabold mt-1" style={{ color: diff <= 0 ? 'var(--ok)' : 'var(--warn)' }}>{diffLabel}</div>
                       </div>
                     )}
