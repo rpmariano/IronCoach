@@ -149,7 +149,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
-      <CarolCard pendingTopics={pendingTopics} topic={carolTopic} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
+      <CarolCard onOpenRace={setEditingRaceId} pendingTopics={pendingTopics} topic={carolTopic} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
