@@ -66,7 +66,7 @@ export default function Auth() {
       <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
         <div className="flex justify-center mb-1">
-          <BrandMark variant="lockup" animated size={272} alt="IronCoach, AI-powered" className="rounded-2xl" />
+          <BrandMark variant="lockup" animated size={272} alt="IronCoach, treino com inteligência artificial" className="rounded-2xl" />
         </div>
         <p className="text-xs text-[var(--text-3)] text-center">
           {authMode === 'signin' ? 'Entra na tua conta' : 'Cria a tua conta'}

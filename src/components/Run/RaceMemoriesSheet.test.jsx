@@ -116,6 +116,24 @@ describe('RaceMemoriesSheet', () => {
   });
 });
 
+describe('RaceMemoriesSheet — quem monta trata do store', () => {
+  it('com onSaved, entrega o patch e não escreve no store por conta própria', async () => {
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    render(<RaceMemoriesSheet race={RACE} userId="user-1" onSaved={onSaved} onClose={onClose} />);
+    await screen.findByTestId('race-memories-save');
+    await act(async () => {
+      fireEvent.change(inputDaEtiqueta('Adicionar a medalha'), { target: { files: [ficheiroImagem()] } });
+    });
+    fireEvent.click(screen.getByTestId('race-memories-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSaved).toHaveBeenCalledWith({ diploma_path: null, medal_path: 'user-1/race-1/medal.jpg', photo_paths: [] });
+    // O RunAgenda escreve pelo seu writeRaceEventsLocally; aqui o store fica igual.
+    expect(useAppStore.getState().raceEvents[0].medal_path).toBeUndefined();
+  });
+});
+
 describe('RaceHubView — memórias depois da prova', () => {
   it('o convite abre a persiana aqui mesmo, sem reabrir o registo da corrida', async () => {
     render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);

@@ -4,7 +4,7 @@ import { Sheet } from '../shared/Sheet';
 import Warning, { WarningAction } from '../shared/Warning';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { useAppStore } from '../../store';
-import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories } from '../../utils/raceMemories';
+import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
 
 /* A persiana "Memórias" do hub (pedido 2026-09-13): concluir a prova é
    registar a corrida; o diploma, a medalha e as fotografias podem vir
@@ -16,7 +16,10 @@ import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemori
    Grava direto em race_events pelo mesmo módulo do registo
    (utils/raceMemories.js); o status não se toca — a prova já está
    concluída quando isto existe. */
-export default function RaceMemoriesSheet({ race, userId, onClose }) {
+/* `onSaved(patch)`: quem monta pode tratar da escrita no store — o RunAgenda
+   precisa, para a marcar como sua e não repor o rascunho por gravar dos
+   "Detalhes" (revisão pré-deploy 2026-09-13). Sem ele, escreve direto. */
+export default function RaceMemoriesSheet({ race, userId, onClose, onSaved }) {
   const [diploma, setDiploma] = useState(null);
   const [medal, setMedal] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -55,7 +58,8 @@ export default function RaceMemoriesSheet({ race, userId, onClose }) {
   const onPhotoFiles = async (files) => {
     const { added, error: err } = await pickPhotos(files, photos.length);
     setError(err);
-    if (added.length) { setPhotos(prev => [...prev, ...added]); setDirty(true); }
+    // Teto outra vez no estado: duas seleções seguidas contavam com o mesmo `length`.
+    if (added.length) { setPhotos(prev => [...prev, ...added].slice(0, MAX_RACE_PHOTOS)); setDirty(true); }
   };
 
   const save = async () => {
@@ -64,8 +68,12 @@ export default function RaceMemoriesSheet({ race, userId, onClose }) {
     setSaveFailed(false);
     try {
       const patch = await persistRaceMemories({ userId, raceId: race.id, current: race, diploma, medal, photos });
-      const store = useAppStore.getState();
-      store.setRaceEvents((store.raceEvents || []).map(e => (e.id === race.id ? { ...e, ...patch } : e)));
+      if (onSaved) {
+        onSaved(patch);
+      } else {
+        const store = useAppStore.getState();
+        store.setRaceEvents((store.raceEvents || []).map(e => (e.id === race.id ? { ...e, ...patch } : e)));
+      }
       onClose?.();
     } catch (err) {
       console.error('Falha a guardar as memórias da prova', err);

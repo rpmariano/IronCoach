@@ -71,6 +71,24 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
    trail, sequência de provas). Desenho a fazer em Claude Design antes de
    implementar; nenhuma tabela nova nesta fase.
 
+## Onde vivem as provas (2026-09-13)
+
+Até aqui não havia um sítio com todas: o Início e o cartão de prontidão só
+mostram a próxima, a agenda tem-nas dia a dia e o Palmarés só as
+concluídas. O módulo **Corrida** do Dashboard ganha "As tuas provas"
+(`src/components/Run/RaceListCard.jsx`), logo a seguir ao veredicto e antes
+do filtro de período, porque não lhe obedece — e também no estado sem
+corridas. Três grupos, pela régua de `src/utils/raceList.js`:
+
+- **Próximas** — não concluídas, de hoje em diante, da mais perto para a
+  mais longe, com a contagem ("amanhã", "daqui a 12 dias");
+- **Por registar** — não concluídas e já passadas, sem limite de dias;
+- **Concluídas** — `status = 'concluida'`, da mais recente para trás, com o
+  tempo e as conquistas quando há corrida ligada.
+
+No cartão cabem até três de cada; o resto está em "Ver todas", numa
+persiana. Cada linha abre o hub. "Marcar prova" abre o formulário.
+
 ## Fora de âmbito (agora)
 
 - Edge Functions: `analyze-run` continua a receber o print como hoje; passar

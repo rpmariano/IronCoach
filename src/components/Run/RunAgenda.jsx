@@ -400,6 +400,19 @@ export default function RunAgenda({ onClose }) {
     setRaceEvents(next);
   };
 
+  // Memórias guardadas na persiana do Hub embutido: a mesma escrita local do
+  // "Marcar como concluída", pelo mesmo motivo — o efeito de carregamento
+  // repunha o registo canónico e apagava as edições por gravar dos
+  // "Detalhes" (revisão pré-deploy 2026-09-13). Só os caminhos entram no
+  // rascunho, sem o sujar; é daqui que a galeria e a próxima abertura da
+  // persiana leem o que ficou guardado.
+  const handleMemoriesSaved = (patch) => {
+    const id = editingEventId;
+    if (!id || !patch) return;
+    writeRaceEventsLocally(raceEvents.map(e => (e.id === id ? { ...e, ...patch } : e)));
+    setDraft(prev => ({ ...prev, ...patch }));
+  };
+
   // "Marcar como concluída" a partir do Hub embutido (RaceHubView) — a mesma
   // escrita que o toggle do cartão da agenda (Calendar.handleToggleRaceStatus),
   // só no sentido agendada → concluída, e já confirmada lá. Grava logo, sem
@@ -935,6 +948,7 @@ export default function RunAgenda({ onClose }) {
                 onFetchWebInfo={handleFetchWebInfo}
                 fetchingWebInfo={fetchingWebInfo}
                 onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
+                onMemoriesSaved={editingEventId ? handleMemoriesSaved : undefined}
                 onGoToEdit={() => {
                   setActivePage('details');
                   scrollTo(1);
