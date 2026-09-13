@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   updates: [],
   uploads: [],
   uploadError: null,
+  // Prints a editar: as signed URLs podem falhar; o que sai do bucket regista-se.
+  signError: null,
+  removed: [],
 }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -35,7 +38,10 @@ vi.mock('../../lib/supabase', () => ({
           return Promise.resolve({ data: { path }, error: mocks.uploadError });
         },
         createSignedUrl: (path) => Promise.resolve({ data: { signedUrl: `https://signed/${path}` }, error: null }),
-        createSignedUrls: (paths) => Promise.resolve({ data: paths.map(p => ({ signedUrl: `https://signed/${p}` })), error: null }),
+        createSignedUrls: (paths) => (mocks.signError
+          ? Promise.resolve({ data: null, error: mocks.signError })
+          : Promise.resolve({ data: paths.map(p => ({ signedUrl: `https://signed/${p}` })), error: null })),
+        remove: (paths) => { mocks.removed.push(...paths); return Promise.resolve({ data: null, error: null }); },
       }),
     },
   },
@@ -320,6 +326,94 @@ describe('RunRegistration — editar corrida existente', () => {
     effort_rpe: 5,
     details: { cadence_spm: 165 },
   };
+
+  /* Prints a editar (relatado 2026-09-13): removem-se e juntam-se, e guardar
+     reanalisa a corrida pelas imagens — sem `mode`, com keep_paths e images. */
+  describe('prints do relógio', () => {
+    const COM_PRINTS = { ...EXISTING_RUN, photo_paths: ['user-1/a.jpg', 'user-1/b.jpg'] };
+
+    it('remover um print já guardado passa a "Guardar e reanalisar" e manda só o que ficou', async () => {
+      useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      await screen.findByAltText('Print 2');
+      expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+      fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [fnName, { body }] = mocks.invoke.mock.calls[0];
+      expect(fnName).toBe('analyze-run');
+      expect(body.mode).toBeUndefined();
+      expect(body).toMatchObject({ run_id: 'run-9', keep_paths: ['user-1/b.jpg'], images: [], name: 'Rodagem', date: '2026-08-01' });
+    });
+
+    it('juntar um print novo manda-o em images, com os guardados em keep_paths', async () => {
+      useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      await screen.findByAltText('Print 2');
+
+      const input = screen.getByText('Adicionar outro print').closest('label').querySelector('input[type="file"]');
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [new File(['x'], 'km.jpg', { type: 'image/jpeg' })] } });
+      });
+      await screen.findByAltText('Print 3');
+      fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [, { body }] = mocks.invoke.mock.calls[0];
+      expect(body.mode).toBeUndefined();
+      expect(body.keep_paths).toEqual(['user-1/a.jpg', 'user-1/b.jpg']);
+      expect(body.images).toEqual(['AAA']);
+    });
+
+    it('com as signed URLs a falhar, nada se remove: guardar continua pelos campos e não toca nos prints', async () => {
+      mocks.signError = { message: 'token expirado' };
+      mocks.updates.length = 0;
+      mocks.removed.length = 0;
+      try {
+        useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+        render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+        expect(await screen.findByText(/Não consegui carregar os prints/)).toBeInTheDocument();
+        // Sem prints à vista não há "removidos": o botão não muda nem se pode juntar.
+        expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+        expect(screen.queryByText('Adicionar outro print')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Remover print/ })).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText(/Nome da corrida/i), { target: { value: 'Rodagem leve' } });
+        fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+        expect(mocks.invoke).not.toHaveBeenCalled();
+        expect(mocks.updates.some(u => u.table === 'runs' && Array.isArray(u.payload.photo_paths))).toBe(false);
+        expect(mocks.removed).toEqual([]);
+      } finally {
+        mocks.signError = null;
+      }
+    });
+
+    it('com todos os prints removidos, guarda pelos campos e a corrida fica sem imagens', async () => {
+      mocks.updates.length = 0;
+      mocks.removed.length = 0;
+      useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      await screen.findByAltText('Print 2');
+      fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+      expect(screen.getByText('Adicionar prints')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('manual');
+      await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && Array.isArray(u.payload.photo_paths) && u.payload.photo_paths.length === 0)).toBe(true));
+      expect(mocks.removed).toEqual(['user-1/a.jpg', 'user-1/b.jpg']);
+    });
+
+    it('sem prints, a edição continua a oferecer "Adicionar prints"', () => {
+      useAppStore.setState({ profile: PROFILE, runs: [EXISTING_RUN], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      expect(screen.getByText('Adicionar prints')).toBeInTheDocument();
+    });
+  });
 
   beforeEach(() => {
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: EXISTING_RUN }, error: null });
