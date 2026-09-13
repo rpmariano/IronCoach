@@ -415,10 +415,16 @@ export default function App() {
   useEffect(() => {
     const onVisibilityChange = () => {
       const userId = loadedUserIdRef.current;
+      // Formulário aberto: os ecrãs de topo (registo, prova, onboarding) e,
+      // para os que abrem por dentro de outro ecrã (editar uma corrida a
+      // partir do Calendário), a guarda de navegação que todos os
+      // formulários com rascunho põem enquanto têm alterações por gravar
+      // (terceira revisão pré-deploy, 2026-09-13).
+      const formOpen = formOpenRef.current || !!useAppStore.getState().navGuard;
       if (!shouldReloadOnVisible({
         visible: document.visibilityState === 'visible',
         userId,
-        formOpen: formOpenRef.current,
+        formOpen,
         sinceLastMs: Date.now() - lastVisibleReloadRef.current,
       })) return;
       lastVisibleReloadRef.current = Date.now();
