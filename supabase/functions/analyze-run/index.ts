@@ -1004,6 +1004,24 @@ export function resolvePhotoPaths(existing: unknown, keepPaths: unknown): { kept
   };
 }
 
+/** Reanálise a editar: o tipo (treino/competição, tipo de treino ou
+ *  disciplina) é escolha do atleta, não vem da imagem. Se o corpo trouxer um
+ *  válido, é esse; senão fica o que a corrida já tinha. Um tipo de treino
+ *  de outro kind nunca passa. */
+export function resolveReanalysisTypes(
+  existing: { kind?: string | null; training_type?: string | null; details?: { race_type?: string | null } | null },
+  body: { kind?: unknown; training_type?: unknown; race_type?: unknown },
+): { kind: string; trainingType: string | null; raceType: string | null } {
+  const kind = typeof body.kind === "string" && VALID_KINDS.has(body.kind) ? body.kind : (existing.kind || "treino");
+  const bodyTrainingType = typeof body.training_type === "string" && TRAINING_TYPE_KEYS.includes(body.training_type) ? body.training_type : null;
+  const bodyRaceType = typeof body.race_type === "string" && RACE_TYPE_KEYS.includes(body.race_type) ? body.race_type : null;
+  return {
+    kind,
+    trainingType: kind === "treino" ? (bodyTrainingType ?? existing.training_type ?? null) : null,
+    raceType: kind === "competicao" ? (bodyRaceType ?? existing.details?.race_type ?? null) : null,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1088,11 +1106,9 @@ Deno.serve(async (req) => {
       }
 
       // Tipo de treino/disciplina são escolhas do utilizador, não vêm da
-      // imagem — preserva o que já estava gravado em vez de tentar adivinhar
-      // de novo a cada reanálise.
-      const kind = existing.kind;
-      const existingTrainingType = kind === "treino" ? existing.training_type : null;
-      const existingRaceType = kind === "competicao" ? ((existing.details || {}).race_type ?? null) : null;
+      // imagem — o que o formulário mandou se for válido, senão o que já
+      // estava gravado (nunca se adivinha de novo a cada reanálise).
+      const { kind, trainingType: existingTrainingType, raceType: existingRaceType } = resolveReanalysisTypes(existing, body);
 
       let result;
       try {
@@ -1104,6 +1120,8 @@ Deno.serve(async (req) => {
 
       const details = detailsFromExtraction(kind, result.extraction, existingTrainingType, existingRaceType);
       const patch: Record<string, unknown> = {
+        kind,
+        training_type: existingTrainingType,
         distance_km: result.extraction.distance_km,
         duration_seconds: result.extraction.duration_seconds,
         details,

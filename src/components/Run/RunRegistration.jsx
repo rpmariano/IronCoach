@@ -278,6 +278,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // se sabe se os prints mudaram (removidos ou novos) e a corrida se
   // reanalisa pelas imagens ao guardar (pedido 2026-09-13).
   const originalPhotoPathsRef = useRef([]);
+  // Os prints do servidor chegam por signed URLs, de forma assíncrona: até
+  // chegarem (ou se falharem) não há prints "removidos" — sem isto, guardar
+  // com a lista ainda vazia apagava os prints da corrida (revisão
+  // pré-deploy 2026-09-13). Carregam-se UMA vez por sessão de edição: o
+  // efeito de carga re-corre quando `runs` muda e repunha a lista por cima
+  // de prints juntados/removidos por gravar.
+  const [serverPhotosLoaded, setServerPhotosLoaded] = useState(false);
+  const photosLoadedForKeyRef = useRef(null);
   // "Mais prints" no aviso das métricas em falta abre o seletor daqui.
   const editPhotoInputRef = useRef(null);
   /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
@@ -613,13 +621,28 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         // Load photos (são privadas, precisamos de signed URLs) — nunca
         // vindas do rascunho persistido (ver usePersistedFormDraft abaixo).
-        originalPhotoPathsRef.current = Array.isArray(r.photo_paths) ? r.photo_paths : [];
-        if (r.photo_paths && r.photo_paths.length > 0) {
-          supabase.storage.from('run-photos').createSignedUrls(r.photo_paths, 3600).then(({ data, error }) => {
-            if (!error && data) {
-              setRunPhotos(data.map((d, i) => ({ url: d.signedUrl, dataUrl: d.signedUrl, path: r.photo_paths[i] })).filter(p => p.url));
-            }
-          });
+        if (photosLoadedForKeyRef.current !== draftStorageKey) {
+          photosLoadedForKeyRef.current = draftStorageKey;
+          const paths = Array.isArray(r.photo_paths) ? r.photo_paths : [];
+          originalPhotoPathsRef.current = paths;
+          if (paths.length > 0) {
+            setServerPhotosLoaded(false);
+            supabase.storage.from('run-photos').createSignedUrls(paths, 3600).then(({ data, error }) => {
+              if (!error && Array.isArray(data)) {
+                // Um ficheiro que já não exista no bucket não conta como print
+                // da corrida: não se mostra nem se "remove".
+                const loaded = data.map((d, i) => ({ url: d.signedUrl, dataUrl: d.signedUrl, path: paths[i] })).filter(p => p.url && p.path);
+                originalPhotoPathsRef.current = loaded.map(p => p.path);
+                setRunPhotos((prev) => [...loaded, ...prev.filter(p => p.base64)]);
+                setServerPhotosLoaded(true);
+              } else {
+                console.warn('Prints da corrida não carregados', error);
+                setErrorMsg('Não consegui carregar os prints desta corrida. Fecha e volta a abrir para os editar.');
+              }
+            });
+          } else {
+            setServerPhotosLoaded(true);
+          }
         }
       }
     }
@@ -748,7 +771,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const newRunPhotos = useMemo(() => runPhotos.filter((p) => p.base64), [runPhotos]);
   const keptPhotoPaths = useMemo(() => runPhotos.filter((p) => p.path).map((p) => p.path), [runPhotos]);
   // A editar: prints removidos ou novos → a corrida reanalisa-se pelas imagens.
-  const photosChanged = !!runIdToEdit
+  const photosChanged = !!runIdToEdit && serverPhotosLoaded
     && (newRunPhotos.length > 0 || keptPhotoPaths.length !== (originalPhotoPathsRef.current || []).length);
   const newRacePhotos = useMemo(() => racePhotos.filter((p) => p.blob), [racePhotos]);
   const newDiploma = diploma?.blob ? diploma : null;
@@ -817,6 +840,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     keep_paths: keptPhotoPaths,
     images: newRunPhotos.map((p) => p.base64),
     mime_type: 'image/jpeg',
+    // O tipo é escolha do atleta, não vem da imagem — se o mudou nesta
+    // edição, vai junto (a função valida contra os enums).
+    kind: runKind,
+    training_type: runKind === 'treino' ? runTrainingType : null,
+    race_type: runKind === 'competicao' ? completedRaceType : null,
     date: runDate,
     name: runName.trim(),
     effort_rpe: runEffortRpe || null,
@@ -2132,16 +2160,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               {runPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {runPhotos.map((p, i) => (
-                    <div key={p.path || p.dataUrl || i} className="relative aspect-square">
+                    <div key={p.path || `novo-${i}`} className="relative aspect-square">
                       <img src={p.url || p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
-                      <button type="button" onClick={() => removePhoto(i)} style={{ color: '#fff' }} aria-label={`Remover print ${i + 1}`} className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {serverPhotosLoaded && (
+                        <button type="button" onClick={() => removePhoto(i)} style={{ color: '#fff' }} aria-label={`Remover print ${i + 1}`} className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
-              {runPhotos.length < MAX_PHOTOS && (
+              {!serverPhotosLoaded && originalPhotoPathsRef.current.length > 0 && (
+                <p className="text-[11px] mb-2" style={{ color: 'var(--text-4)' }}>A carregar os prints…</p>
+              )}
+              {serverPhotosLoaded && runPhotos.length < MAX_PHOTOS && (
                 <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition">
                   <input ref={editPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                   <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
@@ -2473,8 +2506,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           setShowMissingMetricsSheet(false);
           // A editar não há seletor Foto/Manual: abre-se o seletor de
           // ficheiros dos prints diretamente (relatado 2026-09-13).
-          if (runIdToEdit) editPhotoInputRef.current?.click();
-          else setEntryMethod('foto');
+          if (!runIdToEdit) setEntryMethod('foto');
+          else if (editPhotoInputRef.current) editPhotoInputRef.current.click();
+          else setErrorMsg(serverPhotosLoaded ? `Máximo de ${MAX_PHOTOS} imagens.` : 'Os prints ainda estão a carregar.');
         }}
         onGoManual={() => {
           setShowMissingMetricsSheet(false);
