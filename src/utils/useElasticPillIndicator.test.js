@@ -18,32 +18,32 @@ import {
 beforeEach(() => pillMotion.reset());
 
 describe('duração da minhoca', () => {
-  it('na nav: 420 + 130·distância em separadores', () => {
-    expect(navPillDuration(0, 0)).toBe(420);
-    expect(navPillDuration(0, 1)).toBe(550);
-    expect(navPillDuration(1, 3)).toBe(680);
+  it('na nav: 650 + 170·distância em separadores', () => {
+    expect(navPillDuration(0, 0)).toBe(650);
+    expect(navPillDuration(0, 1)).toBe(820);
+    expect(navPillDuration(1, 3)).toBe(990);
     // Início → Coach, o salto mais longo dos quatro separadores da barra.
-    expect(navPillDuration(0, 3)).toBe(810);
+    expect(navPillDuration(0, 3)).toBe(1160);
   });
 
   it('na nav: a distância conta em valor absoluto (ida e volta iguais)', () => {
     expect(navPillDuration(3, 0)).toBe(navPillDuration(0, 3));
   });
 
-  it('na nav: teto de 950ms (--dur-pill-nav-max)', () => {
-    expect(navPillDuration(0, 5)).toBe(950);   // 1070 sem teto
-    expect(navPillDuration(0, 20)).toBe(950);
+  it('na nav: teto de 1300ms (--dur-pill-nav-max)', () => {
+    expect(navPillDuration(0, 5)).toBe(1300);  // 1500 sem teto
+    expect(navPillDuration(0, 20)).toBe(1300);
   });
 
-  it('no subnav: 320ms fixos, seja qual for a distância', () => {
-    expect(SUBNAV_PILL_DURATION).toBe(320);
-    expect(subPillDuration(0, 1)).toBe(320);
-    expect(subPillDuration(0, 4)).toBe(320);
+  it('no subnav: 480ms fixos, seja qual for a distância', () => {
+    expect(SUBNAV_PILL_DURATION).toBe(480);
+    expect(subPillDuration(0, 1)).toBe(480);
+    expect(subPillDuration(0, 4)).toBe(480);
   });
 
-  it('as curvas são as do handoff: 45% a esticar, overshoot 1.70158', () => {
-    expect(STRETCH_RATIO_DEFAULT).toBe(0.45);
-    expect(OVERSHOOT_DEFAULT).toBe(1.70158);
+  it('as curvas: 40% a esticar, overshoot 2.2 (mais elástica desde 2026-09-13)', () => {
+    expect(STRETCH_RATIO_DEFAULT).toBe(0.40);
+    expect(OVERSHOOT_DEFAULT).toBe(2.2);
   });
 });
 
@@ -157,17 +157,17 @@ describe('useElasticPillIndicator', () => {
 
     act(() => { rerender(React.createElement(Bar, { activeIndex: 3 })); });
 
-    // A meio da fase de esticar (45% de 810ms ≈ 365ms) já cobre bem mais do
+    // A meio da fase de esticar (40% de 1160ms ≈ 464ms) já cobre bem mais do
     // que um separador — é a minhoca a engolir os do meio.
     step(200);
     expect(pill(container).width).toBeGreaterThan(TAB_W * 2);
 
-    // Fim dos 810ms de navPillDuration(0, 3): assenta exatamente no destino.
-    step(700);
+    // Fim dos 1160ms de navPillDuration(0, 3): assenta exatamente no destino.
+    step(1000);
     expect(pill(container)).toEqual({ left: 3 * TAB_W, width: TAB_W });
   });
 
-  it('aceita a duração como número — 320ms nos subnavs', () => {
+  it('aceita a duração como número — 480ms nos subnavs', () => {
     const { container, rerender } = render(
       React.createElement(Bar, { activeIndex: 0, options: { duration: SUBNAV_PILL_DURATION } })
     );
@@ -176,7 +176,7 @@ describe('useElasticPillIndicator', () => {
     step(200);
     expect(pill(container).left).not.toBe(3 * TAB_W); // ainda a caminho
 
-    step(140); // 340ms > 320ms
+    step(300); // 500ms > 480ms
     expect(pill(container)).toEqual({ left: 3 * TAB_W, width: TAB_W });
   });
 
@@ -212,7 +212,7 @@ describe('useElasticPillIndicator', () => {
     const { container, rerender } = render(React.createElement(Bar, { activeIndex: 0 }));
     act(() => { rerender(React.createElement(Bar, { activeIndex: 3 })); });
 
-    step(130); // navPillDuration daria 810ms
+    step(130); // navPillDuration daria 1160ms
     expect(pill(container)).toEqual({ left: 3 * TAB_W, width: TAB_W });
   });
 });

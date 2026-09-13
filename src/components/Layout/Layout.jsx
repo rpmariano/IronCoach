@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { publicUrl } from '../../lib/utils';
 import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
+import BrandMark from '../shared/BrandMark';
 import AppBackground from './AppBackground';
 import WaterSheet from '../Home/WaterSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
@@ -37,11 +37,13 @@ export default function Layout({ children }) {
   const fabBtnRef = useRef(null);
   const mainRef = useRef(null);
   const lastLogoClickAt = useRef(0);
+  // Cada toque no logótipo toca um ciclo da animação da marca (BrandMark).
+  const [logoPlays, setLogoPlays] = useState(0);
 
   // Minhoca da barra inferior — uma só pílula de 4px em gradiente, absoluta
   // no topo da nav, a deslizar entre os quatro separadores (ponto 4 do
   // handoff). Substitui o tracinho de 3px que cada botão pintava por baixo
-  // de si. A duração é a da nav: min(950, 420 + 130·distância) ms, o valor
+  // de si. A duração é a da nav: min(1300, 650 + 170·distância) ms, o valor
   // por omissão do hook.
   const navRef = useRef(null);
   const navIndex = navIndexFor(activeTab);
@@ -69,6 +71,7 @@ export default function Layout({ children }) {
   const todayLabel = new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const handleLogoClick = () => {
+    setLogoPlays((n) => n + 1);
     if (!isAdmin) { setActiveTab('home'); return; }
     const now = Date.now();
     if (now - lastLogoClickAt.current < 1000) {
@@ -154,7 +157,7 @@ export default function Layout({ children }) {
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
-              <img src={publicUrl('logo.png')} alt="" className="w-9 h-9 rounded-xl object-cover" onError={e => { e.target.style.display='none'; }} />
+              <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>
               <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</h1>

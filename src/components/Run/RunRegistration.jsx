@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, Award, FileText } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
+import RaceMemoriesFields from './RaceMemoriesFields';
+import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared } from '../../utils/raceMemories';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -78,15 +80,9 @@ const COMPLETED_RACE_TYPES = [
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
 
 // ── Modo prova (specs/prova-concluida.md) ───────────────────────────────────
-// Fotografias do DIA da prova — não confundir com os prints do relógio
-// (MAX_PHOTOS, acima), que são a matéria-prima da análise da Carol. Estas são
-// memórias e vivem na prova, não na corrida.
-const MAX_RACE_PHOTOS = 6;
-// Espelha o file_size_limit do bucket race-memories
-// (supabase/migrations/20260912171242_race_completion.sql): o cliente diz
-// porque recusou em vez de deixar o upload falhar com um 413 sem explicação.
-const MAX_MEMORY_BYTES = 2097152;
-const RACE_MEMORIES_BUCKET = 'race-memories';
+// As memórias (diploma, medalha, fotografias do dia) vivem na prova, não na
+// corrida, e a sua lógica está em utils/raceMemories.js — partilhada com a
+// persiana do hub, onde também se juntam depois de a prova estar concluída.
 // Provas a ±7 dias entram no seletor "Qual prova?" — o registo faz-se no dia
 // ou nos dias seguintes, e às vezes a data da agenda ficou um dia ao lado.
 const RACE_PICKER_WINDOW_DAYS = 7;
@@ -108,19 +104,6 @@ function raceTypeFromRaceEvent(ev) {
   if (Math.abs(km - 21.0975) < 0.6) return '21k';
   if (Math.abs(km - 42.195) < 0.6) return '42k';
   return 'estrada';
-}
-
-/* O Storage recebe bytes; a compressImage devolve um dataUrl. `fetch(dataUrl)`
-   resolveria isto numa linha, mas não é fiável em todos os contextos (jsdom
-   nos testes, WebViews antigas) — atob/Uint8Array é síncrono e funciona em
-   qualquer lado. */
-function dataUrlToBlob(dataUrl) {
-  const [head, body] = String(dataUrl).split(',');
-  const mime = (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
-  const binary = atob(body || '');
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
 }
 
 // A Agenda de Provas (raceEvents) tem o próprio formulário dedicado em
@@ -608,39 +591,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     : '';
   useEffect(() => {
     const ev = raceEvent;
-    const paths = ev ? (ev.photo_paths || []) : [];
-    if (!ev || (!ev.diploma_path && !ev.medal_path && paths.length === 0)) return undefined;
+    if (!ev || (!ev.diploma_path && !ev.medal_path && !(ev.photo_paths || []).length)) return undefined;
     let cancelled = false;
-    const sign = async (path) => {
-      if (!path) return null;
-      try {
-        const { data, error } = await supabase.storage.from(RACE_MEMORIES_BUCKET).createSignedUrl(path, 3600);
-        return error ? null : (data?.signedUrl || null);
-      } catch (err) {
-        return null;
-      }
-    };
     (async () => {
-      const [diplomaUrl, medalUrl, ...photoUrls] = await Promise.all([
-        sign(ev.diploma_path), sign(ev.medal_path), ...paths.map(sign),
-      ]);
+      const current = await signRaceMemories(ev);
       if (cancelled) return;
-      if (ev.diploma_path) {
-        setDiploma(prev => (prev?.blob ? prev : {
-          path: ev.diploma_path,
-          url: diplomaUrl,
-          isPdf: ev.diploma_path.toLowerCase().endsWith('.pdf'),
-          name: ev.diploma_path.split('/').pop(),
-        }));
-      }
-      if (ev.medal_path) {
-        setMedal(prev => (prev?.blob ? prev : { path: ev.medal_path, url: medalUrl, dataUrl: medalUrl }));
-      }
-      if (paths.length) {
-        setRacePhotos(prev => (prev.some(p => p.blob) ? prev : paths.map((path, i) => ({
-          path, url: photoUrls[i], dataUrl: photoUrls[i],
-        }))));
-      }
+      if (current.diploma) setDiploma(prev => (prev?.blob ? prev : current.diploma));
+      if (current.medal) setMedal(prev => (prev?.blob ? prev : current.medal));
+      if (current.photos.length) setRacePhotos(prev => (prev.some(p => p.blob) ? prev : current.photos));
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -762,77 +720,25 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // ----------------------------------
   // MEMÓRIAS DA PROVA (diploma, medalha, fotografias)
   // ----------------------------------
-  // As imagens passam pela mesma compressImage dos prints (JPEG, 1600px,
-  // ~300 KB). O PDF do diploma vai inteiro — comprimir um PDF não é coisa
-  // que se faça no browser —, e por isso é o único que precisa da verificação
-  // do limite de 2 MB do bucket.
-  const readMemoryImage = async (file) => {
-    const { dataUrl } = await compressImage(file);
-    return { dataUrl, blob: dataUrlToBlob(dataUrl), mime: 'image/jpeg' };
+  // A leitura dos ficheiros (compressão, limite do PDF, teto de fotos) é a
+  // do módulo partilhado; aqui só se guarda o resultado e se marca o
+  // formulário como alterado.
+  const handleDiplomaFile = async (file) => {
+    const { memory, error } = await pickDiploma(file);
+    setMemoryError(error);
+    if (memory) { setDiploma(memory); setIsFormDirty(true); }
   };
 
-  const handleDiplomaSelected = async (e) => {
-    const file = (e.target.files || [])[0];
-    e.target.value = '';
-    if (!file) return;
-    setMemoryError('');
-    if (file.type === 'application/pdf') {
-      if (file.size > MAX_MEMORY_BYTES) {
-        setMemoryError('O diploma em PDF tem mais de 2 MB. Escolhe um ficheiro mais pequeno ou uma fotografia dele.');
-        return;
-      }
-      setDiploma({ blob: file, mime: 'application/pdf', isPdf: true, name: file.name });
-      setIsFormDirty(true);
-      return;
-    }
-    try {
-      const img = await readMemoryImage(file);
-      setDiploma({ ...img, isPdf: false, name: file.name });
-      setIsFormDirty(true);
-    } catch (err) {
-      console.warn('Falha a processar o diploma', err);
-      setMemoryError('Não consegui ler esse ficheiro. Tenta uma imagem ou um PDF.');
-    }
+  const handleMedalFile = async (file) => {
+    const { memory, error } = await pickMedal(file);
+    setMemoryError(error);
+    if (memory) { setMedal(memory); setIsFormDirty(true); }
   };
 
-  const handleMedalSelected = async (e) => {
-    const file = (e.target.files || [])[0];
-    e.target.value = '';
-    if (!file) return;
-    setMemoryError('');
-    try {
-      const img = await readMemoryImage(file);
-      setMedal(img);
-      setIsFormDirty(true);
-    } catch (err) {
-      console.warn('Falha a processar a medalha', err);
-      setMemoryError('Não consegui ler essa imagem. Tenta outra.');
-    }
-  };
-
-  const handleRacePhotosSelected = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
-    setMemoryError('');
-    const remaining = MAX_RACE_PHOTOS - racePhotos.length;
-    if (remaining <= 0) {
-      setMemoryError(`Já tens ${MAX_RACE_PHOTOS} fotografias. Remove uma para acrescentar outra.`);
-      return;
-    }
-    if (files.length > remaining) {
-      setMemoryError(`Guardei as primeiras ${remaining} — o limite é de ${MAX_RACE_PHOTOS} fotografias.`);
-    }
-    for (const file of files.slice(0, remaining)) {
-      try {
-        const img = await readMemoryImage(file);
-        setRacePhotos(prev => (prev.length >= MAX_RACE_PHOTOS ? prev : [...prev, img]));
-        setIsFormDirty(true);
-      } catch (err) {
-        console.warn('Falha a processar a fotografia da prova', err);
-        setMemoryError('Não consegui ler uma das imagens.');
-      }
-    }
+  const handleRacePhotoFiles = async (files) => {
+    const { added, error } = await pickPhotos(files, racePhotos.length);
+    setMemoryError(error);
+    if (added.length) { setRacePhotos(prev => [...prev, ...added]); setIsFormDirty(true); }
   };
 
   /* A corrida é gravada pela Edge Function analyze-run, que insere a linha em
@@ -864,58 +770,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return { ...run, start_time: value };
   };
 
-  /* Envia o que é novo para race-memories/<uid>/<raceId>/… e grava os
-     caminhos na prova, junto com o status. Diploma e medalha têm nome fixo
-     (é uma de cada; upsert substitui). As fotografias levam nome ÚNICO: com
-     nomes por posição, remover a 1.ª de três e juntar uma nova enviava-a
-     como photo-3.jpg por cima da antiga e a galeria ficava com a mesma foto
-     duas vezes (apanhado na revisão pré-deploy). O que deixou de ser
-     referenciado apaga-se do bucket no fim, para nada ficar a ocupar espaço
-     para sempre — best-effort: se falhar, fica só no log. */
-  const persistRaceMemories = async () => {
-    const userId = profile?.id;
-    const base = `${userId}/${raceId}`;
-    const bucket = supabase.storage.from(RACE_MEMORIES_BUCKET);
-    const currentRace = (useAppStore.getState().raceEvents || []).find(e => e.id === raceId);
-    const before = new Set([currentRace?.diploma_path, currentRace?.medal_path, ...(currentRace?.photo_paths || [])].filter(Boolean));
-
-    const send = async (path, memory) => {
-      const { error } = await bucket.upload(path, memory.blob, {
-        upsert: true,
-        contentType: memory.mime || 'image/jpeg',
-      });
-      if (error) throw error;
-      return path;
-    };
-
-    const patch = { status: 'concluida' };
-
-    patch.diploma_path = diploma
-      ? (diploma.blob ? await send(`${base}/diploma.${diploma.isPdf ? 'pdf' : 'jpg'}`, diploma) : diploma.path || null)
-      : null;
-    patch.medal_path = medal
-      ? (medal.blob ? await send(`${base}/medal.jpg`, medal) : medal.path || null)
-      : null;
-
-    const photoPaths = [];
-    const stamp = Date.now();
-    for (let i = 0; i < racePhotos.length; i += 1) {
-      const photo = racePhotos[i];
-      photoPaths.push(photo.blob ? await send(`${base}/photo-${stamp}-${i + 1}.jpg`, photo) : photo.path);
-    }
-    patch.photo_paths = photoPaths.filter(Boolean);
-
-    const { error } = await supabase.from('race_events').update(patch).eq('id', raceId);
-    if (error) throw error;
-
-    const kept = new Set([patch.diploma_path, patch.medal_path, ...patch.photo_paths].filter(Boolean));
-    const orphans = [...before].filter(p => !kept.has(p));
-    if (orphans.length) {
-      const { error: removeError } = await bucket.remove(orphans);
-      if (removeError) console.warn('Memórias antigas da prova não apagadas do bucket', removeError);
-    }
-    return patch;
-  };
+  /* Envia o que é novo para o bucket e grava os caminhos na prova, junto
+     com o status "concluida" — pelo módulo partilhado com a persiana do hub
+     (utils/raceMemories.js), que é quem sabe dos nomes, do upsert e da
+     limpeza do que deixou de ser referenciado. */
+  const persistRaceMemories = () => persistRaceMemoriesShared({
+    userId: profile?.id,
+    raceId,
+    current: (useAppStore.getState().raceEvents || []).find(e => e.id === raceId),
+    diploma,
+    medal,
+    photos: racePhotos,
+    extraPatch: { status: 'concluida' },
+  });
 
   /* O dia da prova no plano (specs/plano-de-prova.md, "O plano tem de saber
      da prova"): o plano aceite tem nesse dia um item `corrida` com
@@ -1602,22 +1469,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       border: '1px solid var(--tint-race-bd)',
       color: 'var(--race)',
     };
-    const memoryLabel = {
-      fontSize: 11,
-      fontWeight: 800,
-      textTransform: 'uppercase',
-      letterSpacing: 'var(--tracking-label)',
-      color: 'var(--text-3)',
-    };
-    const memorySlot = {
-      minHeight: 'var(--tap)',
-      borderRadius: 'var(--radius-sm)',
-      border: '1px dashed var(--tint-race-bd)',
-      background: 'var(--tint-race-bg)',
-      color: 'var(--race)',
-      fontSize: 12.5,
-      fontWeight: 800,
-    };
 
     return (
       <div className="space-y-2.5 fade-in pb-10" data-testid="run-race-mode">
@@ -1717,98 +1568,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           {renderShoesField()}
         </GlassCard>
 
-        {/* ── 4. MEMÓRIAS — vivem na prova, não na corrida (spec §2). ─────── */}
+        {/* ── 4. MEMÓRIAS — vivem na prova, não na corrida (spec §2). São uma
+            oferta, não uma condição: a prova conclui-se com a corrida, e o
+            diploma, a medalha e as fotos juntam-se aqui ou, mais tarde, na
+            persiana "Memórias" do hub (pedido 2026-09-13). ─────────────── */}
         <SectionLabel tone="race">Memórias</SectionLabel>
         <GlassCard data-testid="race-memories">
-          <div className="mb-4">
-            <p style={memoryLabel}>Diploma</p>
-            {diploma ? (
-              <div className="flex items-center gap-2.5 mt-2">
-                {diploma.isPdf ? (
-                  <span className="flex items-center justify-center rounded-xl shrink-0" style={{ width: 56, height: 56, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
-                    <FileText size={20} />
-                  </span>
-                ) : (
-                  <img src={diploma.dataUrl || diploma.url} alt="Diploma da prova" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid var(--border-glass)' }} />
-                )}
-                <span className="flex-1 min-w-0 text-[12.5px] truncate" style={{ color: 'var(--text-2)' }}>{diploma.name || 'Diploma'}</span>
-                <button
-                  type="button"
-                  onClick={() => { setDiploma(null); setIsFormDirty(true); }}
-                  aria-label="Remover o diploma"
-                  className="tap-44 shrink-0 text-[var(--text-3)] hover:text-[var(--danger)] transition-colors"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
-                <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleDiplomaSelected} />
-                <FileText size={15} /> Adicionar o diploma
-              </label>
-            )}
-            <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-4)' }}>Uma imagem ou um PDF, até 2 MB.</p>
-          </div>
-
-          <div className="mb-4">
-            <p style={memoryLabel}>Medalha</p>
-            {medal ? (
-              <div className="flex items-center gap-2.5 mt-2">
-                <img src={medal.dataUrl || medal.url} alt="Medalha da prova" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid var(--border-glass)' }} />
-                <span className="flex-1 min-w-0 text-[12.5px]" style={{ color: 'var(--text-2)' }}>A medalha do dia</span>
-                <button
-                  type="button"
-                  onClick={() => { setMedal(null); setIsFormDirty(true); }}
-                  aria-label="Remover a medalha"
-                  className="tap-44 shrink-0 text-[var(--text-3)] hover:text-[var(--danger)] transition-colors"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
-                <input type="file" accept="image/*" className="hidden" onChange={handleMedalSelected} />
-                <Award size={15} /> Adicionar a medalha
-              </label>
-            )}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p style={memoryLabel}>Fotografias</p>
-              <span className="text-[11px]" style={{ color: 'var(--text-4)' }} data-testid="race-photos-counter">
-                {racePhotos.length} de {MAX_RACE_PHOTOS}
-              </span>
-            </div>
-            {racePhotos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                {racePhotos.map((p, i) => (
-                  <div key={p.path || p.dataUrl || i} className="relative aspect-square">
-                    <img src={p.dataUrl || p.url} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Fotografia ${i + 1} da prova`} />
-                    <button
-                      type="button"
-                      onClick={() => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
-                      aria-label={`Remover a fotografia ${i + 1}`}
-                      className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition"
-                      style={{ color: '#fff' }}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {racePhotos.length < MAX_RACE_PHOTOS && (
-              <label className="flex items-center justify-center gap-2 mt-2 cursor-pointer" style={memorySlot}>
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handleRacePhotosSelected} />
-                <ImagePlus size={15} /> Adicionar fotografias
-              </label>
-            )}
-          </div>
-
-          {memoryError && (
-            <Warning title="Memória não aceite" className="mt-3">{memoryError}</Warning>
-          )}
+          <p className="text-[12px] leading-[1.5] mb-4" style={{ color: 'var(--text-3)' }}>
+            Opcional. Se o diploma ou as fotografias ainda não chegaram, regista a prova na mesma — juntas tudo depois, no hub da prova.
+          </p>
+          <RaceMemoriesFields
+            diploma={diploma}
+            medal={medal}
+            photos={racePhotos}
+            onDiplomaFile={handleDiplomaFile}
+            onMedalFile={handleMedalFile}
+            onPhotoFiles={handleRacePhotoFiles}
+            onRemoveDiploma={() => { setDiploma(null); setIsFormDirty(true); }}
+            onRemoveMedal={() => { setMedal(null); setIsFormDirty(true); }}
+            onRemovePhoto={(i) => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
+            error={memoryError}
+          />
 
           {memoriesFailed && (
             <Warning

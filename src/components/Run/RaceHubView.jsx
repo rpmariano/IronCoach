@@ -35,6 +35,7 @@ import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import RacePacingPlanCard from './RacePacingPlanCard';
+import RaceMemoriesSheet from './RaceMemoriesSheet';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -245,6 +246,10 @@ export default function RaceHubView({
   const hasMemories = !!(memoryPaths.diploma || memoryPaths.medal || memoryPaths.photos.length);
   const [memoryUrls, setMemoryUrls] = useState({ diploma: null, medal: null, photos: [] });
   const [openPhoto, setOpenPhoto] = useState(null);
+  // A persiana "Memórias" (pedido 2026-09-13): juntar, trocar ou remover o
+  // diploma, a medalha e as fotos DEPOIS de a prova estar concluída, sem
+  // reabrir o registo da corrida.
+  const [memoriesOpen, setMemoriesOpen] = useState(false);
 
   useEffect(() => {
     if (!hasMemories) { setMemoryUrls({ diploma: null, medal: null, photos: [] }); return undefined; }
@@ -337,13 +342,11 @@ export default function RaceHubView({
       if (mode) store.setOpenCreationMode(mode);
     };
 
-    // Sem memórias nenhumas, o convite é reabrir o registo desta prova já
-    // gravado — é lá que vivem o diploma, a medalha e as fotografias.
-    const openMemories = () => {
-      const store = useAppStore.getState();
-      store.setEditingRaceId(null);
-      store.openRaceRun(race.id, raceRun?.id || null);
-    };
+    // O convite (sem memórias) e o "Editar" (com elas) abrem a persiana das
+    // memórias aqui mesmo — a prova já está concluída, o registo da corrida
+    // não tem de se reabrir para juntar uma foto.
+    const openMemories = () => setMemoriesOpen(true);
+    const memoriesUserId = useAppStore.getState().profile?.id || profile?.id || null;
 
     return (
       <div className="race-hub-container" data-testid="race-hub-completed">
@@ -448,7 +451,18 @@ export default function RaceHubView({
             oferta, não uma tarefa por cumprir. */}
         {hasMemories ? (
           <>
-            <SectionLabel tone="race" style={{ margin: '16px 2px 0' }}>Memórias</SectionLabel>
+            <div className="flex items-center justify-between" style={{ margin: '16px 2px 0' }}>
+              <SectionLabel tone="race">Memórias</SectionLabel>
+              <button
+                type="button"
+                data-testid="race-memories-edit"
+                onClick={openMemories}
+                className="inline-flex items-center gap-1 text-[12px] font-extrabold"
+                style={{ minHeight: 'var(--tap)', padding: '0 6px', color: 'var(--race)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                <Award size={13} /> Editar
+              </button>
+            </div>
             <div data-testid="race-memories-gallery" style={{ borderRadius: 22, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 14, marginTop: 8 }}>
               {memoryUrls.medal && (
                 <img
@@ -510,6 +524,10 @@ export default function RaceHubView({
             <Award size={15} /> Guardar as memórias da prova
           </button>
         ) : null}
+
+        {memoriesOpen && (
+          <RaceMemoriesSheet race={race} userId={memoriesUserId} onClose={() => setMemoriesOpen(false)} />
+        )}
 
         {openPhoto && (
           <Sheet eyebrow="Memórias" eyebrowTone="race" onClose={() => setOpenPhoto(null)} testId="race-photo-viewer" maxHeight="90dvh">

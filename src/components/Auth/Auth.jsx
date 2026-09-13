@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { publicUrl } from '../../lib/utils';
 import Button from '../shared/Button';
+import BrandMark from '../shared/BrandMark';
 import AppBackground from '../Layout/AppBackground';
 export default function Auth() {
   const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
@@ -65,9 +65,8 @@ export default function Auth() {
       <AppBackground />
       <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
-        <div className="flex items-center gap-2 justify-center mb-1">
-          <img src={publicUrl('logo.png')} alt="IronCoach" className="w-10 h-10 rounded-xl object-cover" />
-          <h1 className="text-xl font-extrabold" style={{ color: 'var(--green)' }}>IronCoach</h1>
+        <div className="flex justify-center mb-1">
+          <BrandMark variant="lockup" animated size={272} alt="IronCoach, AI-powered" className="rounded-2xl" />
         </div>
         <p className="text-xs text-[var(--text-3)] text-center">
           {authMode === 'signin' ? 'Entra na tua conta' : 'Cria a tua conta'}

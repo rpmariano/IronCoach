@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 
@@ -13,6 +14,14 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
    Quem monta controla a existência (`{open && <Sheet …/>}`); o componente
    trata da entrada e, ao fechar, da saída antes de chamar onClose — por
    isso fecha-se sempre por `onClose`, nunca desmontando à bruta. */
+
+/* Os dois montam-se em document.body por portal: `position: fixed` deixa de
+   ser relativo ao viewport quando um antepassado tem `backdrop-filter` ou
+   `transform` (é o caso dos cartões .module-card-contrast, onde vive o hub
+   da prova) — a persiana ficava a abrir 900px abaixo do fundo do ecrã, só
+   com o scrim à vista (apanhado 2026-09-13 com as memórias da prova). A
+   árvore React não muda, só o nó do DOM. */
+const portal = (node) => (typeof document !== 'undefined' ? createPortal(node, document.body) : node);
 
 const OPEN_MS = 340;
 const CLOSE_MS = 240;
@@ -81,7 +90,7 @@ export function Sheet({ title, eyebrow, eyebrowTone = 'gym', onClose, children, 
   }, [requestClose]);
 
   const dragging = dragY > 0;
-  return (
+  return portal(
     <>
       <div
         onClick={requestClose}
@@ -125,7 +134,7 @@ export function Sheet({ title, eyebrow, eyebrowTone = 'gym', onClose, children, 
 
 export function Dialog({ title, tone = 'coach', onClose, children, actions, header, testId }) {
   const { visible, requestClose } = useEnterExit(onClose, DIALOG_MS);
-  return (
+  return portal(
     <>
       <div
         onClick={requestClose}

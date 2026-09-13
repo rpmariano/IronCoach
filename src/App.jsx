@@ -14,6 +14,7 @@ import { ToastProvider } from './components/shared/ToastProvider';
 // rede extra. Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
+import BrandMark from './components/shared/BrandMark';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -146,11 +147,8 @@ function ScreenSkeleton() {
    `isInitializing` — a troca entre os dois é invisível. */
 function FullScreenLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent">
-      <div className="animate-pulse flex flex-col items-center">
-        <div className="w-12 h-12 bg-[var(--brd-700)] rounded-xl mb-4"></div>
-        <div className="h-4 w-24 bg-[var(--brd-700)] rounded"></div>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-transparent" role="status" aria-label="A carregar">
+      <BrandMark variant="lockup" animated size={240} className="rounded-2xl" />
     </div>
   );
 }

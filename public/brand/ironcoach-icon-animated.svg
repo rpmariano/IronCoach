@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <radialGradient id="appBg_anim_gc" cx="50%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#161f28" stop-opacity="1"/>
+      <stop offset="60%" stop-color="#0b1120" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#02050c" stop-opacity="1"/>
+    </radialGradient>
+
+    <linearGradient id="appC1_anim_gc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="50%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+
+    <linearGradient id="appC2_anim_gc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a5f3fc"/>
+      <stop offset="45%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+
+    <linearGradient id="appTi_anim_gc" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <filter id="appGlow_anim_gc" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <style>
+      @keyframes appCadence1 {
+        0%, 100% { transform: translateX(0px); filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.45)); }
+        50% { transform: translateX(-5px); filter: drop-shadow(0 0 22px rgba(251, 191, 36, 0.9)); }
+      }
+      @keyframes appCadence2 {
+        0%, 100% { transform: translateX(0px); filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.45)); }
+        50% { transform: translateX(6px); filter: drop-shadow(0 0 26px rgba(34, 211, 238, 1)); }
+      }
+      @keyframes appAuraPulse {
+        0%, 100% { opacity: 0.2; stroke: #22d3ee; }
+        50% { opacity: 0.5; stroke: #fbbf24; }
+      }
+      .app-c1-anim { animation: appCadence1 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; }
+      .app-c2-anim { animation: appCadence2 2.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; }
+      .app-aura-anim { animation: appAuraPulse 3.4s ease-in-out infinite; }
+      /* Movimento reduzido: parado, como a variante estática. */
+      @media (prefers-reduced-motion: reduce) {
+        .app-c1-anim, .app-c2-anim, .app-aura-anim { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#appBg_anim_gc)"/>
+
+  <g transform="translate(256, 256)">
+    <polygon class="app-aura-anim"
+             points="0,-170 148,-85 148,85 0,170 -148,85 -148,-85" 
+             fill="none" stroke="#22d3ee" opacity="0.22" stroke-width="20" stroke-linejoin="round"
+             filter="url(#appGlow_anim_gc)"/>
+
+    <polygon points="0,-170 148,-85 148,85 0,170 -148,85 -148,-85" 
+             fill="#080e1a" stroke="url(#appTi_anim_gc)" stroke-width="8" 
+             stroke-linejoin="round"/>
+
+    <polygon points="0,-154 130,-73 130,73 0,154 -130,73 -130,-73" 
+             fill="none" stroke="#fbbf24" stroke-width="3" 
+             stroke-linejoin="round" opacity="0.6"/>
+
+    <!-- CHEVRON 1 -->
+    <g class="app-c1-anim">
+      <path d="M -84,-78 L -18,0 L -84,78 L -48,78 L 18,0 L -48,-78 Z" 
+            fill="none" stroke="url(#appC1_anim_gc)" stroke-width="10" stroke-linejoin="round"
+            filter="url(#appGlow_anim_gc)" opacity="0.5"/>
+      <path d="M -84,-78 L -18,0 L -84,78 L -48,78 L 18,0 L -48,-78 Z" 
+            fill="url(#appC1_anim_gc)" stroke="#f59e0b" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+
+    <!-- CHEVRON 2 -->
+    <g class="app-c2-anim">
+      <path d="M -18,-78 L 48,0 L -18,78 L 18,78 L 84,0 L 18,-78 Z" 
+            fill="none" stroke="url(#appC2_anim_gc)" stroke-width="10" stroke-linejoin="round"
+            filter="url(#appGlow_anim_gc)" opacity="0.5"/>
+      <path d="M -18,-78 L 48,0 L -18,78 L 18,78 L 84,0 L 18,-78 Z" 
+            fill="url(#appC2_anim_gc)" stroke="#38bdf8" stroke-width="2" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>
