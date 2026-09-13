@@ -39,7 +39,8 @@ Deno.test("as frases curtas do Início: véspera e dia, com e sem hora", () => {
   assertStringIncludes(describeRaceEveShort(computeRaceEve({}), "Corrida do Tejo", null), "Sem hora de partida marcada");
   assertEquals(
     describeRaceDayShort(eve, "Corrida do Tejo", "4.42"),
-    "Hoje é Corrida do Tejo, partida às 09:00: pequeno-almoço às 06:15, água até às 08:15, chegada às 08:00, aquecimento às 08:35. Primeiro km a 4.42.",
+    "Hoje é Corrida do Tejo, partida às 09:00: pequeno-almoço às 06:15, água até às 08:15, chegada às 08:00, aquecimento às 08:35. O teu plano km a km está no hub da prova: arrancas a 4.42.",
   );
   assertStringIncludes(describeRaceDayShort(computeRaceEve({}), "X", null), "2 h 45 antes da partida");
+  assertStringIncludes(describeRaceDayShort(computeRaceEve({}), "X", null), "Marca o objetivo de tempo");
 });

@@ -696,7 +696,7 @@ Deno.serve(async (req) => {
       { data: bodyAssessments },
     ] = await Promise.all([
       sb.from("profiles")
-        .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm")
+        .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, water_reminder_enabled, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm")
         .eq("id", userId).maybeSingle(),
       sb.from("meals").select("meal_type, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId).eq("date", today),
@@ -796,10 +796,14 @@ Deno.serve(async (req) => {
       vesperaDaProva: raceEveForSummary,
     });
 
+    // No dia da prova o aviso é a prova (o cliente escreve-a): listar aqui
+    // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E
+    // a água só se cobra a quem ligou os lembretes de água — sem eles, o
+    // registo é opcional e o aviso era ruído (pedido 2026-09-13).
     const warningsMsg = buildWarningsMessage(
-      todayPlanItems,
+      raceEveDays === 0 ? [] : todayPlanItems,
       waterTotal,
-      profile?.water_goal_ml ?? null,
+      profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,
       { ...bodyMetrics, gender: profile?.gender ?? null },
       acwr,
     );

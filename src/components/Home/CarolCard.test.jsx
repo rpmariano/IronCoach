@@ -66,7 +66,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     // "de hoje" caía em ontem.
     const today = todayISO();
     useAppStore.setState({
-      profile: { id: 'u1', water_goal_ml: 2500 },
+      profile: { id: 'u1', water_goal_ml: 2500, water_reminder_enabled: true },
       coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: today }],
       coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 16, status: 'pendente' }],
     });
@@ -76,7 +76,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
 
   it('a água conta mesmo sem "hidratar" no aviso (o \\b não casa antes de "á")', () => {
     useAppStore.setState({
-      profile: { id: 'u1', water_goal_ml: 2500 },
+      profile: { id: 'u1', water_goal_ml: 2500, water_reminder_enabled: true },
       dailySummary: { date: '2026-08-11', recap: null, warnings: 'Bebe mais água ao longo do dia.', meal_suggestion: null, tomorrow_prep: null },
     });
     render(<CarolCard />);
@@ -84,9 +84,19 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     expect(screen.queryByText(/Ainda não registaste água hoje\./)).not.toBeInTheDocument();
   });
 
+  it('sem lembretes de água ligados não se cobra a água (pedido 2026-09-13)', () => {
+    useAppStore.setState({
+      profile: { id: 'u1', water_goal_ml: 2500, water_reminder_enabled: false },
+      waterLogs: [],
+      dailySummary: { date: '2026-08-11', recap: 'Treinaste bem.', warnings: null, meal_suggestion: null, tomorrow_prep: null },
+    });
+    render(<CarolCard />);
+    expect(screen.queryByText(/Ainda não registaste água hoje/)).not.toBeInTheDocument();
+  });
+
   it('não repete a água quando o aviso do servidor já fala dela', () => {
     useAppStore.setState({
-      profile: { id: 'u1', water_goal_ml: 2500 },
+      profile: { id: 'u1', water_goal_ml: 2500, water_reminder_enabled: true },
       dailySummary: { date: '2026-08-11', recap: null, warnings: 'Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', meal_suggestion: null, tomorrow_prep: null },
     });
     render(<CarolCard />);
@@ -146,7 +156,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
 
     it('dia da prova: o aviso abre com a prova, a hora e o ritmo do km 1', () => {
       useAppStore.setState({
-        profile: { id: 'u1', weight_kg: 70, water_goal_ml: 2500 },
+        profile: { id: 'u1', weight_kg: 70, water_goal_ml: 2500, water_reminder_enabled: true },
         raceEvents: [race(today, { start_time: '09:00', target_time_seconds: 2880 })],
       });
       render(<CarolCard />);
@@ -155,7 +165,8 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       expect(aviso.textContent).toMatch(/pequeno-almoço às 06:15/);
       // O primeiro km é mais lento que a base (48:00 → 4.48, +6 s), na
       // grafia de ritmo da app (formatPace: "4.54", não "4:54/km").
-      expect(aviso.textContent).toMatch(/Primeiro km a 4\.54\./);
+      expect(aviso.textContent).toMatch(/O teu plano km a km está no hub da prova: arrancas a 4\.54\./);
+      expect(screen.getByTestId('carol-card-action')).toHaveTextContent('Abrir o plano da prova');
       // O resto do aviso vem a seguir, não à frente.
       expect(aviso.textContent).toMatch(/Ainda não registaste água hoje\.$/);
       // E o item do plano não se repete: a frase da prova já disse o que é
@@ -170,7 +181,8 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       });
       render(<CarolCard />);
       expect(screen.getByText(/Hoje é Corrida do Tejo, partida às 09:00/)).toBeInTheDocument();
-      expect(screen.queryByText(/Primeiro km a/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/arrancas a/)).not.toBeInTheDocument();
+      expect(screen.getByText(/Marca o objetivo de tempo/)).toBeInTheDocument();
     });
 
     it('uma prova já concluída não tem véspera nem manhã', () => {

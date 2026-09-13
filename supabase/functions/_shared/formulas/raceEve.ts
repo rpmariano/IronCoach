@@ -126,11 +126,15 @@ export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm:
   return `Amanhã é ${name}${dist}, partida às ${s.start}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
 }
 
-/** Uma frase curta para o cartão do Início no dia da prova. */
+/** Uma frase curta para o cartão do Início no dia da prova. Um número solto
+ *  ("primeiro km a 5.06") não sossega ninguém: o que o atleta precisa de
+ *  saber é que o plano km a km existe e onde está. */
 export function describeRaceDayShort(eve: RaceEve, raceName: string, firstKmPaceLabel: string | null): string {
   const name = raceName || "a prova";
-  const pace = firstKmPaceLabel ? ` Primeiro km a ${firstKmPaceLabel}.` : "";
-  if (!eve.schedule) return `Hoje é ${name}. Pequeno-almoço 2 h 45 antes da partida, água aos goles até 45 min antes.${pace}`;
+  const plan = firstKmPaceLabel
+    ? ` O teu plano km a km está no hub da prova: arrancas a ${firstKmPaceLabel}.`
+    : " Marca o objetivo de tempo na prova para teres o plano km a km no hub.";
+  if (!eve.schedule) return `Hoje é ${name}. Pequeno-almoço 2 h 45 antes da partida, água aos goles até 45 min antes.${plan}`;
   const s = eve.schedule;
-  return `Hoje é ${name}, partida às ${s.start}: pequeno-almoço às ${s.breakfast}, água até às ${s.waterUntil}, chegada às ${s.arrival}, aquecimento às ${s.warmup}.${pace}`;
+  return `Hoje é ${name}, partida às ${s.start}: pequeno-almoço às ${s.breakfast}, água até às ${s.waterUntil}, chegada às ${s.arrival}, aquecimento às ${s.warmup}.${plan}`;
 }

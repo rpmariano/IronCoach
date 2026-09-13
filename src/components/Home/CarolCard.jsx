@@ -49,6 +49,25 @@ function findScheduledRace(raceEvents, dateISO) {
   ) || null;
 }
 
+/* O botão de uma secção do cartão — hoje só o do dia da prova, para o hub
+   onde vive o plano km a km. Âmbar porque é da prova. */
+function MessageAction({ action, onOpenRace }) {
+  if (!action?.raceId) return null;
+  // Sem callback (o cartão montado sozinho), abre o hub pelo store.
+  const open = onOpenRace || ((id) => useAppStore.getState().setEditingRaceId(id));
+  return (
+    <button
+      type="button"
+      data-testid="carol-card-action"
+      onClick={() => open(action.raceId)}
+      className="inline-flex items-center justify-center gap-2 mt-2 rounded-[11px] text-[12.5px] font-extrabold"
+      style={{ minHeight: 44, padding: '0 14px', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
+    >
+      {action.label}
+    </button>
+  );
+}
+
 /** A véspera/manhã calculadas para uma prova, pela régua partilhada. */
 function buildEve(race, profile) {
   if (!race) return null;
@@ -133,7 +152,9 @@ export function useCoachDailyMessages() {
     let warning = clean(dailySummary?.warnings)
       || (!raceToday && nonRest.length ? `Para hoje tens agendado: ${nonRest.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '');
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
-    const waterGoal = profile?.water_goal_ml;
+    // A água só se cobra a quem ligou os lembretes de água (perfil); sem
+    // eles o registo é opcional e a frase era ruído (pedido 2026-09-13).
+    const waterGoal = profile?.water_reminder_enabled ? profile?.water_goal_ml : null;
     // O servidor vê os mesmos registos de água e muitas vezes já os comenta
     // no aviso ("Ainda não registaste consumo de água hoje. Começa a
     // hidratar-te…"); juntar-lhe a frase local dizia a mesma coisa duas
@@ -151,7 +172,9 @@ export function useCoachDailyMessages() {
     if (raceToday && !/^Hoje é /.test(warning)) {
       warning = [describeRaceDayShort(eveToday, raceToday.name, firstKmPaceLabel), warning].filter(Boolean).join(' ');
     }
-    if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning });
+    // No dia da prova o aviso leva o botão para o hub: é lá que está o plano
+    // km a km, e dizê-lo em texto não chega — tem de estar a um toque.
+    if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action: raceToday ? { label: 'Abrir o plano da prova', raceId: raceToday.id } : null });
 
     if (clean(dailySummary?.meal_suggestion)) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: clean(dailySummary.meal_suggestion) });
 
@@ -176,7 +199,7 @@ export function useCoachDailyMessages() {
    balanço da prova" nos dias a seguir a uma prova registada (specs/
    gamificacao-provas.md §3). Mostra-se com o mesmo cabeçalho "A Carol precisa
    de falar contigo", mas sem o semblante preocupado: é uma boa notícia. */
-export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach, onDismissTopic }) {
+export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach, onDismissTopic, onOpenRace }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
   const [expanded, setExpanded] = useState(false);
@@ -227,9 +250,12 @@ export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach
               Sem nada a assinalar por agora. Regista uma refeição ou um treino e eu tenho o que comentar.
             </p>
           ) : !expanded ? (
-            <p className="text-[12.5px] leading-[1.45] font-medium" style={{ color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {first.text}
-            </p>
+            <>
+              <p className="text-[12.5px] leading-[1.45] font-medium" style={{ color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {first.text}
+              </p>
+              {first.action && <MessageAction action={first.action} onOpenRace={onOpenRace} />}
+            </>
           ) : (
             <div className="flex flex-col">
               {/* Um fio entre secções: é o que as separa em blocos sem voltar
@@ -238,6 +264,7 @@ export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach
                 <div key={m.key} style={i ? { borderTop: '1px solid rgba(34,211,238,.12)', marginTop: 10, paddingTop: 10 } : undefined}>
                   <div className="text-[11px] font-extrabold uppercase" style={{ color: m.color, letterSpacing: 'var(--tracking-label)' }}>{m.label}</div>
                   <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}>{m.text}</p>
+                  {m.action && <MessageAction action={m.action} onOpenRace={onOpenRace} />}
                 </div>
               ))}
             </div>
