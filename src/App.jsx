@@ -7,7 +7,7 @@ import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
-import { authEventAction } from './utils/authEvents';
+import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -404,6 +404,29 @@ export default function App() {
   // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
   // é usado no JSX.
   const isCreatingOrEditing = !!openCreationMode || !!editingRaceId || onboardingOpen;
+
+  /* Voltar à app com nenhum formulário aberto atualiza os dados, no máximo
+     uma vez por minuto (utils/authEvents.js, shouldReloadOnVisible). Com um
+     registo, uma corrida em edição ou uma prova aberta não — recarregar por
+     baixo repunha o rascunho com os valores do servidor. */
+  const formOpenRef = useRef(false);
+  formOpenRef.current = isCreatingOrEditing || !!editingRunId;
+  const lastVisibleReloadRef = useRef(Date.now());
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      const userId = loadedUserIdRef.current;
+      if (!shouldReloadOnVisible({
+        visible: document.visibilityState === 'visible',
+        userId,
+        formOpen: formOpenRef.current,
+        sinceLastMs: Date.now() - lastVisibleReloadRef.current,
+      })) return;
+      lastVisibleReloadRef.current = Date.now();
+      loadInitialData(userId);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [loadInitialData]);
 
   // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
   // o ecrã de topo em vez de sair da app inteira — ver o comentário

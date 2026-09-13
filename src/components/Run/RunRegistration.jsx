@@ -599,7 +599,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (cancelled) return;
       if (current.diploma) setDiploma(prev => (prev?.blob ? prev : current.diploma));
       if (current.medal) setMedal(prev => (prev?.blob ? prev : current.medal));
-      if (current.photos.length) setRacePhotos(prev => (prev.some(p => p.blob) ? prev : current.photos));
+      // Juntam-se às novas, nunca se escolhe uma das listas: com o restauro
+      // do rascunho (IndexedDB, local e rápido) as fotos novas chegam quase
+      // sempre antes das assinaturas, e descartar as do servidor fazia-as sair
+      // do bucket ao gravar (revisão pré-deploy 2026-09-13).
+      if (current.photos.length) {
+        setRacePhotos(prev => [...current.photos, ...prev.filter(p => p.blob)].slice(0, MAX_RACE_PHOTOS));
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

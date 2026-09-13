@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { authEventAction } from './authEvents';
+import { authEventAction, shouldReloadOnVisible, VISIBLE_RELOAD_MIN_INTERVAL_MS } from './authEvents';
 
 /* Voltar à app não pode desmontar nem recarregar por baixo um formulário
    aberto (2026-09-13). */
@@ -23,5 +23,23 @@ describe('authEventAction', () => {
   it('sem utilizador: SIGNED_OUT limpa a sessão, o resto ignora-se', () => {
     expect(authEventAction('SIGNED_OUT', { hasUser: false, sameUser: false })).toBe('signed-out');
     expect(authEventAction('INITIAL_SESSION', { hasUser: false, sameUser: false })).toBe('ignore');
+  });
+});
+
+describe('shouldReloadOnVisible', () => {
+  const base = { visible: true, userId: 'u1', formOpen: false, sinceLastMs: VISIBLE_RELOAD_MIN_INTERVAL_MS };
+
+  it('voltar à app sem formulário aberto, passado um minuto, atualiza os dados', () => {
+    expect(shouldReloadOnVisible(base)).toBe(true);
+  });
+
+  it('com um formulário aberto não atualiza — repunha o rascunho', () => {
+    expect(shouldReloadOnVisible({ ...base, formOpen: true })).toBe(false);
+  });
+
+  it('nem a esconder, nem sem utilizador, nem antes de passar um minuto', () => {
+    expect(shouldReloadOnVisible({ ...base, visible: false })).toBe(false);
+    expect(shouldReloadOnVisible({ ...base, userId: null })).toBe(false);
+    expect(shouldReloadOnVisible({ ...base, sinceLastMs: 1000 })).toBe(false);
   });
 });

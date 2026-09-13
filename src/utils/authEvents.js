@@ -24,3 +24,13 @@ export function authEventAction(event, { hasUser, sameUser }) {
   if (sameUser) return 'session-only';
   return event === 'SIGNED_IN' ? 'load-with-loader' : 'load';
 }
+
+/* Voltar à app com nenhum formulário aberto atualiza os dados — o que o
+   SIGNED_IN do regresso fazia antes, e que se perdeu quando passou a só
+   atualizar a sessão. Com um registo ou uma prova aberta não: era isso que
+   repunha os rascunhos. No máximo uma vez por minuto. */
+export const VISIBLE_RELOAD_MIN_INTERVAL_MS = 60000;
+
+export function shouldReloadOnVisible({ visible, userId, formOpen, sinceLastMs }) {
+  return !!visible && !!userId && !formOpen && sinceLastMs >= VISIBLE_RELOAD_MIN_INTERVAL_MS;
+}

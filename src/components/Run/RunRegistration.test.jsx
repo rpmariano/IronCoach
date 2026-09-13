@@ -893,6 +893,26 @@ describe('RunRegistration — modo prova', () => {
     }
   });
 
+  it('as fotos restauradas do rascunho juntam-se às que já estão na prova, sem as descartar', async () => {
+    const original = { ...draftMediaStore };
+    const nova = { dataUrl: 'data:image/jpeg;base64,AAA', blob: new Blob(['x'], { type: 'image/jpeg' }), mime: 'image/jpeg' };
+    draftMediaStore.load = vi.fn(async (key) => (key.endsWith('::racePhotos:race-1') ? [nova] : undefined));
+    draftMediaStore.save = vi.fn(async () => {});
+    draftMediaStore.remove = vi.fn(async () => {});
+    try {
+      useAppStore.setState({
+        profile: PROFILE, runs: [], shoes: [], coachPlans: [], coachPlanItems: [],
+        raceEvents: [{ ...PROVA, photo_paths: ['user-1/race-1/photo-1.jpg', 'user-1/race-1/photo-2.jpg'] }],
+        runRacePrefill: { raceId: 'race-1' },
+      });
+      render(<RunRegistration onClose={onClose} />);
+      // Duas do servidor e a nova do rascunho, venha primeiro quem vier.
+      await waitFor(() => expect(screen.getByTestId('race-photos-counter')).toHaveTextContent('3 de 6'));
+    } finally {
+      Object.assign(draftMediaStore, original);
+    }
+  });
+
   it('editar uma corrida já ligada a uma prova reabre em modo prova', () => {
     useAppStore.setState({
       profile: PROFILE, shoes: [], runRacePrefill: null,
