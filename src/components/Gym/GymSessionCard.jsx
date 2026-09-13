@@ -10,6 +10,7 @@ import { sessionVolumeKg } from '../../utils/biEngine';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import { formatDuration } from '../../utils/run';
+import { normalizeStartTime } from '../../utils/startTime';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
@@ -120,8 +121,11 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
                 </span>
               )}
             </h4>
+            {/* "05/09/2026 · 18:45 · Peito, Tríceps" — a hora só entra quando
+                existe (specs/plano-de-prova.md, "A véspera e a hora"). */}
             <p className="text-xs text-[var(--text-3)] font-medium">
-              {formattedDate} {session.categories?.length ? `· ${session.categories.join(', ')}` : ''}
+              {[formattedDate, normalizeStartTime(session.start_time), session.categories?.length ? session.categories.join(', ') : null]
+                .filter(Boolean).join(' · ')}
             </p>
           </div>
         </div>

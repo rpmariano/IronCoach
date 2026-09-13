@@ -25,6 +25,7 @@ import {
   parsePaceToSeconds,
   formatPace,
 } from '../../utils/run';
+import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
@@ -63,6 +64,10 @@ function normalizeTargetTimeValue(val) {
 
 const EMPTY_DRAFT = {
   date: todayISO(),
+  // Hora de partida ('HH:MM', hora local) — opcional, mas é ela que deixa a
+  // Carol planear a véspera e a manhã com horas em vez de em abstrato
+  // (specs/plano-de-prova.md, "A véspera e a hora").
+  start_time: '',
   location: '',
   name: '',
   race_type: 'estrada',
@@ -118,6 +123,15 @@ export default function RunAgenda({ onClose }) {
   // muda, ex.: outra prova gravada em paralelo) repunha o rascunho
   // guardado por cima de alterações mais recentes ainda não persistidas.
   const restoredForKeyRef = useRef(null);
+  // Marcador das escritas em `raceEvents` feitas por este PRÓPRIO ecrã
+  // (marcar concluída, obter informação do site) — guarda o array exato que
+  // enviámos ao store, para o efeito de carregamento abaixo o reconhecer e
+  // não repor o rascunho canónico por cima de edições ainda por gravar.
+  // Um array (e não um booleano) porque é auto-identificante: se por alguma
+  // razão o efeito não chegar a correr para essa escrita, o ref fica com um
+  // array que nunca mais volta a coincidir — nunca engole, por engano, uma
+  // alteração vinda de fora.
+  const localRaceEventsWriteRef = useRef(null);
   const [validationError, setValidationError] = useState(null);
   // Categoria (tipo+distância+D+) associada ao nível ATUALMENTE em
   // draft.experience_level — atualiza-se sempre que o próprio atleta o
@@ -276,6 +290,14 @@ export default function RunAgenda({ onClose }) {
   // que `raceEvents` muda por qualquer razão, e reaplicar o mesmo
   // instantâneo guardado a cada vez seria inofensivo mas inútil.
   useEffect(() => {
+    // Foi este ecrã que acabou de escrever no store (status, web_info)? Então
+    // não há nada a recarregar: o handler já atualizou no rascunho o único
+    // campo que mudou. Repor aqui o registo canónico inteiro apagava as
+    // edições por gravar da página "Detalhes" e limpava o isDirty — era o que
+    // acontecia ao marcar a prova como concluída a partir do Hub embutido.
+    // Uma alteração vinda de FORA (outra sessão, outro ecrã) continua a
+    // recarregar normalmente, que é o comportamento que se quer.
+    if (localRaceEventsWriteRef.current === raceEvents) return;
     const alreadyRestored = restoredForKeyRef.current === draftStorageKey;
     const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
     restoredForKeyRef.current = draftStorageKey;
@@ -285,6 +307,8 @@ export default function RunAgenda({ onClose }) {
       if (ev) {
         const canonical = {
           date: ev.date || todayISO(),
+          // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
+          start_time: startTimeInputValue(ev.start_time),
           location: ev.location || '',
           name: ev.name || '',
           race_type: ev.race_type || 'estrada',
@@ -368,6 +392,14 @@ export default function RunAgenda({ onClose }) {
     }
   }, [activeTab, initialTab, isFormOpen]);
 
+  // Escrita no store vinda deste ecrã: regista o array em
+  // localRaceEventsWriteRef antes de o entregar, para o efeito de
+  // carregamento a distinguir de uma alteração externa (ver lá o porquê).
+  const writeRaceEventsLocally = (next) => {
+    localRaceEventsWriteRef.current = next;
+    setRaceEvents(next);
+  };
+
   // "Marcar como concluída" a partir do Hub embutido (RaceHubView) — a mesma
   // escrita que o toggle do cartão da agenda (Calendar.handleToggleRaceStatus),
   // só no sentido agendada → concluída, e já confirmada lá. Grava logo, sem
@@ -377,7 +409,10 @@ export default function RunAgenda({ onClose }) {
     const id = ev?.id || editingEventId;
     if (!id) return;
     const previous = raceEvents;
-    setRaceEvents(raceEvents.map(e => e.id === id ? { ...e, status: 'concluida' } : e));
+    writeRaceEventsLocally(raceEvents.map(e => e.id === id ? { ...e, status: 'concluida' } : e));
+    // Só o campo que mudou: o efeito de carregamento não repõe o canónico
+    // nesta escrita, por isso é este setDraft que mantém o Hub coerente —
+    // e é por isso também que o resto do rascunho (e o isDirty) sobrevive.
     setDraft(prev => ({ ...prev, status: 'concluida' }));
     try {
       const { error } = await supabase.from('race_events').update({ status: 'concluida' }).eq('id', id);
@@ -385,7 +420,7 @@ export default function RunAgenda({ onClose }) {
       showToast('Prova marcada como concluída.', 'success');
     } catch (err) {
       console.error(err);
-      setRaceEvents(previous);
+      writeRaceEventsLocally(previous);
       setDraft(prev => ({ ...prev, status: previous.find(e => e.id === id)?.status || 'agendada' }));
       showToast('Não consegui marcar a prova como concluída.', 'error');
     }
@@ -467,9 +502,11 @@ export default function RunAgenda({ onClose }) {
         return;
       }
       if (data?.race_event) {
-        setRaceEvents(raceEvents.map(e => e.id === editingEventId ? data.race_event : e));
+        writeRaceEventsLocally(raceEvents.map(e => e.id === editingEventId ? data.race_event : e));
         // Direto, não updateDraft: já está gravado no servidor, não é uma
-        // alteração pendente que "Guardar" precise de submeter.
+        // alteração pendente que "Guardar" precise de submeter. E só este
+        // campo: o efeito de carregamento ignora esta escrita (é nossa), por
+        // isso o que estiver por gravar em "Detalhes" fica intacto.
         setDraft(prev => ({ ...prev, web_info: data.race_event.web_info }));
         showToast('Informação da prova atualizada.', 'success');
       } else if (data?.web_info) {
@@ -602,6 +639,9 @@ export default function RunAgenda({ onClose }) {
     // created_at). Enviar chaves que não são colunas faz o PostgREST rejeitar.
     const payload = {
       date: draft.date,
+      // Opcional: sem hora escrita vai null, não '' — a coluna é `time` e o
+      // Postgres não aceita a cadeia vazia.
+      start_time: normalizeStartTime(draft.start_time),
       race_type: draft.race_type,
       name: draft.name.trim(),
       location: draft.location.trim(),
@@ -929,7 +969,10 @@ export default function RunAgenda({ onClose }) {
 
             {/* ─── PÁGINA 2: DETALHES DA PROVA ─────────────────────────────────── */}
             <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
-              {/* 1.1 Data · 1.2 Local */}
+              {/* 1.1 Data · 1.2 Hora de partida — a hora fica ao lado da data
+                  porque é a mesma pergunta ("quando é?"), e é opcional: a
+                  maioria das provas só a publica mais tarde
+                  (specs/plano-de-prova.md, "A véspera e a hora"). */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="min-w-0">
                   <label htmlFor="ra-data" className="text-[11px] text-[var(--text-3)] mb-1 block">Data <span className="text-[var(--danger)]">*</span></label>
@@ -937,20 +980,31 @@ export default function RunAgenda({ onClose }) {
                     type="date"
                     value={draft.date}
                     onChange={e => { updateDraft('date', e.target.value) }}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
+                    className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
                 <div className="min-w-0">
-                  <label htmlFor="ra-local" className="text-[11px] text-[var(--text-3)] mb-1 block">Local <span className="text-[var(--danger)]">*</span></label>
-                  <input id="ra-local"
-                    type="text"
-                    maxLength={120}
-                    placeholder="Ex.: Lisboa"
-                    value={draft.location}
-                    onChange={e => { updateDraft('location', e.target.value) }}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
+                  <label htmlFor="ra-hora-de-partida" className="text-[11px] text-[var(--text-3)] mb-1 block">Hora de partida</label>
+                  <input id="ra-hora-de-partida"
+                    type="time"
+                    value={draft.start_time}
+                    onChange={e => { updateDraft('start_time', e.target.value) }}
+                    className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                   />
                 </div>
+              </div>
+
+              {/* 1.3 Local */}
+              <div className="min-w-0">
+                <label htmlFor="ra-local" className="text-[11px] text-[var(--text-3)] mb-1 block">Local <span className="text-[var(--danger)]">*</span></label>
+                <input id="ra-local"
+                  type="text"
+                  maxLength={120}
+                  placeholder="Ex.: Lisboa"
+                  value={draft.location}
+                  onChange={e => { updateDraft('location', e.target.value) }}
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
+                />
               </div>
 
               {/* 2.1 Nome da prova · 2.2 Tipo (Estrada/Trail) */}

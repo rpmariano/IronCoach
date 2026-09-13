@@ -90,8 +90,13 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
   const today = isoDay(now);
   const completed = completedRaces({ raceEvents, runs, profile });
 
+  // "Nova" conta pela data do REGISTO (created_at da corrida ligada), não
+  // pela data da prova: quem registar dez dias depois vê o cartão de
+  // conquista na mesma (apanhado na revisão pré-deploy). Sem created_at
+  // (registos antigos, demo), vale a data da prova.
   const novaEm = (race) => {
-    const day = dayOf(race?.date);
+    const entry = completed.find((c) => c.race.id === race?.id);
+    const day = dayOf(entry?.run?.created_at) || dayOf(race?.date);
     if (!day) return false;
     return daysBetween(day, today) < NOVA_ATE_DIAS;
   };
@@ -194,8 +199,9 @@ export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = n
   const completed = completedRaces({ raceEvents, runs, profile });
   const idx = completed.findIndex(({ race }) => race.id === raceId);
   if (idx < 0) return none;
-  const { race, outcome } = completed[idx];
-  const isNew = daysBetween(dayOf(race.date), today) < NOVA_ATE_DIAS;
+  const { race, run, outcome } = completed[idx];
+  // Pela data do registo, como em computeAchievements (ver novaEm).
+  const isNew = daysBetween(dayOf(run?.created_at) || dayOf(race.date), today) < NOVA_ATE_DIAS;
   const item = (key, name, short, tone, Icon, detail) => ({
     key, name, short, tone, Icon, unlocked: true, date: dayOf(race.date), raceId: race.id, raceName: race.name ?? null, detail, isNew,
   });

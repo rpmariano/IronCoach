@@ -2,7 +2,7 @@
  * biEngine.js
  * Todas as funções de cálculo para os dashboards de BI do IronHealth.
  */
-import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, parseISO, isValid, format } from 'date-fns';
+import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInCalendarDays, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, recentWeeklyVolume } from './raceViability';
@@ -540,7 +540,10 @@ export function detectCoachInsights(data, profile) {
       if (futureRaces.length > 0) {
         const next = futureRaces[0];
         const raceDate = parseISO(next.date);
-        const daysLeft = Math.max(0, differenceInDays(raceDate, now));
+        // Em DIAS DE CALENDÁRIO: differenceInDays truncava as horas, e na
+        // véspera às 10h (14 h para a meia-noite da prova) dava 0 — "Chegou
+        // o grande dia" aparecia um dia antes (bug relatado 2026-09-12).
+        const daysLeft = Math.max(0, differenceInCalendarDays(raceDate, now));
         const dist = Number(next.distance_km) || 10;
         const raceName = next.name || 'a prova';
         // Usado no ramo de Tapering abaixo — calculado aqui para não
@@ -555,7 +558,7 @@ export function detectCoachInsights(data, profile) {
             severity: 'info',
             title: `Dia da Prova: ${raceName}`,
             message: `Chegou o grande dia de ${raceName} (${dist} km)! Executa o teu plano de ritmo e nutrição com confiança.`,
-            metric: 'Prova', value: 0, threshold: 0, module: 'corrida'
+            metric: 'Prova', value: 'hoje', threshold: 0, module: 'corrida'
           });
         } else if (daysLeft >= 1 && daysLeft <= 7) {
           insights.push({

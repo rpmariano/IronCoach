@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, Sparkles, RefreshCw } from 'lucide-react';
+import { computeRaceEve, describeRaceEveShort, describeRaceDayShort } from '@formulas/raceEve.ts';
+import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { getRacePrediction } from '../../utils/biEngine';
+import { formatPace, parseDurationToSeconds } from '../../utils/run';
+import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
 import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -15,7 +20,13 @@ import CoachAvatar from '../Coach/CoachAvatar';
    cuja composição do "aviso de hoje" (plano de hoje + água) se mantém em
    useCoachDailyMessages. Ver specs/plano-de-treino.md §11. */
 
-function formatItemSummary(item) {
+function formatItemSummary(item, raceName = null) {
+  // O dia da prova é a prova, não "uma corrida do tipo prova"
+  // (specs/plano-de-prova.md, "O plano tem de saber da prova").
+  if (isRacePlanItem(item)) {
+    const details = [raceName, item.target_distance_km ? `${item.target_distance_km} km` : ''].filter(Boolean).join(', ');
+    return details ? `Prova (${details})` : 'Prova';
+  }
   if (item.kind === 'corrida') {
     const details = [item.training_type || 'corrida', item.target_distance_km ? `${item.target_distance_km} km` : '', item.target_duration_min ? `${item.target_duration_min} min` : ''].filter(Boolean).join(', ');
     return `Corrida (${details})`;
@@ -29,12 +40,69 @@ function formatItemSummary(item) {
 
 const clean = (s) => (typeof s === 'string' && s.trim() ? s.trim() : null);
 
+/** A prova por correr marcada para esta data, ou null. Uma prova já
+ *  concluída não tem véspera nem manhã — o que ela tem é balanço, e disso
+ *  trata o coachProactive. */
+function findScheduledRace(raceEvents, dateISO) {
+  return (raceEvents || []).find(
+    (r) => r && r.status !== 'concluida' && typeof r.date === 'string' && r.date.slice(0, 10) === dateISO,
+  ) || null;
+}
+
+/** A véspera/manhã calculadas para uma prova, pela régua partilhada. */
+function buildEve(race, profile) {
+  if (!race) return null;
+  return computeRaceEve({
+    startTime: race.start_time,
+    weightKg: profile?.weight_kg,
+    plannedFinishSeconds: Number(race.target_time_seconds) > 0 ? Number(race.target_time_seconds) : null,
+    distanceKm: race.distance_km ?? null,
+  });
+}
+
 /** As mensagens do dia, por ordem: recapitulação, aviso de hoje (plano +
  *  água), estratégia nutricional, preparar amanhã, conceito do dia. */
 export function useCoachDailyMessages() {
-  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile } = useAppStore();
+  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs } = useAppStore();
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
+
+  /* ── A prova de hoje e a de amanhã (specs/plano-de-prova.md, "O plano tem
+     de saber da prova") ───────────────────────────────────────────────────
+     A véspera e o dia da prova mandam neste cartão: na véspera, "Preparar
+     amanhã" é a prova — as horas e as gramas de computeRaceEve, não o item
+     do plano de amanhã; no dia, o "Aviso de hoje" abre com a prova e a hora.
+     A régua é a mesma que a Carol usa no chat e no coach-daily-summary
+     (@formulas/raceEve.ts), para o cartão e a conversa nunca darem horas
+     diferentes. */
+  const raceToday = useMemo(() => findScheduledRace(raceEvents, today), [raceEvents, today]);
+  const raceTomorrow = useMemo(() => findScheduledRace(raceEvents, tomorrow), [raceEvents, tomorrow]);
+
+  const eveToday = useMemo(() => buildEve(raceToday, profile), [raceToday, profile]);
+  const eveTomorrow = useMemo(() => buildEve(raceTomorrow, profile), [raceTomorrow, profile]);
+
+  /* O ritmo do primeiro km é o único número da manhã da prova (spec, "Onde
+     aparece" 3). Sai do mesmo buildRacePacingPlan do cartão "Plano para o
+     dia" no hub — sem objetivo nem previsão não há plano, e então também
+     não há número: a frase fica sem ele. */
+  const firstKmPaceLabel = useMemo(() => {
+    if (!raceToday) return null;
+    const targetSeconds = Number(raceToday.target_time_seconds) > 0
+      ? Number(raceToday.target_time_seconds)
+      : parseDurationToSeconds(raceToday.target_time);
+    const prediction = getRacePrediction(raceToday, profile, runs || []);
+    const plan = buildRacePacingPlan({
+      distanceKm: raceToday.distance_km,
+      raceType: raceToday.race_type,
+      elevationGainM: raceToday.elevation_gain_m,
+      targetSeconds: targetSeconds > 0 ? targetSeconds : null,
+      predictedSeconds: Number(prediction?.predictedSeconds) > 0 ? Math.round(prediction.predictedSeconds) : null,
+      experienceLevel: raceToday.experience_level,
+      routeSegments: raceToday.web_info?.route_segments || null,
+      routeSummary: raceToday.web_info?.route_summary || null,
+    });
+    return plan ? formatPace(plan.firstKmPaceSecPerKm) : null;
+  }, [raceToday, profile, runs]);
 
   const activePlanItems = useMemo(() => {
     const window = computeAcceptedWindow(coachPlans, coachPlanItems, today);
@@ -58,7 +126,12 @@ export function useCoachDailyMessages() {
 
     // Aviso de hoje: o do servidor, senão o plano de hoje; a água junta-se.
     const nonRest = activePlanItems.today.filter((i) => i.kind !== 'descanso');
-    let warning = clean(dailySummary?.warnings) || (nonRest.length ? `Para hoje tens agendado: ${nonRest.map(formatItemSummary).join(' e ')}.` : '');
+    const raceTodayName = raceToday ? raceToday.name : raceNameForDate(raceEvents, today);
+    // No dia da prova a frase da prova (mais abaixo) já diz o que é o dia —
+    // acrescentar-lhe "Para hoje tens agendado: Prova (…)" era dizer duas
+    // vezes a mesma coisa. O aviso do servidor, esse, mantém-se: é dele.
+    let warning = clean(dailySummary?.warnings)
+      || (!raceToday && nonRest.length ? `Para hoje tens agendado: ${nonRest.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '');
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
     const waterGoal = profile?.water_goal_ml;
     // O servidor vê os mesmos registos de água e muitas vezes já os comenta
@@ -72,19 +145,31 @@ export function useCoachDailyMessages() {
     const mentionsWater = /água|\b(agua|hidrat)/i.test(warning);
     if (waterGoal && !mentionsWater && waterTotal === 0) warning = `${warning} Ainda não registaste água hoje.`.trim();
     else if (waterGoal && !mentionsWater && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
+    // No dia da prova, o aviso abre com ela — o resto (a água, o que o
+    // servidor tenha a dizer) vem a seguir, não à frente.
+    // (O servidor não a prefixa: se algum dia o fizer, "Hoje é …" não se repete.)
+    if (raceToday && !/^Hoje é /.test(warning)) {
+      warning = [describeRaceDayShort(eveToday, raceToday.name, firstKmPaceLabel), warning].filter(Boolean).join(' ');
+    }
     if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning });
 
     if (clean(dailySummary?.meal_suggestion)) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: clean(dailySummary.meal_suggestion) });
 
+    /* Na véspera, "Preparar amanhã" é a prova. O item do plano de amanhã não
+       entra: nesse dia ele É a prova, e repetir "Amanhã o plano aponta para:
+       Prova (…)" por cima das horas da véspera seria dizer duas vezes a
+       mesma coisa, a segunda pior. */
     const tomorrowNonRest = activePlanItems.tomorrow.filter((i) => i.kind !== 'descanso');
-    const prep = tomorrowNonRest.length
-      ? `Amanhã o plano aponta para: ${tomorrowNonRest.map(formatItemSummary).join(' e ')}.`
-      : clean(dailySummary?.tomorrow_prep);
+    const prep = raceTomorrow
+      ? describeRaceEveShort(eveTomorrow, raceTomorrow.name, raceTomorrow.distance_km || null)
+      : tomorrowNonRest.length
+        ? `Amanhã o plano aponta para: ${tomorrowNonRest.map((i) => formatItemSummary(i, raceNameForDate(raceEvents, tomorrow))).join(' e ')}.`
+        : clean(dailySummary?.tomorrow_prep);
     if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep });
 
     if (clean(dailySummary?.daily_concept?.body)) list.push({ key: 'daily_concept', label: dailySummary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: clean(dailySummary.daily_concept.body) });
     return list;
-  }, [dailySummary, activePlanItems, waterLogs, profile, today]);
+  }, [dailySummary, activePlanItems, waterLogs, profile, today, tomorrow, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel]);
 }
 
 /* `topic`: um assunto que ela quer tratar sem ser uma intervenção — hoje, "o

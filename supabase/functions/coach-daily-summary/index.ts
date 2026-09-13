@@ -14,6 +14,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
+import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
@@ -212,12 +213,15 @@ export function buildDailySummaryContext(params: {
   lastWeekPlan?: { itens: number; com_registo: number } | null;
   // deno-lint-ignore no-explicit-any
   nextRace: any;
+  // A véspera/dia da prova com horas e gramas (fórmula partilhada raceEve.ts),
+  // só quando a prova é amanhã ou hoje.
+  vesperaDaProva?: Record<string, unknown> | null;
   // deno-lint-ignore no-explicit-any
   bodyAssessments?: any[];
   acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null };
   tdee?: number | null;
 }) {
-  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee, lastWeekPlan } = params;
+  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
 
@@ -303,6 +307,7 @@ export function buildDailySummaryContext(params: {
        Sem isto o resumo diário falava de plano e de preparação de prova a quem
        não tem nem uma coisa nem outra. */
     semana_passada_plano: lastWeekPlan ?? undefined,
+    vespera_da_prova: vesperaDaProva ?? undefined,
     modo_acompanhamento: (planItems || []).length > 0
       ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
       : (nextRace ? "PROVA_SEM_PLANO" : "LIVRE"),
@@ -578,7 +583,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `quer MANTER hábitos. Comenta o que vês e o que é risco real; NUNCA fales de plano, prova, ` +
     `"desvio" ou "atraso", e não o pressiones para definir objetivos neste cartão (esse convite ` +
     `é da conversa no chat, não daqui).\n\n` +
-    `2. meal_suggestion — insight ou estratégia nutricional de valor acrescentado para hoje ` +
+    `2. meal_suggestion — SE existir "vespera_da_prova", é sobre isso e com os números dele: o jantar de hoje ` +
+    `(hidratos complexos, as gramas, pouca fibra e gordura, até à hora indicada) ou, no dia, o pequeno-almoço à hora ` +
+    `indicada e a água até à hora de parar; carga de hidratos só se "carga_hidratos_g_dia" não for null. Caso contrário: ` +
+    `insight ou estratégia nutricional de valor acrescentado para hoje ` +
     `(ex: timing de ingestão peri-treino, reforço de hidratação cruzada com o treino, ou importância de um macronutriente face à carga agendada). ` +
     `CRÍTICO: NÃO sugiras ingredientes ou pratos específicos (ex: frango grelhado, arroz), pois o atleta já tem um plano alimentar detalhado a cumprir. ` +
     `Foca-te exclusivamente no *porquê* e na estratégia fisiológica. Respeita SEMPRE restrições alimentares do contexto.\n\n` +
@@ -704,7 +712,7 @@ Deno.serve(async (req) => {
         .eq("status", "aceite")
         .order("created_at", { ascending: false }),
       // 3 próximas provas com prioridade e distância para alertas de taper corretos
-      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_pace_seconds_per_km")
+      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_time_seconds, target_pace_seconds_per_km, start_time")
         .eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(3),
       // Composição corporal: 30 dias para RED-S e tendência de peso
@@ -748,6 +756,32 @@ Deno.serve(async (req) => {
     const tdee        = computeTDEE(profile, acwr.acute_km_per_day * 7);
 
     const isMonday = new Date(today + "T00:00:00Z").getUTCDay() === 1;
+    // A véspera e o dia da prova com horas: só quando a prova é amanhã ou hoje
+    // (specs/plano-de-prova.md, "O plano tem de saber da prova").
+    let raceEveForSummary: Record<string, unknown> | null = null;
+    let raceEveObj: RaceEve | null = null;
+    let raceEveDays: number | null = null;
+    if (nextRace?.date) {
+      const daysToRace = Math.round((Date.parse(nextRace.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
+      if (daysToRace >= 0 && daysToRace <= 1) {
+        const eve = computeRaceEve({ startTime: nextRace.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds: nextRace.target_time_seconds ?? null, distanceKm: nextRace.distance_km ?? null });
+        raceEveObj = eve;
+        raceEveDays = daysToRace;
+        raceEveForSummary = {
+          quando: daysToRace === 0 ? "hoje" : "amanhã",
+          prova: nextRace.name,
+          partida: eve.schedule?.start ?? "hora por marcar",
+          horario: eve.schedule,
+          jantar_hidratos_g: eve.dinnerCarbsG,
+          jantar_proteina_g: eve.dinnerProteinG,
+          pequeno_almoco_hidratos_g: eve.breakfastCarbsG,
+          agua_antes_ml: eve.preRaceWaterMl,
+          agua_dia_l: eve.dayWaterL,
+          carga_hidratos_g_dia: eve.carbLoading,
+          sono_h: eve.sleepHours,
+        };
+      }
+    }
     const lastWeekPlan = isMonday && lastWeekItems.length > 0
       ? computeLastWeekAdherence(lastWeekItems, recentRuns || [], recentGym || [])
       : null;
@@ -755,6 +789,11 @@ Deno.serve(async (req) => {
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
       bodyAssessments: bodyAssessments || [], acwr, tdee,
+      // Calculado logo acima mas nunca passado: a regra de segunda-feira
+      // ("semana_passada_plano") era código morto e a janela extra de 7 dias
+      // da query era lida em vão (apanhado na revisão pré-deploy 2026-09-12).
+      lastWeekPlan,
+      vesperaDaProva: raceEveForSummary,
     });
 
     const warningsMsg = buildWarningsMessage(
@@ -764,7 +803,15 @@ Deno.serve(async (req) => {
       { ...bodyMetrics, gender: profile?.gender ?? null },
       acwr,
     );
-    const tomorrowPrepMsg = buildTomorrowPrepMessage(tomorrowPlanItems);
+    // Na véspera, "Preparar amanhã" é a prova (horas da fórmula partilhada),
+    // não o item do plano — o cliente também deixa de sobrepor este texto
+    // com o plano nesse dia. No dia da prova, o aviso abre com ela.
+    const tomorrowPrepMsg = raceEveObj && nextRace && raceEveDays === 1
+      ? describeRaceEveShort(raceEveObj, nextRace.name, nextRace.distance_km ? Number(nextRace.distance_km) : null)
+      : buildTomorrowPrepMessage(tomorrowPlanItems);
+    // No dia da prova é o cliente que abre o aviso com a prova (tem o ritmo
+    // do primeiro km, que aqui não há); prefixar também aqui duplicava a
+    // frase (apanhado na revisão pré-deploy).
 
     // Conceito educativo do dia — determinístico, sem risco de repetição a curto prazo
     const todayConcept = DAILY_CONCEPTS[dayOfYear(today) % DAILY_CONCEPTS.length];

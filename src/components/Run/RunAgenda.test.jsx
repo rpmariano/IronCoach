@@ -560,3 +560,164 @@ describe('RunAgenda — ação primária na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar prova/i }));
   });
 });
+
+
+/* Hora de partida (specs/plano-de-prova.md, "A véspera e a hora"): opcional,
+   ao lado da data. É ela que deixa a Carol planear a véspera e a manhã com
+   horas — sem ela o conselho fica em abstrato. Duas grafias da mesma coisa:
+   a BD devolve 'HH:MM:SS' e o input só fala 'HH:MM'. */
+describe('RunAgenda — hora de partida', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [{ ...EXISTING_RACE, start_time: '09:00:00' }],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      activeTab: 'holistica',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  const abrirDetalhes = () => {
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    return screen.getByLabelText('Hora de partida');
+  };
+
+  it("a hora vinda da BD ('09:00:00') abre como 09:00, grava-se em 'HH:MM' e reabre assim", async () => {
+    const { unmount } = renderAgenda();
+    const campo = abrirDetalhes();
+    expect(campo.value).toBe('09:00');
+
+    fireEvent.change(campo, { target: { value: '08:45' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].start_time).toBe('08:45');
+    });
+    unmount();
+
+    // Reabrir a prova: a hora gravada volta ao campo, já sem os segundos.
+    useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
+    renderAgenda();
+    expect(abrirDetalhes().value).toBe('08:45');
+  });
+
+  it('a hora é opcional: apagá-la grava null, não a cadeia vazia (a coluna é `time`)', async () => {
+    renderAgenda();
+    const campo = abrirDetalhes();
+
+    // Opcional = sem asterisco de obrigatório ao lado do rótulo.
+    expect(document.querySelector('label[for="ra-hora-de-partida"]').textContent).toBe('Hora de partida');
+
+    fireEvent.change(campo, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].start_time).toBeNull();
+    });
+  });
+});
+
+/* BUG CORRIGIDO (2026-09-12) — uma escrita no store feita por este próprio
+   ecrã (marcar concluída no Hub, obter informação do site) re-disparava o
+   efeito que carrega o rascunho canónico, apagando o que estivesse escrito e
+   por gravar na página "Detalhes" e limpando o isDirty.
+   "Guardar prova" só está ativo com alterações por gravar — é por aí que se
+   observa o isDirty de fora. */
+describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
+  const diasAntes = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [EXISTING_RACE],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      activeTab: 'holistica',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const irPara = (pagina) => fireEvent.click(screen.getByRole('button', { name: pagina }));
+  const notas = () => screen.getByPlaceholderText('Logística, nutrição planeada...');
+  const botaoGuardar = () => screen.getByRole('button', { name: /Guardar prova/i });
+
+  it('marcar concluída pelo Hub mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {
+    // Data passada: aí a ação vive no estado pós-prova do hub, já ativa.
+    useAppStore.setState({
+      raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'agendada' }],
+    });
+    renderAgenda();
+
+    irPara(/^Detalhes da prova$/i);
+    fireEvent.change(notas(), { target: { value: 'Levar géis extra.' } });
+    expect(botaoGuardar()).toBeEnabled();
+
+    irPara(/^Treino e Evolução$/i);
+    fireEvent.click(screen.getByTestId('race-hub-mark-completed'));
+    fireEvent.click(screen.getByRole('button', { name: /Sim, concluída/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().raceEvents[0].status).toBe('concluida');
+    });
+
+    // A nota continua lá e continua por gravar.
+    irPara(/^Detalhes da prova$/i);
+    expect(notas()).toHaveValue('Levar géis extra.');
+    expect(botaoGuardar()).toBeEnabled();
+  });
+
+  it('"Obter informação do site" mantém a edição por gravar em "Detalhes" (e o isDirty)', async () => {
+    const web_info = {
+      schedule: [{ label: 'Partida', when: 'Domingo 09:00', where: null }],
+      required_documents: 'Cartão de cidadão.',
+      category_info: null,
+      gear_recommendations: null,
+      logistics: null,
+      route_summary: null,
+      route_segments: null,
+      caveats: null,
+      source_url: 'https://corridadotejo.com/',
+      fetched_at: '2026-09-12T10:00:00.000Z',
+    };
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { race_event: { ...EXISTING_RACE, web_info } },
+      error: null,
+    });
+
+    renderAgenda();
+
+    irPara(/^Detalhes da prova$/i);
+    fireEvent.change(notas(), { target: { value: 'Dorsal levantado na véspera.' } });
+    expect(botaoGuardar()).toBeEnabled();
+
+    irPara(/^Treino e Evolução$/i);
+    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cartão de cidadão.')).toBeInTheDocument();
+    });
+
+    irPara(/^Detalhes da prova$/i);
+    expect(notas()).toHaveValue('Dorsal levantado na véspera.');
+    expect(botaoGuardar()).toBeEnabled();
+  });
+});

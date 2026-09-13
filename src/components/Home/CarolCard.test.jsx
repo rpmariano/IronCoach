@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
-import { todayISO } from '../../lib/utils';
+import { todayISO, addDaysISO } from '../../lib/utils';
 import CarolCard from './CarolCard';
 
 describe('CarolCard — o cartão da Carol no Início', () => {
@@ -10,7 +10,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
 
   beforeEach(() => {
     loadDailySummary.mockClear();
-    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' } });
+    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [] });
   });
 
   it('pede o resumo ao montar, sem reload — não force', () => {
@@ -106,5 +106,90 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     useAppStore.setState({ dailySummary: null, dailySummaryLoading: true });
     render(<CarolCard />);
     expect(screen.getByTestId('carol-skeleton')).toBeInTheDocument();
+  });
+
+  /* ── A véspera e o dia da prova (specs/plano-de-prova.md) ──────────────── */
+  describe('a prova manda no cartão', () => {
+    const today = todayISO();
+    const tomorrow = addDaysISO(today, 1);
+
+    const race = (date, extra = {}) => ({
+      id: 'r1', date, name: 'Corrida do Tejo', status: 'agendada',
+      race_type: 'estrada', distance_km: 10, experience_level: 'medio', ...extra,
+    });
+
+    it('véspera com hora: "Preparar amanhã" são as horas da prova, não o item do plano', () => {
+      useAppStore.setState({
+        profile: { id: 'u1', weight_kg: 70 },
+        raceEvents: [race(tomorrow, { start_time: '09:00', target_time_seconds: 2880 })],
+        coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: tomorrow }],
+        coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: tomorrow, kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente' }],
+      });
+      render(<CarolCard />);
+      fireEvent.click(screen.getByText('Ler mais'));
+      expect(screen.getByText('Preparar amanhã')).toBeInTheDocument();
+      // As horas vêm de computeRaceEve: partida 09:00 → acordar 06:00,
+      // pequeno-almoço 06:15, deitar 22:00, jantar até às 19:30.
+      expect(screen.getByText(/partida às 09:00/)).toBeInTheDocument();
+      expect(screen.getByText(/jantar até às 19:30 \(140-280 g de hidratos\)/)).toBeInTheDocument();
+      expect(screen.getByText(/acordar às 06:00/)).toBeInTheDocument();
+      // E NÃO o texto do item do plano de amanhã.
+      expect(screen.queryByText(/Amanhã o plano aponta para/)).not.toBeInTheDocument();
+    });
+
+    it('véspera sem hora: pede a hora em vez de inventar horários', () => {
+      useAppStore.setState({ raceEvents: [race(tomorrow)] });
+      render(<CarolCard />);
+      expect(screen.getByText(/Sem hora de partida marcada não consigo dar horas/)).toBeInTheDocument();
+      expect(screen.queryByText(/partida às/)).not.toBeInTheDocument();
+    });
+
+    it('dia da prova: o aviso abre com a prova, a hora e o ritmo do km 1', () => {
+      useAppStore.setState({
+        profile: { id: 'u1', weight_kg: 70, water_goal_ml: 2500 },
+        raceEvents: [race(today, { start_time: '09:00', target_time_seconds: 2880 })],
+      });
+      render(<CarolCard />);
+      const aviso = screen.getByText(/^Hoje é Corrida do Tejo, partida às 09:00/);
+      expect(aviso).toBeInTheDocument();
+      expect(aviso.textContent).toMatch(/pequeno-almoço às 06:15/);
+      // O primeiro km é mais lento que a base (48:00 → 4.48, +6 s), na
+      // grafia de ritmo da app (formatPace: "4.54", não "4:54/km").
+      expect(aviso.textContent).toMatch(/Primeiro km a 4\.54\./);
+      // O resto do aviso vem a seguir, não à frente.
+      expect(aviso.textContent).toMatch(/Ainda não registaste água hoje\.$/);
+      // E o item do plano não se repete: a frase da prova já disse o que é
+      // hoje.
+      expect(aviso.textContent).not.toMatch(/Para hoje tens agendado/);
+    });
+
+    it('dia da prova sem objetivo: a frase fica sem o ritmo do km 1', () => {
+      useAppStore.setState({
+        profile: { id: 'u1', weight_kg: 70 },
+        raceEvents: [race(today, { start_time: '09:00' })],
+      });
+      render(<CarolCard />);
+      expect(screen.getByText(/Hoje é Corrida do Tejo, partida às 09:00/)).toBeInTheDocument();
+      expect(screen.queryByText(/Primeiro km a/)).not.toBeInTheDocument();
+    });
+
+    it('uma prova já concluída não tem véspera nem manhã', () => {
+      useAppStore.setState({ raceEvents: [race(tomorrow, { status: 'concluida', start_time: '09:00' })] });
+      render(<CarolCard />);
+      expect(screen.queryByText(/Amanhã é Corrida do Tejo/)).not.toBeInTheDocument();
+    });
+
+    it('o item de prova do plano de hoje mostra "Prova" e o nome dela', () => {
+      // Com a prova já concluída não há frase da prova a abrir o aviso — é
+      // o item do plano que tem de dizer o que era aquele dia.
+      useAppStore.setState({
+        profile: { id: 'u1' },
+        raceEvents: [race(today, { status: 'concluida' })],
+        coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: today }],
+        coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente' }],
+      });
+      render(<CarolCard />);
+      expect(screen.getByText(/Para hoje tens agendado: Prova \(Corrida do Tejo, 10 km\)\./)).toBeInTheDocument();
+    });
   });
 });

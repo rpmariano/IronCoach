@@ -234,6 +234,15 @@ describe('detectCoachInsights', () => {
       expect(vol.value).toBeCloseTo(10, 0);
     });
 
+    it('"Dia da prova" só no próprio dia: na véspera é "Reta Final" com 1 dia (bug 2026-09-12)', () => {
+      const hoje = detectCoachInsights({ runs: [], raceEvents: [{ id: 'ev-1', status: 'agendada', date: iso(0), distance_km: 10, name: 'Corrida do Tejo' }] }, {});
+      expect(hoje.find((i) => i.id === 'race_day_ev-1')).toBeTruthy();
+      expect(hoje.find((i) => i.id === 'race_day_ev-1').value).toBe('hoje');
+      const vespera = detectCoachInsights({ runs: [], raceEvents: [{ id: 'ev-1', status: 'agendada', date: iso(-1), distance_km: 10, name: 'Corrida do Tejo' }] }, {});
+      expect(vespera.find((i) => i.id === 'race_day_ev-1')).toBeUndefined();
+      expect(vespera.find((i) => i.id === 'race_final_week_ev-1').message).toContain('Faltam apenas 1 dia');
+    });
+
     it('alerta sobre a reta final quando faltam poucos dias para a prova', () => {
       const raceEvents = [{
         id: 'ev-1',

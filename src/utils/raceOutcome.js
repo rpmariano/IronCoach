@@ -200,5 +200,14 @@ export function buildRaceOutcomePayload(outcome, race, run) {
     basis: outcome.basis,
     vs_training: outcome.vsTraining,
     is_personal_record: outcome.isPersonalRecord,
+    // Os parciais registados (runs.details.splits), para o servidor comparar
+    // com o plano para o dia km a km (specs/plano-de-prova.md §4). Até 60,
+    // só com distância e tempo válidos.
+    splits: Array.isArray(run?.details?.splits)
+      ? run.details.splits
+        .map((sp) => ({ distance_km: num(sp?.distance_km), time_seconds: num(sp?.time_seconds) }))
+        .filter((sp) => sp.distance_km && sp.time_seconds)
+        .slice(0, 60)
+      : [],
   };
 }

@@ -5,7 +5,7 @@
 // na tabela coach_messages para persistência entre sessões.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM } from "../_shared/formulas/vocabulary.ts";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
@@ -38,6 +38,8 @@ import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
+import { buildRacePacingPlan, compareSplitsToPlan, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
+import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -119,6 +121,14 @@ const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
   "intervalos", "subidas", "trail", "tecnico",
 ];
+// No PLANO há mais um tipo: "prova" — o dia da prova é a prova, não um
+// treino (specs/plano-de-prova.md, "O plano tem de saber da prova"). Só é
+// válido num dia com prova agendada; o servidor insere-o se o modelo o
+// esquecer.
+const PLAN_RUN_TRAINING_TYPES = [...RUN_TRAINING_TYPES, "prova"];
+// Treinos que não cabem na véspera nem na antevéspera de uma prova — a
+// lista é partilhada com o alerta de ajuste do cliente (vocabulary.ts).
+const HARD_RUN_TYPES = new Set(PRE_RACE_HARD_RUN_TYPES);
 
 // Tipos de refeição da estimativa de macros opcional (meal_items) — usados
 // tanto no schema das tools abaixo como no frontend (src/components/Home/
@@ -248,8 +258,10 @@ const PROPOSE_PLAN_TOOL = {
             },
             training_type: {
               type: "STRING",
-              enum: RUN_TRAINING_TYPES,
-              description: "Só para kind=corrida. Tipo de treino de corrida.",
+              enum: PLAN_RUN_TRAINING_TYPES,
+              description:
+                "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
+                "agendada (o servidor exige-o nesse dia e recusa treinos fortes na véspera e na antevéspera).",
             },
             categories: {
               type: "ARRAY",
@@ -551,11 +563,18 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `Está sem qualquer registo há 3 dias ou mais. Pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
     `Sem sermão, sem lista de treinos em atraso, sem reagendar nada: isso fica para quando ele responder.`,
   race_eve:
-    `Amanhã é a prova. Diz-lhe o que fazer hoje e amanhã de manhã — concreto e ao caso dele: jantar e hidratação de hoje, hora de acordar e ` +
-    `pequeno-almoço, aquecimento, ritmo de partida (usa o objetivo e o pace alvo se constarem no contexto). Fecha com uma frase sobre o caminho ` +
-    `percorrido, com um número real do histórico (semanas de preparação, volume, o treino longo mais comprido). Duas ou três bolhas.`,
+    `Amanhã é a prova. Primeiro, o PLANO PARA O DIA (bloco no contexto, se existir): apresenta-o na tua voz, troço a troço — o ritmo do ` +
+    `primeiro km e porquê, onde controlar, onde aguentar, o ponto de decisão e o que o decide, o final, o abastecimento nos km certos — e cita ` +
+    `os troços do percurso pelo nome quando o plano os tiver. Se o objetivo for ambicioso, diz-o e explica como se decide a meio. Não ` +
+    `inventes troços nem ritmos que não estejam no plano. Sem plano (sem objetivo marcado), pede-lhe o objetivo de tempo em vez de ritmos ` +
+    `ao acaso. Depois, a PREPARAÇÃO, com o mesmo peso que o plano — usa o bloco VÉSPERA E MANHÃ DA PROVA: o jantar de hoje (hidratos ` +
+    `complexos, as gramas, o que evitar), a água (quanto, quando parar), o sono (quantas horas, a que horas deitar e acordar), como descontrair ` +
+    `(o que não fazer), e a manhã hora a hora (acordar, pequeno-almoço, chegada, aquecimento). Sem hora de partida, pergunta-lha e dá tudo em ` +
+    `intervalos. Fecha com uma frase sobre o caminho percorrido, com um número real do histórico (semanas de preparação, volume, o treino longo ` +
+    `mais comprido). Quatro ou cinco bolhas — plano, preparação, manhã, fecho.`,
   race_morning:
-    `É a manhã da prova. Curta: duas frases. Sem dados, sem números, sem lista. Uma frase sobre hoje e uma sobre ele.`,
+    `É a manhã da prova. Curta: duas frases. Sem dados nem lista — os únicos números permitidos são o ritmo do primeiro km do PLANO PARA O DIA ` +
+    `e, se ele ainda não tiver comido, a hora do pequeno-almoço do bloco VÉSPERA E MANHÃ. Uma frase sobre hoje e uma sobre ele.`,
   // Só o caso SEM corrida registada — com registo, o cliente manda o
   // veredicto calculado (race_outcome) e a instrução é a de
   // raceAfterInstruction, por veredicto.
@@ -595,7 +614,20 @@ export interface RaceOutcome {
   basis: "objetivo" | "previsao" | null;
   vs_training: "acima" | "dentro" | "abaixo" | null;
   is_personal_record: boolean;
+  // Os parciais registados (runs.details.splits), para comparar com o plano
+  // para o dia (specs/plano-de-prova.md §4). Vazio quando não há.
+  splits: SplitInput[];
+  // As conquistas que esta prova acabou de dar (chaves de utils/achievements.js).
+  achievements_new: string[];
 }
+
+const ACHIEVEMENT_LABELS: Record<string, string> = {
+  prova_concluida: "Prova concluída",
+  objetivo_batido: "Objetivo batido",
+  recorde_pessoal: "Recorde pessoal",
+  primeira_trail: "Primeira de trail",
+  sequencia: "Sequência de provas",
+};
 
 function posNum(v: unknown): number | null {
   const n = typeof v === "string" ? parseFloat(v) : Number(v);
@@ -639,7 +671,97 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
     basis,
     vs_training: vs,
     is_personal_record: r.is_personal_record === true,
+    splits: Array.isArray(r.splits)
+      ? (r.splits as unknown[])
+        .map((sp) => {
+          const o = (sp && typeof sp === "object" ? sp : {}) as Record<string, unknown>;
+          return { distance_km: posNum(o.distance_km), time_seconds: posNum(o.time_seconds) };
+        })
+        .filter((sp) => sp.distance_km && sp.time_seconds)
+        .slice(0, 60)
+      : [],
+    achievements_new: Array.isArray(r.achievements_new)
+      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 5)
+      : [],
   };
+}
+
+/** A resposta dele ao balanço "perto": disse que para a próxima quer melhor,
+ *  ou que fica por aqui. Lê-se da conversa — a pergunta é a última coisa que
+ *  ela disse — e não precisa de flag nenhuma do cliente. */
+export function detectRaceFollowup(
+  recentHistoryDesc: { role: string; content: string }[] | null,
+  message: string,
+): "melhor" | "parar" | null {
+  const last = (recentHistoryDesc || []).find((m) => m.role === "model");
+  if (!last || typeof last.content !== "string") return null;
+  if (!/para a pr[óo]xima/i.test(last.content) || !/melhor/i.test(last.content)) return null;
+  const msg = (message || "").trim().toLowerCase();
+  if (!msg) return null;
+  if (/^sim\b/.test(msg) || /quero melhor|fazer melhor|vamos (a isso|l[áa])/.test(msg)) return "melhor";
+  if (/^n[ãa]o\b/.test(msg) || /fico por aqui|por agora (n[ãa]o|chega)/.test(msg)) return "parar";
+  return null;
+}
+
+export function buildRaceFollowupContext(followup: "melhor" | "parar" | null): string | null {
+  if (followup === "melhor") {
+    return `=== RESPOSTA AO BALANÇO ===\nEle respondeu que para a próxima quer fazer melhor. A tua resposta começa por "então vamos lá treinar" (ou o equivalente na tua voz) e traz um caminho concreto, não um slogan: a próxima prova (qual e quando, se houver na agenda; senão pergunta-lhe qual quer), uma ou duas coisas que mudam no treino (com números do histórico: volume, longo, intensidade), e o primeiro passo desta semana. Se fizer sentido, propõe o plano com as ferramentas.`;
+  }
+  if (followup === "parar") {
+    return `=== RESPOSTA AO BALANÇO ===\nEle disse que por agora fica por aqui. Respeita: uma frase, sem insistir nem moralizar — diz que ficas cá para quando ele quiser, e nada mais.`;
+  }
+  return null;
+}
+
+// ── Plano para o dia da prova (specs/plano-de-prova.md) ─────────────────────
+// A tabela vem da fórmula partilhada (racePacing.ts, a mesma do hub); aqui
+// só se escreve o bloco para a Carol o apresentar na voz dela — sem
+// inventar troços nem ritmos que não estejam nele.
+function pace(secPerKm: number): string {
+  return `${sharedFormatPaceMinKm(Math.round(secPerKm))}/km`;
+}
+
+export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: string | null, daysUntil: number | null): string | null {
+  if (!plan) return null;
+  const when = daysUntil == null ? "" : daysUntil === 0 ? " — é hoje" : daysUntil === 1 ? " — é amanhã" : ` — daqui a ${daysUntil} dias`;
+  const lines: string[] = [`=== PLANO PARA O DIA DA PROVA (calculado pela app; apresenta-o, não o refaças) ===`];
+  lines.push(`Prova: ${raceName || "(sem nome)"}${when}.`);
+  const base = plan.basis === "objetivo"
+    ? `Base: o objetivo, ${formatHms(plan.targetSeconds!)} (${pace(plan.basePaceSecPerKm)}).`
+    : plan.ambitious && plan.targetSeconds
+      ? `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — o objetivo ${formatHms(plan.targetSeconds)} é AMBICIOSO (mais de 3% abaixo) e decide-se ao km ${plan.decisionKm}.`
+      : `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — sem objetivo marcado.`;
+  lines.push(base);
+  lines.push(`Chegada planeada: ${formatHms(plan.plannedFinishSeconds)}. Primeiro km: ${pace(plan.firstKmPaceSecPerKm)}. Ponto de decisão: km ${plan.decisionKm}.${plan.effortMode ? " Trail: por esforço — os ritmos são referência." : ""}`);
+  lines.push(`Percurso: ${plan.knowsRoute ? "conhecido (troços do site da prova)" : "DESCONHECIDO — não descrevas subidas nem lugares"}.`);
+  lines.push("Troços:");
+  for (const r of plan.rows) {
+    const km = `km ${r.fromKm}–${Number.isInteger(r.toKm) ? r.toKm : r.toKm.toFixed(1)}`;
+    lines.push(`- ${km} · ${pace(r.paceSecPerKm)} · passagem ${formatHms(r.cumulativeSeconds)} · ${r.label}${r.route ? ` · ${r.route}` : ""} — ${r.instruction}`);
+  }
+  if (plan.fuel.length) lines.push(`Abastecimento: ${plan.fuel.map((f) => `km ${f.km} ${f.what === "agua" ? "água" : "hidratos"}`).join(" · ")}.`);
+  for (const n of plan.notes) lines.push(`Nota: ${n}`);
+  return lines.join("\n");
+}
+
+/** Os parciais registados face ao plano — só os km com desvio de 5 s/km ou
+ *  mais. É daqui que sai a causa concreta de um "aquém" (arranque rápido,
+ *  quebra no fim) — ou a confirmação de que a corrida foi como planeada. */
+export function buildSplitsComparisonContext(comparison: SplitComparison[], plan: RacePacingPlan | null, splitCount: number): string | null {
+  if (!plan || splitCount === 0) return null;
+  const lines: string[] = ["=== PARCIAIS FACE AO PLANO PARA O DIA (registados pelo atleta) ==="];
+  if (comparison.length === 0) {
+    lines.push(`${splitCount} parciais registados, todos a menos de 5 s/km do plano: correu como planeado.`);
+    return lines.join("\n");
+  }
+  for (const c of comparison) {
+    lines.push(`- km ${c.km}: fez ${pace(c.actualPace)}, o plano dizia ${pace(c.plannedPace)} (${Math.abs(c.deltaSecPerKm)} s/km ${c.deltaSecPerKm < 0 ? "mais rápido" : "mais lento"}).`);
+  }
+  const first = comparison[0];
+  if (first.km <= 2 && first.deltaSecPerKm <= -8) lines.push("Leitura: arrancou acima do plano.");
+  const last = comparison[comparison.length - 1];
+  if (last.km >= plan.decisionKm && last.deltaSecPerKm >= 10) lines.push("Leitura: quebrou na parte final.");
+  return lines.join("\n");
 }
 
 function absHms(seconds: number): string {
@@ -684,6 +806,9 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   } else {
     lines.push(`Melhor anterior na ${cat || "distância"}: nenhum — primeira prova nesta distância.`);
   }
+  if (o.achievements_new.length) {
+    lines.push(`Conquistas novas desta prova: ${o.achievements_new.map((k) => ACHIEVEMENT_LABELS[k] || k).join(", ")}.`);
+  }
   const verdictLabel: Record<RaceVerdict, string> = {
     sem_registo: "SEM REGISTO",
     concluida: "CONCLUÍDA (sem objetivo nem previsão para comparar)",
@@ -705,6 +830,8 @@ export function raceAfterInstruction(o: RaceOutcome | null): string {
   if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
   const common =
     `A prova já passou e a corrida está registada: os números do bloco BALANÇO DA PROVA são os que contam — não os recalcules nem os contradigas. ` +
+    `Se houver o bloco PARCIAIS FACE AO PLANO PARA O DIA, é daí que sai a explicação concreta: cita os km com desvio (arranque demasiado ` +
+    `rápido, quebra no final) antes de qualquer outra causa. ` +
     `Faz o balanço em primeira pessoa, com opinião, em duas ou três bolhas (parágrafos curtos). `;
   const dTarget = o.target_seconds ? absHms(o.official_seconds! - o.target_seconds) : null;
   const dPred = o.predicted_seconds ? absHms(o.official_seconds! - o.predicted_seconds) : null;
@@ -752,7 +879,54 @@ export function raceAfterInstruction(o: RaceOutcome | null): string {
   const record = o.is_personal_record && o.previous_best_seconds
     ? ` Foi RECORDE PESSOAL na ${RACE_CATEGORY_LABELS[o.category || ""] || "distância"} (melhor anterior ${formatHms(o.previous_best_seconds)}, batido por ${absHms(o.official_seconds! - o.previous_best_seconds)}): diz-lho com o número — é excecional e merece ser reconhecido, seja qual for o veredicto face ao objetivo.`
     : "";
-  return common + body + record;
+  const others = o.achievements_new.filter((k) => k !== "recorde_pessoal" && k !== "prova_concluida");
+  const achievements = others.length
+    ? ` Esta prova deu-lhe também: ${others.map((k) => ACHIEVEMENT_LABELS[k] || k).join(", ")} — cita cada uma numa frase, com o que a mereceu (a primeira de trail, ou quantas provas seguidas), sem cerimónia.`
+    : "";
+  return common + body + record + achievements;
+}
+
+/** "09:00" a partir de "09:00:00" (Postgres `time`) ou de "09:00". */
+export function hhmm(t: unknown): string {
+  return sharedHhmm(t);
+}
+
+function rangeG(r: { low: number; high: number } | null, perKgLow: number, perKgHigh: number, unit = "g"): string {
+  if (!r) return `${perKgLow}-${perKgHigh} ${unit}/kg`;
+  return `${r.low}-${r.high} ${unit} (${perKgLow}-${perKgHigh} ${unit}/kg)`;
+}
+
+/** A véspera e a manhã da prova com horas e quantidades (specs/plano-de-prova.md,
+ *  "A véspera e a hora"). Os números vêm da fórmula partilhada
+ *  (_shared/formulas/raceEve.ts) — os mesmos que o cartão do Início mostra;
+ *  aqui só se escreve o bloco. Sem hora, diz-o e manda perguntá-la. */
+export function buildRaceEveContext(
+  race: { name?: string | null; start_time?: string | null; distance_km?: number | string | null } | null,
+  profile: { weight_kg?: number | string | null } | null,
+  plannedFinishSeconds: number | null,
+  daysUntil: number,
+): string | null {
+  if (!race) return null;
+  const eve = computeRaceEve({ startTime: race.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds, distanceKm: race.distance_km ?? null });
+  const when = daysUntil <= 0 ? "é hoje" : daysUntil === 1 ? "é amanhã" : `é daqui a ${daysUntil} dias`;
+  const lines: string[] = [`=== VÉSPERA E MANHÃ DA PROVA (${when}; calculado pela app — usa ESTAS horas e quantidades) ===`];
+  const sc = eve.schedule;
+  if (!sc) {
+    lines.push("Hora de partida: DESCONHECIDA. Pergunta-lha antes de dar horas de acordar, de pequeno-almoço ou de deitar — sem a hora, fala em intervalos (\"3 h antes da partida\") e pede-lhe que a marque na prova.");
+  } else {
+    lines.push(`Partida: ${sc.start}.`);
+    lines.push(`Sono: ${eve.sleepHours.target} h no alvo, ${eve.sleepHours.min} no mínimo — deitar às ${sc.bed} para acordar às ${sc.wake} (3 h antes; 2 h 30 no mínimo). A noite que mais conta é a anterior à véspera: se hoje é a véspera, a de ontem já foi.`);
+    lines.push(`Manhã: acordar ${sc.wake} · pequeno-almoço ${sc.breakfast} (2 h 45 antes; hidratos ${rangeG(eve.breakfastCarbsG, 1, 2)}, pouca fibra, pouca gordura, o de sempre) · água ${eve.preRaceWaterMl ? `${eve.preRaceWaterMl.low}-${eve.preRaceWaterMl.high} ml` : "5-7 ml/kg"} entre as ${sc.waterFrom} e as ${sc.waterUntil}, aos goles · chegada ${sc.arrival} · aquecimento ${sc.warmup}.`);
+    lines.push(`Descontrair: nada de treino além de 15-20 min muito fáceis; material preparado antes de jantar; ecrãs fora a partir das ${sc.screensOff}; nada de novo (comida, sapatilhas, roupa).`);
+  }
+  lines.push(`Jantar da véspera${sc ? ` (até às ${sc.dinnerBy})` : ""}: hidratos complexos (arroz, massa, batata, pão) ${rangeG(eve.dinnerCarbsG, 2, 4)}, proteína ${rangeG(eve.dinnerProteinG, 0.3, 0.4)}, pouca fibra e pouca gordura, nada de novo.`);
+  lines.push(eve.longRace
+    ? `Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes${eve.carbLoading ? ` (${eve.carbLoading.low}-${eve.carbLoading.high} g hoje)` : ""}, fibra abaixo de 10-15 g/dia.`
+    : `Carga de hidratos: NÃO — prova abaixo de 90 min; comer normal, com o jantar acima. Encher-se só traz peso (3 g de água por g de glicogénio).`);
+  lines.push(`Água hoje: a base de 30-40 ml/kg${eve.dayWaterL ? ` (${eve.dayWaterL.low.toFixed(1)}-${eve.dayWaterL.high.toFixed(1)} L)` : ""}, repartida pelo dia; não é para beber litros à noite.`);
+  if (!eve.weightKg) lines.push("Sem peso no perfil: as quantidades ficam por kg — pede-lhe o peso se quiseres dar gramas.");
+  lines.push("Sugestões alimentares (propose_training_plan/save_meal_suggestions) para a véspera e para o dia da prova seguem ESTE bloco, não a rotina habitual.");
+  return lines.join("\n");
 }
 
 /** O que fica na memória de longo prazo dela sobre esta prova (coach_notes,
@@ -1063,6 +1237,7 @@ export type GymSessionSummary = {
   avgHr: number | null;
   maxHr: number | null;
   exertion: number | null;
+  startTime: string | null;
 };
 
 // Resume sessões de treino para o coach. Volume = Σ reps×carga sobre séries
@@ -1102,6 +1277,7 @@ export function summariseSessions(sessions: any[]): GymSessionSummary[] {
       avgHr: s.avg_hr ?? null,
       maxHr: s.max_hr ?? null,
       exertion: s.exertion ?? null,
+      startTime: s.start_time ?? null,
     };
   });
 }
@@ -1126,7 +1302,7 @@ export function formatSessionLine(r: GymSessionSummary): string {
   const kindLabel = r.kind === "aula" ? " (aula)" : "";
   const cats = r.categories.length ? ` [${r.categories.join(", ")}]` : "";
   const detail = parts.length ? ` — ${parts.join(", ")}` : " — sem detalhes registados";
-  return `- ${r.date}: ${r.name}${kindLabel}${cats}${detail}`;
+  return `- ${r.date}${r.startTime ? ` às ${hhmm(r.startTime)}` : ""}: ${r.name}${kindLabel}${cats}${detail}`;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1305,7 +1481,7 @@ export function summariseRuns(runs: any[]): string[] {
       ? `FC média ${Math.round(details.avg_heart_rate_bpm)} bpm`
       : null;
     const parts = [distance, duration, pace, cadStr, hrStr].filter(Boolean);
-    return `- ${r.date}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
+    return `- ${r.date}${r.start_time ? ` às ${hhmm(r.start_time)}` : ""}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
 
@@ -1810,7 +1986,7 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
 
   const { data, error } = await sb
     .from("runs")
-    .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+    .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
     .eq("user_id", userId)
     .gte("date", start_date)
     .lte("date", end_date)
@@ -1911,6 +2087,40 @@ const MAX_PLAN_ITEMS = 14;
 // 'proposto' e os respetivos itens. Ao contrário das outras três ferramentas,
 // esta ESCREVE — daí a validação apertada de cada campo antes do insert.
 // Ver specs/plano-de-treino.md §3 e §5.1.
+function addDaysISO(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function daysBetweenISO(fromIso: string, toIso: string): number {
+  return Math.round((Date.parse(toIso + "T00:00:00Z") - Date.parse(fromIso + "T00:00:00Z")) / 86400000);
+}
+
+type ScheduledRace = { id: string; name: string; date: string; distance_km: number | null };
+/** Provas agendadas do atleta entre duas datas; [] se a consulta falhar
+ *  (o plano segue sem a guarda, com aviso no log). */
+// deno-lint-ignore no-explicit-any
+export async function fetchScheduledRaces(sb: any, userId: string, fromISO: string, toISO: string): Promise<ScheduledRace[]> {
+  try {
+    const res = await sb
+      .from("race_events")
+      .select("id, name, date, distance_km")
+      .eq("user_id", userId)
+      .eq("status", "agendada")
+      .gte("date", fromISO)
+      .lte("date", toISO);
+    if (!res || res.error) {
+      if (res?.error) console.warn("Provas do período não lidas:", res.error.message);
+      return [];
+    }
+    // deno-lint-ignore no-explicit-any
+    return (res.data || []).map((r: any) => ({ id: r.id, name: r.name || "Prova", date: r.date, distance_km: r.distance_km != null ? Number(r.distance_km) : null }));
+  } catch (err) {
+    console.warn("Provas do período não lidas:", err);
+    return [];
+  }
+}
+
 // deno-lint-ignore no-explicit-any
 export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
@@ -1926,6 +2136,13 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
   }
 
+  // As provas agendadas no período (e até 2 dias depois, para a véspera de
+  // uma prova logo a seguir ao plano): o dia da prova é a prova, e os dois
+  // dias antes são leves. Numa falha da consulta o plano segue sem esta
+  // guarda — é uma validação, não o registo.
+  const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, 2));
+  const racesInPeriod = racesInPeriodOrAfter.filter((r) => r.date >= period_start && r.date <= period_end);
+
   // Valida tudo ANTES de gravar seja o que for — um item inválido a meio
   // deixaria um plano meio criado, que o atleta veria como proposta legítima.
   const rows = [];
@@ -1940,8 +2157,25 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (item.kind !== "corrida" && item.kind !== "ginasio" && item.kind !== "descanso") {
       return `Erro no treino ${n}: kind tem de ser "corrida", "ginasio" ou "descanso".`;
     }
-    if (item.kind === "corrida" && item.training_type && !RUN_TRAINING_TYPES.includes(item.training_type)) {
-      return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${RUN_TRAINING_TYPES.join(", ")}.`;
+    if (item.kind === "corrida" && item.training_type && !PLAN_RUN_TRAINING_TYPES.includes(item.training_type)) {
+      return `Erro no treino ${n}: training_type "${item.training_type}" não é válido. Usa um de: ${PLAN_RUN_TRAINING_TYPES.join(", ")}.`;
+    }
+    // ── O plano tem de saber da prova (specs/plano-de-prova.md) ──────────
+    const raceThatDay = racesInPeriod.find((r) => r.date === item.planned_date);
+    if (raceThatDay) {
+      if (item.kind !== "corrida") {
+        return `Erro no treino ${n}: ${item.planned_date} é o dia da prova "${raceThatDay.name}" — nesse dia só há a prova (kind=corrida, training_type=prova), não ${item.kind}.`;
+      }
+      // Corrida no dia da prova É a prova: normaliza-se, sem chatear o modelo.
+      item.training_type = "prova";
+      if (!(Number(item.target_distance_km) > 0) && raceThatDay.distance_km) item.target_distance_km = raceThatDay.distance_km;
+      if (typeof item.notes !== "string" || !item.notes.trim()) item.notes = `Prova: ${raceThatDay.name}. O plano de ritmo está no hub da prova.`;
+    } else if (item.training_type === "prova") {
+      return `Erro no treino ${n}: training_type=prova só num dia com prova agendada, e ${item.planned_date} não tem nenhuma.`;
+    }
+    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= PRE_RACE_EASY_DAYS);
+    if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
+      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}" — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
@@ -1975,6 +2209,25 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       meal_macros: buildMealMacros(item),
     });
   }
+
+  // Uma prova no período sem item nesse dia entra sozinha — o plano nunca
+  // pode fingir que o dia da prova é um dia qualquer.
+  for (const race of racesInPeriod) {
+    if (rows.some((r) => r.planned_date === race.date)) continue;
+    rows.push({
+      user_id: userId,
+      planned_date: race.date,
+      kind: "corrida",
+      training_type: "prova",
+      categories: [],
+      target_distance_km: race.distance_km ? Number(race.distance_km) : null,
+      target_duration_min: null,
+      notes: `Prova: ${race.name}. O plano de ritmo está no hub da prova.`,
+      meal_suggestion: null,
+      meal_macros: null,
+    });
+  }
+  rows.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
 
   // Se o atleta confirmou que quer substituir o plano de treino ativo, a
   // proposta REGISTA qual é (supersedes_plan_id) mas não o mexe já: a
@@ -2667,6 +2920,11 @@ export function buildRaceEventsContext(
     const effectiveLevel = e.experience_level || profileLevel;
     const extras = [
       e.location ? `local: ${e.location}` : null,
+      // A hora de partida decide a véspera e a manhã (ver buildRaceEveContext);
+      // sem ela a Carol pergunta-a em vez de aconselhar em abstrato.
+      e.start_time ? `partida às ${hhmm(e.start_time)}` : `partida: hora por marcar (pergunta-lha)`,
+      // Na última semana o corpo habitua-se à hora: treinar à hora da prova.
+      e.start_time && daysUntil >= 0 && daysUntil <= 7 ? `última semana: treinos à hora da partida (${hhmm(e.start_time)})` : null,
       e.distance_km ? `distância: ${e.distance_km} km` : null,
       e.target_time_seconds ? `tempo-alvo: ${formatHms(e.target_time_seconds)}` : null,
       paceStr ? `ritmo-alvo: ${paceStr}/km` : null,
@@ -3149,6 +3407,14 @@ export function buildSystemInstruction(
   proactiveDetails: string | null = null,
   // O veredicto da prova (race_after com corrida registada) — ver RaceOutcome.
   raceOutcome: RaceOutcome | null = null,
+  // Plano para o dia da prova mais próxima (≤ 7 dias) e, no balanço, os
+  // parciais face ao plano — ver buildRacePlanContext / buildSplitsComparisonContext.
+  racePlanContext: string | null = null,
+  splitsContext: string | null = null,
+  // A véspera e a manhã com horas (prova a ≤ 1 dia) — ver buildRaceEveContext.
+  raceEveContext: string | null = null,
+  // A resposta dele ao balanço "perto" — ver detectRaceFollowup.
+  raceFollowupContext: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -3812,6 +4078,11 @@ export function buildSystemInstruction(
     `Depois de criares a proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
+    `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
+    `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
+    `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
+    `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
     `que sentir. Para cada dia kind=corrida, combina na notes, sempre que o histórico o permita:\n` +
@@ -4070,6 +4341,20 @@ export function buildSystemInstruction(
     }
   }
 
+  if (racePlanContext) {
+    sys += `\n\n${racePlanContext}\n` +
+      `Regra: se ele perguntar pelo plano, pelos ritmos ou pelo percurso, responde com ESTE plano — troço a troço, com os tempos de passagem — e não com regras gerais. Nunca acrescentes subidas, lugares ou troços que não estejam aqui.`;
+  }
+  if (splitsContext) {
+    sys += `\n\n${splitsContext}`;
+  }
+  if (raceEveContext) {
+    sys += `\n\n${raceEveContext}`;
+  }
+  if (raceFollowupContext) {
+    sys += `\n\n${raceFollowupContext}`;
+  }
+
   if (proactiveTrigger) {
     sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
   }
@@ -4155,7 +4440,7 @@ async function handler(req: Request): Promise<Response> {
       const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
       return jsonResponse({
         busy: true,
-        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)`,
+        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso.`,
       }, 409);
     } else {
       lockedUserId = userId;
@@ -4275,7 +4560,7 @@ async function handler(req: Request): Promise<Response> {
     const { data: gymSessions, error: err_gymSessions } = await sb
       .from("workout_sessions")
       .select(
-        "date, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
+        "date, start_time, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
           "workout_session_sets(reps, weight)",
       )
       .eq("user_id", userId)
@@ -4295,7 +4580,7 @@ async function handler(req: Request): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -4373,7 +4658,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
-      .select("date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority")
+      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -4394,6 +4679,67 @@ async function handler(req: Request): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
       recentRuns || [],
     );
+
+    // ── Plano para o dia da prova mais próxima (specs/plano-de-prova.md) ──
+    // Só na última semana: é quando o plano interessa (véspera, manhã, e
+    // qualquer pergunta "como corro isto?"). A previsão é a mesma da Bloco 8
+    // (getRacePrediction sobre as corridas dos últimos 30 dias).
+    // deno-lint-ignore no-explicit-any
+    const planRuns = (recentRuns || []).map((r: any) => ({
+      date: r.date,
+      distance_km: r.distance_km,
+      duration_seconds: r.duration_seconds,
+      elevation_gain_m: r.details?.elevation_gain_m ?? null,
+    }));
+    // deno-lint-ignore no-explicit-any
+    const nextRaceForPlan = (upcomingRaces || []).find((e: any) => typeof e.date === "string" && e.date >= todayISO);
+    let racePlanContext: string | null = null;
+    let raceEveContext: string | null = null;
+    if (nextRaceForPlan) {
+      const daysUntilPlan = Math.round((new Date(nextRaceForPlan.date + "T00:00:00Z").getTime() - new Date(todayISO + "T00:00:00Z").getTime()) / 86400000);
+      if (daysUntilPlan <= 7) {
+        const planPrediction = sharedGetRacePrediction(nextRaceForPlan, profile, planRuns);
+        const plan = buildRacePacingPlan({
+          distanceKm: nextRaceForPlan.distance_km,
+          raceType: nextRaceForPlan.race_type,
+          elevationGainM: nextRaceForPlan.elevation_gain_m,
+          targetSeconds: nextRaceForPlan.target_time_seconds,
+          predictedSeconds: planPrediction.predictedSeconds > 0 ? planPrediction.predictedSeconds : null,
+          experienceLevel: nextRaceForPlan.experience_level || profile?.experience_level || null,
+          routeSegments: nextRaceForPlan.web_info?.route_segments ?? null,
+          routeSummary: nextRaceForPlan.web_info?.route_summary ?? null,
+        });
+        racePlanContext = buildRacePlanContext(plan, nextRaceForPlan.name ?? null, daysUntilPlan);
+        if (daysUntilPlan <= PRE_RACE_EASY_DAYS) {
+          raceEveContext = buildRaceEveContext(nextRaceForPlan, profile, plan?.plannedFinishSeconds ?? null, daysUntilPlan);
+        }
+      }
+    }
+
+    // ── Balanço: os parciais registados face ao plano dessa prova ─────────
+    let splitsContext: string | null = null;
+    if (raceOutcome && raceOutcome.verdict !== "sem_registo" && raceOutcome.splits.length > 0) {
+      // deno-lint-ignore no-explicit-any
+      let pastWebInfo: any = null;
+      if (raceOutcome.race_id) {
+        const { data: pastRace } = await sb
+          .from("race_events")
+          .select("web_info")
+          .eq("id", raceOutcome.race_id)
+          .eq("user_id", userId)
+          .maybeSingle();
+        pastWebInfo = pastRace?.web_info ?? null;
+      }
+      const pastPlan = buildRacePacingPlan({
+        distanceKm: raceOutcome.distance_km,
+        raceType: raceOutcome.race_type,
+        targetSeconds: raceOutcome.target_seconds,
+        predictedSeconds: raceOutcome.predicted_seconds,
+        routeSegments: pastWebInfo?.route_segments ?? null,
+        routeSummary: pastWebInfo?.route_summary ?? null,
+      });
+      splitsContext = buildSplitsComparisonContext(compareSplitsToPlan(pastPlan, raceOutcome.splits), pastPlan, raceOutcome.splits.length);
+    }
 
     // ── Bloco 5 — Avaliações corporais (body_assessments) ───────────────
     const BODY_WINDOW_DAYS = 30;
@@ -4587,6 +4933,11 @@ async function handler(req: Request): Promise<Response> {
       .limit(MAX_HISTORY);
     // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
     const history = (recentHistory || []).slice().reverse();
+    // A resposta ao balanço "perto" ("sim, para a próxima quero melhor")
+    // lê-se da conversa — só em turnos normais, com mensagem do atleta.
+    const raceFollowupContext = !proactiveTrigger && message
+      ? buildRaceFollowupContext(detectRaceFollowup(recentHistory || [], message))
+      : null;
     // Só para o "Adaptar Plano" (is_plan_checkin) decidir entre cumprimentar
     // de novo ou retomar a conversa — comparado em hora de Lisboa, não UTC,
     // para bater certo com o "hoje" que o resto do prompt já usa (linha
@@ -4701,6 +5052,10 @@ async function handler(req: Request): Promise<Response> {
       proactiveTrigger,
       proactiveDetails,
       raceOutcome,
+      racePlanContext,
+      splitsContext,
+      raceEveContext,
+      raceFollowupContext,
     );
 
     let finalSystemInstruction = systemInstruction;
@@ -4718,7 +5073,17 @@ async function handler(req: Request): Promise<Response> {
     // confrontar já ao abrir a conversa; aqui foi o atleta que decidiu vir
     // falar com ela, por isso ela atende como quem abre a porta, não como
     // quem dispara um alarme.
-    const planCheckinPrompt =
+    // Motivos detetados pela app (utils/planDivergence.js): prova sem item no
+    // plano, treino no dia da prova, treino forte na véspera, sessões
+    // falhadas. Vêm como textos curtos; a Carol começa por eles.
+    const planDivergence: string[] = Array.isArray(body.plan_divergence)
+      ? (body.plan_divergence as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim().slice(0, 200)).slice(0, 6)
+      : [];
+    const planCheckinPrompt = planDivergence.length > 0
+      ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
+        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
+        `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
+        `as sessões falhadas reorganizadas sem as empilhar. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
       `O atleta abriu propositadamente o chat ao clicar no botão "Adaptar Plano" — foi ele que veio ter ` +
       `contigo, não surgiu nenhum alerta automático a chamar-te. ` +
       (alreadyTalkedToday

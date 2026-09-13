@@ -72,7 +72,7 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
 
 ## Migração
 
-`supabase/migrations/20260912100000_race_completion.sql` — a aplicar em
+`supabase/migrations/20260912171242_race_completion.sql` — a aplicar em
 produção (dashboard SQL ou `supabase db push`) antes do merge para `master`;
 o frontend em `dev` não é publicado (GitHub Pages só de `master`).
 Junto com a de `onboarding_done`, que também está por aplicar.

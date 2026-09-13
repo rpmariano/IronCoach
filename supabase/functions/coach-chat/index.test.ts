@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
 function makeMeal(date: string, kcal: number, prot: number, carbs: number, fat: number): any {
@@ -2897,7 +2898,7 @@ Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto d
     assertStringIncludes(sys, "não é uma notificação do sistema");
   }
   assertStringIncludes(sysCarol(undefined, "silence", null), "Estás bem?");
-  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados, sem números");
+  assertStringIncludes(sysCarol(undefined, "race_morning", null), "Sem dados nem lista");
   assertStringIncludes(sysCarol(undefined, "race_after", null), "sem balanço inventado");
   assertStringIncludes(buildProactiveUserTurn("race_eve"), "race_eve");
   assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
@@ -2921,7 +2922,7 @@ function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
   return {
     race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
     official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
-    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
+    position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [], achievements_new: [],
     ...overrides,
   };
 }
@@ -3066,4 +3067,249 @@ Deno.test("raceOutcomeNote: a memória de longo prazo da prova, curta e com o ve
     "Prova «Meia de Lisboa» (2027-03-08, meia): 1:53:42; sem objetivo marcado.",
   );
   assertEquals(raceOutcomeNote(outcome()).length <= 501, true);
+});
+
+// ── Plano para o dia da prova (specs/plano-de-prova.md) ─────────────────────
+const PLANO_MEIA = buildRacePacingPlan({
+  distanceKm: 21.1, raceType: "estrada", targetSeconds: 6720, predictedSeconds: 6810, experienceLevel: "medio",
+  routeSegments: [{ km_marker: 6.2, description: "subida da Calçada da Ajuda", elevation: "sobe" }],
+});
+
+Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e o abastecimento", () => {
+  const ctx = buildRacePlanContext(PLANO_MEIA, "Meia de Lisboa", 1)!;
+  assertStringIncludes(ctx, "=== PLANO PARA O DIA DA PROVA");
+  assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
+  assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
+  assertStringIncludes(ctx, "Primeiro km: 5.26/km. Ponto de decisão: km 15.");
+  assertStringIncludes(ctx, "Percurso: conhecido");
+  assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
+  assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
+  assertStringIncludes(ctx, "Abastecimento: km 5 água");
+  assertEquals(buildRacePlanContext(null, "X", 1), null);
+});
+
+Deno.test("buildRacePlanContext: objetivo ambicioso diz-o; percurso desconhecido proíbe inventar", () => {
+  const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 2400, predictedSeconds: 2700 });
+  const ctx = buildRacePlanContext(plan, "Corrida das Vindimas", 0)!;
+  assertStringIncludes(ctx, "— é hoje.");
+  assertStringIncludes(ctx, "o objetivo 40:00 é AMBICIOSO (mais de 3% abaixo) e decide-se ao km 7.");
+  assertStringIncludes(ctx, "Percurso: DESCONHECIDO — não descrevas subidas nem lugares.");
+});
+
+Deno.test("parseRaceOutcome: os parciais entram limpos e limitados", () => {
+  const parsed = parseRaceOutcome({ verdict: "aquem", official_seconds: 3300, splits: [{ distance_km: 5, time_seconds: 1500 }, { distance_km: "10", time_seconds: "3300" }, { distance_km: 0, time_seconds: 10 }, "lixo", null] })!;
+  assertEquals(parsed.splits, [{ distance_km: 5, time_seconds: 1500 }, { distance_km: 10, time_seconds: 3300 }]);
+  assertEquals(parseRaceOutcome({ verdict: "aquem", official_seconds: 3300 })!.splits, []);
+});
+
+Deno.test("buildSplitsComparisonContext: os km com desvio e a leitura (arranque rápido, quebra no fim)", () => {
+  const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 });
+  const splits = [{ distance_km: 1, time_seconds: 290 }, { distance_km: 5, time_seconds: 1208 }, { distance_km: 10, time_seconds: 1560 }];
+  const ctx = buildSplitsComparisonContext(compareSplitsToPlan(plan, splits), plan, splits.length)!;
+  assertStringIncludes(ctx, "=== PARCIAIS FACE AO PLANO PARA O DIA");
+  assertStringIncludes(ctx, "- km 1: fez 4.50/km, o plano dizia 5.06/km (16 s/km mais rápido).");
+  assertStringIncludes(ctx, "- km 10: fez 5.12/km, o plano dizia 4.52/km (20 s/km mais lento).");
+  assertStringIncludes(ctx, "Leitura: arrancou acima do plano.");
+  assertStringIncludes(ctx, "Leitura: quebrou na parte final.");
+  const flat = buildSplitsComparisonContext([], plan, 2)!;
+  assertStringIncludes(flat, "2 parciais registados, todos a menos de 5 s/km do plano: correu como planeado.");
+  assertEquals(buildSplitsComparisonContext([], plan, 0), null);
+  assertEquals(buildSplitsComparisonContext([], null, 3), null);
+});
+
+Deno.test("véspera e manhã apontam para o plano; o balanço manda usar os parciais", () => {
+  assertStringIncludes(buildProactiveInstruction("race_eve", null), "PLANO PARA O DIA");
+  assertStringIncludes(buildProactiveInstruction("race_eve", null), "Não inventes troços nem ritmos");
+  assertStringIncludes(buildProactiveInstruction("race_morning", null), "os únicos números permitidos são o ritmo do primeiro km");
+  assertStringIncludes(raceAfterInstruction(outcome({ verdict: "aquem", target_seconds: 6300 })), "PARCIAIS FACE AO PLANO PARA O DIA");
+});
+
+Deno.test("buildSystemInstruction injeta o plano e os parciais quando existem", () => {
+  const planCtx = buildRacePlanContext(PLANO_MEIA, "Meia de Lisboa", 1)!;
+  // 33 parâmetros posicionais; os dois últimos são o plano e os parciais.
+  const args: unknown[] = new Array(33).fill(null);
+  args[1] = BIO_BASE;
+  args[27] = undefined; // lastExchangeHoursAgo: "quem chama não sabe"
+  args[31] = planCtx;
+  args[32] = "=== PARCIAIS FACE AO PLANO PARA O DIA ===\nteste";
+  // deno-lint-ignore no-explicit-any
+  const sys = (buildSystemInstruction as any)(...args) as string;
+  assertStringIncludes(sys, "=== PLANO PARA O DIA DA PROVA");
+  assertStringIncludes(sys, "responde com ESTE plano");
+  assertStringIncludes(sys, "=== PARCIAIS FACE AO PLANO PARA O DIA ===\nteste");
+});
+
+// ── A véspera e a hora (specs/plano-de-prova.md, "A véspera e a hora") ────────
+Deno.test("hhmm: corta os segundos do `time` do Postgres e aceita HH:MM", () => {
+  assertEquals(hhmm("09:00:00"), "09:00");
+  assertEquals(hhmm("07:30"), "07:30");
+  assertEquals(hhmm(null), "");
+});
+
+Deno.test("buildRaceEveContext: com hora e peso, horas e gramas concretas", () => {
+  const ctx = buildRaceEveContext({ name: "Meia de Lisboa", start_time: "09:00:00", distance_km: 21.1 }, { weight_kg: 70 }, 6720, 1)!;
+  assertStringIncludes(ctx, "=== VÉSPERA E MANHÃ DA PROVA (é amanhã;");
+  assertStringIncludes(ctx, "Partida: 09:00.");
+  assertStringIncludes(ctx, "deitar às 22:00 para acordar às 06:00 (3 h antes; 2 h 30 no mínimo)");
+  assertStringIncludes(ctx, "Manhã: acordar 06:00 · pequeno-almoço 06:15 (2 h 45 antes; hidratos 70-140 g (1-2 g/kg)");
+  assertStringIncludes(ctx, "água 350-490 ml entre as 05:00 e as 08:15");
+  assertStringIncludes(ctx, "chegada 08:00 · aquecimento 08:35");
+  assertStringIncludes(ctx, "ecrãs fora a partir das 21:00");
+  assertStringIncludes(ctx, "Jantar da véspera (até às 19:30): hidratos complexos (arroz, massa, batata, pão) 140-280 g (2-4 g/kg), proteína 21-28 g (0.3-0.4 g/kg)");
+  // 1:52:00 > 90 min → carga de hidratos
+  assertStringIncludes(ctx, "Carga de hidratos: prova acima de 90 min — 10-12 g/kg/dia nas 24-48 h antes (700-840 g hoje)");
+  assertStringIncludes(ctx, "Água hoje: a base de 30-40 ml/kg (2.1-2.8 L)");
+  assertEquals(ctx.includes("Sem peso no perfil"), false);
+});
+
+Deno.test("buildRaceEveContext: sem hora manda perguntar; sem peso fica por kg; prova curta sem carga", () => {
+  const ctx = buildRaceEveContext({ name: "Corrida das Vindimas", start_time: null, distance_km: 10 }, { weight_kg: null }, 2820, 0)!;
+  assertStringIncludes(ctx, "(é hoje;");
+  assertStringIncludes(ctx, "Hora de partida: DESCONHECIDA. Pergunta-lha");
+  assertEquals(ctx.includes("acordar às"), false);
+  assertStringIncludes(ctx, "Jantar da véspera: hidratos complexos (arroz, massa, batata, pão) 2-4 g/kg");
+  assertStringIncludes(ctx, "Carga de hidratos: NÃO — prova abaixo de 90 min");
+  assertStringIncludes(ctx, "Sem peso no perfil");
+  assertEquals(buildRaceEveContext(null, null, null, 1), null);
+});
+
+Deno.test("a hora dos treinos entra nas linhas que a Carol lê — corrida e ginásio", () => {
+  const runLine = summariseRuns([{ date: "2026-09-10", start_time: "21:30:00", kind: "treino", training_type: "continuo", distance_km: 10, duration_seconds: 3000 }])[0];
+  assertStringIncludes(runLine, "- 2026-09-10 às 21:30: Treino (Contínuo)");
+  const noTime = summariseRuns([{ date: "2026-09-10", kind: "simples", distance_km: 5, duration_seconds: 1500 }])[0];
+  assertStringIncludes(noTime, "- 2026-09-10: Simples");
+  const gym = summariseSessions([{ date: "2026-09-09", start_time: "07:15:00", name: "Pernas", kind: "forca", workout_session_sets: [] }])[0];
+  assertEquals(gym.startTime, "07:15:00");
+  assertStringIncludes(formatSessionLine(gym), "- 2026-09-09 às 07:15: Pernas");
+});
+
+Deno.test("buildRaceEventsContext: a partida com hora, ou o pedido dela; a última semana treina à hora da prova", () => {
+  const today = "2026-09-08";
+  const withTime = buildRaceEventsContext([{ date: "2026-09-13", name: "Meia", race_type: "estrada", distance_km: 21.1, target_time_seconds: 6720, start_time: "09:00:00" }], today, 40, "medio", [])!;
+  assertStringIncludes(withTime, "partida às 09:00");
+  assertStringIncludes(withTime, "última semana: treinos à hora da partida (09:00)");
+  const without = buildRaceEventsContext([{ date: "2026-10-13", name: "Meia", race_type: "estrada", distance_km: 21.1, target_time_seconds: 6720 }], today, 40, "medio", [])!;
+  assertStringIncludes(without, "partida: hora por marcar (pergunta-lha)");
+  assertEquals(without.includes("última semana"), false);
+});
+
+Deno.test("véspera e manhã: as instruções mandam usar o bloco da preparação", () => {
+  const eve = buildProactiveInstruction("race_eve", null);
+  assertStringIncludes(eve, "VÉSPERA E MANHÃ DA PROVA");
+  assertStringIncludes(eve, "o sono (quantas horas, a que horas deitar e acordar)");
+  assertStringIncludes(eve, "Quatro ou cinco bolhas");
+  assertStringIncludes(buildProactiveInstruction("race_morning", null), "a hora do pequeno-almoço do bloco VÉSPERA E MANHÃ");
+  const args: unknown[] = new Array(34).fill(null);
+  args[1] = BIO_BASE;
+  args[27] = undefined;
+  args[33] = "=== VÉSPERA E MANHÃ DA PROVA ===\nteste";
+  // deno-lint-ignore no-explicit-any
+  const sys = (buildSystemInstruction as any)(...args) as string;
+  assertStringIncludes(sys, "=== VÉSPERA E MANHÃ DA PROVA ===\nteste");
+});
+
+// ── Conquistas novas e a resposta ao balanço ────────────────────────────────
+Deno.test("as conquistas novas entram no contexto e na instrução; só as conhecidas passam", () => {
+  const parsed = parseRaceOutcome({ verdict: "perto", official_seconds: 6822, achievements_new: ["primeira_trail", "sequencia", "recorde_pessoal", "lixo", 3] })!;
+  assertEquals(parsed.achievements_new, ["primeira_trail", "sequencia", "recorde_pessoal"]);
+  const o = outcome({ achievements_new: ["prova_concluida", "primeira_trail", "sequencia"] });
+  assertStringIncludes(buildRaceOutcomeContext(o), "Conquistas novas desta prova: Prova concluída, Primeira de trail, Sequência de provas.");
+  const instr = raceAfterInstruction(o);
+  assertStringIncludes(instr, "Esta prova deu-lhe também: Primeira de trail, Sequência de provas");
+  assertEquals(raceAfterInstruction(outcome({ achievements_new: ["prova_concluida"] })).includes("deu-lhe também"), false);
+});
+
+Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou um não claros", () => {
+  const asked = [{ role: "model", content: "Ficaste a 1:42, foi por pouco. Para a próxima é para fazer melhor?" }];
+  assertEquals(detectRaceFollowup(asked, "Sim, para a próxima quero melhor"), "melhor");
+  assertEquals(detectRaceFollowup(asked, "sim"), "melhor");
+  assertEquals(detectRaceFollowup(asked, "Por agora fico por aqui"), "parar");
+  assertEquals(detectRaceFollowup(asked, "Não, chega de provas"), "parar");
+  assertEquals(detectRaceFollowup(asked, "quantos km fiz esta semana?"), null);
+  assertEquals(detectRaceFollowup([{ role: "model", content: "Bom treino ontem." }], "sim"), null);
+  assertEquals(detectRaceFollowup([], "sim"), null);
+  assertStringIncludes(buildRaceFollowupContext("melhor")!, "então vamos lá treinar");
+  assertStringIncludes(buildRaceFollowupContext("parar")!, "sem insistir");
+  assertEquals(buildRaceFollowupContext(null), null);
+});
+
+// ── O plano tem de saber da prova ───────────────────────────────────────────
+// Um cliente falso que responde a race_events e delega o resto no de sempre.
+// deno-lint-ignore no-explicit-any
+function makePlanSbWithRaces(races: any[]) {
+  const { sb, calls } = makePlanSb();
+  const chain = (data: unknown) => {
+    const q = {
+      eq: () => q, gte: () => q, lte: () => q,
+      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data, error: null }),
+    };
+    return q;
+  };
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => table === "race_events" ? { select: () => chain(races) } : inner(table);
+  return { sb, calls };
+}
+
+Deno.test("plano com prova no período: o dia da prova vira 'prova' e uma prova esquecida entra sozinha", async () => {
+  const { sb, calls } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "semana da prova",
+    items: [
+      { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
+      { planned_date: "2026-08-15", kind: "corrida", training_type: "continuo", target_distance_km: 10 },
+    ],
+  });
+  assertEquals(result.startsWith("Erro"), false, result);
+  const raceItem = calls.itemInserts.find((r) => r.planned_date === "2026-08-15");
+  assertEquals(raceItem.training_type, "prova");
+  assertStringIncludes(raceItem.notes, "Prova: Corrida do Tejo");
+
+  const { sb: sb2, calls: calls2 } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
+  const r2 = await runProposeTrainingPlan(sb2, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "sem a prova",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertEquals(r2.startsWith("Erro"), false, r2);
+  const inserted = calls2.itemInserts.find((r) => r.planned_date === "2026-08-15");
+  assertEquals(inserted.training_type, "prova");
+  assertEquals(inserted.target_distance_km, 10);
+});
+
+Deno.test("plano com prova: ginásio no dia da prova, treino forte na véspera e 'prova' sem prova são erros", async () => {
+  const races = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }];
+  const gymOnRaceDay = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-15", kind: "ginasio", categories: ["Pernas"], target_duration_min: 45 }],
+  });
+  assertStringIncludes(gymOnRaceDay, "dia da prova");
+  const hardEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
+  });
+  assertStringIncludes(hardEve, "a 1 dia(s) da prova");
+  const easyEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "recuperacao", target_distance_km: 3 }],
+  });
+  assertEquals(easyEve.startsWith("Erro"), false, easyEve);
+  const provaSemProva = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-12", kind: "corrida", training_type: "prova", target_distance_km: 10 }],
+  });
+  assertStringIncludes(provaSemProva, "só num dia com prova agendada");
+});
+
+Deno.test("sem provas (ou com a consulta a falhar) o plano segue como sempre", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+  assertEquals(result.startsWith("Erro"), false, result);
+  assertEquals(calls.itemInserts.length, 2);
+});
+
+Deno.test("a véspera no coach-chat lê da fórmula partilhada (mesmos números)", () => {
+  const ctx = buildRaceEveContext({ name: "Meia", start_time: "09:00:00" }, { weight_kg: 70 }, 6720, 1)!;
+  assertStringIncludes(ctx, "deitar às 22:00 para acordar às 06:00");
+  assertStringIncludes(ctx, "hidratos 70-140 g (1-2 g/kg)");
+  assertStringIncludes(ctx, "Sugestões alimentares (propose_training_plan/save_meal_suggestions) para a véspera");
 });

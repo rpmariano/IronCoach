@@ -94,6 +94,21 @@ describe('computeAchievements — uma prova concluída', () => {
   });
 });
 
+describe('computeAchievements — "nova" pela data do registo', () => {
+  const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-08-20', target_time_seconds: 6900 });
+  it('uma prova de há três semanas registada ontem ainda é nova; registada há dez dias já não', () => {
+    const ontem = corrida({ id: 'run1', race_id: 'r1', date: '2026-08-20', duration_seconds: 6822, details: { official_time_seconds: 6822 }, created_at: '2026-09-11T20:15:00Z' });
+    const dados = { raceEvents: [race], runs: [...TREINOS, ontem], profile: PROFILE, now: AGORA };
+    expect(byKey(computeAchievements(dados)).prova_concluida.isNew).toBe(true);
+    expect(achievementsForRace(dados, 'r1').every((a) => a.isNew)).toBe(true);
+    const antiga = { ...ontem, created_at: '2026-09-01T10:00:00Z' };
+    expect(byKey(computeAchievements({ ...dados, runs: [...TREINOS, antiga] })).prova_concluida.isNew).toBe(false);
+    // sem created_at vale a data da prova (há mais de 7 dias → não é nova)
+    const semData = { ...ontem, created_at: undefined };
+    expect(byKey(computeAchievements({ ...dados, runs: [...TREINOS, semData] })).prova_concluida.isNew).toBe(false);
+  });
+});
+
 describe('computeAchievements — o objetivo que ficou por bater', () => {
   const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
   // 6900 + 102 = 7002 → ficou a 1:42 do objetivo.

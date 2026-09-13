@@ -4,7 +4,7 @@ import { hasAnyRecord } from './homeModels';
 
    `profiles.onboarding_done` nasce a `false` para toda a gente — inclusive
    para quem já usa a app há meses, porque a coluna só foi acrescentada agora
-   (supabase/migrations/20260911180000_profile_onboarding_done.sql). Usá-la
+   (supabase/migrations/20260912171232_profile_onboarding_done.sql). Usá-la
    sozinha punha os seis passos à frente de quem já tem um ano de registos.
 
    Daí a regra ser conjunta:

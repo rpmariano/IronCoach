@@ -232,3 +232,13 @@ Deno.test("computeLastWeekAdherence: corrida conta com corrida no dia, ginásio 
   eqLastWeek(computeLastWeekAdherence(items, [...runs, { date: "2026-09-10" }], gym), { itens: 4, com_registo: 4 });
   eqLastWeek(computeLastWeekAdherence([], [], []), { itens: 0, com_registo: 0 });
 });
+
+Deno.test("buildDailySummaryContext: a véspera da prova entra no contexto quando lha dão", () => {
+  const base = { today: "2026-09-12", profile: { weight_kg: 70 }, todayMeals: [], todayWater: [], recentRuns: [], recentGym: [], planItems: [], nextRace: { name: "Corrida do Tejo", date: "2026-09-13", distance_km: 10 } };
+  // deno-lint-ignore no-explicit-any
+  const ctx = buildDailySummaryContext({ ...base, vesperaDaProva: { quando: "amanhã", prova: "Corrida do Tejo", partida: "09:00" } } as any) as Record<string, unknown>;
+  assertEquals((ctx.vespera_da_prova as Record<string, unknown>).partida, "09:00");
+  // deno-lint-ignore no-explicit-any
+  const semVespera = buildDailySummaryContext(base as any) as Record<string, unknown>;
+  assertEquals(semVespera.vespera_da_prova, undefined);
+});

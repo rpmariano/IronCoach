@@ -9,6 +9,7 @@ import CoachText from '../shared/CoachText';
 import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
 import './WeeklyPlanCard.css';
 
 // Mesmos valores por omissão de computeMacroAdherence
@@ -90,12 +91,20 @@ export function computeAcceptedWindow(plans = [], items = [], today = todayISO()
   return { start: current.start, days: diffDaysISO(current.start, current.end) + 1 };
 }
 
-/* Título curto de um item, usado na linha fechada. */
-function itemTitle(item) {
+/* Título curto de um item, usado na linha fechada. `raceName` é o nome da
+   prova desse dia, quando o item é o da prova (specs/plano-de-prova.md). */
+function itemTitle(item, raceName = null) {
   if (item.isRace) {
     return [
       'Prova',
       item.title,
+      item.target_distance_km ? `${item.target_distance_km} km` : null,
+    ].filter(Boolean).join(' · ');
+  }
+  if (isRacePlanItem(item)) {
+    return [
+      'Prova',
+      raceName,
       item.target_distance_km ? `${item.target_distance_km} km` : null,
     ].filter(Boolean).join(' · ');
   }
@@ -117,7 +126,7 @@ function itemTitle(item) {
 }
 
 function itemIcon(item) {
-  if (item.isRace) return Flag;
+  if (item.isRace || isRacePlanItem(item)) return Flag;
   if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
   return Coffee;
@@ -125,6 +134,8 @@ function itemIcon(item) {
 
 function itemKindClass(item) {
   if (item.isRace) return 'coach';
+  // O âmbar é da prova, e só da prova (redesenho 6c, ponto 3).
+  if (isRacePlanItem(item)) return 'race';
   if (item.kind === 'corrida') return 'run';
   if (item.kind === 'ginasio') return 'gym';
   if (item.kind === 'corpo') return 'corpo';
@@ -218,6 +229,11 @@ export function PlanDayCard({
   const [localExpanded, setLocalExpanded] = useState(false);
   const isExpanded = controlledExpanded !== undefined ? controlledExpanded : localExpanded;
 
+  // O nome da prova desse dia vem da agenda, não do item do plano — que só
+  // sabe que é uma prova (training_type 'prova'), não qual.
+  const raceEvents = useAppStore((st) => st.raceEvents);
+  const raceName = raceNameForDate(raceEvents, dateISO);
+
   const d = new Date(dateISO + 'T00:00:00');
   const dayLabel = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 
@@ -233,7 +249,7 @@ export function PlanDayCard({
 
   const summary = empty
     ? 'Sem nada planeado'
-    : items.map(itemTitle).join(' + ');
+    : items.map((i) => itemTitle(i, raceName)).join(' + ');
 
   const HeadIcon = empty ? Utensils : itemIcon(items[0]);
   const kindClass = empty ? 'empty' : itemKindClass(items[0]);
@@ -291,7 +307,7 @@ export function PlanDayCard({
             {items.map(item => (
               <div key={item.id} className="wpc-detail-item">
                 {items.length > 1 && (
-                  <p className={`wpc-detail-title ${itemKindClass(item)}`}>{itemTitle(item)}</p>
+                  <p className={`wpc-detail-title ${itemKindClass(item)}`}>{itemTitle(item, raceName)}</p>
                 )}
 
                 {(item.notes || item.kind !== 'descanso') && (

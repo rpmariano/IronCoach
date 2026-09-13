@@ -312,3 +312,162 @@ describe('RaceHubView — conquistas da prova', () => {
     expect(screen.queryByTestId('race-hub-achievements-missed')).not.toBeInTheDocument();
   });
 });
+
+/* Plano para o dia (specs/plano-de-prova.md §"Onde aparece" 1): o cartão só
+   existe nos últimos 7 dias e no dia da prova, monta-se sobre a régua única
+   (@formulas/racePacing.ts) e, sem objetivo nem previsão do treino, pede o
+   objetivo em vez de inventar ritmos. */
+describe('RaceHubView — plano para o dia', () => {
+  const futureDateISO = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  // A meia daqui a 3 dias, com objetivo de 1:52:00 gravado.
+  const MEIA_PROXIMA = {
+    ...RACE,
+    date: futureDateISO(3),
+    status: 'agendada',
+    target_time: '1:52:00',
+    target_time_seconds: 6720,
+  };
+
+  it('a 3 dias da prova, mostra a tabela com a chegada planeada, os troços e o abastecimento', () => {
+    render(<RaceHubView race={MEIA_PROXIMA} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getByText('Plano para o dia')).toBeInTheDocument();
+    const cartao = screen.getByTestId('race-pacing-card');
+
+    // A chegada planeada é a soma dos troços — anda à volta do objetivo.
+    expect(screen.getByTestId('race-pacing-finish')).toHaveTextContent(/^1:5\d:\d\d$/);
+    expect(cartao).toHaveTextContent('sobre o objetivo 1:52:00');
+
+    // Sete troços na meia, do km 0 ao 21,1, com ritmo e tempo de passagem.
+    const linhas = screen.getByTestId('race-pacing-rows');
+    expect(linhas).toHaveTextContent('km 0 a 1');
+    // Os km consecutivos com o mesmo ritmo agrupam-se — o último troço fecha
+    // na distância real, com vírgula decimal.
+    // os últimos 10% (mínimo 1 km): da meia, do km 18 em diante
+    expect(linhas).toHaveTextContent('km 18 a 21,1');
+    expect(linhas).toHaveTextContent('5.26/km');
+    // Os rótulos do plano, do arranque ao final.
+    expect(linhas).toHaveTextContent('controlar');
+    expect(linhas).toHaveTextContent('decidir');
+    expect(linhas).toHaveTextContent('acelerar');
+
+    // Abastecimento: água de 5 em 5 km a partir da meia.
+    const fuel = screen.getByTestId('race-pacing-fuel');
+    expect(fuel).toHaveTextContent('km 5 · água');
+    expect(fuel).toHaveTextContent('hidratos');
+
+    // Sem percurso, o plano diz que não o conhece em vez de o inventar.
+    expect(screen.getByTestId('race-pacing-notes')).toHaveTextContent('Não conheço o percurso');
+  });
+
+  it('sem objetivo nem previsão do treino, pede o objetivo e leva à edição', () => {
+    const onGoToEdit = vi.fn();
+    const semObjetivo = { ...RACE, date: futureDateISO(2), status: 'agendada', target_time: null, target_time_seconds: null };
+
+    render(<RaceHubView race={semObjetivo} runs={[]} profile={PROFILE} onGoToEdit={onGoToEdit} />);
+
+    expect(screen.getByTestId('race-pacing-card')).toHaveTextContent('Marca um objetivo de tempo para eu montar o plano');
+    expect(screen.queryByTestId('race-pacing-rows')).not.toBeInTheDocument();
+
+    const botao = screen.getByTestId('race-pacing-edit');
+    expect(botao).toHaveStyle({ minHeight: 'var(--tap)' });
+    fireEvent.click(botao);
+    expect(onGoToEdit).toHaveBeenCalled();
+  });
+
+  it('com o percurso do site, a subida cita o troço e ajusta o ritmo', () => {
+    const comPercurso = {
+      ...MEIA_PROXIMA,
+      web_info: {
+        route_summary: 'Percurso urbano, plano até Belém.',
+        route_segments: [
+          { km_marker: 6.2, description: 'subida da Calçada da Ajuda', elevation: 'sobe' },
+          { km_marker: 9.5, description: 'descida para Belém', elevation: 'desce' },
+        ],
+      },
+    };
+
+    render(<RaceHubView race={comPercurso} runs={[]} profile={PROFILE} />);
+
+    const linhas = screen.getByTestId('race-pacing-rows');
+    expect(linhas).toHaveTextContent('km 6 a 7');
+    expect(linhas).toHaveTextContent('subida da Calçada da Ajuda');
+    expect(linhas).toHaveTextContent('descida para Belém');
+    expect(linhas).toHaveTextContent('subida');
+    expect(linhas).toHaveTextContent('descida');
+    // Conhecendo o percurso, a nota de "não conheço" desaparece.
+    expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
+  });
+
+  it('sem informação do site mas com site da prova, oferece buscar o percurso', () => {
+    const onFetchWebInfo = vi.fn();
+    render(
+      <RaceHubView
+        race={{ ...MEIA_PROXIMA, website: 'https://meiadelisboa.pt' }}
+        runs={[]}
+        profile={PROFILE}
+        onFetchWebInfo={onFetchWebInfo}
+      />
+    );
+
+    expect(screen.getByText('Sem o percurso o plano não ajusta subidas e descidas.')).toBeInTheDocument();
+    const botao = screen.getByTestId('race-pacing-fetch-route');
+    expect(botao).toHaveTextContent('Buscar o percurso');
+    fireEvent.click(botao);
+    expect(onFetchWebInfo).toHaveBeenCalled();
+  });
+
+  it('em trail o plano é por esforço e os ritmos ficam como referência', () => {
+    const trail = {
+      ...RACE,
+      date: futureDateISO(1),
+      status: 'agendada',
+      race_type: 'trail',
+      distance_km: 15,
+      elevation_gain_m: 620,
+      target_time: '1:45:00',
+      target_time_seconds: 6300,
+    };
+
+    render(<RaceHubView race={trail} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getByTestId('race-pacing-card')).toHaveTextContent('por esforço');
+    expect(screen.getByTestId('race-pacing-notes')).toHaveTextContent('Trail é por esforço, não por ritmo');
+  });
+
+  it('a mais de 7 dias da prova o cartão não existe — o que interessa ainda é o treino', () => {
+    render(<RaceHubView race={{ ...MEIA_PROXIMA, date: futureDateISO(20) }} runs={[]} profile={PROFILE} />);
+
+    expect(screen.queryByTestId('race-pacing-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('Plano para o dia')).not.toBeInTheDocument();
+  });
+
+  /* A hora de partida (specs/plano-de-prova.md, "A véspera e a hora"): sem
+     ela a Carol planeia a véspera em abstrato, por isso o hub mostra-a junto
+     à data e o cartão do plano pede-a quando falta. */
+  it('com hora de partida, mostra-a a seguir à data no cabeçalho e "Partida às" no cartão do plano', () => {
+    // A BD devolve 'HH:MM:SS' — o hub mostra 'HH:MM'.
+    render(<RaceHubView race={{ ...MEIA_PROXIMA, start_time: '09:00:00' }} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getByTestId('race-hub-date')).toHaveTextContent(/· 09:00$/);
+    expect(screen.getByTestId('race-pacing-start-time')).toHaveTextContent('Partida às 09:00');
+    expect(screen.queryByTestId('race-pacing-start-time-missing')).not.toBeInTheDocument();
+  });
+
+  it('sem hora de partida, o cabeçalho fica só com a data e o cartão do plano pede-a, com atalho para a edição', () => {
+    const onGoToEdit = vi.fn();
+    render(<RaceHubView race={MEIA_PROXIMA} runs={[]} profile={PROFILE} onGoToEdit={onGoToEdit} />);
+
+    expect(screen.getByTestId('race-hub-date').textContent).not.toContain('·');
+    expect(screen.getByTestId('race-pacing-start-time-missing'))
+      .toHaveTextContent('Sem hora de partida: marca-a para a Carol planear a véspera');
+
+    fireEvent.click(screen.getByTestId('race-pacing-edit'));
+    expect(onGoToEdit).toHaveBeenCalled();
+  });
+});

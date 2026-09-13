@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
+import { useAppStore } from '../../store';
 import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard } from './WeeklyPlanCard';
 
 const item = (over = {}) => ({
@@ -391,5 +392,40 @@ describe('computeAcceptedWindow — vários planos aceites (simulação)', () =>
       '2026-08-11',
     );
     expect(w).toEqual({ start: '2026-08-10', days: 11 }); // 08-10 .. 08-20
+  });
+});
+
+/* ── O dia da prova no plano (specs/plano-de-prova.md) ─────────────────────
+   O item é um `corrida` com `training_type = 'prova'`; o nome da prova vem
+   da agenda, pela data, porque o item não o guarda. */
+describe('PlanDayCard — o dia da prova', () => {
+  afterEach(() => useAppStore.setState({ raceEvents: [] }));
+
+  const dayProps = {
+    dateISO: '2026-08-11', dayNumber: 1, isToday: false, isOverdue: false,
+    onComplete: () => {}, onCancel: () => {}, expanded: false,
+  };
+
+  it('mostra "Prova", o nome da prova desse dia e o tom âmbar', () => {
+    useAppStore.setState({ raceEvents: [{ id: 'r1', date: '2026-08-11', name: 'Corrida do Tejo', status: 'agendada' }] });
+    const { container } = render(
+      <PlanDayCard {...dayProps} items={[item({ training_type: 'prova', target_distance_km: 10 })]} />
+    );
+    expect(screen.getByText('Prova · Corrida do Tejo · 10 km')).toBeInTheDocument();
+    expect(container.querySelector('.wpc-day-card.race')).toBeTruthy();
+  });
+
+  it('sem prova na agenda nesse dia, o rótulo ainda diz que é prova', () => {
+    render(<PlanDayCard {...dayProps} items={[item({ training_type: 'prova', target_distance_km: 10 })]} />);
+    expect(screen.getByText('Prova · 10 km')).toBeInTheDocument();
+  });
+
+  it('um treino normal não fica âmbar', () => {
+    useAppStore.setState({ raceEvents: [{ id: 'r1', date: '2026-08-11', name: 'Corrida do Tejo', status: 'agendada' }] });
+    const { container } = render(
+      <PlanDayCard {...dayProps} items={[item({ training_type: 'longo', target_distance_km: 16 })]} />
+    );
+    expect(screen.getByText('Longo · 16 km')).toBeInTheDocument();
+    expect(container.querySelector('.wpc-day-card.race')).toBeFalsy();
   });
 });

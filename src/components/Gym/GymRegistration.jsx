@@ -14,6 +14,7 @@ import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -94,6 +95,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // Comum aos dois caminhos
   const [date, setDate] = useState(planItem?.planned_date || todayISO());
+  /* Hora de início ('HH:MM', hora local) — opcional e sem valor por omissão:
+     inventar "agora" enchia a coluna de horas que ninguém confirmou. É ela
+     que deixa a Carol ver um treino tarde a cortar o sono
+     (specs/plano-de-prova.md, "A véspera e a hora"). Do item do plano só vem
+     se lá existir — hoje coach_plan_items ainda não tem hora. */
+  const [startTime, setStartTime] = useState(startTimeInputValue(planItem?.start_time));
   const [kind, setKind] = useState('forca');
   const [categories, setCategories] = useState(planItem?.categories || []);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
@@ -276,6 +283,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         .map((s, j) => ({ key: s.id || `${Date.now()}-${i}-${j}`, reps: s.reps ?? '', weight: s.weight ?? '' })),
     }));
     setDate(persisted?.date ?? (session.date || todayISO()));
+    // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
+    setStartTime(persisted?.startTime ?? startTimeInputValue(session.start_time));
     setKind(persisted?.kind ?? (session.kind === 'aula' ? 'aula' : 'forca'));
     setName(persisted?.name ?? (session.name || ''));
     setCategories(persisted?.categories ?? (session.categories || []));
@@ -320,6 +329,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
     if (persisted.date) setDate(persisted.date);
+    if (persisted.startTime !== undefined) setStartTime(persisted.startTime);
     if (persisted.kind) setKind(persisted.kind);
     if (persisted.categories) setCategories(persisted.categories);
     if (persisted.customCategory !== undefined) setCustomCategory(persisted.customCategory);
@@ -341,7 +351,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // picker não é restaurável depois de recarregar, e não são tipicamente o
   // que se está a meio de escrever quando se é interrompido.
   usePersistedFormDraft(draftStorageKey, {
-    date, kind, categories, customCategory, name, notes, entryMethod,
+    date, startTime, kind, categories, customCategory, name, notes, entryMethod,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
   }, { isDirty: isFormDirty });
 
@@ -403,6 +413,30 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // ----------------------------------
   // ANALISAR TREINO POR FOTO (IA — analyze-gym)
   // ----------------------------------
+  /* A hora de início não passa pela Edge Function: quem escreve a linha em
+     `workout_sessions` é a analyze-gym, e acrescentar-lhe um campo obriga a
+     mexer numa função que faz deploy em produção a cada push a `dev` (ver
+     CLAUDE.md). É uma coluna só, sob a mesma RLS "own rows", gravada aqui
+     logo a seguir, nos três caminhos (foto, manual e edição). Best-effort de
+     propósito: o campo é opcional, e perder o treino já gravado por causa
+     dele seria pior do que ficar sem a hora. */
+  const persistSessionStartTime = async (session) => {
+    if (!session?.id) return session;
+    const value = normalizeStartTime(startTime);
+    if (value === normalizeStartTime(session.start_time)) return session;
+    try {
+      const { error } = await supabase
+        .from('workout_sessions')
+        .update({ start_time: value })
+        .eq('id', session.id);
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Hora de início do treino não gravada', err);
+      return session;
+    }
+    return { ...session, start_time: value };
+  };
+
   // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete, com as
   // mesmas fotos e os mesmos campos.
   const analyzePhotosTask = async () => {
@@ -421,10 +455,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
-      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+      const analysed = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
+      const sessionWithSets = await persistSessionStartTime(analysed);
       setGymSessions([sessionWithSets, ...gymSessions]);
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     }
@@ -465,10 +500,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
-      const sessionWithSets = { ...data.session, workout_session_sets: data.sets || [] };
-      if (!Array.isArray(sessionWithSets.workout_session_sets) || sessionWithSets.workout_session_sets.length === 0) {
+      const analysed = { ...data.session, workout_session_sets: data.sets || [] };
+      if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
+      const sessionWithSets = await persistSessionStartTime(analysed);
       setGymSessions([sessionWithSets, ...gymSessions]);
 
       // Se esta sessão vem do plano, marca o item como concluído — a data
@@ -536,6 +572,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         const currentSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
         savedSession = currentSession ? { ...currentSession, date, name: finalName } : { id: sessionIdToEdit, date, name: finalName };
       }
+
+      // Antes do loadInitialData, para a recarga já trazer a hora nova.
+      savedSession = await persistSessionStartTime(savedSession);
 
       if (profile?.id) await loadInitialData(profile.id);
       finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
@@ -668,16 +707,33 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           })}
         </div>
 
+        {/* Data · Hora — a hora ao lado da data, opcional. É ela que deixa a
+            Carol ver um treino às 22:30 a cortar o sono
+            (specs/plano-de-prova.md, "A véspera e a hora"). O rótulo passou
+            para cima de cada campo: com dois controlos na grelha já não há
+            onde pôr o texto ao lado. */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          <input
-            type="date"
-            aria-label="Data do treino"
-            value={date}
-            max={todayISO()}
-            onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
-          />
-          <div className="flex items-center justify-center text-[11px] text-[var(--text-3)]">Data do treino</div>
+          <div className="min-w-0">
+            <label htmlFor="gr-data-do-treino" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data do treino</label>
+            <input id="gr-data-do-treino"
+              type="date"
+              aria-label="Data do treino"
+              value={date}
+              max={todayISO()}
+              onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
+            />
+          </div>
+          <div className="min-w-0">
+            <label htmlFor="gr-hora-do-treino" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
+            <input id="gr-hora-do-treino"
+              type="time"
+              aria-label="Hora do treino"
+              value={startTime}
+              onChange={e => { setStartTime(e.target.value); setIsFormDirty(true); }}
+              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
+            />
+          </div>
         </div>
 
         <div className="mb-4">

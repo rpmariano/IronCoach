@@ -499,3 +499,69 @@ describe('GymRegistration — ação primária na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar treino/i }));
   });
 });
+
+
+/* Hora de início do treino (specs/plano-de-prova.md, "A véspera e a hora").
+   Opcional, ao lado da data, e sem valor por omissão. Quem insere a linha em
+   `workout_sessions` é a analyze-gym, que não a conhece — a hora é um update
+   de uma coluna logo a seguir. */
+describe('GymRegistration — hora de início', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateSession.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    loadInitialData.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], loadInitialData });
+  });
+
+  it('treino novo: a hora escrita grava-se em workout_sessions.start_time a seguir à análise', async () => {
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText('Hora do treino'), { target: { value: '19:00' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.updateSession).toHaveBeenCalledTimes(1));
+    expect(mocks.updateSession.mock.calls[0]).toEqual([{ start_time: '19:00' }, 'sess-9']);
+    // A análise não leva a hora: a Edge Function não a conhece.
+    expect(mocks.invoke.mock.calls[0][1].body.start_time).toBeUndefined();
+    expect(useAppStore.getState().gymSessions[0].start_time).toBe('19:00');
+  });
+
+  it('sem hora escrita não há update nenhum — o campo é mesmo opcional', async () => {
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.updateSession).not.toHaveBeenCalled();
+  });
+
+  it("a editar: a hora da BD ('19:00:00') abre como 19:00 e mudá-la não custa uma reanálise", async () => {
+    const SESSION = {
+      id: 'sess-10', date: '2026-01-05', kind: 'forca', name: 'Peito e Tríceps',
+      categories: ['Peito'], notes: null, duration_seconds: 3000, start_time: '19:00:00',
+      workout_session_sets: [],
+    };
+    useAppStore.setState({ profile: PROFILE, gymSessions: [SESSION], loadInitialData });
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-10" />);
+
+    const campo = screen.getByLabelText('Hora do treino');
+    expect(campo.value).toBe('19:00');
+
+    fireEvent.change(campo, { target: { value: '20:30' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+
+    await waitFor(() => expect(
+      mocks.updateSession.mock.calls.some(([payload]) => payload.start_time === '20:30'),
+    ).toBe(true));
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+});

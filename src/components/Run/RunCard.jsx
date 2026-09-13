@@ -9,6 +9,7 @@ import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import { formatDuration, formatPace } from '../../utils/run';
+import { normalizeStartTime } from '../../utils/startTime';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -194,8 +195,11 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
                 </span>
               )}
             </div>
+            {/* "5 set 2026 · 07:30" — a hora só aparece quando existe; sem
+                ela a linha fica exatamente como sempre foi
+                (specs/plano-de-prova.md, "A véspera e a hora"). */}
             <p className="text-xs text-[var(--text-3)] font-medium mt-0.5">
-              {formatDatePT(run.date)}
+              {[formatDatePT(run.date), normalizeStartTime(run.start_time)].filter(Boolean).join(' · ')}
             </p>
           </div>
         </div>

@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Check, Utensils, MessageCircle 
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
-import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, previewMeal } from '../../utils/homeModels';
+import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, previewMeal, isRacePlanItem, raceForDate } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
 import CarouselDots from '../shared/CarouselDots';
 
@@ -31,7 +31,7 @@ function Badge({ tone, children }) {
 
 const arrowStyle = { width: 44, height: 44, color: 'var(--gym)' };
 
-export default function DayPlanCard({ plans = [], planItems = [], onComplete, onNav, onOpenMeals, onOpenRace }) {
+export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [], onComplete, onNav, onOpenMeals, onOpenRace }) {
   const today = todayISO();
   const pendingCount = useMemo(() => (plans || []).filter((p) => p.status === 'proposto').length, [plans]);
   const window = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
@@ -80,7 +80,14 @@ export default function DayPlanCard({ plans = [], planItems = [], onComplete, on
 
   const status = dayStatus(day, today);
   const session = pendingSession(day, today);
+  /* O dia da prova (specs/plano-de-prova.md): o plano tem lá um item
+     `corrida` com `training_type = 'prova'` e a agenda tem a prova. O nome
+     vem da agenda — o item do plano não o guarda — e o botão leva ao hub,
+     que é onde a prova se prepara e se regista. */
   const race = (day.items || []).find((i) => i.isRace);
+  const racePlanItem = (day.items || []).find(isRacePlanItem);
+  const dayRace = raceForDate(raceEvents, day.dateISO);
+  const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
   const meals = mealsForDay(day.items);
   const preview = previewMeal(meals);
 
@@ -102,7 +109,7 @@ export default function DayPlanCard({ plans = [], planItems = [], onComplete, on
         </div>
 
         <h2 className="text-[20px] font-black leading-[1.15] mt-[5px]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
-          {race ? race.title : dayTitle(day.items)}
+          {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
         </h2>
 
         {session && (
@@ -110,8 +117,8 @@ export default function DayPlanCard({ plans = [], planItems = [], onComplete, on
             <Check size={15} /> Registar sessão
           </button>
         )}
-        {race && !session && (
-          <button type="button" onClick={() => onOpenRace?.(race.id.replace('race-', ''))} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+        {openRaceId && !session && (
+          <button type="button" data-testid="day-plan-open-race" onClick={() => onOpenRace?.(openRaceId)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
             Abrir a prova
           </button>
         )}

@@ -107,6 +107,24 @@
   scroll-snap-align: center;
 }
 
+/* O dia da prova (specs/plano-de-prova.md): o âmbar --race, que na app é
+   "da prova, só da prova" — por isso não entra na lista de módulos abaixo,
+   que leva o fundo neutro de todos os outros dias. */
+.wpc-day-card.race {
+  border-color: var(--tint-race-bd);
+  background: var(--tint-race-bg);
+}
+
+.wpc-icon-wrap.race {
+  background: var(--tint-race-bg);
+  color: var(--race);
+  border: 1px solid var(--tint-race-bd);
+}
+
+.wpc-detail-title.race { color: var(--race); }
+
+.wpc-info-box-header.race { color: var(--race); }
+
 /* Day Card Module Colors - Fundo escurecido para destacar os cartões internos em branco */
 .wpc-day-card.run,
 .wpc-day-card.gym,

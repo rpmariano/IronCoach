@@ -210,7 +210,26 @@ function buildDemoData() {
         id: 'demo-race-3', date: inDays(0), name: 'São Silvestre de Lisboa',
         location: 'Lisboa', race_type: 'estrada', distance_km: 10,
         experience_level: 'medio', status: 'agendada',
+        /* A hora de partida (specs/plano-de-prova.md, "A véspera e a hora"):
+           é esta prova que deixa ver "· 09:00" no cabeçalho do hub e
+           "Partida às 09:00" no cartão do plano. A demo-race-4 fica de
+           propósito sem hora, para se ver também o pedido. */
+        start_time: '09:00',
         target_time: '48:00', target_time_seconds: 2880, target_pace_seconds_per_km: 288,
+        /* Percurso extraído do site (o que o enrich-race-event devolve): é
+           esta prova que deixa ver o cartão "Plano para o dia" com os troços
+           nomeados e os ajustes de subida e descida
+           (specs/plano-de-prova.md). */
+        web_info: {
+          source_url: 'https://saosilvestrelisboa.pt',
+          fetched_at: new Date().toISOString(),
+          route_summary: 'Percurso urbano e rápido, com uma subida curta a meio e uma descida longa até ao rio.',
+          route_segments: [
+            { km_marker: 0, description: 'Partida na Praça do Marquês de Pombal', elevation: 'plano' },
+            { km_marker: 3.5, description: 'subida da Avenida da Liberdade', elevation: 'sobe' },
+            { km_marker: 6, description: 'descida para o Terreiro do Paço', elevation: 'desce' },
+          ],
+        },
       },
       {
         id: 'demo-race-4', date: inDays(-2), name: 'Trail dos Moinhos',
@@ -218,17 +237,54 @@ function buildDemoData() {
         experience_level: 'medio', status: 'agendada',
         target_time: '1:45:00', target_time_seconds: 6300, target_pace_seconds_per_km: 420,
       },
+      /* A prova de AMANHÃ (specs/plano-de-prova.md, "O plano tem de saber da
+         prova"): é com ela que se vê a véspera no cartão da Carol — as horas
+         e as gramas de computeRaceEve em "Preparar amanhã" — e, junto com o
+         plano de demonstração abaixo, o alerta "o plano precisa de um
+         ajuste". */
+      {
+        id: 'demo-race-5', date: inDays(1), name: 'Corrida do Tejo · Noturna',
+        location: 'Lisboa', race_type: 'estrada', distance_km: 10,
+        experience_level: 'medio', status: 'agendada', start_time: '08:30',
+        target_time: '47:00', target_time_seconds: 2820, target_pace_seconds_per_km: 282,
+      },
     ],
     waterLogs: [],
     meals: [],
     runs: [
-      { id: 'demo-run-1', date: inDays(-2), distance_km: 8, duration_seconds: 2400, kind: 'treino', training_type: 'continuo' },
-      { id: 'demo-run-2', date: inDays(-5), distance_km: 12, duration_seconds: 3900, kind: 'treino', training_type: 'longo' },
+      /* Uma de manhã e outra à noite: é assim que se vê a hora nos cartões do
+         Calendário, e é a diferença que a Carol lê (um treino às 22:10 corta
+         o sono) — specs/plano-de-prova.md, "A véspera e a hora". A BD devolve
+         'HH:MM:SS', por isso a demo escreve-o na mesma grafia. */
+      { id: 'demo-run-1', date: inDays(-2), start_time: '07:30:00', distance_km: 8, duration_seconds: 2400, kind: 'treino', training_type: 'continuo' },
+      { id: 'demo-run-2', date: inDays(-5), start_time: '22:10:00', distance_km: 12, duration_seconds: 3900, kind: 'treino', training_type: 'longo' },
     ],
-    gymSessions: [],
+    gymSessions: [
+      /* Uma sessão só, para a hora ser visível também no Ginásio — o demo não
+         tinha nenhuma e o cartão do Calendário ficava sem nada para mostrar. */
+      {
+        id: 'demo-gym-1', date: inDays(-1), start_time: '19:00:00', kind: 'forca',
+        name: 'Peito e Tríceps', categories: ['Peito', 'Tríceps'],
+        duration_seconds: 3600, calories_kcal: 340, exertion: 7,
+        workout_session_sets: [],
+      },
+    ],
     bodyAssessments: [],
-    coachPlans: [],
-    coachPlanItems: [],
+    /* Um plano aceite que NÃO sabe da prova (specs/plano-de-prova.md, "O
+       plano tem de saber da prova"): tem o dia de hoje certo — item de
+       prova, para a São Silvestre — mas marcou uma rodagem longa no dia da
+       prova de amanhã e intervalos na véspera dela. É esse plano que faz
+       aparecer o alerta de ajuste no Início, e o item de prova de hoje que
+       deixa ver o cartão âmbar "Prova · São Silvestre de Lisboa · 10 km". */
+    coachPlans: [
+      { id: 'demo-plan-1', status: 'aceite', period_start: inDays(-3), period_end: inDays(7), summary: 'Semana de afinação antes das provas.' },
+    ],
+    coachPlanItems: [
+      { id: 'demo-item-1', plan_id: 'demo-plan-1', planned_date: inDays(0), kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente', notes: 'O plano para o dia está no hub da prova.' },
+      { id: 'demo-item-2', plan_id: 'demo-plan-1', planned_date: inDays(1), kind: 'corrida', training_type: 'longo', target_distance_km: 18, status: 'pendente' },
+      { id: 'demo-item-3', plan_id: 'demo-plan-1', planned_date: inDays(-1), kind: 'corrida', training_type: 'intervalos', target_distance_km: 10, status: 'pendente' },
+      { id: 'demo-item-4', plan_id: 'demo-plan-1', planned_date: inDays(-3), kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45, status: 'pendente' },
+    ],
   };
 }
 
@@ -278,8 +334,21 @@ function buildPalmaresDemoData() {
     ],
     gymSessions: [],
     bodyAssessments: [],
-    coachPlans: [],
-    coachPlanItems: [],
+    /* Um plano aceite que NÃO sabe da prova (specs/plano-de-prova.md, "O
+       plano tem de saber da prova"): tem o dia de hoje certo — item de
+       prova, para a São Silvestre — mas marcou uma rodagem longa no dia da
+       prova de amanhã e intervalos na véspera dela. É esse plano que faz
+       aparecer o alerta de ajuste no Início, e o item de prova de hoje que
+       deixa ver o cartão âmbar "Prova · São Silvestre de Lisboa · 10 km". */
+    coachPlans: [
+      { id: 'demo-plan-1', status: 'aceite', period_start: inDays(-3), period_end: inDays(7), summary: 'Semana de afinação antes das provas.' },
+    ],
+    coachPlanItems: [
+      { id: 'demo-item-1', plan_id: 'demo-plan-1', planned_date: inDays(0), kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente', notes: 'O plano para o dia está no hub da prova.' },
+      { id: 'demo-item-2', plan_id: 'demo-plan-1', planned_date: inDays(1), kind: 'corrida', training_type: 'longo', target_distance_km: 18, status: 'pendente' },
+      { id: 'demo-item-3', plan_id: 'demo-plan-1', planned_date: inDays(-1), kind: 'corrida', training_type: 'intervalos', target_distance_km: 10, status: 'pendente' },
+      { id: 'demo-item-4', plan_id: 'demo-plan-1', planned_date: inDays(-3), kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45, status: 'pendente' },
+    ],
   };
 }
 

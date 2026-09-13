@@ -5,6 +5,10 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import Coach from './Coach';
+// Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
+// a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
+const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 
 // Mesmo padrão de mock usado em RunAgenda.test.jsx: supabase.from é um
 // vi.fn() reconfigurável por teste (mockImplementation), em vez de uma
@@ -583,7 +587,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   });
 
   it('3 dias sem registo: ao abrir o chat a Carol escreve primeiro ("Estás bem?") — e só uma vez', async () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ runs: [{ id: 'r1', date: fiveDaysAgo, distance_km: 8, duration_seconds: 2400 }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: { model_message: { id: 'p1', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' },
@@ -606,7 +610,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   });
 
   it('se o servidor saltar (ela falou há pouco), não fica marcado — volta a tentar na abertura seguinte', async () => {
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, proactive: 'silence', model_message: null, suggestions: [] }, error: null });
 
@@ -624,7 +628,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
   it('INCIDENTE 2026-09-12 — se o servidor recusar (409 busy), a mensagem proativa falha em silêncio: sem "A tua mensagem não saiu"', async () => {
     // O atleta não escreveu nada — uma bolha a dizer que a mensagem dele
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
-    const fiveDaysAgo = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
@@ -647,5 +651,70 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     await act(async () => { await Promise.resolve(); });
     expect(invokeEdgeFunctionWithTimeout).not.toHaveBeenCalled();
     expect(screen.getByText(/Sou a Carol, a tua treinadora/)).toBeInTheDocument();
+  });
+});
+
+/* specs/plano-de-prova.md, "O plano tem de saber da prova" — Alerta de
+   ajuste. O Início deteta a divergência (utils/planDivergence.js) e abre o
+   chat já no "Adaptar plano", com os motivos no corpo. */
+describe('Coach — "o plano precisa de um ajuste"', () => {
+  const SIGNATURE = 'p1|prova_sem_item:r1:2026-09-13';
+  const STORAGE_KEY = 'ironcoach:plano-ajuste:user-1';
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Vi que a prova não está no plano. Vamos arrumar isso.' }, suggestions: [] },
+      error: null,
+    });
+  });
+
+  it('o botão "Adaptar plano" (string) continua a fazer o check-in de sempre, sem motivos', async () => {
+    useAppStore.setState({ coachIntent: 'adapt_plan' });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.is_plan_checkin).toBe(true);
+    expect(body.plan_divergence).toBeUndefined();
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('vindo do Início com motivos: mesmo check-in, mas com plan_divergence — e a assinatura fica tratada', async () => {
+    useAppStore.setState({
+      coachIntent: { kind: 'adapt_plan', divergence: ['A Corrida do Tejo (13 set) não está no plano.'], signature: SIGNATURE },
+    });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.is_plan_checkin).toBe(true);
+    expect(body.plan_divergence).toEqual(['A Corrida do Tejo (13 set) não está no plano.']);
+    await waitFor(() => expect(window.localStorage.getItem(STORAGE_KEY)).toBe(SIGNATURE));
+  });
+
+  it('o servidor aceita no máximo 6 motivos', async () => {
+    const oito = Array.from({ length: 8 }, (_, i) => `motivo ${i + 1}`);
+    useAppStore.setState({ coachIntent: { kind: 'adapt_plan', divergence: oito, signature: SIGNATURE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.plan_divergence).toHaveLength(6);
+    expect(body.plan_divergence[5]).toBe('motivo 6');
+  });
+
+  it('se o pedido falhar, a assinatura NÃO fica tratada — ela volta a chamar', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'rede', isTimeout: false, isBusy: true });
+    useAppStore.setState({ coachIntent: { kind: 'adapt_plan', divergence: ['x'], signature: SIGNATURE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
