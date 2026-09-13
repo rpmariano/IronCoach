@@ -102,9 +102,12 @@ linhas que a Carol lê ("às 07:30"): treinos tarde a cortar o sono, e na
 data: "Hora" na corrida e no ginásio, "Hora de partida" na prova (agenda) e
 também no registo em modo prova ("O resultado"), pré-preenchida com a da
 agenda mas da corrida — a partida real pode não ser a anunciada; até aqui a
-herança era invisível. As refeições não têm hora própria: o tipo diz a hora
-habitual (pequeno-almoço 08:00, lanche da manhã 11:00, almoço 13:00, lanche
-17:00, jantar 20:00, ceia 23:00). O Calendário ordena o dia pela hora, entre
+herança era invisível. As refeições têm `meals.meal_time` (migração
+`20260913220000_meal_time.sql`; "Hora" ao lado da data, parte da hora atual
+numa refeição nova, gravada por update à parte como as outras); sem ela, o
+tipo diz a hora habitual (pequeno-almoço 08:00, lanche da manhã 11:00,
+almoço 13:00, lanche 17:00, jantar 20:00, ceia 23:00). O Calendário ordena o
+dia pela hora, entre
 tipos (`src/utils/dayOrder.js`): avaliação corporal de manhã, depois o resto
 pela hora; sem hora, no fim.
 

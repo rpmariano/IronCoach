@@ -28,6 +28,8 @@ describe('orderDayRecords', () => {
     expect(minutesOfDay('9:05')).toBe(545);
     expect(minutesOfDay('lixo')).toBeNull();
     expect(dayRecordMinutes('meal', { meal_type: 'jantar' })).toBe(1200);
+    // A hora real da refeição (meals.meal_time) ganha à habitual do tipo.
+    expect(dayRecordMinutes('meal', { meal_type: 'jantar', meal_time: '21:40:00' })).toBe(1300);
     expect(dayRecordMinutes('body', {})).toBe(0);
     expect(dayRecordMinutes('outro', {})).toBeNull();
   });

@@ -70,6 +70,23 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
     expect(body.notes).toBe('Big Mac');
   });
 
+  /* A hora da refeição (pedido 2026-09-13): parte da hora atual, corrige-se,
+     e grava-se por update à parte — a analyze-meal não a conhece. */
+  it('a hora parte da atual, e a escrita grava-se em meals.meal_time a seguir à análise', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
+    mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByLabelText('Hora da refeição').value).toMatch(/^\d{2}:\d{2}$/);
+    fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '13:10' } });
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+
+    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledWith({ meal_time: '13:10' }, 'meal-1'));
+    expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeUndefined();
+    await waitFor(() => expect(useAppStore.getState().meals.find(m => m.id === 'meal-1')?.meal_time).toBe('13:10'));
+  });
+
   it('acrescenta a refeição devolvida (meal + items combinados) ao store e fecha o formulário', async () => {
     const newMeal = { id: 'meal-1', coach_notes: 'Boa proporção de proteína.' };
     const items = [{ id: 'item-1', name: 'Frango' }];
@@ -80,7 +97,8 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(useAppStore.getState().meals).toEqual([{ ...newMeal, meal_items: items }]);
+    // A hora (meal_time) junta-se por update à parte — parte da hora atual.
+    expect(useAppStore.getState().meals).toEqual([{ ...newMeal, meal_items: items, meal_time: expect.stringMatching(/^\d{2}:\d{2}$/) }]);
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
@@ -204,7 +222,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     ]);
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(useAppStore.getState().meals).toEqual([finalMeal]);
+    expect(useAppStore.getState().meals).toEqual([{ ...finalMeal, meal_time: expect.stringMatching(/^\d{2}:\d{2}$/) }]);
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
@@ -283,6 +301,19 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'almoco' });
     expect(mocks.invoke).not.toHaveBeenCalled();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('a editar, a hora vem da refeição e muda por update à parte, sem o Gemini', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_time: '20:00:00' }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('20:00');
+
+    fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '20:30' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+
+    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(2));
+    expect(mocks.updateMeal.mock.calls[1]).toEqual([{ meal_time: '20:30' }, 'meal-3']);
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
   it('mudar as gramas de um alimento passa pelo Coach e reanalisa', async () => {

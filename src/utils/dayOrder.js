@@ -2,8 +2,9 @@ import { normalizeStartTime } from './startTime';
 
 /* A ordem dos registos num dia do Calendário (pedido 2026-09-13): pela hora,
    não por tipo. As corridas e os treinos de ginásio têm `start_time`
-   (specs/plano-de-prova.md, "A véspera e a hora"); as refeições não têm hora
-   própria, mas o tipo diz a que horas costumam ser; a avaliação corporal
+   (specs/plano-de-prova.md, "A véspera e a hora"); as refeições têm
+   `meal_time` desde 2026-09-13 e, sem ela (registos antigos), o tipo diz a
+   que horas costumam ser; a avaliação corporal
    pesa-se de manhã, em jejum. O que não tem hora nenhuma vai para o fim,
    pela ordem de sempre. */
 
@@ -29,7 +30,7 @@ export function minutesOfDay(value) {
 
 export function dayRecordMinutes(kind, item) {
   if (kind === 'run' || kind === 'gym') return minutesOfDay(item?.start_time);
-  if (kind === 'meal') return MEAL_NOMINAL_MINUTES[item?.meal_type] ?? null;
+  if (kind === 'meal') return minutesOfDay(item?.meal_time) ?? MEAL_NOMINAL_MINUTES[item?.meal_type] ?? null;
   if (kind === 'body') return 0;
   return null;
 }
