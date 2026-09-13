@@ -1,4 +1,4 @@
-import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
+import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { formatDuration } from './run';
 
 /* invokeEdgeFunctionWithTimeout devolve o erro como TEXTO (a mensagem já
@@ -47,6 +47,42 @@ export function diplomaFormValues(reading) {
   }
   if (Array.isArray(reading.splits) && reading.splits.length) values.officialSplits = reading.splits;
   return values;
+}
+
+/** O mesmo que diplomaFormValues, mas direto em `runs.details` — para o
+ *  diploma que chega DEPOIS da corrida registada (persiana "Memórias" do
+ *  hub): o tempo oficial (chip), a posição e o resto dos campos do diploma
+ *  entram na corrida já gravada. Só toca no que a leitura trouxe. */
+export function diplomaDetailsPatch(details, reading) {
+  const current = details && typeof details === 'object' ? details : {};
+  const next = { ...current };
+  if (reading) {
+    const official = reading.chip_time_seconds || reading.gun_time_seconds;
+    if (official) next.official_time_seconds = official;
+    if (reading.position) next.position = reading.position;
+    if (reading.age_group) next.age_group = reading.age_group;
+    if (reading.age_group_position) next.age_group_position = reading.age_group_position;
+    if (reading.gender_position) next.gender_position = reading.gender_position;
+    if (reading.participants) next.participants = reading.participants;
+    if (reading.bib_number) next.bib_number = String(reading.bib_number);
+    if (reading.chip_time_seconds && reading.gun_time_seconds && reading.gun_time_seconds !== reading.chip_time_seconds) {
+      next.gun_time_seconds = reading.gun_time_seconds;
+    }
+    if (Array.isArray(reading.splits) && reading.splits.length) next.official_splits = reading.splits;
+  }
+  return { details: next, changed: JSON.stringify(next) !== JSON.stringify(current) };
+}
+
+/** Grava a leitura na corrida (update a runs.details, sob a RLS "own rows")
+ *  e devolve a corrida com os detalhes novos. Sem corrida não há onde
+ *  aplicar. */
+export async function applyDiplomaToRun(run, reading) {
+  if (!run?.id) throw new Error('A prova ainda não tem a corrida registada.');
+  const { details, changed } = diplomaDetailsPatch(run.details, reading);
+  if (!changed) return run;
+  const { error } = await supabase.from('runs').update({ details }).eq('id', run.id);
+  if (error) throw asError(error);
+  return { ...run, details };
 }
 
 /** "Tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15" */

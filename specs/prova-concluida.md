@@ -53,14 +53,28 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
      leva. Mais dois que só o diploma dá: `gun_time_seconds` (o tempo bruto;
      o oficial é o de chip) e `official_splits` ([{km, seconds}]), numa
      segunda linha do hub (`describeRaceTimes`).
-   - **A Carol lê o diploma.** Ao juntar a imagem do diploma em modo prova,
-     a Edge Function `analyze-diploma` (Gemini, sem gravar nada) devolve a
+   - **A Carol lê o diploma.** Ao juntar a imagem do diploma, a Edge
+     Function `analyze-diploma` (Gemini, sem gravar nada) devolve a
      leitura — tempo de chip e bruto, classificações, escalão, participantes,
-     dorsal, parciais — e o registo mostra "A Carol leu o diploma: …" com
-     "Aplicar ao registo" e "Ignorar". O tempo oficial passa a ser o de
-     chip. Calibrado com o diploma real da Corrida do Tejo 2026 (dois tempos
-     no mesmo diploma, classificação no escalão sem nome, passagem aos 5 km).
-     Um PDF não se lê; sem leitura, preenche-se à mão.
+     dorsal, parciais — e aparece "A Carol leu o diploma: …" **mesmo por
+     baixo do diploma** (`DiplomaReadingCard`, dentro de
+     `RaceMemoriesFields`), com Aplicar e "Ignorar"; depois de aplicar, o
+     cartão fica a confirmar o que entrou. O tempo oficial passa a ser o de
+     chip. Nos dois sítios onde o diploma se junta: no registo da prova
+     ("Aplicar ao registo" preenche os campos de "O resultado", lá em cima)
+     e na persiana "Memórias" do hub ("Aplicar à corrida" grava na hora em
+     `runs.details` pela `applyDiplomaToRun`, porque o diploma chega quase
+     sempre dias depois da corrida registada pelos prints do relógio; o
+     diploma em si guarda-se com "Guardar as memórias"). Calibrado com o
+     diploma real da Corrida do Tejo 2026 (dois tempos no mesmo diploma,
+     classificação no escalão sem nome, passagem aos 5 km). Um PDF não se
+     lê; sem corrida registada não há onde aplicar; sem leitura, preenche-se
+     à mão.
+   - **O tempo oficial pelos prints.** O caminho por fotos (prints do
+     relógio) não manda o tempo oficial nem a posição à `analyze-run`; ambos
+     vão no mesmo update à parte dos campos do diploma
+     (`persistRaceResultDetails`), senão o que o atleta escreveu — ou aplicou
+     do diploma — perdia-se (2026-09-13).
    Entradas para este modo: o botão "Registar a corrida da prova" do hub;
    um CTA "Registar a prova" no cartão da prova do Início e da agenda a
    partir do dia da prova (e enquanto não houver corrida ligada, até 7 dias

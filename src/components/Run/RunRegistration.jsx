@@ -5,7 +5,8 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
-import { readDiploma, diplomaFormValues, describeDiplomaReading } from '../../utils/diplomaReading';
+import { diplomaFormValues } from '../../utils/diplomaReading';
+import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -239,8 +240,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // runs.details com o resto.
   const [gunTimeSeconds, setGunTimeSeconds] = useState(null);
   const [officialSplits, setOfficialSplits] = useState([]);
-  // A leitura do diploma pela Carol: { status: 'reading'|'ready'|'failed'|'applied', reading, error }.
-  const [diplomaReading, setDiplomaReading] = useState(null);
+  // A leitura do diploma pela Carol (DiplomaReadingCard): o cartão vive nas
+  // Memórias, mesmo por baixo do diploma; "Aplicar" preenche os campos de
+  // "O resultado".
+  const diplomaReading = useDiplomaReading();
   const [completedRaceType, setCompletedRaceType] = useState(
     raceTypeFromRaceEvent(initialRace) || planItem?.race_type || '10k'
   );
@@ -796,30 +799,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setIsFormDirty(true);
       // Em modo prova a Carol lê o diploma logo (analyze-diploma) e o
       // registo mostra a leitura para o atleta aplicar — não se preenche
-      // nada por conta própria. Um PDF não se lê.
-      if (isRaceMode && !memory.isPdf) askDiplomaReading(memory);
-    }
-  };
-
-  // Trocar de imagem a meio de uma leitura: só a resposta ao pedido mais
-  // recente conta (revisão pré-deploy 2026-09-13).
-  const diplomaRequestRef = useRef(0);
-  const askDiplomaReading = async (memory) => {
-    const requestId = ++diplomaRequestRef.current;
-    setDiplomaReading({ status: 'reading', reading: null, error: '' });
-    try {
-      const reading = await readDiploma(memory);
-      if (requestId !== diplomaRequestRef.current) return;
-      setDiplomaReading({ status: 'ready', reading, error: '' });
-    } catch (err) {
-      if (requestId !== diplomaRequestRef.current) return;
-      console.warn('Leitura do diploma falhou', err);
-      setDiplomaReading({ status: 'failed', reading: null, error: err?.message || 'Não consegui ler o diploma.' });
+      // nada por conta própria. Um PDF não se lê (o hook ignora-o).
+      if (isRaceMode) diplomaReading.ask(memory);
     }
   };
 
   const applyDiplomaReading = () => {
-    const values = diplomaFormValues(diplomaReading?.reading);
+    const values = diplomaFormValues(diplomaReading.state?.reading);
     if (values.officialTime) setOfficialTime(values.officialTime);
     if (values.position) setPosition(values.position);
     if (values.ageGroup) setAgeGroup(values.ageGroup);
@@ -830,7 +816,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (values.gunTimeSeconds) setGunTimeSeconds(values.gunTimeSeconds);
     if (values.officialSplits) setOfficialSplits(values.officialSplits);
     setIsFormDirty(true);
-    setDiplomaReading((prev) => ({ ...prev, status: 'applied' }));
+    diplomaReading.markApplied();
   };
 
   const handleMedalFile = async (file) => {
@@ -879,10 +865,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* A classificação da prova (dorsal, escalão, posições, participantes) toma
      o caminho da hora, pela mesma razão: vive em runs.details e a
      analyze-run não a conhece. Só em competição; só o que mudou; e sem
-     entrar na analyticalSignature — não muda análise nenhuma. */
+     entrar na analyticalSignature — não muda análise nenhuma.
+
+     O tempo oficial e a posição vão aqui também: o caminho por fotos (os
+     prints do relógio) não os mandava à analyze-run e o que o atleta tinha
+     escrito — ou aplicado do diploma — perdia-se (relatado 2026-09-13). No
+     caminho manual já vão no pedido; aqui só se confirma que ficaram. */
   const raceResultPatch = () => {
     const int = (v) => { const n = parseInt(String(v ?? '').trim(), 10); return Number.isFinite(n) && n > 0 ? n : null; };
     return {
+      official_time_seconds: officialTime ? (parseDurationToSeconds(officialTime) || null) : null,
+      position: int(position),
       bib_number: String(bibNumber || '').trim() || null,
       age_group: String(ageGroup || '').trim() || null,
       age_group_position: int(ageGroupPosition),
@@ -1693,41 +1686,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
             {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
                 posição nele, posição por género, participantes. Tudo
-                opcional; o ritmo médio calcula-se e o clube é do perfil. */}
-            {diplomaReading && diplomaReading.status !== 'applied' && (
-              <div data-testid="diploma-reading" aria-live="polite" className="mb-4" style={{ borderRadius: 16, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 12 }}>
-                <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
-                  {diplomaReading.status === 'reading' ? 'A Carol está a ler o diploma…' : diplomaReading.status === 'ready' ? 'A Carol leu o diploma' : 'Diploma por ler'}
-                </div>
-                {diplomaReading.status === 'reading' && (
-                  <div role="status" aria-label="A ler o diploma" className="flex flex-col gap-2 mt-2">
-                    <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-                    <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
-                  </div>
-                )}
-                {diplomaReading.status === 'ready' && (
-                  <>
-                    <p className="text-[12.5px] leading-[1.5] mt-1.5" style={{ color: 'var(--text-1)' }}>
-                      {describeDiplomaReading(diplomaReading.reading)}
-                    </p>
-                    {diplomaReading.reading?.athlete_name && (
-                      <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>Em nome de {diplomaReading.reading.athlete_name}. Confirma antes de aplicar.</p>
-                    )}
-                    <div className="flex gap-2 mt-2.5">
-                      <button type="button" data-testid="diploma-reading-apply" onClick={applyDiplomaReading} className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-extrabold" style={{ minHeight: 44, padding: '0 14px', background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)', border: 'none' }}>
-                        Aplicar ao registo
-                      </button>
-                      <button type="button" onClick={() => setDiplomaReading(null)} className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-bold" style={{ minHeight: 44, padding: '0 12px', background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
-                        Ignorar
-                      </button>
-                    </div>
-                  </>
-                )}
-                {diplomaReading.status === 'failed' && (
-                  <p className="text-[12px] leading-[1.5] mt-1.5" style={{ color: 'var(--text-3)' }}>{diplomaReading.error} Podes preencher à mão em baixo.</p>
-                )}
-              </div>
-            )}
+                opcional; o ritmo médio calcula-se e o clube é do perfil. A
+                leitura da Carol preenche-os a partir das Memórias, em baixo. */}
             <div data-testid="race-result-fields" className="mb-4">
               <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>
               <div className="grid grid-cols-2 gap-2.5">
@@ -1793,10 +1753,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             onDiplomaFile={handleDiplomaFile}
             onMedalFile={handleMedalFile}
             onPhotoFiles={handleRacePhotoFiles}
-            onRemoveDiploma={() => { setDiploma(null); setDiplomaReading(null); diplomaRequestRef.current += 1; setIsFormDirty(true); }}
+            onRemoveDiploma={() => { setDiploma(null); diplomaReading.clear(); setIsFormDirty(true); }}
             onRemoveMedal={() => { setMedal(null); setIsFormDirty(true); }}
             onRemovePhoto={(i) => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
             error={memoryError}
+            afterDiploma={(
+              <DiplomaReadingCard
+                state={diplomaReading.state}
+                onApply={applyDiplomaReading}
+                onDismiss={diplomaReading.clear}
+                applyLabel="Aplicar ao registo"
+                appliedLabel="Aplicado ao registo"
+                appliedHint="O tempo oficial e a classificação ficaram em “O resultado”, lá em cima."
+                manualHint="Podes preencher à mão em “O resultado”, lá em cima."
+              />
+            )}
           />
 
           {memoriesFailed && (

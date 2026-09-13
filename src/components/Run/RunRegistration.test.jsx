@@ -743,8 +743,29 @@ describe('RunRegistration — modo prova', () => {
 
     await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.details)).toBe(true));
     const detalhes = mocks.updates.find(u => u.table === 'runs' && u.payload.details).payload.details;
-    expect(detalhes).toEqual({ bib_number: '1234', age_group: 'M40', age_group_position: 41, participants: 1850 });
+    // O tempo oficial vai aqui também — o caminho por fotos não o mandava
+    // à analyze-run e perdia-se (relatado 2026-09-13).
+    expect(detalhes).toEqual({ official_time_seconds: 6822, bib_number: '1234', age_group: 'M40', age_group_position: 41, participants: 1850 });
     expect(detalhes).not.toHaveProperty('gender_position');
+  });
+
+  it('pelos prints do relógio, o tempo oficial e a posição escritos gravam-se na corrida na mesma', async () => {
+    entrarPeloPrefill();
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-race-1', distance_km: 10, duration_seconds: 3088, details: { avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '51:27' } });
+    fireEvent.change(screen.getByLabelText('Posição geral (opcional)'), { target: { value: '1668' } });
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.details)).toBe(true));
+    const detalhes = mocks.updates.find(u => u.table === 'runs' && u.payload.details).payload.details;
+    expect(detalhes).toMatchObject({ avg_heart_rate_bpm: 160, official_time_seconds: 3087, position: 1668 });
+    // O pedido à analyze-run continua sem eles — é o update à parte que os garante.
+    expect(mocks.invoke.mock.calls[0][1].body.images).toEqual(['AAA']);
   });
 
   /* A Carol lê o diploma (pedido 2026-09-13): ao juntar a imagem, a
@@ -762,6 +783,8 @@ describe('RunRegistration — modo prova', () => {
     });
     const leitura = await screen.findByTestId('diploma-reading');
     expect(leitura).toHaveTextContent('A Carol leu o diploma');
+    // O cartão vive nas Memórias, por baixo do diploma — não em "O resultado".
+    expect(screen.getByTestId('race-memories')).toContainElement(leitura);
     expect(leitura).toHaveTextContent('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
     expect(leitura).toHaveTextContent('Em nome de RUI MARIANO');
     expect(JSON.parse(mocks.invoke.mock.calls[0][1].body).image).toBe('AAA');
@@ -770,7 +793,9 @@ describe('RunRegistration — modo prova', () => {
     expect(screen.getByLabelText(/Tempo oficial/).value).toBe('51:27');
     expect(screen.getByLabelText('Posição geral (opcional)').value).toBe('1668');
     expect(screen.getByLabelText('Pos. escalão').value).toBe('226');
-    expect(screen.queryByTestId('diploma-reading')).not.toBeInTheDocument();
+    // Fica a confirmar o que entrou, ao lado do diploma — os campos estão lá em cima.
+    expect(screen.getByTestId('diploma-reading')).toHaveAttribute('data-status', 'applied');
+    expect(screen.getByTestId('diploma-reading')).toHaveTextContent('Aplicado ao registo');
 
     // Ao gravar, o bruto e o parcial vão para runs.details com o resto.
     fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
@@ -819,7 +844,8 @@ describe('RunRegistration — modo prova', () => {
     // A confirmação é a da prova: âmbar e com o nome dela.
     const confirmacao = await screen.findByTestId('record-confirmation');
     expect(confirmacao).toHaveAttribute('data-tone', 'race');
-    expect(screen.getByText('Meia de Lisboa concluída')).toBeInTheDocument();
+    // ...e, agora que o tempo oficial fica mesmo na corrida, com o tempo.
+    expect(screen.getByText('Meia de Lisboa concluída · 1:53:42')).toBeInTheDocument();
   });
 
   /* specs/plano-de-prova.md, "O plano tem de saber da prova": o dia da prova

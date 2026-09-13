@@ -5,6 +5,8 @@ import Warning, { WarningAction } from '../shared/Warning';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { useAppStore } from '../../store';
 import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
+import { applyDiplomaToRun } from '../../utils/diplomaReading';
+import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
 
 /* A persiana "Memórias" do hub (pedido 2026-09-13): concluir a prova é
    registar a corrida; o diploma, a medalha e as fotografias podem vir
@@ -18,8 +20,14 @@ import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemori
    concluída quando isto existe. */
 /* `onSaved(patch)`: quem monta pode tratar da escrita no store — o RunAgenda
    precisa, para a marcar como sua e não repor o rascunho por gravar dos
-   "Detalhes" (revisão pré-deploy 2026-09-13). Sem ele, escreve direto. */
-export default function RaceMemoriesSheet({ race, userId, onClose, onSaved }) {
+   "Detalhes" (revisão pré-deploy 2026-09-13). Sem ele, escreve direto.
+
+   `run`: a corrida ligada à prova. O diploma chega quase sempre aqui, dias
+   depois de a corrida estar registada pelos prints do relógio — e é aqui
+   que a Carol o lê (DiplomaReadingCard) e "Aplicar à corrida" grava o tempo
+   oficial de chip e a classificação em runs.details, na hora. O diploma em
+   si continua a guardar-se com "Guardar as memórias". */
+export default function RaceMemoriesSheet({ race, run = null, userId, onClose, onSaved }) {
   const [diploma, setDiploma] = useState(null);
   const [medal, setMedal] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -28,6 +36,7 @@ export default function RaceMemoriesSheet({ race, userId, onClose, onSaved }) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const diplomaReading = useDiplomaReading();
 
   // O que já está guardado, com as URLs assinadas na hora (bucket privado).
   useEffect(() => {
@@ -48,7 +57,27 @@ export default function RaceMemoriesSheet({ race, userId, onClose, onSaved }) {
   const onDiplomaFile = async (file) => {
     const { memory, error: err } = await pickDiploma(file);
     setError(err);
-    if (memory) { setDiploma(memory); setDirty(true); }
+    if (memory) {
+      setDiploma(memory);
+      setDirty(true);
+      // Só há onde aplicar com a corrida registada; um PDF não se lê.
+      if (run?.id) diplomaReading.ask(memory);
+    }
+  };
+
+  const applyReading = async () => {
+    const reading = diplomaReading.state?.reading;
+    if (!reading || !run?.id) return;
+    diplomaReading.markApplying();
+    try {
+      const updated = await applyDiplomaToRun(run, reading);
+      const store = useAppStore.getState();
+      store.setRuns((store.runs || []).map((r) => (r.id === updated.id ? { ...r, details: updated.details } : r)));
+      diplomaReading.markApplied();
+    } catch (err) {
+      console.warn('Leitura do diploma não aplicada à corrida', err);
+      diplomaReading.failApply(err?.message ? `Não consegui gravar na corrida: ${err.message}` : 'Não consegui gravar na corrida. Tenta outra vez.');
+    }
   };
   const onMedalFile = async (file) => {
     const { memory, error: err } = await pickMedal(file);
@@ -97,10 +126,21 @@ export default function RaceMemoriesSheet({ race, userId, onClose, onSaved }) {
           onDiplomaFile={onDiplomaFile}
           onMedalFile={onMedalFile}
           onPhotoFiles={onPhotoFiles}
-          onRemoveDiploma={() => { setDiploma(null); setDirty(true); }}
+          onRemoveDiploma={() => { setDiploma(null); diplomaReading.clear(); setDirty(true); }}
           onRemoveMedal={() => { setMedal(null); setDirty(true); }}
           onRemovePhoto={(i) => { setPhotos(prev => prev.filter((_, idx) => idx !== i)); setDirty(true); }}
           error={error}
+          afterDiploma={(
+            <DiplomaReadingCard
+              state={diplomaReading.state}
+              onApply={applyReading}
+              onDismiss={diplomaReading.clear}
+              applyLabel="Aplicar à corrida"
+              appliedLabel="Aplicado à corrida"
+              appliedHint="O tempo oficial e a classificação já estão na corrida. Guarda as memórias para ficares com o diploma."
+              manualHint="Podes acrescentar à mão em “Editar a corrida”."
+            />
+          )}
         />
       ) : (
         <div className="animate-pulse rounded-2xl" style={{ height: 180, background: 'var(--surface-faint)' }} aria-label="A carregar as memórias" />
