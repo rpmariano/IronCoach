@@ -72,7 +72,7 @@ Por esta ordem. Cada passo é entregável sozinho.
 Já existe no store Zustand (`useAppStore`): `activeTab`, `lastDashboardTab`, `openCreationMode`, `isAdmin`, `profile`, planos, registos. Novo:
 - `onboardingDone: boolean` no perfil — o onboarding corre quando falso; Perfil · Coach → "Rever o arranque" reabre-o preenchido.
 - `introAnimationsPlayed` em `sessionStorage`.
-- `coachHasPendingTopic: boolean` — liga o halo e o cartão "A Carol precisa de falar contigo".
+- `coachHasPendingTopic: boolean` — liga o halo e o aviso "A Carol precisa de falar contigo" (desde 2026-09-13 no botão flutuante do Início, não no cabeçalho do cartão da Carol).
 
 ## Design Tokens
 

@@ -54,7 +54,7 @@ describe('groupRaces', () => {
   });
 
   it('ignora provas sem id ou sem data, e aguenta listas vazias', () => {
-    expect(groupRaces({ raceEvents: [{ name: 'x' }, race('ok', '2026-10-01'), { id: 'y' }], today: TODAY }).total).toBe(1);
+    expect(groupRaces({ raceEvents: [{ name: 'x' }, race('ok', '2026-10-01'), { id: 'y' }, race('torta', '2026-13-45')], today: TODAY }).total).toBe(1);
     expect(groupRaces({ today: TODAY })).toEqual({ proximas: [], porRegistar: [], concluidas: [], total: 0 });
   });
 });

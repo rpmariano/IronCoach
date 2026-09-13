@@ -27,9 +27,12 @@ export default function CoachInsightButton({ insights = [], alerts = [], onClick
   const waveInk = hasCritical ? 'var(--danger-ink)' : hasWarning ? 'var(--warn-ink)' : 'var(--coach-ink)';
   const Icon = hasCritical ? AlertTriangle : hasWarning ? AlertCircle : null;
 
+  // Aviso 5 da revisão: com avisos e insights juntos, os insights não são
+  // "assuntos" — cada um diz-se pelo seu nome.
+  const insightsLabel = `${list.length} insight${list.length === 1 ? '' : 's'}`;
   const label = carolAlerts.length
-    ? `A Carol quer falar contigo: ${total} ${total === 1 ? 'assunto' : 'assuntos'}`
-    : `${list.length} insight${list.length === 1 ? '' : 's'} da Carol`;
+    ? `A Carol quer falar contigo${list.length ? `, e tem ${insightsLabel}` : ''}`
+    : `${insightsLabel} da Carol`;
 
   return (
     <button

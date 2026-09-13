@@ -23,7 +23,10 @@ import { achievementsForRace } from './achievements';
 const DAY_MS = 86400000;
 
 function dayOf(value) {
-  return typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : null;
+  if (typeof value !== 'string' || value.length < 10) return null;
+  const day = value.slice(0, 10);
+  // "2026-13-45" tem a forma de uma data mas não é: dava "daqui a NaN dias".
+  return Number.isNaN(Date.parse(`${day}T00:00:00Z`)) ? null : day;
 }
 
 export function daysUntil(dateIso, todayIso) {

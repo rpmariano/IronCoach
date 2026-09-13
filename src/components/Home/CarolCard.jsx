@@ -12,10 +12,10 @@ import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
-   Duas partes: o cabeçalho — "A Carol precisa de falar contigo · N
-   assuntos a resolver" quando há intervenção ou propostas por decidir,
-   senão o nome dela — e uma linha do resumo diário (coach-daily-summary),
-   fechada a duas linhas, que "Ler mais" abre com o resto das mensagens.
+   Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
+   resumo diário (coach-daily-summary), fechada a duas linhas, que "Ler
+   mais" abre com o resto das mensagens. Os avisos "precisa de falar
+   contigo" vivem no botão flutuante do Início desde 2026-09-13.
    Substitui o antigo CoachDailySummaryCard (carrossel de 4 mensagens),
    cuja composição do "aviso de hoje" (plano de hoje + água) se mantém em
    useCoachDailyMessages. Ver specs/plano-de-treino.md §11. */
@@ -198,10 +198,6 @@ export function useCoachDailyMessages() {
   }, [dailySummary, activePlanItems, waterLogs, profile, today, tomorrow, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel]);
 }
 
-/* `topic`: um assunto que ela quer tratar sem ser uma intervenção — hoje, "o
-   balanço da prova" nos dias a seguir a uma prova registada (specs/
-   gamificacao-provas.md §3). Mostra-se com o mesmo cabeçalho "A Carol precisa
-   de falar contigo", mas sem o semblante preocupado: é uma boa notícia. */
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram
    daqui para o botão flutuante (pedido 2026-09-13): em cima do resumo do
    dia, os dois liam-se como uma coisa só. */
