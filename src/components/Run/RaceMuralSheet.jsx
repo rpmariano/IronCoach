@@ -34,7 +34,20 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
     diplomaPath: race?.diploma_path || '',
   });
   const [selected, setSelected] = useState(() => defaultMuralSelection(candidates));
-  const toggle = (id) => setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < MURAL_MAX_PHOTOS ? [...prev, id] : prev));
+  const touchedRef = useRef(false);
+  const toggle = (id) => {
+    touchedRef.current = true;
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < MURAL_MAX_PHOTOS ? [...prev, id] : prev));
+  };
+  // As assinaturas das memórias podem chegar depois de a persiana abrir: a
+  // escolha por omissão aplica-se assim que há candidatas, enquanto o
+  // atleta não tiver mexido (revisão pré-deploy 2026-09-13).
+  const candidatesKey = candidates.map((c) => c.id).join('|');
+  useEffect(() => {
+    if (touchedRef.current || selected.length || !candidates.length) return;
+    setSelected(defaultMuralSelection(candidates));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidatesKey]);
   const photoUrls = selected.map((id) => candidates.find((c) => c.id === id)?.url).filter(Boolean);
   const selectedKey = selected.join('|');
 

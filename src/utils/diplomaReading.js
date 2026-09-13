@@ -1,6 +1,11 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { formatDuration } from './run';
 
+/* invokeEdgeFunctionWithTimeout devolve o erro como TEXTO (a mensagem já
+   legível), não como Error — quem apanha lia `err.message` e ficava sem
+   nada (apanhado pelo hook de pre-push, 2026-09-13). */
+const asError = (error) => (error instanceof Error ? error : new Error(typeof error === 'string' ? error : error?.message || 'Falha na chamada ao servidor.'));
+
 /* A Carol lê o diploma (pedido 2026-09-13): ao juntar a imagem do diploma
    no registo da prova, a analyze-diploma extrai o que ele traz — tempo de
    chip e bruto, classificações, escalão, participantes, dorsal, parciais —
@@ -18,7 +23,7 @@ export async function readDiploma(memory) {
   const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-diploma', {
     body: JSON.stringify({ image: base64, mime_type: mime }),
   });
-  if (error) throw error;
+  if (error) throw asError(error);
   if (!data?.reading) throw new Error('Não consegui ler o diploma.');
   return data.reading;
 }

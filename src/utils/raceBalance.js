@@ -17,6 +17,11 @@ import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent } from './
    para uma cópia local, para o hub o ter já sem esperar pelo recarregar da
    prova — e para funcionar mesmo antes de a coluna existir. */
 
+/* invokeEdgeFunctionWithTimeout devolve o erro como TEXTO (a mensagem já
+   legível), não como Error — quem apanha lia `err.message` e ficava sem
+   nada (apanhado pelo hook de pre-push, 2026-09-13). */
+const asError = (error) => (error instanceof Error ? error : new Error(typeof error === 'string' ? error : error?.message || 'Falha na chamada ao servidor.'));
+
 const CACHE_PREFIX = 'ironcoach:balanco:';
 
 export function readCachedBalance(raceId) {
@@ -69,7 +74,7 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
       userData: profile || {},
     }),
   });
-  if (error) throw error;
+  if (error) throw asError(error);
   const text = data?.model_message?.content;
   if (!text) throw new Error('A Carol não respondeu.');
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [];
@@ -100,7 +105,7 @@ export async function requestRaceCaption({ race, run, runs, raceEvents, profile 
   const { data, error } = await invokeEdgeFunctionWithTimeout('coach-chat', {
     body: JSON.stringify({ message: '', race_caption: true, race_outcome: candidate.raceOutcome }),
   });
-  if (error) throw error;
+  if (error) throw asError(error);
   const caption = typeof data?.caption === 'string' ? data.caption.trim() : '';
   if (!caption) throw new Error('A Carol não escreveu a legenda.');
   return caption;

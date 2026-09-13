@@ -801,12 +801,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   };
 
+  // Trocar de imagem a meio de uma leitura: só a resposta ao pedido mais
+  // recente conta (revisão pré-deploy 2026-09-13).
+  const diplomaRequestRef = useRef(0);
   const askDiplomaReading = async (memory) => {
+    const requestId = ++diplomaRequestRef.current;
     setDiplomaReading({ status: 'reading', reading: null, error: '' });
     try {
       const reading = await readDiploma(memory);
+      if (requestId !== diplomaRequestRef.current) return;
       setDiplomaReading({ status: 'ready', reading, error: '' });
     } catch (err) {
+      if (requestId !== diplomaRequestRef.current) return;
       console.warn('Leitura do diploma falhou', err);
       setDiplomaReading({ status: 'failed', reading: null, error: err?.message || 'Não consegui ler o diploma.' });
     }
@@ -1021,8 +1027,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         run = withResult;
       }
     } catch (err) {
+      // `run` fica como está: já leva a hora gravada no passo anterior.
       console.warn('Classificação da prova não gravada', err);
-      run = savedRun;
     }
 
     if (!isRaceMode) {
@@ -1689,7 +1695,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 posição nele, posição por género, participantes. Tudo
                 opcional; o ritmo médio calcula-se e o clube é do perfil. */}
             {diplomaReading && diplomaReading.status !== 'applied' && (
-              <div data-testid="diploma-reading" className="mb-4" style={{ borderRadius: 16, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 12 }}>
+              <div data-testid="diploma-reading" aria-live="polite" className="mb-4" style={{ borderRadius: 16, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 12 }}>
                 <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
                   {diplomaReading.status === 'reading' ? 'A Carol está a ler o diploma…' : diplomaReading.status === 'ready' ? 'A Carol leu o diploma' : 'Diploma por ler'}
                 </div>
@@ -1787,7 +1793,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             onDiplomaFile={handleDiplomaFile}
             onMedalFile={handleMedalFile}
             onPhotoFiles={handleRacePhotoFiles}
-            onRemoveDiploma={() => { setDiploma(null); setIsFormDirty(true); }}
+            onRemoveDiploma={() => { setDiploma(null); setDiplomaReading(null); diplomaRequestRef.current += 1; setIsFormDirty(true); }}
             onRemoveMedal={() => { setMedal(null); setIsFormDirty(true); }}
             onRemovePhoto={(i) => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
             error={memoryError}

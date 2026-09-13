@@ -26,7 +26,8 @@ describe('readDiploma', () => {
 
   it('não lê PDFs nem o vazio, e propaga a mensagem do servidor', async () => {
     await expect(readDiploma({ isPdf: true, blob: {} })).rejects.toThrow('Só consigo ler o diploma em imagem.');
-    mocks.invoke.mockResolvedValue({ data: null, error: new Error('Não consegui ler nada neste diploma.') });
+    // invokeEdgeFunctionWithTimeout devolve o erro como texto: chega como Error com essa mensagem.
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Não consegui ler nada neste diploma.' });
     await expect(readDiploma({ dataUrl: 'data:image/jpeg;base64,AAA' })).rejects.toThrow('Não consegui ler nada');
   });
 });
