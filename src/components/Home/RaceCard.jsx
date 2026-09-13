@@ -10,7 +10,7 @@ import GlassCard from '../shared/GlassCard';
 import RaceTrail from '../shared/RaceTrail';
 import CarouselDots from '../shared/CarouselDots';
 import { AchievementChip } from '../shared/AchievementCard';
-import { useIntroAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUpText } from '../../utils/useCountUp';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
@@ -183,9 +183,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };
   }, [concluida, raceEvents, runs, profile, today, estaRegistada]);
 
-  /* Ponto 9, animação 2: os dias que faltam contam à primeira entrada da
-     sessão. Ao trocar de prova nas setas já não conta — é a mesma leitura. */
-  const intro = useIntroAnimation('home-race-days');
+  /* Ponto 9, animação 2: os dias que faltam contam quando o número aparece
+     no ecrã, e outra vez ao voltar ao Início ou ao separador Provas
+     (useRevealAnimation, 2026-09-13). Ao trocar de prova nas setas não
+     conta — é a mesma leitura. */
+  const daysReveal = useRevealAnimation();
 
   const model = useMemo(() => {
     if (!race) return null;
@@ -267,8 +269,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               <Trophy size={20} />
             </div>
           ) : (
-            <div className="text-right shrink-0">
-              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount days={model.days} animate={intro} /></div>
+            <div className="text-right shrink-0" ref={daysReveal.ref} style={daysReveal.style}>
+              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount key={daysReveal.playKey} days={model.days} animate={daysReveal.animate} /></div>
               <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
             </div>
           )}

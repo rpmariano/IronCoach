@@ -5,7 +5,8 @@ import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
-import { useIntroAnimation, barGrowAnimation } from '../../utils/introAnimations';
+import { barGrowAnimation } from '../../utils/introAnimations';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
 
 /* Ponto 6 do redesenho:
    - O "Média 4s" era escrito com `ctx.fillText` em cima da tela. A linha
@@ -70,13 +71,13 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
     ]
   };
 
-  const introBars = useIntroAnimation('bi-bars');
+  const reveal = useRevealAnimation();
 
   const options = {
     responsive: true,
     /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
-       direita, --dur-bars com --stagger-bars — uma vez por sessão. */
-    animation: barGrowAnimation(introBars),
+       direita, --dur-bars com --stagger-bars — quando o gráfico aparece no ecrã. */
+    animation: barGrowAnimation(reveal.animate),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -117,6 +118,7 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
 
   return (
     <ChartFrame
+      reveal={reveal}
       className={className}
       label="Volume-carga semanal"
       info={<MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />}
