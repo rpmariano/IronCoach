@@ -122,8 +122,11 @@ o cartão do Início mostra e as que o `coach-daily-summary` recebe.
   plano (`utils/planDivergence.js`): prova dentro do período do plano sem
   item de prova, treino no dia da prova, treino forte a dois dias da prova,
   duas ou mais sessões falhadas nos últimos 7 dias. Sem tabela nova. O
-  Início mostra "A Carol precisa de falar contigo · o plano precisa de um
-  ajuste"; abrir o chat entra no "Adaptar plano" com os motivos
+  aviso "O plano precisa de um ajuste" vive no botão flutuante da Carol no
+  Início (conta no número e abre na janela dos insights, com os motivos) —
+  desde 2026-09-13 já não no cabeçalho do cartão dela, onde se confundia com
+  o resumo do dia; o mesmo vale para "precisa de falar contigo" e para o
+  balanço da prova. "Falar com a Carol" entra no "Adaptar plano" com os motivos
   (`plan_divergence` no body), e a Carol explica o que muda e propõe o plano
   ajustado. A mesma deteção não volta a chamar enquanto o plano não mudar.
   As sessões falhadas só contam se foram planeadas depois da última

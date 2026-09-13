@@ -76,4 +76,40 @@ describe('CoachInsightModal', () => {
     expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'understood');
     expect(mockOnClose).toHaveBeenCalled();
   });
+
+  /* Os avisos da Carol (2026-09-13): cada um com o seu "Falar com a Carol";
+     sem "Entendido" nem "Ignorar", porque saem quando o assunto se resolve. */
+  describe('avisos da Carol', () => {
+    const alerta = (over = {}) => ({ id: 'plano', title: 'O plano precisa de um ajuste', message: 'A Corrida do Tejo não está no plano.', onTalk: vi.fn(), ...over });
+
+    it('mostra o aviso e "Falar com a Carol" chama o dele e fecha', () => {
+      const a = alerta();
+      render(<CoachInsightModal alerts={[a]} onClose={mockOnClose} />);
+
+      expect(screen.getByTestId('carol-alert-plano')).toHaveTextContent('A Corrida do Tejo não está no plano.');
+      expect(screen.queryByRole('button', { name: /Ignorar/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Entendido/i })).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('carol-alert-talk-plano'));
+      expect(a.onTalk).toHaveBeenCalledTimes(1);
+      expect(mockSetCoachIntent).not.toHaveBeenCalled();
+      expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it('"Dispensar aviso" só aparece quando o aviso o permite', () => {
+      const onDismiss = vi.fn();
+      render(<CoachInsightModal alerts={[alerta({ id: 'assuntos', onDismiss })]} onClose={mockOnClose} />);
+      fireEvent.click(screen.getByTestId('carol-alert-dismiss-assuntos'));
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+      expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it('com avisos e insights, só há um "Falar com a Carol" por aviso e "Ignorar" é só dos insights', () => {
+      render(<CoachInsightModal alerts={[alerta()]} insights={sampleInsights} onClose={mockOnClose} />);
+      expect(screen.getAllByText('Falar com a Carol')).toHaveLength(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Ignorar os insights' }));
+      expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'ignored');
+      expect(mockSetInsightState).not.toHaveBeenCalledWith('plano', expect.anything());
+    });
+  });
 });

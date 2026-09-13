@@ -202,7 +202,10 @@ export function useCoachDailyMessages() {
    balanço da prova" nos dias a seguir a uma prova registada (specs/
    gamificacao-provas.md §3). Mostra-se com o mesmo cabeçalho "A Carol precisa
    de falar contigo", mas sem o semblante preocupado: é uma boa notícia. */
-export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach, onDismissTopic, onOpenRace }) {
+/* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram
+   daqui para o botão flutuante (pedido 2026-09-13): em cima do resumo do
+   dia, os dois liam-se como uma coisa só. */
+export default function CarolCard({ onOpenCoach, onOpenRace }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
   const [expanded, setExpanded] = useState(false);
@@ -216,32 +219,20 @@ export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach
   const loading = dailySummaryLoading && !dailySummary;
 
   return (
-    <GlassCard tone="coach" radius={20} padding="14px 15px" className="flex flex-col gap-[11px]" data-testid="carol-card">
-      <button type="button" onClick={onOpenCoach} className="flex items-center gap-2.5 w-full text-left min-h-[44px] -my-1.5">
-        <CoachAvatar size={30} mood={pendingTopics > 0 ? 'concerned' : 'neutral'} breathing={pendingTopics > 0 || !!topic} />
+    <GlassCard tone="coach" radius={20} padding="12px 15px 14px" className="flex flex-col" data-testid="carol-card">
+      {/* Sem margem negativa: o botão puxava-se para cima do fio e o
+          subtítulo ficava colado à primeira etiqueta do resumo. */}
+      <button type="button" onClick={onOpenCoach} className="flex items-center gap-2.5 w-full text-left min-h-[44px]">
+        <CoachAvatar size={30} mood="neutral" />
         <div className="flex-1 min-w-0">
-          {pendingTopics > 0 ? (
-            <>
-              <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>A Carol precisa de falar contigo</div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>{pendingTopics === 1 ? '1 assunto a resolver' : `${pendingTopics} assuntos a resolver`}</div>
-            </>
-          ) : topic ? (
-            <>
-              <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>A Carol precisa de falar contigo</div>
-              <div className="text-[11px] mt-0.5" data-testid="carol-card-topic" style={{ color: 'var(--text-4)' }}>{topic}</div>
-            </>
-          ) : (
-            <>
-              <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>Carol</div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>a tua treinadora</div>
-            </>
-          )}
+          <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>Carol</div>
+          <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>a tua treinadora</div>
         </div>
         <ChevronRight size={16} style={{ color: 'var(--coach)' }} className="shrink-0" />
       </button>
 
-      <div className="flex items-start gap-2.5 pt-[11px]" style={{ borderTop: '1px solid rgba(34,211,238,.2)' }}>
-        <Sparkles size={16} style={{ color: 'var(--coach)', marginTop: 1 }} className="shrink-0" />
+      <div className="flex items-start gap-2.5 mt-2.5 pt-3" style={{ borderTop: '1px solid rgba(34,211,238,.2)' }}>
+        <Sparkles size={16} style={{ color: 'var(--coach)', marginTop: 2 }} className="shrink-0" />
         <div className="flex-1 min-w-0">
           {loading ? (
             <div data-testid="carol-skeleton" className="flex flex-col gap-2 py-0.5" aria-label="A carregar o resumo">
@@ -284,11 +275,6 @@ export default function CarolCard({ pendingTopics = 0, topic = null, onOpenCoach
               <button type="button" onClick={() => loadDailySummary({ force: true })} disabled={dailySummaryLoading} aria-label="Atualizar resumo" className="inline-flex items-center gap-1.5 min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>
                 <RefreshCw size={13} className={dailySummaryLoading ? 'animate-spin' : ''} /> Atualizar
               </button>
-              {pendingTopics > 0 && onDismissTopic && (
-                <button type="button" onClick={onDismissTopic} className="min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>
-                  Dispensar aviso
-                </button>
-              )}
             </div>
           )}
         </div>

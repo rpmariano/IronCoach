@@ -25,12 +25,13 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     expect(screen.queryByText('Ler mais')).not.toBeInTheDocument();
   });
 
-  it('com assuntos pendentes o cabeçalho muda e conta-os', () => {
+  // Os avisos "precisa de falar contigo" vivem no botão flutuante desde
+  // 2026-09-13; o cabeçalho é sempre a Carol e leva ao chat.
+  it('o cabeçalho é sempre a Carol e abre o chat', () => {
     const onOpenCoach = vi.fn();
-    render(<CarolCard pendingTopics={1} onOpenCoach={onOpenCoach} />);
-    expect(screen.getByText('A Carol precisa de falar contigo')).toBeInTheDocument();
-    expect(screen.getByText('1 assunto a resolver')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('A Carol precisa de falar contigo'));
+    render(<CarolCard onOpenCoach={onOpenCoach} />);
+    expect(screen.queryByText('A Carol precisa de falar contigo')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('a tua treinadora'));
     expect(onOpenCoach).toHaveBeenCalled();
   });
 

@@ -58,7 +58,7 @@ export default function Home() {
   const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
 
   /* O balanço da prova (specs/gamificacao-provas.md §3): no dia a seguir, a
-     Carol chama por ele a partir do cartão de topo enquanto o chat não for
+     Carol chama por ele a partir do botão flutuante enquanto o chat não for
      aberto. Só quando não há assuntos por resolver — uma intervenção pesa
      mais do que um balanço. */
   const raceBalance = useMemo(
@@ -80,8 +80,6 @@ export default function Home() {
     return found;
   }, [pendingTopics, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
 
-  const carolTopic = divergence ? 'o plano precisa de um ajuste' : raceBalance ? 'o balanço da prova' : null;
-
   const openCoach = () => {
     if (interventionPending) {
       setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
@@ -90,6 +88,39 @@ export default function Home() {
     }
     setActiveTab('coach');
   };
+
+  /* Os avisos da Carol vivem no botão flutuante (pedido 2026-09-13): no
+     cabeçalho do cartão dela confundiam-se com o resumo do dia. Um de cada
+     vez, pela mesma prioridade de sempre — assuntos por resolver, depois o
+     ajuste do plano, depois o balanço da prova —, cada um com o seu "Falar
+     com a Carol" na janela dos insights. */
+  const carolAlerts = [];
+  if (pendingTopics > 0) {
+    carolAlerts.push({
+      id: 'assuntos',
+      severity: 'warning',
+      title: 'A Carol precisa de falar contigo',
+      message: pendingTopics === 1 ? 'Tens 1 assunto a resolver com ela.' : `Tens ${pendingTopics} assuntos a resolver com ela.`,
+      onTalk: openCoach,
+      onDismiss: interventionPending ? () => setShowDismiss(true) : null,
+    });
+  } else if (divergence) {
+    carolAlerts.push({
+      id: 'plano',
+      severity: 'warning',
+      title: 'O plano precisa de um ajuste',
+      message: divergence.reasons.map((r) => r.text).join(' '),
+      onTalk: openCoach,
+    });
+  } else if (raceBalance) {
+    carolAlerts.push({
+      id: 'balanco',
+      severity: 'info',
+      title: 'O balanço da prova',
+      message: `Correste a ${raceBalance.name || 'prova'}. Quero fazer o balanço contigo.`,
+      onTalk: () => setActiveTab('coach'),
+    });
+  }
 
   // "Registar sessão" não marca logo — deixa isso ao ecrã de registo, que
   // grava o completePlanItem só depois de a corrida/sessão real estar
@@ -149,7 +180,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
-      <CarolCard onOpenRace={setEditingRaceId} pendingTopics={pendingTopics} topic={carolTopic} onOpenCoach={openCoach} onDismissTopic={interventionPending ? () => setShowDismiss(true) : undefined} />
+      <CarolCard onOpenRace={setEditingRaceId} onOpenCoach={openCoach} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
@@ -183,8 +214,8 @@ export default function Home() {
         </Dialog>
       )}
 
-      <CoachInsightButton insights={homeInsights} onClick={() => setShowInsights(true)} />
-      {showInsights && <CoachInsightModal insights={homeInsights} onClose={() => setShowInsights(false)} />}
+      <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={() => setShowInsights(true)} />
+      {showInsights && <CoachInsightModal insights={homeInsights} alerts={carolAlerts} onClose={() => setShowInsights(false)} />}
     </div>
   );
 }
