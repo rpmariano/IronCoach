@@ -37,7 +37,7 @@ describe('RaceMuralSheet', () => {
     expect(mocks.render).toHaveBeenCalledWith(expect.objectContaining({
       format: 'retrato', seconds: 3088, distanceKm: 10.11, photoUrls: ['https://s/p1.jpg', 'https://s/medal.jpg'],
     }));
-    expect(screen.getByText('2 fotografias das memórias, o teu tempo e a distância.')).toBeInTheDocument();
+    expect(screen.getByText(/2 de 4 escolhidas/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('race-mural-format-story'));
     await waitFor(() => expect(mocks.render).toHaveBeenLastCalledWith(expect.objectContaining({ format: 'story' })));
@@ -58,6 +58,24 @@ describe('RaceMuralSheet', () => {
 
     fireEvent.click(screen.getByTestId('race-mural-copy'));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('#IronCoach')));
+  });
+
+  it('tirar e pôr fotografias muda o mural, pela ordem da escolha, até 4', async () => {
+    const photos = ['https://s/p1.jpg', 'https://s/p2.jpg', 'https://s/p3.jpg', 'https://s/p4.jpg', 'https://s/p5.jpg'];
+    render(<RaceMuralSheet race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} seconds={3088} memoryUrls={{ diploma: null, medal: 'https://s/medal.jpg', photos }} onClose={() => {}} />);
+    await screen.findByTestId('race-mural-preview');
+    // Por omissão as quatro primeiras; a quinta e a medalha ficam de fora e desativadas.
+    expect(mocks.render).toHaveBeenLastCalledWith(expect.objectContaining({ photoUrls: photos.slice(0, 4) }));
+    expect(screen.getByTestId('race-mural-photo-medal')).toBeDisabled();
+
+    // Tira a primeira, entra a medalha — no fim, pela ordem da escolha.
+    fireEvent.click(screen.getByTestId('race-mural-photo-photo-0'));
+    fireEvent.click(screen.getByTestId('race-mural-photo-medal'));
+    await waitFor(() => expect(mocks.render).toHaveBeenLastCalledWith(expect.objectContaining({
+      photoUrls: ['https://s/p2.jpg', 'https://s/p3.jpg', 'https://s/p4.jpg', 'https://s/medal.jpg'],
+    })));
+    expect(screen.getByTestId('race-mural-photo-medal')).toHaveAttribute('aria-label', 'Medalha, 4.ª no mural');
+    expect(screen.getByText(/4 de 4 escolhidas/)).toBeInTheDocument();
   });
 
   it('sem fotografias diz-o e compõe só com os números', async () => {

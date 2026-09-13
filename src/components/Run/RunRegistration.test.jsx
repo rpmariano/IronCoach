@@ -725,6 +725,61 @@ describe('RunRegistration — modo prova', () => {
     expect(screen.getByText('Adicionar o diploma')).toBeInTheDocument();
   });
 
+  /* Os campos do diploma (pedido 2026-09-13): dorsal, escalão, posições e
+     participantes vão para runs.details por update à parte — a analyze-run
+     não os conhece, como acontece com a hora. */
+  it('os campos do diploma gravam-se em runs.details, só os preenchidos', async () => {
+    entrarPeloPrefill();
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+    fireEvent.change(screen.getByLabelText('Dorsal'), { target: { value: '1234' } });
+    fireEvent.change(screen.getByLabelText('Escalão'), { target: { value: 'M40' } });
+    fireEvent.change(screen.getByLabelText('Pos. escalão'), { target: { value: '41' } });
+    fireEvent.change(screen.getByLabelText('Participantes'), { target: { value: '1850' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.details)).toBe(true));
+    const detalhes = mocks.updates.find(u => u.table === 'runs' && u.payload.details).payload.details;
+    expect(detalhes).toEqual({ bib_number: '1234', age_group: 'M40', age_group_position: 41, participants: 1850 });
+    expect(detalhes).not.toHaveProperty('gender_position');
+  });
+
+  /* A Carol lê o diploma (pedido 2026-09-13): ao juntar a imagem, a
+     analyze-diploma devolve a leitura e o atleta aplica-a ao registo. */
+  it('ao juntar o diploma, a Carol lê-o e "Aplicar" preenche o registo com o tempo de chip', async () => {
+    entrarPeloPrefill();
+    mocks.invoke.mockImplementation((fn) => fn === 'analyze-diploma'
+      ? Promise.resolve({ data: { reading: { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group: null, age_group_position: 226, gender_position: null, participants: null, bib_number: null, splits: [{ km: 5, seconds: 1515 }] } }, error: null })
+      : Promise.resolve({ data: { run: { id: 'run-race-1' } }, error: null }));
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+    await act(async () => {
+      fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
+    });
+    const leitura = await screen.findByTestId('diploma-reading');
+    expect(leitura).toHaveTextContent('A Carol leu o diploma');
+    expect(leitura).toHaveTextContent('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
+    expect(leitura).toHaveTextContent('Em nome de RUI MARIANO');
+    expect(JSON.parse(mocks.invoke.mock.calls[0][1].body).image).toBe('AAA');
+
+    fireEvent.click(screen.getByTestId('diploma-reading-apply'));
+    expect(screen.getByLabelText(/Tempo oficial/).value).toBe('51:27');
+    expect(screen.getByLabelText('Posição geral (opcional)').value).toBe('1668');
+    expect(screen.getByLabelText('Pos. escalão').value).toBe('226');
+    expect(screen.queryByTestId('diploma-reading')).not.toBeInTheDocument();
+
+    // Ao gravar, o bruto e o parcial vão para runs.details com o resto.
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.details)).toBe(true));
+    const detalhes = mocks.updates.find(u => u.table === 'runs' && u.payload.details).payload.details;
+    expect(detalhes).toMatchObject({ age_group_position: 226, gun_time_seconds: 3111, official_splits: [{ km: 5, seconds: 1515 }] });
+  });
+
   it('ao gravar, liga a corrida à prova, conclui a prova e sobe as memórias', async () => {
     entrarPeloPrefill();
     render(<RunRegistration onClose={onClose} />);

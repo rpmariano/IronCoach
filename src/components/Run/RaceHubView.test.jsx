@@ -302,6 +302,20 @@ describe('RaceHubView — conquistas da prova', () => {
       .toHaveTextContent('Objetivo batido fica para a próxima: ficaste a 1:42');
   });
 
+  it('mostra a classificação do diploma por baixo do tempo, quando existe', () => {
+    useAppStore.setState({ raceEvents: [COM_OBJETIVO] });
+    const run = { ...RACE_RUN, race_id: 'race-1', details: { official_time_seconds: 6822, position: 312, participants: 1850, age_group: 'M40', age_group_position: 41 } };
+    render(<RaceHubView race={COM_OBJETIVO} runs={[run]} profile={{ ...PROFILE, gender: 'M' }} />);
+    expect(screen.getByTestId('race-classification')).toHaveTextContent('312.º geral de 1 850 · 41.º M40');
+  });
+
+  it('mostra o tempo bruto e os parciais oficiais do diploma', () => {
+    useAppStore.setState({ raceEvents: [COM_OBJETIVO] });
+    const run = { ...RACE_RUN, race_id: 'race-1', details: { official_time_seconds: 6822, gun_time_seconds: 6850, official_splits: [{ km: 10, seconds: 3200 }] } };
+    render(<RaceHubView race={COM_OBJETIVO} runs={[run]} profile={PROFILE} />);
+    expect(screen.getByTestId('race-official-times')).toHaveTextContent('tempo bruto 1:54:10 · passagem aos 10 km 53:20');
+  });
+
   it('o balanço é o da prova, com os números da régua única', () => {
     useAppStore.setState({ raceEvents: [COM_OBJETIVO] });
     render(<RaceHubView race={COM_OBJETIVO} runs={[{ ...RACE_RUN, race_id: 'race-1', details: { official_time_seconds: 6822 } }]} profile={PROFILE} />);

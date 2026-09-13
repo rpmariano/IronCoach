@@ -5,6 +5,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
+import { readDiploma, diplomaFormValues, describeDiplomaReading } from '../../utils/diplomaReading';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -226,6 +227,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     !initialRace && planItem?.target_duration ? formatDuration(planItem.target_duration) : ''
   );
   const [position, setPosition] = useState('');
+  // O que o diploma traz e a app não calcula (utils/run.js,
+  // RACE_RESULT_FIELDS): grava-se em runs.details por update à parte.
+  const [bibNumber, setBibNumber] = useState('');
+  const [ageGroup, setAgeGroup] = useState('');
+  const [ageGroupPosition, setAgeGroupPosition] = useState('');
+  const [genderPosition, setGenderPosition] = useState('');
+  const [participants, setParticipants] = useState('');
+  // O que só o diploma dá e não tem campo: o tempo bruto (o oficial é o de
+  // chip) e os parciais oficiais. Vêm da leitura da Carol e gravam-se em
+  // runs.details com o resto.
+  const [gunTimeSeconds, setGunTimeSeconds] = useState(null);
+  const [officialSplits, setOfficialSplits] = useState([]);
+  // A leitura do diploma pela Carol: { status: 'reading'|'ready'|'failed'|'applied', reading, error }.
+  const [diplomaReading, setDiplomaReading] = useState(null);
   const [completedRaceType, setCompletedRaceType] = useState(
     raceTypeFromRaceEvent(initialRace) || planItem?.race_type || '10k'
   );
@@ -546,6 +561,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         setOfficialTime(persisted?.officialTime ?? (d.official_time_seconds ? formatDuration(d.official_time_seconds) : ''));
         setPosition(persisted?.position ?? (d.position || ''));
+        setBibNumber(persisted?.bibNumber ?? (d.bib_number != null ? String(d.bib_number) : ''));
+        setAgeGroup(persisted?.ageGroup ?? (d.age_group || ''));
+        setAgeGroupPosition(persisted?.ageGroupPosition ?? (d.age_group_position || ''));
+        setGenderPosition(persisted?.genderPosition ?? (d.gender_position || ''));
+        setParticipants(persisted?.participants ?? (d.participants || ''));
+        setGunTimeSeconds(persisted?.gunTimeSeconds ?? (d.gun_time_seconds || null));
+        setOfficialSplits(persisted?.officialSplits ?? (Array.isArray(d.official_splits) ? d.official_splits : []));
         setCompletedRaceType(persisted?.completedRaceType ?? (d.race_type || '10k'));
         // Uma corrida já ligada a uma prova reabre SEMPRE em modo prova — é
         // assim que se voltam a ver (e a corrigir) as memórias já guardadas.
@@ -659,6 +681,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (persisted.hrZones) setHrZones(persisted.hrZones);
     if (persisted.officialTime !== undefined) setOfficialTime(persisted.officialTime);
     if (persisted.position !== undefined) setPosition(persisted.position);
+    if (persisted.bibNumber !== undefined) setBibNumber(persisted.bibNumber);
+    if (persisted.ageGroup !== undefined) setAgeGroup(persisted.ageGroup);
+    if (persisted.ageGroupPosition !== undefined) setAgeGroupPosition(persisted.ageGroupPosition);
+    if (persisted.genderPosition !== undefined) setGenderPosition(persisted.genderPosition);
+    if (persisted.participants !== undefined) setParticipants(persisted.participants);
+    if (persisted.gunTimeSeconds !== undefined) setGunTimeSeconds(persisted.gunTimeSeconds);
+    if (persisted.officialSplits) setOfficialSplits(persisted.officialSplits);
     if (persisted.completedRaceType) setCompletedRaceType(persisted.completedRaceType);
     if (persisted.raceId !== undefined) setRaceId(persisted.raceId);
     setIsFormDirty(true);
@@ -682,6 +711,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     hrRecovery, groundContactTime, flightTime, verticalOscillation, asymmetryPct, legStiffness,
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
+    bibNumber, ageGroup, ageGroupPosition, genderPosition, participants, gunTimeSeconds, officialSplits,
   }, { isDirty: isFormDirty });
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
@@ -761,7 +791,46 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const handleDiplomaFile = async (file) => {
     const { memory, error } = await pickDiploma(file);
     setMemoryError(error);
-    if (memory) { setDiploma(memory); setIsFormDirty(true); }
+    if (memory) {
+      setDiploma(memory);
+      setIsFormDirty(true);
+      // Em modo prova a Carol lê o diploma logo (analyze-diploma) e o
+      // registo mostra a leitura para o atleta aplicar — não se preenche
+      // nada por conta própria. Um PDF não se lê.
+      if (isRaceMode && !memory.isPdf) askDiplomaReading(memory);
+    }
+  };
+
+  // Trocar de imagem a meio de uma leitura: só a resposta ao pedido mais
+  // recente conta (revisão pré-deploy 2026-09-13).
+  const diplomaRequestRef = useRef(0);
+  const askDiplomaReading = async (memory) => {
+    const requestId = ++diplomaRequestRef.current;
+    setDiplomaReading({ status: 'reading', reading: null, error: '' });
+    try {
+      const reading = await readDiploma(memory);
+      if (requestId !== diplomaRequestRef.current) return;
+      setDiplomaReading({ status: 'ready', reading, error: '' });
+    } catch (err) {
+      if (requestId !== diplomaRequestRef.current) return;
+      console.warn('Leitura do diploma falhou', err);
+      setDiplomaReading({ status: 'failed', reading: null, error: err?.message || 'Não consegui ler o diploma.' });
+    }
+  };
+
+  const applyDiplomaReading = () => {
+    const values = diplomaFormValues(diplomaReading?.reading);
+    if (values.officialTime) setOfficialTime(values.officialTime);
+    if (values.position) setPosition(values.position);
+    if (values.ageGroup) setAgeGroup(values.ageGroup);
+    if (values.ageGroupPosition) setAgeGroupPosition(values.ageGroupPosition);
+    if (values.genderPosition) setGenderPosition(values.genderPosition);
+    if (values.participants) setParticipants(values.participants);
+    if (values.bibNumber) setBibNumber(values.bibNumber);
+    if (values.gunTimeSeconds) setGunTimeSeconds(values.gunTimeSeconds);
+    if (values.officialSplits) setOfficialSplits(values.officialSplits);
+    setIsFormDirty(true);
+    setDiplomaReading((prev) => ({ ...prev, status: 'applied' }));
   };
 
   const handleMedalFile = async (file) => {
@@ -805,6 +874,35 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const { error } = await supabase.from('runs').update({ start_time: value }).eq('id', run.id);
     if (error) throw error;
     return { ...run, start_time: value };
+  };
+
+  /* A classificação da prova (dorsal, escalão, posições, participantes) toma
+     o caminho da hora, pela mesma razão: vive em runs.details e a
+     analyze-run não a conhece. Só em competição; só o que mudou; e sem
+     entrar na analyticalSignature — não muda análise nenhuma. */
+  const raceResultPatch = () => {
+    const int = (v) => { const n = parseInt(String(v ?? '').trim(), 10); return Number.isFinite(n) && n > 0 ? n : null; };
+    return {
+      bib_number: String(bibNumber || '').trim() || null,
+      age_group: String(ageGroup || '').trim() || null,
+      age_group_position: int(ageGroupPosition),
+      gender_position: int(genderPosition),
+      participants: int(participants),
+      gun_time_seconds: int(gunTimeSeconds),
+      official_splits: Array.isArray(officialSplits) && officialSplits.length ? officialSplits : null,
+    };
+  };
+  const persistRaceResultDetails = async (run) => {
+    if (!run?.id || runKind !== 'competicao') return run;
+    const patch = raceResultPatch();
+    const current = run.details || {};
+    const changed = Object.entries(patch).some(([k, v]) => JSON.stringify(current[k] ?? null) !== JSON.stringify(v));
+    if (!changed) return run;
+    const details = { ...current };
+    Object.entries(patch).forEach(([k, v]) => { if (v === null) delete details[k]; else details[k] = v; });
+    const { error } = await supabase.from('runs').update({ details }).eq('id', run.id);
+    if (error) throw error;
+    return { ...run, details };
   };
 
   /* Envia o que é novo para o bucket e grava os caminhos na prova, junto
@@ -920,7 +1018,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
     } catch (err) {
       console.warn('Hora de início da corrida não gravada', err);
-      run = savedRun;
+    }
+    try {
+      const withResult = await persistRaceResultDetails(run);
+      if (withResult !== run && withResult?.id) {
+        const store = useAppStore.getState();
+        store.setRuns(store.runs.map(r => (r.id === withResult.id ? { ...r, details: withResult.details } : r)));
+        run = withResult;
+      }
+    } catch (err) {
+      // `run` fica como está: já leva a hora gravada no passo anterior.
+      console.warn('Classificação da prova não gravada', err);
     }
 
     if (!isRaceMode) {
@@ -1583,6 +1691,71 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             </div>
 
+            {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
+                posição nele, posição por género, participantes. Tudo
+                opcional; o ritmo médio calcula-se e o clube é do perfil. */}
+            {diplomaReading && diplomaReading.status !== 'applied' && (
+              <div data-testid="diploma-reading" aria-live="polite" className="mb-4" style={{ borderRadius: 16, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 12 }}>
+                <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
+                  {diplomaReading.status === 'reading' ? 'A Carol está a ler o diploma…' : diplomaReading.status === 'ready' ? 'A Carol leu o diploma' : 'Diploma por ler'}
+                </div>
+                {diplomaReading.status === 'reading' && (
+                  <div role="status" aria-label="A ler o diploma" className="flex flex-col gap-2 mt-2">
+                    <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
+                    <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
+                  </div>
+                )}
+                {diplomaReading.status === 'ready' && (
+                  <>
+                    <p className="text-[12.5px] leading-[1.5] mt-1.5" style={{ color: 'var(--text-1)' }}>
+                      {describeDiplomaReading(diplomaReading.reading)}
+                    </p>
+                    {diplomaReading.reading?.athlete_name && (
+                      <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>Em nome de {diplomaReading.reading.athlete_name}. Confirma antes de aplicar.</p>
+                    )}
+                    <div className="flex gap-2 mt-2.5">
+                      <button type="button" data-testid="diploma-reading-apply" onClick={applyDiplomaReading} className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-extrabold" style={{ minHeight: 44, padding: '0 14px', background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)', border: 'none' }}>
+                        Aplicar ao registo
+                      </button>
+                      <button type="button" onClick={() => setDiplomaReading(null)} className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-bold" style={{ minHeight: 44, padding: '0 12px', background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+                        Ignorar
+                      </button>
+                    </div>
+                  </>
+                )}
+                {diplomaReading.status === 'failed' && (
+                  <p className="text-[12px] leading-[1.5] mt-1.5" style={{ color: 'var(--text-3)' }}>{diplomaReading.error} Podes preencher à mão em baixo.</p>
+                )}
+              </div>
+            )}
+            <div data-testid="race-result-fields" className="mb-4">
+              <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="rr-dorsal" className="text-[11px] text-[var(--text-3)] block mb-1.5">Dorsal</label>
+                  <input id="rr-dorsal" type="text" inputMode="numeric" placeholder="ex.: 1234" value={bibNumber} onChange={e => { setBibNumber(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Escalão</label>
+                  <input id="rr-escalao" type="text" placeholder="ex.: M40" value={ageGroup} onChange={e => { setAgeGroup(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5 mt-2.5">
+                <div>
+                  <label htmlFor="rr-pos-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. escalão</label>
+                  <input id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-pos-genero" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. género</label>
+                  <input id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-participantes" className="text-[11px] text-[var(--text-3)] block mb-1.5">Participantes</label>
+                  <input id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }} className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition" />
+                </div>
+              </div>
+            </div>
+
             {showToggle && renderEntryMethodChips()}
 
             {showFotoBlock ? renderPhotoBlock() : (
@@ -1620,7 +1793,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             onDiplomaFile={handleDiplomaFile}
             onMedalFile={handleMedalFile}
             onPhotoFiles={handleRacePhotoFiles}
-            onRemoveDiploma={() => { setDiploma(null); setIsFormDirty(true); }}
+            onRemoveDiploma={() => { setDiploma(null); setDiplomaReading(null); diplomaRequestRef.current += 1; setIsFormDirty(true); }}
             onRemoveMedal={() => { setMedal(null); setIsFormDirty(true); }}
             onRemovePhoto={(i) => { setRacePhotos(prev => prev.filter((_, idx) => idx !== i)); setIsFormDirty(true); }}
             error={memoryError}

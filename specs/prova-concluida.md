@@ -42,6 +42,25 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
    - **Como correu** — esforço (RPE) e notas.
    - **Memórias** — diploma, medalha, fotografias da prova, com os limites
      acima e o contador "N de 6".
+   - **Do diploma** (2026-09-13, opcional) — dorsal, escalão e posição
+     nele, posição por género, total de participantes. Vivem em
+     `runs.details` (`bib_number`, `age_group`, `age_group_position`,
+     `gender_position`, `participants`), gravados por update à parte como a
+     hora (a `analyze-run` não os conhece). O tempo de chip é o tempo
+     oficial que já existia; o ritmo médio calcula-se e o clube é do perfil.
+     O hub lê-os numa linha (`describeRaceClassification`): "312.º geral de
+     1 850 · 41.º M40 · 280.º masculino · dorsal 1234", que o mural também
+     leva. Mais dois que só o diploma dá: `gun_time_seconds` (o tempo bruto;
+     o oficial é o de chip) e `official_splits` ([{km, seconds}]), numa
+     segunda linha do hub (`describeRaceTimes`).
+   - **A Carol lê o diploma.** Ao juntar a imagem do diploma em modo prova,
+     a Edge Function `analyze-diploma` (Gemini, sem gravar nada) devolve a
+     leitura — tempo de chip e bruto, classificações, escalão, participantes,
+     dorsal, parciais — e o registo mostra "A Carol leu o diploma: …" com
+     "Aplicar ao registo" e "Ignorar". O tempo oficial passa a ser o de
+     chip. Calibrado com o diploma real da Corrida do Tejo 2026 (dois tempos
+     no mesmo diploma, classificação no escalão sem nome, passagem aos 5 km).
+     Um PDF não se lê; sem leitura, preenche-se à mão.
    Entradas para este modo: o botão "Registar a corrida da prova" do hub;
    um CTA "Registar a prova" no cartão da prova do Início e da agenda a
    partir do dia da prova (e enquanto não houver corrida ligada, até 7 dias

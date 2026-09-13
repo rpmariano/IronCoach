@@ -75,8 +75,10 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
 - **O mural para o Instagram.** No hub, "Criar mural para partilhar"
   (`RaceMuralSheet`): três formatos (quadrado 1:1, retrato 4:5, story 9:16),
   as fotos das memórias (as do dia primeiro, a medalha a fechar, até 4), o
-  nome, a data, o tempo, a distância e o ritmo, e o logótipo da app no canto
-  inferior direito — discreto mas legível. Compõe-se no telemóvel com Canvas
+  nome, a data, o tempo, a distância e o ritmo, a classificação do diploma
+  quando existe, e o logótipo da app no canto inferior direito — discreto
+  mas legível. O atleta escolhe QUAIS fotos entram, pela ordem em que as
+  escolhe (miniaturas com aria-pressed e o número da ordem), até 4. Compõe-se no telemóvel com Canvas
   (`utils/raceMural.js`): instantâneo, sem custo, e as fotos ficam como o
   atleta as tirou. Só a legenda é da Carol (coach-chat `race_caption`, na
   primeira pessoa do atleta, a fechar com #IronCoach). Partilha pelo menu
