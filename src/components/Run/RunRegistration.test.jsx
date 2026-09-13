@@ -321,6 +321,53 @@ describe('RunRegistration — editar corrida existente', () => {
     details: { cadence_spm: 165 },
   };
 
+  /* Prints a editar (relatado 2026-09-13): removem-se e juntam-se, e guardar
+     reanalisa a corrida pelas imagens — sem `mode`, com keep_paths e images. */
+  describe('prints do relógio', () => {
+    const COM_PRINTS = { ...EXISTING_RUN, photo_paths: ['user-1/a.jpg', 'user-1/b.jpg'] };
+
+    it('remover um print já guardado passa a "Guardar e reanalisar" e manda só o que ficou', async () => {
+      useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      await screen.findByAltText('Print 2');
+      expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+      fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [fnName, { body }] = mocks.invoke.mock.calls[0];
+      expect(fnName).toBe('analyze-run');
+      expect(body.mode).toBeUndefined();
+      expect(body).toMatchObject({ run_id: 'run-9', keep_paths: ['user-1/b.jpg'], images: [], name: 'Rodagem', date: '2026-08-01' });
+    });
+
+    it('juntar um print novo manda-o em images, com os guardados em keep_paths', async () => {
+      useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      await screen.findByAltText('Print 2');
+
+      const input = screen.getByText('Adicionar outro print').closest('label').querySelector('input[type="file"]');
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [new File(['x'], 'km.jpg', { type: 'image/jpeg' })] } });
+      });
+      await screen.findByAltText('Print 3');
+      fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [, { body }] = mocks.invoke.mock.calls[0];
+      expect(body.mode).toBeUndefined();
+      expect(body.keep_paths).toEqual(['user-1/a.jpg', 'user-1/b.jpg']);
+      expect(body.images).toEqual(['AAA']);
+    });
+
+    it('sem prints, a edição continua a oferecer "Adicionar prints"', () => {
+      useAppStore.setState({ profile: PROFILE, runs: [EXISTING_RUN], raceEvents: [] });
+      render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+      expect(screen.getByText('Adicionar prints')).toBeInTheDocument();
+    });
+  });
+
   beforeEach(() => {
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: EXISTING_RUN }, error: null });
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });

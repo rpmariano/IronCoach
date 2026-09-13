@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { planningFrameSection } from "./index.ts";
+import { planningFrameSection, resolvePhotoPaths } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -21,4 +21,11 @@ Deno.test("planningFrameSection: sem plano e sem prova deve retornar enquadramen
   const bloco = planningFrameSection(false, false);
   assertStringIncludes(bloco, "SEM PROVA E SEM PLANO");
   assertStringIncludes(bloco, "quer MANTER os seus hábitos");
+});
+
+Deno.test("resolvePhotoPaths: sem keep_paths fica tudo; com keep_paths só o que a corrida já tinha", () => {
+  assertEquals(resolvePhotoPaths(["u/a.jpg", "u/b.jpg"], undefined), { kept: ["u/a.jpg", "u/b.jpg"], dropped: [] });
+  assertEquals(resolvePhotoPaths(["u/a.jpg", "u/b.jpg"], ["u/b.jpg", "u/inventado.jpg"]), { kept: ["u/b.jpg"], dropped: ["u/a.jpg"] });
+  assertEquals(resolvePhotoPaths(["u/a.jpg"], []), { kept: [], dropped: ["u/a.jpg"] });
+  assertEquals(resolvePhotoPaths(null, ["u/a.jpg"]), { kept: [], dropped: [] });
 });

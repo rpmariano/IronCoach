@@ -143,8 +143,10 @@ function buildPrompt(
     "- duration_seconds: duração total (tempo em movimento/total da atividade), em segundos.\n" +
     "- warmup_minutes / recovery_seconds: só se o ecrã mostrar claramente um aquecimento inicial ou o tempo de " +
     "recuperação entre repetições.\n" +
-    "- splits: se alguma imagem mostrar uma tabela de voltas/laps (em português normalmente chamada 'Voltas', " +
-    "em inglês 'Laps'), com colunas do tipo Tempo/Distância/Ritmo (ou Time/Distance/Pace), extrai TODAS as linhas " +
+    "- splits: se alguma imagem mostrar uma tabela de voltas/laps/parciais por km (em português 'Voltas', " +
+    "'Divisões' ou 'Parciais', em inglês 'Laps' ou 'Splits'; no Samsung Health é a tabela com os separadores " +
+    "'1 km / 5 km / 10 km' e linhas numeradas 1, 2, 3…, muitas vezes por cima de um mapa), com colunas do tipo " +
+    "Tempo/Distância/Ritmo (ou Time/Distance/Pace), extrai TODAS as linhas " +
     "dessa tabela, por ordem, como { distance_km, time_seconds }. Cada linha é UM TROÇO com a SUA PRÓPRIA distância " +
     "e tempo (não são valores cumulativos da corrida toda). Inclui também as linhas de cabeçalho especiais " +
     "'Aquecer'/'Warmup' e 'Arrefecer'/'Cooldown' se existirem — são só mais um troço, com a distância e tempo " +
@@ -989,6 +991,19 @@ function shoeId(body: Record<string, unknown>): string | null {
   return typeof raw === "string" && UUID_RE.test(raw) ? raw : null;
 }
 
+/** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
+ *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
+ *  caminhos que a corrida já tinha, nunca um caminho inventado. */
+export function resolvePhotoPaths(existing: unknown, keepPaths: unknown): { kept: string[]; dropped: string[] } {
+  const current = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === "string" && !!x) : [];
+  if (!Array.isArray(keepPaths)) return { kept: current, dropped: [] };
+  const wanted = new Set(keepPaths.filter((x): x is string => typeof x === "string"));
+  return {
+    kept: current.filter((path) => wanted.has(path)),
+    dropped: current.filter((path) => !wanted.has(path)),
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1034,18 +1049,42 @@ Deno.serve(async (req) => {
       if (fetchError) return jsonResponse({ error: `Falha a procurar corrida: ${fetchError.message}` }, 500);
       if (!existing) return jsonResponse({ error: "Corrida não encontrada" }, 404);
 
-      const photoPaths: string[] = existing.photo_paths || [];
-      if (photoPaths.length === 0) {
-        return jsonResponse({ error: "Esta corrida não tem imagens guardadas para reanalisar" }, 400);
+      // Prints a manter (por omissão todos) e prints novos (pedido
+      // 2026-09-13): a editar, o atleta remove o print errado e junta o que
+      // faltava (ex.: a tabela dos km) — a reanálise lê o conjunto final e
+      // grava-o como os prints da corrida.
+      const { kept, dropped } = resolvePhotoPaths(existing.photo_paths, body.keep_paths);
+      const newImages: string[] = Array.isArray(body.images)
+        ? body.images.filter((i: unknown): i is string => typeof i === "string" && !!i)
+        : [];
+      if (kept.length + newImages.length === 0) {
+        return jsonResponse({ error: "Esta corrida não tem imagens para reanalisar — junta pelo menos um print" }, 400);
+      }
+      if (kept.length + newImages.length > MAX_PHOTOS) {
+        return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por corrida` }, 400);
       }
 
       const images: string[] = [];
-      for (const path of photoPaths) {
+      for (const path of kept) {
         const { data: fileBlob, error: downloadError } = await sb.storage.from("run-photos").download(path);
         if (downloadError || !fileBlob) {
           return jsonResponse({ error: `Falha a obter imagem guardada: ${downloadError?.message ?? "desconhecida"}` }, 500);
         }
         images.push(bytesToBase64(new Uint8Array(await fileBlob.arrayBuffer())));
+      }
+      // Os novos sobem para a pasta do utilizador, como no registo.
+      const newPaths: string[] = [];
+      for (const b64 of newImages) {
+        const path = `${userId}/${crypto.randomUUID()}.jpg`;
+        const { error: uploadError } = await sb.storage
+          .from("run-photos")
+          .upload(path, base64ToBytes(b64), { contentType: "image/jpeg" });
+        if (uploadError) {
+          if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
+          return jsonResponse({ error: `Falha no upload da imagem: ${uploadError.message}` }, 500);
+        }
+        newPaths.push(path);
+        images.push(b64);
       }
 
       // Tipo de treino/disciplina são escolhas do utilizador, não vêm da
@@ -1059,21 +1098,54 @@ Deno.serve(async (req) => {
       try {
         result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey);
       } catch (e) {
+        if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
 
+      const details = detailsFromExtraction(kind, result.extraction, existingTrainingType, existingRaceType);
+      const patch: Record<string, unknown> = {
+        distance_km: result.extraction.distance_km,
+        duration_seconds: result.extraction.duration_seconds,
+        details,
+        notes: rawNotes,
+        photo_paths: [...kept, ...newPaths],
+      };
+      // O que o atleta editou no formulário e não vem da imagem.
+      if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim().slice(0, 120);
+      if (typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) patch.date = body.date;
+      if ("effort_rpe" in body) {
+        const rpe = body.effort_rpe;
+        patch.effort_rpe = rpe === null || rpe === undefined ? null : (Number.isInteger(rpe) && rpe >= 1 && rpe <= 10 ? rpe : null);
+      }
+      if ("shoe_id" in body) patch.shoe_id = shoeId(body);
+
       const { data: updated, error: updateError } = await sb
         .from("runs")
-        .update({
-          distance_km: result.extraction.distance_km,
-          duration_seconds: result.extraction.duration_seconds,
-          details: detailsFromExtraction(kind, result.extraction, existingTrainingType, existingRaceType),
-          notes: rawNotes,
-        })
+        .update(patch)
         .eq("id", runId)
         .select()
         .single();
-      if (updateError) return jsonResponse({ error: `Falha a atualizar corrida: ${updateError.message}` }, 500);
+      if (updateError) {
+        if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
+        return jsonResponse({ error: `Falha a atualizar corrida: ${updateError.message}` }, 500);
+      }
+      if (dropped.length) {
+        // Já não são da corrida: saem do bucket (best-effort).
+        const { error: removeError } = await sb.storage.from("run-photos").remove(dropped);
+        if (removeError) console.warn("Prints removidos da corrida mas não do bucket:", removeError.message);
+      }
+
+      // A análise mudou: a nota do Coach refaz-se (best-effort, ver attachCoachNotes).
+      await attachCoachNotes(sb, userId, updated, {
+        date: updated.date,
+        kind,
+        training_type: existingTrainingType,
+        race_type: existingRaceType,
+        distance_km: result.extraction.distance_km,
+        duration_seconds: result.extraction.duration_seconds,
+        effort_rpe: updated.effort_rpe ?? null,
+        details,
+      }, geminiKey);
 
       return jsonResponse({ run: updated, usage: result.usage });
     }

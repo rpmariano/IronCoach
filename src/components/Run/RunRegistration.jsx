@@ -273,7 +273,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const savedRaceRunRef = useRef(null);
 
   // Photos
-  const [runPhotos, setRunPhotos] = useState([]); // [{ file?, dataUrl, url? }]
+  const [runPhotos, setRunPhotos] = useState([]); // [{ base64?, dataUrl, url?, path? }] — path só nos já guardados
+  // Os caminhos que a corrida tinha ao abrir para editar: é contra eles que
+  // se sabe se os prints mudaram (removidos ou novos) e a corrida se
+  // reanalisa pelas imagens ao guardar (pedido 2026-09-13).
+  const originalPhotoPathsRef = useRef([]);
+  // "Mais prints" no aviso das métricas em falta abre o seletor daqui.
+  const editPhotoInputRef = useRef(null);
   /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
      (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
      registo manual (handleSaveCorrida) é uma gravação, não uma leitura de
@@ -607,10 +613,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         // Load photos (são privadas, precisamos de signed URLs) — nunca
         // vindas do rascunho persistido (ver usePersistedFormDraft abaixo).
+        originalPhotoPathsRef.current = Array.isArray(r.photo_paths) ? r.photo_paths : [];
         if (r.photo_paths && r.photo_paths.length > 0) {
           supabase.storage.from('run-photos').createSignedUrls(r.photo_paths, 3600).then(({ data, error }) => {
             if (!error && data) {
-              setRunPhotos(data.map(d => ({ url: d.signedUrl, dataUrl: d.signedUrl })).filter(p => p.url));
+              setRunPhotos(data.map((d, i) => ({ url: d.signedUrl, dataUrl: d.signedUrl, path: r.photo_paths[i] })).filter(p => p.url));
             }
           });
         }
@@ -739,6 +746,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // 2026-09-13). As memórias levam o id da prova na chave pela mesma razão.
   const memorySlot = (name) => `${name}:${raceId || 'sem-prova'}`;
   const newRunPhotos = useMemo(() => runPhotos.filter((p) => p.base64), [runPhotos]);
+  const keptPhotoPaths = useMemo(() => runPhotos.filter((p) => p.path).map((p) => p.path), [runPhotos]);
+  // A editar: prints removidos ou novos → a corrida reanalisa-se pelas imagens.
+  const photosChanged = !!runIdToEdit
+    && (newRunPhotos.length > 0 || keptPhotoPaths.length !== (originalPhotoPathsRef.current || []).length);
   const newRacePhotos = useMemo(() => racePhotos.filter((p) => p.blob), [racePhotos]);
   const newDiploma = diploma?.blob ? diploma : null;
   const newMedal = medal?.blob ? medal : null;
@@ -754,7 +765,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   usePersistedDraftMedia(draftMediaKey, memorySlot('medal'), newMedal, (v) => { setMedal(v); setIsFormDirty(true); });
 
   // Só regenera a análise se os dados analíticos mudaram (incluindo data, tipo, distância, etc.)
-  const needsReanalysis = !!runIdToEdit
+  const needsReanalysis = photosChanged || (!!runIdToEdit
     && originalSnapshot !== null
     && analyticalSignature({
       date: runDate,
@@ -765,7 +776,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       rpe: runEffortRpe,
       notes: runNotes.trim() ? runNotes.trim() : null,
       details: buildDetailsFromForm().details,
-    }) !== originalSnapshot;
+    }) !== originalSnapshot);
 
   // Handle Photo Selection — comprime e normaliza para JPEG antes de guardar
   // (ver src/lib/image.js); o .base64 resultante é o que vai no pedido de
@@ -784,6 +795,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+        setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
@@ -792,7 +804,25 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
+    setIsFormDirty(true);
   };
+
+  /* Reanálise pelos prints (a editar, com prints removidos ou novos): sem
+     `mode`, a analyze-run lê o conjunto final — os que ficaram (keep_paths)
+     e os novos (images) — e regrava distância, duração e métricas a partir
+     deles. O que não vem da imagem (nome, data, RPE, sapatilhas, notas) vai
+     junto para não se perder. */
+  const reanalysisBody = () => ({
+    run_id: runIdToEdit,
+    keep_paths: keptPhotoPaths,
+    images: newRunPhotos.map((p) => p.base64),
+    mime_type: 'image/jpeg',
+    date: runDate,
+    name: runName.trim(),
+    effort_rpe: runEffortRpe || null,
+    shoe_id: shoeId,
+    notes: runNotes.trim() ? runNotes.trim() : null,
+  });
 
   // ----------------------------------
   // MEMÓRIAS DA PROVA (diploma, medalha, fotografias)
@@ -1240,11 +1270,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         notes: runNotes.trim() ? runNotes.trim() : null,
         details,
       });
-      signatureChanged = originalSnapshot !== newSig || isForceReanalyze;
+      signatureChanged = originalSnapshot !== newSig || isForceReanalyze || photosChanged;
     }
 
     const missing = detectMissingRunMetrics(details, runDistance, runDuration);
-    const shouldNag = missing.length > 0 && !userBypassedMissingSheet && !isBypass && (!runIdToEdit || signatureChanged);
+    // Com prints novos/removidos não se insiste: a reanálise vai lê-los.
+    const shouldNag = missing.length > 0 && !userBypassedMissingSheet && !isBypass && !photosChanged && (!runIdToEdit || signatureChanged);
 
     if (shouldNag) {
       setPendingForceReanalyze(isForceReanalyze);
@@ -1277,7 +1308,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (runIdToEdit) {
         if (signatureChanged) {
           const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
-            body: {
+            body: photosChanged && runPhotos.length > 0 ? reanalysisBody() : {
               mode: 'manual',
               run_id: runIdToEdit,
               date: runDate,
@@ -1319,6 +1350,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           });
           if (error) throw new Error(error);
           const updatedRun = data.run;
+          if (photosChanged && runPhotos.length === 0 && originalPhotoPathsRef.current.length) {
+            // Todos os prints removidos: a corrida fica sem imagens (os
+            // ficheiros saem do bucket se a política deixar; senão ficam
+            // órfãos, sem efeito na app).
+            try {
+              const { error: photosError } = await supabase.from('runs').update({ photo_paths: [] }).eq('id', runIdToEdit);
+              if (photosError) throw photosError;
+              updatedRun.photo_paths = [];
+              await supabase.storage.from('run-photos').remove(originalPhotoPathsRef.current);
+            } catch (err) {
+              console.warn('Prints não removidos da corrida', err);
+            }
+          }
           setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
           await finishSavedRun(updatedRun, 'Corrida reanalisada pelo Coach');
@@ -2079,16 +2123,34 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   function renderManualDetails() {
     return (
             <>
-          {runIdToEdit && runPhotos.length > 0 && (
-            <div className="mb-4">
-              <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Prints carregados</label>
-              <div className="grid grid-cols-3 gap-2">
-                {runPhotos.map((p, i) => (
-                  <div key={i} className="relative aspect-square">
-                    <img src={p.url || p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
-                  </div>
-                ))}
-              </div>
+          {/* A editar, os prints do relógio removem-se e juntam-se (pedido
+              2026-09-13: um print errado, ou a tabela dos km que faltava);
+              guardar reanalisa a corrida pelo conjunto final. */}
+          {runIdToEdit && (
+            <div className="mb-4" data-testid="edit-run-photos">
+              <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Prints do relógio</label>
+              {runPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {runPhotos.map((p, i) => (
+                    <div key={p.path || p.dataUrl || i} className="relative aspect-square">
+                      <img src={p.url || p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
+                      <button type="button" onClick={() => removePhoto(i)} style={{ color: '#fff' }} aria-label={`Remover print ${i + 1}`} className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {runPhotos.length < MAX_PHOTOS && (
+                <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition">
+                  <input ref={editPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
+                  <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
+                  <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">{runPhotos.length ? 'Adicionar outro print' : 'Adicionar prints'}</span>
+                </label>
+              )}
+              <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-4)' }}>
+                Remover ou juntar prints reanalisa a corrida pelas imagens ao guardar.
+              </p>
             </div>
           )}
 
@@ -2409,7 +2471,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         missingKeys={missingKeysList}
         onAddPhotos={() => {
           setShowMissingMetricsSheet(false);
-          setEntryMethod('foto');
+          // A editar não há seletor Foto/Manual: abre-se o seletor de
+          // ficheiros dos prints diretamente (relatado 2026-09-13).
+          if (runIdToEdit) editPhotoInputRef.current?.click();
+          else setEntryMethod('foto');
         }}
         onGoManual={() => {
           setShowMissingMetricsSheet(false);
