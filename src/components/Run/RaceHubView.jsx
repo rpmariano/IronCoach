@@ -36,6 +36,7 @@ import { supabase } from '../../lib/supabase';
 import RaceWebInfoSections from './RaceWebInfoSections';
 import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
+import RaceBalanceCard from './RaceBalanceCard';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -560,20 +561,18 @@ export default function RaceHubView({
           </div>
         )}
 
-        {/* 2. Balanço da Carol — com a corrida registada é o balanço da
-            prova em si (describeRaceOutcome, a mesma régua do resto); sem
-            ela fica o texto do motor, que é o único que existe. */}
-        <div style={{ borderRadius: 22, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 16, marginTop: 12 }}>
-          <div className="flex items-center gap-2.5">
-            <CoachAvatar size={28} />
-            <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
-              Balanço da Carol
-            </span>
-          </div>
-          <p data-testid="race-hub-balance" className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-2)' }}>
-            {raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
-          </p>
-        </div>
+        {/* 2. Balanço da Carol — o balanço completo, pedido ao coach-chat
+            assim que a corrida está registada (RaceBalanceCard); por baixo,
+            a linha de números da régua única. Sem corrida fica o texto do
+            motor, que é o único que existe. */}
+        <RaceBalanceCard
+          race={race}
+          run={raceRun}
+          runs={runs}
+          profile={profile}
+          numbersLine={raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
+          onLeave={() => leaveTo(null)}
+        />
 
         {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se
             consegue somar dos registos reais. */}

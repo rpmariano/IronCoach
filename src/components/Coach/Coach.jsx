@@ -252,6 +252,15 @@ export default function Coach() {
       handleAdaptPlanCheckin({ divergence, signature });
       return;
     }
+    // Vindo do hub da prova: o atleta respondeu à pergunta do balanço ("Sim,
+    // para a próxima quero melhor") — a resposta entra no chat como se a
+    // tivesse escrito aqui (specs/gamificacao-provas.md §6).
+    if (coachIntent && coachIntent.kind === 'say' && typeof coachIntent.text === 'string') {
+      const { text } = coachIntent;
+      setCoachIntent(null);
+      handleSend(text);
+      return;
+    }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
     // que a Carol escreveu — pede-lhe que altere, e a conversa abre já
     // centrada nessa nota para ele explicar o que está errado.

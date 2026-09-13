@@ -28,6 +28,8 @@ vi.mock('../../lib/supabase', () => ({
       }),
     },
   },
+  // O hub pede o balanço à Carol ao montar (RaceBalanceCard).
+  invokeEdgeFunctionWithTimeout: () => Promise.resolve({ data: { model_message: { id: 'm1', content: 'Balanço de teste.' }, suggestions: [] }, error: null }),
 }));
 vi.mock('../../lib/image', () => ({
   compressImage: () => Promise.resolve({ dataUrl: 'data:image/jpeg;base64,AAA', base64: 'AAA' }),

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3354,4 +3354,21 @@ Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que nã
   assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", { race_id: "r1", start_time: "25:99" }), "HH:MM");
   assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", { race_name: "Maratona", target_time_seconds: 3420 }), "não encontrei nenhuma prova");
   assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", {}), "indica race_id ou race_name");
+});
+
+// ── a legenda do mural: na primeira pessoa do atleta, com os factos ─────────
+Deno.test("buildRaceCaptionPrompt: primeira pessoa do atleta, factos certos, #IronCoach no fim", () => {
+  const o = {
+    race_id: "r1", name: "Corrida do Tejo", date: "2026-09-13", category: "10k", distance_km: 10,
+    official_seconds: 3088, target_seconds: 3000, verdict: "perto", basis: "objetivo",
+    is_personal_record: true, achievements_new: ["prova_concluida"],
+  } as unknown as RaceOutcome;
+  const p = buildRaceCaptionPrompt(o, "Rui");
+  assertStringIncludes(p, "primeira pessoa de Rui");
+  assertStringIncludes(p, "Prova: Corrida do Tejo, 2026-09-13");
+  assertStringIncludes(p, "Tempo: 51:28.");
+  assertStringIncludes(p, "Objetivo: 50:00 — ficou perto (a 1:28).");
+  assertStringIncludes(p, "Recorde pessoal");
+  assertStringIncludes(p, "#IronCoach");
+  assertStringIncludes(buildRaceCaptionPrompt({ ...o, target_seconds: null } as unknown as RaceOutcome, null), "primeira pessoa do atleta");
 });

@@ -1,11 +1,14 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import RaceHubView from './RaceHubView';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 
-// A galeria assina as URLs do bucket privado race-memories na hora.
+// A galeria assina as URLs do bucket privado race-memories na hora; o
+// balanço da Carol pede-se ao coach-chat (RaceBalanceCard) — aqui responde
+// com um balanço fixo, para os testes do hub não dependerem dele.
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     storage: {
@@ -14,7 +17,11 @@ vi.mock('../../lib/supabase', () => ({
       }),
     },
   },
+  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
 }));
+beforeEach(() => {
+  mocks.invoke.mockReset().mockResolvedValue({ data: { model_message: { id: 'm1', content: 'Balanço de teste.' }, suggestions: [] }, error: null });
+});
 
 /* Ponto 7 do redesenho 6c — mock "Hub de prova · depois da prova".
    Uma prova já corrida deixa de mostrar contagem decrescente, previsão e
