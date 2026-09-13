@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3312,4 +3312,46 @@ Deno.test("a véspera no coach-chat lê da fórmula partilhada (mesmos números)
   assertStringIncludes(ctx, "deitar às 22:00 para acordar às 06:00");
   assertStringIncludes(ctx, "hidratos 70-140 g (1-2 g/kg)");
   assertStringIncludes(ctx, "Sugestões alimentares (propose_training_plan/save_meal_suggestions) para a véspera");
+});
+
+// ── update_race_event: o objetivo acordado no chat vai para a prova ──────────
+// deno-lint-ignore no-explicit-any
+function makeRaceSb(races: any[]) {
+  const updates: { patch: Record<string, unknown>; id: string }[] = [];
+  const read = { data: races, error: null };
+  const q = { eq: () => q, gte: () => q, order: () => q, limit: () => Promise.resolve(read) };
+  const sb = {
+    from: (_table: string) => ({
+      select: () => q,
+      update: (patch: Record<string, unknown>) => ({
+        eq: (_c: string, id: string) => ({ eq: () => { updates.push({ patch, id }); return Promise.resolve({ error: null }); } }),
+      }),
+    }),
+  };
+  return { sb, updates };
+}
+const TEJO = { id: "r1", name: "Corrida do Tejo", date: "2099-09-13", distance_km: 10, target_time_seconds: 3000, target_pace_seconds_per_km: 300 };
+
+Deno.test("update_race_event: pelo nome, o tempo novo grava tempo, texto e ritmo pela distância", async () => {
+  const { sb, updates } = makeRaceSb([TEJO]);
+  const result = await runUpdateRaceEvent(sb, "user-1", { race_name: "tejo", target_time_seconds: 3420, reason: "objetivo revisto" });
+  assertStringIncludes(result, 'Prova atualizada: "Corrida do Tejo" (2099-09-13) — objetivo 57:00 (5.42/km)');
+  assertEquals(updates.length, 1);
+  assertEquals(updates[0].id, "r1");
+  assertEquals(updates[0].patch, { target_time_seconds: 3420, target_time: "57:00", target_pace_seconds_per_km: 342 });
+});
+
+Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que não faz sentido", async () => {
+  const { sb, updates } = makeRaceSb([TEJO]);
+  const result = await runUpdateRaceEvent(sb, "user-1", { race_id: "r1", target_pace_seconds_per_km: 330, start_time: "9:00", race_priority: "b", experience_level: "medio" });
+  assertStringIncludes(result, "ritmo-alvo 5.30/km (55:00)");
+  assertStringIncludes(result, "partida às 09:00");
+  assertEquals(updates[0].patch.target_time_seconds, 3300);
+  assertEquals(updates[0].patch.start_time, "09:00");
+  assertEquals(updates[0].patch.race_priority, "b");
+  assertEquals(updates[0].patch.experience_level, "medio");
+  assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", { race_id: "r1" }), "nada para mudar");
+  assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", { race_id: "r1", start_time: "25:99" }), "HH:MM");
+  assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", { race_name: "Maratona", target_time_seconds: 3420 }), "não encontrei nenhuma prova");
+  assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", {}), "indica race_id ou race_name");
 });

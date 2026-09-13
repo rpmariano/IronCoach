@@ -158,10 +158,7 @@ export default function Coach() {
           if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
         }
       }
-      if (data?.goals_updated && profile?.id) {
-        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
-        if (freshProfile) setProfile(freshProfile);
-      }
+      await refreshAfterTurn(data);
       setCoachLoading(false);
       return data;
     } catch (err) {
@@ -209,6 +206,22 @@ export default function Coach() {
      plano ajustado. Recebida a resposta, a assinatura fica marcada como
      tratada e a mesma deteção não volta a chamar enquanto o plano não mudar.
      specs/plano-de-prova.md, "O plano tem de saber da prova". */
+  /* O que o turno mudou na base de dados volta para o store: metas ou
+     intervenção resolvida → perfil; prova atualizada (update_race_event) →
+     provas. Sem isto o Início ficava a dizer "1 assunto a resolver" com a
+     intervenção já resolvida, e o hub a planear sobre o objetivo antigo. */
+  const refreshAfterTurn = async (data) => {
+    if (!profile?.id) return;
+    if (data?.goals_updated || data?.intervention_resolved) {
+      const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+      if (freshProfile) setProfile(freshProfile);
+    }
+    if (data?.race_updated) {
+      const { data: freshRaces } = await supabase.from('race_events').select('*').eq('user_id', profile.id).order('date', { ascending: true });
+      if (freshRaces) useAppStore.getState().setRaceEvents(freshRaces);
+    }
+  };
+
   const handleAdaptPlanCheckin = ({ divergence = null, signature = null } = {}) => sendCoachInitiatedPayload({
     message: '',
     is_plan_checkin: true,
@@ -602,10 +615,7 @@ export default function Coach() {
           if (pending.length > 0) setActiveGoalProposal(pending[0]);
         }
       }
-      if (data?.goals_updated && profile?.id) {
-        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
-        if (freshProfile) setProfile(freshProfile);
-      }
+      await refreshAfterTurn(data);
       setCoachLoading(false);
     } catch (err) {
       await handleAsyncFallback(requestStartedAt);

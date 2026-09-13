@@ -317,6 +317,35 @@ const PROPOSE_PLAN_TOOL = {
 // O modelo deve chamar esta ferramenta proativamente em vez de perguntar primeiro,
 // pois o utilizador tem agora uma persiana (bottom sheet) que lhe permite rever
 // e aceitar/recusar de forma segura as alterações sem afetar imediatamente o perfil.
+// Grava na PROVA o que se acordou no chat — objetivo de tempo/ritmo, hora de
+// partida, prioridade, nível. Sem isto a conversa e a base de dados
+// divergiam: a Carol combinava um objetivo mais realista no chat e o plano
+// km a km do hub (que lê race_events) continuava a usar o antigo — foi o
+// que aconteceu com uma atleta a 2026-09-12. Escrita direta (sem persiana):
+// o atleta acabou de o dizer na conversa; a resposta confirma o que ficou.
+const UPDATE_RACE_EVENT_TOOL = {
+  name: "update_race_event",
+  description:
+    "Atualiza uma prova agendada do atleta com o que ficou acordado NA CONVERSA: objetivo de tempo, ritmo-alvo, hora de partida, " +
+    "prioridade, nível para a prova. Chama-a no MESMO turno em que o objetivo muda (\"vamos apontar a 57 minutos\") — o plano km a km " +
+    "do hub, a véspera e o balanço leem a prova da base de dados, não a conversa. Identifica a prova pelo nome (race_name) ou pelo id " +
+    "(race_id) do contexto. Só muda os campos que passares.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      race_id: { type: "STRING", description: "Id da prova (do contexto), se o tiveres." },
+      race_name: { type: "STRING", description: "Nome da prova, como aparece no contexto (chega uma parte do nome)." },
+      target_time_seconds: { type: "NUMBER", description: "Objetivo de tempo total, em segundos (57:00 = 3420). Omite se não mudar." },
+      target_pace_seconds_per_km: { type: "NUMBER", description: "Ritmo-alvo em segundos por km (5:42/km = 342). Omite se não mudar; se passares o tempo, o ritmo é calculado pela distância." },
+      start_time: { type: "STRING", description: "Hora de partida HH:MM (hora local). Omite se não mudar." },
+      race_priority: { type: "STRING", enum: ["a", "b", "c"], description: "Prioridade: a = principal, b = secundária, c = treino." },
+      experience_level: { type: "STRING", enum: ["iniciante", "basico", "medio", "avancado"], description: "Nível do atleta NESTA prova." },
+      reason: { type: "STRING", description: "Uma frase com o porquê (ex.: 'objetivo revisto para realista face à previsão do treino')." },
+    },
+    required: [],
+  },
+};
+
 const UPDATE_GOALS_TOOL = {
   name: "update_goals",
   description:
@@ -469,7 +498,7 @@ const RESOLVE_INTERVENTION_TOOL = {
 // payload REAL que sai daqui — era a única forma de apanhar em CI a classe
 // de erro que rebentou duas vezes em produção a 2026-09-05.
 export function buildTools(allowed?: Set<string> | null) {
-  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL];
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, UPDATE_RACE_EVENT_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL];
   const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
   return [{ functionDeclarations: decls }];
 }
@@ -2336,6 +2365,70 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
 
 // Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
 // SÓ se o atleta tiver ativado coach_can_set_nutrition_goals (toggle global).
+/** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
+ *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
+// deno-lint-ignore no-explicit-any
+export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Promise<string> {
+  const raceId = typeof args?.race_id === "string" ? args.race_id.trim() : "";
+  const raceName = typeof args?.race_name === "string" ? args.race_name.trim() : "";
+  if (!raceId && !raceName) return "Erro: indica race_id ou race_name.";
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  let q = sb.from("race_events").select("id, name, date, distance_km, target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level")
+    .eq("user_id", userId).gte("date", todayISO).order("date", { ascending: true }).limit(20);
+  const { data: races, error } = await q;
+  if (error) return `Erro ao ler as provas: ${error.message}`;
+  // deno-lint-ignore no-explicit-any
+  const list = (races || []) as any[];
+  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // deno-lint-ignore no-explicit-any
+  const race = raceId ? list.find((r: any) => r.id === raceId) : list.find((r: any) => norm(String(r.name || "")).includes(norm(raceName)));
+  if (!race) return `Erro: não encontrei nenhuma prova agendada${raceName ? ` com "${raceName}"` : ""}. Provas por correr: ${list.map((r) => r.name).join(", ") || "nenhuma"}.`;
+
+  const patch: Record<string, unknown> = {};
+  const changes: string[] = [];
+  const distance = Number(race.distance_km) > 0 ? Number(race.distance_km) : null;
+  const seconds = Number(args?.target_time_seconds);
+  const pace = Number(args?.target_pace_seconds_per_km);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    if (seconds < 300 || seconds > 24 * 3600) return "Erro: target_time_seconds fora do razoável (5 min a 24 h).";
+    patch.target_time_seconds = Math.round(seconds);
+    patch.target_time = formatHms(Math.round(seconds));
+    if (distance) patch.target_pace_seconds_per_km = Math.round(seconds / distance);
+    changes.push(`objetivo ${formatHms(Math.round(seconds))}${distance ? ` (${sharedFormatPaceMinKm(Math.round(seconds / distance))}/km)` : ""}`);
+  } else if (Number.isFinite(pace) && pace > 0) {
+    if (pace < 120 || pace > 1200) return "Erro: target_pace_seconds_per_km fora do razoável (2:00 a 20:00 por km).";
+    patch.target_pace_seconds_per_km = Math.round(pace);
+    if (distance) {
+      patch.target_time_seconds = Math.round(pace * distance);
+      patch.target_time = formatHms(Math.round(pace * distance));
+    }
+    changes.push(`ritmo-alvo ${sharedFormatPaceMinKm(Math.round(pace))}/km${distance ? ` (${formatHms(Math.round(pace * distance))})` : ""}`);
+  }
+  if (typeof args?.start_time === "string" && args.start_time.trim()) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(args.start_time.trim());
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return "Erro: start_time tem de ser HH:MM.";
+    const hhmmStr = `${m[1].padStart(2, "0")}:${m[2]}`;
+    patch.start_time = hhmmStr;
+    changes.push(`partida às ${hhmmStr}`);
+  }
+  if (args?.race_priority === "a" || args?.race_priority === "b" || args?.race_priority === "c") {
+    patch.race_priority = args.race_priority;
+    changes.push(`prioridade ${RACE_PRIORITY_LABELS[args.race_priority] || args.race_priority}`);
+  }
+  if (["iniciante", "basico", "medio", "avancado"].includes(args?.experience_level)) {
+    patch.experience_level = args.experience_level;
+    changes.push(`nível ${EXPERIENCE_LEVEL_LABELS[args.experience_level] || args.experience_level}`);
+  }
+  if (changes.length === 0) return "Erro: nada para mudar — passa pelo menos um campo (target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level).";
+
+  const { error: upErr } = await sb.from("race_events").update(patch).eq("id", race.id).eq("user_id", userId);
+  if (upErr) return `Erro ao atualizar a prova: ${upErr.message}`;
+  return `Prova atualizada: "${race.name}" (${race.date}) — ${changes.join(", ")}. O plano km a km do hub e a véspera passam a usar estes valores. ` +
+    `Diz ao atleta numa frase o que ficou gravado na prova${args?.reason ? ` (${String(args.reason).slice(0, 120)})` : ""}. ` +
+    `Se houver plano de treino aceite, confirma se continua a fazer sentido e propõe o ajustado se não fizer.`;
+}
+
 export async function runUpdateGoals(sb: any, userId: string, args: any): Promise<string> {
   const fieldNames = Object.keys(GOAL_META);
   // deno-lint-ignore no-explicit-any
@@ -4078,6 +4171,11 @@ export function buildSystemInstruction(
     `Depois de criares a proposta, diz na tua resposta o que propuseste e que está no Início à espera de ` +
     `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
     `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    `O OBJETIVO DA PROVA VIVE NA BASE DE DADOS: quando acordarem na conversa um objetivo de tempo ou ritmo novo para uma prova ` +
+    `(mais realista, mais ambicioso, tanto faz), a hora de partida, a prioridade ou o nível, grava-o com update_race_event NO MESMO ` +
+    `turno — o plano km a km do hub, a véspera e o balanço leem a prova, não a conversa; sem isto o hub monta o plano sobre o objetivo ` +
+    `antigo e contradiz o que combinaste. Depois, se houver plano de treino aceite, confirma se ainda faz sentido e propõe o ajustado ` +
+    `se não fizer.\n\n` +
     `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
     `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
     `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
@@ -5191,6 +5289,12 @@ async function handler(req: Request): Promise<Response> {
     let planWasProposed = false;
     let goalsWereUpdated = false;
     let goalWasProposed = false;
+    // Sinais para o cliente recarregar o que mudou na base de dados durante
+    // o turno: a prova (update_race_event) e o estado da intervenção
+    // (resolve_intervention) — sem isto o Início continuava a dizer "1
+    // assunto a resolver" com a intervenção já resolvida (relatado 2026-09-13).
+    let raceWasUpdated = false;
+    let interventionWasResolved = false;
 
     let geminiJson: Record<string, unknown> | undefined;
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
@@ -5280,12 +5384,16 @@ async function handler(req: Request): Promise<Response> {
           result = await runUpdateGoals(sb, userId, args || {});
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
+        } else if (name === "update_race_event") {
+          result = await runUpdateRaceEvent(sb, userId, args || {});
+          raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
         } else if (name === "save_coach_note") {
           result = await runSaveCoachNote(sb, userId, args || {});
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
         } else if (name === "resolve_intervention") {
           result = await runResolveIntervention(sb, userId, args || {});
+          interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }
@@ -5382,6 +5490,8 @@ async function handler(req: Request): Promise<Response> {
         plan_proposed: planWasProposed,
         goals_updated: goalsWereUpdated,
         goal_proposed: goalWasProposed,
+        race_updated: raceWasUpdated,
+        intervention_resolved: interventionWasResolved,
         proactive: proactiveTrigger,
       });
     }
@@ -5394,6 +5504,8 @@ async function handler(req: Request): Promise<Response> {
       plan_proposed: planWasProposed,
       goals_updated: goalsWereUpdated,
       goal_proposed: goalWasProposed,
+      race_updated: raceWasUpdated,
+      intervention_resolved: interventionWasResolved,
       proactive: proactiveTrigger,
     });
 
