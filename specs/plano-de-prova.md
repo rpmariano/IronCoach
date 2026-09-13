@@ -126,6 +126,12 @@ o cartão do Início mostra e as que o `coach-daily-summary` recebe.
   ajuste"; abrir o chat entra no "Adaptar plano" com os motivos
   (`plan_divergence` no body), e a Carol explica o que muda e propõe o plano
   ajustado. A mesma deteção não volta a chamar enquanto o plano não mudar.
+  As sessões falhadas só contam se foram planeadas depois da última
+  reescrita do plano (o `created_at` mais recente dos itens): ajustar um
+  plano aceite escreve os itens novos no plano original e deixa os dias
+  passados como "pendente", e sem esta regra as falhadas de antes do ajuste
+  continuavam a chamar pela Carol depois de ela as ter resolvido (relatado
+  2026-09-13).
 
 ## Fora de âmbito
 

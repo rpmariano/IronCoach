@@ -138,6 +138,46 @@ describe('detectPlanDivergence — quando a realidade se afastou do plano', () =
     expect(r.reasons).toEqual([]);
   });
 
+  /* Relatado 2026-09-13: o ajuste de um plano aceite escreve os itens novos
+     no plano original e deixa os dias passados como "pendente". As falhadas
+     de antes do ajuste já foram vistas pela Carol — não voltam a chamar. */
+  it('sessões falhadas antes da última reescrita do plano não contam', () => {
+    const r = detect({
+      coachPlanItems: [
+        item({ id: 'a', planned_date: '2026-09-08', created_at: '2026-09-06T10:00:00Z' }),
+        item({ id: 'b', planned_date: '2026-09-09', created_at: '2026-09-06T10:00:00Z' }),
+        // O ajuste de hoje: a prova e a semana que vem.
+        item({ id: 'c', planned_date: '2026-09-13', training_type: 'prova', created_at: '2026-09-13T09:30:00Z' }),
+        item({ id: 'd', planned_date: '2026-09-15', created_at: '2026-09-13T09:30:00Z' }),
+      ],
+    });
+    expect(keys(r)).not.toContain('sessoes_falhadas');
+  });
+
+  it('as falhadas depois da reescrita voltam a contar', () => {
+    const r = detect({
+      today: '2026-09-17',
+      coachPlans: [plan()],
+      coachPlanItems: [
+        item({ id: 'a', planned_date: '2026-09-08', created_at: '2026-09-06T10:00:00Z' }),
+        item({ id: 'd', planned_date: '2026-09-14', created_at: '2026-09-13T09:30:00Z' }),
+        item({ id: 'e', planned_date: '2026-09-15', created_at: '2026-09-13T09:30:00Z' }),
+      ],
+    });
+    expect(keys(r)).toEqual(['sessoes_falhadas']);
+    expect(r.reasons[0].text).toContain('14 set, 15 set');
+  });
+
+  it('sem created_at nos itens, as falhadas contam como antes', () => {
+    const r = detect({
+      coachPlanItems: [
+        item({ id: 'a', planned_date: '2026-09-08' }),
+        item({ id: 'b', planned_date: '2026-09-09' }),
+      ],
+    });
+    expect(keys(r)).toEqual(['sessoes_falhadas']);
+  });
+
   it('a assinatura muda quando a divergência muda, e não com a ordem dos itens', () => {
     const a = detect({ raceEvents: [race()] });
     const b = detect({ raceEvents: [race()] });
