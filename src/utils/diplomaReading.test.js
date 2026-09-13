@@ -1,11 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readDiploma, diplomaFormValues, describeDiplomaReading } from './diplomaReading';
+import { readDiploma, diplomaFormValues, describeDiplomaReading, diplomaDetails, diplomaDetailsPatch, applyDiplomaToRun } from './diplomaReading';
 
 /* A Carol lê o diploma (pedido 2026-09-13), calibrado com a Corrida do Tejo:
    chip 51:27, bruto 51:51, 1668.º geral, 226.º no escalão, 5 km em 25:15. */
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock('../lib/supabase', () => ({ invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args) }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updates: [], updateError: null }));
+vi.mock('../lib/supabase', () => ({
+  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  supabase: {
+    from: (table) => ({
+      update: (payload) => ({
+        eq: (_col, id) => { mocks.updates.push({ table, payload, id }); return Promise.resolve({ error: mocks.updateError }); },
+      }),
+    }),
+  },
+}));
 
 const TEJO = {
   athlete_name: 'RUI MARIANO', race_name: 'Corrida do Tejo', race_date: '2026-09-13',
@@ -13,7 +22,7 @@ const TEJO = {
   gender_position: null, participants: null, bib_number: null, splits: [{ km: 5, seconds: 1515 }],
 };
 
-beforeEach(() => mocks.invoke.mockReset());
+beforeEach(() => { mocks.invoke.mockReset(); mocks.updates.length = 0; mocks.updateError = null; });
 
 describe('readDiploma', () => {
   it('manda a imagem em base64 para a analyze-diploma e devolve a leitura', async () => {
@@ -50,5 +59,35 @@ describe('describeDiplomaReading', () => {
     expect(describeDiplomaReading(TEJO)).toBe('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
     expect(describeDiplomaReading({ gun_time_seconds: 3111, position: 12, participants: 900, age_group: 'M40', bib_number: '77', splits: [] }))
       .toBe('tempo 51:51 · 12.º geral de 900 · escalão M40 · dorsal 77');
+  });
+});
+
+/* O diploma que chega DEPOIS da corrida registada (persiana "Memórias" do
+   hub): a leitura entra direta em runs.details, sem passar pelo formulário. */
+describe('diplomaDetailsPatch / applyDiplomaToRun', () => {
+  it('junta o tempo de chip como oficial, a posição e o resto aos detalhes que já lá estão', () => {
+    const { details, changed } = diplomaDetailsPatch({ race_type: '10k', avg_heart_rate_bpm: 158 }, TEJO);
+    expect(changed).toBe(true);
+    expect(details).toEqual({
+      race_type: '10k', avg_heart_rate_bpm: 158,
+      official_time_seconds: 3087, position: 1668, age_group_position: 226, gun_time_seconds: 3111, official_splits: [{ km: 5, seconds: 1515 }],
+    });
+    // Nada de novo: não há o que gravar.
+    expect(diplomaDetailsPatch(details, TEJO).changed).toBe(false);
+    // O formulário deriva das mesmas chaves — uma regra só.
+    expect(Object.keys(diplomaDetails(TEJO))).toEqual(['official_time_seconds', 'position', 'age_group_position', 'gun_time_seconds', 'official_splits']);
+    expect(diplomaDetailsPatch(null, null)).toEqual({ details: {}, changed: false });
+  });
+
+  it('grava na corrida por update a runs.details e devolve-a atualizada', async () => {
+    const run = { id: 'run-1', details: { race_type: '10k' } };
+    const updated = await applyDiplomaToRun(run, TEJO);
+    expect(mocks.updates).toEqual([{ table: 'runs', id: 'run-1', payload: { details: updated.details } }]);
+    expect(updated.details.official_time_seconds).toBe(3087);
+    expect(run.details).toEqual({ race_type: '10k' }); // a original não se toca
+
+    mocks.updateError = { message: 'RLS' };
+    await expect(applyDiplomaToRun({ id: 'run-2', details: {} }, TEJO)).rejects.toThrow('RLS');
+    await expect(applyDiplomaToRun(null, TEJO)).rejects.toThrow('ainda não tem a corrida');
   });
 });

@@ -560,7 +560,7 @@ export default function RaceHubView({
         )}
 
         {memoriesOpen && (
-          <RaceMemoriesSheet race={race} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+          <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
         {muralOpen && (
           <RaceMuralSheet race={race} run={raceRun} runs={runs} profile={profile} seconds={finalSeconds} classification={classification} memoryUrls={memoryUrls} onClose={() => setMuralOpen(false)} />

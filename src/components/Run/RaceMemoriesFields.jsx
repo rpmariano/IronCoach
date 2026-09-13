@@ -31,6 +31,9 @@ export default function RaceMemoriesFields({
   onDiplomaFile, onMedalFile, onPhotoFiles,
   onRemoveDiploma, onRemoveMedal, onRemovePhoto,
   error = '',
+  // O que acompanha o diploma (a leitura da Carol): fica mesmo por baixo
+  // dele, onde o atleta acabou de o pôr.
+  afterDiploma = null,
 }) {
   const takeOne = (handler) => (e) => {
     const file = (e.target.files || [])[0];
@@ -73,6 +76,7 @@ export default function RaceMemoriesFields({
           </label>
         )}
         <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-4)' }}>Uma imagem ou um PDF, até 2 MB.</p>
+        {afterDiploma}
       </div>
 
       <div className="mb-4">

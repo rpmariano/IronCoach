@@ -9,7 +9,7 @@ import { useAppStore } from '../../store';
    a corrida; o diploma, a medalha e as fotos juntam-se quando chegarem, na
    persiana do hub — sem reabrir o registo da corrida. */
 
-const mocks = vi.hoisted(() => ({ updates: [], uploads: [], removed: [], uploadError: null }));
+const mocks = vi.hoisted(() => ({ updates: [], uploads: [], removed: [], uploadError: null, diploma: null }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => ({
@@ -28,8 +28,11 @@ vi.mock('../../lib/supabase', () => ({
       }),
     },
   },
-  // O hub pede o balanço à Carol ao montar (RaceBalanceCard).
-  invokeEdgeFunctionWithTimeout: () => Promise.resolve({ data: { model_message: { id: 'm1', content: 'Balanço de teste.' }, suggestions: [] }, error: null }),
+  // O hub pede o balanço à Carol ao montar (RaceBalanceCard); a persiana
+  // pede a leitura do diploma (analyze-diploma).
+  invokeEdgeFunctionWithTimeout: (fn) => (fn === 'analyze-diploma'
+    ? Promise.resolve(mocks.diploma || { data: null, error: 'Não consegui ler nada neste diploma.' })
+    : Promise.resolve({ data: { model_message: { id: 'm1', content: 'Balanço de teste.' }, suggestions: [] }, error: null })),
 }));
 vi.mock('../../lib/image', () => ({
   compressImage: () => Promise.resolve({ dataUrl: 'data:image/jpeg;base64,AAA', base64: 'AAA' }),
@@ -53,7 +56,66 @@ beforeEach(() => {
   mocks.uploads.length = 0;
   mocks.removed.length = 0;
   mocks.uploadError = null;
+  mocks.diploma = null;
   useAppStore.setState({ profile: PROFILE, raceEvents: [RACE], runs: [RACE_RUN] });
+});
+
+/* A Carol lê o diploma que chega depois (pedido 2026-09-13): o diploma
+   junta-se aqui, dias depois da corrida registada pelos prints do relógio,
+   e "Aplicar à corrida" grava o tempo de chip e a classificação na corrida
+   já gravada — sem reabrir o registo. */
+describe('RaceMemoriesSheet — a Carol lê o diploma que chega depois', () => {
+  const TEJO = { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group_position: 226, splits: [{ km: 5, seconds: 1515 }] };
+
+  it('ao juntar o diploma, lê-o ao lado dele e "Aplicar à corrida" grava em runs.details na hora', async () => {
+    mocks.diploma = { data: { reading: TEJO }, error: null };
+    render(<RaceMemoriesSheet race={RACE} run={RACE_RUN} userId="user-1" onClose={() => {}} />);
+    await screen.findByTestId('race-memories-save');
+    await act(async () => {
+      fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
+    });
+
+    const leitura = await screen.findByTestId('diploma-reading');
+    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'ready'));
+    expect(leitura).toHaveTextContent('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
+    // O cartão está mesmo por baixo do diploma, não no fim da persiana.
+    expect(screen.getByText('Diploma').parentElement).toContainElement(leitura);
+    expect(mocks.updates).toEqual([]); // nada gravado sem "Aplicar"
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar à corrida' }));
+    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'applied'));
+    expect(mocks.updates).toEqual([{ table: 'runs', id: 'run-1', payload: { details: {
+      official_time_seconds: 3087, position: 1668, age_group_position: 226, gun_time_seconds: 3111, official_splits: [{ km: 5, seconds: 1515 }],
+    } } }]);
+    // A corrida no store já leva o tempo oficial — o hub redesenha sem recarregar.
+    expect(useAppStore.getState().runs[0].details.official_time_seconds).toBe(3087);
+    // O diploma em si ainda está por guardar.
+    expect(screen.getByTestId('race-memories-save')).toBeEnabled();
+    expect(leitura).toHaveTextContent('Guarda as memórias para ficares com o diploma');
+  });
+
+  it('sem corrida registada não há leitura; com a leitura falhada, diz porquê e deixa preencher à mão', async () => {
+    mocks.diploma = { data: { reading: TEJO }, error: null };
+    const { unmount } = render(<RaceMemoriesSheet race={RACE} run={null} userId="user-1" onClose={() => {}} />);
+    await screen.findByTestId('race-memories-save');
+    await act(async () => {
+      fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
+    });
+    expect(await screen.findByAltText('Diploma da prova')).toBeInTheDocument();
+    expect(screen.queryByTestId('diploma-reading')).not.toBeInTheDocument();
+    unmount();
+
+    mocks.diploma = null; // a analyze-diploma responde com erro (texto)
+    render(<RaceMemoriesSheet race={RACE} run={RACE_RUN} userId="user-1" onClose={() => {}} />);
+    await screen.findByTestId('race-memories-save');
+    await act(async () => {
+      fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
+    });
+    const leitura = await screen.findByTestId('diploma-reading');
+    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'failed'));
+    expect(leitura).toHaveTextContent('Não consegui ler nada neste diploma. Podes acrescentar à mão');
+    expect(mocks.updates).toEqual([]);
+  });
 });
 
 describe('RaceMemoriesSheet', () => {
