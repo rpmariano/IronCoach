@@ -1035,7 +1035,7 @@ describe('RunRegistration — modo prova', () => {
   /* A hora do modo prova não se escreve aqui (o bloco "A prova" é só de
      leitura): herda-se da partida marcada na agenda — specs/plano-de-prova.md,
      "A véspera e a hora". */
-  it('a corrida herda a hora de partida da prova, mesmo sem campo à vista', async () => {
+  it('a corrida herda a hora de partida da prova, num campo à vista que se pode corrigir', async () => {
     useAppStore.setState({
       profile: PROFILE, runs: [], shoes: [],
       raceEvents: [{ ...PROVA, start_time: '09:00:00' }],
@@ -1043,6 +1043,9 @@ describe('RunRegistration — modo prova', () => {
     });
     render(<RunRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    // O campo existe em modo prova (relatado 2026-09-13: a herança era invisível).
+    expect(screen.getByLabelText('Hora de partida')).toHaveValue('09:00');
+    fireEvent.change(screen.getByLabelText('Hora de partida'), { target: { value: '09:12' } });
     fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
     fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '1:53:50' } });
 
@@ -1050,7 +1053,7 @@ describe('RunRegistration — modo prova', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
     await waitFor(() => expect(
-      mocks.updates.some(u => u.table === 'runs' && u.payload.start_time === '09:00'),
+      mocks.updates.some(u => u.table === 'runs' && u.payload.start_time === '09:12'),
     ).toBe(true));
   });
 });

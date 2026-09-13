@@ -18,6 +18,7 @@ import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 import CreatedRecordModal from '../shared/CreatedRecordModal';
 import { Dialog } from '../shared/Sheet';
+import { orderDayRecords } from '../../utils/dayOrder';
 
 export default function Calendar() {
   const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
@@ -315,18 +316,15 @@ export default function Calendar() {
             onDelete={() => setRaceToDelete(race)}
           />
         ))}
-        {selectedRuns.map(run => (
-          <RunCard key={run.id} run={run} onEdit={setEditingRunId} onDelete={handleDeleteRun} />
-        ))}
-        {selectedGym.map(session => (
-          <GymSessionCard key={session.id} session={session} onEdit={setEditingGymId} onDelete={handleDeleteGym} />
-        ))}
-        {selectedMeals.map(meal => (
-          <MealCard key={meal.id} meal={meal} onEdit={setEditingMealId} onDelete={handleDeleteMeal} />
-        ))}
-        {selectedBody.map(assessment => (
-          <BodyAssessmentCard key={assessment.id} assessment={assessment} onEdit={setEditingBodyId} onDelete={handleDeleteBody} />
-        ))}
+        {/* Os registos do dia pela hora (utils/dayOrder.js), não por tipo —
+            o treino das 07:00 antes do almoço, a corrida das 18:30 depois
+            (pedido 2026-09-13). As provas ficam em cima: são o dia. */}
+        {orderDayRecords({ runs: selectedRuns, gym: selectedGym, meals: selectedMeals, body: selectedBody }).map(({ kind, item }) => {
+          if (kind === 'run') return <RunCard key={`run-${item.id}`} run={item} onEdit={setEditingRunId} onDelete={handleDeleteRun} />;
+          if (kind === 'gym') return <GymSessionCard key={`gym-${item.id}`} session={item} onEdit={setEditingGymId} onDelete={handleDeleteGym} />;
+          if (kind === 'meal') return <MealCard key={`meal-${item.id}`} meal={item} onEdit={setEditingMealId} onDelete={handleDeleteMeal} />;
+          return <BodyAssessmentCard key={`body-${item.id}`} assessment={item} onEdit={setEditingBodyId} onDelete={handleDeleteBody} />;
+        })}
       </div>
       
       {raceToDelete && (

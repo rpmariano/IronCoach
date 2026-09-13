@@ -1692,6 +1692,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             </div>
 
+            {/* Hora de partida — vem preenchida da agenda, mas é a desta
+                corrida (runs.start_time): a partida real pode não ser a
+                anunciada. Até aqui a herança era invisível e o atleta não a
+                via nem a corrigia (relatado 2026-09-13). É ela que ordena o
+                dia no Calendário e que a Carol usa na véspera e no balanço. */}
+            <div className="grid grid-cols-2 gap-2.5 mb-4 items-end">
+              <div>
+                <label htmlFor="rr-hora-da-prova" className="text-[11px] text-[var(--text-3)] block mb-1.5">Hora de partida</label>
+                <input
+                  id="rr-hora-da-prova"
+                  type="time"
+                  value={runStartTime}
+                  onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
+                  className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+                />
+              </div>
+              <p className="text-[11px] leading-[1.45] pb-2.5" style={{ color: 'var(--text-4)' }}>
+                A hora a que partiste. Ordena o dia no Calendário e entra na análise da Carol.
+              </p>
+            </div>
+
             {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
                 posição nele, posição por género, participantes. Tudo
                 opcional; o ritmo médio calcula-se e o clube é do perfil. A
