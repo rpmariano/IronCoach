@@ -9,7 +9,10 @@ import Home from './Home';
 /* O Início chama pela Carol quando o plano precisa de um ajuste
    (specs/plano-de-prova.md, "O plano tem de saber da prova"): a deteção é
    de utils/planDivergence.js — aqui testa-se só o que o Início faz com ela,
-   que é a prioridade entre assuntos e o que leva ao chat. */
+   que é a prioridade entre assuntos e o que leva ao chat.
+
+   Desde 2026-09-13 os avisos vivem no botão flutuante e na janela dos
+   insights, não no cabeçalho do cartão da Carol, que é sempre "Carol". */
 
 const today = todayISO();
 const tomorrow = addDaysISO(today, 1);
@@ -28,6 +31,7 @@ const baseState = {
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
+  coachGoalProposals: [],
 };
 
 const renderHome = () => render(
@@ -36,7 +40,14 @@ const renderHome = () => render(
   </ToastProvider>,
 );
 
-describe('Home — "o plano precisa de um ajuste"', () => {
+const alertCount = () => {
+  const button = screen.queryByTestId('coach-insight-button');
+  return button ? Number(button.getAttribute('data-alerts')) : 0;
+};
+
+const openAlerts = () => fireEvent.click(screen.getByTestId('coach-insight-button'));
+
+describe('Home — os avisos da Carol no botão flutuante', () => {
   let setCoachIntent;
   let setActiveTab;
 
@@ -62,19 +73,35 @@ describe('Home — "o plano precisa de um ajuste"', () => {
 
   it('sem divergência, a Carol não chama por nada', () => {
     renderHome();
-    expect(screen.queryByTestId('carol-card-topic')).not.toBeInTheDocument();
+    expect(alertCount()).toBe(0);
   });
 
-  it('com divergência, o cartão diz o assunto', () => {
+  it('o cabeçalho do cartão da Carol é sempre "Carol", mesmo com aviso', () => {
     comDivergencia();
     renderHome();
-    expect(screen.getByTestId('carol-card-topic')).toHaveTextContent('o plano precisa de um ajuste');
+    const cartao = screen.getByTestId('carol-card');
+    expect(cartao).toHaveTextContent('Carol');
+    expect(cartao).toHaveTextContent('a tua treinadora');
+    expect(cartao).not.toHaveTextContent('precisa de falar contigo');
+    expect(cartao).not.toHaveTextContent('o plano precisa de um ajuste');
   });
 
-  it('abrir o chat entra no "Adaptar plano" com os motivos e a assinatura', () => {
+  it('com divergência, o botão flutuante conta o aviso e a janela diz os motivos', () => {
     comDivergencia();
     renderHome();
-    fireEvent.click(screen.getByText('A Carol precisa de falar contigo'));
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-plano');
+    expect(aviso).toHaveTextContent('O plano precisa de um ajuste');
+    expect(aviso).toHaveTextContent(/A Corrida do Tejo \(.+\) não está no plano\./);
+  });
+
+  it('"Falar com a Carol" entra no "Adaptar plano" com os motivos e a assinatura', () => {
+    comDivergencia();
+    renderHome();
+    openAlerts();
+    fireEvent.click(screen.getByTestId('carol-alert-talk-plano'));
 
     expect(setCoachIntent).toHaveBeenCalledTimes(1);
     const intent = setCoachIntent.mock.calls[0][0];
@@ -91,22 +118,29 @@ describe('Home — "o plano precisa de um ajuste"', () => {
   it('uma divergência já tratada não volta a chamar', () => {
     comDivergencia();
     const { unmount } = renderHome();
-    fireEvent.click(screen.getByText('A Carol precisa de falar contigo'));
+    openAlerts();
+    fireEvent.click(screen.getByTestId('carol-alert-talk-plano'));
     const { signature } = setCoachIntent.mock.calls[0][0];
     // É o Coach que marca, ao receber resposta — aqui simula-se esse efeito.
     window.localStorage.setItem('ironcoach:plano-ajuste:user-1', signature);
     unmount();
 
     renderHome();
-    expect(screen.queryByTestId('carol-card-topic')).not.toBeInTheDocument();
+    expect(alertCount()).toBe(0);
   });
 
-  it('uma intervenção pendente pesa mais do que o ajuste do plano', () => {
+  it('uma intervenção pendente pesa mais do que o ajuste do plano, e pode dispensar-se', () => {
     comDivergencia();
     useAppStore.setState({ profile: { id: 'user-1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' } });
     renderHome();
-    expect(screen.queryByTestId('carol-card-topic')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('A Carol precisa de falar contigo'));
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    expect(screen.getByTestId('carol-alert-assuntos')).toHaveTextContent('Tens 1 assunto a resolver com ela.');
+    expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();
+    expect(screen.getByTestId('carol-alert-dismiss-assuntos')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('carol-alert-talk-assuntos'));
     expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'proactive_intervention', reason: 'carga a subir' });
   });
 });

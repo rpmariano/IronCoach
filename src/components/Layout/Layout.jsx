@@ -156,7 +156,7 @@ export default function Layout({ children }) {
       >
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
+            <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>

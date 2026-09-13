@@ -44,10 +44,10 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    (26px), as conquistas em chips (`Recorde pessoal`, `Previsão batida`) e
    dois botões: "Ver memórias" (hub) e "Próxima prova" (`RunAgenda`). Fica
    até marcares a próxima prova ou 7 dias, o que vier primeiro; depois o
-   Início volta a olhar para a frente. A Carol chama pelo balanço no cartão
-   de topo ("A Carol precisa de falar contigo · o balanço da prova"),
-   ligado ao gatilho `race_after` que já existe. Sem lembrete permanente no
-   Início.
+   Início volta a olhar para a frente. A Carol chama pelo balanço no botão
+   flutuante do Início (aviso "O balanço da prova", desde 2026-09-13; antes
+   era o cabeçalho do cartão de topo), ligado ao gatilho `race_after` que já
+   existe. Sem lembrete permanente no Início.
 4. **Carol, no chat** — o balanço `race_after` cita a conquista em texto,
    opinião primeiro, sem cartão: "1:53:42 é o teu melhor tempo na meia —
    4:04 abaixo do anterior". O prompt recebe as conquistas novas no contexto

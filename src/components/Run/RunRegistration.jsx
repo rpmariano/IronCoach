@@ -4,7 +4,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
 import RaceMemoriesFields from './RaceMemoriesFields';
-import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared } from '../../utils/raceMemories';
+import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -738,7 +738,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const handleRacePhotoFiles = async (files) => {
     const { added, error } = await pickPhotos(files, racePhotos.length);
     setMemoryError(error);
-    if (added.length) { setRacePhotos(prev => [...prev, ...added]); setIsFormDirty(true); }
+    // O teto aplica-se outra vez aqui: duas seleções seguidas, antes de a
+    // compressão da primeira acabar, contavam ambas com o mesmo `length`.
+    if (added.length) { setRacePhotos(prev => [...prev, ...added].slice(0, MAX_RACE_PHOTOS)); setIsFormDirty(true); }
   };
 
   /* A corrida é gravada pela Edge Function analyze-run, que insere a linha em

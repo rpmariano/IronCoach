@@ -57,6 +57,7 @@ export default function RaceHubView({
   fetchingWebInfo = false,
   onGoToEdit,
   onMarkCompleted,
+  onMemoriesSaved,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [showVdotHelp, setShowVdotHelp] = useState(false);
@@ -526,7 +527,7 @@ export default function RaceHubView({
         ) : null}
 
         {memoriesOpen && (
-          <RaceMemoriesSheet race={race} userId={memoriesUserId} onClose={() => setMemoriesOpen(false)} />
+          <RaceMemoriesSheet race={race} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
 
         {openPhoto && (

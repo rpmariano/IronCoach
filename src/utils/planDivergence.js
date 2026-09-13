@@ -11,7 +11,9 @@
    3. treino_forte_na_vespera — trabalho duro (ou ginásio) a um ou dois dias
                                 da prova, quando só cabe recuperação;
    4. sessoes_falhadas        — duas ou mais sessões pendentes que já
-                                passaram e não têm registo nenhum.
+                                passaram e não têm registo nenhum, planeadas
+                                DEPOIS da última reescrita do plano (ver
+                                lastRewriteDay, abaixo).
 
    Só planos ACEITES com período a cobrir hoje ou o futuro entram: um plano
    que já terminou não se ajusta, revê-se.
@@ -51,6 +53,25 @@ const EVE_LABEL = { 1: 'na véspera', 2: 'a dois dias' };
 /** "Corrida do Tejo (13 set)" — o nome e o dia, como a Carol os diria. */
 function raceLabel(race) {
   return `${race.name || 'a prova'} (${formatDayMonth(dayOf(race.date))})`;
+}
+
+/** O dia em que a Carol reescreveu este plano pela última vez: o dia do item
+ *  mais recente (created_at). Ajustar um plano aceite não cria um plano novo
+ *  — os itens novos passam para o original (respondToPlan, caso A) e os dias
+ *  passados ficam como estavam, "pendente". Sem isto, duas sessões falhadas
+ *  antes do ajuste continuavam a chamar pela Carol depois de ela as ter
+ *  tido à frente e ajustado o plano por causa delas (relatado 2026-09-13).
+ *  null quando os itens não trazem created_at (dados antigos, demo). */
+function lastRewriteDay(items) {
+  let last = null;
+  for (const i of items) {
+    if (!i?.created_at) continue;
+    const d = new Date(i.created_at);
+    if (Number.isNaN(d.getTime())) continue;
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (!last || day > last) last = day;
+  }
+  return last;
 }
 
 /**
@@ -128,7 +149,12 @@ export function detectPlanDivergence({
 
   // 4. Sessões que passaram e não têm registo nenhum. A data conta pelo
   //    calendário: um treino de terça registado à quarta não é o de terça.
+  //    Só contam as planeadas desde a última reescrita do plano: as de antes
+  //    a Carol já as viu quando o ajustou.
   const from = addDays(today, -MISSED_LOOKBACK_DAYS);
+  const rewriteByPlan = new Map(
+    [...planIds].map((id) => [id, lastRewriteDay(items.filter((i) => i.plan_id === id))]),
+  );
   const doneDays = new Set([
     ...(runs || []).map((r) => dayOf(r?.date)),
     ...(gymSessions || []).map((g) => dayOf(g?.date)),
@@ -137,7 +163,8 @@ export function detectPlanDivergence({
     .filter((i) => (i.kind === 'corrida' || i.kind === 'ginasio') && i.status === 'pendente')
     .filter((i) => {
       const d = dayOf(i.planned_date);
-      return d >= from && d < today && !doneDays.has(d);
+      const rewrite = rewriteByPlan.get(i.plan_id);
+      return d >= from && d < today && !doneDays.has(d) && (!rewrite || d >= rewrite);
     })
     .sort((a, b) => dayOf(a.planned_date).localeCompare(dayOf(b.planned_date)));
 
