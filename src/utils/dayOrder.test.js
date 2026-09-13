@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { orderDayRecords, dayRecordMinutes, minutesOfDay } from './dayOrder';
+import { orderDayRecords, dayRecordMinutes, minutesOfDay, mealNominalTime } from './dayOrder';
 
 /* A ordem do dia no Calendário (pedido 2026-09-13): pela hora, entre tipos. */
 
@@ -31,6 +31,10 @@ describe('orderDayRecords', () => {
     // A hora real da refeição (meals.meal_time) ganha à habitual do tipo.
     expect(dayRecordMinutes('meal', { meal_type: 'jantar', meal_time: '21:40:00' })).toBe(1300);
     expect(dayRecordMinutes('body', {})).toBe(0);
+    expect(dayRecordMinutes('body', { assessment_time: '07:30:00' })).toBe(450);
+    expect(mealNominalTime('almoco')).toBe('13:00');
+    expect(mealNominalTime('pequeno-almoco')).toBe('08:00');
+    expect(mealNominalTime('outro')).toBe('');
     expect(dayRecordMinutes('outro', {})).toBeNull();
   });
 });

@@ -443,3 +443,35 @@ describe('BodyRegistration — ação primária na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Analisar avaliação/i }));
   });
 });
+
+/* A hora da avaliação (pedido 2026-09-13): a hora a que a pesagem foi
+   feita, vazia por omissão, gravada por update à parte — a analyze-body
+   não a conhece. */
+describe('BodyRegistration — hora da avaliação', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateAssessment.mockReset().mockResolvedValue({ error: null });
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('vazia por omissão; a escrita grava-se em body_assessments.assessment_time a seguir à análise', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1', date: '2026-09-13' } }, error: null });
+    render(<BodyRegistration onClose={() => {}} />);
+    expect(screen.getByLabelText('Hora da avaliação')).toHaveValue('');
+    fireEvent.change(screen.getByLabelText('Hora da avaliação'), { target: { value: '07:15' } });
+    await selectPhoto();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+
+    await waitFor(() => expect(mocks.updateAssessment).toHaveBeenCalledWith({ assessment_time: '07:15' }, 'assess-1'));
+    expect(mocks.invoke.mock.calls[0][1].body.assessment_time).toBeUndefined();
+    await waitFor(() => expect(useAppStore.getState().bodyAssessments[0]?.assessment_time).toBe('07:15'));
+  });
+
+  it('a editar, mostra a hora gravada e sem a mudar não faz update à parte', async () => {
+    const existing = { id: 'assess-3', date: '2026-01-08', assessment_time: '07:30:00', notes: 'nota', weight_kg: 78.5 };
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [existing], loadInitialData: vi.fn().mockResolvedValue() });
+    render(<BodyRegistration onClose={() => {}} assessmentIdToEdit="assess-3" />);
+    expect(screen.getByLabelText('Hora da avaliação')).toHaveValue('07:30');
+  });
+});

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf } from "./index.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -241,4 +241,11 @@ Deno.test("buildDailySummaryContext: a véspera da prova entra no contexto quand
   // deno-lint-ignore no-explicit-any
   const semVespera = buildDailySummaryContext(base as any) as Record<string, unknown>;
   assertEquals(semVespera.vespera_da_prova, undefined);
+});
+
+Deno.test("hhmmOf: 'HH:MM:SS' do PostgREST vira 'HH:MM'; o resto é null", () => {
+  assertEquals(hhmmOf("13:10:00"), "13:10");
+  assertEquals(hhmmOf("7:05"), "07:05");
+  assertEquals(hhmmOf(null), null);
+  assertEquals(hhmmOf("lixo"), null);
 });

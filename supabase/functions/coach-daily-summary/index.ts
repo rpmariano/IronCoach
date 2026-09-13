@@ -195,6 +195,12 @@ function getRacePhase(
 // Monta o contexto que vai para o Gemini a partir dos dados já buscados —
 // separado da leitura à BD para poder ser testado sem mockar o Supabase.
 // deno-lint-ignore no-explicit-any
+/** 'HH:MM:SS' (como o PostgREST devolve `time`) → 'HH:MM'. */
+export function hhmmOf(value: unknown): string | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(value ?? "").trim());
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
+}
+
 export function buildDailySummaryContext(params: {
   today: string;
   // deno-lint-ignore no-explicit-any
@@ -264,7 +270,11 @@ export function buildDailySummaryContext(params: {
     },
     hoje_ate_agora: {
       // deno-lint-ignore no-explicit-any
-      refeicoes_registadas: (todayMeals || []).map((m: any) => MEAL_TYPE_LABELS[m.meal_type] || m.meal_type),
+      // "Almoço às 13:10" — a hora a que se comeu (meals.meal_time), quando existe.
+      refeicoes_registadas: (todayMeals || []).map((m: any) => {
+        const hora = hhmmOf(m.meal_time);
+        return `${MEAL_TYPE_LABELS[m.meal_type] || m.meal_type}${hora ? ` às ${hora}` : ""}`;
+      }),
       calorias: Math.round(mealTotals.calories),
       proteina_g: Math.round(mealTotals.protein),
       hidratos_g: Math.round(mealTotals.carbs),
@@ -283,6 +293,7 @@ export function buildDailySummaryContext(params: {
     ginasio_ultimos_30_dias: recentGym || [],
     composicao_corporal_30_dias: (bodyAssessments || []).map((a: any) => ({
       date: a.date,
+      hora: a.assessment_time ? hhmmOf(a.assessment_time) : null,
       weight_kg: a.weight_kg,
       body_fat_pct: a.body_fat_pct,
       lean_body_mass_kg: a.lean_body_mass_kg,
@@ -698,13 +709,15 @@ Deno.serve(async (req) => {
       sb.from("profiles")
         .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, water_reminder_enabled, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm")
         .eq("id", userId).maybeSingle(),
-      sb.from("meals").select("meal_type, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+      sb.from("meals").select("meal_type, meal_time, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId).eq("date", today),
       sb.from("water_logs").select("amount_ml").eq("user_id", userId).eq("date", today),
       // Janela alargada a 30 dias para calcular ACWR (precisa de 28 dias de histórico crónico)
-      sb.from("runs").select("date, training_type, distance_km, duration_seconds, effort_rpe, details, kind")
+      // start_time / assessment_time: as horas a que as coisas aconteceram
+      // (pedido 2026-09-13) — a Carol lê-as tal como vêm, nas listas abaixo.
+      sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
-      sb.from("workout_sessions").select("date, categories, duration_seconds, avg_hr, exertion")
+      sb.from("workout_sessions").select("date, start_time, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
         .select("id, period_start, period_end, created_at")
@@ -716,7 +729,7 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(3),
       // Composição corporal: 30 dias para RED-S e tendência de peso
-      sb.from("body_assessments").select("date, weight_kg, body_fat_pct, lean_body_mass_kg, visceral_fat, body_water_pct")
+      sb.from("body_assessments").select("date, assessment_time, weight_kg, body_fat_pct, lean_body_mass_kg, visceral_fat, body_water_pct")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
     ]);
 
