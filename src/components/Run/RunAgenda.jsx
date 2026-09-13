@@ -344,6 +344,10 @@ export default function RunAgenda({ onClose }) {
           diploma_path: ev.diploma_path || null,
           medal_path: ev.medal_path || null,
           photo_paths: ev.photo_paths || [],
+          // O balanço da Carol (race_events.coach_balance) — o hub lê-o do
+          // rascunho, por isso tem de vir no canónico.
+          coach_balance: ev.coach_balance || null,
+          coach_balance_at: ev.coach_balance_at || null,
         };
         setDraft(persisted ? { ...canonical, ...persisted } : canonical);
         // A prova já gravada tem o nível "respondido" para a categoria com
@@ -401,7 +405,8 @@ export default function RunAgenda({ onClose }) {
     setRaceEvents(next);
   };
 
-  // Memórias guardadas na persiana do Hub embutido: a mesma escrita local do
+  // Memórias guardadas na persiana do Hub embutido (e o balanço da Carol,
+  // pelo mesmo caminho): a mesma escrita local do
   // "Marcar como concluída", pelo mesmo motivo — o efeito de carregamento
   // repunha o registo canónico e apagava as edições por gravar dos
   // "Detalhes" (revisão pré-deploy 2026-09-13). Só os caminhos entram no

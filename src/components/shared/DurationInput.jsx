@@ -15,7 +15,9 @@ const MAX_DIGITS = 6; // hh:mm:ss
 
 export function formatDurationDigits(raw) {
   const digits = String(raw ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(-MAX_DIGITS);
-  if (!digits) return '';
+  // Só zeros é "nada": senão apagar "0:05" com backspace deixava "0:00" para
+  // sempre (revisão pré-deploy 2026-09-13).
+  if (!digits || /^0+$/.test(digits)) return '';
   const padded = digits.padStart(4, '0');
   const seconds = padded.slice(-2);
   const minutes = padded.slice(-4, -2);

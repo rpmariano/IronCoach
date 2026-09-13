@@ -45,9 +45,18 @@ describe('RaceBalanceCard', () => {
     expect(body.race_outcome.official_seconds).toBe(3088);
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
 
-    // Fica na prova (store) e no chat.
-    expect(useAppStore.getState().raceEvents[0].coach_balance).toBe(BALANCO);
+    // Fica no chat; na prova só por quem monta o hub (onSaved), nunca por
+    // escrita direta no store — isso repunha o rascunho do RunAgenda.
     expect(useAppStore.getState().coachMessages[0].content).toBe(BALANCO);
+    expect(useAppStore.getState().raceEvents[0].coach_balance).toBeUndefined();
+  });
+
+  it('entrega o balanço a quem monta o hub, para o gravar pelo caminho do RunAgenda', async () => {
+    mocks.invoke.mockResolvedValue({ data: { model_message: { id: 'm1', content: BALANCO }, suggestions: [] }, error: null });
+    const onSaved = vi.fn();
+    render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} onSaved={onSaved} />);
+    await screen.findByTestId('race-balance-carol');
+    expect(onSaved).toHaveBeenCalledWith({ coach_balance: BALANCO, coach_balance_at: expect.any(String) });
   });
 
   it('a resposta do "perto" vai para o chat como se o atleta a tivesse escrito', async () => {

@@ -1824,7 +1824,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <div className="grid grid-cols-2 gap-2 mb-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
               <div>
                 <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1">Tempo Oficial</label>
-                <input id="rr-tempo-oficial" type="text" placeholder="ex: 1:45:00" value={officialTime} onChange={e => { setOfficialTime(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                <DurationInput id="rr-tempo-oficial" placeholder="ex: 1:45:00" value={officialTime} onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
               </div>
               <div>
                 <label htmlFor="rr-posicao" className="text-[11px] text-[var(--text-3)] block mb-1">Posição</label>

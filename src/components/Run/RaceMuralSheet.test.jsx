@@ -41,7 +41,7 @@ describe('RaceMuralSheet', () => {
 
     fireEvent.click(screen.getByTestId('race-mural-format-story'));
     await waitFor(() => expect(mocks.render).toHaveBeenLastCalledWith(expect.objectContaining({ format: 'story' })));
-    expect(screen.getByTestId('race-mural-format-story')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('race-mural-format-story')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('a legenda pede-se à Carol e copia-se', async () => {

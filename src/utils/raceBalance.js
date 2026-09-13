@@ -78,9 +78,11 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
   const entry = { text, suggestions, at: new Date().toISOString() };
   writeCachedBalance(race.id, entry);
 
-  const store = useAppStore.getState();
-  store.addCoachMessage({ id: data?.model_message?.id || `${Date.now()}`, role: 'assistant', content: text });
-  store.setRaceEvents((store.raceEvents || []).map((e) => (e.id === race.id ? { ...e, coach_balance: text, coach_balance_at: entry.at } : e)));
+  // Só o chat: escrever em raceEvents a partir daqui fazia o efeito de
+  // carregamento do RunAgenda repor o rascunho por gravar dos "Detalhes"
+  // (revisão pré-deploy 2026-09-13). A prova atualiza-se por quem monta o
+  // hub (RaceBalanceCard → onSaved → writeRaceEventsLocally).
+  useAppStore.getState().addCoachMessage({ id: data?.model_message?.id || `${Date.now()}`, role: 'assistant', content: text });
   return entry;
 }
 

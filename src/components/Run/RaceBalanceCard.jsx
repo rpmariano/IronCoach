@@ -10,7 +10,7 @@ import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, bal
    mais discreta. As sugestões do "perto" ("Sim, para a próxima quero
    melhor") levam ao chat com a resposta já enviada — é lá que se decide o
    que muda no treino. */
-export default function RaceBalanceCard({ race, run, runs = [], profile = {}, numbersLine, onLeave }) {
+export default function RaceBalanceCard({ race, run, runs = [], profile = {}, numbersLine, onLeave, onSaved }) {
   const { raceEvents } = useAppStore();
   const [balance, setBalance] = useState(() => existingRaceBalance(race));
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,9 @@ export default function RaceBalanceCard({ race, run, runs = [], profile = {}, nu
     setLoading(true);
     setFailed(false);
     try {
-      setBalance(await requestRaceBalance({ race, run, runs, raceEvents, profile }));
+      const entry = await requestRaceBalance({ race, run, runs, raceEvents, profile });
+      setBalance(entry);
+      onSaved?.({ coach_balance: entry.text, coach_balance_at: entry.at });
     } catch (err) {
       console.warn('Balanço da prova não obtido', err);
       setFailed(true);
@@ -68,7 +70,7 @@ export default function RaceBalanceCard({ race, run, runs = [], profile = {}, nu
       </div>
 
       {loading && (
-        <div data-testid="race-balance-loading" className="flex flex-col gap-2 mt-3" aria-label="A Carol está a escrever o balanço">
+        <div data-testid="race-balance-loading" role="status" className="flex flex-col gap-2 mt-3" aria-label="A Carol está a escrever o balanço">
           <span className="text-[11.5px] font-bold" style={{ color: 'var(--coach)' }}>a escrever…</span>
           <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
           <span className="block h-3 rounded-full w-5/6" style={{ background: 'rgba(255,255,255,.08)' }} />

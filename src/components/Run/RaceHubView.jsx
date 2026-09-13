@@ -591,6 +591,7 @@ export default function RaceHubView({
           profile={profile}
           numbersLine={raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
           onLeave={() => leaveTo(null)}
+          onSaved={onMemoriesSaved}
         />
 
         {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se

@@ -120,15 +120,14 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
       </p>
 
       {/* formatos */}
-      <div className="flex gap-2 mt-3" role="tablist" aria-label="Formato do mural">
+      <div className="flex gap-2 mt-3" role="group" aria-label="Formato do mural">
         {Object.entries(MURAL_FORMATS).map(([key, f]) => {
           const active = key === format;
           return (
             <button
               key={key}
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={active}
               data-testid={`race-mural-format-${key}`}
               onClick={() => setFormat(key)}
               className="flex-1 flex flex-col items-center justify-center rounded-[12px]"
@@ -147,7 +146,7 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
           {preview && !rendering && (
             <img src={preview} alt={`Mural da ${race?.name || 'prova'}`} data-testid="race-mural-preview" style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} />
           )}
-          {rendering && <div className="w-full h-full animate-pulse" aria-label="A compor o mural" />}
+          {rendering && <div className="w-full h-full animate-pulse" role="status" aria-label="A compor o mural" />}
         </div>
       </div>
       {error && <Warning title="Mural por compor" className="mt-3">{error}</Warning>}
@@ -157,7 +156,7 @@ export default function RaceMuralSheet({ race, run, runs = [], profile = {}, sec
         <div className="flex items-center justify-between gap-2">
           <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>Legenda da Carol</span>
           {caption && (
-            <button type="button" onClick={copyCaption} data-testid="race-mural-copy" className="inline-flex items-center gap-1 text-[12px] font-extrabold" style={{ minHeight: 36, color: 'var(--coach)' }}>
+            <button type="button" onClick={copyCaption} data-testid="race-mural-copy" className="inline-flex items-center gap-1 text-[12px] font-extrabold" style={{ minHeight: 44, padding: '0 6px', color: 'var(--coach)' }}>
               {copied ? <><Check size={13} /> Copiada</> : <><Copy size={13} /> Copiar</>}
             </button>
           )}

@@ -56,6 +56,15 @@ describe('DurationInput', () => {
     expect(input.value).toBe('5:12');
   });
 
+  it('apagar tudo com backspace deixa o campo vazio, não preso em 0:00', () => {
+    render(<Campo />);
+    const input = screen.getByLabelText('Tempo');
+    fireEvent.change(input, { target: { value: '5' } });
+    expect(input.value).toBe('0:05');
+    fireEvent.change(input, { target: { value: '0:0' } });
+    expect(input.value).toBe('');
+  });
+
   it('aceita um tempo colado com separadores', () => {
     render(<Campo />);
     const input = screen.getByLabelText('Tempo');

@@ -222,10 +222,12 @@ function drawLogo(ctx, logo, { width, height, pad }) {
  * @param photoUrls   URLs (assinadas) das fotos escolhidas, já pela ordem
  */
 export async function renderRaceMural({ format = DEFAULT_MURAL_FORMAT, race, seconds, distanceKm, photoUrls = [] }) {
-  const [images, logo] = await Promise.all([
-    Promise.all(photoUrls.slice(0, MURAL_MAX_PHOTOS).map((u) => loadImage(u))),
+  // Uma foto que falhe (rede, CORS) sai do mural em vez de o derrubar.
+  const [settled, logo] = await Promise.all([
+    Promise.allSettled(photoUrls.slice(0, MURAL_MAX_PHOTOS).map((u) => loadImage(u))),
     loadLogo(),
   ]);
+  const images = settled.filter((r) => r.status === 'fulfilled').map((r) => r.value);
   const layout = muralLayout(format, images.length);
   const { width, height, pad, textTop, frames } = layout;
   const texts = muralTexts({ race, seconds, distanceKm });
@@ -240,45 +242,67 @@ export async function renderRaceMural({ format = DEFAULT_MURAL_FORMAT, race, sec
   if (frames.length) drawScrim(ctx, width, frames[0].h * 0.55, Math.max(frames[0].h + 2, textTop + 40));
 
   // ── texto ──
+  // O bloco tem de caber entre o topo do texto e o logótipo: mede-se
+  // primeiro e, se não couber (o quadrado com fotos e um nome a duas
+  // linhas), encolhe-se a escala e cai o local — revisão pré-deploy.
   const maxW = width - 2 * pad;
-  let y = layout.hasPhotos ? Math.max(textTop, (frames[frames.length - 1].y + frames[frames.length - 1].h) + 40) : height * 0.30;
+  const startY = layout.hasPhotos ? Math.max(textTop, (frames[frames.length - 1].y + frames[frames.length - 1].h) + 40) : height * 0.30;
+  const logoSize = Math.round(width * 0.052);
+  const available = height - pad - logoSize - 16 - startY;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
+  const measure = (scale, withLocation) => {
+    const eyebrowSize = Math.round(width * 0.024 * scale);
+    const nameSize = fitFontSize(ctx, texts.name, maxW, { max: Math.round(width * 0.09 * scale), min: Math.round(width * 0.05 * scale) });
+    ctx.font = `900 ${nameSize}px ${FONT}`;
+    const nameLines = wrapLines(ctx, texts.name, maxW, 2);
+    const timeSize = Math.round(width * 0.135 * scale);
+    const statsSize = Math.round(width * 0.03 * scale);
+    ctx.font = `900 ${timeSize}px ${FONT}`;
+    const timeW = ctx.measureText(texts.time).width;
+    ctx.font = `700 ${statsSize}px ${FONT}`;
+    const statsFit = !!texts.stats && ctx.measureText(texts.stats).width <= width - pad - (pad + timeW + 24);
+    const statsBelow = !!texts.stats && !statsFit;
+    const total = Math.round(width * 0.03 * scale) + nameLines.length * nameSize * 1.02 + Math.round(width * 0.028 * scale) + timeSize
+      + (statsBelow ? Math.round(width * 0.045 * scale) : 0) + (withLocation && texts.location ? Math.round(width * 0.04 * scale) : 0);
+    return { eyebrowSize, nameSize, nameLines, timeSize, statsSize, timeW, statsFit, statsBelow, total, withLocation };
+  };
+  let m = measure(1, true);
+  if (m.total > available) m = measure(1, false);
+  let scale = 1;
+  while (m.total > available && scale > 0.7) { scale -= 0.05; m = measure(scale, false); }
+
+  let y = startY;
   // eyebrow âmbar com uma barra à esquerda
-  ctx.font = `800 ${Math.round(width * 0.024)}px ${FONT}`;
+  ctx.font = `800 ${m.eyebrowSize}px ${FONT}`;
   ctx.fillStyle = COLORS.race;
-  ctx.fillRect(pad, y - Math.round(width * 0.02), 6, Math.round(width * 0.026));
+  ctx.fillRect(pad, y - Math.round(m.eyebrowSize * 0.83), 6, Math.round(m.eyebrowSize * 1.08));
   ctx.fillText(texts.eyebrow, pad + 18, y);
-  y += Math.round(width * 0.03);
+  y += Math.round(width * 0.03 * scale);
 
   // nome, até duas linhas
-  const nameSize = fitFontSize(ctx, texts.name, maxW, { max: Math.round(width * 0.09), min: Math.round(width * 0.05) });
-  ctx.font = `900 ${nameSize}px ${FONT}`;
+  ctx.font = `900 ${m.nameSize}px ${FONT}`;
   ctx.fillStyle = COLORS.text1;
-  const nameLines = wrapLines(ctx, texts.name, maxW, 2);
-  nameLines.forEach((line) => { y += nameSize * 1.02; ctx.fillText(line, pad, y); });
+  m.nameLines.forEach((line) => { y += m.nameSize * 1.02; ctx.fillText(line, pad, y); });
 
   // tempo grande em âmbar e os números ao lado
-  y += Math.round(width * 0.028);
-  const timeSize = Math.round(width * 0.135);
-  ctx.font = `900 ${timeSize}px ${FONT}`;
+  y += Math.round(width * 0.028 * scale);
+  ctx.font = `900 ${m.timeSize}px ${FONT}`;
   ctx.fillStyle = COLORS.race;
-  y += timeSize;
+  y += m.timeSize;
   ctx.fillText(texts.time, pad, y);
-  const timeW = ctx.measureText(texts.time).width;
-  ctx.font = `700 ${Math.round(width * 0.03)}px ${FONT}`;
+  ctx.font = `700 ${m.statsSize}px ${FONT}`;
   ctx.fillStyle = COLORS.text3;
-  const statsX = pad + timeW + 24;
-  if (texts.stats && ctx.measureText(texts.stats).width <= width - pad - statsX) {
-    ctx.fillText(texts.stats, statsX, y - Math.round(timeSize * 0.12));
-  } else if (texts.stats) {
-    y += Math.round(width * 0.045);
+  if (m.statsFit) {
+    ctx.fillText(texts.stats, pad + m.timeW + 24, y - Math.round(m.timeSize * 0.12));
+  } else if (m.statsBelow) {
+    y += Math.round(width * 0.045 * scale);
     ctx.fillText(texts.stats, pad, y);
   }
-  if (texts.location) {
-    y += Math.round(width * 0.04);
-    ctx.font = `600 ${Math.round(width * 0.026)}px ${FONT}`;
+  if (m.withLocation && texts.location) {
+    y += Math.round(width * 0.04 * scale);
+    ctx.font = `600 ${Math.round(width * 0.026 * scale)}px ${FONT}`;
     ctx.fillStyle = COLORS.text4;
     ctx.fillText(texts.location, pad, y);
   }
