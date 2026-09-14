@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, pendingRaceBalance, lastRecordDate, wasProactiveSent, markProactiveSent, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, pendingRaceBalance, pendingRaceBalanceCandidate, lastRecordDate, wasProactiveSent, markProactiveSent, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -109,6 +109,16 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       expect(pendingRaceBalance(data({ raceEvents: [{ ...race, date: '2026-09-09' }], profile }), NOW)).toBeNull();
       markProactiveSent('u1', { trigger: 'race_after', key: 'race_after:r1:run-race' });
       expect(pendingRaceBalance(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
+    });
+
+    it('pendingRaceBalanceCandidate: o candidato completo (details/raceOutcome) por trás de pendingRaceBalance — para o Início forçar o pedido', () => {
+      window.localStorage.clear();
+      const c = pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW);
+      expect(c.trigger).toBe('race_after');
+      expect(c.raceId).toBe('r1');
+      expect(c.raceOutcome).toMatchObject({ race_id: 'r1', verdict: 'perto' });
+      markProactiveSent('u1', { trigger: 'race_after', key: 'race_after:r1:run-race' });
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
     });
   });
 

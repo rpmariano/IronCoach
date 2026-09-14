@@ -12,6 +12,7 @@ import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
 import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
+import { writeCachedBalance } from '../../utils/raceBalance';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
@@ -233,10 +234,48 @@ export default function Coach() {
     return data;
   });
 
+  // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
+  // prova" (utils/coachProactive.js, pendingRaceBalanceCandidate): ao
+  // contrário do efeito passivo abaixo (que cede sempre que ela tiver
+  // falado há menos de 6h, para não empilhar duas mensagens não pedidas),
+  // isto é um pedido explícito do atleta — vai com `proactive_force` para
+  // não ficar silenciosamente sem resposta nenhuma (bug 2026-09-14).
+  const handleRaceBalanceCheckin = (candidate) => sendCoachInitiatedPayload({
+    message: '',
+    proactive_trigger: candidate.trigger,
+    proactive_details: candidate.details,
+    ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
+    proactive_force: true,
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  }).then((data) => {
+    if (data && !data.skipped) {
+      markProactiveSent(profile?.id, candidate);
+      // O hub (RaceBalanceCard) tem o mesmo balanço — pedido lá, marca-se
+      // aqui e o aviso do Início desaparece (wasProactiveSent, partilhado);
+      // pedido aqui, é esta cópia local que faz o hub mostrar o que a Carol
+      // já disse em vez de convidar a pedir-lho outra vez.
+      if (candidate.raceId && data.model_message?.content) {
+        writeCachedBalance(candidate.raceId, {
+          text: data.model_message.content,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [],
+          at: new Date().toISOString(),
+        });
+      }
+    }
+    return data;
+  });
+
   useEffect(() => {
     if (coachIntent && coachIntent.kind === 'proactive_intervention') {
       setCoachIntent(null);
       handleProactiveIntervention(coachIntent);
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'race_balance') {
+      const { candidate } = coachIntent;
+      setCoachIntent(null);
+      handleRaceBalanceCheckin(candidate);
       return;
     }
     // Os botões "Adaptar plano" mandam a string; o Início, quando detetou uma
