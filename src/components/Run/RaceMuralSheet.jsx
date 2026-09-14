@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { canvasToFile, muralFileName, muralCandidates } from '../../utils/raceMural';
 import {
-  STUDIO_FORMATS, STUDIO_TEMPLATES, STUDIO_THEMES, BRAND_CORNERS, STUDIO_GRAPHICS, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM,
+  STUDIO_FORMATS, STUDIO_TEMPLATES, STUDIO_THEMES, BRAND_CORNERS, MEDAL_CORNERS, STUDIO_GRAPHICS, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM,
   studioLayout, muralData, defaultComposition, sanitizeComposition, switchTemplate, assignSlot, clearSlot,
   setSlotFocus, setSlotZoom, toggleGraphic, graphicUnavailableReason, coverCrop,
 } from '../../utils/muralStudio';
@@ -500,12 +500,14 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
           {/* Um canto de verdade para a medalha (relatado 2026-09-14: ficava
               perto do texto, por cima do que estivesse na foto por baixo) —
               só faz sentido com uma medalha para pôr e num modelo que a
-              mostre como decoração (o Troféu já a põe ao centro). */}
+              mostre como decoração (o Troféu já a põe ao centro). Só cantos
+              de cima (achado na revisão pré-deploy 2026-09-14: em baixo caía
+              sempre em cima do texto, que ocupa a banda de baixo da tela). */}
           {!graphicUnavailableReason('medalhao', { data, candidates, template: composition.template }) && (
             <>
               <p className={sectionLabel} style={sectionStyle}>Canto da medalha</p>
               <div className="flex gap-2" role="group" aria-label="Canto da medalha">
-                {Object.entries(BRAND_CORNERS).map(([key, label]) => {
+                {Object.entries(MEDAL_CORNERS).map(([key, label]) => {
                   const Icon = CORNER_ICONS[key];
                   return (
                     <button key={key} type="button" aria-pressed={composition.medalCorner === key} aria-label={label} data-testid={`race-mural-medal-corner-${key}`} onClick={() => update((c) => ({ ...c, medalCorner: key }))} className="flex-1 inline-flex items-center justify-center" style={chip(composition.medalCorner === key)}>

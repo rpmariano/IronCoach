@@ -125,24 +125,35 @@ describe('RaceMuralSheet — o estúdio', () => {
     await waitFor(() => expect(lastComposition()).toMatchObject({ theme: 'claro', brandCorner: 'br', graphics: { classificacao: false, diploma: true } }));
   });
 
-  it('Canto da medalha (relatado 2026-09-14: "a medalha estraga uma foto") — muda-se à parte da marca, e some com o Troféu', async () => {
+  it('Canto da medalha (relatado 2026-09-14: "a medalha estraga uma foto") — só em cima (achado na revisão: em baixo caía no texto), independente da marca, e some com o Troféu e com "Só números"', async () => {
     open();
     await screen.findByTestId('race-mural-preview');
     fireEvent.click(screen.getByTestId('race-mural-step-grafismos'));
 
-    expect(lastComposition().medalCorner).toBe('br'); // omissão, longe do canto da marca ('tl')
-    fireEvent.click(screen.getByTestId('race-mural-medal-corner-tr'));
-    await waitFor(() => expect(lastComposition().medalCorner).toBe('tr'));
+    expect(lastComposition().medalCorner).toBe('tr'); // omissão, longe do canto da marca ('tl'), em cima
+    // Só há cantos de cima para escolher — nunca em baixo.
+    expect(screen.queryByTestId('race-mural-medal-corner-br')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('race-mural-medal-corner-bl')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('race-mural-medal-corner-tl'));
+    await waitFor(() => expect(lastComposition().medalCorner).toBe('tl'));
     // Mudar o canto da marca não mexe no da medalha — são independentes.
     fireEvent.click(screen.getByTestId('race-mural-corner-br'));
     await waitFor(() => expect(lastComposition().brandCorner).toBe('br'));
-    expect(lastComposition().medalCorner).toBe('tr');
+    expect(lastComposition().medalCorner).toBe('tl');
 
     // O Troféu já põe a medalha ao centro — o seletor deixa de fazer sentido.
     fireEvent.click(screen.getByTestId('race-mural-step-modelo'));
     fireEvent.click(screen.getByTestId('race-mural-template-trofeu'));
     fireEvent.click(screen.getByTestId('race-mural-step-grafismos'));
-    expect(screen.queryByTestId('race-mural-medal-corner-tr')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('race-mural-medal-corner-tl')).not.toBeInTheDocument();
+
+    // "Só números" também não tem canto livre (o texto ocupa quase a tela toda).
+    fireEvent.click(screen.getByTestId('race-mural-step-modelo'));
+    fireEvent.click(screen.getByTestId('race-mural-template-numeros'));
+    fireEvent.click(screen.getByTestId('race-mural-step-grafismos'));
+    expect(screen.getByTestId('race-mural-graphic-medalhao')).toHaveTextContent('Sem espaço livre neste modelo');
+    expect(screen.queryByTestId('race-mural-medal-corner-tl')).not.toBeInTheDocument();
   });
 
   it('o que não cabe diz-se por baixo da pré-visualização', async () => {

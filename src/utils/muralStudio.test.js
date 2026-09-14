@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  STUDIO_FORMATS, STUDIO_TEMPLATES, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM, DEFAULT_MEDAL_CORNER, studioLayout,
+  STUDIO_FORMATS, STUDIO_TEMPLATES, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM, DEFAULT_MEDAL_CORNER, BRAND_CORNERS, MEDAL_CORNERS, studioLayout,
   templateSlotIds, coverCrop, fillSlots, defaultComposition, switchTemplate, assignSlot, clearSlot, setSlotFocus,
   setSlotZoom, toggleGraphic, sanitizeComposition, planBlocks, pacePoints, muralData, graphicUnavailableReason,
   splitPaces, paceLabel, distanceLabel, brandBox, medalCornerBox,
@@ -183,6 +183,8 @@ describe('composição', () => {
     expect(s).toMatchObject({ format: 'story', template: 'mosaico4', theme: 'dourado', brandCorner: 'br', medalCorner: 'tr' });
     // Sem medalCorner (um mural gravado antes de existir), cai no valor por omissão da composição atual.
     expect(sanitizeComposition({ template: 'capa' }, fallback).medalCorner).toBe(fallback.medalCorner);
+    // 'br'/'bl' gravado antes da correção (caía em cima do texto) também cai no valor por omissão.
+    expect(sanitizeComposition({ template: 'capa', medalCorner: 'br' }, fallback).medalCorner).toBe(fallback.medalCorner);
     // fx=3 encosta ao máximo (1); zoom=12 encosta ao máximo (3); sem zoom (s3, um mural gravado antes de existir) cai no mínimo (1).
     expect(s.slots).toEqual({ s1: { id: 'photo-1', fx: 1, fy: 0.42, zoom: MAX_STUDIO_ZOOM }, s3: { id: 'photo-3', fx: 0.5, fy: 0.42, zoom: MIN_STUDIO_ZOOM } });
     expect(s.graphics).toMatchObject({ ritmo: false, conquistas: false });
@@ -238,8 +240,24 @@ describe('dados do mural', () => {
     expect(graphicUnavailableReason('ritmo', { data: d, candidates: [] })).toBe('Sem parciais por km');
     expect(graphicUnavailableReason('medalhao', { data: d, candidates: [] })).toBe('Sem fotografia da medalha');
     expect(graphicUnavailableReason('medalhao', { data: d, candidates: CANDIDATES, template: 'trofeu' })).toMatch(/Troféu/);
+    // "Só números" não tem canto de cima livre (o texto ocupa quase a tela toda).
+    expect(graphicUnavailableReason('medalhao', { data: d, candidates: CANDIDATES, template: 'numeros' })).toBe('Sem espaço livre neste modelo');
     expect(graphicUnavailableReason('medalhao', { data: d, candidates: CANDIDATES, template: 'capa' })).toBeNull();
     expect(graphicUnavailableReason('titulo', { data: d })).toBeNull();
+  });
+
+  it('a medalha nunca cobre o texto, mesmo empilhada com a marca no mesmo canto (achado na revisão pré-deploy 2026-09-14)', () => {
+    for (const template of ['capa', 'mosaico4', 'mosaico6']) {
+      for (const format of Object.keys(STUDIO_FORMATS)) {
+        for (const brandCorner of Object.keys(BRAND_CORNERS)) {
+          for (const medalCorner of Object.keys(MEDAL_CORNERS)) {
+            const layout = studioLayout(template, format, brandCorner);
+            const box = medalCornerBox(format, medalCorner, brandCorner);
+            expect(box.y + box.h).toBeLessThanOrEqual(layout.text.top + 0.5);
+          }
+        }
+      }
+    }
   });
 
   it('a linha do ritmo: mais rápido em cima, plana se não houver diferença', () => {
