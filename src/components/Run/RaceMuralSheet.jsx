@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Share2, Download, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
 import { Sheet } from '../shared/Sheet';
 import Warning, { WarningAction } from '../shared/Warning';
+import { supabase } from '../../lib/supabase';
+import { useAppStore } from '../../store';
 import { canvasToFile, muralFileName, muralCandidates } from '../../utils/raceMural';
 import {
-  STUDIO_FORMATS, STUDIO_TEMPLATES, STUDIO_THEMES, BRAND_CORNERS, STUDIO_GRAPHICS, studioLayout, muralData,
-  defaultComposition, sanitizeComposition, switchTemplate, assignSlot, clearSlot, setSlotFocus, toggleGraphic,
-  graphicUnavailableReason, loadStoredComposition, storeComposition,
+  STUDIO_FORMATS, STUDIO_TEMPLATES, STUDIO_THEMES, BRAND_CORNERS, STUDIO_GRAPHICS, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM,
+  studioLayout, muralData, defaultComposition, sanitizeComposition, switchTemplate, assignSlot, clearSlot,
+  setSlotFocus, setSlotZoom, toggleGraphic, graphicUnavailableReason, coverCrop,
 } from '../../utils/muralStudio';
 import { loadStudioAssets, renderMuralStudio } from '../../utils/muralStudioDraw';
 
@@ -17,15 +19,20 @@ import { loadStudioAssets, renderMuralStudio } from '../../utils/muralStudioDraw
    1. Modelo — formato (feed, story, quadrado) e modelo (Capa, Mosaicos,
       Troféu, Só números), cada um com espaços para fotos.
    2. Fotos — toca-se num espaço (na pré-visualização ou na lista) e
-      escolhe-se a memória; tocar na foto escolhe o ponto de foco.
+      escolhe-se a memória; arrasta-se a foto para a mover e desliza-se para
+      ampliar (pedido 2026-09-14 — o ponto de foco fixo saiu).
    3. Grafismos — peças prontas que se ligam e desligam, o tema de cor e o
       canto da marca, que vai sempre.
 
-   A composição guarda-se por prova neste dispositivo, para se voltar a
-   mexer sem começar do zero. A legenda da Carol saiu: o texto do mural
-   chega. */
+   A composição grava-se na prova (`race_events.mural_composition`, pedido
+   2026-09-14 — antes só ficava no telemóvel), por update à parte com
+   debounce, como a hora da corrida; `onSaved` deixa quem monta tratar do
+   store, como nas Memórias e no Balanço, para não repor um rascunho aberto
+   noutro sítio. A legenda da Carol saiu: o texto do mural chega. */
 
 const PREVIEW_SCALE = 0.4;
+const PERSIST_DEBOUNCE_MS = 600;
+const CROP_MAX_PX = 260;
 const STEPS = [
   { key: 'modelo', label: 'Modelo' },
   { key: 'fotos', label: 'Fotos' },
@@ -44,7 +51,7 @@ const chip = (active) => ({
 const sectionLabel = 'text-[11px] font-extrabold uppercase mt-4 mb-2';
 const sectionStyle = { letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' };
 
-export default function RaceMuralSheet({ race, run, seconds, classification = '', achievements = [], memoryUrls, onClose }) {
+export default function RaceMuralSheet({ race, run, seconds, classification = '', achievements = [], memoryUrls, onSaved, onClose }) {
   const photosKey = (memoryUrls?.photos || []).join('|');
   const candidates = useMemo(() => muralCandidates({
     photos: memoryUrls?.photos || [],
@@ -63,12 +70,52 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   const touchedRef = useRef(false);
   const [composition, setComposition] = useState(() => {
     const fallback = defaultComposition({ candidates, data });
-    storedRef.current = loadStoredComposition(race?.id);
+    // Já vem com a prova (select('*')) — sem pedido à parte.
+    storedRef.current = race?.mural_composition || null;
     return sanitizeComposition(storedRef.current, fallback);
   });
   const update = (fn) => {
     touchedRef.current = true;
     setComposition((prev) => fn(prev));
+  };
+
+  /* Grava na prova por update à parte, com debounce (o mesmo padrão da hora
+     da corrida/refeição): um erro fica só na consola — a composição
+     continua a valer para partilhar já, só não sobrevive a fechar sem
+     ligação. `onSaved` deixa quem monta tratar do store (como nas Memórias
+     e no Balanço); sem ele, escreve direto. */
+  const persistTimerRef = useRef(null);
+  const persistComposition = async (next) => {
+    if (!race?.id) return;
+    try {
+      const { error } = await supabase.from('race_events').update({ mural_composition: next }).eq('id', race.id);
+      if (error) throw error;
+      if (onSaved) {
+        onSaved({ mural_composition: next });
+      } else {
+        const store = useAppStore.getState();
+        store.setRaceEvents((store.raceEvents || []).map((e) => (e.id === race.id ? { ...e, mural_composition: next } : e)));
+      }
+    } catch (err) {
+      console.warn('Composição do mural não gravada', err);
+    }
+  };
+  useEffect(() => {
+    if (!touchedRef.current) return undefined;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => { persistComposition(composition); }, PERSIST_DEBOUNCE_MS);
+    return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composition, race?.id]);
+  // Fechar com uma alteração ainda por gravar (dentro dos 600ms): grava já,
+  // em vez de a perder.
+  const handleClose = () => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+      if (touchedRef.current) persistComposition(composition);
+    }
+    onClose?.();
   };
 
   // As memórias chegam assinadas depois de a persiana abrir: sem nada
@@ -83,10 +130,6 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidatesKey]);
-
-  useEffect(() => {
-    if (touchedRef.current) storeComposition(race?.id, composition);
-  }, [composition, race?.id]);
 
   const [assets, setAssets] = useState({ images: {}, logo: null, ready: false });
   useEffect(() => {
@@ -172,22 +215,69 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   const ratio = W / H;
   const assignedInActive = composition.slots?.[activeSlot];
   const focusCandidate = assignedInActive ? candidates.find((c) => c.id === assignedInActive.id) : null;
+  const focusImage = focusCandidate ? assets.images[focusCandidate.url] : null;
+  const naturalW = focusImage?.naturalWidth || focusImage?.width || 0;
+  const naturalH = focusImage?.naturalHeight || focusImage?.height || 0;
+  const activeSlotObj = layout.slots.find((s) => s.id === activeSlot);
+  const slotAspect = activeSlotObj ? activeSlotObj.w / activeSlotObj.h : 1;
+  // O visor tem sempre a proporção do ESPAÇO do modelo, não o seu tamanho em
+  // píxeis do mural final — o recorte (o que fica visível) só depende da
+  // proporção, por isso escolher um tamanho de ecrã cómodo dá o mesmo
+  // resultado que desenhar direto no mural.
+  const cropW = slotAspect >= 1 ? CROP_MAX_PX : CROP_MAX_PX * slotAspect;
+  const cropH = slotAspect >= 1 ? CROP_MAX_PX / slotAspect : CROP_MAX_PX;
+  const crop = naturalW && naturalH && assignedInActive
+    ? coverCrop(naturalW, naturalH, cropW, cropH, assignedInActive.fx, assignedInActive.fy, assignedInActive.zoom)
+    : null;
+  const displayScale = crop ? cropW / crop.sw : 1;
 
-  const moveFocus = (dx, dy) => update((c) => setSlotFocus(c, activeSlot, (c.slots[activeSlot]?.fx ?? 0.5) + dx, (c.slots[activeSlot]?.fy ?? 0.5) + dy));
-  const onFocusKey = (e) => {
-    const map = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, -0.05], ArrowDown: [0, 0.05] };
-    if (!map[e.key]) return;
-    e.preventDefault();
-    moveFocus(...map[e.key]);
+  /* Arrastar move o centro do enquadramento; o zoom mantém-se fixo durante
+     um gesto (o slider trata dele). `dragRef` guarda o ponto de partida e o
+     recorte de então, para o cálculo não derivar com o arrastar contínuo. */
+  const dragRef = useRef(null);
+  const cropRef = useRef(null);
+  const startDrag = (e) => {
+    if (!crop || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startFx: assignedInActive.fx, startFy: assignedInActive.fy, sw: crop.sw, sh: crop.sh };
   };
-  const onFocusClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    update((c) => setSlotFocus(c, activeSlot, (e.clientX - rect.left) / rect.width, (e.clientY - rect.top) / rect.height));
+  const onDragMove = (e) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dxSource = (e.clientX - d.startX) / (cropW / d.sw);
+    const dySource = (e.clientY - d.startY) / (cropH / d.sh);
+    update((c) => setSlotFocus(c, activeSlot, d.startFx - dxSource / naturalW, d.startFy - dySource / naturalH));
+  };
+  const endDrag = (e) => {
+    if (dragRef.current?.pointerId === e.pointerId) {
+      try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* já libertado */ }
+    }
+    dragRef.current = null;
+  };
+  useEffect(() => {
+    const el = cropRef.current;
+    if (!el) return undefined;
+    // O `Sheet` arrasta o corpo para fechar (Sheet.jsx); sem isto, mover o
+    // dedo aqui para enquadrar também tentava fechar a persiana.
+    const stopWhileDragging = (e) => {
+      if (dragRef.current) { e.stopPropagation(); if (e.cancelable) e.preventDefault(); }
+    };
+    el.addEventListener('touchmove', stopWhileDragging, { passive: false });
+    return () => el.removeEventListener('touchmove', stopWhileDragging);
+  }, []);
+  const onCropKey = (e) => {
+    const map = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (!map[e.key] || !assignedInActive) return;
+    e.preventDefault();
+    const [dx, dy] = map[e.key];
+    // A um zoom maior o mesmo toque em setas move menos da imagem, para o
+    // nudge parecer sempre do mesmo tamanho visual.
+    const nudge = 0.04 / (assignedInActive.zoom || MIN_STUDIO_ZOOM);
+    update((c) => setSlotFocus(c, activeSlot, assignedInActive.fx + dx * nudge, assignedInActive.fy + dy * nudge));
   };
 
   return (
-    <Sheet eyebrow="Mural" eyebrowTone="race" title={race?.name || 'A prova'} onClose={onClose} testId="race-mural-sheet" maxHeight="96dvh">
+    <Sheet eyebrow="Mural" eyebrowTone="race" title={race?.name || 'A prova'} onClose={handleClose} testId="race-mural-sheet" maxHeight="96dvh">
       {/* Pré-visualização, sempre à vista; os espaços tocam-se nela. */}
       <div className="sticky top-0 z-10 pt-2 pb-3" style={{ background: 'var(--bg-sheet)' }}>
         <div className="relative mx-auto" style={{ width: `min(100%, calc(40dvh * ${ratio}))`, aspectRatio: `${W} / ${H}`, borderRadius: 14, overflow: 'hidden', background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
@@ -303,25 +393,54 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
               {focusCandidate && (
                 <>
                   <div className="flex items-center justify-between mt-4 mb-2">
-                    <p className="text-[11px] font-extrabold uppercase" style={sectionStyle}>Ponto de foco</p>
+                    <p className="text-[11px] font-extrabold uppercase" style={sectionStyle}>Enquadramento</p>
                     <button type="button" onClick={() => update((c) => clearSlot(c, activeSlot))} className="text-[12px] font-bold" style={{ minHeight: 44, color: 'var(--text-3)' }}>Tirar deste espaço</button>
                   </div>
-                  <p className="text-[11.5px] leading-[1.45] mb-2" style={{ color: 'var(--text-4)' }}>Toca no ponto da foto que deve ficar ao centro do espaço, ou usa as setas.</p>
+                  <p className="text-[11.5px] leading-[1.45] mb-2" style={{ color: 'var(--text-4)' }}>Arrasta a foto para a mover; desliza para ampliar.</p>
                   <div className="flex justify-center">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      data-testid="race-mural-focus"
-                      aria-label={`Ponto de foco: ${Math.round(assignedInActive.fx * 100)}% na horizontal, ${Math.round(assignedInActive.fy * 100)}% na vertical`}
-                      onClick={onFocusClick}
-                      onKeyDown={onFocusKey}
-                      className="relative inline-block"
-                      style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--border-glass-strong)', cursor: 'crosshair' }}
-                    >
-                      <img src={focusCandidate.url} alt="" draggable={false} style={{ display: 'block', maxWidth: '100%', maxHeight: 220 }} />
-                      <span aria-hidden="true" className="absolute pointer-events-none" style={{ left: `${assignedInActive.fx * 100}%`, top: `${assignedInActive.fy * 100}%`, width: 26, height: 26, marginLeft: -13, marginTop: -13, borderRadius: '50%', border: '3px solid var(--race)', boxShadow: '0 0 0 2px rgba(0,0,0,.5)' }} />
-                    </div>
+                    {crop ? (
+                      <div
+                        ref={cropRef}
+                        tabIndex={0}
+                        role="group"
+                        data-testid="race-mural-crop"
+                        aria-label="Enquadramento da foto: arrasta para mover, usa as setas para ajustar"
+                        onPointerDown={startDrag}
+                        onPointerMove={onDragMove}
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                        onKeyDown={onCropKey}
+                        className="relative overflow-hidden"
+                        style={{ width: cropW, height: cropH, borderRadius: activeSlotObj?.shape === 'circle' ? '50%' : 12, border: '1px solid var(--border-glass-strong)', background: 'rgba(255,255,255,.04)', cursor: 'grab', touchAction: 'none' }}
+                      >
+                        <img
+                          src={focusCandidate.url}
+                          alt=""
+                          draggable={false}
+                          style={{ position: 'absolute', left: -crop.sx * displayScale, top: -crop.sy * displayScale, width: naturalW * displayScale, height: naturalH * displayScale, maxWidth: 'none', pointerEvents: 'none' }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="animate-pulse" role="status" aria-label="A carregar a foto" style={{ width: cropW, height: cropH, borderRadius: activeSlotObj?.shape === 'circle' ? '50%' : 12, background: 'rgba(255,255,255,.06)' }} />
+                    )}
                   </div>
+                  {crop && (
+                    <div className="flex items-center gap-2.5 mt-3">
+                      <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-4)' }}>Ampliar</span>
+                      <input
+                        type="range"
+                        data-testid="race-mural-zoom"
+                        aria-label="Ampliar a foto"
+                        min={MIN_STUDIO_ZOOM}
+                        max={MAX_STUDIO_ZOOM}
+                        step={0.05}
+                        value={assignedInActive.zoom ?? MIN_STUDIO_ZOOM}
+                        onChange={(e) => update((c) => setSlotZoom(c, activeSlot, Number(e.target.value)))}
+                        className="flex-1"
+                        style={{ accentColor: 'var(--race)' }}
+                      />
+                    </div>
+                  )}
                 </>
               )}
             </>

@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
-  STUDIO_FORMATS, STUDIO_TEMPLATES, studioLayout, templateSlotIds, coverCrop, fillSlots, defaultComposition,
-  switchTemplate, assignSlot, clearSlot, setSlotFocus, toggleGraphic, sanitizeComposition, planBlocks, pacePoints,
-  muralData, graphicUnavailableReason, splitPaces, paceLabel, distanceLabel, brandBox, loadStoredComposition,
-  storeComposition, STUDIO_STORAGE_PREFIX,
+  STUDIO_FORMATS, STUDIO_TEMPLATES, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM, studioLayout, templateSlotIds, coverCrop,
+  fillSlots, defaultComposition, switchTemplate, assignSlot, clearSlot, setSlotFocus, setSlotZoom, toggleGraphic,
+  sanitizeComposition, planBlocks, pacePoints, muralData, graphicUnavailableReason, splitPaces, paceLabel,
+  distanceLabel, brandBox,
 } from './muralStudio';
 
 /* O estúdio do mural (pedido 2026-09-14): o atleta monta o mural com
@@ -67,7 +67,7 @@ describe('studioLayout', () => {
 });
 
 describe('coverCrop', () => {
-  it('centra no ponto de foco e nunca sai da imagem', () => {
+  it('sem zoom (1), centra no ponto de foco e nunca sai da imagem', () => {
     // Foto 2000×1000 numa caixa quadrada: recorte 1000×1000.
     expect(coverCrop(2000, 1000, 500, 500, 0.5, 0.5)).toEqual({ sx: 500, sy: 0, sw: 1000, sh: 1000 });
     expect(coverCrop(2000, 1000, 500, 500, 0, 0.5).sx).toBe(0);
@@ -75,6 +75,15 @@ describe('coverCrop', () => {
     expect(coverCrop(2000, 1000, 500, 500, 0.6, 0.5).sx).toBe(700);
     // Um foco perto da borda encosta à borda, não sai da imagem.
     expect(coverCrop(2000, 1000, 500, 500, 0.9, 0.5).sx).toBe(1000);
+  });
+
+  it('ampliar aperta o recorte à volta do centro; o mínimo é o que preenche a caixa', () => {
+    // Ao dobrar o zoom, o recorte fica com metade da largura e da altura.
+    expect(coverCrop(2000, 1000, 500, 500, 0.5, 0.5, 2)).toEqual({ sx: 750, sy: 250, sw: 500, sh: 500 });
+    // Zoom abaixo do mínimo trata-se como o mínimo (sem zoom).
+    expect(coverCrop(2000, 1000, 500, 500, 0.5, 0.5, 0.3)).toEqual({ sx: 500, sy: 0, sw: 1000, sh: 1000 });
+    // Um recorte apertado ainda respeita as bordas com o foco encostado.
+    expect(coverCrop(2000, 1000, 500, 500, 0.02, 0.5, 3).sx).toBe(0);
   });
 });
 
@@ -84,7 +93,7 @@ describe('composição', () => {
   it('por omissão: Capa, a primeira foto, e só os grafismos que os dados permitem', () => {
     const c = defaultComposition({ candidates: CANDIDATES, data });
     expect(c).toMatchObject({ template: 'capa', format: 'retrato', theme: 'dourado', brandCorner: 'tl' });
-    expect(c.slots).toEqual({ s1: { id: 'photo-0', fx: 0.5, fy: 0.42 } });
+    expect(c.slots).toEqual({ s1: { id: 'photo-0', fx: 0.5, fy: 0.42, zoom: 1 } });
     expect(c.graphics).toEqual({ titulo: true, tempo: true, numeros: true, classificacao: true, ritmo: true, conquistas: false, diploma: false, medalhao: true });
     const semNada = defaultComposition({ candidates: [], data: muralData({ race: TEJO, run: { distance_km: 10, details: {} }, seconds: 3087 }) });
     expect(semNada.graphics).toMatchObject({ ritmo: false, classificacao: false, medalhao: false, diploma: false });
@@ -98,12 +107,13 @@ describe('composição', () => {
     expect(fillSlots('numeros', CANDIDATES)).toEqual({});
   });
 
-  it('trocar de modelo mantém as fotos escolhidas pela ordem e os focos', () => {
+  it('trocar de modelo mantém as fotos escolhidas pela ordem, os focos e o zoom', () => {
     let c = defaultComposition({ candidates: CANDIDATES, data, template: 'mosaico4' });
     c = assignSlot(c, 's1', 'photo-3');
     c = setSlotFocus(c, 's1', 0.2, 0.9);
+    c = setSlotZoom(c, 's1', 2);
     const capa = switchTemplate(c, 'capa', CANDIDATES);
-    expect(capa.slots.s1).toEqual({ id: 'photo-3', fx: 0.2, fy: 0.9 });
+    expect(capa.slots.s1).toEqual({ id: 'photo-3', fx: 0.2, fy: 0.9, zoom: 2 });
     const m6 = switchTemplate(c, 'mosaico6', CANDIDATES);
     expect(m6.slots.s1.id).toBe('photo-3');
     expect(Object.values(m6.slots)).toHaveLength(6);
@@ -113,19 +123,23 @@ describe('composição', () => {
     expect(switchTemplate(c, 'inventado', CANDIDATES)).toBe(c);
   });
 
-  it('pôr uma foto que já está noutro espaço troca as duas; tirar esvazia', () => {
+  it('pôr uma foto que já está noutro espaço troca as duas (foco e zoom incluídos); tirar esvazia', () => {
     let c = defaultComposition({ candidates: CANDIDATES, data, template: 'mosaico4' });
     c = setSlotFocus(c, 's3', 0.1, 0.1);
+    c = setSlotZoom(c, 's3', 2.5);
     c = assignSlot(c, 's1', 'photo-2');
-    expect(c.slots.s1).toEqual({ id: 'photo-2', fx: 0.1, fy: 0.1 });
-    expect(c.slots.s3.id).toBe('photo-0');
+    expect(c.slots.s1).toEqual({ id: 'photo-2', fx: 0.1, fy: 0.1, zoom: 2.5 });
+    expect(c.slots.s3).toMatchObject({ id: 'photo-0', zoom: 1 });
     c = clearSlot(c, 's2');
     expect(c.slots.s2).toBeUndefined();
     c = assignSlot(c, 's4', 'photo-2');
-    expect(c.slots.s4.id).toBe('photo-2');
+    expect(c.slots.s4).toMatchObject({ id: 'photo-2', zoom: 2.5 });
     expect(c.slots.s1.id).toBe('photo-3');
     expect(setSlotFocus(c, 's2', 0.5, 0.5)).toBe(c);
     expect(setSlotFocus(c, 's4', 7, -3).slots.s4).toMatchObject({ fx: 1, fy: 0 });
+    expect(setSlotZoom(c, 's2', 2)).toBe(c);
+    expect(setSlotZoom(c, 's4', 10).slots.s4.zoom).toBe(MAX_STUDIO_ZOOM);
+    expect(setSlotZoom(c, 's4', 0).slots.s4.zoom).toBe(MIN_STUDIO_ZOOM);
   });
 
   it('interruptores só para grafismos conhecidos', () => {
@@ -134,29 +148,19 @@ describe('composição', () => {
     expect(toggleGraphic(c, 'inventado')).toBe(c);
   });
 
-  it('o que vem guardado só entra validado', () => {
+  it('o que vem gravado (doutro dispositivo, ou de uma versão antiga sem zoom) só entra validado', () => {
     const fallback = defaultComposition({ candidates: CANDIDATES, data });
     const s = sanitizeComposition({
       format: 'story', template: 'mosaico4', theme: 'rosa', brandCorner: 'br',
-      slots: { s1: { id: 'photo-1', fx: 3, fy: 'x' }, s9: { id: 'photo-2' }, s2: { id: '' } },
+      slots: { s1: { id: 'photo-1', fx: 3, fy: 'x', zoom: 12 }, s9: { id: 'photo-2' }, s2: { id: '' }, s3: { id: 'photo-3' } },
       graphics: { ritmo: false, conquistas: 'sim', inventado: true },
     }, fallback);
     expect(s).toMatchObject({ format: 'story', template: 'mosaico4', theme: 'dourado', brandCorner: 'br' });
-    expect(s.slots).toEqual({ s1: { id: 'photo-1', fx: 1, fy: 0.42 } });
+    // fx=3 encosta ao máximo (1); zoom=12 encosta ao máximo (3); sem zoom (s3, um mural gravado antes de existir) cai no mínimo (1).
+    expect(s.slots).toEqual({ s1: { id: 'photo-1', fx: 1, fy: 0.42, zoom: MAX_STUDIO_ZOOM }, s3: { id: 'photo-3', fx: 0.5, fy: 0.42, zoom: MIN_STUDIO_ZOOM } });
     expect(s.graphics).toMatchObject({ ritmo: false, conquistas: false });
     expect(s.graphics).not.toHaveProperty('inventado');
     expect(sanitizeComposition(null, fallback)).toBe(fallback);
-  });
-});
-
-describe('armazenamento', () => {
-  beforeEach(() => localStorage.clear());
-  it('guarda e lê por prova; lixo lê-se como nada', () => {
-    storeComposition('race-1', { template: 'trofeu' });
-    expect(loadStoredComposition('race-1')).toEqual({ template: 'trofeu' });
-    localStorage.setItem(STUDIO_STORAGE_PREFIX + 'race-2', '{lixo');
-    expect(loadStoredComposition('race-2')).toBeNull();
-    expect(loadStoredComposition(null)).toBeNull();
   });
 });
 

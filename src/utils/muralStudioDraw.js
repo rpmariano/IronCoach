@@ -43,11 +43,11 @@ function shapePath(ctx, slot) {
   }
 }
 
-function drawPhoto(ctx, img, box, fx, fy) {
+function drawPhoto(ctx, img, box, fx, fy, zoom) {
   const iw = img.naturalWidth || img.width;
   const ih = img.naturalHeight || img.height;
   if (!iw || !ih) return;
-  const { sx, sy, sw, sh } = coverCrop(iw, ih, box.w, box.h, fx, fy);
+  const { sx, sy, sw, sh } = coverCrop(iw, ih, box.w, box.h, fx, fy, zoom);
   ctx.drawImage(img, sx, sy, sw, sh, box.x, box.y, box.w, box.h);
 }
 
@@ -120,7 +120,7 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
     shapePath(ctx, slot);
     ctx.clip();
     if (img) {
-      drawPhoto(ctx, img, slot, assigned.fx, assigned.fy);
+      drawPhoto(ctx, img, slot, assigned.fx, assigned.fy, assigned.zoom);
     } else {
       ctx.fillStyle = theme.surface;
       ctx.fillRect(slot.x, slot.y, slot.w, slot.h);

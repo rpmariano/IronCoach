@@ -5,7 +5,10 @@ import { MURAL_FORMATS, muralDateLabel } from './raceMural';
    a app escolhia por o atleta e nunca acertava. Agora é ele que monta — um
    modelo, as fotos nos espaços, os grafismos que quer — com peças prontas
    para a imagem sair sempre bem feita. Estes murais são publicidade que
-   viaja com a foto, por isso a marca vai sempre.
+   viaja com a foto, por isso a marca vai sempre. O enquadramento de cada
+   foto é arrastar e ampliar (pedido 2026-09-14), e a composição inteira
+   grava-se na prova (race_events.mural_composition), para aparecer em
+   qualquer dispositivo e sobreviver a limpar o telemóvel.
 
    Este ficheiro é a parte pura: modelos, onde fica cada espaço, que dados
    há, a composição e as suas regras. O desenho está em muralStudioDraw.js,
@@ -56,7 +59,12 @@ export const STUDIO_GRAPHICS = [
    depois saem grafismos, por esta ordem. O tempo nunca sai: é a imagem. */
 export const DROP_ORDER = ['diploma', 'conquistas', 'ritmo', 'classificacao', 'numeros', 'titulo'];
 
-export const STUDIO_STORAGE_PREFIX = 'ironcoach:mural-studio:';
+/* O enquadramento de cada foto é arrastar e ampliar (pedido 2026-09-14):
+   `zoom` é o quanto se aproxima além do mínimo que preenche o espaço (1 =
+   sem ampliar), `fx`/`fy` o centro do que fica visível, em fração da foto
+   inteira — arrastar move o centro, o zoom aperta o recorte à volta dele. */
+export const MIN_STUDIO_ZOOM = 1;
+export const MAX_STUDIO_ZOOM = 3;
 
 const PAD = 48;
 const GAP = 14;
@@ -65,6 +73,12 @@ const clamp01 = (n, fallback) => {
   const v = Number(n);
   if (!Number.isFinite(v)) return fallback;
   return Math.min(1, Math.max(0, v));
+};
+
+const clampZoom = (n, fallback = MIN_STUDIO_ZOOM) => {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(MAX_STUDIO_ZOOM, Math.max(MIN_STUDIO_ZOOM, v));
 };
 
 // ── dados ──────────────────────────────────────────────────────────────────
@@ -244,11 +258,15 @@ export function templateSlotIds(template) {
 }
 
 /** Recorte "cover" de uma imagem numa caixa, centrado no ponto de foco
- *  (fx, fy em 0–1) e sem sair da imagem. */
-export function coverCrop(imgW, imgH, boxW, boxH, fx = 0.5, fy = 0.5) {
-  const scale = Math.max(boxW / imgW, boxH / imgH);
-  const sw = boxW / scale;
-  const sh = boxH / scale;
+ *  (fx, fy em 0–1), com `zoom` (1 = o mínimo que preenche a caixa; mais que
+ *  isso aperta o recorte à volta do centro) — e sem sair da imagem. O
+ *  recorte (sx,sy,sw,sh) é o que importa: é invariante ao tamanho absoluto
+ *  da caixa, só à sua proporção, por isso serve tanto para desenhar no
+ *  canvas final como para a pré-visualização do enquadramento no estúdio. */
+export function coverCrop(imgW, imgH, boxW, boxH, fx = 0.5, fy = 0.5, zoom = MIN_STUDIO_ZOOM) {
+  const scale = Math.max(boxW / imgW, boxH / imgH) * clampZoom(zoom);
+  const sw = Math.min(imgW, boxW / scale);
+  const sh = Math.min(imgH, boxH / scale);
   const sx = Math.min(Math.max(fx * imgW - sw / 2, 0), imgW - sw);
   const sy = Math.min(Math.max(fy * imgH - sh / 2, 0), imgH - sh);
   return { sx, sy, sw, sh };
@@ -256,7 +274,7 @@ export function coverCrop(imgW, imgH, boxW, boxH, fx = 0.5, fy = 0.5) {
 
 // ── composição ─────────────────────────────────────────────────────────────
 
-const DEFAULT_FOCUS = { fx: 0.5, fy: 0.42 };
+const DEFAULT_FOCUS = { fx: 0.5, fy: 0.42, zoom: MIN_STUDIO_ZOOM };
 
 /** Enche os espaços do modelo: primeiro as que já estavam escolhidas (pela
  *  ordem), depois as fotos do dia, a medalha, e o diploma por último. No
@@ -276,7 +294,7 @@ export function fillSlots(template, candidates = [], carried = []) {
     const id = queue[i];
     if (!id) return;
     const prev = focusOf.get(id);
-    slots[slotId] = { id, fx: prev?.fx ?? DEFAULT_FOCUS.fx, fy: prev?.fy ?? DEFAULT_FOCUS.fy };
+    slots[slotId] = { id, fx: prev?.fx ?? DEFAULT_FOCUS.fx, fy: prev?.fy ?? DEFAULT_FOCUS.fy, zoom: prev?.zoom ?? DEFAULT_FOCUS.zoom };
   });
   return slots;
 }
@@ -324,7 +342,7 @@ export function assignSlot(composition, slotId, candidateId) {
     if (current) slots[otherKey] = current; else delete slots[otherKey];
   }
   const keepFocus = current?.id === candidateId ? current : (otherKey ? composition.slots[otherKey] : null);
-  slots[slotId] = { id: candidateId, fx: keepFocus?.fx ?? DEFAULT_FOCUS.fx, fy: keepFocus?.fy ?? DEFAULT_FOCUS.fy };
+  slots[slotId] = { id: candidateId, fx: keepFocus?.fx ?? DEFAULT_FOCUS.fx, fy: keepFocus?.fy ?? DEFAULT_FOCUS.fy, zoom: keepFocus?.zoom ?? DEFAULT_FOCUS.zoom };
   return { ...composition, slots };
 }
 
@@ -340,13 +358,21 @@ export function setSlotFocus(composition, slotId, fx, fy) {
   return { ...composition, slots: { ...composition.slots, [slotId]: { ...slot, fx: clamp01(fx, slot.fx), fy: clamp01(fy, slot.fy) } } };
 }
 
+/** Ampliar (ou reduzir até ao mínimo que preenche o espaço), mantendo o
+ *  centro. É o "belisca para ampliar" do arrastar e ampliar. */
+export function setSlotZoom(composition, slotId, zoom) {
+  const slot = composition.slots?.[slotId];
+  if (!slot) return composition;
+  return { ...composition, slots: { ...composition.slots, [slotId]: { ...slot, zoom: clampZoom(zoom, slot.zoom) } } };
+}
+
 export function toggleGraphic(composition, key) {
   if (!STUDIO_GRAPHICS.some((g) => g.key === key)) return composition;
   return { ...composition, graphics: { ...composition.graphics, [key]: !composition.graphics?.[key] } };
 }
 
-/** O que vem do armazenamento local (ou de uma versão antiga) só entra
- *  validado: enums conhecidos, espaços do modelo, focos entre 0 e 1. */
+/** O que vem gravado na prova (ou de uma versão antiga) só entra validado:
+ *  enums conhecidos, espaços do modelo, foco entre 0 e 1, zoom no intervalo. */
 export function sanitizeComposition(raw, fallback) {
   if (!raw || typeof raw !== 'object') return fallback;
   const pick = (value, allowed, def) => (allowed.includes(value) ? value : def);
@@ -355,7 +381,7 @@ export function sanitizeComposition(raw, fallback) {
   const slots = {};
   Object.entries(raw.slots && typeof raw.slots === 'object' ? raw.slots : {}).forEach(([slotId, s]) => {
     if (!slotIds.includes(slotId) || typeof s?.id !== 'string' || !s.id) return;
-    slots[slotId] = { id: s.id, fx: clamp01(s.fx, DEFAULT_FOCUS.fx), fy: clamp01(s.fy, DEFAULT_FOCUS.fy) };
+    slots[slotId] = { id: s.id, fx: clamp01(s.fx, DEFAULT_FOCUS.fx), fy: clamp01(s.fy, DEFAULT_FOCUS.fy), zoom: clampZoom(s.zoom) };
   });
   const graphics = { ...fallback.graphics };
   STUDIO_GRAPHICS.forEach(({ key }) => { if (typeof raw.graphics?.[key] === 'boolean') graphics[key] = raw.graphics[key]; });
@@ -368,25 +394,6 @@ export function sanitizeComposition(raw, fallback) {
     slots,
     graphics,
   };
-}
-
-export function loadStoredComposition(raceId) {
-  if (!raceId) return null;
-  try {
-    const raw = localStorage.getItem(STUDIO_STORAGE_PREFIX + raceId);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function storeComposition(raceId, composition) {
-  if (!raceId) return;
-  try {
-    localStorage.setItem(STUDIO_STORAGE_PREFIX + raceId, JSON.stringify(composition));
-  } catch {
-    /* sem armazenamento — a composição vale só nesta abertura */
-  }
 }
 
 /**
