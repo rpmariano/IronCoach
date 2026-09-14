@@ -496,6 +496,26 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
               );
             })}
           </div>
+
+          {/* Um canto de verdade para a medalha (relatado 2026-09-14: ficava
+              perto do texto, por cima do que estivesse na foto por baixo) —
+              só faz sentido com uma medalha para pôr e num modelo que a
+              mostre como decoração (o Troféu já a põe ao centro). */}
+          {!graphicUnavailableReason('medalhao', { data, candidates, template: composition.template }) && (
+            <>
+              <p className={sectionLabel} style={sectionStyle}>Canto da medalha</p>
+              <div className="flex gap-2" role="group" aria-label="Canto da medalha">
+                {Object.entries(BRAND_CORNERS).map(([key, label]) => {
+                  const Icon = CORNER_ICONS[key];
+                  return (
+                    <button key={key} type="button" aria-pressed={composition.medalCorner === key} aria-label={label} data-testid={`race-mural-medal-corner-${key}`} onClick={() => update((c) => ({ ...c, medalCorner: key }))} className="flex-1 inline-flex items-center justify-center" style={chip(composition.medalCorner === key)}>
+                      <Icon size={16} />
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 

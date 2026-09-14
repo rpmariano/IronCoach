@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  STUDIO_FORMATS, STUDIO_TEMPLATES, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM, studioLayout, templateSlotIds, coverCrop,
-  fillSlots, defaultComposition, switchTemplate, assignSlot, clearSlot, setSlotFocus, setSlotZoom, toggleGraphic,
-  sanitizeComposition, planBlocks, pacePoints, muralData, graphicUnavailableReason, splitPaces, paceLabel,
-  distanceLabel, brandBox,
+  STUDIO_FORMATS, STUDIO_TEMPLATES, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM, DEFAULT_MEDAL_CORNER, studioLayout,
+  templateSlotIds, coverCrop, fillSlots, defaultComposition, switchTemplate, assignSlot, clearSlot, setSlotFocus,
+  setSlotZoom, toggleGraphic, sanitizeComposition, planBlocks, pacePoints, muralData, graphicUnavailableReason,
+  splitPaces, paceLabel, distanceLabel, brandBox, medalCornerBox,
 } from './muralStudio';
 
 /* O estúdio do mural (pedido 2026-09-14): o atleta monta o mural com
@@ -66,6 +66,31 @@ describe('studioLayout', () => {
   });
 });
 
+describe('medalCornerBox', () => {
+  it('um canto de verdade, redondo — nunca perto do texto (relatado 2026-09-14: "estragava uma foto")', () => {
+    const { width, height } = STUDIO_FORMATS.retrato;
+    expect(medalCornerBox('retrato', 'tl')).toMatchObject({ x: 48, y: 48, shape: 'circle' });
+    const br = medalCornerBox('retrato', 'br');
+    expect(br.x + br.w).toBeCloseTo(width - 48);
+    expect(br.y + br.h).toBeCloseTo(height - 48);
+    expect(br.w).toBe(br.h); // é uma medalha, redonda
+  });
+
+  it('no mesmo canto que a marca, afasta-se dela ao longo do lado partilhado, sem se sobrepor', () => {
+    const brand = brandBox('retrato', 'tl');
+    const medal = medalCornerBox('retrato', 'tl', 'tl');
+    expect(medal.x).toBe(brand.x); // mesmo lado (esquerda)
+    expect(medal.y).toBeGreaterThanOrEqual(brand.y + brand.h); // por baixo, sem tocar
+    const bottomBrand = brandBox('retrato', 'br');
+    const bottomMedal = medalCornerBox('retrato', 'br', 'br');
+    expect(bottomMedal.y + bottomMedal.h).toBeLessThanOrEqual(bottomBrand.y);
+  });
+
+  it('em cantos diferentes, cada um fica no seu — sem afastamento nenhum', () => {
+    expect(medalCornerBox('retrato', 'br', 'tl')).toEqual(medalCornerBox('retrato', 'br'));
+  });
+});
+
 describe('coverCrop', () => {
   it('sem zoom (1), centra no ponto de foco e nunca sai da imagem', () => {
     // Foto 2000×1000 numa caixa quadrada: recorte 1000×1000.
@@ -92,7 +117,7 @@ describe('composição', () => {
 
   it('por omissão: Capa, a primeira foto, e só os grafismos que os dados permitem', () => {
     const c = defaultComposition({ candidates: CANDIDATES, data });
-    expect(c).toMatchObject({ template: 'capa', format: 'retrato', theme: 'dourado', brandCorner: 'tl' });
+    expect(c).toMatchObject({ template: 'capa', format: 'retrato', theme: 'dourado', brandCorner: 'tl', medalCorner: DEFAULT_MEDAL_CORNER });
     expect(c.slots).toEqual({ s1: { id: 'photo-0', fx: 0.5, fy: 0.42, zoom: 1 } });
     expect(c.graphics).toEqual({ titulo: true, tempo: true, numeros: true, classificacao: true, ritmo: true, conquistas: false, diploma: false, medalhao: true });
     const semNada = defaultComposition({ candidates: [], data: muralData({ race: TEJO, run: { distance_km: 10, details: {} }, seconds: 3087 }) });
@@ -151,11 +176,13 @@ describe('composição', () => {
   it('o que vem gravado (doutro dispositivo, ou de uma versão antiga sem zoom) só entra validado', () => {
     const fallback = defaultComposition({ candidates: CANDIDATES, data });
     const s = sanitizeComposition({
-      format: 'story', template: 'mosaico4', theme: 'rosa', brandCorner: 'br',
+      format: 'story', template: 'mosaico4', theme: 'rosa', brandCorner: 'br', medalCorner: 'tr',
       slots: { s1: { id: 'photo-1', fx: 3, fy: 'x', zoom: 12 }, s9: { id: 'photo-2' }, s2: { id: '' }, s3: { id: 'photo-3' } },
       graphics: { ritmo: false, conquistas: 'sim', inventado: true },
     }, fallback);
-    expect(s).toMatchObject({ format: 'story', template: 'mosaico4', theme: 'dourado', brandCorner: 'br' });
+    expect(s).toMatchObject({ format: 'story', template: 'mosaico4', theme: 'dourado', brandCorner: 'br', medalCorner: 'tr' });
+    // Sem medalCorner (um mural gravado antes de existir), cai no valor por omissão da composição atual.
+    expect(sanitizeComposition({ template: 'capa' }, fallback).medalCorner).toBe(fallback.medalCorner);
     // fx=3 encosta ao máximo (1); zoom=12 encosta ao máximo (3); sem zoom (s3, um mural gravado antes de existir) cai no mínimo (1).
     expect(s.slots).toEqual({ s1: { id: 'photo-1', fx: 1, fy: 0.42, zoom: MAX_STUDIO_ZOOM }, s3: { id: 'photo-3', fx: 0.5, fy: 0.42, zoom: MIN_STUDIO_ZOOM } });
     expect(s.graphics).toMatchObject({ ritmo: false, conquistas: false });

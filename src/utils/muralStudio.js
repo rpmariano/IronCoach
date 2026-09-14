@@ -44,6 +44,15 @@ export const BRAND_CORNERS = {
 };
 export const DEFAULT_BRAND_CORNER = 'tl';
 
+/* O canto da medalha (pedido 2026-09-14, relatado: "a medalha estraga uma
+   foto"): antes ficava sempre presa perto do início do texto, por cima do
+   que estivesse na foto por baixo, sem se poder mudar. Um canto de verdade
+   — a mesma ideia da marca, e por isso o mesmo conjunto de cantos e o mesmo
+   picker — tira-a estruturalmente do centro de qualquer foto (onde o
+   assunto quase sempre está), em vez de deslocá-la livremente e correr o
+   risco de a voltar a pôr em cima de uma cara sem querer. */
+export const DEFAULT_MEDAL_CORNER = 'br';
+
 export const STUDIO_GRAPHICS = [
   { key: 'titulo', label: 'Nome e data da prova' },
   { key: 'tempo', label: 'Tempo em grande' },
@@ -160,13 +169,37 @@ export function graphicUnavailableReason(key, { data, candidates = [], template 
 
 // ── modelos e espaços ──────────────────────────────────────────────────────
 
-export function brandBox(format, corner) {
+function cornerPoint(format, corner, w, h) {
   const { width, height } = STUDIO_FORMATS[format] || STUDIO_FORMATS[DEFAULT_STUDIO_FORMAT];
-  const size = Math.round(width * 0.05);
-  const w = Math.round(size * 4.6);
   const left = corner === 'tl' || corner === 'bl';
   const top = corner === 'tl' || corner === 'tr';
-  return { x: left ? PAD : width - PAD - w, y: top ? PAD : height - PAD - size, w, h: size, size, left, top };
+  return { x: left ? PAD : width - PAD - w, y: top ? PAD : height - PAD - h, left, top };
+}
+
+export function brandBox(format, corner) {
+  const { width } = STUDIO_FORMATS[format] || STUDIO_FORMATS[DEFAULT_STUDIO_FORMAT];
+  const size = Math.round(width * 0.05);
+  const w = Math.round(size * 4.6);
+  const { x, y, left, top } = cornerPoint(format, corner, w, size);
+  return { x, y, w, h: size, size, left, top };
+}
+
+const MEDAL_SIZE_RATIO = 0.19;
+
+/** O canto onde fica a medalha, com o mesmo desenho do canto da marca — só
+ *  que redondo. Se calhar no mesmo canto que a marca, afasta-se dela ao
+ *  longo do lado partilhado, em vez de lhe cair em cima. */
+export function medalCornerBox(format, corner, brandCorner) {
+  const { width } = STUDIO_FORMATS[format] || STUDIO_FORMATS[DEFAULT_STUDIO_FORMAT];
+  const size = Math.round(width * MEDAL_SIZE_RATIO);
+  const point = cornerPoint(format, corner, size, size);
+  let y = point.y;
+  if (brandCorner && corner === brandCorner) {
+    const brand = brandBox(format, brandCorner);
+    const gap = Math.round(width * 0.02);
+    y = point.top ? brand.y + brand.h + gap : brand.y - size - gap;
+  }
+  return { x: point.x, y, w: size, h: size, size, shape: 'circle' };
 }
 
 const BAND = {
@@ -307,6 +340,7 @@ export function defaultComposition({ candidates = [], data, template = DEFAULT_S
     template,
     theme: DEFAULT_STUDIO_THEME,
     brandCorner: DEFAULT_BRAND_CORNER,
+    medalCorner: DEFAULT_MEDAL_CORNER,
     slots: fillSlots(template, candidates),
     graphics: {
       titulo: true,
@@ -391,6 +425,7 @@ export function sanitizeComposition(raw, fallback) {
     template,
     theme: pick(raw.theme, Object.keys(STUDIO_THEMES), fallback.theme),
     brandCorner: pick(raw.brandCorner, Object.keys(BRAND_CORNERS), fallback.brandCorner),
+    medalCorner: pick(raw.medalCorner, Object.keys(BRAND_CORNERS), fallback.medalCorner),
     slots,
     graphics,
   };
