@@ -1,5 +1,6 @@
 import {
   STUDIO_THEMES, DEFAULT_STUDIO_THEME, studioLayout, coverCrop, planBlocks, pacePoints, graphicUnavailableReason,
+  medalCornerBox,
 } from './muralStudio';
 import { loadImage, loadLogo } from './raceMural';
 
@@ -217,7 +218,6 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
   let y = zone.anchor === 'bottom' ? zone.bottom - totalH
     : zone.anchor === 'center' ? zone.top + Math.max(0, (availableH - totalH) / 2)
       : zone.top;
-  const blockTop = y;
   const darkOverPhoto = !light;
 
   ctx.textAlign = center ? 'center' : 'left';
@@ -356,14 +356,11 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
   });
 
   // ── medalhão ──
+  // Um canto de verdade (relatado 2026-09-14: ficava perto do texto, por
+  // cima do que estivesse na foto) — o mesmo desenho do canto da marca.
   const medal = imageFor('medal');
   if (wants('medalhao') && medal) {
-    const size = W * 0.19;
-    const box = {
-      x: center ? W / 2 - size / 2 : W - pad - size,
-      y: Math.max(pad + (brand.top ? brand.h + 20 : 0), blockTop - size - W * 0.025),
-      w: size, h: size, shape: 'circle',
-    };
+    const box = medalCornerBox(composition.format, composition.medalCorner, composition.brandCorner);
     ctx.save();
     shapePath(ctx, box);
     ctx.clip();

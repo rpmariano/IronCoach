@@ -95,7 +95,15 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
      ritmo por km (dos parciais do relógio), fichas das conquistas, cartão do
      diploma (tempo chip, bruto, passagens, posições) e medalhão da medalha.
      Um grafismo sem dados fica desligado com o motivo ao lado. Tema de cor
-     (dourado, ciano, claro) e canto da marca — a marca IronCoach vai sempre.
+     (dourado, ciano, claro), canto da marca — a marca IronCoach vai sempre
+     — e, desde que haja medalha para pôr num modelo que a mostre como
+     decoração (não no Troféu, que já a põe ao centro), **canto da
+     medalha** (relatado 2026-09-14: "a medalha estraga uma foto" — deixou
+     de ficar presa perto do texto, por cima do que estivesse na foto por
+     baixo; um canto de verdade tira-a estruturalmente do centro de
+     qualquer foto). Por omissão fica no canto diagonalmente oposto ao da
+     marca; se calharem no mesmo canto, a medalha afasta-se dela ao longo
+     do lado partilhado (`medalCornerBox` em `utils/muralStudio.js`).
   Se o texto não couber no modelo, encolhe até 70% e depois saem grafismos
   por ordem (diploma, conquistas, ritmo, classificação, números, título; o
   tempo nunca sai), e o estúdio diz o que não coube. Desenha-se no
