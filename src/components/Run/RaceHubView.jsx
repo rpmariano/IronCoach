@@ -573,7 +573,7 @@ export default function RaceHubView({
             className="w-full inline-flex items-center justify-center gap-2"
             style={{ minHeight: 'var(--tap)', marginTop: 10, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
           >
-            <Star size={15} /> Criar mural para partilhar
+            <Star size={15} /> Montar o mural para partilhar
           </button>
         )}
 
@@ -581,7 +581,7 @@ export default function RaceHubView({
           <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
         {muralOpen && (
-          <RaceMuralSheet race={race} run={raceRun} runs={runs} profile={profile} seconds={finalSeconds} classification={classification} memoryUrls={memoryUrls} onClose={() => setMuralOpen(false)} />
+          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
         )}
 
         {openPhoto && (

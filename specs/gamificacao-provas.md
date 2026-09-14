@@ -72,17 +72,40 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
   "perto" ("Sim, para a próxima quero melhor") levam ao chat com a resposta
   já enviada. Se o chat já fez o balanço neste dispositivo, o hub oferece
   pedi-lo em vez de o repetir.
-- **O mural para o Instagram.** No hub, "Criar mural para partilhar"
-  (`RaceMuralSheet`): três formatos (quadrado 1:1, retrato 4:5, story 9:16),
-  as fotos das memórias (as do dia primeiro, a medalha a fechar, até 4), o
-  nome, a data, o tempo, a distância e o ritmo, a classificação do diploma
-  quando existe, e o logótipo da app no canto inferior direito — discreto
-  mas legível. O atleta escolhe QUAIS fotos entram, pela ordem em que as
-  escolhe (miniaturas com aria-pressed e o número da ordem), até 4. Compõe-se no telemóvel com Canvas
-  (`utils/raceMural.js`): instantâneo, sem custo, e as fotos ficam como o
-  atleta as tirou. Só a legenda é da Carol (coach-chat `race_caption`, na
-  primeira pessoa do atleta, a fechar com #IronCoach). Partilha pelo menu
-  do telemóvel (Web Share com ficheiro) ou guardando a imagem.
+- **O estúdio do mural (2026-09-14).** O mural automático de 2026-09-13
+  saiu: a app escolhia pelo atleta e nunca acertava, e estes murais são
+  publicidade que viaja com a foto. No hub, "Montar o mural para partilhar"
+  abre o estúdio (`RaceMuralSheet`), com a pré-visualização sempre à vista e
+  três passos:
+  1. **Modelo** — formato (retrato 4:5, story 9:16, quadrado 1:1) e modelo:
+     Capa (uma foto a ocupar tudo), Mosaico de 4, Mosaico de 6, Troféu (a
+     medalha num espaço redondo ao centro) e Só números. Cada modelo tem
+     espaços para fotos (`studioLayout` em `utils/muralStudio.js`).
+  2. **Fotos** — toca-se num espaço, na pré-visualização ou na lista, e
+     escolhe-se entre as memórias: até seis fotos, a medalha e o diploma
+     (se for imagem). Uma memória que já está noutro espaço troca de lugar.
+     O enquadramento é arrastar e ampliar (2026-09-14): arrasta-se a foto
+     para a mover e desliza-se um controlo para ampliar até 3×; as setas do
+     teclado continuam a ajustar, com o movimento dividido pelo zoom para
+     parecer sempre do mesmo tamanho. `coverCrop` em `utils/muralStudio.js`
+     calcula o recorte (fx, fy, zoom); é o mesmo cálculo na pré-visualização
+     do enquadramento e no desenho final, por isso o que se vê é o que sai.
+  3. **Grafismos** — peças prontas que se ligam e desligam: nome e data,
+     tempo em grande, distância e ritmo, classificação do diploma, linha do
+     ritmo por km (dos parciais do relógio), fichas das conquistas, cartão do
+     diploma (tempo chip, bruto, passagens, posições) e medalhão da medalha.
+     Um grafismo sem dados fica desligado com o motivo ao lado. Tema de cor
+     (dourado, ciano, claro) e canto da marca — a marca IronCoach vai sempre.
+  Se o texto não couber no modelo, encolhe até 70% e depois saem grafismos
+  por ordem (diploma, conquistas, ritmo, classificação, números, título; o
+  tempo nunca sai), e o estúdio diz o que não coube. Desenha-se no
+  telemóvel com Canvas (`utils/muralStudioDraw.js`); a composição grava-se
+  na prova (2026-09-14, `race_events.mural_composition`, migração
+  `20260914090000_race_mural_composition.sql`), por update à parte com
+  debounce como a hora da corrida — acompanha a prova entre dispositivos,
+  já não fica só no telemóvel onde foi montada.
+  A legenda da Carol saiu do mural: o texto do mural chega. Partilha pelo
+  menu do telemóvel (Web Share com ficheiro) ou guardando a imagem.
 
 ## A Carol no balanço (decidido 2026-09-12)
 

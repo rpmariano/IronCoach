@@ -329,7 +329,11 @@ function buildPalmaresDemoData() {
     runs: [
       { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-palmares-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
       { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-palmares-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
-      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-palmares-3', distance_km: 10, duration_seconds: 2766, details: { official_time_seconds: 2766 } },
+      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-palmares-3', distance_km: 10, duration_seconds: 2766, details: {
+        official_time_seconds: 2766, gun_time_seconds: 2790, position: 212, age_group_position: 31, official_splits: [{ km: 5, seconds: 1390 }],
+        // Parciais do relógio: dão a linha do ritmo no estúdio do mural.
+        splits: [283, 279, 281, 276, 274, 277, 279, 275, 272, 270].map((time_seconds) => ({ distance_km: 1, time_seconds })),
+      } },
       { id: 'demo-pr-t1', date: inDays(-8), distance_km: 12, duration_seconds: 3960, kind: 'treino', training_type: 'continuo' },
       { id: 'demo-pr-t2', date: inDays(-15), distance_km: 16, duration_seconds: 5400, kind: 'treino', training_type: 'longo' },
       { id: 'demo-pr-t3', date: inDays(-30), distance_km: 10, duration_seconds: 3180, kind: 'treino', training_type: 'intervalado' },
