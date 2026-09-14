@@ -417,6 +417,37 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   const removePhoto = (idx) => setPhotos(prev => prev.filter((_, i) => i !== idx));
 
+  /* Regista um treino "frio" — sem vir do botão "Registar sessão" de um item
+     específico (pedido 2026-09-14) — mas se havia um treino de GINÁSIO
+     pendente nesse dia, o registo também o risca, tal como o botão faria.
+     Só ginásio: uma corrida planeada no mesmo dia continua pendente — tem
+     de bater o TIPO, não só o dia, senão "Registar sessão" desaparecia sem
+     o treino planeado ter sido feito. */
+  const completeMatchingPlanItem = async (savedSession) => {
+    if (completingPlanItemRef.current) return;
+    const store = useAppStore.getState();
+    const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    const item = (store.coachPlanItems || []).find(
+      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === date && i.kind === 'ginasio',
+    );
+    if (!item) return;
+    try {
+      await store.completePlanItem(item.id, { actualDate: date, sessionId: savedSession?.id || null });
+    } catch (err) {
+      console.warn('Item do plano não marcado como concluído', err);
+    }
+  };
+
+  /* Ponto único chamado pelos dois caminhos que podem criar um treino (foto
+     e manual) — sem isto, registar por foto (o método por omissão quando
+     não se vem do botão "Registar sessão") nunca fazia desaparecer o botão,
+     só o registo manual. */
+  const completePlanItemForSession = (savedSession) => (
+    completingPlanItemRef.current
+      ? useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, { actualDate: date, sessionId: savedSession.id })
+      : completeMatchingPlanItem(savedSession)
+  );
+
   // ----------------------------------
   // ANALISAR TREINO POR FOTO (IA — analyze-gym)
   // ----------------------------------
@@ -468,6 +499,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
       setGymSessions([sessionWithSets, ...gymSessions]);
+      await completePlanItemForSession(sessionWithSets);
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     }
   };
@@ -514,15 +546,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       const sessionWithSets = await persistSessionStartTime(analysed);
       setGymSessions([sessionWithSets, ...gymSessions]);
 
-      // Se esta sessão vem do plano, marca o item como concluído — a data
-      // usada é a do formulário, que pode ter sido alterada face ao
-      // planned_date (ver specs/plano-de-treino.md §4-§5.2).
-      if (completingPlanItemRef.current) {
-        await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
-          actualDate: date,
-          sessionId: data.session.id,
-        });
-      }
+      // Se esta sessão vem do plano (ou bate com um treino de ginásio
+      // pendente nesse dia), marca o item como concluído — a data usada é a
+      // do formulário, que pode ter sido alterada face ao planned_date (ver
+      // specs/plano-de-treino.md §4-§5.2).
+      await completePlanItemForSession(sessionWithSets);
 
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     } catch (err) {

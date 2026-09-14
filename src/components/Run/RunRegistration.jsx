@@ -1011,6 +1011,41 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   };
 
+  /* Mesma ideia que completeRacePlanItem acima, para o dia normal (não é a
+     prova): registar uma corrida "fria" — sem vir do botão "Registar sessão"
+     de um item específico (pedido 2026-09-14) — também risca o treino de
+     CORRIDA pendente desse dia, encontrado pela data em vez de pedido
+     explicitamente. Só corrida: um treino de ginásio no mesmo dia fica na
+     mesma pendente — tem de bater o TIPO, não só o dia, senão "Registar
+     sessão" desaparecia sem o treino planeado ter sido feito. Nunca a prova
+     (isRacePlanItem): essa só se conclui em modo prova, acima. */
+  const completeMatchingPlanItem = async (savedRun) => {
+    if (isRaceMode || completingPlanItemRef.current) return;
+    const store = useAppStore.getState();
+    const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    const item = (store.coachPlanItems || []).find(
+      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === runDate && i.kind === 'corrida' && !isRacePlanItem(i),
+    );
+    if (!item) return;
+    try {
+      await store.completePlanItem(item.id, { actualDate: runDate, runId: savedRun?.id || null });
+    } catch (err) {
+      console.warn('Item do plano não marcado como concluído', err);
+    }
+  };
+
+  /* Ponto único chamado pelos três caminhos que podem criar uma corrida
+     normal (manual, por foto, e o "Continuar assim mesmo" da persiana de
+     métricas em falta — analyzeRunTask devolve-se cedo demais para chegar
+     ao fim de si própria quando essa persiana aparece) — sem isto, registar
+     por foto (o método por omissão quando não se vem do botão "Registar
+     sessão") nunca fazia desaparecer o botão, só o registo manual. */
+  const completePlanItemForRun = (savedRun) => (
+    completingPlanItemRef.current
+      ? useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, { actualDate: runDate, runId: savedRun.id })
+      : completeMatchingPlanItem(savedRun)
+  );
+
   const persistRaceLinkAndMemories = async () => {
     const store = useAppStore.getState();
     const linked = await linkRunToRace(savedRaceRunRef.current);
@@ -1237,6 +1272,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       setRuns([...runs, createdRun]);
+      await completePlanItemForRun(createdRun);
       await finishSavedRun(createdRun, 'Corrida registada');
     }
   };
@@ -1247,6 +1283,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setUserBypassedMissingSheet(true);
     if (pendingCreatedRun) {
       setRuns([...runs, pendingCreatedRun]);
+      await completePlanItemForRun(pendingCreatedRun);
       await finishSavedRun(pendingCreatedRun, 'Corrida registada');
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
@@ -1452,16 +1489,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       newlySavedRun = data.run;
       setRuns([...runs, newlySavedRun]);
 
-      // Se esta corrida vem do plano, marca o item como concluído — a data
-      // usada é a que ficou no formulário (runDate), que pode ter sido
-      // alterada face ao planned_date; é essa divergência que corrige os
-      // objetivos de nutrição dos dois dias (ver specs/plano-de-treino.md §4).
-      if (completingPlanItemRef.current) {
-        await useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, {
-          actualDate: runDate,
-          runId: newlySavedRun.id,
-        });
-      }
+      // Se esta corrida vem do plano (ou bate com um treino de corrida
+      // pendente nesse dia), marca o item como concluído — a data usada é a
+      // que ficou no formulário (runDate), que pode ter sido alterada face
+      // ao planned_date; é essa divergência que corrige os objetivos de
+      // nutrição dos dois dias (ver specs/plano-de-treino.md §4).
+      await completePlanItemForRun(newlySavedRun);
 
       await finishSavedRun(newlySavedRun, 'Corrida registada');
     } catch (err) {
