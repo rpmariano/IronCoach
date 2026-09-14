@@ -154,15 +154,29 @@ function pickRaceAfter({ races, runs, profile, today }) {
   return null;
 }
 
+/** O candidato do balanço pendente — mesma regra do Início ("o balanço da
+ *  prova") mas devolvendo o candidato completo (details/raceOutcome/key),
+ *  não só a prova. É o que o botão "Falar com a Carol" do Início precisa
+ *  para pedir o balanço a sério (com `proactive_force`) em vez de só mudar
+ *  de separador e esperar que o efeito passivo do Coach o apanhe — esse
+ *  efeito não força, e se a Carol tiver falado por qualquer outro motivo há
+ *  menos de 6h (PROACTIVE_QUIET_HOURS no coach-chat) o pedido é recusado em
+ *  silêncio e o botão não faz nada visível (bug reportado 2026-09-14). */
+export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
+  const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
+  if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
+  if (wasProactiveSent(profile?.id, candidate)) return null;
+  return candidate;
+}
+
 /** A prova cujo balanço a Carol ainda não fez — para o Início chamar por ele
  *  ("o balanço da prova") enquanto o chat não for aberto. null se não há
  *  balanço pendente, se já foi dito, ou se outro momento (véspera/manhã de
  *  outra prova) tem prioridade. */
-export function pendingRaceBalance({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
-  const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
-  if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
-  if (wasProactiveSent(profile?.id, candidate)) return null;
-  return (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
+export function pendingRaceBalance(data, now = new Date()) {
+  const candidate = pendingRaceBalanceCandidate(data, now);
+  if (!candidate) return null;
+  return (data.raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
 }
 
 function storageKey(userId) {
