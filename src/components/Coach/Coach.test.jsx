@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
+import { readCachedBalance } from '../../utils/raceBalance';
 import Coach from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
@@ -718,3 +719,65 @@ describe('Coach — "o plano precisa de um ajuste"', () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
+
+/* Bug 2026-09-14: o botão "Falar com a Carol" do aviso "O balanço da prova"
+   (Início) só mudava de separador e deixava o efeito passivo abaixo apanhar
+   o momento — que cede sempre que ela tiver falado há menos de 6h por
+   qualquer outro motivo, e nesse caso o servidor responde `skipped: true`
+   em silêncio: o atleta carregava no botão e não acontecia nada. Agora o
+   Início manda o candidato via coachIntent 'race_balance' e isto força o
+   pedido (`proactive_force`). */
+describe('Coach — "O balanço da prova" pedido a partir do Início (coachIntent race_balance)', () => {
+  const CANDIDATE = {
+    trigger: 'race_after',
+    key: 'race_after:race-1:run-1',
+    details: 'Prova "Corrida do Tejo" foi há 1 dia (2026-09-13). Corrida registada: 45:00.',
+    raceOutcome: { verdict: 'superado', officialSeconds: 2700 },
+    raceId: 'race-1',
+  };
+  const STORAGE_KEY = 'ironcoach:carol-proativa:user-1';
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  it('pede o balanço com proactive_force, mesmo que ela tivesse acabado de falar — e marca como dito', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Correste bem demais — superaste o objetivo.' }, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'race_balance', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.proactive_trigger).toBe('race_after');
+    expect(body.proactive_force).toBe(true);
+    expect(body.race_outcome).toEqual(CANDIDATE.raceOutcome);
+    expect(body.message).toBe('');
+    await waitFor(() => expect(screen.getByText(/superaste o objetivo/)).toBeInTheDocument());
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ race_after: CANDIDATE.key }));
+    // E fica na mesma cópia local que utils/raceBalance.js usa — se o hub
+    // (RaceBalanceCard) for aberto a seguir, mostra logo isto em vez de
+    // convidar a pedir o balanço outra vez.
+    expect(readCachedBalance('race-1')?.text).toBe('Correste bem demais — superaste o objetivo.');
+  });
+
+  it('se mesmo assim o servidor saltar, não fica marcado como dito', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { skipped: true, proactive: 'race_after', model_message: null, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'race_balance', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(readCachedBalance('race-1')).toBeNull();
+  });
+});
+

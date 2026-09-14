@@ -3,7 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalance } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate } from '../../utils/coachProactive';
 import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
@@ -60,11 +60,16 @@ export default function Home() {
   /* O balanço da prova (specs/gamificacao-provas.md §3): no dia a seguir, a
      Carol chama por ele a partir do botão flutuante enquanto o chat não for
      aberto. Só quando não há assuntos por resolver — uma intervenção pesa
-     mais do que um balanço. */
-  const raceBalance = useMemo(
-    () => (pendingTopics > 0 ? null : pendingRaceBalance({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile })),
-    [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile],
-  );
+     mais do que um balanço. Guarda-se o candidato completo (não só a prova)
+     porque "Falar com a Carol" precisa dele para pedir o balanço a sério —
+     ver o coachIntent 'race_balance' mais abaixo. */
+  const raceBalance = useMemo(() => {
+    if (pendingTopics > 0) return null;
+    const candidate = pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
+    if (!candidate) return null;
+    const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
+    return race ? { race, candidate } : null;
+  }, [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -117,8 +122,17 @@ export default function Home() {
       id: 'balanco',
       severity: 'info',
       title: 'O balanço da prova',
-      message: `Correste a ${raceBalance.name || 'prova'}. Quero fazer o balanço contigo.`,
-      onTalk: () => setActiveTab('coach'),
+      message: `Correste a ${raceBalance.race.name || 'prova'}. Quero fazer o balanço contigo.`,
+      // Bug 2026-09-14: só mudar de separador e esperar que o Coach apanhe o
+      // momento sozinho falhava em silêncio sempre que a Carol tivesse
+      // falado há menos de 6h por qualquer outro motivo (regra normal contra
+      // empilhar mensagens proativas) — o atleta carregava no botão e "não
+      // acontecia nada". Um pedido explícito dele tem de furar essa regra,
+      // por isso vai com o candidato e o Coach pede-o com `proactive_force`.
+      onTalk: () => {
+        setCoachIntent({ kind: 'race_balance', candidate: raceBalance.candidate });
+        setActiveTab('coach');
+      },
     });
   }
 

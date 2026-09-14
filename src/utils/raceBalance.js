@@ -35,7 +35,13 @@ export function readCachedBalance(raceId) {
   }
 }
 
-function writeCachedBalance(raceId, entry) {
+/* Exportada: o coachIntent 'race_balance' do Início (Coach.jsx) pede o
+   balanço por este mesmo caminho (proactive_force), mas passando pelo fluxo
+   normal do chat, não por requestRaceBalance — precisa de gravar a mesma
+   cópia local para o hub, se aberto a seguir, mostrar logo o balanço já
+   dado em vez de convidar a pedi-lo outra vez (specs/gamificacao-provas.md,
+   "os dois sítios"). */
+export function writeCachedBalance(raceId, entry) {
   try {
     window.localStorage.setItem(`${CACHE_PREFIX}${raceId}`, JSON.stringify(entry));
   } catch {
