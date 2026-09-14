@@ -47,11 +47,19 @@ export const DEFAULT_BRAND_CORNER = 'tl';
 /* O canto da medalha (pedido 2026-09-14, relatado: "a medalha estraga uma
    foto"): antes ficava sempre presa perto do início do texto, por cima do
    que estivesse na foto por baixo, sem se poder mudar. Um canto de verdade
-   — a mesma ideia da marca, e por isso o mesmo conjunto de cantos e o mesmo
-   picker — tira-a estruturalmente do centro de qualquer foto (onde o
-   assunto quase sempre está), em vez de deslocá-la livremente e correr o
-   risco de a voltar a pôr em cima de uma cara sem querer. */
-export const DEFAULT_MEDAL_CORNER = 'br';
+   tira-a estruturalmente do centro de qualquer foto (onde o assunto quase
+   sempre está), em vez de deslocá-la livremente e correr o risco de a
+   voltar a pôr em cima de uma cara sem querer.
+
+   Só EM CIMA (achado na revisão pré-deploy 2026-09-14): em cima, nunca
+   canto de baixo. Em todos os modelos que têm medalhão (Capa, Mosaicos), o
+   texto ocupa a banda de baixo da tela inteira — um canto de baixo caía
+   sempre em cima do ritmo, dos números ou do cartão do diploma, o mesmo
+   problema que isto veio resolver, só que com texto em vez de foto. Em
+   cima, sobre a foto (ou o fundo, sem foto nenhuma), é sempre livre — e é
+   exatamente aí que a marca também prefere ficar por omissão. */
+export const MEDAL_CORNERS = { tl: BRAND_CORNERS.tl, tr: BRAND_CORNERS.tr };
+export const DEFAULT_MEDAL_CORNER = 'tr';
 
 export const STUDIO_GRAPHICS = [
   { key: 'titulo', label: 'Nome e data da prova' },
@@ -162,6 +170,9 @@ export function graphicUnavailableReason(key, { data, candidates = [], template 
     case 'diploma': return data.diplomaCells.length ? null : 'Sem dados do diploma';
     case 'medalhao':
       if (template === 'trofeu') return 'O Troféu já tem a medalha ao centro';
+      // Sem fotos, o texto ocupa quase a tela toda — não há canto de cima
+      // livre para a medalha não cair em cima dele.
+      if (template === 'numeros') return 'Sem espaço livre neste modelo';
       return candidates.some((c) => c.id === 'medal') ? null : 'Sem fotografia da medalha';
     default: return null;
   }
@@ -425,7 +436,10 @@ export function sanitizeComposition(raw, fallback) {
     template,
     theme: pick(raw.theme, Object.keys(STUDIO_THEMES), fallback.theme),
     brandCorner: pick(raw.brandCorner, Object.keys(BRAND_CORNERS), fallback.brandCorner),
-    medalCorner: pick(raw.medalCorner, Object.keys(BRAND_CORNERS), fallback.medalCorner),
+    // Só cantos de cima (ver MEDAL_CORNERS acima) — um 'br'/'bl' gravado
+    // antes desta correção cai no valor por omissão em vez de continuar a
+    // cair em cima do texto.
+    medalCorner: pick(raw.medalCorner, Object.keys(MEDAL_CORNERS), fallback.medalCorner),
     slots,
     graphics,
   };

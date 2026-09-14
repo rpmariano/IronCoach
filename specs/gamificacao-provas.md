@@ -97,13 +97,19 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
      Um grafismo sem dados fica desligado com o motivo ao lado. Tema de cor
      (dourado, ciano, claro), canto da marca — a marca IronCoach vai sempre
      — e, desde que haja medalha para pôr num modelo que a mostre como
-     decoração (não no Troféu, que já a põe ao centro), **canto da
-     medalha** (relatado 2026-09-14: "a medalha estraga uma foto" — deixou
-     de ficar presa perto do texto, por cima do que estivesse na foto por
-     baixo; um canto de verdade tira-a estruturalmente do centro de
-     qualquer foto). Por omissão fica no canto diagonalmente oposto ao da
-     marca; se calharem no mesmo canto, a medalha afasta-se dela ao longo
-     do lado partilhado (`medalCornerBox` em `utils/muralStudio.js`).
+     decoração (não no Troféu, que já a põe ao centro, nem em "Só números",
+     sem canto livre nenhum), **canto da medalha** (relatado 2026-09-14: "a
+     medalha estraga uma foto" — deixou de ficar presa perto do texto, por
+     cima do que estivesse na foto por baixo; um canto de verdade tira-a
+     estruturalmente do centro de qualquer foto). Só cantos de CIMA (achado
+     na revisão pré-deploy 2026-09-14: um canto de baixo caía sempre em
+     cima do texto, que ocupa a banda de baixo da tela na Capa e nos
+     Mosaicos — o mesmo problema que isto veio resolver, só que com texto
+     em vez de foto); por omissão no canto de cima oposto ao da marca, e se
+     calharem no mesmo, a medalha afasta-se dela ao longo do lado
+     partilhado (`medalCornerBox`/`MEDAL_CORNERS` em `utils/muralStudio.js`,
+     com um teste que prova geometricamente a não sobreposição em todos os
+     modelos, formatos e cantos da marca).
   Se o texto não couber no modelo, encolhe até 70% e depois saem grafismos
   por ordem (diploma, conquistas, ritmo, classificação, números, título; o
   tempo nunca sai), e o estúdio diz o que não coube. Desenha-se no
