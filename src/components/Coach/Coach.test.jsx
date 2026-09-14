@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
+import { readCachedBalance } from '../../utils/raceBalance';
 import Coach from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
@@ -759,6 +760,10 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     expect(body.message).toBe('');
     await waitFor(() => expect(screen.getByText(/superaste o objetivo/)).toBeInTheDocument());
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ race_after: CANDIDATE.key }));
+    // E fica na mesma cópia local que utils/raceBalance.js usa — se o hub
+    // (RaceBalanceCard) for aberto a seguir, mostra logo isto em vez de
+    // convidar a pedir o balanço outra vez.
+    expect(readCachedBalance('race-1')?.text).toBe('Correste bem demais — superaste o objetivo.');
   });
 
   it('se mesmo assim o servidor saltar, não fica marcado como dito', async () => {
@@ -772,5 +777,7 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
     await act(async () => { await Promise.resolve(); });
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(readCachedBalance('race-1')).toBeNull();
   });
 });
+

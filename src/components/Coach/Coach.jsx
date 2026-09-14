@@ -12,6 +12,7 @@ import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
 import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
+import { writeCachedBalance } from '../../utils/raceBalance';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
@@ -248,7 +249,20 @@ export default function Coach() {
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }).then((data) => {
-    if (data && !data.skipped) markProactiveSent(profile?.id, candidate);
+    if (data && !data.skipped) {
+      markProactiveSent(profile?.id, candidate);
+      // O hub (RaceBalanceCard) tem o mesmo balanço — pedido lá, marca-se
+      // aqui e o aviso do Início desaparece (wasProactiveSent, partilhado);
+      // pedido aqui, é esta cópia local que faz o hub mostrar o que a Carol
+      // já disse em vez de convidar a pedir-lho outra vez.
+      if (candidate.raceId && data.model_message?.content) {
+        writeCachedBalance(candidate.raceId, {
+          text: data.model_message.content,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [],
+          at: new Date().toISOString(),
+        });
+      }
+    }
     return data;
   });
 
