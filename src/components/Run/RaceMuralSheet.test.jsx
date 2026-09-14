@@ -196,6 +196,22 @@ describe('RaceMuralSheet — a composição grava-se na prova', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('fechar logo DEPOIS de o debounce disparar não grava outra vez (revisão pré-deploy 2026-09-14)', async () => {
+    const onClose = vi.fn();
+    open({ onClose });
+    await screen.findByTestId('race-mural-preview');
+    fireEvent.click(screen.getByTestId('race-mural-template-mosaico4'));
+    await waitFor(() => expect(lastComposition().template).toBe('mosaico4'));
+
+    // Espera o debounce disparar sozinho (sem fechar a meio).
+    await waitFor(() => expect(mocks.updates).toHaveLength(1), { timeout: 2000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    // Nada corre depois de fechar: continua com uma só escrita.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mocks.updates).toHaveLength(1);
+  });
+
   it('uma falha ao gravar fica só na consola — não bloqueia a composição em ecrã', async () => {
     mocks.updateError = { message: 'rede' };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

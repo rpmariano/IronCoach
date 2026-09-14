@@ -103,7 +103,13 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   useEffect(() => {
     if (!touchedRef.current) return undefined;
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-    persistTimerRef.current = setTimeout(() => { persistComposition(composition); }, PERSIST_DEBOUNCE_MS);
+    persistTimerRef.current = setTimeout(() => {
+      // Já disparou: `handleClose` não tem mais nada pendente para gravar
+      // outra vez (revisão pré-deploy 2026-09-14 — sem isto, fechar mesmo
+      // neste instante repetia a mesma escrita).
+      persistTimerRef.current = null;
+      persistComposition(composition);
+    }, PERSIST_DEBOUNCE_MS);
     return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composition, race?.id]);

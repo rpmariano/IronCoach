@@ -84,7 +84,12 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
   2. **Fotos** — toca-se num espaço, na pré-visualização ou na lista, e
      escolhe-se entre as memórias: até seis fotos, a medalha e o diploma
      (se for imagem). Uma memória que já está noutro espaço troca de lugar.
-     Tocar na foto (ou as setas) escolhe o ponto de foco do recorte.
+     O enquadramento é arrastar e ampliar (2026-09-14): arrasta-se a foto
+     para a mover e desliza-se um controlo para ampliar até 3×; as setas do
+     teclado continuam a ajustar, com o movimento dividido pelo zoom para
+     parecer sempre do mesmo tamanho. `coverCrop` em `utils/muralStudio.js`
+     calcula o recorte (fx, fy, zoom); é o mesmo cálculo na pré-visualização
+     do enquadramento e no desenho final, por isso o que se vê é o que sai.
   3. **Grafismos** — peças prontas que se ligam e desligam: nome e data,
      tempo em grande, distância e ritmo, classificação do diploma, linha do
      ritmo por km (dos parciais do relógio), fichas das conquistas, cartão do
@@ -94,8 +99,11 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
   Se o texto não couber no modelo, encolhe até 70% e depois saem grafismos
   por ordem (diploma, conquistas, ritmo, classificação, números, título; o
   tempo nunca sai), e o estúdio diz o que não coube. Desenha-se no
-  telemóvel com Canvas (`utils/muralStudioDraw.js`); a composição guarda-se
-  por prova neste dispositivo (localStorage `ironcoach:mural-studio:<id>`).
+  telemóvel com Canvas (`utils/muralStudioDraw.js`); a composição grava-se
+  na prova (2026-09-14, `race_events.mural_composition`, migração
+  `20260914090000_race_mural_composition.sql`), por update à parte com
+  debounce como a hora da corrida — acompanha a prova entre dispositivos,
+  já não fica só no telemóvel onde foi montada.
   A legenda da Carol saiu do mural: o texto do mural chega. Partilha pelo
   menu do telemóvel (Web Share com ficheiro) ou guardando a imagem.
 
