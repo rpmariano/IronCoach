@@ -9,7 +9,10 @@ import GymRegistration from './GymRegistration';
 // chamada à Edge Function. Editar passa pelo Gemini quando os dados
 // analíticos mudam (séries, métricas, categorias, tipo ou observações);
 // mudar só a data/nome é update direto de workout_sessions.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateSession: vi.fn(), deleteSets: vi.fn(), insertSets: vi.fn() }));
+// `updates`/`updatePlanItem`: o store's completePlanItem escreve em
+// coach_plan_items (Regista sem vir do botão "Registar sessão" — pedido
+// 2026-09-14) — mesmo padrão de rastreio do RunRegistration.test.jsx.
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateSession: vi.fn(), deleteSets: vi.fn(), insertSets: vi.fn(), updates: [], updatePlanItem: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -21,6 +24,9 @@ vi.mock('../../lib/supabase', () => ({
           delete: () => ({ eq: (col, val) => mocks.deleteSets(val) }),
           insert: (rows) => mocks.insertSets(rows),
         };
+      }
+      if (table === 'coach_plan_items') {
+        return { update: (payload) => ({ eq: (col, val) => { mocks.updates.push({ table, payload, id: val }); return mocks.updatePlanItem(payload, val); } }) };
       }
       return {};
     },
@@ -174,6 +180,86 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
 
     await screen.findByText('Falha a gravar treino.');
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+/* Pedido 2026-09-14: registar um treino de ginásio SEM vir do botão
+   "Registar sessão" de um item específico — o caminho por omissão, já que
+   sem esse botão o cartão abre em foto — também tem de fazer desaparecer o
+   botão no Início quando bate com um treino de GINÁSIO pendente nesse dia;
+   uma corrida planeada no mesmo dia continua pendente — tem de bater o
+   TIPO, não só o dia. */
+describe('GymRegistration — regista sem vir do botão "Registar sessão" (bate por dia+tipo)', () => {
+  const onClose = vi.fn();
+  const hojeISO = new Date().toISOString().slice(0, 10);
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 'sess-frio' } }, error: null });
+    mocks.updatePlanItem.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    onClose.mockClear();
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], planItemPrefill: null,
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [],
+    });
+  });
+
+  it('um treino de ginásio pendente nesse dia risca-se sozinho, sem vir do botão', async () => {
+    useAppStore.setState({
+      coachPlanItems: [{ id: 'item-ginasio', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente' }],
+    });
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(true));
+    const itens = mocks.updates.filter(u => u.table === 'coach_plan_items');
+    expect(itens).toHaveLength(1);
+    expect(itens[0].id).toBe('item-ginasio');
+    expect(itens[0].payload).toMatchObject({ status: 'concluido', actual_date: hojeISO, completed_session_id: 'sess-frio' });
+  });
+
+  it('não risca uma corrida planeada nesse dia — o tipo tem de bater, não só o dia', async () => {
+    useAppStore.setState({
+      coachPlanItems: [{ id: 'item-corrida', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'longo', status: 'pendente' }],
+    });
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(useAppStore.getState().gymSessions).toHaveLength(1));
+    expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(false);
+  });
+
+  it('mesma regra pelo caminho de fotos, que é o método por omissão sem vir do plano', async () => {
+    useAppStore.setState({
+      coachPlanItems: [{ id: 'item-ginasio', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente' }],
+    });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/ }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(true));
+    expect(mocks.updates.find(u => u.table === 'coach_plan_items').id).toBe('item-ginasio');
+  });
+
+  it('vindo do botão "Registar sessão" (planItemPrefill), continua a completar exatamente esse item — não outro treino de ginásio do mesmo dia', async () => {
+    useAppStore.setState({
+      planItemPrefill: { id: 'item-especifico', kind: 'ginasio', planned_date: hojeISO, categories: ['Peito'] },
+      coachPlanItems: [
+        { id: 'item-especifico', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente' },
+        { id: 'item-outro', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente' },
+      ],
+    });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'coach_plan_items')).toBe(true));
+    const itens = mocks.updates.filter(u => u.table === 'coach_plan_items');
+    expect(itens).toHaveLength(1);
+    expect(itens[0].id).toBe('item-especifico');
   });
 });
 
