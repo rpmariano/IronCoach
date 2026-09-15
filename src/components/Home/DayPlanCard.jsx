@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Check, Utensils, MessageCircle 
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
-import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, isRacePlanItem, raceForDate } from '../../utils/homeModels';
+import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, isRacePlanItem, raceForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import GlassCard from '../shared/GlassCard';
@@ -25,6 +25,8 @@ import CarouselDots from '../shared/CarouselDots';
    e os dois disparem o mesmo tique tátil (triggerCarouselTick). */
 
 const arrowStyle = { width: 44, height: 44, color: 'var(--gym)' };
+// Até aqui cabem pontos no cartão (22px cada); a partir daqui é o contador.
+const MAX_DOTS = 8;
 
 /* Sem o Badge "Hoje" (o rótulo da secção já diz "O que faço hoje"): o
    estado do dia colore a própria data — --gym por fazer, --ok só quando de
@@ -51,6 +53,7 @@ function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace, pag
   const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
   const session = pendingSession(day, todayISO());
   const meals = mealsForDay(day.items);
+  const instructions = trainingItems(day.items).filter((i) => !isRacePlanItem(i) && typeof i.notes === 'string' && i.notes.trim());
 
   return (
     // alignSelf em linha, além do align-items do .tab-swipe-carousel: a página
@@ -59,6 +62,16 @@ function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace, pag
       <h2 className="text-[20px] font-black leading-[1.15] mt-[5px]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
         {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
       </h2>
+
+      {/* A instrução da Carol para o treino (item.notes: "8×400m a 4:15/km,
+          90s de trote entre séries" — ver o schema em coach-chat). O cartão
+          antigo mostrava-a; o redesenho deixou-a cair e o dia ficou reduzido
+          ao título (relatado 2026-09-15). Uma linha por treino, sem rótulo. */}
+      {!race && instructions.map((i) => (
+        <p key={i.id} data-testid="day-plan-notes" className="text-[12.5px] leading-[1.5] mt-2" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>
+          {instructions.length > 1 ? `${planItemTitle(i, dayRace?.name || null)}: ${i.notes.trim()}` : i.notes.trim()}
+        </p>
+      ))}
 
       {session && (
         <button type="button" onClick={() => onComplete?.(session)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'rgba(52,211,153,.16)', border: '1px solid rgba(52,211,153,.4)', color: 'var(--ok)' }}>
@@ -216,7 +229,14 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
           </div>
 
           <div className="flex items-center justify-between mt-2 -mb-2">
-            {days.length > 1 ? (
+            {/* Os pontos medem 22px cada: com um plano de 18 dias saíam do
+                cartão (relatado 2026-09-15). Acima de 8 dias fica o
+                contador; as setas e o gesto continuam a mudar de dia. */}
+            {days.length > MAX_DOTS ? (
+              <span data-testid="day-plan-counter" className="flex items-center min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
+                {`${safeIndex + 1} de ${days.length}`}
+              </span>
+            ) : days.length > 1 ? (
               <div className="flex items-center min-h-[44px]"><CarouselDots count={days.length} currentIndex={safeIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" /></div>
             ) : <span />}
             <button type="button" onClick={adapt} className="min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>Adaptar plano</button>

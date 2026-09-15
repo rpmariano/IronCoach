@@ -178,10 +178,16 @@ export function mealsForDay(items = []) {
     ? item.meal_macros.items.map((r) => ({ tipo: r.tipo, label: MEAL_LABEL_BY_TIPO[r.tipo] || r.tipo, texto: r.texto }))
     : parseMealSuggestion(item.meal_suggestion);
   if (structured.length === 0) return null;
+  // `notes` só é o racional das refeições num dia de descanso — é o único
+  // dia em que a nota fala do dia e não do treino. Num dia de corrida ou
+  // ginásio `notes` é a instrução do treino ("8×400m a 4:15/km…", ver o
+  // schema em coach-chat) e aparecia na persiana das refeições como
+  // "Racional" (relatado 2026-09-15).
+  const racional = item.kind === 'descanso' && typeof item.notes === 'string' && item.notes.trim() ? item.notes.trim() : null;
   return {
     kcal: item.meal_macros?.kcal ? Math.round(item.meal_macros.kcal) : null,
     meals: structured,
-    racional: typeof item.notes === 'string' && item.notes.trim() ? item.notes.trim() : null,
+    racional,
   };
 }
 

@@ -90,8 +90,10 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(structured.kcal).toBe(2150);
     expect(structured.meals).toHaveLength(2);
     expect(structured.meals[1].label).toBe('Almoço');
-    expect(structured.racional).toBe('Hidratos altos para os 16 km.');
+    // Num dia de corrida a nota é a instrução do treino, não o racional das refeições.
+    expect(structured.racional).toBeNull();
     expect(previewMeal(structured).texto).toBe('Atum ao natural com grão-de-bico');
+    expect(mealsForDay([{ kind: 'descanso', meal_suggestion: 'Almoço: texto', notes: 'Dia leve: menos hidratos.' }]).racional).toBe('Dia leve: menos hidratos.');
 
     const text = mealsForDay([{ kind: 'descanso', meal_suggestion: 'Jantar: sopa e peixe.' }]);
     expect(text.kcal).toBeNull();

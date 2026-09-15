@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import DayPlanCard from './DayPlanCard';
@@ -87,6 +87,25 @@ describe('DayPlanCard — a data em vez do badge', () => {
   it('um dia com tudo concluído colore a data a --ok', () => {
     renderCard([{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'concluido' }]);
     expect(screen.getByTestId('day-plan-date')).toHaveStyle({ color: 'var(--ok)' });
+  });
+
+  it('a instrução da Carol para o treino aparece por baixo do título; no dia da prova não', () => {
+    const item = { id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'intervalos', target_distance_km: 8, status: 'pendente', notes: '8×400m a 4:15/km, 90s de trote entre séries.' };
+    renderCard([item], []);
+    expect(screen.getByTestId('day-plan-notes')).toHaveTextContent('8×400m a 4:15/km, 90s de trote entre séries.');
+    cleanup();
+    renderCard([raceItem({ notes: 'Prova: sai a 5:20/km.' })]);
+    expect(screen.queryByTestId('day-plan-notes')).not.toBeInTheDocument();
+  });
+
+  it('com mais de 8 dias os pontos dão lugar ao contador "N de M"', () => {
+    const longPlan = { id: 'p1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 17) };
+    const items = Array.from({ length: 18 }, (_, i) => ({ id: `i${i}`, plan_id: 'p1', planned_date: addDaysISO(today, i), kind: 'corrida', training_type: 'longo', status: 'pendente' }));
+    render(<DayPlanCard plans={[longPlan]} planItems={items} raceEvents={[]} onComplete={onComplete} onOpenRace={onOpenRace} />);
+    expect(screen.getByTestId('day-plan-counter')).toHaveTextContent('1 de 18');
+    expect(screen.queryAllByTestId('carousel-dot-target')).toHaveLength(0);
+    fireEvent.click(screen.getByLabelText('Dia seguinte'));
+    expect(screen.getByTestId('day-plan-counter')).toHaveTextContent('2 de 18');
   });
 
   it('a pré-visualização da refeição saiu — fica só "Refeições sugeridas · Ver as N"', () => {
