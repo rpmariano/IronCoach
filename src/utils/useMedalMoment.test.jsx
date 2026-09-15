@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../store';
+import { todayISO } from '../lib/utils';
 
 vi.mock('./medalhoes', async () => {
   const { makeMedalhoes } = await import('../test/medalhoesFixture');
@@ -14,6 +15,8 @@ vi.mock('./medalAwards', () => ({
 
 import useMedalMoment, { resetMedalMomentSession } from './useMedalMoment';
 import { syncMedalAwards, markMedalAwardsSeen } from './medalAwards';
+import { computeMedalhoes } from './medalhoes';
+import { makeMedalhoes } from '../test/medalhoesFixture';
 
 /* Quando o momento da medalha aparece: com prémios por ver e nenhum
    formulário aberto; a mais significativa primeiro; ao fechar, todas
@@ -33,6 +36,7 @@ function Probe() {
 describe('useMedalMoment', () => {
   beforeEach(() => {
     resetMedalMomentSession();
+    computeMedalhoes.mockImplementation(() => makeMedalhoes());
     syncMedalAwards.mockReset().mockResolvedValue({ pending: PENDING, available: true });
     markMedalAwardsSeen.mockReset().mockResolvedValue(undefined);
     useAppStore.setState({
@@ -76,8 +80,18 @@ describe('useMedalMoment', () => {
     expect(syncMedalAwards).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('probe')).toHaveTextContent('nada');
 
-    // Uma corrida nova volta a sincronizar.
-    act(() => useAppStore.setState({ runs: [{ id: 'r1', date: '2026-09-15', distance_km: 10 }] }));
+    // Uma corrida que não dá medalha nova não volta a sincronizar…
+    act(() => useAppStore.setState({ runs: [{ id: 'r1', date: todayISO(), distance_km: 10 }] }));
+    await act(async () => {});
+    expect(syncMedalAwards).toHaveBeenCalledTimes(1);
+
+    // …uma que dá uma medalha devida nova (fechar uma prova com uma corrida
+    // que já existia conta igual) sincroniza.
+    computeMedalhoes.mockImplementation(() => ({
+      ...makeMedalhoes(),
+      due: [{ medalhao: 'distancias', slot: '10k', periodKey: '', title: 'Primeiros 10 km' }],
+    }));
+    act(() => useAppStore.setState({ runs: [{ id: 'r1', date: todayISO(), distance_km: 10.2 }] }));
     await waitFor(() => expect(syncMedalAwards).toHaveBeenCalledTimes(2));
   });
 
@@ -86,5 +100,15 @@ describe('useMedalMoment', () => {
     render(<Probe />);
     await act(async () => {});
     expect(syncMedalAwards).not.toHaveBeenCalled();
+  });
+
+  it('com dados parciais (sem corridas mas com provas concluídas) espera pelos dados completos', async () => {
+    useAppStore.setState({ raceEvents: [{ id: 'race-1', name: 'Tejo', date: '2026-09-07', distance_km: 10, status: 'concluida' }] });
+    render(<Probe />);
+    await act(async () => {});
+    expect(syncMedalAwards).not.toHaveBeenCalled();
+
+    act(() => useAppStore.setState({ runs: [{ id: 'r1', race_id: 'race-1', kind: 'competicao', date: '2026-09-07', distance_km: 10, duration_seconds: 3100 }] }));
+    await waitFor(() => expect(syncMedalAwards).toHaveBeenCalledTimes(1));
   });
 });

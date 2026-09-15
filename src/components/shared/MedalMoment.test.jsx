@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import MedalMoment from './MedalMoment';
+import { slotPosition } from './Medalhao';
 import { makeMedalhoes } from '../../test/medalhoesFixture';
 
 /* O momento da medalha: toque salta para o fim, o segundo toque fecha, o
@@ -51,6 +52,31 @@ describe('MedalMoment', () => {
     expect(screen.getByTestId('medal-moment-star')).toHaveTextContent('182');
     expect(screen.getByTestId('medal-moment')).toHaveTextContent('Mês recorde');
     expect(screen.getByTestId('medal-moment')).toHaveTextContent('182 km em agosto — o teu melhor mês de sempre.');
+  });
+
+  it('A Época com 6 provas: a estrela da 6.ª voa para o lugar certo do anel', () => {
+    setReducedMotion(false);
+    const epoca = {
+      key: 'epoca', name: 'A Época', engraving: "A Época '26", year: 2026,
+      slots: Array.from({ length: 6 }, (_, i) => ({ key: `p${i + 1}`, label: `Prova ${i + 1}`, state: i < 5 ? 'won' : 'empty', enamel: 'silver', periodKey: `race-${i + 1}` })),
+    };
+    // Como o medalAwards grava A Época: slot 'prova' e o id da prova no
+    // period_key — não a chave posicional p6 do encaixe.
+    const award = { id: 'a6', medalhao: 'epoca', slot: 'prova', period_key: 'race-6', race_id: 'race-6', title: 'Prova 6' };
+    const { baseElement } = render(<MedalMoment award={award} medalhao={epoca} onClose={() => {}} />);
+    const disc = baseElement.querySelector('[data-testid="medalhao-lg"]');
+    // Os 6 desenhados: 5 ganhos + o alvo, vazio à espera da estrela.
+    expect(disc.querySelectorAll('.ic-medal-stars [data-medal-star]')).toHaveLength(5);
+    expect(disc.querySelectorAll('.ic-medal-stars [data-medal-socket]')).toHaveLength(1);
+    const { x, y, scale } = slotPosition(5, 6, 'lg');
+    const star = screen.getByTestId('medal-moment-star');
+    expect(Number(star.dataset.x)).toBe(x);
+    expect(Number(star.dataset.y)).toBe(y);
+    expect(star).toHaveStyle({ left: `${x - 36}px`, top: `${y - 36}px` });
+    // E é o mesmo sítio onde o disco desenhou o encaixe.
+    expect(disc.querySelector('[data-medal-socket]').getAttribute('transform')).toBe(scale === 1 ? `translate(${x},${y})` : `translate(${x},${y}) scale(${scale})`);
+    expect(x).toBeLessThan(150); // a 6.ª de 6 fica à esquerda, em cima
+    expect(y).toBeLessThan(150);
   });
 
   it('"Ver no Palmarés" abre o Palmarés e fecha, e conta as outras por ver', () => {

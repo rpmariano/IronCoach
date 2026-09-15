@@ -9,7 +9,7 @@
    Sem a fase de saída do loop — quem fecha é o atleta. */
 
 .ic-moment {
-  position: fixed; inset: 0; z-index: 90;
+  position: fixed; inset: 0; z-index: 120;
   background: radial-gradient(120% 80% at 50% 30%, rgba(217,119,6,.30) 0%, rgba(11,17,32,0) 60%), #070c16;
   color: var(--text-1);
   overflow: hidden;

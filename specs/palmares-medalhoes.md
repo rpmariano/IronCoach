@@ -134,8 +134,11 @@ Fluxo:
    devolve os 6 medalhões com os encaixes (`won`, `value`, `periodKey`,
    `progress`) e a lista de prémios **devidos**. Sem rede, testável como
    `achievements.js`.
-2. No arranque (depois de `loadInitialData`) e depois de gravar uma corrida ou
-   fechar uma prova: comparar os devidos com `medal_awards` e inserir os que
+2. Sempre que muda o número de medalhas devidas (gravar uma corrida, fechar
+   uma prova com uma corrida que já existia, corrigir uma distância) ou muda
+   o dia (O Ano em Km e A Consistência ganham-se no fecho de um período, e a
+   PWA fica aberta dias) — nunca com dados parciais (sem corridas mas com
+   provas concluídas: a query das corridas falhou): comparar os devidos com `medal_awards` e inserir os que
    faltam (`upsert` com `onConflict` na chave única — idempotente, dois
    dispositivos não duplicam).
 3. **Primeira sincronização de um atleta com histórico**: insere com

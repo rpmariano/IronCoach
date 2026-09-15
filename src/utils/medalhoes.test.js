@@ -354,6 +354,26 @@ describe('A Consistência', () => {
     const r = compute({ coachPlans: [{ ...PLAN, status: 'proposto' }], coachPlanItems: items, today: '2026-09-15' });
     expect(slotOf(r, 'consistencia', 'w4').state).toBe('empty');
   });
+
+  it('um plano substituído (recusado depois de cumprido) continua a contar', () => {
+    const items = ['2026-08-04', '2026-08-11', '2026-08-18', '2026-08-25'].map((d) => item(d, 'concluido'));
+    const substituido = compute({ coachPlans: [{ ...PLAN, status: 'recusado' }], coachPlanItems: items, today: '2026-09-15' });
+    expect(slotOf(substituido, 'consistencia', 'w4').state).toBe('won');
+    // Uma proposta recusada de raiz nunca tem sessões concluídas.
+    const recusada = compute({ coachPlans: [{ ...PLAN, status: 'recusado' }], coachPlanItems: items.map((i) => ({ ...i, status: 'pendente' })), today: '2026-09-15' });
+    expect(slotOf(recusada, 'consistencia', 'w4').state).toBe('empty');
+  });
+});
+
+describe('progressLine', () => {
+  it('As Distâncias dizem quanto falta até a prova marcada, mesmo sem fração', () => {
+    const r = compute({
+      raceEvents: [prova({ id: 'fut', name: 'Corrida de Outono', date: '2026-10-04', distance_km: 10, status: 'agendada' })],
+      today: '2026-09-15',
+    });
+    expect(slotOf(r, 'distancias', '10k').progress).toBeNull();
+    expect(med(r, 'distancias').progressLine).toBe('A 19 dias da medalha dos 10 km');
+  });
 });
 
 // ── Herói e devidos ──────────────────────────────────────────────────────

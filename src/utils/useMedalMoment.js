@@ -62,8 +62,17 @@ export default function useMedalMoment() {
     [runs, raceEvents, coachPlans, coachPlanItems, profile, today],
   );
 
-  const runsCount = (runs || []).length;
-  const racesCount = (raceEvents || []).length;
+  /* Quando voltar a sincronizar: quando há uma medalha devida nova (fechar
+     uma prova com uma corrida que já existia, corrigir uma distância) ou
+     quando o dia muda (O Ano em Km e A Consistência ganham-se no fecho de um
+     período, e a PWA fica aberta dias). Contar corridas e provas falhava os
+     dois casos. */
+  const dueCount = (result?.due || []).length;
+  // Dados parciais (a query das corridas falhou e veio []) com provas
+  // concluídas: sincronizar agora gravava umas poucas medalhas como
+  // histórico e a sincronização seguinte, já com tudo, animava meses de uma
+  // vez. Espera-se pelos dados completos.
+  const dadosParciais = (runs || []).length === 0 && (raceEvents || []).some((r) => r?.status === 'concluida');
   useEffect(() => {
     // ?demo=true&medalha=1 — mostra o momento com as medalhas que os dados
     // de demonstração dão, sem tocar em medal_awards (que pode ainda nem
@@ -78,8 +87,8 @@ export default function useMedalMoment() {
       })).sort(byPriority));
       return;
     }
-    if (!userId) return;
-    const key = `${userId}|${runsCount}|${racesCount}`;
+    if (!userId || dadosParciais) return;
+    const key = `${userId}|${dueCount}|${today}`;
     if (session.syncedKeys.has(key)) return;
     session.syncedKeys.add(key);
     Promise.resolve(syncMedalAwards({ userId, due: result?.due || [] }))
@@ -90,7 +99,7 @@ export default function useMedalMoment() {
       .catch(() => { /* best-effort: sem momento, nada parte */ });
     // `result` muda com as mesmas listas; a chave decide quando sincronizar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, runsCount, racesCount]);
+  }, [userId, dueCount, today, dadosParciais]);
 
   const first = pending[0] || null;
   const medalhao = first ? (result?.medalhoes || []).find((m) => m.key === first.medalhao) || null : null;

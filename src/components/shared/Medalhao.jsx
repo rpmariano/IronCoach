@@ -23,6 +23,48 @@ const STAR_POINTS = '0,-30 6.7,-9.3 28.5,-9.3 10.9,3.5 17.6,24.3 0,11.5 -17.6,24
 export const LG_POSITIONS = [[97, 93], [203, 93], [97, 207], [203, 207]];
 export const SM_POSITIONS = [[32, 32], [64, 32], [32, 64], [64, 64]];
 
+/* A Época com mais de 4 encaixes (um por prova marcada no ano): passam a um
+   anel à volta da gravação (spec §"O artwork"), todos à mesma distância,
+   o primeiro em cima e a seguir no sentido dos ponteiros. Acima de 8 não
+   cabem com leitura — desenham-se 8 e o aria-label conta todos. */
+export const MAX_SLOTS = 8;
+/* O raio põe a estrela inteira dentro da face (lg: face 138, estrela 42 →
+   92; sm: face 43, estrela 14 → 27). Com 104/31 as pontas pisavam o aro. */
+const RING = {
+  lg: { cx: 150, cy: 150, r: 92 },
+  sm: { cx: 48, cy: 48, r: 27 },
+};
+/* O diâmetro da maior estrela desenhada à escala das 4 diagonais: no grande
+   a medalha 1.4× (raio 30·1.4 = 42); no pequeno a de esmalte a .33 dessa
+   (≈ 13,9 de raio — a de prata a .42 e o encaixe a .34 são um pouco menores). */
+export const STAR_DIAMETER = { lg: 84, sm: 28 };
+// Folga entre vizinhas: a corda tem de levar a estrela e ainda ~10% de ar.
+const RING_GAP = 0.9;
+
+const sizeKey = (size) => (size === 'sm' ? 'sm' : 'lg');
+
+/** Posição e escala (relativa à das 4 diagonais) do encaixe `index` de
+    `count`. Até 4: as diagonais, escala 1. De 5 a 8: o anel, com a estrela a
+    encolher só quando a corda entre vizinhas já não a leva (nunca cresce). */
+export function slotPosition(index, count, size = 'lg') {
+  const k = sizeKey(size);
+  const n = Math.min(Math.max(count || 0, 0), MAX_SLOTS);
+  if (n <= 4) {
+    const list = k === 'sm' ? SM_POSITIONS : LG_POSITIONS;
+    const [x, y] = list[Math.min(Math.max(index, 0), 3)];
+    return { x, y, scale: 1 };
+  }
+  const { cx, cy, r } = RING[k];
+  const a = (2 * Math.PI * Math.min(Math.max(index, 0), n - 1)) / n;
+  const chord = 2 * r * Math.sin(Math.PI / n);
+  const scale = Math.min(1, (chord * RING_GAP) / STAR_DIAMETER[k]);
+  return {
+    x: Math.round((cx + r * Math.sin(a)) * 10) / 10,
+    y: Math.round((cy - r * Math.cos(a)) * 10) / 10,
+    scale: Math.round(scale * 1000) / 1000,
+  };
+}
+
 const TEXT_FILL = { amber: '#3c1d02', cyan: '#04252b' };
 
 function StarFacets({ id, light = false }) {
@@ -192,11 +234,10 @@ export function slotValueText(medalhaoKey, slot) {
   return s;
 }
 
-/* A Época pode ter mais de 4 encaixes (um por prova marcada no ano). A spec
-   pede um anel à volta da gravação para 5–8, a desenhar antes de
-   implementar — até lá mostram-se só os 4 primeiros nas diagonais. */
+/* Os encaixes que se desenham: todos até 8 (de 5 a 8 em anel, ver
+   slotPosition); acima disso os 8 primeiros. */
 export function visibleSlots(slots = []) {
-  return (slots || []).slice(0, 4);
+  return (slots || []).slice(0, MAX_SLOTS);
 }
 
 function defaultAriaLabel(engraving, slots) {
@@ -212,8 +253,9 @@ function defaultAriaLabel(engraving, slots) {
 export default function Medalhao({ size = 'lg', ribbon = false, engraving, year, footer, slots = [], ariaLabel, className = '', style, children }) {
   const lg = size !== 'sm';
   const shown = visibleSlots(slots);
-  const positions = lg ? LG_POSITIONS : SM_POSITIONS;
+  const ring = shown.length > 4;
   const box = lg ? 300 : 96;
+  const at = (x, y, s) => (s === 1 ? `translate(${x},${y})` : `translate(${x},${y}) scale(${s})`);
 
   return (
     <div
@@ -232,29 +274,36 @@ export default function Medalhao({ size = 'lg', ribbon = false, engraving, year,
 
       {lg && (
         <>
-          <div className="ic-medal-engrave" style={{ top: 84 }} aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 26 26">
-              <path d="M13,2 L23,8 L23,18 L13,24 L3,18 L3,8 Z" fill="none" stroke="currentColor" strokeWidth="2" />
-              <path d="M8,12 L13,7 L18,12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <path d="M8,17 L13,12 L18,17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </div>
+          {/* Em anel a estrela de cima desce até y≈100 — em cima do brasão. */}
+          {!ring && (
+            <div className="ic-medal-engrave" style={{ top: 84 }} aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 26 26">
+                <path d="M13,2 L23,8 L23,18 L13,24 L3,18 L3,8 Z" fill="none" stroke="currentColor" strokeWidth="2" />
+                <path d="M8,12 L13,7 L18,12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M8,17 L13,12 L18,17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </div>
+          )}
           {engraving && <div className="ic-medal-engrave ic-medal-engrave--name" aria-hidden="true">{engraving}</div>}
           {year != null && year !== '' && <div className="ic-medal-engrave ic-medal-engrave--year" aria-hidden="true">{year}</div>}
-          {footer && <div className="ic-medal-engrave ic-medal-engrave--footer" aria-hidden="true">· {footer} ·</div>}
+          {/* Em anel, as estrelas de baixo passam onde a linha de rodapé está
+              gravada (y≈252) — sai, e o que dizia continua no aria-label e na
+              persiana. */}
+          {footer && !ring && <div className="ic-medal-engrave ic-medal-engrave--footer" aria-hidden="true">· {footer} ·</div>}
         </>
       )}
 
       <svg className="ic-medal-stars" width={box} height={box} viewBox={`0 0 ${box} ${box}`} aria-hidden="true">
         {shown.map((slot, i) => {
-          const [x, y] = positions[i];
+          const { x, y, scale: s } = slotPosition(i, shown.length, lg ? 'lg' : 'sm');
+          const r3 = (v) => Math.round(v * 1000) / 1000;
           const key = slot?.key || i;
           if (slot?.state !== 'won') {
             return (
               <use
                 key={key}
                 href={ref('star-socket')}
-                transform={lg ? `translate(${x},${y})` : `translate(${x},${y}) scale(.34)`}
+                transform={at(x, y, lg ? s : r3(0.34 * s))}
                 data-medal-socket=""
               />
             );
@@ -264,19 +313,19 @@ export default function Medalhao({ size = 'lg', ribbon = false, engraving, year,
             // mock da coleção; as de esmalte a .33 da medalha (que já é 1.4×).
             if (slot.enamel === 'silver') {
               return (
-                <g key={key} transform={`translate(${x},${y}) scale(.42)`} data-medal-star="silver">
+                <g key={key} transform={at(x, y, r3(0.42 * s))} data-medal-star="silver">
                   <g filter={url('star-drop')}><use href={ref('star-ag')} /></g>
                 </g>
               );
             }
             return (
-              <g key={key} transform={`translate(${x},${y}) scale(.33)`}>
+              <g key={key} transform={at(x, y, r3(0.33 * s))}>
                 <WonStar enamel={slot.enamel} withText={false} />
               </g>
             );
           }
           return (
-            <g key={key} transform={`translate(${x},${y})`}>
+            <g key={key} transform={at(x, y, s)}>
               <WonStar enamel={slot.enamel} valueLabel={slot.valueLabel} />
             </g>
           );

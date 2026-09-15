@@ -154,3 +154,52 @@ describe('DayPlanCard — o carrossel desliza (swipe) com feedback háptico', ()
     expect(vibrateMock).toHaveBeenCalledWith(30);
   });
 });
+
+/* Limitação 2026-09-15: a altura do carrossel era a do dia mais alto — um
+   dia só com "Prova · 10 km" deixava ~100px vazios antes dos pontos. Agora
+   segue a página ativa. O jsdom não tem layout (offsetHeight 0) nem, por
+   omissão, ResizeObserver: o cartão tem de aguentar os dois. */
+describe('DayPlanCard — a altura segue o dia ativo', () => {
+  const twoDayPlan = { id: 'p1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 1) };
+  const items = [
+    { id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'prova', target_distance_km: 10, status: 'pendente' },
+    { id: 'i2', plan_id: 'p1', planned_date: addDaysISO(today, 1), kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente' },
+  ];
+  const renderTwoDays = () => render(<DayPlanCard plans={[twoDayPlan]} planItems={items} raceEvents={[]} />);
+  const originalRO = globalThis.ResizeObserver;
+
+  afterEach(() => {
+    if (originalRO) globalThis.ResizeObserver = originalRO;
+    else delete globalThis.ResizeObserver;
+    vi.restoreAllMocks();
+  });
+
+  it('sem ResizeObserver não rebenta, e com medidas 0 deixa a altura por fixar', () => {
+    delete globalThis.ResizeObserver;
+    const { container } = renderTwoDays();
+    const carousel = container.querySelector('.tab-swipe-carousel');
+    expect(carousel.style.height).toBe('');
+    fireEvent.click(screen.getByLabelText('Dia seguinte'));
+    expect(carousel.style.height).toBe('');
+  });
+
+  it('as páginas alinham ao topo — não esticam até à altura do contentor', () => {
+    const { container } = renderTwoDays();
+    const pages = container.querySelectorAll('.tab-swipe-carousel > .tab-swipe-page');
+    expect(pages).toHaveLength(2);
+    pages.forEach((p) => expect(p.style.alignSelf).toBe('flex-start'));
+  });
+
+  it('com medidas reais fixa a altura da página ativa e observa as páginas', () => {
+    const observe = vi.fn();
+    globalThis.ResizeObserver = class { observe(el) { observe(el); } disconnect() {} };
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function h() {
+      return this.classList.contains('tab-swipe-page') ? 64 : 0;
+    });
+    const { container } = renderTwoDays();
+    const carousel = container.querySelector('.tab-swipe-carousel');
+    expect(carousel.style.height).toBe('64px');
+    expect(carousel.style.overflowY).toBe('hidden');
+    expect(observe).toHaveBeenCalledTimes(2);
+  });
+});

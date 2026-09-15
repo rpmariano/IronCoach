@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, Check, Utensils, MessageCircle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, isRacePlanItem, raceForDate } from '../../utils/homeModels';
 import { useCarouselHaptics } from '../../utils/haptics';
+import { prefersReducedMotion } from '../../utils/coachBubbles';
 import GlassCard from '../shared/GlassCard';
 import CarouselDots from '../shared/CarouselDots';
 
@@ -39,7 +40,7 @@ function dateColor(status) {
    pré-visualização das refeições. Uma página do carrossel (.tab-swipe-page,
    ver globals.css); o cabeçalho (setas/etiqueta/badge) fica fora, partilhado
    pelas várias páginas, porque acompanha o dia ATIVO, não cada um. */
-function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace }) {
+function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace, pageRef }) {
   /* O dia da prova (specs/plano-de-prova.md): o plano tem lá um item
      `corrida` com `training_type = 'prova'` e a agenda tem a prova. O nome
      vem da agenda — o item do plano não o guarda — e o botão leva ao hub,
@@ -52,7 +53,9 @@ function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace }) {
   const meals = mealsForDay(day.items);
 
   return (
-    <div className="tab-swipe-page">
+    // alignSelf em linha, além do align-items do .tab-swipe-carousel: a página
+    // tem de ter a SUA altura (é essa que se mede), nunca a do contentor.
+    <div ref={pageRef} className="tab-swipe-page" style={{ alignSelf: 'flex-start' }}>
       <h2 className="text-[20px] font-black leading-[1.15] mt-[5px]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
         {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
       </h2>
@@ -115,6 +118,41 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days.length]);
 
+  /* A altura do carrossel segue a página ATIVA, não a mais alta. Num flex
+     com scroll a caixa mede o filho mais alto — um dia só com "Prova · 10 km"
+     ficava com ~100px vazios antes dos pontos e do "Adaptar plano". Mede-se
+     a página do dia ativo (ResizeObserver quando existe — fontes a carregar,
+     refeições a aparecer —, e sempre que o índice muda) e fixa-se essa
+     altura no contentor, com a transição curta de --dur-tab-content. Medida
+     0 (jsdom, cartão ainda escondido) deixa a altura por fixar. */
+  const pageRefs = useRef([]);
+  const [activeHeight, setActiveHeight] = useState(null);
+  const activeIndexRef = useRef(safeIndex);
+  activeIndexRef.current = safeIndex;
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const h = pageRefs.current[activeIndexRef.current]?.offsetHeight || 0;
+      setActiveHeight(h > 0 ? h : null);
+    };
+    measure();
+    // globalThis e não window: aqui `window` é a janela do plano (acima).
+    const RO = globalThis.ResizeObserver;
+    if (typeof RO !== 'function') return undefined;
+    const observer = new RO(measure);
+    pageRefs.current.slice(0, days.length).forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, [safeIndex, days]);
+
+  const reducedMotion = prefersReducedMotion();
+  const carouselStyle = activeHeight == null ? undefined : {
+    height: activeHeight,
+    // overflow-x:auto já faz do eixo vertical um scroll — com a altura fixa,
+    // um dia mais alto fora de vista não pode passar a deslizar na vertical.
+    overflowY: 'hidden',
+    transition: reducedMotion ? undefined : 'height var(--dur-tab-content) var(--ease-out)',
+  };
+
   const adapt = () => {
     useAppStore.getState().setCoachIntent('adapt_plan');
     onNav?.('coach');
@@ -171,9 +209,9 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
               carrosséis do Início/Dashboard (.tab-swipe-carousel, ver
               globals.css), e useCarouselHaptics dá o tique tátil a cada
               mudança, seja por gesto, seta ou ponto. */}
-          <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
-            {days.map((d) => (
-              <DayPlanPage key={d.dateISO} day={d} raceEvents={raceEvents} onComplete={onComplete} onOpenMeals={onOpenMeals} onOpenRace={onOpenRace} />
+          <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel" style={carouselStyle}>
+            {days.map((d, i) => (
+              <DayPlanPage key={d.dateISO} pageRef={(el) => { pageRefs.current[i] = el; }} day={d} raceEvents={raceEvents} onComplete={onComplete} onOpenMeals={onOpenMeals} onOpenRace={onOpenRace} />
             ))}
           </div>
 

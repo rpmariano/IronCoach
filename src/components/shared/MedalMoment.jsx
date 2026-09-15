@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Medalhao, { LG_POSITIONS, WonStar } from './Medalhao';
+import Medalhao, { MAX_SLOTS, WonStar, slotPosition, visibleSlots } from './Medalhao';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { triggerHaptic } from '../../utils/haptics';
 import './MedalMoment.css';
@@ -41,19 +41,24 @@ const SPARKS = [
   { sx: 8, sy: -56, size: 4, color: '#fff7db' },
 ];
 
-/* Os 4 encaixes que se veem, com o alvo garantidamente entre eles. A Época
-   pode ter mais de 4 (o anel da spec ainda está por desenhar): se a prova
-   nova cair depois do 4.º, ocupa a última diagonal. */
-function discSlots(slots = [], targetKey) {
+/* Os encaixes que se veem (até 8 — de 5 a 8 em anel, ver slotPosition em
+   Medalhao.jsx), com o alvo garantidamente entre eles. Só acima de 8 é que
+   a prova nova pode cair fora dos desenhados: ocupa então o último lugar. */
+function discSlots(slots = [], award) {
   const all = slots || [];
-  const idx = all.findIndex((s) => s?.key === targetKey);
-  let shown = all.slice(0, 4);
+  // A Época grava `slot: 'prova'` com o id da prova no period_key (as
+  // posições p1..pN mudam quando se marca uma prova mais cedo no ano) — o
+  // encaixe encontra-se pela prova, não pela chave.
+  const idx = award?.medalhao === 'epoca'
+    ? all.findIndex((s) => s?.periodKey && s.periodKey === String(award.period_key ?? award.race_id ?? ''))
+    : all.findIndex((s) => s?.key === award?.slot);
+  let shown = visibleSlots(all);
   let targetIndex = idx;
-  if (idx >= 4) {
-    shown = [...all.slice(0, 3), all[idx]];
-    targetIndex = 3;
+  if (idx >= MAX_SLOTS) {
+    shown = [...all.slice(0, MAX_SLOTS - 1), all[idx]];
+    targetIndex = MAX_SLOTS - 1;
   }
-  if (targetIndex < 0) targetIndex = Math.min(shown.length, 3);
+  if (targetIndex < 0) targetIndex = Math.min(shown.length, MAX_SLOTS - 1);
   return {
     shown: shown.map((s, i) => (i === targetIndex ? { ...s, state: 'empty' } : s)),
     targetIndex,
@@ -112,8 +117,10 @@ export default function MedalMoment({ award, medalhao, extraCount = 0, onClose, 
 
   if (!award) return null;
 
-  const { shown, targetIndex, target } = discSlots(medalhao?.slots, award.slot);
-  const [tx, ty] = LG_POSITIONS[targetIndex] || LG_POSITIONS[0];
+  const { shown, targetIndex, target } = discSlots(medalhao?.slots, award);
+  // A estrela pousa onde o disco a desenha — mesma função, mesma escala (no
+  // anel de 7–8 encaixes a estrela é um pouco mais pequena).
+  const { x: tx, y: ty, scale: tScale } = slotPosition(targetIndex, Math.max(shown.length, targetIndex + 1), 'lg');
   const enamel = target?.enamel || 'amber';
   const valueLabel = target?.valueLabel;
   const title = award.title || target?.label || 'Medalha nova';
@@ -159,9 +166,9 @@ export default function MedalMoment({ award, medalhao, extraCount = 0, onClose, 
                 ))}
               </>
             )}
-            <div className="m-fly" data-testid="medal-moment-star" aria-hidden="true" style={{ position: 'absolute', left: tx - 36, top: ty - 36, width: 72, height: 72 }}>
+            <div className="m-fly" data-testid="medal-moment-star" data-x={tx} data-y={ty} aria-hidden="true" style={{ position: 'absolute', left: tx - 36, top: ty - 36, width: 72, height: 72 }}>
               <svg width="72" height="72" viewBox="0 0 72 72" style={{ overflow: 'visible', filter: final ? undefined : 'drop-shadow(0 8px 16px rgba(251,191,36,.5))' }}>
-                <g transform="translate(36,36)">
+                <g transform={tScale === 1 ? 'translate(36,36)' : `translate(36,36) scale(${tScale})`}>
                   <WonStar enamel={enamel} valueLabel={valueLabel} />
                 </g>
               </svg>

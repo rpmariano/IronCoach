@@ -38,7 +38,12 @@ export default function GlassCard({ tone, glow = false, radius = 24, padding = 1
       {...rest}
     >
       {glow && GLOW[tone] && (
-        <div aria-hidden="true" className="absolute pointer-events-none" style={{ right: -40, top: -40, width: 180, height: 180, background: `radial-gradient(circle, ${GLOW[tone]} 0%, transparent 70%)` }} />
+        // O brilho fica DENTRO do cartão: saía 40px para fora (right/top -40)
+        // e um overflow:hidden com conteúdo a sobrar continua a rolar por
+        // código — o foco numa seta do carrossel arrastava o cartão inteiro
+        // 40px para a esquerda. Mesmo círculo (raio 89, centro 50px para
+        // dentro do canto), agora desenhado numa caixa que não transborda.
+        <div aria-hidden="true" className="absolute pointer-events-none" style={{ right: 0, top: 0, width: 140, height: 140, background: `radial-gradient(circle 89px at 90px 50px, ${GLOW[tone]} 0%, transparent 100%)` }} />
       )}
       <div className="relative">{children}</div>
     </div>

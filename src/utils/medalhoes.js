@@ -161,7 +161,10 @@ function bestProgressSlot(slots) {
 
 function medalhao({ key, name, engraving, year = null, footer = null, rule, slots, summaryMissing }) {
   const wonCount = slots.filter((s) => s.state === 'won').length;
-  const top = bestProgressSlot(slots.filter((s) => s.remainingLabel));
+  // As Distâncias e A Época dizem quanto falta em dias até uma prova marcada,
+  // sem fração de progresso — sem este recurso a frase nunca aparecia.
+  const comFrase = slots.filter((s) => s.remainingLabel);
+  const top = bestProgressSlot(comFrase) || comFrase.find((s) => s.state === 'empty') || comFrase[0] || null;
   // `summaryMissing` explícito (mesmo null) manda; omitido, lista os vazios.
   const summaryTail = summaryMissing !== undefined ? summaryMissing : (() => {
     const faltam = slots.filter((s) => s.state === 'empty').map((s) => s.shortLabel || s.label);
@@ -705,7 +708,12 @@ function lastRewriteDay(items) {
 }
 
 function consistencia({ coachPlans, coachPlanItems, today, todayYear }) {
-  const plans = (coachPlans || []).filter((p) => p && p.status === 'aceite');
+  // Aceitar um plano novo que cobre o antigo passa o antigo a 'recusado'
+  // (store: acceptPlan). Um plano com sessões concluídas foi aceite e
+  // cumprido — sem ele a sequência encolhia e a medalha ganha desaparecia.
+  // Uma proposta recusada de raiz nunca tem itens concluídos.
+  const cumpridos = new Set((coachPlanItems || []).filter((i) => i?.status === 'concluido').map((i) => i.plan_id));
+  const plans = (coachPlans || []).filter((p) => p && (p.status === 'aceite' || (p.status === 'recusado' && cumpridos.has(p.id))));
   const planIds = new Set(plans.map((p) => p.id));
   const planItems = (coachPlanItems || []).filter((i) => i && planIds.has(i.plan_id));
   const rewriteByPlan = new Map([...planIds].map((id) => [id, lastRewriteDay(planItems.filter((i) => i.plan_id === id))]));
