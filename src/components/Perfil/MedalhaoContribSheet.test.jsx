@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import MedalhaoContribSheet from './MedalhaoContribSheet';
 import { makeMedalhoes } from '../../test/medalhoesFixture';
 
-/* A persiana dos registos de um encaixe: título com o período, o resumo, as
+/* O ecrã dos registos de um encaixe: título com o período, o resumo, as
    linhas — a prova abre o hub, a corrida abre o registo, o ginásio não abre
    nada — e a frase quando ainda não há registos. */
 
@@ -28,7 +28,7 @@ describe('MedalhaoContribSheet', () => {
     expect(gym).toHaveTextContent('Core');
   });
 
-  it('a prova abre o hub e a corrida o registo, fechando as persianas antes', () => {
+  it('a prova abre o hub e a corrida o registo, fechando o ecrã antes', () => {
     const onNavigate = vi.fn();
     render(<MedalhaoContribSheet medalhaoName="O Ano em Km" slot={mes} onClose={() => {}} onNavigate={onNavigate} />);
     fireEvent.click(screen.getByTestId('medalhao-contrib-race-race-meia'));

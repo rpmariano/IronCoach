@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Award } from 'lucide-react';
-import { Sheet } from '../shared/Sheet';
+import { createPortal } from 'react-dom';
+import { Award, ChevronLeft } from 'lucide-react';
 import Warning, { WarningAction } from '../shared/Warning';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { useAppStore } from '../../store';
@@ -8,12 +8,16 @@ import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemori
 import { applyDiplomaToRun } from '../../utils/diplomaReading';
 import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
 
-/* A persiana "Memórias" do hub (pedido 2026-09-13): concluir a prova é
-   registar a corrida; o diploma, a medalha e as fotografias podem vir
-   depois — no dia seguinte, quando o diploma chega por e-mail, ou quando
-   as fotos oficiais saem. Aqui juntam-se, trocam-se e removem-se sem
-   reabrir o registo da corrida (que obrigava a passar pelo formulário
-   inteiro e, com a análise no caminho, era demasiado para uma foto).
+/* O ecrã "Memórias" do hub (pedido 2026-09-13, promovido de persiana a ecrã
+   inteiro em 2026-09-15 — três fluxos de carregamento independentes,
+   leitura do diploma com aplicar/dispensar e estado por gravar são mais um
+   destino do que um detalhe rápido; o mesmo argumento que já tinha levado
+   o Mural, ao lado, a deixar de ser persiana). Concluir a prova é registar
+   a corrida; o diploma, a medalha e as fotografias podem vir depois — no
+   dia seguinte, quando o diploma chega por e-mail, ou quando as fotos
+   oficiais saem. Aqui juntam-se, trocam-se e removem-se sem reabrir o
+   registo da corrida (que obrigava a passar pelo formulário inteiro e, com
+   a análise no caminho, era demasiado para uma foto).
 
    Grava direto em race_events pelo mesmo módulo do registo
    (utils/raceMemories.js); o status não se toca — a prova já está
@@ -112,60 +116,93 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
     }
   };
 
-  return (
-    <Sheet eyebrow="Memórias" eyebrowTone="race" title={race?.name || 'A prova'} onClose={onClose} testId="race-memories-sheet" maxHeight="90dvh">
-      <p className="text-[12.5px] leading-[1.5] mt-2 mb-4" style={{ color: 'var(--text-3)' }}>
-        O diploma, a medalha e as fotografias do dia. Podes juntar agora ou voltar cá quando chegarem.
-      </p>
+  // Esc fecha, como fechava a persiana (mesmo padrão do Mural ao lado).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-      {loaded ? (
-        <RaceMemoriesFields
-          diploma={diploma}
-          medal={medal}
-          photos={photos}
-          onDiplomaFile={onDiplomaFile}
-          onMedalFile={onMedalFile}
-          onPhotoFiles={onPhotoFiles}
-          onRemoveDiploma={() => { setDiploma(null); diplomaReading.clear(); setDirty(true); }}
-          onRemoveMedal={() => { setMedal(null); setDirty(true); }}
-          onRemovePhoto={(i) => { setPhotos(prev => prev.filter((_, idx) => idx !== i)); setDirty(true); }}
-          error={error}
-          afterDiploma={(
-            <DiplomaReadingCard
-              state={diplomaReading.state}
-              onApply={applyReading}
-              onDismiss={diplomaReading.clear}
-              applyLabel="Aplicar à corrida"
-              appliedLabel="Aplicado à corrida"
-              appliedHint="O tempo oficial e a classificação já estão na corrida. Guarda as memórias para ficares com o diploma."
-              manualHint="Podes acrescentar à mão em “Editar a corrida”."
-            />
-          )}
-        />
-      ) : (
-        <div className="animate-pulse rounded-2xl" style={{ height: 180, background: 'var(--surface-faint)' }} aria-label="A carregar as memórias" />
-      )}
-
-      {saveFailed && (
-        <Warning
-          title="Memórias por guardar"
-          className="mt-3"
-          actions={<WarningAction onClick={save} disabled={saving}>{saving ? 'A guardar…' : 'Tentar de novo'}</WarningAction>}
+  const content = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Memórias — ${race?.name || 'a prova'}`}
+      data-testid="race-memories-sheet"
+      className="fixed inset-0 z-[80] flex flex-col fade-in"
+      style={{ background: 'var(--bg-app)' }}
+    >
+      <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+          className="shrink-0 flex items-center justify-center rounded-full"
+          style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--text-3)' }}
         >
-          Não consegui guardar as memórias — podes tentar outra vez sem perder nada.
-        </Warning>
-      )}
+          <ChevronLeft size={22} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Memórias</div>
+          <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{race?.name || 'A prova'}</div>
+        </div>
+      </div>
 
-      <button
-        type="button"
-        data-testid="race-memories-save"
-        onClick={save}
-        disabled={!dirty || saving || !loaded}
-        className="w-full inline-flex items-center justify-center gap-2 mt-5 rounded-[14px] text-[13.5px] font-extrabold disabled:opacity-45"
-        style={{ minHeight: 'var(--tap)', background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
-      >
-        <Award size={16} /> {saving ? 'A guardar…' : 'Guardar as memórias'}
-      </button>
-    </Sheet>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{ padding: '0 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
+        <p className="text-[12.5px] leading-[1.5] mt-3 mb-4" style={{ color: 'var(--text-3)' }}>
+          O diploma, a medalha e as fotografias do dia. Podes juntar agora ou voltar cá quando chegarem.
+        </p>
+
+        {loaded ? (
+          <RaceMemoriesFields
+            diploma={diploma}
+            medal={medal}
+            photos={photos}
+            onDiplomaFile={onDiplomaFile}
+            onMedalFile={onMedalFile}
+            onPhotoFiles={onPhotoFiles}
+            onRemoveDiploma={() => { setDiploma(null); diplomaReading.clear(); setDirty(true); }}
+            onRemoveMedal={() => { setMedal(null); setDirty(true); }}
+            onRemovePhoto={(i) => { setPhotos(prev => prev.filter((_, idx) => idx !== i)); setDirty(true); }}
+            error={error}
+            afterDiploma={(
+              <DiplomaReadingCard
+                state={diplomaReading.state}
+                onApply={applyReading}
+                onDismiss={diplomaReading.clear}
+                applyLabel="Aplicar à corrida"
+                appliedLabel="Aplicado à corrida"
+                appliedHint="O tempo oficial e a classificação já estão na corrida. Guarda as memórias para ficares com o diploma."
+                manualHint="Podes acrescentar à mão em “Editar a corrida”."
+              />
+            )}
+          />
+        ) : (
+          <div className="animate-pulse rounded-2xl" style={{ height: 180, background: 'var(--surface-faint)' }} aria-label="A carregar as memórias" />
+        )}
+
+        {saveFailed && (
+          <Warning
+            title="Memórias por guardar"
+            className="mt-3"
+            actions={<WarningAction onClick={save} disabled={saving}>{saving ? 'A guardar…' : 'Tentar de novo'}</WarningAction>}
+          >
+            Não consegui guardar as memórias — podes tentar outra vez sem perder nada.
+          </Warning>
+        )}
+
+        <button
+          type="button"
+          data-testid="race-memories-save"
+          onClick={save}
+          disabled={!dirty || saving || !loaded}
+          className="w-full inline-flex items-center justify-center gap-2 mt-5 rounded-[14px] text-[13.5px] font-extrabold disabled:opacity-45"
+          style={{ minHeight: 'var(--tap)', background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
+        >
+          <Award size={16} /> {saving ? 'A guardar…' : 'Guardar as memórias'}
+        </button>
+      </div>
+    </div>
   );
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }

@@ -6,8 +6,8 @@ import RaceHubView from './RaceHubView';
 import { useAppStore } from '../../store';
 
 /* Memórias depois da prova (pedido 2026-09-13): concluir a prova é registar
-   a corrida; o diploma, a medalha e as fotos juntam-se quando chegarem, na
-   persiana do hub — sem reabrir o registo da corrida. */
+   a corrida; o diploma, a medalha e as fotos juntam-se quando chegarem, no
+   ecrã do hub — sem reabrir o registo da corrida. */
 
 const mocks = vi.hoisted(() => ({ updates: [], uploads: [], removed: [], uploadError: null, diploma: null }));
 vi.mock('../../lib/supabase', () => ({
@@ -199,7 +199,7 @@ describe('RaceMemoriesSheet — quem monta trata do store', () => {
 });
 
 describe('RaceHubView — memórias depois da prova', () => {
-  it('o convite abre a persiana aqui mesmo, sem reabrir o registo da corrida', async () => {
+  it('o convite abre o ecrã aqui mesmo, sem reabrir o registo da corrida', async () => {
     render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);
 
     fireEvent.click(screen.getByTestId('race-memories-invite'));
@@ -209,7 +209,7 @@ describe('RaceHubView — memórias depois da prova', () => {
     expect(useAppStore.getState().openCreationMode ?? null).toBeNull();
   });
 
-  it('com galeria, o "Editar" abre a mesma persiana com o que já lá está', async () => {
+  it('com galeria, o "Editar" abre o mesmo ecrã com o que já lá está', async () => {
     const race = { ...RACE, medal_path: 'user-1/race-1/medal.jpg' };
     render(<RaceHubView race={race} runs={[RACE_RUN]} profile={PROFILE} />);
 
