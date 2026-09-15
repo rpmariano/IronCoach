@@ -26,7 +26,7 @@
    dia depois do período: é o primeiro dia em que os dados o provam. */
 
 import { completedRaces } from './achievements';
-import { formatDuration } from './run';
+import { findRaceRun, formatDuration, raceDistanceLabel } from './run';
 import { formatDelta } from './raceOutcome';
 
 export const MEDALHAO_KEYS = ['ano_km', 'distancias', 'recordes', 'epoca', 'consistencia', 'superacao'];
@@ -146,8 +146,77 @@ function slot(fields) {
     progress: null,
     remainingLabel: null,
     wins: 0,
+    contributions: [],
+    contributionsPeriodLabel: null,
+    contributionsSummary: null,
     ...fields,
   };
+}
+
+// ── Os registos por trás de um encaixe ──────────────────────────────────
+
+/* Cada encaixe leva `contributions`: os registos que o encheram (ou que o
+   estão a encher), da mais recente para a mais antiga, para a persiana dos
+   registos (Perfil/MedalhaoContribSheet.jsx) poder abrir cada um no sítio
+   onde ele já vive. Uma corrida ligada a uma prova é `kind: 'race'` — abre o
+   hub da prova, que é onde essa corrida se lê; as outras são `kind: 'run'`
+   (abrem o registo da corrida); as sessões de ginásio do plano são
+   `kind: 'gym'` e não abrem nada, porque o plano não guarda qual foi a
+   sessão gravada. Forma: { kind, id, raceId, runId, date, title, meta }. */
+
+// O mesmo nome que o cartão da corrida dá ao tipo de treino (Run/RunCard.jsx,
+// runKindLabel) — a lista tem de ler-se como o Calendário.
+const TIPOS_TREINO = {
+  continuo: 'Contínuo',
+  longo: 'Longo',
+  recuperacao: 'Recuperação',
+  tempo: 'Ritmo (Tempo)',
+  fartlek: 'Fartlek',
+  intervalos: 'Intervalos',
+  subidas: 'Subidas',
+  trail: 'Trail',
+  tecnico: 'Técnico (trilho)',
+};
+
+function runKindLabel(run) {
+  if (run?.kind === 'competicao') return 'Competição';
+  if (run?.kind === 'treino' && run.training_type) return TIPOS_TREINO[run.training_type] || capitalize(run.training_type);
+  return 'Corrida';
+}
+
+/** "10,2 km": uma casa decimal, para a linha de um registo. */
+function fmtKmLinha(value) {
+  return `${String(Math.round(value * 10) / 10).replace('.', ',')} km`;
+}
+
+const newestFirst = (list) => [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+function raceContribution({ race, run, outcome }, { metaExtra = [], ...extra } = {}) {
+  return {
+    kind: 'race',
+    id: race.id ?? null,
+    raceId: race.id ?? null,
+    runId: run?.id ?? null,
+    date: dayOf(race.date),
+    title: race.name || 'Prova sem nome',
+    meta: [
+      raceDistanceLabel(Number(race.distance_km) || null),
+      outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null,
+      ...metaExtra,
+    ].filter(Boolean).join(' · '),
+    ...extra,
+  };
+}
+
+function runContribution(run, raceByRun) {
+  const race = run?.id != null ? raceByRun?.get(run.id) : null;
+  const km = num(run?.distance_km);
+  const meta = [km ? fmtKmLinha(km) : null, num(run?.duration_seconds) ? formatDuration(Math.round(num(run.duration_seconds))) : null]
+    .filter(Boolean).join(' · ');
+  if (race) {
+    return { kind: 'race', id: race.id ?? null, raceId: race.id ?? null, runId: run.id ?? null, date: dayOf(run.date), title: race.name || 'Prova sem nome', meta };
+  }
+  return { kind: 'run', id: run?.id ?? null, raceId: null, runId: run?.id ?? null, date: dayOf(run?.date), title: run?.title || run?.name || runKindLabel(run), meta };
 }
 
 function bestProgressSlot(slots) {
@@ -222,6 +291,16 @@ function periodPhrase(gran, periodKey, todayYear) {
   return `em ${y}`;
 }
 
+/** "agosto de 2026", "3.º trimestre de 2026", "2026" — o título da persiana
+ *  dos registos, sempre com o ano (a lista pode ser de um período antigo). */
+function periodLabel(gran, periodKey) {
+  const y = periodKey.slice(0, 4);
+  if (gran === 'mes') return `${MESES[Number(periodKey.slice(5, 7)) - 1]} de ${y}`;
+  if (gran === 'trimestre') return `${periodKey.slice(6)}.º trimestre de ${y}`;
+  if (gran === 'semestre') return `${periodKey.slice(6)}.º semestre de ${y}`;
+  return y;
+}
+
 /** "de setembro", "do 3.º trimestre" — para o fecho do período em curso. */
 function periodPhraseDe(gran, periodKey, todayYear) {
   const em = periodPhrase(gran, periodKey, todayYear);
@@ -230,13 +309,17 @@ function periodPhraseDe(gran, periodKey, todayYear) {
   return em.replace(/^no /, 'do ');
 }
 
-function anoKm({ runs, today, todayYear }) {
+function anoKm({ runs, raceByRun, today, todayYear }) {
   const daily = new Map();
-  for (const r of runs || []) {
+  // A mesma régua para a soma e para a lista dos registos: com data, com
+  // quilómetros, e não no futuro.
+  const counted = (runs || []).filter((r) => {
     const d = dayOf(r?.date);
-    const km = num(r?.distance_km);
-    if (!d || !km || d > today) continue;
-    daily.set(d, (daily.get(d) || 0) + km);
+    return d && num(r?.distance_km) && d <= today;
+  });
+  for (const r of counted) {
+    const d = dayOf(r.date);
+    daily.set(d, (daily.get(d) || 0) + num(r.distance_km));
   }
   const days = [...daily.keys()].sort();
   const due = [];
@@ -326,6 +409,18 @@ function anoKm({ runs, today, todayYear }) {
       }
     }
 
+    // Os registos do período cujo número o encaixe mostra: ganho, o melhor
+    // período de sempre (o valor gravado na estrela); por ganhar, o que está
+    // a decorrer.
+    const shown = last
+      ? list.find((p) => Math.round(p.total * 100) === Math.round(allBest * 100)) || current
+      : current;
+    const doPeriodo = counted.filter((r) => {
+      const d = dayOf(r.date);
+      return d >= shown.start && d <= shown.end;
+    });
+    const periodTotal = round2(doPeriodo.reduce((s, r) => s + num(r.distance_km), 0));
+
     return slot({
       key: g.key,
       label: g.label,
@@ -342,6 +437,13 @@ function anoKm({ runs, today, todayYear }) {
       wins: wins.length,
       currentValue: round2(cur),
       currentPeriodKey: current.key,
+      contributions: newestFirst(doPeriodo.map((r) => runContribution(r, raceByRun))),
+      contributionsPeriodKey: shown.key,
+      contributionsPeriodLabel: periodLabel(g.key, shown.key),
+      contributionsTotal: periodTotal,
+      contributionsSummary: doPeriodo.length
+        ? `${fmtKm(periodTotal)} km · ${doPeriodo.length} ${plural(doPeriodo.length, 'corrida', 'corridas')}`
+        : null,
     });
   });
 
@@ -412,6 +514,9 @@ function distancias({ completed, raceEvents, today, todayYear }) {
         ].filter(Boolean).join(' · '),
         wins: 1,
         count: races.length,
+        // Todas as provas nesta distância; a que deu a medalha leva `first`.
+        contributions: newestFirst(races.map((entry, i) => raceContribution(entry, { first: i === 0 }))),
+        contributionsSummary: `${races.length} ${plural(races.length, 'prova', 'provas')} nesta distância`,
       });
     }
     // Por ganhar: se há uma prova marcada nesta distância, é ela que enche.
@@ -470,6 +575,20 @@ function recordes({ completed, todayYear }) {
     }
     const best = anterior;
 
+    // Todas as provas com tempo oficial na distância; as que bateram o
+    // melhor de então levam `pb` e quanto o baixaram.
+    const contributions = newestFirst(races.map((entry) => {
+      const pb = pbs.find((p) => p.race === entry.race);
+      return raceContribution(entry, {
+        pb: !!pb,
+        deltaSeconds: pb ? pb.deltaBestSeconds : null,
+        metaExtra: pb ? [`recorde, menos ${formatDelta(pb.deltaBestSeconds)}`] : [],
+      });
+    }));
+    const contributionsSummary = races.length
+      ? `${races.length} ${plural(races.length, 'prova', 'provas')} com tempo · ${pbs.length} ${plural(pbs.length, 'recorde', 'recordes')}`
+      : null;
+
     for (const { race, outcome, deltaBestSeconds } of pbs) {
       due.push({
         medalhao: 'recordes',
@@ -504,6 +623,8 @@ function recordes({ completed, todayYear }) {
           `para repetir: abaixo de ${formatDuration(best)}`,
         ].filter(Boolean).join(' · '),
         wins: pbs.length,
+        contributions,
+        contributionsSummary,
       });
     }
     return slot({
@@ -514,6 +635,8 @@ function recordes({ completed, todayYear }) {
       detail: races.length
         ? `para ganhar: abaixo de ${formatDuration(best)} numa prova de ${dist.label}`
         : `precisa de duas provas de ${dist.label}: a primeira marca o tempo a bater`,
+      contributions,
+      contributionsSummary,
     });
   });
 
@@ -539,6 +662,14 @@ function superacao({ completed, todayYear }) {
     const medalha = n === 1 ? 'a medalha do primeiro objetivo' : `a medalha dos ${n} objetivos`;
     const label = `${n} ${plural(n, 'objetivo', 'objetivos')}`;
     const nth = batidos[n - 1] || null;
+    // Os objetivos batidos que contam para este encaixe: os primeiros N.
+    const contam = batidos.slice(0, n);
+    const contributions = newestFirst(contam.map((entry) => raceContribution(entry, {
+      metaExtra: entry.outcome?.targetSeconds ? [`objetivo ${formatDuration(entry.outcome.targetSeconds)}`] : [],
+    })));
+    const contributionsSummary = contam.length
+      ? `${contam.length} de ${n} ${plural(n, 'objetivo batido', 'objetivos batidos')}`
+      : null;
     if (nth) {
       const { race, outcome } = nth;
       const date = dayOf(race.date);
@@ -566,6 +697,8 @@ function superacao({ completed, todayYear }) {
         raceId: race.id ?? null,
         detail: [`ganha a ${fmtDate(date, todayYear)}`, race.name || null].filter(Boolean).join(' · '),
         wins: 1,
+        contributions,
+        contributionsSummary,
       });
     }
     const falta = n - count;
@@ -577,6 +710,8 @@ function superacao({ completed, todayYear }) {
       detail: `${count} de ${n} ${plural(n, 'objetivo batido', 'objetivos batidos')}`,
       progress: count / n,
       remainingLabel: `a ${falta} ${plural(falta, 'objetivo batido', 'objetivos batidos')} d${medalha}`,
+      contributions,
+      contributionsSummary,
     });
   });
 
@@ -609,7 +744,8 @@ function epoca({ completed, raceEvents, today, todayYear }) {
   const due = [];
   const slots = [];
 
-  ganhas.forEach(({ race, outcome }, i) => {
+  ganhas.forEach((entry, i) => {
+    const { race, outcome } = entry;
     const date = dayOf(race.date);
     const ordem = i + 1;
     // O slot do `due` não é o `p1..pN` posicional (muda quando se marca uma
@@ -638,6 +774,8 @@ function epoca({ completed, raceEvents, today, todayYear }) {
       raceId: race.id ?? null,
       detail: [`concluída a ${fmtDate(date, todayYear)}`, outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null].filter(Boolean).join(' · '),
       wins: 1,
+      contributions: [raceContribution(entry)],
+      contributionsSummary: `${ordem}.ª prova de ${todayYear}`,
     }));
   });
 
@@ -663,6 +801,17 @@ function epoca({ completed, raceEvents, today, todayYear }) {
       raceId: race.id ?? null,
       detail,
       remainingLabel,
+      // A prova marcada que vai encher o encaixe: ainda sem registo, mas é
+      // no hub dela que se regista.
+      contributions: [{
+        kind: 'race',
+        id: race.id ?? null,
+        raceId: race.id ?? null,
+        runId: null,
+        date,
+        title: race.name || 'Prova sem nome',
+        meta: [raceDistanceLabel(Number(race.distance_km) || null), detail].filter(Boolean).join(' · '),
+      }],
     }));
   }
   while (slots.length < total) {
@@ -707,7 +856,57 @@ function lastRewriteDay(items) {
   return last;
 }
 
-function consistencia({ coachPlans, coachPlanItems, today, todayYear }) {
+/** O nome de um item do plano, como o Início o escreve (Home/WeeklyPlanCard,
+ *  itemTitle). */
+function planItemTitle(item) {
+  if (item.kind === 'ginasio') return item.categories?.length ? item.categories.join('/') : 'Ginásio';
+  return item.training_type ? TIPOS_TREINO[item.training_type] || capitalize(item.training_type) : 'Corrida';
+}
+
+/* Os treinos concluídos das semanas de uma sequência. O plano não guarda que
+   corrida cumpriu o item: procura-se uma corrida gravada nesse dia (cada uma
+   serve um item só). Sem corrida no dia — ou numa sessão de ginásio — a
+   linha fica, mas não abre nada. */
+function planContributions(weekMondays, weeks, runs, raceByRun) {
+  const runsByDay = new Map();
+  for (const r of runs || []) {
+    const d = dayOf(r?.date);
+    if (!d) continue;
+    if (!runsByDay.has(d)) runsByDay.set(d, []);
+    runsByDay.get(d).push(r);
+  }
+  const usados = new Set();
+  const out = [];
+  for (const monday of weekMondays) {
+    for (const item of weeks.get(monday)?.items || []) {
+      const date = dayOf(item.planned_date);
+      if (item.kind === 'corrida') {
+        const run = (runsByDay.get(date) || []).find((r) => !usados.has(r));
+        if (run) {
+          usados.add(run);
+          out.push(runContribution(run, raceByRun));
+          continue;
+        }
+      }
+      out.push({
+        kind: item.kind === 'ginasio' ? 'gym' : 'run',
+        id: item.id ?? null,
+        raceId: null,
+        runId: null,
+        date,
+        title: planItemTitle(item),
+        meta: [
+          item.kind === 'ginasio' && item.target_duration_min ? `${item.target_duration_min} min` : null,
+          item.kind === 'corrida' && item.target_distance_km ? `${String(item.target_distance_km).replace('.', ',')} km` : null,
+          'concluído no plano',
+        ].filter(Boolean).join(' · '),
+      });
+    }
+  }
+  return newestFirst(out);
+}
+
+function consistencia({ coachPlans, coachPlanItems, runs, raceByRun, today, todayYear }) {
   // Aceitar um plano novo que cobre o antigo passa o antigo a 'recusado'
   // (store: acceptPlan). Um plano com sessões concluídas foi aceite e
   // cumprido — sem ele a sequência encolhia e a medalha ganha desaparecia.
@@ -728,24 +927,30 @@ function consistencia({ coachPlans, coachPlanItems, today, todayYear }) {
     if (item.status === 'pendente' && rewrite && d < rewrite) continue;
     const monday = mondayOf(d);
     if (addDays(monday, 6) >= today) continue; // semana ainda por fechar
-    const w = weeks.get(monday) || { pending: 0, done: 0 };
+    const w = weeks.get(monday) || { pending: 0, done: 0, items: [] };
     if (item.status === 'pendente') w.pending += 1;
-    else w.done += 1;
+    else {
+      w.done += 1;
+      w.items.push(item);
+    }
     weeks.set(monday, w);
   }
 
   const wins = [];
   let streak = 0;
+  let streakWeeks = []; // as segundas-feiras da sequência em curso
   let best = 0;
   for (const monday of [...weeks.keys()].sort()) {
     const w = weeks.get(monday);
     if (w.pending > 0) {
       streak = 0;
+      streakWeeks = [];
       continue;
     }
     streak += 1;
+    streakWeeks.push(monday);
     best = Math.max(best, streak);
-    if (SEMANAS.includes(streak)) wins.push({ n: streak, monday, awardedOn: addDays(monday, 7) });
+    if (SEMANAS.includes(streak)) wins.push({ n: streak, monday, awardedOn: addDays(monday, 7), weeks: [...streakWeeks] });
   }
 
   const due = wins.map((w) => ({
@@ -770,6 +975,10 @@ function consistencia({ coachPlans, coachPlanItems, today, todayYear }) {
       ? null
       : `a ${falta} ${plural(falta, 'semana', 'semanas')} de ${last ? 'voltares a ganhar' : 'ganhares'} a medalha das ${n} semanas`;
     const atual = `sequência atual: ${streak} ${plural(streak, 'semana', 'semanas')}`;
+    // As semanas por trás do encaixe: ganho, as N que deram a última
+    // medalha; por ganhar, a sequência em curso.
+    const semanas = last ? last.weeks : streakWeeks;
+    const treinos = planContributions(semanas, weeks, runs, raceByRun);
     return slot({
       key: `w${n}`,
       label: `${n} semanas`,
@@ -786,6 +995,13 @@ function consistencia({ coachPlans, coachPlanItems, today, todayYear }) {
       progress,
       remainingLabel,
       wins: mine.length,
+      contributions: treinos,
+      contributionsPeriodLabel: semanas.length
+        ? `${fmtDate(semanas[0], todayYear)} a ${fmtDate(addDays(semanas[semanas.length - 1], 6), todayYear)}`
+        : null,
+      contributionsSummary: semanas.length
+        ? `${semanas.length} ${plural(semanas.length, 'semana', 'semanas')} · ${treinos.length} ${plural(treinos.length, 'treino', 'treinos')}`
+        : null,
     });
   });
 
@@ -835,7 +1051,15 @@ export function computeMedalhoes({
     .filter(({ race }) => dayOf(race.date) <= hoje)
     .reverse();
 
-  const ctx = { runs, raceEvents, coachPlans, coachPlanItems, completed, today: hoje, todayYear };
+  // Que prova é de cada corrida — a mesma ligação do hub (findRaceRun), para
+  // uma corrida de prova na lista abrir o hub e não o registo solto.
+  const raceByRun = new Map();
+  for (const race of raceEvents || []) {
+    const linked = race ? findRaceRun(runs || [], race) : null;
+    if (linked?.id != null && !raceByRun.has(linked.id)) raceByRun.set(linked.id, race);
+  }
+
+  const ctx = { runs, raceEvents, coachPlans, coachPlanItems, completed, raceByRun, today: hoje, todayYear };
   const parts = {
     ano_km: anoKm(ctx),
     distancias: distancias(ctx),

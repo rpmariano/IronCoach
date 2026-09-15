@@ -1,6 +1,6 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent } from './coachProactive';
+import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, RACE_BALANCE_CACHE_PREFIX } from './coachProactive';
 
 /* O balanço completo da Carol no hub da prova (pedido 2026-09-13).
 
@@ -22,7 +22,7 @@ import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent } from './
    nada (apanhado pelo hook de pre-push, 2026-09-13). */
 const asError = (error) => (error instanceof Error ? error : new Error(typeof error === 'string' ? error : error?.message || 'Falha na chamada ao servidor.'));
 
-const CACHE_PREFIX = 'ironcoach:balanco:';
+const CACHE_PREFIX = RACE_BALANCE_CACHE_PREFIX;
 
 export function readCachedBalance(raceId) {
   if (!raceId) return null;

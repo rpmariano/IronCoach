@@ -16,7 +16,10 @@ import PalmaresCard from './PalmaresCard';
 
 describe('PalmaresCard — os medalhões', () => {
   beforeEach(() => {
-    useAppStore.setState({ profile: { id: 'user-1' }, runs: [], raceEvents: [], coachPlans: [], coachPlanItems: [] });
+    useAppStore.setState({
+      profile: { id: 'user-1' }, runs: [], raceEvents: [], coachPlans: [], coachPlanItems: [],
+      editingRaceId: null, editingRunId: null, openCreationMode: null,
+    });
   });
 
   it('mostra o herói com a legenda dos 4 encaixes e a coleção dos outros 5', () => {
@@ -47,5 +50,43 @@ describe('PalmaresCard — os medalhões', () => {
 
     fireEvent.click(screen.getByTestId('palmares-medalhao-recordes'));
     expect(screen.getByTestId('medalhao-sheet-recordes')).toHaveTextContent('Os Recordes · 2026');
+  });
+
+  it('um encaixe da legenda abre os registos que o fazem; a prova leva ao hub', () => {
+    render(<PalmaresCard />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver os registos do mês' }));
+    const sheet = screen.getByTestId('medalhao-contrib-sheet-mes');
+    expect(sheet).toHaveTextContent('Palmarés · O Ano em Km');
+    expect(sheet).toHaveTextContent('Mês · agosto de 2026');
+    expect(screen.getByTestId('medalhao-contrib-resumo')).toHaveTextContent('182 km · 3 corridas');
+    expect(screen.getByTestId('medalhao-contrib-race-race-meia')).toHaveTextContent('Meia do Porto');
+
+    fireEvent.click(screen.getByTestId('medalhao-contrib-race-race-meia'));
+    expect(useAppStore.getState().editingRaceId).toBe('race-meia');
+    expect(screen.queryByTestId('medalhao-contrib-sheet-mes')).not.toBeInTheDocument();
+  });
+
+  it('uma corrida abre o registo dela; encaixe sem registos diz que ainda não há', () => {
+    render(<PalmaresCard />);
+    fireEvent.click(screen.getByTestId('palmares-legenda-mes'));
+    fireEvent.click(screen.getByTestId('medalhao-contrib-run-run-longo'));
+    expect(useAppStore.getState().editingRunId).toBe('run-longo');
+    expect(useAppStore.getState().openCreationMode).toBe('run');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver os registos do trimestre' }));
+    expect(screen.getByTestId('medalhao-contrib-vazio')).toHaveTextContent('Ainda não há registos para este encaixe.');
+  });
+
+  it('na persiana do medalhão, cada encaixe abre os seus registos por cima', () => {
+    render(<PalmaresCard />);
+    fireEvent.click(screen.getByTestId('palmares-progresso'));
+    fireEvent.click(within(screen.getByTestId('medalhao-sheet-ano_km')).getByTestId('medalhao-slot-mes'));
+    expect(screen.getByTestId('medalhao-contrib-sheet-mes')).toHaveTextContent('Mês · agosto de 2026');
+    // A persiana do medalhão fica por baixo, para onde se volta ao fechar.
+    expect(screen.getByTestId('medalhao-sheet-ano_km')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('medalhao-contrib-race-race-meia'));
+    expect(useAppStore.getState().editingRaceId).toBe('race-meia');
+    expect(screen.queryByTestId('medalhao-sheet-ano_km')).not.toBeInTheDocument();
   });
 });

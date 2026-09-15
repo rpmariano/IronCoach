@@ -166,7 +166,33 @@ export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAsse
   const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
   if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
   if (wasProactiveSent(profile?.id, candidate)) return null;
+  // A marca acima é só deste dispositivo e só se grava quando a resposta
+  // chega ao ecrã que a pediu. O balanço já feito é a prova de que a
+  // conversa aconteceu — venha do hub ou do chat, deste dispositivo ou de
+  // outro (bug relatado 2026-09-15: o aviso ficava depois de falar com ela
+  // pelos dois sítios).
+  const race = (raceEvents || []).find((r) => r?.id === candidate.raceId);
+  if (hasRaceBalance(race)) return null;
   return candidate;
+}
+
+/** Prefixo da cópia local do balanço da prova (utils/raceBalance.js). Vive
+ *  aqui para os dois ficheiros lerem a mesma chave sem se importarem um ao
+ *  outro em círculo. */
+export const RACE_BALANCE_CACHE_PREFIX = 'ironcoach:balanco:';
+
+/** True se esta prova já tem o balanço da Carol: a coluna no servidor
+ *  (race_events.coach_balance, qualquer dispositivo) ou a cópia local. */
+export function hasRaceBalance(race) {
+  if (!race?.id) return false;
+  if (race.coach_balance) return true;
+  try {
+    const raw = window.localStorage.getItem(`${RACE_BALANCE_CACHE_PREFIX}${race.id}`);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return !!(parsed && typeof parsed.text === 'string' && parsed.text.trim());
+  } catch {
+    return false;
+  }
 }
 
 /** A prova cujo balanço a Carol ainda não fez — para o Início chamar por ele

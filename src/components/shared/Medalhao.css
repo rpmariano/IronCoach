@@ -57,13 +57,51 @@
     0 -1px 2px rgba(0,0,0,0.6),
     0 0 0 1px rgba(40,20,5,0.9);
 }
+/* Gravado, não impresso: a letra é um sulco — o fundo do sulco escuro, a
+   aresta de cima na sombra (a luz vem de cima) e o lábio de baixo a apanhar
+   a luz. Sem multiply: escurecia tudo por igual e parecia tinta. */
 .ic-medal-engrave {
   position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;
-  color: rgba(40,20,5,0.9);
-  text-shadow: 0 1px 1px rgba(255,255,255,0.3), 0 -1px 1px rgba(0,0,0,0.8);
-  mix-blend-mode: multiply;
+  z-index: 0; /* contexto próprio: o ::before fica atrás da letra, não do disco */
+  color: #3b240a;
+  text-shadow:
+    0 -1px 0 rgba(20, 10, 2, .75),
+    0 1px 0 rgba(255, 238, 196, .62);
 }
-.ic-medal-engrave svg { margin: 0 auto; display: block; }
+/* Com background-clip: a letra da frente é o FUNDO do sulco — escura em
+   cima, onde a parede faz sombra, a clarear em baixo, onde a luz entra. As
+   arestas vão numa cópia por baixo (::before), porque um text-shadow na
+   própria letra pintava por cima do gradiente. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .ic-medal-engrave[data-text] {
+    color: transparent;
+    text-shadow: none;
+    background: linear-gradient(180deg, #140b02 0%, #2e1c07 38%, #5c3d14 78%, #8a6128 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .ic-medal-engrave[data-text]::before {
+    content: attr(data-text);
+    position: absolute; left: 0; right: 0; top: 0;
+    z-index: -1;
+    color: transparent;
+    text-shadow:
+      0 -1px 0 rgba(15, 8, 1, .7),
+      0 1.5px 0 rgba(255, 240, 200, .75),
+      0 2px 2px rgba(255, 228, 160, .25);
+  }
+}
+/* O símbolo da app vai incrustado no metal, a cores: fora do .ic-medal-engrave
+   para não herdar a sombra das letras. Uma aresta clara em baixo e escura em
+   cima dão-lhe o assento no disco. */
+.ic-medal-emblem {
+  position: absolute; left: 0; right: 0; top: 80px; pointer-events: none;
+  display: flex; justify-content: center;
+}
+.ic-medal-emblem svg {
+  display: block;
+  filter: drop-shadow(0 -1px 0 rgba(20, 10, 2, .7)) drop-shadow(0 1px 0 rgba(255, 238, 196, .5));
+}
 .ic-medal-engrave--name { top: 136px; font-size: 15px; font-weight: 900; letter-spacing: 2.5px; text-transform: uppercase; }
 .ic-medal-engrave--year { top: 157px; font-size: 12px; font-weight: 800; letter-spacing: 4px; }
 .ic-medal-engrave--footer { top: 252px; font-size: 9px; font-weight: 700; letter-spacing: 1.5px; opacity: .85; text-transform: uppercase; }

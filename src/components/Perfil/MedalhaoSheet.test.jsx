@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import MedalhaoSheet from './MedalhaoSheet';
 import { makeMedalhoes } from '../../test/medalhoesFixture';
 
@@ -33,6 +33,21 @@ describe('MedalhaoSheet', () => {
     expect(screen.getByTestId('medalhao-slot-ano').querySelector('[role="progressbar"]')).toBeNull();
 
     expect(screen.getByTestId('medalhao-historico')).toHaveTextContent('Mês ganho 2×');
+  });
+
+  it('com onOpenSlot, cada encaixe é um botão que entrega o encaixe', () => {
+    const onOpenSlot = vi.fn();
+    render(<MedalhaoSheet medalhao={medalhoes[1]} onClose={() => {}} onOpenSlot={onOpenSlot} />);
+    const cartao = screen.getByTestId('medalhao-slot-10k');
+    expect(cartao.tagName).toBe('BUTTON');
+    expect(cartao).toHaveAccessibleName('Ver os registos de 10 km');
+    fireEvent.click(cartao);
+    expect(onOpenSlot).toHaveBeenCalledWith(expect.objectContaining({ key: '10k' }));
+  });
+
+  it('sem onOpenSlot os encaixes não são botões', () => {
+    render(<MedalhaoSheet medalhao={medalhoes[1]} onClose={() => {}} />);
+    expect(screen.getByTestId('medalhao-slot-10k').tagName).toBe('DIV');
   });
 
   it('sem re-cunhagens não mostra o histórico', () => {

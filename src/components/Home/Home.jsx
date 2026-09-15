@@ -3,7 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalanceCandidate } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate, markProactiveSent } from '../../utils/coachProactive';
 import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
@@ -44,6 +44,9 @@ export default function Home() {
   const [showDismiss, setShowDismiss] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [mealDay, setMealDay] = useState(null);
+  // Dispensar o aviso do balanço grava a marca em localStorage, que não é
+  // estado do React — este contador faz o useMemo voltar a ler.
+  const [balanceDismissals, setBalanceDismissals] = useState(0);
   // O momento da medalha (specs/palmares-medalhoes.md) — a regra de quando
   // aparece vive no hook.
   const medalMoment = useMedalMoment();
@@ -74,7 +77,7 @@ export default function Home() {
     if (!candidate) return null;
     const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
     return race ? { race, candidate } : null;
-  }, [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile]);
+  }, [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, balanceDismissals]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -137,6 +140,13 @@ export default function Home() {
       onTalk: () => {
         setCoachIntent({ kind: 'race_balance', candidate: raceBalance.candidate });
         setActiveTab('coach');
+      },
+      // Uma saída se a conversa já aconteceu e o aviso não soube (outro
+      // dispositivo, resposta que não chegou ao ecrã): o mesmo caminho que o
+      // balanço dito — marca a chave da prova e o aviso sai.
+      onDismiss: () => {
+        markProactiveSent(profile?.id, raceBalance.candidate);
+        setBalanceDismissals((n) => n + 1);
       },
     });
   }
