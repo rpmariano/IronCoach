@@ -3,7 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalanceCandidate, markProactiveSent } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate, dismissProactiveAlert } from '../../utils/coachProactive';
 import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
@@ -161,10 +161,11 @@ export default function Home() {
         setActiveTab('coach');
       },
       // Uma saída se a conversa já aconteceu e o aviso não soube (outro
-      // dispositivo, resposta que não chegou ao ecrã): o mesmo caminho que o
-      // balanço dito — marca a chave da prova e o aviso sai.
+      // dispositivo, resposta que não chegou ao ecrã): uma marca PRÓPRIA de
+      // "dispensado" — não a mesma do balanço dito, que faria o hub e o chat
+      // pensarem que a conversa já tinha acontecido e deixarem de a propor.
       onDismiss: () => {
-        markProactiveSent(profile?.id, raceBalance.candidate);
+        dismissProactiveAlert(profile?.id, raceBalance.candidate);
         setBalanceDismissals((n) => n + 1);
       },
     });

@@ -27,6 +27,13 @@ const OPEN_MS = 340;
 const CLOSE_MS = 240;
 const DIALOG_MS = 220;
 
+/* A pilha de todas as Sheet/Dialog montadas agora, pela ordem em que
+   abriram — achado 2026-09-15: duas persianas empilhadas (ex.: a lista de
+   registos de um medalhão aberta por cima da persiana do medalhão) tinham
+   CADA UMA o seu próprio listener de Escape, e a tecla fechava as duas de
+   uma vez. Só a última a abrir (a de cima, visualmente) responde. */
+const closeStack = [];
+
 function useEnterExit(onClose, closeMs) {
   const [visible, setVisible] = useState(false);
   const closingRef = useRef(false);
@@ -42,9 +49,17 @@ function useEnterExit(onClose, closeMs) {
     setTimeout(() => onClose?.(), ms);
   }, [onClose, closeMs]);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') requestClose(); };
+    closeStack.push(requestClose);
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (closeStack[closeStack.length - 1] === requestClose) requestClose();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      const idx = closeStack.lastIndexOf(requestClose);
+      if (idx !== -1) closeStack.splice(idx, 1);
+    };
   }, [requestClose]);
   return { visible, requestClose };
 }
