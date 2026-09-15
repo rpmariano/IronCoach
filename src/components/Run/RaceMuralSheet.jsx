@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Share2, Download, ChevronLeft, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
+import { useEscapeClose } from '../shared/Sheet';
 import Warning, { WarningAction } from '../shared/Warning';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -274,13 +275,11 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   // Ecrã inteiro (pedido 2026-09-15: era persiana até 96dvh — o mural
   // ganha mais espaço para a pré-visualização, com o mesmo cabeçalho do
   // hub da prova e dos outros ecrãs de topo desta app). Esc continua a
-  // fechar, como fechava a persiana.
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') handleClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // fechar, como fechava a persiana — pela mesma pilha do Sheet.jsx
+  // (useEscapeClose), não um listener à parte (achado na revisão pré-push
+  // do ecrã irmão, MedalhaoContribSheet: um listener próprio não sabe o
+  // que está empilhado por baixo dele).
+  useEscapeClose(handleClose);
 
   const onCropKey = (e) => {
     const map = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };

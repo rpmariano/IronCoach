@@ -250,9 +250,9 @@ export default function RaceHubView({
   const hasMemories = !!(memoryPaths.diploma || memoryPaths.medal || memoryPaths.photos.length);
   const [memoryUrls, setMemoryUrls] = useState({ diploma: null, medal: null, photos: [] });
   const [openPhoto, setOpenPhoto] = useState(null);
-  // A persiana "Memórias" (pedido 2026-09-13): juntar, trocar ou remover o
-  // diploma, a medalha e as fotos DEPOIS de a prova estar concluída, sem
-  // reabrir o registo da corrida.
+  // O ecrã "Memórias" (pedido 2026-09-13, ecrã inteiro desde 2026-09-15):
+  // juntar, trocar ou remover o diploma, a medalha e as fotos DEPOIS de a
+  // prova estar concluída, sem reabrir o registo da corrida.
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   // O mural para partilhar (pedido 2026-09-13): as fotos, o tempo e a
   // distância numa imagem para o Instagram, composta no telemóvel.
@@ -352,7 +352,7 @@ export default function RaceHubView({
       if (mode) store.setOpenCreationMode(mode);
     };
 
-    // O convite (sem memórias) e o "Editar" (com elas) abrem a persiana das
+    // O convite (sem memórias) e o "Editar" (com elas) abrem o ecrã das
     // memórias aqui mesmo — a prova já está concluída, o registo da corrida
     // não tem de se reabrir para juntar uma foto.
     const openMemories = () => setMemoriesOpen(true);

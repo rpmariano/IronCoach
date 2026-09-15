@@ -181,10 +181,11 @@ export default function PalmaresCard({ onOpenRace }) {
         <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
       </button>
 
-      {/* A persiana dos registos monta-se POR CIMA da do medalhão (os dois
-          portais vão para o body, o último fica à frente): fechá-la volta à
-          persiana do medalhão, como quem recua um passo. Abrir um registo
-          fecha as duas — o hub ou o registo tomam o lugar do separador. */}
+      {/* O ecrã dos registos (MedalhaoContribSheet, ecrã inteiro desde
+          2026-09-15 — antes empilhava por cima da persiana do medalhão)
+          monta-se por cima dela sem a desmontar: fechá-lo volta à persiana
+          do medalhão, como quem recua um passo. Abrir um registo fecha os
+          dois — o hub ou o registo tomam o lugar do separador. */}
       {aberto && (
         <MedalhaoSheet
           medalhao={aberto}

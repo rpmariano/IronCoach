@@ -27,12 +27,40 @@ const OPEN_MS = 340;
 const CLOSE_MS = 240;
 const DIALOG_MS = 220;
 
-/* A pilha de todas as Sheet/Dialog montadas agora, pela ordem em que
-   abriram — achado 2026-09-15: duas persianas empilhadas (ex.: a lista de
-   registos de um medalhão aberta por cima da persiana do medalhão) tinham
-   CADA UMA o seu próprio listener de Escape, e a tecla fechava as duas de
-   uma vez. Só a última a abrir (a de cima, visualmente) responde. */
+/* A pilha de tudo o que está montado agora — Sheet, Dialog, e os ecrãs
+   inteiros que usam useEscapeClose (Mural, Memórias, os registos de um
+   medalhão) — pela ordem em que abriram — achado 2026-09-15: duas persianas
+   empilhadas (ex.: a lista de registos de um medalhão aberta por cima da
+   persiana do medalhão) tinham CADA UMA o seu próprio listener de Escape, e
+   a tecla fechava as duas de uma vez. Só a última a abrir (a de cima,
+   visualmente) responde — por isso um único mecanismo de pilha, partilhado
+   por quem quer que feche com Escape, e não um addEventListener por sítio.
+   (2ª ronda, mesmo dia: promover a lista de registos a ecrã inteiro com o
+   seu PRÓPRIO listener, fora desta pilha, trouxe o bug de volta — a
+   MedalhaoSheet por baixo continuava no topo da pilha e respondia também.) */
 const closeStack = [];
+
+function pushCloseStack(requestClose) {
+  closeStack.push(requestClose);
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    if (closeStack[closeStack.length - 1] === requestClose) requestClose();
+  };
+  window.addEventListener('keydown', onKey);
+  return () => {
+    window.removeEventListener('keydown', onKey);
+    const idx = closeStack.lastIndexOf(requestClose);
+    if (idx !== -1) closeStack.splice(idx, 1);
+  };
+}
+
+/* Para quem não é Sheet/Dialog mas ainda assim fecha com Escape e pode
+   ficar por cima ou por baixo de um dos dois — os ecrãs inteiros
+   (RaceMuralSheet, RaceMemoriesSheet, MedalhaoContribSheet). Sem entrada/
+   saída animada: fecha logo, como o botão de recuar do cabeçalho. */
+export function useEscapeClose(onClose) {
+  useEffect(() => pushCloseStack(() => onClose?.()), [onClose]);
+}
 
 function useEnterExit(onClose, closeMs) {
   const [visible, setVisible] = useState(false);
@@ -48,19 +76,7 @@ function useEnterExit(onClose, closeMs) {
     const ms = prefersReducedMotion() ? 120 : closeMs;
     setTimeout(() => onClose?.(), ms);
   }, [onClose, closeMs]);
-  useEffect(() => {
-    closeStack.push(requestClose);
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      if (closeStack[closeStack.length - 1] === requestClose) requestClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      const idx = closeStack.lastIndexOf(requestClose);
-      if (idx !== -1) closeStack.splice(idx, 1);
-    };
-  }, [requestClose]);
+  useEffect(() => pushCloseStack(requestClose), [requestClose]);
   return { visible, requestClose };
 }
 
