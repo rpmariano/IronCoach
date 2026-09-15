@@ -51,13 +51,18 @@ jan–mar/abr–jun/jul–set/out–dez; semestre jan–jun/jul–dez; ano.
 ### 2. As Distâncias
 
 Encaixes: **5 · 10 · 21,1 · 42,2 km**. Uma prova concluída com corrida ligada
-(`completedRaces` de `utils/achievements.js`) na categoria de
-`categorizeDistance`. Uma vez ganha, fica. Esmalte âmbar — é a prova.
+(`completedRaces` de `utils/achievements.js`) na distância **oficial**:
+4,8–5,5 · 9,5–11 · 20,5–22,5 · 41,5–43,5 km. Não a categoria de
+`categorizeDistance`, que é de treino e larga (a "meia" vai de 11 a 22,5 km;
+uma prova de 15 km dava a medalha dos 21,1). Uma vez ganha, fica. Esmalte
+âmbar — é a prova.
 
 ### 3. Os Recordes
 
 Encaixes: as mesmas quatro distâncias. Ganha-se quando uma prova bate o teu
-melhor anterior na categoria (`isPersonalRecord` de `utils/raceOutcome.js`) —
+melhor anterior **dentro da mesma distância oficial** (calculado em
+`medalhoes.js`, não com o `isPersonalRecord` de `utils/raceOutcome.js`, que
+compara pela categoria larga — um 15 km rápido tirava o recorde à meia) —
 a primeira prova numa distância enche "As Distâncias", não "Os Recordes"
 (é a mesma regra da conquista `recorde_pessoal`: precisa de duas provas). A
 estrela leva o tempo gravado e é **re-cunhada** a cada PB novo (o momento
@@ -133,9 +138,14 @@ Fluxo:
    fechar uma prova: comparar os devidos com `medal_awards` e inserir os que
    faltam (`upsert` com `onConflict` na chave única — idempotente, dois
    dispositivos não duplicam).
-3. **Primeira sincronização de um atleta com histórico**: insere tudo com
-   `seen_at = now()`. Sem isto, quem já tem meses de corridas abria a app com
-   uma tempestade de 15 animações.
+3. **Primeira sincronização de um atleta com histórico**: insere com
+   `seen_at = now()` o que foi ganho há mais de 7 dias. Sem isto, quem já tem
+   meses de corridas abria a app com uma tempestade de 15 animações. O que é
+   desta semana fica por ver — senão um atleta novo nunca via a sua primeira
+   medalha.
+
+Para ver o momento sem ganhar uma medalha: `?demo=true&medalha=1` (mostra as
+medalhas que os dados de demonstração dão, sem tocar em `medal_awards`).
 
 ## Onde aparece
 
@@ -257,11 +267,12 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
 - Época: encaixes = provas marcadas no ano, mínimo 4.
 - Sincronização: primeira vez com histórico marca tudo como visto.
 
-## Por decidir antes do passo 3
+## Decidido em 2026-09-15
 
-1. **O Ano em Km compara com o melhor de sempre ou com o melhor do ano?**
-   De sempre dá o "melhor mês de sempre" que se orgulha, mas um ano sem
-   recordes fica com o medalhão vazio. Do ano, o primeiro mês de cada janeiro
-   ganha sempre. Recomendação: de sempre — os encaixes vazios são honestos e
-   a frase de progresso diz quanto falta.
-2. **O Trail entra?** Depende de haver desnível fiável nos registos.
+1. **O Ano em Km compara com o melhor de sempre**, não com o melhor do ano.
+   Um ano sem recordes fica com encaixes vazios — é honesto, e a frase de
+   progresso diz quanto falta.
+2. **O Trail fica de fora.** `details.elevation_gain_m` é opcional: vem dos
+   prints quando o ecrã o mostra e fica muitas vezes vazio
+   (`RunRegistration` põe-no na lista de métricas em falta). Um medalhão sobre
+   um número que falta metade das vezes mentia.

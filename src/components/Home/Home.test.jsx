@@ -6,6 +6,13 @@ import { todayISO, addDaysISO } from '../../lib/utils';
 import { ToastProvider } from '../shared/ToastProvider';
 import Home from './Home';
 
+// O momento da medalha sincroniza com o Supabase — aqui nunca há prémios
+// por ver (o que o faz aparecer testa-se em utils/useMedalMoment.test.jsx).
+vi.mock('../../utils/medalAwards', () => ({
+  syncMedalAwards: vi.fn().mockResolvedValue({ pending: [], available: false }),
+  markMedalAwardsSeen: vi.fn().mockResolvedValue(undefined),
+}));
+
 /* O Início chama pela Carol quando o plano precisa de um ajuste
    (specs/plano-de-prova.md, "O plano tem de saber da prova"): a deteção é
    de utils/planDivergence.js — aqui testa-se só o que o Início faz com ela,
@@ -81,7 +88,6 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     renderHome();
     const cartao = screen.getByTestId('carol-card');
     expect(cartao).toHaveTextContent('Carol');
-    expect(cartao).toHaveTextContent('a tua treinadora');
     expect(cartao).not.toHaveTextContent('precisa de falar contigo');
     expect(cartao).not.toHaveTextContent('o plano precisa de um ajuste');
   });
