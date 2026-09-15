@@ -92,6 +92,23 @@ describe('Home/RaceCard — o CTA do dia da prova', () => {
     expect(screen.getByTestId('race-card')).toBeInTheDocument();
     expect(screen.queryByTestId('race-card-register')).not.toBeInTheDocument();
   });
+
+  // Regra do âmbar (redesenho 2026-09-15): por cartão, no máximo dois
+  // elementos âmbar — o nome da prova e o trilho. A contagem de dias passa
+  // a branco/neutro.
+  it('a contagem de dias fica em --text-1/--text-4, não em âmbar', () => {
+    render(
+      <RaceCard
+        raceEvents={[{ ...PROVA, date: emDias(21) }]}
+        runs={[]}
+        profile={PROFILE}
+        onRegisterRace={() => {}}
+      />
+    );
+    const dias = screen.getByTestId('race-card-days');
+    expect(dias.firstChild).toHaveStyle({ color: 'var(--text-1)' });
+    expect(dias.lastChild).toHaveStyle({ color: 'var(--text-4)' });
+  });
 });
 
 /* O dia a seguir à prova (specs/gamificacao-provas.md §3). Com a corrida
@@ -171,11 +188,26 @@ describe('Home/RaceCard — o dia a seguir à prova', () => {
 
     const memorias = screen.getByTestId('race-card-memories');
     expect(memorias).toHaveStyle({ minHeight: '44px' });
+    // Regra do âmbar: "Ver memórias" deixa de ser âmbar cheio, igual a
+    // "Próxima prova" — o troféu ao lado é que fica em tinta (âmbar).
+    expect(memorias).toHaveStyle({ color: 'var(--text-2)' });
     fireEvent.click(memorias);
     expect(onOpenRace).toHaveBeenCalledWith('race-1');
 
     fireEvent.click(screen.getByTestId('race-card-next'));
     expect(onCreateRace).toHaveBeenCalled();
+  });
+
+  it('as conquistas ficam em chips neutros — só o glifo guarda a cor do significado', () => {
+    renderDiaASeguir();
+    const chip = screen.getByTestId('race-card-chip-prova_concluida');
+    expect(chip).toHaveStyle({ background: 'rgba(255, 255, 255, 0.06)', color: 'var(--text-2)' });
+  });
+
+  it('a ordem da prova fica em --text-1/--text-4, sem ser âmbar', () => {
+    renderDiaASeguir();
+    expect(screen.getByText('1.ª')).toHaveStyle({ color: 'var(--text-1)' });
+    expect(screen.getByText('prova')).toHaveStyle({ color: 'var(--text-4)' });
   });
 
   it('marcada a próxima prova, o Início volta a olhar para a frente', () => {

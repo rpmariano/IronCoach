@@ -70,8 +70,13 @@ export default function AchievementCard({ achievement, showDate = true, style })
 /* A pílula do Início: a mesma conquista reduzida ao essencial, 28px de
    altura, para caber uma linha delas por baixo do tempo da prova. Serve
    também o chip "Previsão batida", que não é uma conquista do palmarés mas
-   lê-se ao lado delas. */
-export function AchievementChip({ label, tone = 'race', Icon, testId }) {
+   lê-se ao lado delas.
+
+   `neutral` (regra do âmbar, redesenho 2026-09-15): a pílula deixa de levar
+   a cor do significado — fica em vidro neutro, com o glifo na cor do
+   significado. É o ProvaConcluidaCard quem a usa: por cartão, no máximo
+   dois elementos âmbar, e as conquistas não são um deles. */
+export function AchievementChip({ label, tone = 'race', Icon, testId, neutral = false }) {
   return (
     <span
       data-testid={testId}
@@ -81,13 +86,13 @@ export function AchievementChip({ label, tone = 'race', Icon, testId }) {
         padding: '0 10px',
         borderRadius: 99,
         letterSpacing: '.05em',
-        background: `var(--tint-${tone}-bg)`,
-        border: `1px solid var(--tint-${tone}-bd)`,
-        color: `var(--${tone})`,
+        background: neutral ? 'rgba(255,255,255,.06)' : `var(--tint-${tone}-bg)`,
+        border: `1px solid ${neutral ? 'var(--border-glass-strong)' : `var(--tint-${tone}-bd)`}`,
+        color: neutral ? 'var(--text-2)' : `var(--${tone})`,
         whiteSpace: 'nowrap',
       }}
     >
-      {Icon && <Icon size={12} />}
+      {Icon && <Icon size={12} style={neutral ? { color: `var(--${tone})` } : undefined} />}
       {label}
     </span>
   );

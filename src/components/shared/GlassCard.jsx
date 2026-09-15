@@ -7,7 +7,7 @@ import React from 'react';
    nessa cor no canto superior direito — só em cartões principais (prova,
    plano do dia), nunca em listas. */
 const GLOW = {
-  race: 'rgba(251,191,36,.16)',
+  race: 'rgba(251,191,36,.12)',
   coach: 'rgba(34,211,238,.18)',
   gym: 'rgba(90,143,163,.2)',
   run: 'rgba(46,224,255,.16)',

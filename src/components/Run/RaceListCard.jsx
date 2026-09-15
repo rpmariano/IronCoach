@@ -45,9 +45,9 @@ function DateTile({ date, muted }) {
       className="flex flex-col items-center justify-center shrink-0"
       style={{
         width: 44, height: 44, borderRadius: 12,
-        background: muted ? 'var(--surface-glass)' : 'var(--tint-race-bg)',
-        border: `1px solid ${muted ? 'var(--border-glass)' : 'var(--tint-race-bd)'}`,
-        color: muted ? 'var(--text-3)' : 'var(--race)',
+        background: muted ? 'var(--surface-glass)' : 'rgba(255,255,255,.06)',
+        border: `1px solid ${muted ? 'var(--border-glass)' : 'var(--border-glass-strong)'}`,
+        color: muted ? 'var(--text-3)' : 'var(--text-2)',
       }}
     >
       <span className="text-[15px] font-black leading-none" style={{ fontVariantNumeric: 'tabular-nums' }}>{dayNumber(date)}</span>
@@ -170,16 +170,16 @@ export default function RaceListCard() {
 
   return (
     <>
-      <SectionLabel tone="race">As tuas provas</SectionLabel>
-      <GlassCard tone="race" padding="14px 12px 12px" data-testid="race-list-card">
+      <SectionLabel>As tuas provas</SectionLabel>
+      <GlassCard padding="14px 12px 12px" data-testid="race-list-card">
         <div className="flex items-center gap-2 px-1">
-          <Flag size={15} style={{ color: 'var(--race)' }} aria-hidden="true" />
+          <Flag size={15} style={{ color: 'var(--text-4)' }} aria-hidden="true" />
           <p className="text-[12px] font-bold flex-1" data-testid="race-list-resumo" style={{ color: 'var(--text-3)' }}>{resumo}</p>
         </div>
 
         {total > 0 && (
           <div className="mt-2">
-            <Group label="Próximas" tone="race" items={proximas} render={renderProxima} />
+            <Group label="Próximas" items={proximas} render={renderProxima} />
             <Group label="Por registar" tone="warn" items={porRegistar} render={renderPorRegistar} />
             <Group label="Concluídas" items={concluidas} max={INLINE_MAX} render={renderConcluida} />
           </div>
@@ -202,7 +202,7 @@ export default function RaceListCard() {
             data-testid="race-list-nova"
             onClick={() => setOpenCreationMode('race')}
             className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-[11px] text-[12.5px] font-extrabold"
-            style={{ minHeight: 44, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
+            style={{ minHeight: 44, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-2)' }}
           >
             <Plus size={15} aria-hidden="true" /> Marcar prova
           </button>
@@ -212,7 +212,7 @@ export default function RaceListCard() {
       {allOpen && (
         <Sheet eyebrow="As tuas provas" eyebrowTone="race" title={<span className="text-[12px] font-bold" style={{ color: 'var(--text-3)' }}>{resumo}</span>} onClose={() => setAllOpen(false)} testId="race-list-sheet" maxHeight="88dvh">
           <div className="pt-2 pb-1">
-            <Group label="Próximas" tone="race" items={proximas} render={renderProxima} />
+            <Group label="Próximas" items={proximas} render={renderProxima} />
             <Group label="Por registar" tone="warn" items={porRegistar} render={renderPorRegistar} />
             <Group label="Concluídas" items={concluidas} render={renderConcluida} />
           </div>

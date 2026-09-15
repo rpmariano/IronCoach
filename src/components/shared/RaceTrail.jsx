@@ -141,7 +141,7 @@ export default function RaceTrail({ weeks = 18, current = 6, phases = [], startL
         const from = i ? phases[i - 1].to : 0;
         const active = current > from && current <= p.to;
         return (
-          <text key={p.label} x={px(from) + (i ? 6 : 0)} y="14" fill={active ? 'var(--race)' : 'var(--text-muted)'} fontSize="11" fontWeight="700" fontFamily="var(--font-sans)">{p.label}</text>
+          <text key={p.label} x={px(from) + (i ? 6 : 0)} y="14" fill={active ? 'var(--text-2)' : 'var(--text-muted)'} fontSize="11" fontWeight="700" fontFamily="var(--font-sans)">{p.label}</text>
         );
       })}
       {startLabel && <text x={x0} y="55" fill="var(--text-muted)" fontSize="11" fontWeight="600" fontFamily="var(--font-sans)">{startLabel}</text>}

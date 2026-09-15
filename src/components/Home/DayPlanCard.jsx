@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, Check, Utensils, MessageCircle 
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
-import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, previewMeal, isRacePlanItem, raceForDate } from '../../utils/homeModels';
+import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, isRacePlanItem, raceForDate } from '../../utils/homeModels';
 import { useCarouselHaptics } from '../../utils/haptics';
 import GlassCard from '../shared/GlassCard';
 import CarouselDots from '../shared/CarouselDots';
@@ -23,23 +23,17 @@ import CarouselDots from '../shared/CarouselDots';
    em vez de só mudar o índice, para o gesto e os toques ficarem em sintonia
    e os dois disparem o mesmo tique tátil (triggerCarouselTick). */
 
-const BADGE = {
-  ok: { color: 'var(--ok)', bg: 'rgba(52,211,153,.14)', bd: 'rgba(52,211,153,.38)' },
-  warn: { color: 'var(--warn)', bg: 'var(--tint-warn-bg)', bd: 'var(--tint-warn-bd)' },
-  race: { color: 'var(--race)', bg: 'var(--tint-race-bg)', bd: 'var(--tint-race-bd)' },
-  neutral: { color: 'var(--text-3)', bg: 'rgba(255,255,255,.06)', bd: 'rgba(255,255,255,.14)' },
-};
-
-function Badge({ tone, children }) {
-  const s = BADGE[tone] || BADGE.neutral;
-  return (
-    <span className="text-[11px] font-extrabold whitespace-nowrap rounded-full" style={{ color: s.color, background: s.bg, border: `1px solid ${s.bd}`, padding: '3px 9px' }}>
-      {children}
-    </span>
-  );
-}
-
 const arrowStyle = { width: 44, height: 44, color: 'var(--gym)' };
+
+/* Sem o Badge "Hoje" (o rótulo da secção já diz "O que faço hoje"): o
+   estado do dia colore a própria data — --gym por fazer, --ok só quando de
+   facto está feito, --warn em atraso, âmbar no dia da prova. */
+function dateColor(status) {
+  if (status.tone === 'race') return 'var(--race)';
+  if (status.label === 'Concluído') return 'var(--ok)';
+  if (status.tone === 'warn') return 'var(--warn)';
+  return 'var(--gym)';
+}
 
 /* O corpo de um dia — título, "Registar sessão"/"Abrir a prova" e a
    pré-visualização das refeições. Uma página do carrossel (.tab-swipe-page,
@@ -56,7 +50,6 @@ function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace }) {
   const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
   const session = pendingSession(day, todayISO());
   const meals = mealsForDay(day.items);
-  const preview = previewMeal(meals);
 
   return (
     <div className="tab-swipe-page">
@@ -86,12 +79,6 @@ function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace }) {
               {meals.meals.length > 1 ? `Ver as ${meals.meals.length}` : 'Ver'} <ChevronDown size={13} />
             </span>
           </button>
-          {preview && (
-            <div className="flex items-baseline gap-[9px] mt-[9px]">
-              <span className="text-[11px] font-extrabold uppercase" style={{ color: 'var(--text-muted)', letterSpacing: '.05em', flex: '0 0 66px' }}>{preview.label}</span>
-              <span className="flex-1 text-[12.5px] leading-[1.45]" style={{ color: 'var(--text-3)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{preview.texto}</span>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -165,35 +152,37 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   return (
     <div className="flex flex-col gap-2">
       <PendingBanner />
-      <GlassCard tone="gym" glow data-testid="day-plan-card">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 min-w-0">
-            <button type="button" aria-label="Dia anterior" disabled={safeIndex === 0} onClick={() => scrollTo(safeIndex - 1)} className="flex items-center justify-center rounded-full -ml-3 disabled:opacity-30" style={arrowStyle}>
-              <ChevronLeft size={17} />
-            </button>
-            <span className="text-[11px] font-extrabold uppercase whitespace-nowrap" style={{ color: 'var(--gym)', letterSpacing: '.05em' }}>{formatDayLabel(day.dateISO)}</span>
-            <button type="button" aria-label="Dia seguinte" disabled={safeIndex >= days.length - 1} onClick={() => scrollTo(safeIndex + 1)} className="flex items-center justify-center rounded-full disabled:opacity-30" style={arrowStyle}>
-              <ChevronRight size={17} />
-            </button>
+      <GlassCard tone="gym" glow padding={0} data-testid="day-plan-card">
+        {/* A navegação do dia numa faixa própria, a toda a largura — é isto
+            que separa "navegar entre dias" de "o dia" (por isso o padding
+            do GlassCard sai daqui e passa para o corpo, logo abaixo). */}
+        <div className="flex items-center justify-between gap-2" style={{ padding: '6px 10px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+          <button type="button" aria-label="Dia anterior" disabled={safeIndex === 0} onClick={() => scrollTo(safeIndex - 1)} className="flex items-center justify-center rounded-full disabled:opacity-30" style={arrowStyle}>
+            <ChevronLeft size={17} />
+          </button>
+          <span data-testid="day-plan-date" className="text-[11.5px] font-extrabold uppercase whitespace-nowrap" style={{ color: dateColor(status), letterSpacing: '.06em' }}>{formatDayLabel(day.dateISO)}</span>
+          <button type="button" aria-label="Dia seguinte" disabled={safeIndex >= days.length - 1} onClick={() => scrollTo(safeIndex + 1)} className="flex items-center justify-center rounded-full disabled:opacity-30" style={arrowStyle}>
+            <ChevronRight size={17} />
+          </button>
+        </div>
+
+        <div style={{ padding: '12px 16px 14px' }}>
+          {/* Um dia por página, com snap nativo — desliza tal como os outros
+              carrosséis do Início/Dashboard (.tab-swipe-carousel, ver
+              globals.css), e useCarouselHaptics dá o tique tátil a cada
+              mudança, seja por gesto, seta ou ponto. */}
+          <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
+            {days.map((d) => (
+              <DayPlanPage key={d.dateISO} day={d} raceEvents={raceEvents} onComplete={onComplete} onOpenMeals={onOpenMeals} onOpenRace={onOpenRace} />
+            ))}
           </div>
-          <Badge tone={status.tone}>{status.label}</Badge>
-        </div>
 
-        {/* Um dia por página, com snap nativo — desliza tal como os outros
-            carrosséis do Início/Dashboard (.tab-swipe-carousel, ver
-            globals.css), e useCarouselHaptics dá o tique tátil a cada
-            mudança, seja por gesto, seta ou ponto. */}
-        <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel">
-          {days.map((d) => (
-            <DayPlanPage key={d.dateISO} day={d} raceEvents={raceEvents} onComplete={onComplete} onOpenMeals={onOpenMeals} onOpenRace={onOpenRace} />
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between mt-2 -mb-2">
-          {days.length > 1 ? (
-            <div className="flex items-center min-h-[44px]"><CarouselDots count={days.length} currentIndex={safeIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" /></div>
-          ) : <span />}
-          <button type="button" onClick={adapt} className="min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>Adaptar plano</button>
+          <div className="flex items-center justify-between mt-2 -mb-2">
+            {days.length > 1 ? (
+              <div className="flex items-center min-h-[44px]"><CarouselDots count={days.length} currentIndex={safeIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" /></div>
+            ) : <span />}
+            <button type="button" onClick={adapt} className="min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>Adaptar plano</button>
+          </div>
         </div>
       </GlassCard>
     </div>

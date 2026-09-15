@@ -33,10 +33,11 @@ describe('DayPlanCard — o dia da prova', () => {
     <DayPlanCard plans={[plan]} planItems={items} raceEvents={raceEvents} onComplete={onComplete} onOpenRace={onOpenRace} />,
   );
 
-  it('o título é a prova e o badge é âmbar', () => {
+  it('o título é a prova e a data fica âmbar (sem badge — saiu com o redesenho)', () => {
     renderCard([raceItem()]);
     expect(screen.getByText('Prova · Corrida do Tejo · 10 km')).toBeInTheDocument();
-    expect(screen.getByText('Prova')).toBeInTheDocument();
+    expect(screen.queryByText('Prova', { selector: 'span' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('day-plan-date')).toHaveStyle({ color: 'var(--race)' });
   });
 
   it('"Abrir a prova" em vez de "Registar sessão", e leva o id da prova da agenda', () => {
@@ -59,6 +60,44 @@ describe('DayPlanCard — o dia da prova', () => {
     expect(screen.getByText('Rodagem longa · 16 km')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Registar sessão'));
     expect(onComplete).toHaveBeenCalledWith(training);
+  });
+});
+
+/* Redesenho "Início e o âmbar" (2026-09-15): a faixa de navegação do dia
+   perdeu o Badge — o estado passou a colorir a própria data, e a
+   pré-visualização de duas linhas da refeição saiu (fica só "Ver as N"). */
+describe('DayPlanCard — a data em vez do badge', () => {
+  let onComplete;
+  let onOpenRace;
+
+  beforeEach(() => {
+    onComplete = vi.fn();
+    onOpenRace = vi.fn();
+  });
+
+  const renderCard = (items, raceEvents = []) => render(
+    <DayPlanCard plans={[plan]} planItems={items} raceEvents={raceEvents} onComplete={onComplete} onOpenRace={onOpenRace} />,
+  );
+
+  it('um treino de hoje por fazer colore a data a --gym, não a --ok', () => {
+    renderCard([{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente' }]);
+    expect(screen.getByTestId('day-plan-date')).toHaveStyle({ color: 'var(--gym)' });
+  });
+
+  it('um dia com tudo concluído colore a data a --ok', () => {
+    renderCard([{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'concluido' }]);
+    expect(screen.getByTestId('day-plan-date')).toHaveStyle({ color: 'var(--ok)' });
+  });
+
+  it('a pré-visualização da refeição saiu — fica só "Refeições sugeridas · Ver as N"', () => {
+    const item = {
+      id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente',
+      meal_macros: { kcal: 2000, items: [{ tipo: 'pequeno-almoco', texto: 'Omelete de 2 ovos' }, { tipo: 'almoco', texto: 'Atum com grão-de-bico' }] },
+    };
+    renderCard([item]);
+    expect(screen.getByText('Refeições sugeridas')).toBeInTheDocument();
+    expect(screen.getByText('Ver as 2')).toBeInTheDocument();
+    expect(screen.queryByText('Atum com grão-de-bico')).not.toBeInTheDocument();
   });
 });
 
