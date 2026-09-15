@@ -123,12 +123,15 @@ export default function PalmaresCard({ onOpenRace }) {
                     border: `1px solid ${won ? 'rgba(251,191,36,.22)' : 'var(--border-glass)'}`,
                   }}
                 >
-                  <div className="text-[11px] font-extrabold uppercase truncate" style={{ letterSpacing: '.04em', color: won ? 'var(--race)' : 'var(--text-4)' }}>
+                  {/* Spans: isto é um <button>, cujo conteúdo só admite
+                      phrasing content (achado 2026-09-15, igual ao de
+                      MedalhaoSheet.jsx). */}
+                  <span className="block text-[11px] font-extrabold uppercase truncate" style={{ letterSpacing: '.04em', color: won ? 'var(--race)' : 'var(--text-4)' }}>
                     {LEGEND_SHORT[slot.label] || slot.label}
-                  </div>
-                  <div className="text-[11px] mt-[2px] truncate" style={{ color: won ? 'var(--text-3)' : 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
+                  </span>
+                  <span className="block text-[11px] mt-[2px] truncate" style={{ color: won ? 'var(--text-3)' : 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {won ? (slotValueText(hero.key, slot) ?? '—') : '—'}
-                  </div>
+                  </span>
                 </button>
               );
             })}

@@ -166,6 +166,7 @@ export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAsse
   const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
   if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
   if (wasProactiveSent(profile?.id, candidate)) return null;
+  if (wasProactiveDismissed(profile?.id, candidate)) return null;
   // A marca acima é só deste dispositivo e só se grava quando a resposta
   // chega ao ecrã que a pediu. O balanço já feito é a prova de que a
   // conversa aconteceu — venha do hub ou do chat, deste dispositivo ou de
@@ -234,5 +235,44 @@ export function markProactiveSent(userId, candidate) {
   } catch {
     // sem storage (modo privado, quota) — o servidor ainda trava repetições
     // a menos de 6 horas; o pior caso é ela perguntar duas vezes noutro dia.
+  }
+}
+
+/* "Dispensar aviso" do balanço (Início) é uma chave PRÓPRIA, separada de
+   markProactiveSent — achado 2026-09-15: usar a mesma marca fazia
+   `balanceAlreadyGivenInChat` (raceBalance.js, lida pelo hub) e o efeito
+   passivo do Coach pensarem que a conversa tinha mesmo acontecido, e
+   deixarem de a oferecer. Dispensar o LEMBRETE não é dizer "já falámos" —
+   só cala o botão flutuante; o hub e o chat continuam a poder pedir o
+   balanço sozinhos da próxima vez. */
+const DISMISS_STORAGE_PREFIX = 'ironcoach:carol-dispensada:';
+
+function dismissStorageKey(userId) {
+  return `${DISMISS_STORAGE_PREFIX}${userId || 'anon'}`;
+}
+
+function wasProactiveDismissed(userId, candidate) {
+  if (!candidate) return false;
+  try {
+    const raw = window.localStorage.getItem(dismissStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return !!parsed && typeof parsed === 'object' && parsed[candidate.trigger] === candidate.key;
+  } catch {
+    return false;
+  }
+}
+
+/** Dispensa só o AVISO deste candidato (o botão flutuante do Início) — não
+ *  marca a conversa como tida para o resto da app. Ver a nota acima. */
+export function dismissProactiveAlert(userId, candidate) {
+  if (!candidate) return;
+  try {
+    const raw = window.localStorage.getItem(dismissStorageKey(userId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    const dismissed = parsed && typeof parsed === 'object' ? parsed : {};
+    dismissed[candidate.trigger] = candidate.key;
+    window.localStorage.setItem(dismissStorageKey(userId), JSON.stringify(dismissed));
+  } catch {
+    // sem storage — o pior caso é o aviso voltar a aparecer.
   }
 }

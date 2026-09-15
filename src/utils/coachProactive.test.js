@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, pendingRaceBalance, pendingRaceBalanceCandidate, lastRecordDate, wasProactiveSent, markProactiveSent, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, pendingRaceBalance, pendingRaceBalanceCandidate, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -132,6 +132,18 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       // Uma cópia vazia não conta.
       window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: '  ' }));
       expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)?.raceId).toBe('r1');
+    });
+
+    it('"Dispensar aviso" cala só o aviso do Início — o hub e o chat continuam a poder pedir o balanço', () => {
+      window.localStorage.clear();
+      const c = pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW);
+      dismissProactiveAlert('u1', c);
+      // O aviso sai.
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
+      // Mas isto NÃO é o mesmo que markProactiveSent: wasProactiveSent (o
+      // que o hub e o chat leem) continua false, achado 2026-09-15 — antes
+      // "Dispensar" reutilizava markProactiveSent e calava também os dois.
+      expect(wasProactiveSent('u1', c)).toBe(false);
     });
   });
 
