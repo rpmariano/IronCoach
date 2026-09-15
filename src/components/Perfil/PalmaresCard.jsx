@@ -11,6 +11,7 @@ import Medalhao, { slotValueText } from '../shared/Medalhao';
 import SectionLabel from '../shared/SectionLabel';
 import { Sheet } from '../shared/Sheet';
 import MedalhaoSheet from './MedalhaoSheet';
+import MedalhaoContribSheet from './MedalhaoContribSheet';
 
 /* O Palmarés, no separador Provas — os medalhões (specs/palmares-medalhoes.md
    §"Onde aparece", mock "Palmarés — os medalhões"). Substituiu a linha das
@@ -27,6 +28,10 @@ import MedalhaoSheet from './MedalhaoSheet';
 
 // A legenda tem 4 colunas estreitas: as etiquetas longas abreviam como no mock.
 const LEGEND_SHORT = { Trimestre: 'Trim.', Semestre: 'Sem.' };
+
+// "Ver os registos do mês" — O Ano em Km tem artigo; os outros dizem o rótulo.
+const ANO_KM_ARIA = { mes: 'do mês', trimestre: 'do trimestre', semestre: 'do semestre', ano: 'do ano' };
+const legendAria = (heroKey, slot) => `Ver os registos ${(heroKey === 'ano_km' && ANO_KM_ARIA[slot.key]) || `de ${slot.label}`}`;
 
 const HERO_CARD = {
   background: 'var(--surface-glass)',
@@ -47,6 +52,9 @@ export default function PalmaresCard({ onOpenRace }) {
   const { raceEvents, runs, coachPlans, coachPlanItems, profile } = useAppStore();
   const [openKey, setOpenKey] = useState(null);
   const [provasOpen, setProvasOpen] = useState(false);
+  // Os registos de um encaixe: { medalhaoKey, slotKey }. Guarda chaves, não o
+  // encaixe, para a lista acompanhar os dados se mudarem com a persiana aberta.
+  const [contrib, setContrib] = useState(null);
   const today = todayISO();
 
   const { medalhoes, heroKey } = useMemo(
@@ -62,6 +70,8 @@ export default function PalmaresCard({ onOpenRace }) {
   const hero = list.find((m) => m.key === heroKey) || list[0];
   const colecao = list.filter((m) => m !== hero);
   const aberto = openKey ? list.find((m) => m.key === openKey) : null;
+  const contribMedalhao = contrib ? list.find((m) => m.key === contrib.medalhaoKey) : null;
+  const contribSlot = contribMedalhao ? (contribMedalhao.slots || []).find((s) => s.key === contrib.slotKey) : null;
 
   const abrirProva = (raceId) => {
     setProvasOpen(false);
@@ -97,11 +107,16 @@ export default function PalmaresCard({ onOpenRace }) {
             {(hero.slots || []).slice(0, 4).map((slot) => {
               const won = slot.state === 'won';
               return (
-                <div
+                <button
+                  type="button"
                   key={slot.key}
+                  data-testid={`palmares-legenda-${slot.key}`}
                   data-state={won ? 'won' : 'empty'}
+                  aria-label={legendAria(hero.key, slot)}
+                  onClick={() => setContrib({ medalhaoKey: hero.key, slotKey: slot.key })}
                   className="flex-1 text-center min-w-0"
                   style={{
+                    minHeight: 44,
                     padding: '7px 2px',
                     borderRadius: 12,
                     background: won ? 'rgba(251,191,36,.08)' : 'rgba(255,255,255,.03)',
@@ -114,7 +129,7 @@ export default function PalmaresCard({ onOpenRace }) {
                   <div className="text-[11px] mt-[2px] truncate" style={{ color: won ? 'var(--text-3)' : 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
                     {won ? (slotValueText(hero.key, slot) ?? '—') : '—'}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -163,7 +178,26 @@ export default function PalmaresCard({ onOpenRace }) {
         <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
       </button>
 
-      {aberto && <MedalhaoSheet medalhao={aberto} onClose={() => setOpenKey(null)} />}
+      {/* A persiana dos registos monta-se POR CIMA da do medalhão (os dois
+          portais vão para o body, o último fica à frente): fechá-la volta à
+          persiana do medalhão, como quem recua um passo. Abrir um registo
+          fecha as duas — o hub ou o registo tomam o lugar do separador. */}
+      {aberto && (
+        <MedalhaoSheet
+          medalhao={aberto}
+          onClose={() => setOpenKey(null)}
+          onOpenSlot={(slot) => setContrib({ medalhaoKey: aberto.key, slotKey: slot.key })}
+        />
+      )}
+
+      {contribSlot && (
+        <MedalhaoContribSheet
+          medalhaoName={contribMedalhao.name}
+          slot={contribSlot}
+          onClose={() => setContrib(null)}
+          onNavigate={() => { setContrib(null); setOpenKey(null); }}
+        />
+      )}
 
       {provasOpen && (
         <Sheet eyebrow="Palmarés" eyebrowTone="race" onClose={() => setProvasOpen(false)} testId="palmares-sheet">

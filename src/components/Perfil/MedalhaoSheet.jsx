@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronRight } from 'lucide-react';
 import { Sheet } from '../shared/Sheet';
 import { MedalSlotIcon, slotValueText } from '../shared/Medalhao';
 
@@ -11,19 +12,24 @@ import { MedalSlotIcon, slotValueText } from '../shared/Medalhao';
    ganho mais de uma vez); ainda não navega para lado nenhum — a lista das
    re-cunhagens e dos anos arquivados vem com a tabela medal_awards. */
 
-function SlotCard({ medalhaoKey, slot, first }) {
+function SlotCard({ medalhaoKey, slot, first, onOpen }) {
   const won = slot.state === 'won';
   const hasProgress = !won && slot.progress != null && Number.isFinite(Number(slot.progress));
   const pct = hasProgress ? Math.max(0, Math.min(1, Number(slot.progress))) * 100 : 0;
   const emptyLine = [slot.detail, slot.remainingLabel].filter(Boolean).join(' · ');
+  // Com `onOpen`, o cartão é um botão que abre os registos do encaixe
+  // (Perfil/MedalhaoContribSheet.jsx).
+  const Tag = onOpen ? 'button' : 'div';
 
   return (
-    <div
+    <Tag
+      {...(onOpen ? { type: 'button', onClick: () => onOpen(slot), 'aria-label': `Ver os registos de ${slot.label}` } : {})}
       data-testid={`medalhao-slot-${slot.key}`}
       data-state={won ? 'won' : 'empty'}
-      className="flex items-center gap-3"
+      className="flex items-center gap-3 w-full text-left"
       style={{
         marginTop: first ? 14 : 8,
+        minHeight: 44,
         padding: 12,
         borderRadius: 16,
         background: won ? 'rgba(251,191,36,.07)' : 'var(--surface-glass)',
@@ -56,11 +62,12 @@ function SlotCard({ medalhaoKey, slot, first }) {
           ? slot.detail && <div className="text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>{slot.detail}</div>
           : emptyLine && <div className="text-[11px]" style={{ marginTop: hasProgress ? 5 : 2, color: 'var(--text-4)' }}>{emptyLine}</div>}
       </div>
-    </div>
+      {onOpen && <ChevronRight size={15} aria-hidden="true" className="shrink-0" style={{ color: 'var(--text-4)' }} />}
+    </Tag>
   );
 }
 
-export default function MedalhaoSheet({ medalhao, onClose }) {
+export default function MedalhaoSheet({ medalhao, onClose, onOpenSlot }) {
   if (!medalhao) return null;
   const slots = medalhao.slots || [];
   const recunhados = slots.filter((s) => Number(s.wins) > 1);
@@ -80,7 +87,9 @@ export default function MedalhaoSheet({ medalhao, onClose }) {
       )}
 
       <div className="pb-1">
-        {slots.map((slot, i) => <SlotCard key={slot.key || i} medalhaoKey={medalhao.key} slot={slot} first={i === 0} />)}
+        {slots.map((slot, i) => (
+          <SlotCard key={slot.key || i} medalhaoKey={medalhao.key} slot={slot} first={i === 0} onOpen={onOpenSlot} />
+        ))}
       </div>
 
       {recunhados.length > 0 && (

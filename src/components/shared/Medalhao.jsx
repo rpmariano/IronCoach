@@ -127,6 +127,23 @@ export function MedalhaoDefs() {
           <stop offset="100%" stopColor="#041a24" />
         </linearGradient>
 
+        {/* As cores do símbolo da app (public/brand/ironcoach-icon.svg). */}
+        <linearGradient id={MEDAL_ID('brand-c1')} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fde68a" />
+          <stop offset="50%" stopColor="#fbbf24" />
+          <stop offset="100%" stopColor="#d97706" />
+        </linearGradient>
+        <linearGradient id={MEDAL_ID('brand-c2')} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a5f3fc" />
+          <stop offset="45%" stopColor="#22d3ee" />
+          <stop offset="100%" stopColor="#0891b2" />
+        </linearGradient>
+        <linearGradient id={MEDAL_ID('brand-ti')} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#475569" />
+          <stop offset="50%" stopColor="#1e293b" />
+          <stop offset="100%" stopColor="#0f172a" />
+        </linearGradient>
+
         {/* Os esmaltes planos dos ícones da persiana (MedalhaoDetalhe). */}
         <radialGradient id={MEDAL_ID('dt-amber')} cx="35%" cy="28%" r="85%">
           <stop offset="0%" stopColor="#fde68a" />
@@ -179,6 +196,21 @@ export function MedalhaoDefs() {
   );
 }
 
+/* O símbolo da app (public/brand/ironcoach-icon.svg): o hexágono de titânio
+   com o fio dourado e os dois chevrons, âmbar e ciano, nas cores da marca —
+   não um desenho à parte a traço. Sem o fundo quadrado nem o brilho da
+   versão de ícone: aqui está incrustado no metal. */
+export function BrandEmblem({ size = 34 }) {
+  return (
+    <svg width={size} height={size} viewBox="-176 -176 352 352">
+      <polygon points="0,-170 148,-85 148,85 0,170 -148,85 -148,-85" fill="#080e1a" stroke={url('brand-ti')} strokeWidth="12" strokeLinejoin="round" />
+      <polygon points="0,-154 130,-73 130,73 0,154 -130,73 -130,-73" fill="none" stroke="#fbbf24" strokeWidth="5" strokeLinejoin="round" opacity="0.6" />
+      <path d="M -84,-78 L -18,0 L -84,78 L -48,78 L 18,0 L -48,-78 Z" fill={url('brand-c1')} stroke="#f59e0b" strokeWidth="3" strokeLinejoin="round" />
+      <path d="M -18,-78 L 48,0 L -18,78 L 18,78 L 84,0 L 18,-78 Z" fill={url('brand-c2')} stroke="#38bdf8" strokeWidth="3" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 /** A fita em V: duas bandas cruzadas, com costuras e brilho de cetim. */
 export function MedalhaoRibbon() {
   return (
@@ -201,7 +233,11 @@ export function MedalhaoRibbon() {
 /** A medalha ganha no tamanho grande (coordenadas locais em 0,0). Também é
     a estrela que voa no momento da medalha. */
 export function WonStar({ enamel = 'amber', valueLabel, withText = true }) {
-  if (enamel === 'silver') {
+  // A joia só existe para levar um número gravado (pedido 2026-09-15): sem
+  // número à vista — medalhões pequenos, A Época, As Distâncias — a estrela
+  // é só a prata facetada.
+  const showsNumber = withText && valueLabel != null && valueLabel !== '';
+  if (enamel === 'silver' || !showsNumber) {
     return <g filter={url('star-drop')} data-medal-star="silver"><use href={ref('star-ag')} transform="scale(1.4)" /></g>;
   }
   const e = enamel === 'cyan' ? 'cyan' : 'amber';
@@ -276,20 +312,18 @@ export default function Medalhao({ size = 'lg', ribbon = false, engraving, year,
         <>
           {/* Em anel a estrela de cima desce até y≈100 — em cima do brasão. */}
           {!ring && (
-            <div className="ic-medal-engrave" style={{ top: 84 }} aria-hidden="true">
-              <svg width="26" height="26" viewBox="0 0 26 26">
-                <path d="M13,2 L23,8 L23,18 L13,24 L3,18 L3,8 Z" fill="none" stroke="currentColor" strokeWidth="2" />
-                <path d="M8,12 L13,7 L18,12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M8,17 L13,12 L18,17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+            <div className="ic-medal-emblem" aria-hidden="true">
+              <BrandEmblem />
             </div>
           )}
-          {engraving && <div className="ic-medal-engrave ic-medal-engrave--name" aria-hidden="true">{engraving}</div>}
-          {year != null && year !== '' && <div className="ic-medal-engrave ic-medal-engrave--year" aria-hidden="true">{year}</div>}
+          {/* data-text: a cópia por baixo que desenha as arestas do sulco (ver
+              .ic-medal-engrave::before) — a letra da frente leva o fundo. */}
+          {engraving && <div className="ic-medal-engrave ic-medal-engrave--name" data-text={engraving} aria-hidden="true">{engraving}</div>}
+          {year != null && year !== '' && <div className="ic-medal-engrave ic-medal-engrave--year" data-text={year} aria-hidden="true">{year}</div>}
           {/* Em anel, as estrelas de baixo passam onde a linha de rodapé está
               gravada (y≈252) — sai, e o que dizia continua no aria-label e na
               persiana. */}
-          {footer && !ring && <div className="ic-medal-engrave ic-medal-engrave--footer" aria-hidden="true">· {footer} ·</div>}
+          {footer && !ring && <div className="ic-medal-engrave ic-medal-engrave--footer" data-text={`· ${footer} ·`} aria-hidden="true">· {footer} ·</div>}
         </>
       )}
 
@@ -309,18 +343,11 @@ export default function Medalhao({ size = 'lg', ribbon = false, engraving, year,
             );
           }
           if (!lg) {
-            // A estrela de prata sem esmalte fica a .42 da forma base, como no
-            // mock da coleção; as de esmalte a .33 da medalha (que já é 1.4×).
-            if (slot.enamel === 'silver') {
-              return (
-                <g key={key} transform={at(x, y, r3(0.42 * s))} data-medal-star="silver">
-                  <g filter={url('star-drop')}><use href={ref('star-ag')} /></g>
-                </g>
-              );
-            }
+            // No pequeno nunca se grava número, por isso nunca há joia: a
+            // prata facetada a .42 da forma base, como no mock da coleção.
             return (
-              <g key={key} transform={at(x, y, r3(0.33 * s))}>
-                <WonStar enamel={slot.enamel} withText={false} />
+              <g key={key} transform={at(x, y, r3(0.42 * s))} data-medal-star="silver">
+                <g filter={url('star-drop')}><use href={ref('star-ag')} /></g>
               </g>
             );
           }

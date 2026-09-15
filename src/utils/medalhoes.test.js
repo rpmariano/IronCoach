@@ -418,3 +418,139 @@ describe('due', () => {
     expect(r.due.every((d) => MEDALHAO_KEYS.includes(d.medalhao))).toBe(true);
   });
 });
+
+// ── Os registos por trás de cada encaixe ─────────────────────────────────
+
+/* `contributions`: a lista que a persiana dos registos mostra
+   (Perfil/MedalhaoContribSheet.jsx), da mais recente para a mais antiga.
+   Uma corrida de prova é `kind: 'race'`, para abrir o hub. */
+
+describe('contributions — O Ano em Km', () => {
+  const raceEvents = [prova({ id: 'r-ago', name: 'Meia de Agosto', date: '2026-08-28', distance_km: 21.0975 })];
+  const runs = [
+    run('2026-07-10', 100),
+    run('2026-08-05', 90, { training_type: 'longo' }),
+    competicao({ id: 'rm', race_id: 'r-ago', date: '2026-08-28', distance_km: 21.1, duration_seconds: 6730 }),
+    run('2026-09-10', 20),
+    run('2026-09-30', 50), // futura: não conta
+  ];
+  const r = compute({ runs, raceEvents, today: '2026-09-15' });
+
+  it('encaixe ganho: as corridas do melhor período, a de prova abre o hub', () => {
+    const mes = slotOf(r, 'ano_km', 'mes');
+    expect(mes.state).toBe('won');
+    expect(mes.contributionsPeriodLabel).toBe('agosto de 2026');
+    expect(mes.contributionsTotal).toBe(111.1);
+    expect(mes.contributionsSummary).toBe('111 km · 2 corridas');
+    expect(mes.contributions).toEqual([
+      { kind: 'race', id: 'r-ago', raceId: 'r-ago', runId: 'rm', date: '2026-08-28', title: 'Meia de Agosto', meta: '21,1 km · 1:52:10' },
+      { kind: 'run', id: 'run-2026-08-05-90', raceId: null, runId: 'run-2026-08-05-90', date: '2026-08-05', title: 'Longo', meta: '90 km · 8:15:00' },
+    ]);
+  });
+
+  it('encaixe por ganhar: as corridas do período em curso, sem as futuras', () => {
+    const tri = slotOf(r, 'ano_km', 'trimestre');
+    expect(tri.state).toBe('empty');
+    expect(tri.contributionsPeriodLabel).toBe('3.º trimestre de 2026');
+    expect(tri.contributions.map((c) => c.date)).toEqual(['2026-09-10', '2026-08-28', '2026-08-05', '2026-07-10']);
+    expect(tri.contributions[0]).toEqual(expect.objectContaining({ kind: 'run', title: 'Corrida' }));
+    expect(slotOf(r, 'ano_km', 'ano').contributionsPeriodLabel).toBe('2026');
+  });
+
+  it('sem corridas: lista vazia, sem resumo', () => {
+    const vazio = slotOf(compute({ today: '2026-09-15' }), 'ano_km', 'mes');
+    expect(vazio.contributions).toEqual([]);
+    expect(vazio.contributionsSummary).toBeNull();
+    expect(vazio.contributionsPeriodLabel).toBe('setembro de 2026');
+  });
+});
+
+describe('contributions — provas', () => {
+  const dez = (id, date, seconds, over = {}) => ({
+    race: prova({ id, name: `Dez ${id}`, date, distance_km: 10, ...over }),
+    run: competicao({ id: `run-${id}`, race_id: id, date, distance_km: 10, duration_seconds: seconds }),
+  });
+  const a = dez('a', '2026-05-01', 3200, { target_time_seconds: 3300 });
+  const b = dez('b', '2026-06-01', 3107, { target_time_seconds: 3200 });
+  const c = dez('c', '2026-07-01', 3150);
+  const r = compute({ runs: [...TREINOS, a.run, b.run, c.run], raceEvents: [a.race, b.race, c.race], today: '2026-09-15' });
+
+  it('As Distâncias: todas as provas na distância, a primeira marcada', () => {
+    const s = slotOf(r, 'distancias', '10k');
+    expect(s.contributions.map((x) => [x.kind, x.raceId, x.runId, !!x.first])).toEqual([
+      ['race', 'c', 'run-c', false],
+      ['race', 'b', 'run-b', false],
+      ['race', 'a', 'run-a', true],
+    ]);
+    expect(s.contributions[2].meta).toContain('53:20');
+    expect(s.contributionsSummary).toBe('3 provas nesta distância');
+    expect(slotOf(r, 'distancias', '21k').contributions).toEqual([]);
+  });
+
+  it('Os Recordes: as provas com tempo, com pb e o que baixou', () => {
+    const s = slotOf(r, 'recordes', '10k');
+    expect(s.contributions.map((x) => [x.raceId, x.pb, x.deltaSeconds])).toEqual([
+      ['c', false, null],
+      ['b', true, 93],
+      ['a', false, null],
+    ]);
+    expect(s.contributions[1].meta).toContain('recorde, menos 1:33');
+    expect(s.contributionsSummary).toBe('3 provas com tempo · 1 recorde');
+  });
+
+  it('A Superação: os primeiros N objetivos batidos', () => {
+    expect(slotOf(r, 'superacao', 'o1').contributions.map((x) => x.raceId)).toEqual(['a']);
+    const o3 = slotOf(r, 'superacao', 'o3');
+    expect(o3.state).toBe('empty');
+    expect(o3.contributions.map((x) => x.raceId)).toEqual(['b', 'a']);
+    expect(o3.contributions[0].meta).toContain('objetivo 53:20');
+    expect(o3.contributionsSummary).toBe('2 de 3 objetivos batidos');
+  });
+
+  it('A Época: a prova do encaixe — concluída ou marcada', () => {
+    const raceEvents = [
+      prova({ id: 'e1', name: 'Meia de Lisboa', date: '2026-03-10', distance_km: 21.0975 }),
+      prova({ id: 'e2', name: 'Maratona do Porto', date: '2026-11-01', distance_km: 42.195, status: 'agendada' }),
+    ];
+    const runsEpoca = [competicao({ id: 're1', race_id: 'e1', date: '2026-03-10', distance_km: 21.0975, duration_seconds: 6822 })];
+    const m = med(compute({ runs: runsEpoca, raceEvents, today: '2026-09-15' }), 'epoca');
+    expect(m.slots[0].contributions).toEqual([expect.objectContaining({ kind: 'race', raceId: 'e1', runId: 're1', title: 'Meia de Lisboa' })]);
+    expect(m.slots[1].contributions).toEqual([expect.objectContaining({ kind: 'race', raceId: 'e2', runId: null })]);
+    expect(m.slots[3].contributions).toEqual([]);
+  });
+});
+
+describe('contributions — A Consistência', () => {
+  it('os treinos das semanas da sequência; a corrida do dia abre, o ginásio não', () => {
+    const items = [
+      item('2026-08-04', 'concluido'),
+      item('2026-08-11', 'concluido', { training_type: 'intervalos' }), item('2026-08-13', 'concluido', { kind: 'ginasio', categories: ['Core'], target_duration_min: 30 }),
+      item('2026-08-25', 'concluido'), item('2026-08-26', 'cancelado'),
+      item('2026-09-01', 'concluido'),
+      item('2026-09-15', 'pendente'),
+    ];
+    const runs = [run('2026-08-11', 8, { training_type: 'intervalos' })];
+    const r = compute({ runs, coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
+    const w4 = slotOf(r, 'consistencia', 'w4');
+    expect(w4.state).toBe('won');
+    expect(w4.contributionsPeriodLabel).toBe('3 ago a 6 set');
+    expect(w4.contributionsSummary).toBe('4 semanas · 5 treinos');
+    expect(w4.contributions.map((x) => [x.date, x.kind, x.runId])).toEqual([
+      ['2026-09-01', 'run', null],
+      ['2026-08-25', 'run', null],
+      ['2026-08-13', 'gym', null],
+      ['2026-08-11', 'run', 'run-2026-08-11-8'],
+      ['2026-08-04', 'run', null],
+    ]);
+    expect(w4.contributions[2]).toEqual(expect.objectContaining({ title: 'Core', meta: '30 min · concluído no plano' }));
+    expect(w4.contributions[3]).toEqual(expect.objectContaining({ title: 'Intervalos', meta: '8 km · 44:00' }));
+    // Por ganhar: a sequência em curso (as mesmas 4 semanas).
+    expect(slotOf(r, 'consistencia', 'w12').contributions).toHaveLength(5);
+  });
+
+  it('sem sequência: lista vazia', () => {
+    const s = slotOf(compute({ today: '2026-09-15' }), 'consistencia', 'w4');
+    expect(s.contributions).toEqual([]);
+    expect(s.contributionsPeriodLabel).toBeNull();
+  });
+});

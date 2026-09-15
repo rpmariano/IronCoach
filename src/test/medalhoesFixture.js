@@ -25,7 +25,16 @@ const medalhao = (key, name, slots, extra = {}) => ({
 export function makeMedalhoes() {
   const medalhoes = [
     medalhao('ano_km', 'O Ano em Km', [
-      slot('mes', 'Mês', 'won', { value: 182, valueLabel: '182', detail: 'ganha em agosto · para repetir: mais de 182 km num mês', wins: 2 }),
+      slot('mes', 'Mês', 'won', {
+        value: 182, valueLabel: '182', detail: 'ganha em agosto · para repetir: mais de 182 km num mês', wins: 2,
+        contributionsPeriodLabel: 'agosto de 2026',
+        contributionsSummary: '182 km · 3 corridas',
+        contributions: [
+          { kind: 'race', id: 'race-meia', raceId: 'race-meia', runId: 'run-meia', date: '2026-08-28', title: 'Meia do Porto', meta: '21,1 km · 1:52:10' },
+          { kind: 'run', id: 'run-longo', raceId: null, runId: 'run-longo', date: '2026-08-15', title: 'Longo', meta: '30 km · 2:45:00' },
+          { kind: 'gym', id: 'item-gym', raceId: null, runId: null, date: '2026-08-10', title: 'Core', meta: 'concluído no plano' },
+        ],
+      }),
       slot('trimestre', 'Trimestre', 'won', { enamel: 'cyan', value: 410, valueLabel: '410', detail: 'jun–ago' }),
       slot('semestre', 'Semestre', 'empty', { progress: 0.72, valueLabel: '655 km até agora', detail: 'fecha o semestre a correr e a medalha é tua' }),
       slot('ano', 'Ano', 'empty', { progress: null, detail: 'o primeiro ano fecha-se a 31 de dezembro' }),
