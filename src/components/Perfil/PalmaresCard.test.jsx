@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 
 vi.mock('../../utils/medalhoes', async () => {
@@ -88,5 +88,32 @@ describe('PalmaresCard — os medalhões', () => {
     fireEvent.click(screen.getByTestId('medalhao-contrib-race-race-meia'));
     expect(useAppStore.getState().editingRaceId).toBe('race-meia');
     expect(screen.queryByTestId('medalhao-sheet-ano_km')).not.toBeInTheDocument();
+  });
+
+  /* Achado na revisão pré-push de 2026-09-15: promover os registos a ecrã
+     inteiro (useEscapeClose) sem entrar na MESMA pilha da persiana por
+     baixo (closeStack, Sheet.jsx) trazia de volta o bug que essa pilha
+     tinha corrigido no mesmo dia — um Escape fechava as duas de uma vez,
+     desta vez por o ecrã de cima ter um listener próprio que a persiana
+     de baixo não via. */
+  describe('Escape com o ecrã dos registos por cima da persiana do medalhão', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('só o ecrã de cima fecha; a persiana do medalhão fica, e uma segunda Escape fecha essa', () => {
+      render(<PalmaresCard />);
+      fireEvent.click(screen.getByTestId('palmares-progresso'));
+      fireEvent.click(within(screen.getByTestId('medalhao-sheet-ano_km')).getByTestId('medalhao-slot-mes'));
+      expect(screen.getByTestId('medalhao-contrib-sheet-mes')).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      act(() => { vi.runAllTimers(); });
+      expect(screen.queryByTestId('medalhao-contrib-sheet-mes')).not.toBeInTheDocument();
+      expect(screen.getByTestId('medalhao-sheet-ano_km')).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      act(() => { vi.runAllTimers(); });
+      expect(screen.queryByTestId('medalhao-sheet-ano_km')).not.toBeInTheDocument();
+    });
   });
 });

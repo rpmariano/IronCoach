@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Award, ChevronLeft } from 'lucide-react';
+import { useEscapeClose } from '../shared/Sheet';
 import Warning, { WarningAction } from '../shared/Warning';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { useAppStore } from '../../store';
@@ -116,12 +117,13 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
     }
   };
 
-  // Esc fecha, como fechava a persiana (mesmo padrão do Mural ao lado).
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Esc fecha, como fechava a persiana — pela mesma pilha do Sheet.jsx
+  // (useEscapeClose), não um listener à parte: nada empilha por baixo
+  // deste ecrã hoje, mas se algum dia empilhar, o mecanismo já está certo
+  // (achado 2026-09-15 na revisão pré-push da promoção do ecrã irmão,
+  // MedalhaoContribSheet — um listener próprio não sabe o que está por
+  // baixo dele).
+  useEscapeClose(onClose);
 
   const content = (
     <div

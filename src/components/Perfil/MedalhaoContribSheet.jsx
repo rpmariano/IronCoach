@@ -1,15 +1,19 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { useEscapeClose } from '../shared/Sheet';
 import { DateTile } from '../Run/RaceListCard';
 
 /* O ecrã dos registos de um encaixe — o que está por trás de um número
    do Palmarés (pedido 2026-09-15, promovido de persiana a ecrã inteiro no
-   mesmo dia: empilhava por cima da persiana do medalhão, que foi a origem
-   do achado do Escape a fechar as duas de uma vez — closeStack em
-   Sheet.jsx corrige isso, mas só entra em jogo quando há pilha; sem pilha
-   aqui, não há nada a corrigir). Abre-se da legenda do medalhão herói e de
+   mesmo dia: era o par exato que tinha originado o achado do Escape a
+   fechar duas persianas de uma vez). Continua por cima da persiana do
+   medalhão — por isso usa `useEscapeClose` (Sheet.jsx), a MESMA pilha da
+   Sheet por baixo, em vez de um listener próprio: um listener à parte
+   reintroduzia o bug de outra forma, apanhado na revisão pré-push desta
+   promoção — a Sheet de baixo continuava a responder ao Escape por não
+   saber que havia algo por cima. Abre-se da legenda do medalhão herói e de
    cada cartão de encaixe na persiana do medalhão: "Mês · agosto de 2026", a
    soma numa linha, e a lista dos registos que a fazem.
 
@@ -56,13 +60,7 @@ function Row({ contribution: c, onOpen }) {
 
 export default function MedalhaoContribSheet({ medalhaoName, slot, onClose, onNavigate }) {
   const { setEditingRaceId, setEditingRunId, setOpenCreationMode } = useAppStore();
-
-  // Esc fecha, como fechava a persiana (mesmo padrão do Mural/Memórias).
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useEscapeClose(onClose);
 
   if (!slot) return null;
   const list = slot.contributions || [];
