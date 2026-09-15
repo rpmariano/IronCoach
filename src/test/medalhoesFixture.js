@@ -26,7 +26,7 @@ export function makeMedalhoes() {
   const medalhoes = [
     medalhao('ano_km', 'O Ano em Km', [
       slot('mes', 'Mês', 'won', {
-        value: 182, valueLabel: '182', detail: 'ganha em agosto · para repetir: mais de 182 km num mês', wins: 2,
+        enamel: 'cyan', value: 182, valueLabel: '182', detail: 'ganha em agosto · para repetir: mais de 182 km num mês', wins: 2,
         contributionsPeriodLabel: 'agosto de 2026',
         contributionsSummary: '182 km · 3 corridas',
         contributions: [
@@ -36,8 +36,8 @@ export function makeMedalhoes() {
         ],
       }),
       slot('trimestre', 'Trimestre', 'won', { enamel: 'cyan', value: 410, valueLabel: '410', detail: 'jun–ago' }),
-      slot('semestre', 'Semestre', 'empty', { progress: 0.72, valueLabel: '655 km até agora', detail: 'fecha o semestre a correr e a medalha é tua' }),
-      slot('ano', 'Ano', 'empty', { progress: null, detail: 'o primeiro ano fecha-se a 31 de dezembro' }),
+      slot('semestre', 'Semestre', 'empty', { enamel: 'cyan', progress: 0.72, valueLabel: '655 km até agora', detail: 'fecha o semestre a correr e a medalha é tua' }),
+      slot('ano', 'Ano', 'empty', { enamel: 'cyan', progress: null, detail: 'o primeiro ano fecha-se a 31 de dezembro' }),
     ], { footer: '1 240 km corridos', progressLine: 'Este mês levas 96 km — a 86 km de voltares a ganhar a medalha do mês.' }),
     medalhao('distancias', 'As Distâncias', [
       slot('5k', '5 km', 'won', { valueLabel: '5 km' }),
@@ -48,18 +48,19 @@ export function makeMedalhoes() {
     medalhao('recordes', 'Os Recordes', [
       slot('5k', '5 km', 'empty'), slot('10k', '10 km', 'empty'), slot('21k', '21,1 km', 'empty'), slot('42k', '42,2 km', 'empty'),
     ]),
-    medalhao('epoca', "A Época '26", [
-      slot('r1', 'Prova 1', 'won', { enamel: 'silver' }),
-      slot('r2', 'Prova 2', 'won', { enamel: 'silver' }),
-      slot('r3', 'Prova 3', 'empty'),
-      slot('r4', 'Prova 4', 'empty'),
-      slot('r5', 'Prova 5', 'empty'),
+    medalhao('terreno', 'O Terreno', [
+      slot('estrada1', '1.ª estrada', 'won', { enamel: 'silver' }),
+      slot('trail1', '1.ª trail', 'won', { enamel: 'silver' }),
+      slot('estrada5', '5 estrada', 'empty', { enamel: 'silver' }),
+      slot('trail5', '5 trail', 'empty', { enamel: 'silver' }),
     ]),
-    medalhao('consistencia', 'A Consistência', [
-      slot('4', '4 semanas', 'empty'), slot('12', '12 semanas', 'empty'), slot('26', '26 semanas', 'empty'), slot('52', '52 semanas', 'empty'),
+    medalhao('sequencia', 'A Sequência', [
+      slot('seq2', '2 provas', 'empty', { enamel: 'silver' }), slot('seq3', '3 provas', 'empty', { enamel: 'silver' }),
+      slot('seq5', '5 provas', 'empty', { enamel: 'silver' }), slot('seq8', '8 provas', 'empty', { enamel: 'silver' }),
     ]),
     medalhao('superacao', 'A Superação', [
-      slot('1', '1 objetivo', 'won', { valueLabel: '1' }), slot('3', '3 objetivos', 'empty'), slot('5', '5 objetivos', 'empty'), slot('10', '10 objetivos', 'empty'),
+      slot('o1', '1 objetivo', 'won', { enamel: 'ok', valueLabel: '1' }), slot('o3', '3 objetivos', 'empty', { enamel: 'ok' }),
+      slot('o5', '5 objetivos', 'empty', { enamel: 'ok' }), slot('o10', '10 objetivos', 'empty', { enamel: 'ok' }),
     ]),
   ];
   return { medalhoes, heroKey: 'ano_km', due: [] };

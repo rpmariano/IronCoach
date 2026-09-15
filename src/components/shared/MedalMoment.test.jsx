@@ -54,16 +54,18 @@ describe('MedalMoment', () => {
     expect(screen.getByTestId('medal-moment')).toHaveTextContent('182 km em agosto — o teu melhor mês de sempre.');
   });
 
-  it('A Época com 6 provas: a estrela da 6.ª voa para o lugar certo do anel', () => {
+  /* Hoje os seis medalhões têm 4 encaixes cada, mas o disco desenha até 8 em
+     anel (slotPosition) — se um medalhão voltar a crescer, a estrela tem de
+     pousar no lugar certo do anel, e não no canto das diagonais. */
+  it('um medalhão de 6 encaixes: a estrela do 6.º voa para o lugar certo do anel', () => {
     setReducedMotion(false);
-    const epoca = {
-      key: 'epoca', name: 'A Época', engraving: "A Época '26", year: 2026,
-      slots: Array.from({ length: 6 }, (_, i) => ({ key: `p${i + 1}`, label: `Prova ${i + 1}`, state: i < 5 ? 'won' : 'empty', enamel: 'silver', periodKey: `race-${i + 1}` })),
+    const seis = {
+      key: 'seis', name: 'Um medalhão largo', engraving: 'UM MEDALHÃO LARGO', year: 2026,
+      slots: Array.from({ length: 6 }, (_, i) => ({ key: `s${i + 1}`, label: `Encaixe ${i + 1}`, state: i < 5 ? 'won' : 'empty', enamel: 'silver', periodKey: '' })),
     };
-    // Como o medalAwards grava A Época: slot 'prova' e o id da prova no
-    // period_key — não a chave posicional p6 do encaixe.
-    const award = { id: 'a6', medalhao: 'epoca', slot: 'prova', period_key: 'race-6', race_id: 'race-6', title: 'Prova 6' };
-    const { baseElement } = render(<MedalMoment award={award} medalhao={epoca} onClose={() => {}} />);
+    // O encaixe encontra-se sempre pela chave que o medal_awards grava.
+    const award = { id: 'a6', medalhao: 'seis', slot: 's6', period_key: '', title: 'Encaixe 6' };
+    const { baseElement } = render(<MedalMoment award={award} medalhao={seis} onClose={() => {}} />);
     const disc = baseElement.querySelector('[data-testid="medalhao-lg"]');
     // Os 6 desenhados: 5 ganhos + o alvo, vazio à espera da estrela.
     expect(disc.querySelectorAll('.ic-medal-stars [data-medal-star]')).toHaveLength(5);

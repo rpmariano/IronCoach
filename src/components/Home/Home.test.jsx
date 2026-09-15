@@ -11,6 +11,10 @@ import Home from './Home';
 vi.mock('../../utils/medalAwards', () => ({
   syncMedalAwards: vi.fn().mockResolvedValue({ pending: [], available: false }),
   markMedalAwardsSeen: vi.fn().mockResolvedValue(undefined),
+  // useMedalMoment lê isto ao nível do módulo (a ordem de significância das
+  // medalhas) — sem o mock exportar o nome, o import fica undefined e a
+  // app rebenta ao montar, muito antes de qualquer teste correr.
+  MEDALHAO_SIGNIFICANCE: ['recordes', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'],
 }));
 
 /* O Início chama pela Carol quando o plano precisa de um ajuste
@@ -148,5 +152,48 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
 
     fireEvent.click(screen.getByTestId('carol-alert-talk-assuntos'));
     expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'proactive_intervention', reason: 'carga a subir' });
+  });
+});
+
+/* A ordem dos cartões (2026-09-15): de perto para longe — quem me fala, o
+   que faço hoje, como estou hoje, para onde vou. "Como estou" subiu para
+   terceiro e a prova passou a fechar o ecrã. */
+describe('Home — a ordem dos cartões', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseState,
+      setCoachIntent: vi.fn(),
+      setActiveTab: vi.fn(),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+  });
+
+  it('Carol → o que faço hoje → como estou → para onde vou', () => {
+    renderHome();
+    const rotulos = ['O que faço hoje', 'Como estou', 'Para onde vou'].map((t) => screen.getByText(t));
+    rotulos.slice(1).forEach((rotulo, i) => {
+      // Node.DOCUMENT_POSITION_FOLLOWING: o rótulo seguinte vem depois.
+      expect(rotulos[i].compareDocumentPosition(rotulo) & 4).toBeTruthy();
+    });
+    const carol = screen.getByTestId('carol-card');
+    expect(carol.compareDocumentPosition(rotulos[0]) & 4).toBeTruthy();
+  });
+
+  it('as refeições sugeridas de hoje vivem no "Como estou", não no cartão do plano', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 6) }],
+      coachPlanItems: [{
+        id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente',
+        meal_macros: { kcal: 2300, items: [{ tipo: 'almoco', texto: 'Atum com grão-de-bico' }] },
+      }],
+    });
+    renderHome();
+    const comoEstou = screen.getByTestId('status-card');
+    expect(comoEstou).toContainElement(screen.getByTestId('status-card-meals'));
+    expect(screen.getByTestId('day-plan-card')).not.toHaveTextContent('Refeições sugeridas');
+
+    fireEvent.click(screen.getByTestId('status-card-meals'));
+    expect(screen.getByTestId('meal-sheet')).toHaveTextContent('Atum com grão-de-bico');
   });
 });

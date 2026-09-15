@@ -28,20 +28,38 @@ describe('Medalhao', () => {
     expect(el).toHaveTextContent('2026');
   });
 
+  /* "Uma cor, um significado": A Superação passou a verde (o tom do
+     `objetivo_batido`), e um esmalte sem joia não pode cair em silêncio no
+     âmbar — era assim que o verde saía cor de laranja. */
+  it('esmalte verde: joia própria e a tinta do número em --ok-ink; um esmalte desconhecido cai na prata', () => {
+    const { container } = render(<Medalhao size="lg" engraving="A Superação" slots={[
+      { key: 'o1', label: '1 objetivo', state: 'won', enamel: 'ok', valueLabel: '1' },
+      { key: 'o3', label: '3 objetivos', state: 'won', enamel: 'bordo', valueLabel: '3' },
+      { key: 'o5', label: '5 objetivos', state: 'empty', enamel: 'ok' },
+      { key: 'o10', label: '10 objetivos', state: 'empty', enamel: 'ok' },
+    ]} />);
+    const verde = container.querySelector('[data-medal-star="ok"]');
+    expect(verde.querySelector('use')).toHaveAttribute('href', '#ic-medal-ok');
+    expect(verde.querySelector('text')).toHaveTextContent('1');
+    expect(verde.querySelector('text')).toHaveAttribute('fill', '#052e22');
+    expect(container.querySelector('[data-medal-star="bordo"]')).toBeNull();
+    expect(container.querySelectorAll('[data-medal-star="silver"]')).toHaveLength(1);
+  });
+
   it('pequeno: sem fita nem número, prata sem esmalte, e com 5 encaixes desenha os 5 (anel)', () => {
-    const epoca = [
+    const prata = [
       { key: 'r1', state: 'won', enamel: 'silver' },
       { key: 'r2', state: 'won', enamel: 'silver' },
       { key: 'r3', state: 'empty' },
       { key: 'r4', state: 'empty' },
       { key: 'r5', state: 'empty' },
     ];
-    const { container } = render(<Medalhao size="sm" engraving="A Época" slots={epoca} />);
+    const { container } = render(<Medalhao size="sm" engraving="O Terreno" slots={prata} />);
     expect(container.querySelector('.ic-medal-ribbon')).not.toBeInTheDocument();
     expect(container.querySelectorAll('[data-medal-star="silver"]')).toHaveLength(2);
     expect(container.querySelectorAll('[data-medal-socket]')).toHaveLength(3);
     expect(container.querySelector('text')).toBeNull();
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'A Época: 2 de 5 medalhas');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'O Terreno: 2 de 5 medalhas');
   });
 
   it('um aria-label dado substitui o calculado', () => {
@@ -49,11 +67,11 @@ describe('Medalhao', () => {
     expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'Etiqueta própria');
   });
 
-  it('mais de 8 provas: desenha 8, o aria-label conta todas; e em anel sai o rodapé', () => {
+  it('mais de 8 encaixes: desenha 8, o aria-label conta todos; e em anel sai o rodapé', () => {
     const many = Array.from({ length: 10 }, (_, i) => ({ key: `r${i}`, state: i < 3 ? 'won' : 'empty', enamel: 'silver' }));
-    const { container } = render(<Medalhao size="lg" engraving="A Época" footer="3 provas" slots={many} />);
+    const { container } = render(<Medalhao size="lg" engraving="O Terreno" footer="3 provas" slots={many} />);
     expect(container.querySelectorAll('[data-medal-star]').length + container.querySelectorAll('[data-medal-socket]').length).toBe(8);
-    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'A Época: 3 de 10 medalhas');
+    expect(screen.getByRole('img')).toHaveAttribute('aria-label', 'O Terreno: 3 de 10 medalhas');
     expect(container.querySelector('.ic-medal-engrave--footer')).toBeNull();
   });
 
@@ -64,14 +82,14 @@ describe('Medalhao', () => {
 
   it('MedalhaoDefs tem as formas com ids prefixados', () => {
     const { container } = render(<MedalhaoDefs />);
-    for (const id of ['star-ag', 'star-socket', 'amber', 'cyan', 'star-drop', 'inset-deep', 'rib-a', 'rib-b']) {
+    for (const id of ['star-ag', 'star-socket', 'amber', 'cyan', 'ok', 'enam-amber', 'enam-cyan', 'enam-ok', 'dt-ok', 'star-drop', 'inset-deep', 'rib-a', 'rib-b']) {
       expect(container.querySelector(`#ic-medal-${id}`)).not.toBeNull();
     }
   });
 });
 
-/* A Época com 5–8 provas: os encaixes em anel à volta da gravação. Nenhuma
-   estrela pode tocar na vizinha, e a primeira fica em cima. */
+/* De 5 a 8 encaixes: passam a um anel à volta da gravação. Nenhuma estrela
+   pode tocar na vizinha, e a primeira fica em cima. */
 describe('slotPosition — o anel', () => {
   const CENTER = { lg: [150, 150, 92], sm: [48, 48, 27] };
 

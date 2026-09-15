@@ -16,8 +16,10 @@
    O cliente do Supabase importa-se tarde (`await import`), como convém a
    algo que corre depois do `loadInitialData` e não no primeiro ecrã. */
 
-/** Quando há várias por ver, mostra-se a mais significativa primeiro. */
-export const MEDALHAO_SIGNIFICANCE = ['recordes', 'distancias', 'superacao', 'ano_km', 'consistencia', 'epoca'];
+/** Quando há várias por ver, mostra-se a mais significativa primeiro: as das
+ *  provas antes das do volume — um recorde numa prova pesa mais do que o mês
+ *  em quilómetros, que se ganha só por acumular. */
+export const MEDALHAO_SIGNIFICANCE = ['recordes', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'];
 
 const COLUMNS = 'id, medalhao, slot, period_key, value, race_id, awarded_at, seen_at';
 const HISTORICO_DIAS = 7;

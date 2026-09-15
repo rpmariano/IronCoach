@@ -62,6 +62,9 @@ const loadMealRegistration = retryOnce(() => import('./components/Nutrition/Meal
 const loadBodyRegistration = retryOnce(() => import('./components/Body/BodyRegistration'));
 const loadRunRegistration = retryOnce(() => import('./components/Run/RunRegistration'));
 const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistration'));
+// "O plano" (dia a dia do plano acordado) não é um registo, mas abre como
+// eles: ecrã de topo, a partir do rodapé de "O que faço hoje".
+const loadPlanoScreen = retryOnce(() => import('./components/Home/PlanoScreen'));
 
 const Dashboard = lazy(loadDashboard);
 const Calendar = lazy(loadCalendar);
@@ -75,6 +78,7 @@ const MealRegistration = lazy(loadMealRegistration);
 const BodyRegistration = lazy(loadBodyRegistration);
 const RunRegistration = lazy(loadRunRegistration);
 const GymRegistration = lazy(loadGymRegistration);
+const PlanoScreen = lazy(loadPlanoScreen);
 
 // Bancadas de teste do design system: só se chegam por ?tab=design-system /
 // ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém.
@@ -636,6 +640,11 @@ export default function App() {
             />
           )}
           {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
+          {/* O plano dia a dia entra pelo mesmo `openCreationMode` que os
+              registos — é o que já faz dele um ecrã de topo (isCreatingOrEditing,
+              acima) e dá ao "voltar" do telemóvel a saída certa, sem um
+              segundo mecanismo em paralelo. */}
+          {openCreationMode === 'plano' && <PlanoScreen onClose={() => setOpenCreationMode(null)} />}
         </Suspense>
       </Layout>
     </ToastProvider>

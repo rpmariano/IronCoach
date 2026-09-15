@@ -14,16 +14,14 @@ const dueOf = (result, medalhao, slot) => result.due.filter((d) => d.medalhao ==
 
 const run = (date, km, over = {}) => ({ id: `run-${date}-${km}`, date, distance_km: km, duration_seconds: Math.round(km * 330), kind: 'treino', ...over });
 
-const compute = (over) => computeMedalhoes({
-  runs: [], raceEvents: [], coachPlans: [], coachPlanItems: [], profile: PROFILE, ...over,
-});
+const compute = (over) => computeMedalhoes({ runs: [], raceEvents: [], profile: PROFILE, ...over });
 
 describe('computeMedalhoes — forma', () => {
   const r = compute({ today: '2026-09-15' });
 
   it('devolve os seis medalhões pela ordem fixa, sem O Trail', () => {
     expect(r.medalhoes.map((m) => m.key)).toEqual(MEDALHAO_KEYS);
-    expect(MEDALHAO_KEYS).toEqual(['ano_km', 'distancias', 'recordes', 'epoca', 'consistencia', 'superacao']);
+    expect(MEDALHAO_KEYS).toEqual(['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao']);
   });
 
   it('sem dados: tudo por ganhar, nada devido, herói O Ano em Km', () => {
@@ -31,9 +29,23 @@ describe('computeMedalhoes — forma', () => {
     expect(r.due).toEqual([]);
     expect(r.heroKey).toBe('ano_km');
     expect(med(r, 'ano_km').slots.map((s) => s.key)).toEqual(['mes', 'trimestre', 'semestre', 'ano']);
-    expect(med(r, 'consistencia').slots.map((s) => s.key)).toEqual(['w4', 'w12', 'w26', 'w52']);
+    expect(med(r, 'terreno').slots.map((s) => s.key)).toEqual(['estrada1', 'trail1', 'estrada5', 'trail5']);
+    expect(med(r, 'sequencia').slots.map((s) => s.key)).toEqual(['seq2', 'seq3', 'seq5', 'seq8']);
     expect(med(r, 'superacao').slots.map((s) => s.key)).toEqual(['o1', 'o3', 'o5', 'o10']);
     expect(med(r, 'distancias').summary).toBe('0 de 4 · falta 5, 10, 21,1 e 42,2');
+  });
+
+  /* "Uma cor, um significado": ciano é a corrida (volume e tempo), âmbar é a
+     prova em si, verde é o objetivo batido — o mesmo tom da conquista
+     `objetivo_batido`. Quem só conta ocorrências fica em prata. */
+  it('as cores de cada medalhão', () => {
+    const enamelOf = (key) => [...new Set(med(r, key).slots.map((s) => s.enamel))];
+    expect(enamelOf('ano_km')).toEqual(['cyan']);
+    expect(enamelOf('distancias')).toEqual(['amber']);
+    expect(enamelOf('recordes')).toEqual(['cyan']);
+    expect(enamelOf('terreno')).toEqual(['silver']);
+    expect(enamelOf('sequencia')).toEqual(['silver']);
+    expect(enamelOf('superacao')).toEqual(['ok']);
   });
 });
 
@@ -260,6 +272,7 @@ describe('A Superação', () => {
     ];
     const r = compute({ runs, raceEvents: [race, semObjetivo], today: '2026-09-15' });
     expect(slotOf(r, 'superacao', 'o1').state).toBe('won');
+    expect(slotOf(r, 'superacao', 'o1').enamel).toBe('ok');
     expect(slotOf(r, 'superacao', 'o1').raceId).toBe('obj');
     const o3 = slotOf(r, 'superacao', 'o3');
     expect(o3.state).toBe('empty');
@@ -270,98 +283,186 @@ describe('A Superação', () => {
   });
 });
 
-describe('A Época', () => {
-  const concluida = prova({ id: 'e1', name: 'Meia de Lisboa', date: '2026-03-10', distance_km: 21.0975 });
-  const runsEpoca = [...TREINOS, competicao({ id: 're1', race_id: 'e1', date: '2026-03-10', distance_km: 21.0975, duration_seconds: 6822 })];
+/* O Terreno banda por `race_type` — estrada ou trail, os dois únicos valores
+   de RACE_TERRAIN_TYPES (utils/run.js) —, um eixo que nada tem a ver com a
+   distância d'As Distâncias. Regra: `race_type === 'trail'` é trail, tudo o
+   resto (incluindo uma prova antiga sem terreno) é estrada. */
 
-  it('encaixes = provas marcadas no ano, mínimo 4', () => {
-    const raceEvents = [
-      concluida,
-      prova({ id: 'e2', name: 'Maratona do Porto', date: '2026-11-01', distance_km: 42.195, status: 'agendada' }),
-      prova({ id: 'velha', name: 'São Silvestre', date: '2025-12-31', distance_km: 10 }),
-    ];
-    const r = compute({ runs: runsEpoca, raceEvents, today: '2026-09-15' });
-    const m = med(r, 'epoca');
-    expect(m.totalSlots).toBe(4);
-    expect(m.wonCount).toBe(1);
-    expect(m.year).toBe('2026');
-    expect(m.slots[0]).toEqual(expect.objectContaining({ key: 'p1', state: 'won', enamel: 'silver', label: 'Meia de Lisboa', periodKey: 'e1' }));
-    expect(m.slots[1]).toEqual(expect.objectContaining({ key: 'p2', state: 'empty', label: 'Maratona do Porto', periodKey: 'e2' }));
-    expect(m.slots[3]).toEqual(expect.objectContaining({ key: 'p4', state: 'empty', periodKey: '' }));
-    expect(dueOf(r, 'epoca', 'prova')).toEqual([expect.objectContaining({ periodKey: 'e1', raceId: 'e1' })]);
+describe('O Terreno', () => {
+  const noTerreno = (id, date, race_type) => ({
+    race: prova({ id, name: `Prova ${id}`, date, distance_km: 10, race_type }),
+    run: competicao({ id: `run-${id}`, race_id: id, date, distance_km: 10, duration_seconds: 3300 }),
+  });
+  const cinco = ['a', 'b', 'c', 'd', 'e'].map((id, i) => noTerreno(id, `2026-0${i + 1}-10`, 'estrada'));
+  const trail = noTerreno('t1', '2026-06-10', 'trail');
+  const todas = [...cinco, trail];
+  const comTodas = () => compute({
+    runs: [...TREINOS, ...todas.map((e) => e.run)],
+    raceEvents: todas.map((e) => e.race),
+    today: '2026-09-15',
+  });
 
-    const seis = [concluida, ...[2, 3, 4, 5, 6].map((n) => prova({ id: `e${n}`, name: `Prova ${n}`, date: `2026-1${n % 3}-0${n}`, distance_km: 10, status: 'agendada' }))];
-    expect(med(compute({ runs: runsEpoca, raceEvents: seis, today: '2026-09-15' }), 'epoca').totalSlots).toBe(6);
+  it('a primeira de cada terreno, e a quinta como marco de veterano', () => {
+    const r = comTodas();
+    const e1 = slotOf(r, 'terreno', 'estrada1');
+    expect(e1.state).toBe('won');
+    expect(e1.enamel).toBe('silver');
+    expect(e1.valueLabel).toBeNull(); // sem esmalte não se grava número
+    expect(e1.awardedOn).toBe('2026-01-10');
+    expect(e1.raceId).toBe('a');
+    expect(e1.detail).toBe('1.ª prova em estrada · ganha a 10 jan · Prova a');
+    expect(slotOf(r, 'terreno', 'estrada5').awardedOn).toBe('2026-05-10');
+    expect(slotOf(r, 'terreno', 'trail1').awardedOn).toBe('2026-06-10');
+    expect(med(r, 'terreno').footer).toBe('5 EM ESTRADA · 1 EM TRAIL');
+
+    const t5 = slotOf(r, 'terreno', 'trail5');
+    expect(t5.state).toBe('empty');
+    expect(t5.progress).toBeCloseTo(0.2);
+    expect(t5.remainingLabel).toBe('a 4 provas em trail de ganhares a medalha das 5 em trail');
+  });
+
+  it('uma entrada devida por encaixe, com a prova que o encheu', () => {
+    const r = comTodas();
+    expect(dueOf(r, 'terreno', 'estrada1')).toEqual([expect.objectContaining({
+      periodKey: '', raceId: 'a', awardedOn: '2026-01-10', value: 1, valueLabel: null,
+      title: 'Primeira em estrada', line: 'Prova a — a tua primeira prova em estrada.',
+    })]);
+    expect(dueOf(r, 'terreno', 'estrada5')[0]).toEqual(expect.objectContaining({
+      raceId: 'e', awardedOn: '2026-05-10', value: 5, title: '5 provas em estrada',
+      line: 'Prova e — a tua 5.ª prova em estrada.',
+    }));
+    expect(dueOf(r, 'terreno', 'trail5')).toEqual([]);
+    const chaves = r.due.filter((d) => d.medalhao === 'terreno').map((d) => d.slot);
+    expect(chaves).toEqual(['estrada1', 'trail1', 'estrada5']);
+    expect(new Set(chaves).size).toBe(chaves.length);
+  });
+
+  it('uma prova sem terreno conta como estrada; uma sem corrida ligada não conta', () => {
+    const semTerreno = noTerreno('s', '2026-02-10', undefined);
+    const semCorrida = prova({ id: 'x', name: 'Sem registo', date: '2026-01-05', distance_km: 10, race_type: 'trail' });
+    const r = compute({
+      runs: [...TREINOS, semTerreno.run],
+      raceEvents: [semTerreno.race, semCorrida],
+      today: '2026-09-15',
+    });
+    expect(slotOf(r, 'terreno', 'estrada1').raceId).toBe('s');
+    expect(slotOf(r, 'terreno', 'trail1').state).toBe('empty');
+    expect(slotOf(r, 'terreno', 'trail1').detail).toBe('0 de 1 prova em trail');
+    expect(med(r, 'terreno').summary).toBe('1 de 4 · falta 1.ª trail, 5 estrada e 5 trail');
+  });
+
+  it('os registos por trás do encaixe: as provas que contam para ele', () => {
+    const r = comTodas();
+    const e5 = slotOf(r, 'terreno', 'estrada5');
+    expect(e5.contributions.map((c) => [c.kind, c.raceId, !!c.first])).toEqual([
+      ['race', 'e', false], ['race', 'd', false], ['race', 'c', false], ['race', 'b', false], ['race', 'a', true],
+    ]);
+    expect(e5.contributionsSummary).toBe('5 de 5 provas em estrada');
+    expect(slotOf(r, 'terreno', 'trail5').contributions.map((c) => c.raceId)).toEqual(['t1']);
+    expect(slotOf(r, 'terreno', 'trail5').contributionsSummary).toBe('1 de 5 provas em trail');
   });
 });
 
-// ── A Consistência ───────────────────────────────────────────────────────
+// ── A Sequência ──────────────────────────────────────────────────────────
 
-const PLAN = { id: 'p1', status: 'aceite', period_start: '2026-08-01', period_end: '2026-10-31' };
-let seq = 0;
-const item = (planned_date, status, over = {}) => ({
-  id: `i${seq += 1}`, plan_id: 'p1', kind: 'corrida', planned_date, status, created_at: '2026-08-01T10:00:00Z', ...over,
-});
+/* A conquista `sequencia` de achievements.js conta a sequência que chega a
+   HOJE; o medalhão conta a MAIOR de sempre (um máximo corrente, como O Ano
+   em Km faz com o melhor período). É essa diferença que estes testes
+   guardam: quebrar a sequência não tira medalhas já ganhas. */
 
-describe('A Consistência', () => {
-  it('semana sem plano não quebra; 4 semanas cumpridas ganham no fecho da 4.ª', () => {
-    const items = [
-      item('2026-08-04', 'concluido'),
-      item('2026-08-11', 'concluido'), item('2026-08-13', 'concluido', { kind: 'ginasio' }),
-      // semana de 17 ago: sem itens
-      item('2026-08-25', 'concluido'), item('2026-08-26', 'cancelado'),
-      item('2026-09-01', 'concluido'),
-      item('2026-09-15', 'pendente'), // semana ainda aberta: não conta
-    ];
-    const r = compute({ coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
-    const w4 = slotOf(r, 'consistencia', 'w4');
-    expect(w4.state).toBe('won');
-    expect(w4.periodKey).toBe('2026-08-31');
-    expect(w4.awardedOn).toBe('2026-09-07');
-    expect(slotOf(r, 'consistencia', 'w12').progress).toBeCloseTo(4 / 12);
-    expect(slotOf(r, 'consistencia', 'w12').remainingLabel).toBe('a 8 semanas de ganhares a medalha das 12 semanas');
-    expect(dueOf(r, 'consistencia', 'w4')[0].title).toBe('4 semanas de plano cumprido');
+describe('A Sequência', () => {
+  const elo = (id, date) => ({
+    race: prova({ id, name: `Prova ${id}`, date, distance_km: 10 }),
+    run: competicao({ id: `run-${id}`, race_id: id, date, distance_km: 10, duration_seconds: 3300 }),
+  });
+  const correr = (elos, extraRaces = []) => compute({
+    runs: [...TREINOS, ...elos.map((e) => e.run)],
+    raceEvents: [...elos.map((e) => e.race), ...extraRaces],
+    today: '2026-09-15',
   });
 
-  it('item pendente depois do fecho quebra', () => {
-    const items = [
-      item('2026-08-04', 'concluido'),
-      item('2026-08-11', 'concluido'),
-      item('2026-08-18', 'pendente'),
-      item('2026-08-25', 'concluido'),
-      item('2026-09-01', 'concluido'),
-    ];
-    const r = compute({ coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
-    const w4 = slotOf(r, 'consistencia', 'w4');
-    expect(w4.state).toBe('empty');
-    expect(w4.progress).toBeCloseTo(0.5);
+  it('guarda a maior de sempre: quebrar a sequência não tira o que já está ganho', () => {
+    const elos = [elo('a', '2026-01-10'), elo('b', '2026-02-10'), elo('c', '2026-03-10'), elo('d', '2026-05-10')];
+    const porRegistar = prova({ id: 'x', name: 'Falhada', date: '2026-04-10', status: 'agendada', distance_km: 10 });
+    const r = correr(elos, [porRegistar]);
+
+    const seq2 = slotOf(r, 'sequencia', 'seq2');
+    expect(seq2.state).toBe('won');
+    expect(seq2.enamel).toBe('silver');
+    expect(seq2.valueLabel).toBeNull();
+    expect(seq2.awardedOn).toBe('2026-02-10');
+    expect(seq2.detail).toBe('ganha a 10 fev · Prova b · melhor sequência: 3 provas');
+    expect(slotOf(r, 'sequencia', 'seq3').awardedOn).toBe('2026-03-10');
+    expect(med(r, 'sequencia').footer).toBe('3 PROVAS SEGUIDAS');
+
+    // A sequência que chega a hoje é de 1 (a de abril ficou por registar) —
+    // e mesmo assim as medalhas das 2 e das 3 ficam onde estão.
+    const seq5 = slotOf(r, 'sequencia', 'seq5');
+    expect(seq5.state).toBe('empty');
+    expect(seq5.detail).toBe('1 de 5 provas seguidas');
+    expect(seq5.progress).toBeCloseTo(0.2);
+    expect(seq5.remainingLabel).toBe('a 4 provas de ganhares a medalha das 5 provas seguidas');
+    expect(med(r, 'sequencia').summary).toBe('2 de 4 · falta 5 e 8 provas seguidas');
+    expect(dueOf(r, 'sequencia', 'seq2')).toEqual([expect.objectContaining({
+      periodKey: '', value: 2, valueLabel: null, raceId: 'b', awardedOn: '2026-02-10',
+      title: '2 provas seguidas',
+      line: '2 provas seguidas com a corrida registada — a última foi Prova b, a 10 fev.',
+    })]);
   });
 
-  it('plano reescrito não conta os dias pendentes antes da reescrita', () => {
-    const items = [
-      item('2026-08-04', 'concluido'),
-      item('2026-08-11', 'pendente'),
-      item('2026-08-18', 'concluido', { created_at: '2026-08-17T09:00:00' }),
-      item('2026-08-25', 'concluido', { created_at: '2026-08-17T09:00:00' }),
-      item('2026-09-01', 'concluido', { created_at: '2026-08-17T09:00:00' }),
-    ];
-    const r = compute({ coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
-    expect(slotOf(r, 'consistencia', 'w4').state).toBe('won');
+  it('re-cunhagem: cada recorde novo enche o encaixe seguinte, nunca o mesmo duas vezes', () => {
+    // 3 seguidas, quebra, e depois 5 seguidas: as medalhas das 2 e das 3 não
+    // se repetem quando a sequência nova volta a passar por lá.
+    const primeiras = [elo('a', '2026-01-10'), elo('b', '2026-01-20'), elo('c', '2026-01-30')];
+    const falhada = prova({ id: 'x', name: 'Falhada', date: '2026-02-10', status: 'agendada', distance_km: 10 });
+    const segundas = [1, 2, 3, 4, 5].map((n) => elo(`s${n}`, `2026-0${n + 2}-15`));
+    const r = correr([...primeiras, ...segundas], [falhada]);
+
+    expect(dueOf(r, 'sequencia', 'seq2')).toHaveLength(1);
+    expect(dueOf(r, 'sequencia', 'seq3')).toHaveLength(1);
+    expect(dueOf(r, 'sequencia', 'seq3')[0].awardedOn).toBe('2026-01-30');
+    // A 5.ª da sequência nova é a que confirma o recorde de 5.
+    expect(dueOf(r, 'sequencia', 'seq5')).toEqual([expect.objectContaining({ raceId: 's5', awardedOn: '2026-07-15' })]);
+    expect(dueOf(r, 'sequencia', 'seq8')).toEqual([]);
+    expect(slotOf(r, 'sequencia', 'seq8').progress).toBeCloseTo(5 / 8);
+    expect(med(r, 'sequencia').footer).toBe('5 PROVAS SEGUIDAS');
+    const chaves = r.due.filter((d) => d.medalhao === 'sequencia').map((d) => d.slot);
+    expect(new Set(chaves).size).toBe(chaves.length);
   });
 
-  it('planos não aceites não contam', () => {
-    const items = ['2026-08-04', '2026-08-11', '2026-08-18', '2026-08-25'].map((d) => item(d, 'concluido'));
-    const r = compute({ coachPlans: [{ ...PLAN, status: 'proposto' }], coachPlanItems: items, today: '2026-09-15' });
-    expect(slotOf(r, 'consistencia', 'w4').state).toBe('empty');
+  it('uma prova futura não entra nem quebra; uma concluída sem corrida ligada quebra', () => {
+    const elos = [elo('a', '2026-01-10'), elo('b', '2026-02-10')];
+    const futura = prova({ id: 'f', name: 'Corrida de Outono', date: '2026-10-04', status: 'agendada', distance_km: 10 });
+    expect(slotOf(correr(elos, [futura]), 'sequencia', 'seq2').state).toBe('won');
+
+    // "Concluída" na agenda mas sem corrida gravada: não há números — quebra.
+    const semCorrida = prova({ id: 'n', name: 'Sem registo', date: '2026-01-20', distance_km: 10 });
+    const r = correr(elos, [semCorrida]);
+    expect(slotOf(r, 'sequencia', 'seq2').state).toBe('empty');
+    expect(slotOf(r, 'sequencia', 'seq2').progress).toBeCloseTo(0.5);
   });
 
-  it('um plano substituído (recusado depois de cumprido) continua a contar', () => {
-    const items = ['2026-08-04', '2026-08-11', '2026-08-18', '2026-08-25'].map((d) => item(d, 'concluido'));
-    const substituido = compute({ coachPlans: [{ ...PLAN, status: 'recusado' }], coachPlanItems: items, today: '2026-09-15' });
-    expect(slotOf(substituido, 'consistencia', 'w4').state).toBe('won');
-    // Uma proposta recusada de raiz nunca tem sessões concluídas.
-    const recusada = compute({ coachPlans: [{ ...PLAN, status: 'recusado' }], coachPlanItems: items.map((i) => ({ ...i, status: 'pendente' })), today: '2026-09-15' });
-    expect(slotOf(recusada, 'consistencia', 'w4').state).toBe('empty');
+  it('os registos por trás do encaixe: as provas da sequência que o encheu', () => {
+    const r = correr([elo('a', '2026-01-10'), elo('b', '2026-02-10'), elo('c', '2026-03-10')]);
+    const seq2 = slotOf(r, 'sequencia', 'seq2');
+    expect(seq2.contributions.map((c) => [c.kind, c.raceId, c.runId])).toEqual([
+      ['race', 'b', 'run-b'],
+      ['race', 'a', 'run-a'],
+    ]);
+    expect(seq2.contributionsPeriodLabel).toBe('10 jan a 10 fev');
+    expect(seq2.contributionsSummary).toBe('2 provas seguidas');
+    // Por ganhar: a sequência em curso.
+    const seq5 = slotOf(r, 'sequencia', 'seq5');
+    expect(seq5.contributions.map((c) => c.raceId)).toEqual(['c', 'b', 'a']);
+    expect(seq5.contributionsSummary).toBe('3 provas seguidas');
+  });
+
+  it('sem provas: lista vazia e o convite para começar', () => {
+    const s = slotOf(compute({ today: '2026-09-15' }), 'sequencia', 'seq2');
+    expect(s.contributions).toEqual([]);
+    expect(s.contributionsPeriodLabel).toBeNull();
+    expect(s.detail).toBe('regista a corrida de cada prova que corres e a sequência começa');
+    expect(s.progress).toBe(0);
   });
 });
 
@@ -379,25 +480,27 @@ describe('progressLine', () => {
 // ── Herói e devidos ──────────────────────────────────────────────────────
 
 describe('heroKey', () => {
+  const prova10 = (id, date) => ({
+    race: prova({ id, name: `Prova ${id}`, date, distance_km: 10 }),
+    run: competicao({ id: `run-${id}`, race_id: id, date, distance_km: 10, duration_seconds: 3300 }),
+  });
+
   it('o mais perto da próxima medalha ganha', () => {
-    const items = ['2026-08-18', '2026-08-25', '2026-09-01'].map((d) => item(d, 'concluido'));
-    const r = compute({ coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
-    expect(slotOf(r, 'consistencia', 'w4').progress).toBeCloseTo(0.75);
-    expect(r.heroKey).toBe('consistencia');
+    // Uma prova registada: A Sequência fica a meio caminho das 2 seguidas
+    // (0,5), e é o começo do ano — O Ano em Km ainda mal andou.
+    const a = prova10('a', '2026-01-03');
+    const r = compute({ runs: [a.run], raceEvents: [a.race], today: '2026-01-05' });
+    expect(slotOf(r, 'sequencia', 'seq2').progress).toBe(0.5);
+    expect(r.heroKey).toBe('sequencia');
   });
 
   it('em empate, O Ano em Km', () => {
     // 14 fev: meio fevereiro (14/28) e meio trimestre (45/90) — 0,5 exato.
-    // A Consistência com 2 semanas de 4 — também 0,5.
-    const items = [item('2026-01-06', 'concluido', { created_at: '2026-01-01T10:00:00Z' }), item('2026-01-13', 'concluido', { created_at: '2026-01-01T10:00:00Z' })];
-    const r = compute({
-      runs: [run('2026-02-01', 5)],
-      coachPlans: [{ ...PLAN, period_start: '2026-01-01' }],
-      coachPlanItems: items,
-      today: '2026-02-14',
-    });
+    // A Sequência com 1 prova de 2 — também 0,5.
+    const a = prova10('a', '2026-02-07');
+    const r = compute({ runs: [run('2026-02-01', 5), a.run], raceEvents: [a.race], today: '2026-02-14' });
     expect(slotOf(r, 'ano_km', 'mes').progress).toBe(0.5);
-    expect(slotOf(r, 'consistencia', 'w4').progress).toBe(0.5);
+    expect(slotOf(r, 'sequencia', 'seq2').progress).toBe(0.5);
     expect(r.heroKey).toBe('ano_km');
   });
 });
@@ -505,52 +608,5 @@ describe('contributions — provas', () => {
     expect(o3.contributions.map((x) => x.raceId)).toEqual(['b', 'a']);
     expect(o3.contributions[0].meta).toContain('objetivo 53:20');
     expect(o3.contributionsSummary).toBe('2 de 3 objetivos batidos');
-  });
-
-  it('A Época: a prova do encaixe — concluída ou marcada', () => {
-    const raceEvents = [
-      prova({ id: 'e1', name: 'Meia de Lisboa', date: '2026-03-10', distance_km: 21.0975 }),
-      prova({ id: 'e2', name: 'Maratona do Porto', date: '2026-11-01', distance_km: 42.195, status: 'agendada' }),
-    ];
-    const runsEpoca = [competicao({ id: 're1', race_id: 'e1', date: '2026-03-10', distance_km: 21.0975, duration_seconds: 6822 })];
-    const m = med(compute({ runs: runsEpoca, raceEvents, today: '2026-09-15' }), 'epoca');
-    expect(m.slots[0].contributions).toEqual([expect.objectContaining({ kind: 'race', raceId: 'e1', runId: 're1', title: 'Meia de Lisboa' })]);
-    expect(m.slots[1].contributions).toEqual([expect.objectContaining({ kind: 'race', raceId: 'e2', runId: null })]);
-    expect(m.slots[3].contributions).toEqual([]);
-  });
-});
-
-describe('contributions — A Consistência', () => {
-  it('os treinos das semanas da sequência; a corrida do dia abre, o ginásio não', () => {
-    const items = [
-      item('2026-08-04', 'concluido'),
-      item('2026-08-11', 'concluido', { training_type: 'intervalos' }), item('2026-08-13', 'concluido', { kind: 'ginasio', categories: ['Core'], target_duration_min: 30 }),
-      item('2026-08-25', 'concluido'), item('2026-08-26', 'cancelado'),
-      item('2026-09-01', 'concluido'),
-      item('2026-09-15', 'pendente'),
-    ];
-    const runs = [run('2026-08-11', 8, { training_type: 'intervalos' })];
-    const r = compute({ runs, coachPlans: [PLAN], coachPlanItems: items, today: '2026-09-15' });
-    const w4 = slotOf(r, 'consistencia', 'w4');
-    expect(w4.state).toBe('won');
-    expect(w4.contributionsPeriodLabel).toBe('3 ago a 6 set');
-    expect(w4.contributionsSummary).toBe('4 semanas · 5 treinos');
-    expect(w4.contributions.map((x) => [x.date, x.kind, x.runId])).toEqual([
-      ['2026-09-01', 'run', null],
-      ['2026-08-25', 'run', null],
-      ['2026-08-13', 'gym', null],
-      ['2026-08-11', 'run', 'run-2026-08-11-8'],
-      ['2026-08-04', 'run', null],
-    ]);
-    expect(w4.contributions[2]).toEqual(expect.objectContaining({ title: 'Core', meta: '30 min · concluído no plano' }));
-    expect(w4.contributions[3]).toEqual(expect.objectContaining({ title: 'Intervalos', meta: '8 km · 44:00' }));
-    // Por ganhar: a sequência em curso (as mesmas 4 semanas).
-    expect(slotOf(r, 'consistencia', 'w12').contributions).toHaveLength(5);
-  });
-
-  it('sem sequência: lista vazia', () => {
-    const s = slotOf(compute({ today: '2026-09-15' }), 'consistencia', 'w4');
-    expect(s.contributions).toEqual([]);
-    expect(s.contributionsPeriodLabel).toBeNull();
   });
 });

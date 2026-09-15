@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '../store';
 import { computeMedalhoes } from './medalhoes';
-import { syncMedalAwards, markMedalAwardsSeen } from './medalAwards';
+import { syncMedalAwards, markMedalAwardsSeen, MEDALHAO_SIGNIFICANCE } from './medalAwards';
 import { todayISO } from '../lib/utils';
 
 /* Quando é que o momento da medalha aparece (specs/palmares-medalhoes.md
@@ -21,7 +21,9 @@ import { todayISO } from '../lib/utils';
    - Várias por ver: a mais significativa primeiro; ao fechar marca-se
      `seen_at` em todas. */
 
-const PRIORITY = ['recordes', 'distancias', 'superacao', 'ano_km', 'consistencia', 'epoca'];
+// A ordem é uma só, a de medalAwards.js — duas listas a dizerem o mesmo
+// acabavam por discordar (a lista daqui já tinha ficado para trás uma vez).
+const PRIORITY = MEDALHAO_SIGNIFICANCE;
 
 const session = { syncedKeys: new Set(), pending: [] };
 
@@ -45,8 +47,6 @@ export default function useMedalMoment() {
   const profile = useAppStore((s) => s.profile);
   const runs = useAppStore((s) => s.runs);
   const raceEvents = useAppStore((s) => s.raceEvents);
-  const coachPlans = useAppStore((s) => s.coachPlans);
-  const coachPlanItems = useAppStore((s) => s.coachPlanItems);
   const formOpen = useAppStore(isFormOpen);
 
   const [pending, setPendingState] = useState(session.pending);
@@ -58,15 +58,14 @@ export default function useMedalMoment() {
   const userId = profile?.id || null;
   const today = todayISO();
   const result = useMemo(
-    () => computeMedalhoes({ runs, raceEvents, coachPlans, coachPlanItems, profile, today }),
-    [runs, raceEvents, coachPlans, coachPlanItems, profile, today],
+    () => computeMedalhoes({ runs, raceEvents, profile, today }),
+    [runs, raceEvents, profile, today],
   );
 
   /* Quando voltar a sincronizar: quando há uma medalha devida nova (fechar
      uma prova com uma corrida que já existia, corrigir uma distância) ou
-     quando o dia muda (O Ano em Km e A Consistência ganham-se no fecho de um
-     período, e a PWA fica aberta dias). Contar corridas e provas falhava os
-     dois casos. */
+     quando o dia muda (O Ano em Km ganha-se no fecho de um período, e a PWA
+     fica aberta dias). Contar corridas e provas falhava os dois casos. */
   const dueCount = (result?.due || []).length;
   // Dados parciais (a query das corridas falhou e veio []) com provas
   // concluídas: sincronizar agora gravava umas poucas medalhas como

@@ -5,8 +5,9 @@ import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { pendingRaceBalanceCandidate, markProactiveSent } from '../../utils/coachProactive';
 import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
-import { buildOrbitRings, hasAnyRecord } from '../../utils/homeModels';
+import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
+import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import SectionLabel from '../shared/SectionLabel';
 import { Dialog } from '../shared/Sheet';
 import CarolCard from './CarolCard';
@@ -21,10 +22,15 @@ import MedalMoment from '../shared/MedalMoment';
 import useMedalMoment from '../../utils/useMedalMoment';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
-   Carol, "O que faço hoje" (plano do dia), "Para onde vou" (a prova com o
-   trilho) e "Como estou" (a órbita, só leitura). Gap de 8px entre cartões.
-   No primeiro dia (sem registo e sem prova) a Carol abre a conversa e o
-   resto do ecrã convida a registar. Registar água vive no FAB. */
+   Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
+   leitura) e "Para onde vou" (a prova com o trilho). Gap de 8px entre
+   cartões. No primeiro dia (sem registo e sem prova) a Carol abre a
+   conversa e o resto do ecrã convida a registar. Registar água vive no FAB.
+
+   A ordem mudou a 2026-09-15: "Como estou" subiu para terceiro e a prova
+   passou para último. O ecrã lê-se de perto para longe — quem me fala,
+   o que faço hoje, como estou hoje, para onde vou —, e a prova fecha-o
+   porque é o horizonte, não a tarefa. */
 
 function firstNameOf(name) {
   if (!name || typeof name !== 'string') return null;
@@ -57,6 +63,19 @@ export default function Home() {
   const firstDay = !hasRecords && !hasUpcomingRace;
 
   const rings = useMemo(() => buildOrbitRings({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
+
+  /* Os itens do plano aceite para HOJE — a mesma janela e o mesmo
+     construtor que "O que faço hoje" usa (computeAcceptedWindow +
+     buildPlanDays), só que para um dia. Servem a linha das refeições
+     sugeridas, que saiu do cartão do plano para o "Como estou": é lá que
+     estão os anéis da nutrição. A persiana é a de sempre (`mealDay`). */
+  const todayPlanItems = useMemo(() => {
+    const window = computeAcceptedWindow(coachPlans, coachPlanItems, today);
+    if (!window) return [];
+    const acceptedIds = new Set((coachPlans || []).filter((p) => p.status === 'aceite').map((p) => p.id));
+    return buildPlanDays((coachPlanItems || []).filter((i) => acceptedIds.has(i.plan_id)), today, 1)[0]?.items || [];
+  }, [coachPlans, coachPlanItems, today]);
+  const todayMeals = useMemo(() => mealsForDay(todayPlanItems), [todayPlanItems]);
 
   const homeInsights = useMemo(() => {
     const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
@@ -212,13 +231,13 @@ export default function Home() {
       <CarolCard onOpenRace={setEditingRaceId} onOpenCoach={openCoach} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
-      <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenMeals={setMealDay} onOpenRace={setEditingRaceId} />
+      <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenRace={setEditingRaceId} onOpenPlano={() => setOpenCreationMode('plano')} />
+
+      <SectionLabel>Como estou</SectionLabel>
+      <StatusCard rings={rings} mealsModel={todayMeals} onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })} />
 
       <SectionLabel>Para onde vou</SectionLabel>
       <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} onOpenAllRaces={() => setActiveTab('provas')} />
-
-      <SectionLabel>Como estou</SectionLabel>
-      <StatusCard rings={rings} />
 
       {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
 
