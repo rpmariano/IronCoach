@@ -120,6 +120,19 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       markProactiveSent('u1', { trigger: 'race_after', key: 'race_after:r1:run-race' });
       expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
     });
+
+    it('um balanço já feito cala o aviso sem a marca deste dispositivo: a coluna da prova ou a cópia local do hub', () => {
+      window.localStorage.clear();
+      // Noutro dispositivo (ou pedido pelo Início sem a resposta chegar ao
+      // ecrã): o servidor gravou-o na prova.
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [{ ...race, coach_balance: 'Correste bem.' }], runs: [raceRun], profile }), NOW)).toBeNull();
+      // Pedido no hub deste dispositivo, antes de a prova recarregar.
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', suggestions: [] }));
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
+      // Uma cópia vazia não conta.
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: '  ' }));
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)?.raceId).toBe('r1');
+    });
   });
 
   it('uma prova já concluída não volta a ter véspera nem manhã', () => {
