@@ -17,6 +17,8 @@ import StatusCard from './StatusCard';
 import FirstDayCard from './FirstDayCard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
+import MedalMoment from '../shared/MedalMoment';
+import useMedalMoment from '../../utils/useMedalMoment';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Para onde vou" (a prova com o
@@ -42,6 +44,9 @@ export default function Home() {
   const [showDismiss, setShowDismiss] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [mealDay, setMealDay] = useState(null);
+  // O momento da medalha (specs/palmares-medalhoes.md) — a regra de quando
+  // aparece vive no hook.
+  const medalMoment = useMedalMoment();
 
   const today = todayISO();
   const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
@@ -230,6 +235,15 @@ export default function Home() {
 
       <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={() => setShowInsights(true)} />
       {showInsights && <CoachInsightModal insights={homeInsights} alerts={carolAlerts} onClose={() => setShowInsights(false)} />}
+      {medalMoment.award && (
+        <MedalMoment
+          award={medalMoment.award}
+          medalhao={medalMoment.medalhao}
+          extraCount={medalMoment.extraCount}
+          onClose={medalMoment.close}
+          onOpenPalmares={() => setActiveTab('provas')}
+        />
+      )}
     </div>
   );
 }

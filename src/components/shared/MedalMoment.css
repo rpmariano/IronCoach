@@ -1,0 +1,94 @@
+/* O momento da medalha (specs/palmares-medalhoes.md §"O momento da
+   medalha"). No mock (MomentoMedalha) a coreografia anda em loop de 7 s;
+   aqui toca UMA vez em --dur-medal-moment (2,6 s), por isso os keyframes
+   foram reescalados para os marcos da spec:
+     0,0–0,9 s  (0–35%)   o disco entra a rodar e trava
+     0,9–1,7 s  (35–65%)  a estrela entra em arco e encolhe até ao encaixe
+     1,7–2,0 s  (65–77%)  encaixa: clarão, fagulhas, salto de 5%
+     2,0–2,6 s  (77–100%) sobem o nome, a frase e o botão
+   Sem a fase de saída do loop — quem fecha é o atleta. */
+
+.ic-moment {
+  position: fixed; inset: 0; z-index: 120;
+  background: radial-gradient(120% 80% at 50% 30%, rgba(217,119,6,.30) 0%, rgba(11,17,32,0) 60%), #070c16;
+  color: var(--text-1);
+  overflow: hidden;
+  cursor: pointer;
+  animation: ic-m-scrim 400ms ease-out both;
+}
+@keyframes ic-m-scrim { from { opacity: 0; } to { opacity: 1; } }
+
+.ic-moment-col {
+  position: relative; height: 100%; max-width: 28rem; margin: 0 auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 26px 24px calc(82px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+.ic-moment .m-eyebrow { animation: m-eyebrow var(--dur-medal-moment) ease-out both; }
+@keyframes m-eyebrow {
+  0%, 5% { opacity: 0; transform: translateY(-8px); }
+  15%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+.ic-moment .m-disc { animation: m-disc var(--dur-medal-moment) var(--ease-medal-disc) both; transform-style: preserve-3d; }
+@keyframes m-disc {
+  0% { opacity: 0; transform: perspective(700px) rotateY(540deg) scale(.45); }
+  31% { opacity: 1; transform: perspective(700px) rotateY(0deg) scale(1.02); }
+  35% { transform: perspective(700px) rotateY(0deg) scale(1); }
+  65% { transform: perspective(700px) rotateY(0deg) scale(1); }
+  69% { transform: perspective(700px) rotateY(0deg) scale(1.05); }
+  77%, 100% { opacity: 1; transform: perspective(700px) rotateY(0deg) scale(1); }
+}
+
+.ic-moment .m-fly { animation: m-fly var(--dur-medal-moment) var(--ease-medal-fly) both; }
+@keyframes m-fly {
+  0%, 35% { opacity: 0; transform: translate(230px, -300px) rotate(-560deg) scale(1.9); }
+  40% { opacity: 1; }
+  50% { transform: translate(90px, -90px) rotate(-220deg) scale(1.45); }
+  65% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  68% { transform: translate(0, 3px) scale(.96); }
+  72%, 100% { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+
+.ic-moment .m-flash { animation: m-flash var(--dur-medal-moment) ease-out both; }
+@keyframes m-flash {
+  0%, 64% { opacity: 0; transform: scale(.2); }
+  69% { opacity: .95; transform: scale(1.1); }
+  85%, 100% { opacity: 0; transform: scale(2.6); }
+}
+
+.ic-moment .m-spark { animation: m-spark var(--dur-medal-moment) ease-out both; }
+@keyframes m-spark {
+  0%, 65% { opacity: 0; transform: translate(0, 0) scale(1); }
+  69% { opacity: 1; }
+  90%, 100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(.3); }
+}
+
+.ic-moment .m-caption { animation: m-caption var(--dur-medal-moment) var(--ease-medal-disc) both; }
+@keyframes m-caption {
+  0%, 77% { opacity: 0; transform: translateY(16px); }
+  92%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+.ic-moment .m-cta { animation: m-cta var(--dur-medal-moment) ease-out both; }
+@keyframes m-cta {
+  0%, 85% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Estado final — depois de tocar (salta a coreografia) ou com
+   prefers-reduced-motion: tudo no sítio, sem clarão nem fagulhas. */
+.ic-moment.is-final .m-eyebrow,
+.ic-moment.is-final .m-disc,
+.ic-moment.is-final .m-fly,
+.ic-moment.is-final .m-caption,
+.ic-moment.is-final .m-cta { animation: none; opacity: 1; transform: none; }
+.ic-moment.is-final .m-flash,
+.ic-moment.is-final .m-spark { animation: none; opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-moment, .ic-moment .m-eyebrow, .ic-moment .m-disc, .ic-moment .m-fly,
+  .ic-moment .m-caption, .ic-moment .m-cta { animation: none; opacity: 1; transform: none; }
+  .ic-moment .m-flash, .ic-moment .m-spark { animation: none; opacity: 0; }
+}

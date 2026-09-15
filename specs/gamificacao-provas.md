@@ -54,7 +54,9 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    4:04 abaixo do anterior". O prompt recebe as conquistas novas no contexto
    (é uma mudança em `coach-chat`, portanto produção: passo à parte, com o
    cuidado habitual).
-5. **Separador Provas** (era Perfil · Pessoal, opção B, até 2026-09-13; ver
+5. **Substituído em 2026-09-15 pelos medalhões — ver `palmares-medalhoes.md`.**
+   O texto abaixo descreve o cartão que existe hoje, até essa spec entrar.
+   **Separador Provas** (era Perfil · Pessoal, opção B, até 2026-09-13; ver
    specs/prova-concluida.md §"Onde vivem as provas") — cartão "Palmarés":
    as conquistas em linha (44px cada, cor ou cadeado, rótulo curto) e "Ver
    tudo", que abre uma persiana (`Sheet`) com o resumo ("3 de 5 conquistas ·

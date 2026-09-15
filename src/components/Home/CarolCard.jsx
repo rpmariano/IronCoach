@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronDown, ChevronUp, Sparkles, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { computeRaceEve, describeRaceEveShort, describeRaceDayShort } from '@formulas/raceEve.ts';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { useAppStore } from '../../store';
@@ -200,7 +200,11 @@ export function useCoachDailyMessages() {
 
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram
    daqui para o botão flutuante (pedido 2026-09-13): em cima do resumo do
-   dia, os dois liam-se como uma coisa só. */
+   dia, os dois liam-se como uma coisa só.
+   Um bloco só (redesenho "Início e o âmbar", 2026-09-15): saíram o
+   subtítulo "a tua treinadora", o ícone Sparkles e o fio que separava o
+   cabeçalho do resumo — eram três coisas a dizer "isto é a Carol" quando
+   uma bastava. */
 export default function CarolCard({ onOpenCoach, onOpenRace }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
@@ -215,65 +219,63 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
   const loading = dailySummaryLoading && !dailySummary;
 
   return (
-    <GlassCard tone="coach" radius={20} padding="12px 15px 14px" className="flex flex-col" data-testid="carol-card">
-      {/* Sem margem negativa: o botão puxava-se para cima do fio e o
-          subtítulo ficava colado à primeira etiqueta do resumo. */}
-      <button type="button" onClick={onOpenCoach} className="flex items-center gap-2.5 w-full text-left min-h-[44px]">
-        <CoachAvatar size={30} mood="neutral" />
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>Carol</div>
-          <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-4)' }}>a tua treinadora</div>
-        </div>
-        <ChevronRight size={16} style={{ color: 'var(--coach)' }} className="shrink-0" />
-      </button>
+    <GlassCard tone="coach" radius={20} padding="13px 15px" data-testid="carol-card">
+      {/* O GlassCard embrulha os filhos num div próprio: o flex tem de viver
+          aqui dentro, senão o avatar fica por cima do texto. */}
+      <div className="flex items-start gap-[11px]">
+      <CoachAvatar size={34} mood="neutral" className="mt-[1px]" />
+      <div className="flex-1 min-w-0">
+        {/* Alvo ≥44px sem empurrar o resumo para baixo: a margem negativa
+            devolve à linha a sua altura visual (padrão de DayPlanCard). */}
+        <button type="button" onClick={onOpenCoach} className="flex items-center justify-between gap-2 w-full text-left min-h-[44px] -my-2">
+          <span className="text-[12px] font-extrabold" style={{ color: 'var(--coach-soft)' }}>Carol</span>
+          <ChevronRight size={15} style={{ color: 'var(--coach)' }} className="shrink-0" />
+        </button>
 
-      <div className="flex items-start gap-2.5 mt-2.5 pt-3" style={{ borderTop: '1px solid rgba(34,211,238,.2)' }}>
-        <Sparkles size={16} style={{ color: 'var(--coach)', marginTop: 2 }} className="shrink-0" />
-        <div className="flex-1 min-w-0">
-          {loading ? (
-            <div data-testid="carol-skeleton" className="flex flex-col gap-2 py-0.5" aria-label="A carregar o resumo">
-              <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-              <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
-            </div>
-          ) : !first ? (
-            <p className="text-[12.5px] leading-[1.45] font-medium" style={{ color: 'var(--text-2)' }}>
-              Sem nada a assinalar por agora. Regista uma refeição ou um treino e eu tenho o que comentar.
+        {loading ? (
+          <div data-testid="carol-skeleton" className="flex flex-col gap-2 py-0.5 mt-1" aria-label="A carregar o resumo">
+            <span className="block h-3 rounded-full w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
+            <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
+          </div>
+        ) : !first ? (
+          <p className="text-[13px] leading-[1.5] font-medium mt-[3px]" style={{ color: 'var(--text-1)' }}>
+            Sem nada a assinalar por agora. Regista uma refeição ou um treino e eu tenho o que comentar.
+          </p>
+        ) : !expanded ? (
+          <>
+            <p className="text-[13px] leading-[1.5] font-medium mt-[3px]" style={{ color: 'var(--text-1)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {first.text}
             </p>
-          ) : !expanded ? (
-            <>
-              <p className="text-[12.5px] leading-[1.45] font-medium" style={{ color: 'var(--text-2)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {first.text}
-              </p>
-              {first.action && <MessageAction action={first.action} onOpenRace={onOpenRace} />}
-            </>
-          ) : (
-            <div className="flex flex-col">
-              {/* Um fio entre secções: é o que as separa em blocos sem voltar
-                  ao carrossel — a cor do rótulo sozinha não chegava. */}
-              {messages.map((m, i) => (
-                <div key={m.key} style={i ? { borderTop: '1px solid rgba(34,211,238,.12)', marginTop: 10, paddingTop: 10 } : undefined}>
-                  <div className="text-[11px] font-extrabold uppercase" style={{ color: m.color, letterSpacing: 'var(--tracking-label)' }}>{m.label}</div>
-                  <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}>{m.text}</p>
-                  {m.action && <MessageAction action={m.action} onOpenRace={onOpenRace} />}
-                </div>
-              ))}
-            </div>
-          )}
+            {first.action && <MessageAction action={first.action} onOpenRace={onOpenRace} />}
+          </>
+        ) : (
+          <div className="flex flex-col mt-[3px]">
+            {/* Um fio entre secções: é o que as separa em blocos sem voltar
+                ao carrossel — a cor do rótulo sozinha não chegava. */}
+            {messages.map((m, i) => (
+              <div key={m.key} style={i ? { borderTop: '1px solid rgba(34,211,238,.12)', marginTop: 10, paddingTop: 10 } : undefined}>
+                <div className="text-[11px] font-extrabold uppercase" style={{ color: m.color, letterSpacing: 'var(--tracking-label)' }}>{m.label}</div>
+                <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}>{m.text}</p>
+                {m.action && <MessageAction action={m.action} onOpenRace={onOpenRace} />}
+              </div>
+            ))}
+          </div>
+        )}
 
-          {(canExpand || expanded) && !loading && (
-            <button type="button" onClick={() => setExpanded((e) => !e)} className="inline-flex items-center gap-0.5 min-h-[44px] mt-[3px] text-[11.5px] font-bold" style={{ color: 'var(--coach)' }}>
-              {expanded ? 'Ler menos' : 'Ler mais'} {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        {(canExpand || expanded) && !loading && (
+          <button type="button" onClick={() => setExpanded((e) => !e)} className="inline-flex items-center gap-0.5 min-h-[44px] mt-[3px] text-[11.5px] font-bold" style={{ color: 'var(--coach)' }}>
+            {expanded ? 'Ler menos' : 'Ler mais'} {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
+        )}
+
+        {expanded && (
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <button type="button" onClick={() => loadDailySummary({ force: true })} disabled={dailySummaryLoading} aria-label="Atualizar resumo" className="inline-flex items-center gap-1.5 min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>
+              <RefreshCw size={13} className={dailySummaryLoading ? 'animate-spin' : ''} /> Atualizar
             </button>
-          )}
-
-          {expanded && (
-            <div className="flex items-center justify-between gap-2 mt-1">
-              <button type="button" onClick={() => loadDailySummary({ force: true })} disabled={dailySummaryLoading} aria-label="Atualizar resumo" className="inline-flex items-center gap-1.5 min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>
-                <RefreshCw size={13} className={dailySummaryLoading ? 'animate-spin' : ''} /> Atualizar
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+      </div>
       </div>
     </GlassCard>
   );

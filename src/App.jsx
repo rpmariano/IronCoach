@@ -8,6 +8,7 @@ import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
+import { MedalhaoDefs } from './components/shared/Medalhao';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -596,6 +597,8 @@ export default function App() {
 
   return (
     <ToastProvider>
+      {/* A biblioteca de formas dos medalhões: uma vez, os ids são globais. */}
+      <MedalhaoDefs />
       <Layout>
         {/* O Suspense vive DENTRO do Layout, e não à volta dele: o cabeçalho,
             a barra inferior e o FAB não têm de piscar por causa do ecrã que

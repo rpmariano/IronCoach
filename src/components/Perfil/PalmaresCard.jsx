@@ -1,134 +1,207 @@
 import React, { useMemo, useState } from 'react';
-import { Trophy } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { pt } from 'date-fns/locale';
+import { ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { computeAchievements, achievementsForRace, completedRaces } from '../../utils/achievements';
+import { achievementsForRace, completedRaces } from '../../utils/achievements';
+import { computeMedalhoes } from '../../utils/medalhoes';
 import { formatDuration } from '../../utils/run';
-import AchievementCard, { AchievementIcon } from '../shared/AchievementCard';
-import SectionLabel from '../shared/SectionLabel';
-import GlassCard from '../shared/GlassCard';
-import { Sheet } from '../shared/Sheet';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
+import { todayISO } from '../../lib/utils';
+import { AchievementIcon } from '../shared/AchievementCard';
+import Medalhao, { slotValueText } from '../shared/Medalhao';
+import SectionLabel from '../shared/SectionLabel';
+import { Sheet } from '../shared/Sheet';
+import MedalhaoSheet from './MedalhaoSheet';
 
-/* O Palmarés, no separador Provas (specs/gamificacao-provas.md §5). Nasceu
-   no topo do Perfil · Pessoal; a 2026-09-13 mudou-se para junto das provas
-   (opção A de "Onde vivem as provas"): é o arquivo delas, vive com elas.
+/* O Palmarés, no separador Provas — os medalhões (specs/palmares-medalhoes.md
+   §"Onde aparece", mock "Palmarés — os medalhões"). Substituiu a linha das
+   cinco conquistas com cadeados: nada ali era de que um corredor se
+   orgulhasse. As conquistas continuam no hub e na RecordConfirmation.
 
-   A linha das cinco conquistas lê-se de relance — cor quer dizer
-   desbloqueada, cadeado quer dizer o caminho ainda por fazer. "Ver tudo"
-   abre a persiana com o detalhe de cada uma e a lista das provas
-   concluídas; tocar numa prova leva ao hub dela, que é onde vivem as
-   memórias. */
+   De cima para baixo:
+   1. o medalhão herói — o que está mais perto da próxima medalha
+      (`heroKey`, decidido em utils/medalhoes.js), com a fita, a legenda dos
+      4 encaixes e a frase de progresso, que abre a persiana dele;
+   2. a coleção — os outros 5, pequenos, sem fita; cada um abre a sua;
+   3. "As provas e as medalhas de cada uma" — a lista das provas concluídas
+      que antes vivia no "Ver tudo". */
 
-function mesEAno(dateStr) {
-  try {
-    return format(parseISO(dateStr), "MMMM 'de' yyyy", { locale: pt });
-  } catch {
-    return dateStr;
-  }
-}
+// A legenda tem 4 colunas estreitas: as etiquetas longas abreviam como no mock.
+const LEGEND_SHORT = { Trimestre: 'Trim.', Semestre: 'Sem.' };
+
+const HERO_CARD = {
+  background: 'var(--surface-glass)',
+  border: '1px solid rgba(251,191,36,.24)',
+  borderRadius: 24,
+  padding: '16px 16px 14px',
+  boxShadow: 'var(--shadow-card)',
+};
+const COLLECTION_CARD = {
+  background: 'var(--surface-glass)',
+  border: '1px solid var(--border-glass)',
+  borderRadius: 20,
+  padding: '14px 12px',
+  boxShadow: 'var(--shadow-card)',
+};
 
 export default function PalmaresCard({ onOpenRace }) {
-  const { raceEvents, runs, profile } = useAppStore();
-  const [open, setOpen] = useState(false);
+  const { raceEvents, runs, coachPlans, coachPlanItems, profile } = useAppStore();
+  const [openKey, setOpenKey] = useState(null);
+  const [provasOpen, setProvasOpen] = useState(false);
+  const today = todayISO();
 
-  const achievements = useMemo(
-    () => computeAchievements({ raceEvents, runs, profile }),
-    [raceEvents, runs, profile],
+  const { medalhoes, heroKey } = useMemo(
+    () => computeMedalhoes({ runs, raceEvents, coachPlans, coachPlanItems, profile, today }),
+    [runs, raceEvents, coachPlans, coachPlanItems, profile, today],
   );
   const provas = useMemo(
-    () => completedRaces({ raceEvents, runs, profile }),
-    [raceEvents, runs, profile],
+    () => (provasOpen ? completedRaces({ raceEvents, runs, profile }) : []),
+    [provasOpen, raceEvents, runs, profile],
   );
 
-  const desbloqueadas = achievements.filter((a) => a.unlocked).length;
-  // A mais antiga é a última da lista (vem por data descendente).
-  const primeira = provas.length ? provas[provas.length - 1].race : null;
-  const resumo = provas.length
-    ? `${desbloqueadas} de ${achievements.length} conquistas · desde ${mesEAno(primeira.date)}`
-    : 'Ainda sem provas concluídas';
+  const list = medalhoes || [];
+  const hero = list.find((m) => m.key === heroKey) || list[0];
+  const colecao = list.filter((m) => m !== hero);
+  const aberto = openKey ? list.find((m) => m.key === openKey) : null;
 
   const abrirProva = (raceId) => {
-    setOpen(false);
+    setProvasOpen(false);
     onOpenRace?.(raceId);
   };
 
-  return (
-    <GlassCard data-testid="palmares-card">
-      <div className="flex items-center gap-2 mb-1">
-        <Trophy size={16} style={{ color: 'var(--race)' }} />
-        <h3 className="text-sm font-semibold">Palmarés</h3>
-      </div>
-      <p className="text-[11.5px]" data-testid="palmares-resumo" style={{ color: 'var(--text-3)' }}>{resumo}</p>
+  if (!hero) return null;
 
-      <div className="flex items-start justify-between gap-1 mt-4">
-        {achievements.map((a) => (
-          <div key={a.key} className="flex flex-col items-center gap-1.5" style={{ minWidth: 0, flex: '1 1 0' }}>
-            <AchievementIcon achievement={a} />
-            <span
-              className="text-[11px] font-semibold text-center leading-[1.2]"
-              style={{ color: a.unlocked ? 'var(--text-2)' : 'var(--text-4)' }}
-            >
-              {a.short}
+  return (
+    <div className="flex flex-col gap-2" data-testid="palmares-card">
+      {/* O medalhão herói */}
+      <div className="relative overflow-hidden shrink-0" style={HERO_CARD} data-testid="palmares-heroi" data-key={hero.key}>
+        <div aria-hidden="true" className="absolute pointer-events-none" style={{ left: '50%', top: -30, width: 340, height: 300, marginLeft: -170, background: 'radial-gradient(ellipse, rgba(251,191,36,.20) 0%, transparent 68%)' }} />
+        <div className="relative">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="m-0 text-[16px] font-black" style={{ letterSpacing: '-.02em', color: 'var(--text-1)' }}>{hero.name}</h3>
+            <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.05em', color: 'var(--race)' }}>
+              {hero.wonCount} de {hero.totalSlots} medalhas
             </span>
           </div>
+
+          <Medalhao
+            size="lg"
+            ribbon
+            engraving={hero.engraving}
+            year={hero.year}
+            footer={hero.footer}
+            slots={hero.slots}
+            style={{ margin: '70px auto 6px' }}
+          />
+
+          <div className="flex gap-1.5" style={{ marginTop: 14 }} data-testid="palmares-legenda">
+            {(hero.slots || []).slice(0, 4).map((slot) => {
+              const won = slot.state === 'won';
+              return (
+                <div
+                  key={slot.key}
+                  data-state={won ? 'won' : 'empty'}
+                  className="flex-1 text-center min-w-0"
+                  style={{
+                    padding: '7px 2px',
+                    borderRadius: 12,
+                    background: won ? 'rgba(251,191,36,.08)' : 'rgba(255,255,255,.03)',
+                    border: `1px solid ${won ? 'rgba(251,191,36,.22)' : 'var(--border-glass)'}`,
+                  }}
+                >
+                  <div className="text-[11px] font-extrabold uppercase truncate" style={{ letterSpacing: '.04em', color: won ? 'var(--race)' : 'var(--text-4)' }}>
+                    {LEGEND_SHORT[slot.label] || slot.label}
+                  </div>
+                  <div className="text-[11px] mt-[2px] truncate" style={{ color: won ? 'var(--text-3)' : 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
+                    {won ? (slotValueText(hero.key, slot) ?? '—') : '—'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {hero.progressLine && (
+            <button
+              type="button"
+              data-testid="palmares-progresso"
+              onClick={() => setOpenKey(hero.key)}
+              className="w-full flex items-center gap-2.5 text-left"
+              style={{ marginTop: 8, minHeight: 44, padding: '10px 12px', borderRadius: 14, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}
+            >
+              <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>{hero.progressLine}</span>
+              <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* A coleção */}
+      <div className="grid grid-cols-2 gap-2" data-testid="palmares-colecao">
+        {colecao.map((m, i) => (
+          <button
+            key={m.key}
+            type="button"
+            data-testid={`palmares-medalhao-${m.key}`}
+            onClick={() => setOpenKey(m.key)}
+            className={`flex flex-col items-center gap-2 text-center ${colecao.length % 2 === 1 && i === colecao.length - 1 ? 'col-span-2' : ''}`}
+            style={COLLECTION_CARD}
+          >
+            <Medalhao size="sm" engraving={m.name} slots={m.slots} />
+            <span className="text-[12px] font-extrabold" style={{ color: 'var(--text-1)' }}>{m.name}</span>
+            {m.summary && <span className="text-[11px]" style={{ color: 'var(--text-4)' }}>{m.summary}</span>}
+          </button>
         ))}
       </div>
 
       <button
         type="button"
-        data-testid="palmares-ver-tudo"
-        onClick={() => setOpen(true)}
-        className="w-full inline-flex items-center justify-center gap-2 mt-4 rounded-[11px] text-[12.5px] font-extrabold"
-        style={{ minHeight: 44, background: 'var(--tint-run-bg)', border: '1px solid var(--tint-run-bd)', color: 'var(--run)' }}
+        data-testid="palmares-provas"
+        onClick={() => setProvasOpen(true)}
+        className="w-full flex items-center justify-between text-left text-[12px] font-bold"
+        style={{ ...COLLECTION_CARD, padding: '4px 16px', minHeight: 52, color: 'var(--text-3)' }}
       >
-        Ver tudo
+        As provas e as medalhas de cada uma
+        <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
       </button>
 
-      {open && (
-        <Sheet eyebrow="Palmarés" eyebrowTone="race" onClose={() => setOpen(false)} testId="palmares-sheet">
-          <p className="text-[11.5px] pt-1" style={{ color: 'var(--text-3)' }}>{resumo}</p>
+      {aberto && <MedalhaoSheet medalhao={aberto} onClose={() => setOpenKey(null)} />}
 
-          <div className="flex flex-col gap-2 mt-3">
-            {achievements.map((a) => <AchievementCard key={a.key} achievement={a} />)}
-          </div>
-
-          {provas.length > 0 && (
-            <>
-              <SectionLabel style={{ margin: '18px 2px 0' }}>Provas concluídas</SectionLabel>
-              <div className="flex flex-col gap-2 mt-2 pb-1">
-                {provas.map(({ race, outcome }) => {
-                  const daProva = achievementsForRace({ raceEvents, runs, profile }, race.id);
-                  return (
-                    <button
-                      key={race.id}
-                      type="button"
-                      data-testid={`palmares-prova-${race.id}`}
-                      onClick={() => abrirProva(race.id)}
-                      className="flex items-center gap-3 w-full text-left"
-                      style={{
-                        minHeight: 44, borderRadius: 16, padding: '10px 12px',
-                        background: 'var(--surface-glass)', border: '1px solid var(--border-glass)',
-                      }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{race.name}</div>
-                        <div className="text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>
-                          {[formatDatePTShort(race.date), outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null].filter(Boolean).join(' · ')}
-                        </div>
+      {provasOpen && (
+        <Sheet eyebrow="Palmarés" eyebrowTone="race" onClose={() => setProvasOpen(false)} testId="palmares-sheet">
+          <SectionLabel style={{ margin: '12px 2px 0' }}>Provas concluídas</SectionLabel>
+          {provas.length === 0 ? (
+            <p className="text-[12px] pt-2 pb-1" data-testid="palmares-sem-provas" style={{ color: 'var(--text-3)' }}>Ainda sem provas concluídas.</p>
+          ) : (
+            <div className="flex flex-col gap-2 mt-2 pb-1">
+              {provas.map(({ race, outcome }) => {
+                const daProva = achievementsForRace({ raceEvents, runs, profile }, race.id);
+                return (
+                  <button
+                    key={race.id}
+                    type="button"
+                    data-testid={`palmares-prova-${race.id}`}
+                    onClick={() => abrirProva(race.id)}
+                    className="flex items-center gap-3 w-full text-left"
+                    style={{
+                      minHeight: 44, borderRadius: 16, padding: '10px 12px',
+                      background: 'var(--surface-glass)', border: '1px solid var(--border-glass)',
+                    }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{race.name}</div>
+                      <div className="text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>
+                        {[formatDatePTShort(race.date), outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null].filter(Boolean).join(' · ')}
                       </div>
-                      <span className="flex items-center gap-1 shrink-0">
-                        {daProva.map((a) => <AchievementIcon key={a.key} achievement={a} size={24} />)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
+                    </div>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {daProva.map((a) => <AchievementIcon key={a.key} achievement={a} size={24} />)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </Sheet>
       )}
-    </GlassCard>
+    </div>
   );
 }

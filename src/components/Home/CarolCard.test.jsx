@@ -31,8 +31,15 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     const onOpenCoach = vi.fn();
     render(<CarolCard onOpenCoach={onOpenCoach} />);
     expect(screen.queryByText('A Carol precisa de falar contigo')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('a tua treinadora'));
+    fireEvent.click(screen.getByText('Carol'));
     expect(onOpenCoach).toHaveBeenCalled();
+  });
+
+  // Um bloco só (redesenho "Início e o âmbar"): sem subtítulo, sem fio, sem
+  // ícone de faísca — só a Carol e o resumo.
+  it('já não tem o subtítulo "a tua treinadora"', () => {
+    render(<CarolCard />);
+    expect(screen.queryByText('a tua treinadora')).not.toBeInTheDocument();
   });
 
   it('mostra a primeira mensagem fechada; "Ler mais" abre as restantes com etiqueta', () => {

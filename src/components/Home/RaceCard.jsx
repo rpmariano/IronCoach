@@ -54,10 +54,10 @@ function AllRacesLink({ onOpen }) {
       type="button"
       data-testid="race-card-all"
       onClick={(e) => { e.stopPropagation(); onOpen(); }}
-      className="w-full flex items-center justify-between mt-2.5 -mb-1 text-[12px] font-extrabold"
-      style={{ minHeight: 44, color: 'var(--race)', borderTop: '1px solid rgba(251,191,36,.18)' }}
+      className="w-full flex items-center justify-between mt-2.5 -mb-1 text-[12px] font-bold"
+      style={{ minHeight: 44, color: 'var(--text-3)', borderTop: '1px solid rgba(255,255,255,.09)' }}
     >
-      Todas as provas e o Palmarés <ChevronRight size={15} />
+      Todas as provas e o Palmarés <ChevronRight size={15} style={{ color: 'var(--text-4)' }} />
     </button>
   );
 }
@@ -77,7 +77,7 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
           <span
             aria-hidden="true"
             className="shrink-0 inline-flex items-center justify-center"
-            style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--grad-race)', color: 'var(--race-ink)' }}
+            style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
           >
             <Trophy size={20} />
           </span>
@@ -93,8 +93,8 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
         </div>
         {ordem > 0 && (
           <div className="text-right shrink-0">
-            <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}>{`${ordem}.ª`}</div>
-            <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>prova</div>
+            <div className="text-[26px] font-black leading-none" style={{ color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>{`${ordem}.ª`}</div>
+            <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--text-4)', letterSpacing: '.05em' }}>prova</div>
           </div>
         )}
       </div>
@@ -102,7 +102,7 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
       {conquistas.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3" data-testid="race-card-chips">
           {conquistas.map((c) => (
-            <AchievementChip key={c.key} label={c.name} tone={c.tone} Icon={c.Icon} testId={`race-card-chip-${c.key}`} />
+            <AchievementChip key={c.key} label={c.name} tone={c.tone} Icon={c.Icon} testId={`race-card-chip-${c.key}`} neutral />
           ))}
         </div>
       )}
@@ -113,7 +113,7 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
           data-testid="race-card-memories"
           onClick={() => onOpenRace?.(race.id)}
           className="flex-1 inline-flex items-center justify-center gap-2 rounded-[11px] text-[12.5px] font-extrabold"
-          style={{ minHeight: 44, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}
+          style={{ minHeight: 44, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-2)' }}
         >
           <Medal size={15} /> Ver memórias
         </button>
@@ -269,9 +269,9 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               <Trophy size={20} />
             </div>
           ) : (
-            <div className="text-right shrink-0" ref={daysReveal.ref} style={daysReveal.style}>
-              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--race)', fontVariantNumeric: 'tabular-nums' }}><DaysCount key={daysReveal.playKey} days={model.days} animate={daysReveal.animate} /></div>
-              <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
+            <div className="text-right shrink-0" data-testid="race-card-days" ref={daysReveal.ref} style={daysReveal.style}>
+              <div className="text-[26px] font-black leading-none" style={{ color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}><DaysCount key={daysReveal.playKey} days={model.days} animate={daysReveal.animate} /></div>
+              <div className="text-[11px] font-extrabold uppercase mt-0.5" style={{ color: 'var(--text-4)', letterSpacing: '.05em' }}>{model.days === 1 ? 'dia' : 'dias'}</div>
             </div>
           )}
         </div>

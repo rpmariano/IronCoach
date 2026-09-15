@@ -70,6 +70,16 @@ describe('RaceListCard', () => {
     expect(screen.queryByTestId('race-list-ver-todas')).not.toBeInTheDocument();
   });
 
+  // Regra do âmbar (redesenho 2026-09-15): neste separador só o cartão "Para
+  // onde vou" é âmbar — a lista de provas fica em vidro neutro, datas
+  // incluídas.
+  it('as datas das próximas e por registar ficam em vidro neutro, não em âmbar', () => {
+    montar([race('amanha', 1), race('esquecida', -3)]);
+    const proxima = screen.getByTestId('race-list-amanha');
+    const dateTile = proxima.querySelector('span[aria-hidden="true"]');
+    expect(dateTile).toHaveStyle({ background: 'rgba(255, 255, 255, 0.06)', color: 'var(--text-2)' });
+  });
+
   it('das concluídas ficam as três mais recentes, e o resto está em "Ver todas"', () => {
     montar([10, 20, 30, 40, 50].map((d) => race(`c${d}`, -d, { status: 'concluida' })));
 
