@@ -7,9 +7,12 @@ import './Medalhao.css';
    App — os ids de um <svg> são globais ao documento, por isso levam o
    prefixo ic-medal- (o RaceTrail e os gráficos têm os seus).
 
-   Um encaixe ganho é a estrela de prata com o esmalte (âmbar ou ciano) e o
-   valor gravado; "silver" é a estrela sem esmalte (A Época: uma por prova).
-   Um encaixe por ganhar é o buraco cunhado — sempre à vista, é o objetivo. */
+   Um encaixe ganho é a estrela de prata com o esmalte (âmbar a prova, ciano
+   a corrida, verde o objetivo batido — a mesma lei de "uma cor, um
+   significado" do resto da app) e o valor gravado; "silver" é a estrela sem
+   esmalte, para os medalhões que só contam ocorrências (O Terreno, A
+   Sequência). Um encaixe por ganhar é o buraco cunhado — sempre à vista, é
+   o objetivo. */
 
 export const MEDAL_ID = (name) => `ic-medal-${name}`;
 const ref = (name) => `#${MEDAL_ID(name)}`;
@@ -23,10 +26,11 @@ const STAR_POINTS = '0,-30 6.7,-9.3 28.5,-9.3 10.9,3.5 17.6,24.3 0,11.5 -17.6,24
 export const LG_POSITIONS = [[97, 93], [203, 93], [97, 207], [203, 207]];
 export const SM_POSITIONS = [[32, 32], [64, 32], [32, 64], [64, 64]];
 
-/* A Época com mais de 4 encaixes (um por prova marcada no ano): passam a um
-   anel à volta da gravação (spec §"O artwork"), todos à mesma distância,
-   o primeiro em cima e a seguir no sentido dos ponteiros. Acima de 8 não
-   cabem com leitura — desenham-se 8 e o aria-label conta todos. */
+/* Um medalhão com mais de 4 encaixes: passam a um anel à volta da gravação
+   (spec §"O artwork"), todos à mesma distância, o primeiro em cima e a
+   seguir no sentido dos ponteiros. Acima de 8 não cabem com leitura —
+   desenham-se 8 e o aria-label conta todos. (Hoje os seis medalhões têm 4
+   encaixes; o anel ficou de quando A Época tinha um por prova do ano.) */
 export const MAX_SLOTS = 8;
 /* O raio põe a estrela inteira dentro da face (lg: face 138, estrela 42 →
    92; sm: face 43, estrela 14 → 27). Com 104/31 as pontas pisavam o aro. */
@@ -65,7 +69,12 @@ export function slotPosition(index, count, size = 'lg') {
   };
 }
 
-const TEXT_FILL = { amber: '#3c1d02', cyan: '#04252b' };
+/* Os esmaltes com joia: a chave é o id da medalha em <MedalhaoDefs /> e o
+   valor a tinta do número gravado. Quem não estiver aqui (silver, ou um
+   nome novo por engano) cai na prata sem esmalte. O verde é --ok-ink de
+   tokens/colors.css, a mesma tinta do "objetivo batido". */
+const TEXT_FILL = { amber: '#3c1d02', cyan: '#04252b', ok: '#052e22' };
+const ENAMELS = Object.keys(TEXT_FILL);
 
 function StarFacets({ id, light = false }) {
   // As duas estrelas facetadas: a cromada do disco e a mais clara, com
@@ -112,6 +121,13 @@ export function MedalhaoDefs() {
           <stop offset="30%" stopColor="#14b8d6" />
           <stop offset="100%" stopColor="#053342" />
         </radialGradient>
+        {/* Verde: --ok-soft, --ok e --ok-ink de tokens/colors.css, sem cor
+            inventada — é o mesmo verde do "objetivo batido" em toda a app. */}
+        <radialGradient id={MEDAL_ID('enam-ok')} cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#a7f3d0" />
+          <stop offset="30%" stopColor="#34d399" />
+          <stop offset="100%" stopColor="#052e22" />
+        </radialGradient>
         <linearGradient id={MEDAL_ID('silver-ring')} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#ffffff" />
           <stop offset="40%" stopColor="#94a3b8" />
@@ -155,6 +171,11 @@ export function MedalhaoDefs() {
           <stop offset="55%" stopColor="#14b8d6" />
           <stop offset="100%" stopColor="#0e4a5c" />
         </radialGradient>
+        <radialGradient id={MEDAL_ID('dt-ok')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#a7f3d0" />
+          <stop offset="55%" stopColor="#34d399" />
+          <stop offset="100%" stopColor="#052e22" />
+        </radialGradient>
 
         {/* Sombra das estrelas */}
         <filter id={MEDAL_ID('star-drop')} x="-50%" y="-50%" width="200%" height="200%">
@@ -189,8 +210,7 @@ export function MedalhaoDefs() {
         </g>
 
         {/* Medalha completa: estrela + esmalte (o número entra por fora) */}
-        <EnamelMedal id={MEDAL_ID('amber')} enamel="amber" />
-        <EnamelMedal id={MEDAL_ID('cyan')} enamel="cyan" />
+        {ENAMELS.map((e) => <EnamelMedal key={e} id={MEDAL_ID(e)} enamel={e} />)}
       </defs>
     </svg>
   );
@@ -234,18 +254,20 @@ export function MedalhaoRibbon() {
     a estrela que voa no momento da medalha. */
 export function WonStar({ enamel = 'amber', valueLabel, withText = true }) {
   // A joia só existe para levar um número gravado (pedido 2026-09-15): sem
-  // número à vista — medalhões pequenos, A Época, As Distâncias — a estrela
-  // é só a prata facetada.
+  // número à vista — medalhões pequenos, As Distâncias, O Terreno, A
+  // Sequência — a estrela é só a prata facetada.
   const showsNumber = withText && valueLabel != null && valueLabel !== '';
-  if (enamel === 'silver' || !showsNumber) {
+  // E um esmalte sem joia em <MedalhaoDefs /> também não pode cair em
+  // silêncio no âmbar (era assim que o verde d'A Superação saía cor de
+  // laranja): sem medalha para ele, é a mesma prata do 'silver'.
+  if (!showsNumber || !ENAMELS.includes(enamel)) {
     return <g filter={url('star-drop')} data-medal-star="silver"><use href={ref('star-ag')} transform="scale(1.4)" /></g>;
   }
-  const e = enamel === 'cyan' ? 'cyan' : 'amber';
   return (
-    <g data-medal-star={e}>
-      <use href={ref(e)} />
-      {withText && valueLabel != null && valueLabel !== '' && (
-        <text y="4.5" textAnchor="middle" fontSize="13" fontWeight="900" fill={TEXT_FILL[e]} fontFamily="inherit">{shortValue(valueLabel)}</text>
+    <g data-medal-star={enamel}>
+      <use href={ref(enamel)} />
+      {showsNumber && (
+        <text y="4.5" textAnchor="middle" fontSize="13" fontWeight="900" fill={TEXT_FILL[enamel]} fontFamily="inherit">{shortValue(valueLabel)}</text>
       )}
     </g>
   );
@@ -376,9 +398,9 @@ export function MedalSlotIcon({ state, enamel = 'amber' }) {
   return (
     <svg width="44" height="44" viewBox="0 0 44 44" style={{ flex: 'none', filter: 'drop-shadow(0 3px 6px rgba(0,0,0,.45))' }} aria-hidden="true" data-medal-icon="won">
       <use href={ref('dt-star-ag')} transform="translate(22,23) scale(.68)" />
-      {enamel !== 'silver' && (
+      {ENAMELS.includes(enamel) && (
         <>
-          <circle cx="22" cy="22" r="9" fill={url(enamel === 'cyan' ? 'dt-cyan' : 'dt-amber')} stroke="#e6ebf1" strokeWidth="1.2" />
+          <circle cx="22" cy="22" r="9" fill={url(`dt-${enamel}`)} stroke="#e6ebf1" strokeWidth="1.2" />
           <ellipse cx="19" cy="18.5" rx="4.5" ry="2.5" fill="rgba(255,255,255,.45)" transform="rotate(-24 19 18.5)" />
         </>
       )}

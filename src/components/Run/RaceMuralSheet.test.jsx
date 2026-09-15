@@ -48,6 +48,16 @@ beforeEach(() => {
 });
 
 describe('RaceMuralSheet — o estúdio', () => {
+  it('ecrã inteiro (pedido 2026-09-15): cabeçalho com "Mural", o nome da prova, e a seta para trás fecha', async () => {
+    const onClose = vi.fn();
+    open({ onClose });
+    await screen.findByTestId('race-mural-preview');
+    expect(screen.getByTestId('race-mural-sheet')).toHaveTextContent('Mural');
+    expect(screen.getByTestId('race-mural-sheet')).toHaveTextContent('Corrida do Tejo');
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('abre com a Capa e a primeira foto; a pré-visualização mostra os espaços; sem legenda da Carol', async () => {
     open();
     await screen.findByTestId('race-mural-preview');

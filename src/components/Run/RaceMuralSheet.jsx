@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Share2, Download, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
-import { Sheet } from '../shared/Sheet';
+import { createPortal } from 'react-dom';
+import { Share2, Download, ChevronLeft, ArrowUpLeft, ArrowUpRight, ArrowDownLeft, ArrowDownRight } from 'lucide-react';
 import Warning, { WarningAction } from '../shared/Warning';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
@@ -263,14 +263,25 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   useEffect(() => {
     const el = cropRef.current;
     if (!el) return undefined;
-    // O `Sheet` arrasta o corpo para fechar (Sheet.jsx); sem isto, mover o
-    // dedo aqui para enquadrar também tentava fechar a persiana.
+    // Sem isto, mover o dedo aqui para enquadrar também tentava fazer scroll
+    // ao corpo do ecrã por baixo.
     const stopWhileDragging = (e) => {
       if (dragRef.current) { e.stopPropagation(); if (e.cancelable) e.preventDefault(); }
     };
     el.addEventListener('touchmove', stopWhileDragging, { passive: false });
     return () => el.removeEventListener('touchmove', stopWhileDragging);
   }, []);
+  // Ecrã inteiro (pedido 2026-09-15: era persiana até 96dvh — o mural
+  // ganha mais espaço para a pré-visualização, com o mesmo cabeçalho do
+  // hub da prova e dos outros ecrãs de topo desta app). Esc continua a
+  // fechar, como fechava a persiana.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') handleClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onCropKey = (e) => {
     const map = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     if (!map[e.key] || !assignedInActive) return;
@@ -282,10 +293,42 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
     update((c) => setSlotFocus(c, activeSlot, assignedInActive.fx + dx * nudge, assignedInActive.fy + dy * nudge));
   };
 
-  return (
-    <Sheet eyebrow="Mural" eyebrowTone="race" title={race?.name || 'A prova'} onClose={handleClose} testId="race-mural-sheet" maxHeight="96dvh">
+  // Portal para document.body, tal como o Sheet (Sheet.jsx) — um antepassado
+  // com backdrop-filter/transform (os cartões .module-card-contrast, onde
+  // vive o hub da prova) tornava `position: fixed` relativo a ELE, não ao
+  // ecrã; sem o portal o mural abria deslocado, escondido pelo resto da
+  // página.
+  const content = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Mural — ${race?.name || 'a prova'}`}
+      data-testid="race-mural-sheet"
+      className="fixed inset-0 z-[80] flex flex-col fade-in"
+      style={{ background: 'var(--bg-app)' }}
+    >
+      {/* Cabeçalho de ecrã, igual ao hub da prova e aos outros ecrãs de topo
+          desta app (seta para trás + rótulo + título) — antes era o
+          cabeçalho da persiana (Sheet), fora da área com scroll. */}
+      <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>
+        <button
+          type="button"
+          onClick={handleClose}
+          aria-label="Fechar"
+          className="shrink-0 flex items-center justify-center rounded-full"
+          style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--text-3)' }}
+        >
+          <ChevronLeft size={22} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Mural</div>
+          <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{race?.name || 'A prova'}</div>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{ padding: '0 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
       {/* Pré-visualização, sempre à vista; os espaços tocam-se nela. */}
-      <div className="sticky top-0 z-10 pt-2 pb-3" style={{ background: 'var(--bg-sheet)' }}>
+      <div className="sticky top-0 z-10 pt-3 pb-3" style={{ background: 'var(--bg-app)' }}>
         <div className="relative mx-auto" style={{ width: `min(100%, calc(40dvh * ${ratio}))`, aspectRatio: `${W} / ${H}`, borderRadius: 14, overflow: 'hidden', background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
           {preview
             ? <img src={preview} alt={`Mural da ${race?.name || 'prova'}`} data-testid="race-mural-preview" style={{ width: '100%', height: '100%', display: 'block' }} />
@@ -536,6 +579,8 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
         )}
       </div>
       <a ref={downloadRef} href="#" hidden aria-hidden="true">guardar</a>
-    </Sheet>
+      </div>
+    </div>
   );
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }

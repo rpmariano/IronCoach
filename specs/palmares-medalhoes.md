@@ -36,7 +36,9 @@ Todos se calculam de dados que já existem. Datas pelo dia local (as colunas
 
 ### 1. O Ano em Km
 
-Encaixes: **Mês · Trimestre · Semestre · Ano**. Soma de `runs.distance_km`
+Encaixes: **Mês · Trimestre · Semestre · Ano**. Esmalte **ciano** — é o
+volume de corrida (`--run`), não uma prova em particular. Soma de
+`runs.distance_km`
 (todas as corridas, não só competição) por período civil: mês; trimestre
 jan–mar/abr–jun/jul–set/out–dez; semestre jan–jun/jul–dez; ano.
 
@@ -68,34 +70,53 @@ a primeira prova numa distância enche "As Distâncias", não "Os Recordes"
 estrela leva o tempo gravado e é **re-cunhada** a cada PB novo (o momento
 toca de novo; o histórico guarda todos). Esmalte ciano.
 
-### 4. A Época
+### 4. O Terreno
 
-Uma estrela de prata por prova concluída no ano civil. Encaixes =
-`max(4, provas do ano marcadas)`: um encaixe vazio é uma prova marcada por
-correr — o medalhão da época mostra o calendário do ano. Renova a 1 de
-janeiro; o do ano anterior fica arquivado no histórico.
+*(Substituiu A Época em 2026-09-15 — ver "Decidido em 2026-09-15" 3.)*
 
-### 5. A Consistência
+Encaixes: **1.ª estrada · 1.ª trail · 5 estrada · 5 trail**. Banda por
+`race_events.race_type`, os dois únicos valores de `RACE_TERRAIN_TYPES`
+(`utils/run.js`): `race_type === 'trail'` é trail, **tudo o resto é estrada**
+(uma prova antiga sem terreno gravado conta como estrada, que é o que era).
+É um eixo diferente do d'As Distâncias — 21 km em trail não é a mesma prova
+que 21 km em estrada.
 
-Encaixes: **4 · 12 · 26 · 52** semanas seguidas de plano cumprido.
+Estende a conquista `primeira_trail` de `utils/achievements.js`, que só vivia
+no hub, aos dois terrenos, e acrescenta o marco de veterano: a 5.ª. A régua da
+prova é a mesma de sempre (`completedRaces`: concluída E com corrida ligada).
 
-- Semana = segunda a domingo, fechada.
-- Cumprida = todos os itens `corrida`/`ginasio` com `planned_date` na semana
-  estão `status = 'concluido'` (`cancelado` e `descanso` não contam).
-- Semana **sem** itens de plano aceite: não conta nem quebra.
-- Semana com um item que ficou `pendente` depois de fechada: quebra.
-- Atenção à lição de `planDivergence.js`: ajustar um plano aceite não cria
-  plano novo — os itens passados ficam `pendente`. Aplicar a mesma fronteira
-  (`created_at` mais recente dos itens do plano) para uma reescrita não
-  apagar semanas que o atleta não podia ter cumprido.
+**Sem esmalte** — prata. Conta ocorrências, não um tempo nem um objetivo
+batido: não há cor que queira dizer "quantas".
 
-Esmalte ciano (o plano é da Carol).
+### 5. A Sequência
+
+*(Substituiu A Consistência em 2026-09-15 — ver "Decidido em 2026-09-15" 3.)*
+
+Encaixes: **2 · 3 · 5 · 8** provas seguidas com a corrida registada.
+
+- Um elo conta quando a prova está `concluida` **e** tem corrida ligada; uma
+  prova que já passou sem registo **quebra** a sequência. Provas ainda por
+  correr não entram nem quebram. É a mesma régua do `currentStreak` da
+  conquista `sequencia` (`utils/achievements.js`).
+- Mas o medalhão não conta a sequência que chega a hoje (o que o
+  `currentStreak` faz): conta a **maior de sempre**. O varrimento é do
+  princípio para o fim com um máximo corrente, como O Ano em Km faz com o
+  melhor período; de cada vez que a sequência em curso passa o recorde
+  anterior e cai num marco, esse encaixe cunha-se **no dia da prova que o
+  confirmou**. Como o máximo só cresce de um em um, cada marco cunha-se uma
+  vez só.
+- Quebrar a sequência nunca tira uma medalha já ganha — só a frase de
+  progresso volta atrás.
+
+**Sem esmalte** — prata, pela mesma razão d'O Terreno.
 
 ### 6. A Superação
 
 Encaixes: **1 · 3 · 5 · 10** objetivos de prova batidos
 (`verdict === 'superado' && basis === 'objetivo'`, a régua de
-`raceOutcome.js`). Esmalte âmbar.
+`raceOutcome.js`). Esmalte **verde** (`--ok`): é o mesmo tom da conquista
+`objetivo_batido` no hub e na `RecordConfirmation` — objetivo batido é verde
+em toda a app.
 
 ### (7. Opcional) O Trail
 
@@ -113,8 +134,8 @@ momento. Tabela nova:
 create table medal_awards (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  medalhao text not null,     -- 'ano_km' | 'distancias' | 'recordes' | 'epoca' | 'consistencia' | 'superacao'
-  slot text not null,         -- 'mes' | 'trimestre' | '5k' | '42k' | '4' | 'r1' ...
+  medalhao text not null,     -- 'ano_km' | 'distancias' | 'recordes' | 'terreno' | 'sequencia' | 'superacao'
+  slot text not null,         -- 'mes' | 'trimestre' | '5k' | '42k' | 'estrada1' | 'seq3' | 'o1' ...
   period_key text not null,   -- '2026-08' | '2026-Q3' | '2026-H2' | '2026' | race_id | ''
   value numeric,              -- 182 (km), 3107 (s), 12 (semanas)
   race_id uuid references race_events(id) on delete set null,
@@ -127,6 +148,11 @@ create table medal_awards (
 RLS por `user_id` (select/insert/update do próprio). A migração é produção:
 **só se aplica com pedido explícito**.
 
+A restrição do `medalhao` continua a aceitar `'epoca'` e `'consistencia'`
+(migração `20260915180000_medal_awards_terreno_sequencia.sql`): a app já não
+os calcula, mas as linhas gravadas antes de 2026-09-15 ficam como histórico e
+não se apagam.
+
 Fluxo:
 
 1. `src/utils/medalhoes.js` — função pura
@@ -136,8 +162,8 @@ Fluxo:
    `achievements.js`.
 2. Sempre que muda o número de medalhas devidas (gravar uma corrida, fechar
    uma prova com uma corrida que já existia, corrigir uma distância) ou muda
-   o dia (O Ano em Km e A Consistência ganham-se no fecho de um período, e a
-   PWA fica aberta dias) — nunca com dados parciais (sem corridas mas com
+   o dia (O Ano em Km ganha-se no fecho de um período, e a PWA fica aberta
+   dias) — nunca com dados parciais (sem corridas mas com
    provas concluídas: a query das corridas falhou): comparar os devidos com `medal_awards` e inserir os que
    faltam (`upsert` com `onConflict` na chave única — idempotente, dois
    dispositivos não duplicam).
@@ -194,8 +220,8 @@ Ecrã inteiro quando há `medal_awards` com `seen_at is null`.
 - Toque em qualquer sítio salta para o estado final; segundo toque fecha.
 - `prefers-reduced-motion`: estado final parado, sem clarão nem fagulhas.
 - Várias por ver: mostra a mais significativa (Recordes > Distâncias >
-  Superação > Ano em Km > Consistência > Época) e acrescenta "e mais 2
-  medalhas" ao botão. Marca `seen_at` em todas ao fechar.
+  Superação > Terreno > Sequência > Ano em Km — as das provas antes das do
+  volume) e acrescenta "e mais 2 medalhas" ao botão. Marca `seen_at` em todas ao fechar.
 - Tempos e curvas nos tokens de `tokens/motion.css` (acrescentar
   `--dur-medal-*`), como a pílula da nav.
 - Frases no tom da CAROL.md: o número primeiro, sem pontos de exclamação,
@@ -204,7 +230,8 @@ Ecrã inteiro quando há `medal_awards` com `seen_at is null`.
 ### Hub da prova
 
 A secção "Conquistas" mantém-se e passa a mostrar também as medalhas que esta
-prova deu (Distâncias, Recordes, Superação, Época), com o medalhão pequeno.
+prova deu (Distâncias, Recordes, Superação, Terreno, Sequência), com o
+medalhão pequeno.
 
 ## O que acontece às conquistas
 
@@ -213,11 +240,11 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
 
 | Conquista | Passa a viver em |
 |---|---|
-| `prova_concluida` | A Época |
+| `prova_concluida` | As Distâncias e O Terreno |
 | `objetivo_batido` | A Superação |
 | `recorde_pessoal` | Os Recordes |
-| `primeira_trail` | só no hub |
-| `sequencia` | só no hub |
+| `primeira_trail` | O Terreno |
+| `sequencia` | A Sequência |
 
 ## O artwork
 
@@ -230,16 +257,17 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
   Prefixar os ids (`ic-medal-…`) para não colidir com o `RaceTrail` ou os
   gráficos.
 - `<Medalhao size="lg|sm" ribbon title year footer slots={[...]} />`, com
-  `slots` = `[{ state: 'won' | 'empty', enamel: 'amber' | 'cyan' | 'silver',
-  label }]`.
+  `slots` = `[{ state: 'won' | 'empty', enamel: 'amber' | 'cyan' | 'ok' |
+  'silver', label }]`. Um esmalte sem joia em `<MedalhaoDefs />` cai na prata
+  facetada, **nunca** no âmbar: era assim que o verde saía cor de laranja.
 - Disco em CSS (camadas `.medal-rim/face/grain/sheen/ring/engrave`) — mover
   para um CSS de componente, não para `globals.css`.
 - Posições: grande 300×300, estrelas nas diagonais (97,93) (203,93) (97,207)
   (203,207); pequeno 96×96, (32,32) (64,32) (32,64) (64,64) com a estrela
   `scale(.33)` e o encaixe `scale(.34)`. Com 1.4× e a escala .42 original as
   estrelas pequenas sobrepõem-se — verificado no browser.
-- A Época com mais de 4 provas: os encaixes passam a um anel à volta da
-  gravação (5–8) — desenhar antes de implementar, não improvisar.
+- Mais de 4 encaixes: passam a um anel à volta da gravação (5–8). Hoje os
+  seis medalhões têm 4, mas o disco continua a saber desenhar o anel.
 - Desempenho: `feDropShadow` e `mix-blend-mode` em 6 medalhões num Android
   modesto — medir; se custar, rasterizar o disco grande para PNG no build
   (`@resvg/resvg-js` já foi usado para os ícones da PWA) e manter as estrelas
@@ -265,9 +293,12 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
 - Corridas sem `distance_km` ignoradas.
 - Distâncias: 21,1 concluída enche o encaixe; prova sem corrida ligada não.
 - Recordes: primeira prova na distância não enche; a segunda mais rápida enche.
-- Consistência: semana sem plano não quebra; item pendente depois do fecho
-  quebra; plano reescrito não conta os dias antes da reescrita.
-- Época: encaixes = provas marcadas no ano, mínimo 4.
+- Terreno: a 1.ª e a 5.ª de cada terreno; prova sem `race_type` conta como
+  estrada; prova sem corrida ligada não conta.
+- Sequência: guarda a maior de sempre (quebrar não tira o que está ganho);
+  cada recorde novo enche o encaixe seguinte e nunca o mesmo duas vezes;
+  prova futura não entra nem quebra, prova passada sem registo quebra.
+- As cores de cada medalhão, uma a uma — é a lei "uma cor, um significado".
 - Sincronização: primeira vez com histórico marca tudo como visto.
 
 ## Decidido em 2026-09-15
@@ -275,7 +306,18 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
 1. **O Ano em Km compara com o melhor de sempre**, não com o melhor do ano.
    Um ano sem recordes fica com encaixes vazios — é honesto, e a frase de
    progresso diz quanto falta.
-2. **O Trail fica de fora.** `details.elevation_gain_m` é opcional: vem dos
+2. **O Trail (desnível) fica de fora.** `details.elevation_gain_m` é opcional: vem dos
    prints quando o ecrã o mostra e fica muitas vezes vazio
    (`RunRegistration` põe-no na lista de métricas em falta). Um medalhão sobre
    um número que falta metade das vezes mentia.
+
+3. **Fora A Época e A Consistência, dentro O Terreno e A Sequência.** As duas
+   que saíram eram sobre o calendário e sobre o plano da Carol — não sobre
+   provas, que é o que o Palmarés é. As duas que entraram trazem para cá
+   conquistas de prova que já existiam e só viviam no hub (`primeira_trail` e
+   `sequencia`), sem inventar dados novos. Os encaixes continuam a ser 6 × 4.
+4. **As cores recalibradas** ("ainda demasiado âmbar"): O Ano em Km passou a
+   ciano (é volume de corrida), A Superação a verde (o tom do
+   `objetivo_batido` em toda a app). Fica em âmbar só As Distâncias — o único
+   medalhão que é literalmente sobre a prova. O Terreno e A Sequência não
+   levam esmalte nenhum.

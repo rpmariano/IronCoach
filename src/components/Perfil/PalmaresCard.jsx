@@ -49,7 +49,7 @@ const COLLECTION_CARD = {
 };
 
 export default function PalmaresCard({ onOpenRace }) {
-  const { raceEvents, runs, coachPlans, coachPlanItems, profile } = useAppStore();
+  const { raceEvents, runs, profile } = useAppStore();
   const [openKey, setOpenKey] = useState(null);
   const [provasOpen, setProvasOpen] = useState(false);
   // Os registos de um encaixe: { medalhaoKey, slotKey }. Guarda chaves, não o
@@ -58,8 +58,8 @@ export default function PalmaresCard({ onOpenRace }) {
   const today = todayISO();
 
   const { medalhoes, heroKey } = useMemo(
-    () => computeMedalhoes({ runs, raceEvents, coachPlans, coachPlanItems, profile, today }),
-    [runs, raceEvents, coachPlans, coachPlanItems, profile, today],
+    () => computeMedalhoes({ runs, raceEvents, profile, today }),
+    [runs, raceEvents, profile, today],
   );
   const provas = useMemo(
     () => (provasOpen ? completedRaces({ raceEvents, runs, profile }) : []),

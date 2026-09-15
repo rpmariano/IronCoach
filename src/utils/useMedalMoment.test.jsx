@@ -8,7 +8,10 @@ vi.mock('./medalhoes', async () => {
   const { makeMedalhoes } = await import('../test/medalhoesFixture');
   return { computeMedalhoes: vi.fn(() => makeMedalhoes()) };
 });
-vi.mock('./medalAwards', () => ({
+vi.mock('./medalAwards', async (importOriginal) => ({
+  // A ordem de significância é a de verdade: é ela que decide qual das
+  // medalhas por ver aparece primeiro.
+  MEDALHAO_SIGNIFICANCE: (await importOriginal()).MEDALHAO_SIGNIFICANCE,
   syncMedalAwards: vi.fn(),
   markMedalAwardsSeen: vi.fn(),
 }));

@@ -1,32 +1,20 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Check, Utensils, MessageCircle } from 'lucide-react';
-import { useAppStore } from '../../store';
-import { todayISO } from '../../lib/utils';
-import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
-import { formatDayLabel, dayTitle, dayStatus, pendingSession, mealsForDay, isRacePlanItem, raceForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
-import { useCarouselHaptics } from '../../utils/haptics';
-import { prefersReducedMotion } from '../../utils/coachBubbles';
+import React, { useMemo, useState } from 'react';
+import { ChevronRight, ChevronDown, ChevronUp, Check, X as XIcon, MessageCircle } from 'lucide-react';
+import { todayISO, addDaysISO } from '../../lib/utils';
+import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
+import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
-import CarouselDots from '../shared/CarouselDots';
 
-/* "O que faço hoje" — o plano do dia (mock "Início"): carrossel de dias com
-   setas de 44px, badge de estado, o treino do dia em título, um botão
-   "Registar sessão" e a pré-visualização das refeições sugeridas com
-   "Ver as N" a abrir a persiana. Aceitar/recusar propostas continua no chat
-   (specs/plano-de-treino.md); aqui é consulta e execução.
-
-   Bug 2026-09-14: este cartão nasceu (redesenho 6c) só com as setas e os
-   pontos — o WeeklyPlanCard.jsx que substituiu já deslizava com o dedo
-   (.tab-swipe-carousel + useCarouselHaptics, ver globals.css), mas isso
-   nunca foi portado para aqui. Agora o corpo do dia (título/botões/
-   refeições) é uma página por dia dentro do mesmo carrossel com snap nativo
-   — as setas e os pontos continuam a existir, e passam a chamar `scrollTo`
-   em vez de só mudar o índice, para o gesto e os toques ficarem em sintonia
-   e os dois disparem o mesmo tique tátil (triggerCarouselTick). */
-
-const arrowStyle = { width: 44, height: 44, color: 'var(--gym)' };
-// Até aqui cabem pontos no cartão (22px cada); a partir daqui é o contador.
-const MAX_DOTS = 8;
+/* "O que faço hoje" — o plano de HOJE, e só de hoje (redesenho 2026-09-15).
+   O carrossel de dias que aqui vivia (setas, pontos, contador, a altura a
+   seguir a página ativa) mudou-se para o ecrã "O plano" (PlanoScreen.jsx):
+   navegar o plano inteiro é outra tarefa, não cabe num cartão do Início.
+   O que fica é um cartão de três linhas — a data, o treino, e uma linha
+   "Ver detalhe do treino" que abre a instrução da Carol JUNTO com o botão
+   de registo (nunca um sem o outro; fechado por omissão) — mais a linha de
+   rodapé que leva ao plano completo. As refeições sugeridas passaram para
+   o "Como estou" (StatusCard), onde estão os anéis da nutrição.
+   Aceitar/recusar propostas continua no chat (specs/plano-de-treino.md). */
 
 /* Sem o Badge "Hoje" (o rótulo da secção já diz "O que faço hoje"): o
    estado do dia colore a própria data — --gym por fazer, --ok só quando de
@@ -38,138 +26,48 @@ function dateColor(status) {
   return 'var(--gym)';
 }
 
-/* O corpo de um dia — título, "Registar sessão"/"Abrir a prova" e a
-   pré-visualização das refeições. Uma página do carrossel (.tab-swipe-page,
-   ver globals.css); o cabeçalho (setas/etiqueta/badge) fica fora, partilhado
-   pelas várias páginas, porque acompanha o dia ATIVO, não cada um. */
-function DayPlanPage({ day, raceEvents, onComplete, onOpenMeals, onOpenRace, pageRef }) {
-  /* O dia da prova (specs/plano-de-prova.md): o plano tem lá um item
-     `corrida` com `training_type = 'prova'` e a agenda tem a prova. O nome
-     vem da agenda — o item do plano não o guarda — e o botão leva ao hub,
-     que é onde a prova se prepara e se regista. */
-  const race = (day.items || []).find((i) => i.isRace);
-  const racePlanItem = (day.items || []).find(isRacePlanItem);
-  const dayRace = raceForDate(raceEvents, day.dateISO);
-  const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
-  const session = pendingSession(day, todayISO());
-  const meals = mealsForDay(day.items);
-  const instructions = trainingItems(day.items).filter((i) => !isRacePlanItem(i) && typeof i.notes === 'string' && i.notes.trim());
-
-  return (
-    // alignSelf em linha, além do align-items do .tab-swipe-carousel: a página
-    // tem de ter a SUA altura (é essa que se mede), nunca a do contentor.
-    <div ref={pageRef} className="tab-swipe-page" style={{ alignSelf: 'flex-start' }}>
-      <h2 className="text-[20px] font-black leading-[1.15] mt-[5px]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
-        {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
-      </h2>
-
-      {/* A instrução da Carol para o treino (item.notes: "8×400m a 4:15/km,
-          90s de trote entre séries" — ver o schema em coach-chat). O cartão
-          antigo mostrava-a; o redesenho deixou-a cair e o dia ficou reduzido
-          ao título (relatado 2026-09-15). Uma linha por treino, sem rótulo. */}
-      {!race && instructions.map((i) => (
-        <p key={i.id} data-testid="day-plan-notes" className="text-[12.5px] leading-[1.5] mt-2" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>
-          {instructions.length > 1 ? `${planItemTitle(i, dayRace?.name || null)}: ${i.notes.trim()}` : i.notes.trim()}
-        </p>
-      ))}
-
-      {session && (
-        <button type="button" onClick={() => onComplete?.(session)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'rgba(52,211,153,.16)', border: '1px solid rgba(52,211,153,.4)', color: 'var(--ok)' }}>
-          <Check size={15} /> Registar sessão
-        </button>
-      )}
-      {openRaceId && !session && (
-        <button type="button" data-testid="day-plan-open-race" onClick={() => onOpenRace?.(openRaceId)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
-          Abrir a prova
-        </button>
-      )}
-
-      {meals && (
-        <div className="mt-3 pt-[11px]" style={{ borderTop: '1px solid rgba(255,255,255,.09)' }}>
-          <button type="button" onClick={() => onOpenMeals?.(day)} className="flex items-center justify-between gap-2 w-full min-h-[44px] -my-2 text-left">
-            <span className="flex items-center gap-2">
-              <Utensils size={16} style={{ color: 'var(--gym)' }} />
-              <span className="text-[13px] font-bold whitespace-nowrap" style={{ color: 'var(--text-2)' }}>Refeições sugeridas</span>
-            </span>
-            <span className="inline-flex items-center gap-[3px] text-[11.5px] font-bold whitespace-nowrap" style={{ color: 'var(--coach)' }}>
-              {meals.meals.length > 1 ? `Ver as ${meals.meals.length}` : 'Ver'} <ChevronDown size={13} />
-            </span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
+/* "semana 6 de 18". Não há cálculo pronto para a janela do plano ACORDADO:
+   o `semana N de M` que já existia (buildTrailModel/calculateRaceTrainingPlan)
+   conta as semanas do plano de PROVA, que é outra coisa — começa na data que
+   o motor calcula a partir da prova, não na que o atleta e a Carol
+   acordaram. Aqui é aritmética simples sobre a janela aceite: M = quantas
+   semanas ela ocupa, N = a semana em que hoje cai contada a partir do
+   arranque (não pela semana do calendário). Fora da janela fica presa às
+   pontas — um plano que ainda não começou está na semana 1, um que já
+   acabou na última. Exportada para o ecrã "O plano" mostrar o mesmo. */
+export function planWeekLabel(planWindow, today = todayISO()) {
+  if (!planWindow) return null;
+  const total = Math.max(1, Math.ceil(planWindow.days / 7));
+  const elapsed = diffDaysISO(planWindow.start, today);
+  const current = Math.min(total, Math.max(1, Math.floor(elapsed / 7) + 1));
+  return { current, total, text: `semana ${current} de ${total}` };
 }
 
-export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [], onComplete, onNav, onOpenMeals, onOpenRace }) {
+export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [], onComplete, onNav, onOpenRace, onOpenPlano }) {
   const today = todayISO();
+  const tomorrow = addDaysISO(today, 1);
+  const [open, setOpen] = useState(false);
+
   const pendingCount = useMemo(() => (plans || []).filter((p) => p.status === 'proposto').length, [plans]);
-  const window = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
+  const planWindow = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
+  /* Dois dias, não a janela inteira: o cartão mostra hoje e só precisa de
+     espreitar amanhã para o rodapé ("· amanhã: descanso"). O plano completo
+     constrói-se no ecrã "O plano", com a mesma função. */
   const days = useMemo(() => {
-    if (!window) return [];
+    if (!planWindow) return [];
     const acceptedIds = new Set((plans || []).filter((p) => p.status === 'aceite').map((p) => p.id));
-    return buildPlanDays((planItems || []).filter((i) => acceptedIds.has(i.plan_id)), window.start, window.days);
-  }, [plans, planItems, window]);
+    return buildPlanDays((planItems || []).filter((i) => acceptedIds.has(i.plan_id)), today, 2);
+  }, [plans, planItems, planWindow, today]);
 
-  const todayIdx = Math.max(0, days.findIndex((d) => d.isToday));
-  const [index, setIndex] = useState(todayIdx);
-  const safeIndex = Math.min(index, Math.max(0, days.length - 1));
-  const day = days[safeIndex];
+  const day = days[0];
+  const week = planWeekLabel(planWindow, today);
 
-  const scrollRef = useRef(null);
-  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(scrollRef, days.length, safeIndex, setIndex);
-
-  // Posiciona o carrossel no dia certo à primeira renderização — o plano
-  // pode ter começado antes de hoje, e o scroll nativo nasce sempre a 0.
-  // Sem "instant" o cartão abria a deslizar visivelmente do dia 1 até hoje.
-  const positionedRef = useRef(false);
-  useEffect(() => {
-    if (!positionedRef.current && days.length > 0) {
-      scrollTo(safeIndex, true);
-      positionedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days.length]);
-
-  /* A altura do carrossel segue a página ATIVA, não a mais alta. Num flex
-     com scroll a caixa mede o filho mais alto — um dia só com "Prova · 10 km"
-     ficava com ~100px vazios antes dos pontos e do "Adaptar plano". Mede-se
-     a página do dia ativo (ResizeObserver quando existe — fontes a carregar,
-     refeições a aparecer —, e sempre que o índice muda) e fixa-se essa
-     altura no contentor, com a transição curta de --dur-tab-content. Medida
-     0 (jsdom, cartão ainda escondido) deixa a altura por fixar. */
-  const pageRefs = useRef([]);
-  const [activeHeight, setActiveHeight] = useState(null);
-  const activeIndexRef = useRef(safeIndex);
-  activeIndexRef.current = safeIndex;
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const h = pageRefs.current[activeIndexRef.current]?.offsetHeight || 0;
-      setActiveHeight(h > 0 ? h : null);
-    };
-    measure();
-    // globalThis e não window: aqui `window` é a janela do plano (acima).
-    const RO = globalThis.ResizeObserver;
-    if (typeof RO !== 'function') return undefined;
-    const observer = new RO(measure);
-    pageRefs.current.slice(0, days.length).forEach((el) => el && observer.observe(el));
-    return () => observer.disconnect();
-  }, [safeIndex, days]);
-
-  const reducedMotion = prefersReducedMotion();
-  const carouselStyle = activeHeight == null ? undefined : {
-    height: activeHeight,
-    // overflow-x:auto já faz do eixo vertical um scroll — com a altura fixa,
-    // um dia mais alto fora de vista não pode passar a deslizar na vertical.
-    overflowY: 'hidden',
-    transition: reducedMotion ? undefined : 'height var(--dur-tab-content) var(--ease-out)',
-  };
-
-  const adapt = () => {
-    useAppStore.getState().setCoachIntent('adapt_plan');
-    onNav?.('coach');
-  };
+  // O título de amanhã em minúscula, porque entra a meio da frase do rodapé
+  // ("Ver o plano · amanhã: rodagem longa · 14 km").
+  const tomorrowPreview = useMemo(() => {
+    const title = dayTitle(days[1]?.items || [], raceNameForDate(raceEvents, tomorrow));
+    return title.charAt(0).toLowerCase() + title.slice(1);
+  }, [days, raceEvents, tomorrow]);
 
   const PendingBanner = () => pendingCount > 0 && (
     <button type="button" onClick={() => onNav?.('coach')} className="flex items-center gap-2 w-full min-h-[44px] px-3 rounded-[14px] text-left" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
@@ -181,7 +79,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     </button>
   );
 
-  if (!window || !day) {
+  if (!planWindow || !day) {
     return (
       <div className="flex flex-col gap-2">
         <PendingBanner />
@@ -200,48 +98,98 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
 
   const status = dayStatus(day, today);
 
+  /* O dia da prova (specs/plano-de-prova.md): o plano tem lá um item
+     `corrida` com `training_type = 'prova'` e a agenda tem a prova. O nome
+     vem da agenda — o item do plano não o guarda — e o botão leva ao hub,
+     que é onde a prova se prepara e se regista. Num dia destes não há
+     "Ver detalhe do treino": a prova não é um treino por registar, e o que
+     há para fazer ("Abrir a prova") fica à vista. */
+  const race = (day.items || []).find((i) => i.isRace);
+  const racePlanItem = (day.items || []).find(isRacePlanItem);
+  const dayRace = raceForDate(raceEvents, day.dateISO);
+  const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
+
+  const session = pendingSession(day, today);
+  const instructions = trainingItems(day.items).filter((i) => !isRacePlanItem(i) && typeof i.notes === 'string' && i.notes.trim());
+  // Os treinos "normais" do dia — os que o botão de registo (ou o estado
+  // que ficou no lugar dele) representa.
+  const trainings = trainingItems(day.items).filter((i) => !i.isRace && !isRacePlanItem(i));
+  const done = trainings.length > 0 && trainings.every((i) => i.status === 'concluido');
+  const cancelled = trainings.length > 0 && trainings.every((i) => i.status === 'cancelado');
+
+  /* A gaveta só existe quando tem o que revelar. Um dia de descanso sem
+     instrução nenhuma fica em duas linhas — a data e "Descanso" —, sem uma
+     linha que promete detalhe e abre para nada. No dia da prova dá isto
+     falso sozinho (a instrução, o botão e o estado saltam sempre o item da
+     prova), e o que fica à vista é "Abrir a prova". */
+  const hasDetail = instructions.length > 0 || !!session || done || cancelled;
+
   return (
     <div className="flex flex-col gap-2">
       <PendingBanner />
-      <GlassCard tone="gym" glow padding={0} data-testid="day-plan-card">
-        {/* A navegação do dia numa faixa própria, a toda a largura — é isto
-            que separa "navegar entre dias" de "o dia" (por isso o padding
-            do GlassCard sai daqui e passa para o corpo, logo abaixo). */}
-        <div className="flex items-center justify-between gap-2" style={{ padding: '6px 10px', background: 'rgba(255,255,255,.03)', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
-          <button type="button" aria-label="Dia anterior" disabled={safeIndex === 0} onClick={() => scrollTo(safeIndex - 1)} className="flex items-center justify-center rounded-full disabled:opacity-30" style={arrowStyle}>
-            <ChevronLeft size={17} />
-          </button>
+      <GlassCard tone="gym" glow padding="14px 16px" data-testid="day-plan-card">
+        <div className="flex items-center justify-between gap-2">
           <span data-testid="day-plan-date" className="text-[11.5px] font-extrabold uppercase whitespace-nowrap" style={{ color: dateColor(status), letterSpacing: '.06em' }}>{formatDayLabel(day.dateISO)}</span>
-          <button type="button" aria-label="Dia seguinte" disabled={safeIndex >= days.length - 1} onClick={() => scrollTo(safeIndex + 1)} className="flex items-center justify-center rounded-full disabled:opacity-30" style={arrowStyle}>
-            <ChevronRight size={17} />
+          {week && <span data-testid="day-plan-week" className="text-[11px] font-bold whitespace-nowrap" style={{ color: 'var(--text-4)' }}>{week.text}</span>}
+        </div>
+
+        <h2 className="text-[20px] font-black leading-[1.15] mt-2" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
+          {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
+        </h2>
+
+        {hasDetail && (
+          <button
+            type="button"
+            data-testid="day-plan-detail-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+            className="flex items-center justify-between w-full min-h-[44px] mt-1 text-left text-[12.5px] font-bold"
+            style={{ color: 'var(--coach)' }}
+          >
+            Ver detalhe do treino
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
-        </div>
+        )}
 
-        <div style={{ padding: '12px 16px 14px' }}>
-          {/* Um dia por página, com snap nativo — desliza tal como os outros
-              carrosséis do Início/Dashboard (.tab-swipe-carousel, ver
-              globals.css), e useCarouselHaptics dá o tique tátil a cada
-              mudança, seja por gesto, seta ou ponto. */}
-          <div ref={scrollRef} onScroll={handleScroll} onTouchMove={handleTouchMove} className="tab-swipe-carousel" style={carouselStyle}>
-            {days.map((d, i) => (
-              <DayPlanPage key={d.dateISO} pageRef={(el) => { pageRefs.current[i] = el; }} day={d} raceEvents={raceEvents} onComplete={onComplete} onOpenMeals={onOpenMeals} onOpenRace={onOpenRace} />
+        {/* A instrução da Carol (item.notes: "8×400m a 4:15/km, 90s de trote
+            entre séries") e a ação do dia andam sempre juntas: ler o que há
+            para fazer e marcá-lo como feito é o mesmo gesto, em dois passos. */}
+        {hasDetail && open && (
+          <div data-testid="day-plan-detail" className="mt-1 pt-[10px]" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
+            {instructions.map((i) => (
+              <p key={i.id} data-testid="day-plan-notes" className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>
+                {instructions.length > 1 ? `${planItemTitle(i, dayRace?.name || null)}: ${i.notes.trim()}` : i.notes.trim()}
+              </p>
             ))}
-          </div>
 
-          <div className="flex items-center justify-between mt-2 -mb-2">
-            {/* Os pontos medem 22px cada: com um plano de 18 dias saíam do
-                cartão (relatado 2026-09-15). Acima de 8 dias fica o
-                contador; as setas e o gesto continuam a mudar de dia. */}
-            {days.length > MAX_DOTS ? (
-              <span data-testid="day-plan-counter" className="flex items-center min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>
-                {`${safeIndex + 1} de ${days.length}`}
-              </span>
-            ) : days.length > 1 ? (
-              <div className="flex items-center min-h-[44px]"><CarouselDots count={days.length} currentIndex={safeIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" /></div>
-            ) : <span />}
-            <button type="button" onClick={adapt} className="min-h-[44px] text-[11.5px] font-bold" style={{ color: 'var(--text-4)' }}>Adaptar plano</button>
+            {session && (
+              <button type="button" onClick={() => onComplete?.(session)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-2.5 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }}>
+                <Check size={15} /> Registar sessão
+              </button>
+            )}
+            {!session && (done || cancelled) && (
+              <div data-testid="day-plan-status" className="inline-flex items-center gap-[6px] min-h-[32px] mt-2.5 px-3 rounded-[11px] text-[12px] font-extrabold" style={done
+                ? { background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }
+                : { background: 'var(--tint-danger-bg)', border: '1px solid var(--tint-danger-bd)', color: 'var(--danger)' }}>
+                {done ? <><Check size={14} /> Concluído</> : <><XIcon size={14} /> Cancelado</>}
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {openRaceId && (
+          <button type="button" data-testid="day-plan-open-race" onClick={() => onOpenRace?.(openRaceId)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+            Abrir a prova
+          </button>
+        )}
+
+        {/* O rodapé está sempre lá: é a única porta para o plano inteiro
+            desde que o carrossel saiu daqui, e a espreitadela a amanhã
+            evita ter de a abrir só para saber se há treino. */}
+        <button type="button" data-testid="day-plan-open-plano" onClick={() => onOpenPlano?.()} className="flex items-center justify-between w-full min-h-[44px] mt-1.5 text-left text-[12px] font-bold" style={{ color: 'var(--text-3)', borderTop: '1px solid rgba(255,255,255,.09)' }}>
+          <span>Ver o plano <span className="font-semibold" style={{ color: 'var(--text-4)' }}>· amanhã: {tomorrowPreview}</span></span>
+          <ChevronRight size={15} style={{ color: 'var(--text-4)' }} className="shrink-0" />
+        </button>
       </GlassCard>
     </div>
   );

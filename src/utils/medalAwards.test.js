@@ -131,11 +131,11 @@ describe('syncMedalAwards', () => {
 describe('markMedalAwardsSeen', () => {
   it('marca seen_at nas indicadas e deixa as outras', async () => {
     await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07')] });
-    const { pending } = await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07'), due('epoca', 'prova', 'r1'), due('recordes', '5k', 'r2')] });
+    const { pending } = await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07'), due('terreno', 'trail1', ''), due('recordes', '5k', 'r2')] });
     expect(pending).toHaveLength(2);
     await markMedalAwardsSeen([pending[0].id]);
     const after = await syncMedalAwards({ userId: 'u1', due: [] });
-    expect(after.pending.map((p) => p.medalhao)).toEqual(['epoca']);
+    expect(after.pending.map((p) => p.medalhao)).toEqual(['terreno']);
     expect(after.pending[0].title).toBeNull();
   });
 

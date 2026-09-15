@@ -46,12 +46,12 @@ const SPARKS = [
    a prova nova pode cair fora dos desenhados: ocupa então o último lugar. */
 function discSlots(slots = [], award) {
   const all = slots || [];
-  // A Época grava `slot: 'prova'` com o id da prova no period_key (as
-  // posições p1..pN mudam quando se marca uma prova mais cedo no ano) — o
-  // encaixe encontra-se pela prova, não pela chave.
-  const idx = award?.medalhao === 'epoca'
-    ? all.findIndex((s) => s?.periodKey && s.periodKey === String(award.period_key ?? award.race_id ?? ''))
-    : all.findIndex((s) => s?.key === award?.slot);
+  // A chave do encaixe é estável em todos os medalhões ('mes', '21k',
+  // 'estrada5', 'seq3', 'o1'...) e é essa que o medal_awards grava em
+  // `slot`: o encaixe encontra-se sempre por ela. (A Época, que gravava
+  // 'prova' com o id no period_key porque as posições p1..pN dançavam, deixou
+  // de existir em 2026-09-15 — e com ela o caso especial que isto tinha.)
+  const idx = all.findIndex((s) => s?.key === award?.slot);
   let shown = visibleSlots(all);
   let targetIndex = idx;
   if (idx >= MAX_SLOTS) {

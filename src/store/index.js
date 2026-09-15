@@ -90,7 +90,9 @@ export const useAppStore = create((set, get) => ({
     }
     return { dismissedInterventions: next };
   }),
-  openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race'
+  // 'plano' não é um registo — é o ecrã "O plano" (o plano acordado dia a
+  // dia), que entra por aqui para ser ecrã de topo como os outros.
+  openCreationMode: null, // null | 'meal' | 'assessment' | 'run' | 'workout' | 'race' | 'plano'
   editingRaceId: null,
   // Corrida a abrir em EDIÇÃO no ecrã de topo (openCreationMode === 'run').
   // Só o hub da prova a usa, para reabrir o registo já gravado quando o

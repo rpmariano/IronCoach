@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 
 vi.mock('../../utils/medalhoes', async () => {
   const { makeMedalhoes } = await import('../../test/medalhoesFixture');
-  return { computeMedalhoes: vi.fn(() => makeMedalhoes()), MEDALHAO_KEYS: ['ano_km', 'distancias', 'recordes', 'epoca', 'consistencia', 'superacao'] };
+  return { computeMedalhoes: vi.fn(() => makeMedalhoes()), MEDALHAO_KEYS: ['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao'] };
 });
 
 import PalmaresCard from './PalmaresCard';
