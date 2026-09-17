@@ -234,6 +234,21 @@ export default function Coach() {
     return data;
   });
 
+  /* Vindo do Início, aviso "A Carol precisa de falar contigo" por conflito
+     de provas principais (specs/plano-vinculado-a-prova.md §4.4). Vai pelo
+     canal do check-in do plano — é lá que as ferramentas de propor estão
+     abertas — mas com o guião do conflito, que o servidor monta a partir das
+     provas que aqui seguem. Ao contrário da divergência, não se marca nada
+     como tratado no fim: o que fecha o assunto é a decisão do atleta gravada
+     na prova (conflict_acknowledged_at), não o facto de terem falado. */
+  const handleRaceConflictCheckin = ({ races = [], target = null } = {}) => sendCoachInitiatedPayload({
+    message: '',
+    is_plan_checkin: true,
+    race_conflict: { races, target },
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  });
+
   // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
   // prova" (utils/coachProactive.js, pendingRaceBalanceCandidate): ao
   // contrário do efeito passivo abaixo (que cede sempre que ela tiver
@@ -276,6 +291,12 @@ export default function Coach() {
       const { candidate } = coachIntent;
       setCoachIntent(null);
       handleRaceBalanceCheckin(candidate);
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'race_conflict') {
+      const { races, target } = coachIntent;
+      setCoachIntent(null);
+      handleRaceConflictCheckin({ races, target });
       return;
     }
     // Os botões "Adaptar plano" mandam a string; o Início, quando detetou uma

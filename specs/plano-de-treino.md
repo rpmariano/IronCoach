@@ -50,7 +50,8 @@ id            uuid pk
 user_id       uuid not null → auth.users
 status        text  'proposto' | 'aceite' | 'recusado'
 period_start  date  not null
-period_end    date  not null
+period_end    date  not null   -- com race_id, é o dia da prova
+race_id       uuid  null → race_events  -- a prova-objetivo (2026-09-18)
 summary       text  resumo do coach ("4 treinos, foco em base aeróbica")
 created_at    timestamptz
 accepted_at   timestamptz nullable
@@ -242,7 +243,11 @@ perde essa escolha.
    ignore a funcionalidade acumula itens indefinidamente. Não é grave, mas ao
    fim de meses a lista fica longa. Talvez arquivar automaticamente ao fim de
    N semanas, mantendo o estado `pendente` (arquivado ≠ falhado).
-4. **Objetivos duradouros vs. plano** — um acordo do tipo "vamos perder peso"
+4. **Objetivos duradouros vs. plano** — parcialmente fechada a 2026-09-18:
+   o objetivo da época passou a ser a prova-objetivo do plano
+   (`coach_plans.race_id`, ver `specs/plano-vinculado-a-prova.md`). O que fica
+   em aberto é só o acordo duradouro que não é uma prova ("vamos perder
+   peso"), que continua a escrever nas colunas de `profiles`. — um acordo do tipo "vamos perder peso"
    escreve nas colunas de `profiles` (com o *toggle* e a cor do módulo Coach
    a marcar a origem). Isso é **outra funcionalidade**, complementar a esta:
    o plano ajusta o dia, o acordo duradouro muda a linha de base. Convém

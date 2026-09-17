@@ -4,7 +4,7 @@ import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { pendingRaceBalanceCandidate, dismissProactiveAlert } from '../../utils/coachProactive';
-import { detectPlanDivergence, wasDivergenceHandled } from '../../utils/planDivergence';
+import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
@@ -84,6 +84,18 @@ export default function Home() {
 
   const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
 
+  /* Duas provas principais no mesmo bloco (specs/plano-vinculado-a-prova.md
+     §2.4): o taper de cada uma são 10-21 dias de polimento, e treinar para
+     uma é sabotar a outra. Não há plano correto enquanto as duas forem
+     principais — por isso isto sai pelo canal da intervenção e não pelo das
+     divergências: pesa como um assunto por resolver, não tem botão de
+     dispensar, e só se cala quando o atleta decidir (a decisão grava-se na
+     prova, conflict_acknowledged_at, e vale em qualquer dispositivo). */
+  const raceConflict = useMemo(
+    () => detectRaceConflict({ coachPlans, raceEvents, today }),
+    [coachPlans, raceEvents, today],
+  );
+
   /* O balanço da prova (specs/gamificacao-provas.md §3): no dia a seguir, a
      Carol chama por ele a partir do botão flutuante enquanto o chat não for
      aberto. Só quando não há assuntos por resolver — uma intervenção pesa
@@ -91,12 +103,12 @@ export default function Home() {
      porque "Falar com a Carol" precisa dele para pedir o balanço a sério —
      ver o coachIntent 'race_balance' mais abaixo. */
   const raceBalance = useMemo(() => {
-    if (pendingTopics > 0) return null;
+    if (pendingTopics > 0 || raceConflict) return null;
     const candidate = pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
     if (!candidate) return null;
     const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
     return race ? { race, candidate } : null;
-  }, [pendingTopics, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, balanceDismissals]);
+  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, balanceDismissals]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -106,15 +118,21 @@ export default function Home() {
      mudar. Prioridade: uma intervenção pesa mais, e o ajuste pesa mais do
      que o balanço da prova (que é uma boa notícia, não uma urgência). */
   const divergence = useMemo(() => {
-    if (pendingTopics > 0) return null;
+    if (pendingTopics > 0 || raceConflict) return null;
     const found = detectPlanDivergence({ coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today });
     if (!found.reasons.length || wasDivergenceHandled(profile?.id, found.signature)) return null;
     return found;
-  }, [pendingTopics, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
+  }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
 
   const openCoach = () => {
     if (interventionPending) {
       setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
+    } else if (raceConflict) {
+      setCoachIntent({
+        kind: 'race_conflict',
+        races: raceConflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
+        target: raceConflict.target ? { id: raceConflict.target.id, name: raceConflict.target.name, date: raceConflict.target.date } : null,
+      });
     } else if (divergence) {
       setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
     }
@@ -135,6 +153,20 @@ export default function Home() {
       message: pendingTopics === 1 ? 'Tens 1 assunto a resolver com ela.' : `Tens ${pendingTopics} assuntos a resolver com ela.`,
       onTalk: openCoach,
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
+    });
+  } else if (raceConflict) {
+    const nomes = raceConflict.races.map((r) => raceLabel(r)).join(', ');
+    carolAlerts.push({
+      id: 'conflito-provas',
+      severity: 'warning',
+      title: 'A Carol precisa de falar contigo',
+      // Sem onDismiss, de propósito: enquanto houver duas principais no mesmo
+      // bloco não há plano certo, e a decisão é do atleta — mas tem de ser
+      // tomada. A Carol grava-a e não volta a perguntar.
+      message: raceConflict.target
+        ? `${nomes} está marcada como principal a meio do plano para ${raceLabel(raceConflict.target)}.`
+        : `${nomes} está marcada como principal a meio do plano atual.`,
+      onTalk: openCoach,
     });
   } else if (divergence) {
     carolAlerts.push({

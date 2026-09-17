@@ -30,6 +30,7 @@ import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/exper
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { raceLabel } from '../../utils/planDivergence';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { useCarouselHaptics } from '../../utils/haptics';
@@ -96,7 +97,7 @@ const EMPTY_DRAFT = {
 const PAGE_KEYS = ['hub', 'details'];
 
 export default function RunAgenda({ onClose }) {
-  const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
+  const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, coachPlans, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
   // Prova declarada no passo 6 do arranque (Onboarding.jsx). Chega com nome,
@@ -151,6 +152,23 @@ export default function RunAgenda({ onClose }) {
      RESULTADO, pelo "Editar o registo" do hub (pedido 2026-09-13). Sem a
      página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
+
+  /* Aviso informativo: esta prova, como está a ser gravada, entra em conflito
+     com o plano ativo. Só quando é PRINCIPAL e cai dentro de um plano aceite
+     que prepara OUTRA prova — é o caso que não tem plano correto possível.
+     Devolve o rótulo da prova-objetivo, ou null quando não há conflito. */
+  const planConflictWarning = useMemo(() => {
+    if (draft.race_priority !== 'a' || !draft.date) return null;
+    const plan = (coachPlans || []).find((p) => {
+      if (!p || p.status !== 'aceite' || !p.race_id || p.race_id === editingEventId) return false;
+      const start = String(p.period_start || '').slice(0, 10);
+      const end = String(p.period_end || '').slice(0, 10);
+      return start && end && draft.date >= start && draft.date < end;
+    });
+    if (!plan) return null;
+    const target = (raceEvents || []).find((r) => r?.id === plan.race_id);
+    return target ? raceLabel(target) : 'outra prova';
+  }, [draft.race_priority, draft.date, coachPlans, raceEvents, editingEventId]);
   const scrollRef = useRef(null);
   const scrollToRef = useRef(() => {});
   const pageRefs = useRef([]);
@@ -1164,6 +1182,20 @@ export default function RunAgenda({ onClose }) {
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {racePriorityDescription(draft.race_priority)}
                 </p>
+                {/* Marcar esta prova como principal a meio de um plano que
+                    prepara outra é uma escolha legítima — mas com um custo
+                    (dois polimentos incompatíveis, ver
+                    specs/plano-vinculado-a-prova.md). Aqui só se avisa: não
+                    bloqueia nem muda nada. Quem trata do assunto é a Carol,
+                    depois de gravado, para a decisão ser conversada e não
+                    imposta por um formulário. */}
+                {planConflictWarning && (
+                  <Warning tone="warn" title="Vai chocar com o plano" className="mt-2">
+                    O plano em curso prepara {planConflictWarning}. Duas provas principais no
+                    mesmo bloco pedem dois polimentos incompatíveis — a Carol vai querer falar
+                    contigo sobre isto depois de gravares.
+                  </Warning>
+                )}
               </div>
 
               {/* Objetivo de tempo total · Objetivo de pace */}

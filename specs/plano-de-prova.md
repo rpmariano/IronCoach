@@ -120,6 +120,11 @@ pela hora; sem hora, no fim.
 
 ## O plano tem de saber da prova (decidido 2026-09-13)
 
+> **Atualizado a 2026-09-18** — o plano deixou de apenas *saber* da prova e
+> passou a *ser dela*: `coach_plans.race_id`, `period_end` no dia da prova, e
+> uma só principal por bloco. Ver `specs/plano-vinculado-a-prova.md`, que manda
+> onde contradiga esta secção.
+
 A véspera é uma fórmula partilhada, `_shared/formulas/raceEve.ts`
 (`computeRaceEve`): as horas e as gramas que a Carol diz no chat são as que
 o cartão do Início mostra e as que o `coach-daily-summary` recebe.
