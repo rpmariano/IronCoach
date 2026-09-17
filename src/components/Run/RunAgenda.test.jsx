@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -16,9 +17,17 @@ vi.mock('../../lib/supabase', () => ({
   invokeEdgeFunctionWithTimeout: vi.fn(),
 }));
 
+/* A data é RELATIVA a hoje, não fixa. Era '2026-09-16', e a 2026-09-17 estes
+   testes começaram a falhar sozinhos: com a data no passado, o RaceHubView
+   passa a mostrar o estado "prova concluída" (isCompleted por trainingStatus)
+   — sem contagem decrescente, sem macrociclo, sem o botão de obter do site —,
+   e três testes deste ficheiro procuravam exatamente isso. Uma data fixa no
+   futuro é uma bomba-relógio; 30 dias à frente mantém a prova sempre por
+   correr, com preparação a decorrer. Os testes que precisam de um dia
+   concreto continuam a fixar o relógio com vi.setSystemTime, como já faziam. */
 const EXISTING_RACE = {
   id: 'race-1',
-  date: '2026-09-16',
+  date: addDaysISO(todayISO(), 30),
   location: 'Lisboa',
   name: 'Corrida do Tejo',
   race_type: 'estrada',
@@ -365,7 +374,11 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
     expect(screen.getByText(/Evolução & Prontidão/i)).toBeInTheDocument();
     expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
-    expect(screen.getByText(/Base Aeróbica/i)).toBeInTheDocument();
+    // A fase aparece em mais do que um sítio no macrociclo (o rótulo da fase
+    // atual e a linha dela na lista), por isso conta-se em vez de exigir uma
+    // só — com a data da prova relativa a hoje, quantas vezes aparece depende
+    // da fase em que a preparação está.
+    expect(screen.getAllByText(/Base Aeróbica/i).length).toBeGreaterThan(0);
 
     // Clica na aba Detalhes da prova
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import GymRegistration from './GymRegistration';
+import { todayISO } from '../../lib/utils';
 
 // analyze-gym é a única coisa que estes testes exercitam de facto — tanto
 // a foto como o manual gravam a sessão e geram o comentário do Coach numa só
@@ -191,7 +192,12 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
    TIPO, não só o dia. */
 describe('GymRegistration — regista sem vir do botão "Registar sessão" (bate por dia+tipo)', () => {
   const onClose = vi.fn();
-  const hojeISO = new Date().toISOString().slice(0, 10);
+  /* `todayISO()` (hora LOCAL), não `new Date().toISOString()` (UTC). A app
+     decide o dia com todayISO; um teste que calcule "hoje" em UTC discorda
+     dela durante a hora a seguir à meia-noite local (apanhado 2026-09-18
+     às 00:49, com o teste a dizer 09-17 e o formulário 09-18), e o item do
+     plano deixava de bater com a data do registo. */
+  const hojeISO = todayISO();
   const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
   beforeEach(() => {

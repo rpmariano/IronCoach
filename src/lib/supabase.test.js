@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { FunctionsClient } from '@supabase/functions-js';
-import { invokeEdgeFunctionWithTimeout } from './supabase';
+import { invokeEdgeFunctionWithTimeout, supabase } from './supabase';
+
+/* O protótipo a espiar tem de vir do cliente VIVO, não de um
+   `import { FunctionsClient } from '@supabase/functions-js'`.
+   Era assim que estava até 2026-09-18, e passou a falhar quando o pacote
+   ficou resolvido em duas cópias (o npm dentro do Deno instala em
+   node_modules/.deno/...): a classe importada aqui deixou de ser a mesma que
+   o SupabaseClient instancia lá dentro — `Object.getPrototypeOf(supabase
+   .functions) === functionsProto` dá false —, por isso o spy
+   ficava a mockar uma classe que ninguém usava, o invoke REAL corria, e
+   todos estes testes recebiam "Sessão inválida" do servidor a sério.
+   Ir buscá-lo à instância acerta sempre, haja as cópias que houver. */
+const functionsProto = Object.getPrototypeOf(supabase.functions);
 
 // `supabase.functions` (SupabaseClient.ts) é um GETTER que devolve uma
 // instância NOVA de FunctionsClient a cada acesso — espiar
@@ -42,7 +53,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('BUG CORRIGIDO — o próprio timer do cliente disparar dá isTimeout:true (invoke() RESOLVE com {data:null, error}, nunca rejeita)', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockImplementation((_fnName, opts) => {
+    vi.spyOn(functionsProto, 'invoke').mockImplementation((_fnName, opts) => {
       return new Promise((resolve) => {
         opts.signal.addEventListener('abort', () => resolve({ data: null, error: functionsFetchError() }));
       });
@@ -55,7 +66,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('falha de rede genuína (sem o temporizador ter disparado) continua isTimeout:false', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
 
     const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
 
@@ -64,7 +75,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('erro devolvido pelo próprio servidor mantém isTimeout:false (comportamento inalterado)', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockResolvedValue({
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
       data: null,
       error: { message: 'Falha na resposta do coach (503). Tenta novamente.' },
     });
@@ -76,7 +87,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('sucesso continua a devolver os dados sem isTimeout', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockResolvedValue({
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
       data: { reply: 'olá' },
       error: null,
     });
@@ -87,7 +98,7 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
   });
 
   it('rede de segurança: se invoke() alguma vez rejeitar em vez de resolver, o timer do cliente ainda é detetado no catch', async () => {
-    vi.spyOn(FunctionsClient.prototype, 'invoke').mockImplementation((_fnName, opts) => {
+    vi.spyOn(functionsProto, 'invoke').mockImplementation((_fnName, opts) => {
       return new Promise((_resolve, reject) => {
         opts.signal.addEventListener('abort', () => reject(functionsFetchError()));
       });

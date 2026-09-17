@@ -14,6 +14,13 @@
 -- imposta em propose_training_plan (coach-chat), não aqui: depende do
 -- histórico e da conversa, não é uma invariante de linha.
 -- ============================================================================
+-- APLICADA EM PRODUÇÃO a 2026-09-17 23:44 UTC (version 20260917234432).
+-- O deploy-edge-functions.yml NÃO corre migrations — só functions deploy —,
+-- por isso esta foi aplicada à mão ANTES do deploy da coach-chat que passou a
+-- inserir race_id. Pela ordem contrária, todas as propostas de plano falhavam.
+-- Verificado depois: 12 planos existentes, todos com race_id null (a coluna é
+-- nullable e o código trata null como plano sem prova).
+-- ============================================================================
 
 -- ---------------------------------------------------------------------------
 -- 1. coach_plans.race_id — a prova-objetivo
