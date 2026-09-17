@@ -1,0 +1,42 @@
+# graphify: o que fica fora do grafo.
+# Padroes com / a frente sao ancorados na raiz (semantica gitignore): sem a barra,
+# "design-system/" apanhava tambem specs/design-handoff-2026-09/design-system/,
+# que e precisamente o que queremos DENTRO do grafo.
+
+# O pacote ironhealth-ui de agosto (light-theme, pre-redesenho): ninguem em src/ o
+# importa e no grafo apareceria como um segundo Button/Card a competir com os reais.
+/design-system/
+
+# Ruído pré-redesenho (julho/agosto 2026), decidido a 2026-09-17 ao construir o grafo:
+# mockups de conceitos, críticas ao index.html antigo, screenshots, ícones e os
+# scripts avulsos de captura/upload da raiz. Nada disto descreve a app atual.
+/public/*.html
+/index_legacy.html
+/.impeccable/
+/docs-images/
+/test_*.py
+/test_results.json
+/capture_*.js
+/run_puppeteer_capture.js
+/upload_*.js
+/fix_*.js
+/fix_*.py
+/injectCSS.js
+/copy_docs_images.js
+/check_supabase_buckets.js
+/fetch_chat.mjs
+/publish_*.js
+/*_images.json
+/.claude-session-lock.*.json
+/skills-lock.json
+# ícones e favicons — imagens sem conteúdo para o grafo
+apple-touch-icon.png
+badge-96.png
+favicon.png
+icon-192.png
+icon-512.png
+icon-512-maskable.png
+/logo.png
+/public/brand/og.png
+/src/URC.png
+/public/urc-emblema.jpg
