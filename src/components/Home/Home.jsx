@@ -174,23 +174,24 @@ export default function Home() {
   // "Registar sessão" não marca logo — deixa isso ao ecrã de registo, que
   // grava o completePlanItem só depois de a corrida/sessão real estar
   // gravada (specs/plano-de-treino.md §5.2).
+  // setActiveTab devolve false quando um navGuard recusa (formulário com
+  // alterações por gravar). Nesse caso não se abre nada — o mesmo contrato
+  // que openRaceRun (store) e o "+" do Layout já cumprem; abrir o registo
+  // por cima de uma navegação que não aconteceu deixava um formulário sujo
+  // sem aviso por baixo de outro (achado do grafo, 2026-09-17).
   const handleCompleteItem = (item) => {
     setPlanItemPrefill(item);
-    if (item.kind === 'corrida') {
-      setActiveTab('corrida');
-      setOpenCreationMode('run');
-    } else {
-      setActiveTab('ginasio');
-      setOpenCreationMode('workout');
-    }
+    const isRun = item.kind === 'corrida';
+    if (!setActiveTab(isRun ? 'corrida' : 'ginasio')) { setPlanItemPrefill(null); return; }
+    setOpenCreationMode(isRun ? 'run' : 'workout');
   };
 
   const createRace = () => setOpenCreationMode('race');
   // Registar a prova é abrir o registo de corrida em modo prova — o store
   // trata do prefill e do separador (specs/prova-concluida.md §3).
   const registerRace = (raceId) => useAppStore.getState().openRaceRun(raceId);
-  const registerMeal = () => { setActiveTab('nutricao'); setOpenCreationMode('meal'); };
-  const registerRun = () => { setActiveTab('corrida'); setOpenCreationMode('run'); };
+  const registerMeal = () => { if (setActiveTab('nutricao')) setOpenCreationMode('meal'); };
+  const registerRun = () => { if (setActiveTab('corrida')) setOpenCreationMode('run'); };
 
   // Saída manual do aviso da Carol (bug-016): se a conversa já resolveu o
   // assunto mas o aviso ficou preso, o atleta não fica refém disso.
