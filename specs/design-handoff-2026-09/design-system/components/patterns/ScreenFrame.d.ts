@@ -1,4 +1,6 @@
 /**
+ * PROTÓTIPO — não existe como componente. A moldura real (fundo ambiente, header, scroll com --scroll-pad-bottom, nav) é `src/components/Layout/Layout.jsx`. Este ficheiro serve para montar mocks de ecrã isolados.
+ *
  * @startingPoint section="Patterns" subtitle="Moldura de ecrã completa: fundo, header, scroll, nav" viewport="700x220"
  */
 export interface ScreenFrameProps {

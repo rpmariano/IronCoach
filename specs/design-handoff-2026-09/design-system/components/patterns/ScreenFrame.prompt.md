@@ -1,3 +1,5 @@
+> **Protótipo.** A moldura real (fundo ambiente, header, scroll, nav) é `src/components/Layout/Layout.jsx`. Este serve para montar mocks de ecrã isolados.
+
 A moldura de qualquer ecrã — fundo, curvas de nível, gradiente ambiente, header, scroll com paddings certos, nav e overlays. Exporta também AppHeader e ContextHeader.
 
 ```jsx

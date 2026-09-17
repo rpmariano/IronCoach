@@ -1,3 +1,5 @@
+> **Protótipo.** A nav inferior real, com a minhoca e o FAB, está inline em `src/components/Layout/Layout.jsx`. Alterações à nav fazem-se lá.
+
 A barra inferior de 5 colunas — 4 separadores e o botão flutuante âmbar ao centro. A pílula é a minhoca.
 
 ```jsx

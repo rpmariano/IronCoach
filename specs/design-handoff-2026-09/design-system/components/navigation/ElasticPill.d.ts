@@ -1,4 +1,6 @@
 /**
+ * PROTÓTIPO — em produção não é um componente mas um hook: `useElasticPillIndicator(containerRef, activeIndex, opts)` em `src/utils/useElasticPillIndicator.js`, que mede os separadores e devolve o estilo do indicador. Lá vivem também as durações reais, o overshoot (2.2) e a guarda `pillMotion` que garante que nunca há duas em movimento.
+ *
  */
 export interface ElasticPillProps {
   /** posição alvo em px dentro do contentor (position:relative) */

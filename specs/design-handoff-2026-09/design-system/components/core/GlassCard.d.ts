@@ -1,14 +1,28 @@
 /**
  * @startingPoint section="Components" subtitle="O cartão de vidro base" viewport="700x200"
+ *
+ * IMPLEMENTADO — fonte de verdade: `src/components/shared/GlassCard.jsx`.
+ *
+ * Diferença face ao handoff: `radius` é um número de px (24 por omissão),
+ * não 'lg'|'xl'|'2xl'.
  */
 export interface GlassCardProps {
-  /** muda borda/fundo (coach, race, gym) e a cor do brilho */
+  /**
+   * Muda a borda (e, na Carol, o fundo) e a cor do brilho. Sem tone, é o
+   * vidro neutro: --surface-glass + --border-glass.
+   * Só coach/race/gym têm borda própria; os outros usam a borda neutra e
+   * mudam apenas o `glow`.
+   */
   tone?: 'race' | 'coach' | 'run' | 'gym' | 'nutrition' | 'body';
-  /** brilho radial no canto superior direito */
+  /** brilho radial no canto superior direito — só em cartões principais */
   glow?: boolean;
-  radius?: 'lg' | 'xl' | '2xl';
+  /** raio em px */
+  radius?: number;
   padding?: number | string;
+  className?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
+  /** o resto vai para a <div> */
+  [key: string]: unknown;
 }
-export function GlassCard(props: GlassCardProps): JSX.Element;
+export default function GlassCard(props: GlassCardProps): JSX.Element;

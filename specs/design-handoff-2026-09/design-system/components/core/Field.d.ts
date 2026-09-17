@@ -1,4 +1,6 @@
 /**
+ * PROTÓTIPO — não foi implementado com este nome. Os campos reais da app são `src/components/shared/Input.jsx`, `Select.jsx` e `DurationInput.jsx`, com APIs próprias. Usar este componente só em mocks/protótipos avulsos; em código de produção, ler os de src/.
+ *
  */
 export interface FieldProps {
   label?: string;
