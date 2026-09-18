@@ -45,6 +45,14 @@ export function lastRecordDate({ runs, meals, gymSessions, bodyAssessments }) {
   return dates.sort().pop();
 }
 
+/** O dia ISO como Date, ao meio-dia LOCAL. Meio-dia e não meia-noite para
+ *  que isoDay() devolva sempre o mesmo dia de volta, sem o apanhar do lado
+ *  errado numa mudança de hora. Serve para passar o "hoje" desta função a
+ *  quem só aceita um Date (evaluateRace). */
+function dayAsDate(iso) {
+  return new Date(`${iso}T12:00:00`);
+}
+
 function daysBetween(fromIso, toIso) {
   return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / DAY_MS);
 }
@@ -124,7 +132,14 @@ export function buildRaceAfterCandidate({ race, run: givenRun, runs = [], raceEv
       ...buildRaceOutcomePayload(outcome, race, run),
       // As conquistas que esta prova acabou de dar, pela chave — a Carol
       // cita-as no balanço (specs/gamificacao-provas.md §4).
-      achievements_new: achievementsForRace({ raceEvents, runs, profile }, race.id).filter((a) => a.isNew).map((a) => a.key),
+      // `now` TEM de ir: evaluateRace usa-o para decidir o que é "novo"
+      // (a prova ter menos de 7 dias) e, sem ele, essa decisão caía no
+      // relógio real enquanto todo o resto desta função corre no `now`
+      // injetado. As duas leituras discordavam na hora a seguir à
+      // meia-noite local e em qualquer chamada com data simulada — a
+      // Carol dava o balanço sem citar a conquista que a prova acabou de
+      // dar (apanhado 2026-09-18 por um teste que fixa o relógio).
+      achievements_new: achievementsForRace({ raceEvents, runs, profile, now: dayAsDate(today) }, race.id).filter((a) => a.isNew).map((a) => a.key),
     },
     raceId: race.id,
   };

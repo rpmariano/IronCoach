@@ -215,12 +215,22 @@ const PROPOSE_PLAN_TOOL = {
     "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta. " +
     "ADAPTAR PLANO ATIVO: se o contexto mostrar um plano em curso e o atleta pedir para o adaptar (ou se notares muitos treinos em atraso e sugerires tu próprio uma adaptação), " +
     "chama esta função com replace_active_plan=true abrangendo as novas datas propostas. " +
-    "A nova proposta irá sobrepor-se aos dias futuros do plano atual, mas o histórico passado do atleta será preservado. Podes avançar diretamente com a proposta de adaptação se for claro o que ajustar.",
+    "A nova proposta irá sobrepor-se aos dias futuros do plano atual, mas o histórico passado do atleta será preservado. Podes avançar diretamente com a proposta de adaptação se for claro o que ajustar. " +
+    "O PLANO É PARA UMA PROVA: se o atleta tem provas agendadas, o plano prepara UMA delas — passa o race_id dessa prova e period_end = o dia dela, porque é nesse dia que o plano termina. " +
+    "Entre hoje e essa prova só pode haver UMA prova principal (a que é o objetivo). As provas pelo caminho marcadas como secundárias (b) ou de treino (c) são para enquadrares no plano como treino de qualidade — é assim que o atleta as quer. " +
+    "Se houver outra PRINCIPAL pelo caminho, não proponhas o plano: fala primeiro com o atleta e propõe-lhe as duas saídas — passar essa para secundária (ofereces-te para o fazer com update_race_event) ou fazer o plano até essa prova, que passa a ser o objetivo. A decisão é dele; tu explicas que dois polimentos seguidos são incompatíveis.",
   parameters: {
     type: "OBJECT",
     properties: {
       period_start: { type: "STRING", description: "Primeiro dia do plano, formato YYYY-MM-DD" },
-      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD" },
+      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD. Com race_id, TEM de ser a data da prova — o plano acaba no dia dela." },
+      race_id: {
+        type: "STRING",
+        description:
+          "Id (do contexto das provas) da prova-objetivo deste plano. Obrigatório sempre que houver " +
+          "uma prova agendada dentro do período. Só o omitas num plano sem prova nenhuma pelo caminho " +
+          "(base aeróbica, regresso de lesão).",
+      },
       replace_active_plan: {
         type: "BOOLEAN",
         description:
@@ -340,6 +350,15 @@ const UPDATE_RACE_EVENT_TOOL = {
       start_time: { type: "STRING", description: "Hora de partida HH:MM (hora local). Omite se não mudar." },
       race_priority: { type: "STRING", enum: ["a", "b", "c"], description: "Prioridade: a = principal, b = secundária, c = treino." },
       experience_level: { type: "STRING", enum: ["iniciante", "basico", "medio", "avancado"], description: "Nível do atleta NESTA prova." },
+      conflict_acknowledged: {
+        type: "BOOLEAN",
+        description:
+          "true APENAS quando o atleta disser explicitamente que quer manter esta prova como está, " +
+          "apesar de ela entrar em conflito com o plano ativo (ex.: fica principal a meio de um plano " +
+          "para outra prova, ou fica de fora do plano). Marca a decisão como tomada e faz-te parar de " +
+          "insistir nesta prova. Nunca o passes por iniciativa própria nem para encerrar o assunto: " +
+          "só quando ele decidir.",
+      },
       reason: { type: "STRING", description: "Uma frase com o porquê (ex.: 'objetivo revisto para realista face à previsão do treino')." },
     },
     required: [],
@@ -2209,7 +2228,7 @@ function daysBetweenISO(fromIso: string, toIso: string): number {
   return Math.round((Date.parse(toIso + "T00:00:00Z") - Date.parse(fromIso + "T00:00:00Z")) / 86400000);
 }
 
-type ScheduledRace = { id: string; name: string; date: string; distance_km: number | null };
+type ScheduledRace = { id: string; name: string; date: string; distance_km: number | null; race_priority: string };
 /** Provas agendadas do atleta entre duas datas; [] se a consulta falhar
  *  (o plano segue sem a guarda, com aviso no log). */
 // deno-lint-ignore no-explicit-any
@@ -2217,7 +2236,7 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
   try {
     const res = await sb
       .from("race_events")
-      .select("id, name, date, distance_km")
+      .select("id, name, date, distance_km, race_priority")
       .eq("user_id", userId)
       .eq("status", "agendada")
       .gte("date", fromISO)
@@ -2227,7 +2246,7 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
       return [];
     }
     // deno-lint-ignore no-explicit-any
-    return (res.data || []).map((r: any) => ({ id: r.id, name: r.name || "Prova", date: r.date, distance_km: r.distance_km != null ? Number(r.distance_km) : null }));
+    return (res.data || []).map((r: any) => ({ id: r.id, name: r.name || "Prova", date: r.date, distance_km: r.distance_km != null ? Number(r.distance_km) : null, race_priority: r.race_priority || "a" }));
   } catch (err) {
     console.warn("Provas do período não lidas:", err);
     return [];
@@ -2237,6 +2256,7 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
 // deno-lint-ignore no-explicit-any
 export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
+  const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
 
   if (!period_start || !period_end || !ISO_DATE_RE.test(period_start) || !ISO_DATE_RE.test(period_end)) {
     return "Erro: period_start e period_end têm de ser datas no formato YYYY-MM-DD.";
@@ -2255,6 +2275,49 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // guarda — é uma validação, não o registo.
   const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, 2));
   const racesInPeriod = racesInPeriodOrAfter.filter((r) => r.date >= period_start && r.date <= period_end);
+
+  // ── O plano é para uma prova (specs/plano-vinculado-a-prova.md §4.1) ─────
+  // Isto é a REGRA, não uma sugestão ao modelo: um plano que não acaba na
+  // prova, ou que atravessa duas provas principais, é o problema que a spec
+  // descreve. Validado aqui, antes de gravar, e devolvido como erro com as
+  // saídas possíveis — é o que obriga a Carol a resolver com o atleta em vez
+  // de propor um plano incoerente.
+  if (raceId) {
+    const { data: target, error: targetErr } = await sb
+      .from("race_events")
+      .select("id, name, date, status")
+      .eq("id", raceId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (targetErr) return `Erro ao ler a prova-objetivo: ${targetErr.message}`;
+    if (!target) return "Erro: race_id não corresponde a nenhuma prova deste atleta. Usa o id que está no contexto das provas.";
+    if (target.status === "concluida") {
+      return `Erro: a prova "${target.name}" já está concluída — um plano prepara uma prova por correr. Se o atleta quer o plano seguinte, usa a próxima prova agendada.`;
+    }
+    if (target.date !== period_end) {
+      return `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
+    }
+    // Só UMA principal entre hoje e o objetivo. O taper de uma prova 'a'
+    // (10-21 dias) é incompatível com treinar para outra no mesmo período.
+    const otherMain = racesInPeriod.find((r) => r.id !== raceId && r.race_priority === "a");
+    if (otherMain) {
+      return `Erro: a prova "${otherMain.name}" (${otherMain.date}) está marcada como PRINCIPAL e cai dentro deste plano, que prepara "${target.name}". ` +
+        `Não proponhas o plano já. Fala com o atleta e resolve numa de duas formas, à escolha dele: ` +
+        `(1) "${otherMain.name}" passa a secundária e entra no plano como treino de qualidade — oferece-te para a mudares tu com update_race_event (race_priority="b"); ` +
+        `ou (2) o plano passa a preparar "${otherMain.name}", e então chama esta função com race_id dessa prova e period_end=${otherMain.date}. ` +
+        `Explica-lhe porquê: duas provas principais seguidas obrigam a dois polimentos incompatíveis. A decisão é dele.`;
+    }
+  } else {
+    // Sem race_id, nenhuma prova pode cair no período: ou o plano é para ela
+    // (e então tem race_id), ou o plano estava a atravessar uma prova sem a
+    // assumir como objetivo — que é exatamente a falha que a spec corrige.
+    const stray = racesInPeriod[0];
+    if (stray) {
+      return `Erro: a prova "${stray.name}" (${stray.date}) cai dentro deste plano, mas não indicaste race_id. ` +
+        `Se o plano é para ela, chama outra vez com race_id="${stray.id}" e period_end=${stray.date} — o plano acaba no dia da prova. ` +
+        `Se o plano é para uma prova mais à frente, passa o race_id dessa e o period_end do dia dela.`;
+    }
+  }
 
   // Valida tudo ANTES de gravar seja o que for — um item inválido a meio
   // deixaria um plano meio criado, que o atleta veria como proposta legítima.
@@ -2399,6 +2462,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       period_end,
       summary: typeof summary === "string" && summary.trim() ? summary.trim() : null,
       supersedes_plan_id: supersedesPlanId,
+      race_id: raceId,
     })
     .select()
     .single();
@@ -2504,7 +2568,17 @@ export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Pr
     patch.experience_level = args.experience_level;
     changes.push(`nível ${EXPERIENCE_LEVEL_LABELS[args.experience_level] || args.experience_level}`);
   }
-  if (changes.length === 0) return "Erro: nada para mudar — passa pelo menos um campo (target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level).";
+  // "Fica assim" — o atleta decidiu manter a prova como está apesar do
+  // conflito com o plano (specs/plano-vinculado-a-prova.md §2.5). É o que
+  // impede a Carol de voltar a insistir na mesma prova. Vive na BD e não em
+  // localStorage porque é uma decisão do atleta, não um estado do dispositivo.
+  // Nunca o passes sem ele ter dito que fica assim: o trigger limpa-o se a
+  // data ou a prioridade mudarem, mas não adivinha uma decisão que não houve.
+  if (args?.conflict_acknowledged === true) {
+    patch.conflict_acknowledged_at = new Date().toISOString();
+    changes.push("conflito com o plano dado por decidido (fica como está)");
+  }
+  if (changes.length === 0) return "Erro: nada para mudar — passa pelo menos um campo (target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level, conflict_acknowledged).";
 
   const { error: upErr } = await sb.from("race_events").update(patch).eq("id", race.id).eq("user_id", userId);
   if (upErr) return `Erro ao atualizar a prova: ${upErr.message}`;
@@ -5276,7 +5350,35 @@ async function handler(req: Request): Promise<Response> {
     const planDivergence: string[] = Array.isArray(body.plan_divergence)
       ? (body.plan_divergence as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim().slice(0, 200)).slice(0, 6)
       : [];
-    const planCheckinPrompt = planDivergence.length > 0
+    /* Duas provas principais no mesmo bloco — o conflito que exige decisão
+       (specs/plano-vinculado-a-prova.md §4.4). Chega pelo mesmo canal do
+       check-in do plano (as ferramentas de propor já estão abertas), mas com
+       um guião próprio: não é "o plano desviou-se", é "há uma escolha por
+       fazer e sou eu que a tenho de pôr à frente dele".
+       O tom está fixado aqui e não só na doutrina porque é o único sítio
+       onde a Carol sabe QUAIS são as duas provas. */
+    // deno-lint-ignore no-explicit-any
+    const rc: any = body.race_conflict && typeof body.race_conflict === "object" ? body.race_conflict : null;
+    // deno-lint-ignore no-explicit-any
+    const rcRaces: any[] = Array.isArray(rc?.races) ? rc.races.slice(0, 4) : [];
+    // deno-lint-ignore no-explicit-any
+    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)})`;
+    const raceConflictPrompt = rc && rcRaces.length > 0
+      ? `A app detetou um conflito de calendário e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
+        `${rcRaces.length === 1 ? "A prova" : "As provas"} ${rcRaces.map(rcName).join(", ")} ` +
+        `${rcRaces.length === 1 ? "está marcada" : "estão marcadas"} como PRINCIPAL e ` +
+        `${rcRaces.length === 1 ? "cai" : "caem"} a meio do plano que prepara ${rc.target ? rcName(rc.target) : "a prova-objetivo"}. ` +
+        `Explica-lhe em duas frases porque é que isto não pode ficar assim: uma prova principal pede 10 a 21 dias de polimento, ` +
+        `e dois polimentos dentro do mesmo bloco são incompatíveis — treinar a sério para uma é chegar mal à outra. ` +
+        `Põe-lhe as duas saídas, por esta ordem e sem escolher por ele: ` +
+        `(1) passar ${rcRaces.length === 1 ? "essa prova" : "essas provas"} a secundária e ela entra no plano como treino de qualidade — ofereces-te para a mudares já tu (update_race_event, race_priority="b") e propões o plano ajustado; ` +
+        `(2) mudar o objetivo para ${rcRaces.length === 1 ? "essa prova" : "a primeira delas"}, e então propões um plano novo até ao dia dela (propose_training_plan com o race_id dela, period_end no dia dela, replace_active_plan=true). ` +
+        `Tenta, mas não insistas mais do que uma vez: se ele disser que quer mesmo manter tudo como está, aceita sem julgar, ` +
+        `garante que percebeu o custo e chama update_race_event com conflict_acknowledged=true para eu parar de perguntar. ` +
+        `A decisão é dele; o teu trabalho é que seja informada.`
+      : null;
+
+    const planCheckinPrompt = raceConflictPrompt ? raceConflictPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +

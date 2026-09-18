@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  detectPlanDivergence, wasDivergenceHandled, markDivergenceHandled, MISSED_MIN,
+  detectPlanDivergence, detectRaceConflict, wasDivergenceHandled, markDivergenceHandled, MISSED_MIN,
 } from './planDivergence';
 
 /* specs/plano-de-prova.md, "O plano tem de saber da prova" (Alerta de
@@ -202,5 +202,61 @@ describe('wasDivergenceHandled / markDivergenceHandled', () => {
   it('sem assinatura não há nada a marcar nem a verificar', () => {
     expect(wasDivergenceHandled('u1', null)).toBe(false);
     expect(() => markDivergenceHandled('u1', null)).not.toThrow();
+  });
+});
+
+/* Uma prova principal a meio de um plano que prepara outra
+   (specs/plano-vinculado-a-prova.md §2.4). Sai por um canal próprio, não
+   pelas divergências: enquanto houver duas principais no mesmo bloco não há
+   plano correto possível, e o aviso não se dispensa. */
+describe('detectRaceConflict — duas provas principais no mesmo bloco', () => {
+  const objetivo = { id: 'r-obj', name: 'Maratona do Porto', date: '2026-09-27', status: 'agendada', race_priority: 'a' };
+  const vinculado = (over = {}) => plan({ race_id: 'r-obj', period_end: '2026-09-27', ...over });
+  const intermedia = (over = {}) => race({ id: 'r-int', name: 'São Silvestre', date: '2026-09-20', race_priority: 'a', ...over });
+  const conflito = (over = {}) => detectRaceConflict({
+    today: TODAY, coachPlans: [vinculado()], raceEvents: [objetivo, intermedia()], ...over,
+  });
+
+  it('uma principal pelo caminho é conflito, e traz a objetivo para a conversa', () => {
+    const r = conflito();
+    expect(r.races.map((x) => x.id)).toEqual(['r-int']);
+    expect(r.target.id).toBe('r-obj');
+    expect(r.plan.id).toBe('p1');
+  });
+
+  it('secundária ou de treino pelo caminho não é conflito nenhum — é treino', () => {
+    expect(conflito({ raceEvents: [objetivo, intermedia({ race_priority: 'b' })] })).toBeNull();
+    expect(conflito({ raceEvents: [objetivo, intermedia({ race_priority: 'c' })] })).toBeNull();
+  });
+
+  it('a própria prova-objetivo nunca conflitua consigo mesma', () => {
+    expect(detectRaceConflict({ today: TODAY, coachPlans: [vinculado()], raceEvents: [objetivo] })).toBeNull();
+  });
+
+  it('um plano sem prova-objetivo não tem com que conflituar', () => {
+    expect(conflito({ coachPlans: [plan()] })).toBeNull();
+  });
+
+  it('decidido pelo atleta cala o assunto nessa prova, em qualquer dispositivo', () => {
+    expect(conflito({ raceEvents: [objetivo, intermedia({ conflict_acknowledged_at: '2026-09-13T10:00:00Z' })] })).toBeNull();
+  });
+
+  it('uma principal já concluída, ou passada, não conflitua', () => {
+    expect(conflito({ raceEvents: [objetivo, intermedia({ status: 'concluida' })] })).toBeNull();
+    expect(conflito({ raceEvents: [objetivo, intermedia({ date: '2026-09-10' })] })).toBeNull();
+  });
+
+  it('o conflito tira a mesma prova das divergências — um assunto, um tom', () => {
+    const args = { today: TODAY, coachPlans: [vinculado()], raceEvents: [objetivo, intermedia()] };
+    expect(detectRaceConflict(args)).not.toBeNull();
+    // A intermédia não está no plano, mas isso não vira "prova_sem_item":
+    // o assunto dela é o conflito, e sai pelo outro canal.
+    expect(keys(detectPlanDivergence(args)).filter((k) => k === 'prova_sem_item').length).toBe(1);
+    expect(detectPlanDivergence(args).reasons.some((r) => r.text.includes('São Silvestre'))).toBe(false);
+  });
+
+  it('o plano que perdeu a prova-objetivo é uma divergência', () => {
+    const r = detectPlanDivergence({ today: TODAY, coachPlans: [vinculado()], raceEvents: [] });
+    expect(keys(r)).toContain('plano_sem_prova');
   });
 });

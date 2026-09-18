@@ -45,7 +45,7 @@ Este design system fixa a linguagem visual definida no redesenho de setembro de 
 
 **Estados.** Toque: scale .98 em 120ms. Selecionado: borda 1,5px na cor cheia + tinta a 16%. Desativado: opacidade .45. Foco de teclado: anel de 2px na cor do contexto (a implementar — ausente nos mocks). Sem hover — é touch-first.
 
-**Movimento.** O movimento explica o dado, nunca o decora. Oito animações (ver `IronCoach - Animações.dc.html` e `tokens/motion.css`): anéis desenham-se (1100ms), números contam (1400ms), trilho avança (1600ms), barras crescem (550ms), persiana sobe (340/240ms), confirmação de registo (spring 420ms), a Carol respira quando tem assunto (2600ms, três ciclos), conteúdo segue a pílula (280ms). **A minhoca** — pílula que estica a cobrir o trajeto e contrai com overshoot — é a assinatura: 420+130·distância ms na nav (teto 950), 320ms nos subnavs. Anima uma vez por sessão; `prefers-reduced-motion` leva tudo a 120ms ou zero. Fundo, vidro e avisos nunca mexem.
+**Movimento.** O movimento explica o dado, nunca o decora. Oito animações (ver `IronCoach - Animações.dc.html` e `tokens/motion.css`): anéis desenham-se (1100ms), números contam (1400ms), trilho avança (1600ms), barras crescem (550ms), persiana sobe (340/240ms), confirmação de registo (spring 420ms), a Carol respira quando tem assunto (2600ms, três ciclos), conteúdo segue a pílula (280ms). **A minhoca** — pílula que estica a cobrir o trajeto e contrai com overshoot — é a assinatura: 650+170·distância ms na nav (teto 1300), 480ms nos subnavs (abrandada a 2026-09-13; era 420+130 com teto 950, e 320ms). Anima uma vez por sessão; `prefers-reduced-motion` leva tudo a 120ms ou zero. Fundo, vidro e avisos nunca mexem.
 
 **Layout.** Um ecrã = moldura 390×844 com header fixo, scroll com padding-top 85 e padding-bottom 112 (168 com barra de ação), nav fixa. Persianas e popups montam-se dentro da moldura. Um único elemento organiza o ecrã: a etiqueta de secção.
 
@@ -60,24 +60,32 @@ Este design system fixa a linguagem visual definida no redesenho de setembro de 
 
 ## Componentes
 
-| Grupo | Componente | Para |
-|---|---|---|
-| core | `Button` | ações, 8 tons × 4 variantes × 3 tamanhos |
-| core | `IconButton` | voltar, fechar, setas — 44×44 |
-| core | `Chip` | seletor (44px) ou badge (24px) |
-| core | `Field` | campo de texto com label, hint, foco por contexto |
-| core | `GlassCard` | o cartão de vidro, com brilho opcional |
-| core | `SectionLabel` | etiqueta uppercase de secção |
-| navigation | `ElasticPill` + `useElasticPill` | a minhoca |
-| navigation | `BottomNav` | nav inferior com FAB da prova |
-| navigation | `SubNav` | subnav do Dashboard e do Perfil |
-| navigation | `ActionBar` | barra fixa de Guardar / Continuar |
-| feedback | `Warning` | aviso coral (ou ok / danger) |
-| feedback | `CoachNote`, `ChatBubble`, `CoachAvatar` | a voz e o rosto da Carol |
-| feedback | `Sheet`, `Dialog` | persiana e popup |
-| patterns | `ScreenFrame`, `AppHeader`, `ContextHeader` | a moldura de qualquer ecrã |
-| patterns | `Orbit`, `OrbitLegend` | os três anéis de nutrição |
-| patterns | `RaceTrail` | o trilho do macrociclo |
+Estado a 2026-09-17, depois de reconciliar cada `.d.ts`/`.prompt.md` com o que ficou
+implementado. **Implementado** = existe em produção, e é o ficheiro em `src/` que manda;
+o `.jsx` aqui é o stub original. **Protótipo** = nunca foi construído com este nome, e a
+coluna diz o que ficou no lugar. Ler sempre o `.d.ts` do componente antes de o usar.
+
+| Grupo | Componente | Para | Estado |
+|---|---|---|---|
+| core | `Button` | ações, 11 variantes × 4 tamanhos (sem prop `tone`) | implementado — `src/components/shared/Button.jsx` |
+| core | `IconButton` | voltar, fechar, setas — 44×44 | protótipo — usar `<Button variant="icon" size="icon">`; ver `AddButton`, `CoachButton` |
+| core | `Chip` | seletor de 44px (`active` + `variant`) | implementado — `src/components/shared/Chip.jsx` |
+| core | `Field` | campo de texto com label, hint, foco por contexto | protótipo — os reais são `Input.jsx`, `Select.jsx`, `DurationInput.jsx` |
+| core | `GlassCard` | o cartão de vidro, com brilho opcional | implementado — `src/components/shared/GlassCard.jsx` |
+| core | `SectionLabel` | etiqueta uppercase de secção | implementado — `src/components/shared/SectionLabel.jsx` |
+| navigation | `ElasticPill` | a minhoca | protótipo — em produção é o hook `src/utils/useElasticPillIndicator.js` |
+| navigation | `BottomNav` | nav inferior com FAB da prova | protótipo — inline em `src/components/Layout/Layout.jsx` |
+| navigation | `SubNav` | subnav do Dashboard e do Perfil (`activeIndex`, tom por item) | implementado — `src/components/shared/SubNav.jsx` |
+| navigation | `ActionBar` | barra fixa de Guardar / Continuar | implementado — `src/components/shared/ActionBar.jsx` (+ `ACTION_BAR_SCROLL_PAD`) |
+| feedback | `Warning` | aviso coral (ou ok / danger / coach) | implementado — `src/components/shared/Warning.jsx` (+ `WarningAction`) |
+| feedback | `CoachNote` | a voz da Carol num bloco | protótipo — usar `<Warning tone="coach">` e `CoachText.jsx` |
+| feedback | `ChatBubble` | balão do chat | nunca existiu neste sistema — o chat vive em `src/components/Coach/Coach.jsx` |
+| feedback | `CoachAvatar` | o rosto da Carol | só em `src/components/Coach/CoachAvatar.jsx`; sem ficheiro aqui |
+| feedback | `Sheet`, `Dialog` | persiana e popup | implementados — `src/components/shared/Sheet.jsx` (+ `useEscapeClose`) |
+| patterns | `ScreenFrame` | a moldura de qualquer ecrã | protótipo — a real é `src/components/Layout/Layout.jsx` |
+| patterns | `AppHeader`, `ContextHeader` | cabeçalhos | nunca tiveram ficheiro aqui; inline em `Layout.jsx` |
+| patterns | `Orbit`, `OrbitLegend` | os três anéis de nutrição | implementados — `src/components/shared/Orbit.jsx` |
+| patterns | `RaceTrail` | o trilho do macrociclo | implementado — `src/components/shared/RaceTrail.jsx` (passar `raceId`) |
 
 Intencionalmente ausentes: Toast (a app confirma com o check do registo), Tabs genéricas (o SubNav é o único padrão), Avatar genérico (só a Carol tem rosto), Tooltip (touch-first).
 

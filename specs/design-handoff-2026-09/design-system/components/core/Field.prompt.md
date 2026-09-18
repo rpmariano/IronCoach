@@ -1,3 +1,5 @@
+> **Protótipo.** Não foi implementado com este nome — os campos reais são `src/components/shared/Input.jsx`, `Select.jsx` e `DurationInput.jsx`, com APIs próprias. Usar só em mocks.
+
 Campo de texto dos registos, do Perfil e do onboarding. Vazio é tracejado; preenchido é sólido; em foco leva a cor do contexto.
 
 ```jsx

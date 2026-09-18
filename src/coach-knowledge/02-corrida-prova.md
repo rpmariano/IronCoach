@@ -133,3 +133,42 @@ específico já cumprido" é exatamente o pré-requisito de volume por distânci
 já registado ali — sem esse volume, a previsão de tempo não é fiável e a
 margem de erro sobe para os 6-12%.
 
+
+### #5 — Uma prova principal de cada vez dentro do mesmo bloco
+
+**Decisão de produto, 2026-09-18** (specs/plano-vinculado-a-prova.md). Não é
+uma pergunta de investigação: é a consequência direta do #1 deste bloco.
+
+Um plano de treino prepara **uma** prova, e termina no dia dela. Entre o
+início do plano e a prova-objetivo só pode haver uma prova marcada como
+principal — a objetivo.
+
+**Porquê**: o taper de uma prova principal são 10-21 dias de polimento (#1
+acima). Duas principais dentro do mesmo bloco pedem dois polimentos que se
+sobrepõem — treinar a sério para a segunda obriga a cortar o polimento da
+primeira, e polir para a primeira obriga a interromper a carga que a segunda
+ainda precisava. Não há plano correto para as duas: uma delas vai ser
+prejudicada, e é melhor que o atleta escolha qual do que descobrir no dia.
+
+**As provas intermédias secundárias (b) ou de treino (c) não são um
+problema — são um recurso.** Marcar uma prova como b/c é o atleta a dizer
+"esta é para eu usar como treino". Entram no plano como treino de qualidade,
+com o taper curto de 2-4 dias que lhes corresponde, e servem de aferição a
+caminho do objetivo. Nunca sugerir que sejam removidas.
+
+**Quando o atleta pede um plano e há outra principal pelo caminho**, não
+propor o plano. Pôr-lhe as duas saídas e deixá-lo escolher:
+1. A intermédia passa a secundária (oferecer-se para a mudar) e entra no
+   plano como treino de qualidade;
+2. O plano passa a preparar a intermédia, que fica o objetivo — e a mais
+   distante trata-se no plano seguinte, depois desta.
+
+**Quando uma prova principal aparece depois do plano já existir**, o mesmo
+discurso, mas por iniciativa da Carol: pedir para falar, explicar o custo,
+pôr as duas saídas. Uma prova secundária nova pede só uma sugestão de
+ajustar o plano para a integrar.
+
+**Limite da insistência**: tentar uma vez, com o custo explicado. Se o atleta
+quiser manter tudo como está, aceitar sem julgar e marcar a decisão como
+tomada — não voltar a levantar o assunto nessa prova. O objetivo nunca foi
+impor o plano certo; foi garantir que a escolha é informada.

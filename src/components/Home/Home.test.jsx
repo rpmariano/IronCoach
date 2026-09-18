@@ -197,3 +197,46 @@ describe('Home — a ordem dos cartões', () => {
     expect(screen.getByTestId('meal-sheet')).toHaveTextContent('Atum com grão-de-bico');
   });
 });
+
+/* Os atalhos de registo do primeiro dia passam pelo setActiveTab, que pode
+   ser recusado por um navGuard (um formulário sujo noutro ecrã). A recusa
+   tem de travar também o setOpenCreationMode — senão abria-se o registo
+   por cima de uma navegação que não aconteceu, o efeito secundário que o
+   contrato do store proíbe. Mesmo contrato de openRaceRun e do "+" do
+   Layout (achado do grafo, 2026-09-17). */
+describe('Home — os atalhos de registo respeitam a recusa do navGuard', () => {
+  let setActiveTab;
+  let setOpenCreationMode;
+
+  const primeiroDia = () => {
+    window.localStorage.clear();
+    setActiveTab = vi.fn();
+    setOpenCreationMode = vi.fn();
+    useAppStore.setState({
+      ...baseState,
+      meals: [],
+      setActiveTab,
+      setOpenCreationMode,
+      setCoachIntent: vi.fn(),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+  };
+
+  it('com o separador recusado, não abre o registo de corrida', () => {
+    primeiroDia();
+    setActiveTab.mockReturnValue(false);
+    renderHome();
+    fireEvent.click(screen.getByText(/Já correste hoje\?/));
+    expect(setActiveTab).toHaveBeenCalledWith('corrida');
+    expect(setOpenCreationMode).not.toHaveBeenCalled();
+  });
+
+  it('com o separador aceite, abre o registo de corrida', () => {
+    primeiroDia();
+    setActiveTab.mockReturnValue(true);
+    renderHome();
+    fireEvent.click(screen.getByText(/Já correste hoje\?/));
+    expect(setActiveTab).toHaveBeenCalledWith('corrida');
+    expect(setOpenCreationMode).toHaveBeenCalledWith('run');
+  });
+});

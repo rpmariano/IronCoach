@@ -1,4 +1,6 @@
 /**
+ * PROTÓTIPO — não foi implementado com este nome. Em produção é `<Button variant="icon" size="icon">` (src/components/shared/Button.jsx); os casos com identidade própria são `AddButton.jsx` e `CoachButton.jsx`. Usar este só em mocks.
+ *
  */
 export interface IconButtonProps {
   children: React.ReactNode;

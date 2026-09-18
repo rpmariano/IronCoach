@@ -1,8 +1,38 @@
-Persiana que sobe do fundo (6 refeições, análise cruzada) e Dialog centrado (dispensar aviso, insights). Ambos exportados deste ficheiro. Montar dentro da moldura do ecrã (position:relative).
+Persiana do fundo (`Sheet`) e popup centrado (`Dialog`). Montam-se em `document.body` por portal.
+
+> Implementados em `src/components/shared/Sheet.jsx`. **Não há prop `open`** — quem monta
+> controla a existência, e fecha-se sempre por `onClose` para a saída animar.
 
 ```jsx
-<Sheet eyebrow="Sugestão alimentar · domingo" title="~2150 kcal" onClose={close}>…lista…</Sheet>
-<Dialog title="Dispensar o aviso da Carol?" actions={<><Button tone="coach" variant="tinted" style={{flex:1}}>Dispensar</Button><Button variant="secondary" style={{flex:1}}>Cancelar</Button></>}>O aviso deixa de aparecer no Início.</Dialog>
+{aberto && (
+  <Sheet eyebrow="Ginásio" eyebrowTone="gym" title="Supino" onClose={() => setAberto(false)}>
+    <ListaDeSeries />
+  </Sheet>
+)}
+
+{confirmar && (
+  <Dialog
+    title="Apagar este registo?"
+    onClose={() => setConfirmar(false)}
+    actions={<><Button variant="secondary" onClick={...}>Manter</Button><Button variant="danger" onClick={...}>Apagar</Button></>}
+  >
+    Não dá para voltar atrás.
+  </Dialog>
+)}
 ```
 
-- Abre em 340ms, fecha em 240ms. A persiana é arrastável; o Dialog não.
+- `Sheet` sobe em 340ms e fecha em 240ms; `Dialog` faz scale .96→1 em 220ms.
+- `Dialog` é para confirmações e insights — **nunca** formulários.
+- A persiana arrasta para baixo para fechar, mas só quando o corpo está no topo.
+- **Escape:** há uma pilha global partilhada. Um ecrã inteiro que feche com Escape usa
+  `useEscapeClose(onClose)`; nunca um `addEventListener('keydown')` próprio — duas
+  persianas empilhadas fechavam as duas de uma vez (2026-09-15, e outra vez no mesmo
+  dia depois de promover uma delas a ecrã inteiro com listener à parte).
+
+```jsx
+import { useEscapeClose } from '../shared/Sheet';
+function MuralEcraInteiro({ onClose }) {
+  useEscapeClose(onClose);
+  return <div>…</div>;
+}
+```

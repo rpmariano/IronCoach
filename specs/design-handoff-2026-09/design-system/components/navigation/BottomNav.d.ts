@@ -1,4 +1,6 @@
 /**
+ * PROTÓTIPO — não existe como componente. A nav inferior real, com a minhoca e o FAB, está inline em `src/components/Layout/Layout.jsx`. Alterações à nav fazem-se lá; este ficheiro serve para desenhar mocks.
+ *
  * @startingPoint section="Components" subtitle="Nav inferior com minhoca e FAB da prova" viewport="700x200"
  */
 export interface BottomNavProps {

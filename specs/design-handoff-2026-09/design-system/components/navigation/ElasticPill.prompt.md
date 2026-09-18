@@ -1,3 +1,5 @@
+> **Protótipo.** Em produção é um hook, não um componente: `useElasticPillIndicator` em `src/utils/useElasticPillIndicator.js` — é lá que vivem as durações, o overshoot e a guarda que impede duas em movimento.
+
 A minhoca elástica — o indicador da nav inferior e dos subnavs. Estica a cobrir o trajeto e contrai no destino com overshoot.
 
 ```jsx

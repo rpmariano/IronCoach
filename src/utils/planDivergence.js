@@ -51,7 +51,7 @@ function addDays(iso, n) {
 const EVE_LABEL = { 1: 'na véspera', 2: 'a dois dias' };
 
 /** "Corrida do Tejo (13 set)" — o nome e o dia, como a Carol os diria. */
-function raceLabel(race) {
+export function raceLabel(race) {
   return `${race.name || 'a prova'} (${formatDayMonth(dayOf(race.date))})`;
 }
 
@@ -99,9 +99,21 @@ export function detectPlanDivergence({
   // assunto do próximo plano, não deste.
   // Só provas por correr (hoje ou depois): uma prova de ontem por marcar
   // como concluída já não se ajusta — é para registar, não para planear.
+  // Provas cujo conflito com o plano o atleta já decidiu ficam de fora de
+  // tudo: a Carol tentou, ele decidiu, não se insiste
+  // (specs/plano-vinculado-a-prova.md §2.5). A decisão vive na prova, na BD,
+  // e não no localStorage das divergências — muda de dispositivo com ele.
   const races = (raceEvents || [])
-    .filter((r) => r && r.status !== 'concluida' && dayOf(r.date) && dayOf(r.date) >= today && inPlanPeriod(dayOf(r.date)))
+    .filter((r) => r && r.status !== 'concluida' && !r.conflict_acknowledged_at
+      && dayOf(r.date) && dayOf(r.date) >= today && inPlanPeriod(dayOf(r.date)))
     .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
+  // Uma principal a meio de um plano para outra prova não é uma divergência
+  // dispensável — é um conflito que exige decisão, e sai pelo canal da
+  // intervenção (detectRaceConflict, abaixo). Aqui ignora-se para o atleta
+  // não receber o mesmo assunto duas vezes, em dois tons diferentes.
+  const conflicting = new Set(
+    (detectRaceConflict({ coachPlans, raceEvents, today })?.races || []).map((r) => r.id),
+  );
   // Para os motivos ligados à prova só contam itens pendentes e por
   // acontecer: os intervalos feitos anteontem já não se mudam.
   const upcoming = items.filter((i) => i.status === 'pendente' && dayOf(i.planned_date) >= today);
@@ -113,7 +125,18 @@ export function detectPlanDivergence({
     parts.push(`${key}:${ref}`);
   };
 
+  // 0. O plano tinha uma prova-objetivo e ela desapareceu (apagada). O plano
+  //    ficou sem para onde ir, e o period_end já não é o dia de prova nenhuma.
+  for (const plan of plans) {
+    if (!plan.race_id) continue;
+    const target = (raceEvents || []).find((r) => r && r.id === plan.race_id);
+    if (!target) {
+      push('plano_sem_prova', String(plan.race_id), 'O plano preparava uma prova que já não está na agenda.');
+    }
+  }
+
   for (const race of races) {
+    if (conflicting.has(race.id)) continue;
     const date = dayOf(race.date);
     const onDay = upcoming.filter((i) => dayOf(i.planned_date) === date);
 
@@ -180,6 +203,47 @@ export function detectPlanDivergence({
   if (reasons.length === 0) return empty;
   const ids = [...planIds].map(String).sort().join('+');
   return { reasons, signature: `${ids}|${[...parts].sort().join(',')}` };
+}
+
+/**
+ * Uma prova PRINCIPAL a meio de um plano que prepara outra prova — o conflito
+ * que obriga a decidir (specs/plano-vinculado-a-prova.md §2.4).
+ *
+ * Porque é que isto não é uma divergência como as outras: o taper de uma prova
+ * principal são 10-21 dias de polimento. Duas seguidas dentro do mesmo bloco
+ * pedem dois polimentos incompatíveis — treinar para uma é sabotar a outra.
+ * Não há plano correto enquanto as duas forem principais, por isso o aviso não
+ * se dispensa: sai pelo canal da intervenção ("A Carol precisa de falar
+ * contigo"), sem botão de dispensar, até o atleta decidir. A decisão dele —
+ * qualquer uma das três, incluindo "fica como está" — grava-se na prova
+ * (conflict_acknowledged_at) e cala isto para sempre nessa prova.
+ *
+ * @returns {{ plan: object, target: object|null, races: object[] }|null}
+ */
+export function detectRaceConflict({ coachPlans = [], raceEvents = [], today = todayISO() } = {}) {
+  const plans = (coachPlans || []).filter(
+    (p) => p && p.status === 'aceite' && p.race_id
+      && dayOf(p.period_start) && dayOf(p.period_end) && dayOf(p.period_end) >= today,
+  );
+  if (plans.length === 0) return null;
+
+  for (const plan of plans) {
+    const start = dayOf(plan.period_start);
+    const end = dayOf(plan.period_end);
+    const races = (raceEvents || []).filter((r) => {
+      if (!r || r.id === plan.race_id) return false;
+      if (r.status === 'concluida' || r.conflict_acknowledged_at) return false;
+      const d = dayOf(r.date);
+      // A partir de hoje: uma principal que já passou sem ser registada é
+      // assunto de registo, não de planeamento. O dia do objetivo não conta
+      // como "pelo caminho" — duas provas no mesmo dia são outro problema.
+      return d && d >= today && d >= start && d < end && (r.race_priority || 'a') === 'a';
+    }).sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
+    if (races.length > 0) {
+      return { plan, target: (raceEvents || []).find((r) => r && r.id === plan.race_id) || null, races };
+    }
+  }
+  return null;
 }
 
 function storageKey(userId) {

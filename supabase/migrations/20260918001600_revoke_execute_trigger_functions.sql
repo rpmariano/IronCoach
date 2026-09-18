@@ -1,0 +1,33 @@
+-- ============================================================================
+-- Funções de trigger não têm de estar expostas como RPC
+-- ============================================================================
+-- APLICADA EM PRODUÇÃO a 2026-09-18 00:16 UTC (version 20260918001600).
+--
+-- Advisor de segurança do Supabase, lints 0028 e 0029: as duas funções de
+-- trigger deste projeto são SECURITY DEFINER e estavam invocáveis por `anon`
+-- e `authenticated` via `/rest/v1/rpc/`. Ambas devolvem `trigger`, por isso
+-- uma chamada direta sempre falharia — mas uma SECURITY DEFINER exposta sem
+-- necessidade nenhuma é superfície a mais, e era das poucas coisas nesta
+-- lista que se fecha sem pensar duas vezes.
+--
+-- `sync_plan_end_to_race_date` entrou com a migration anterior
+-- (20260917234432_plan_race_binding); a `sync_bug_report_status_from_response`
+-- já lá estava com o mesmo problema desde 2026-08-24, e fecha-se na mesma
+-- volta.
+--
+-- SEGURO: o privilégio EXECUTE de uma função de trigger é verificado quando
+-- se CRIA o trigger, não quando ele dispara. Verificado depois de aplicar:
+-- `race_events_sync_plan_end` e `bug_notifications_sync_report_status`
+-- continuam ambos ativos (tgenabled='O'), e `has_function_privilege` para
+-- anon e authenticated passou a false nas duas.
+--
+-- `service_role` FICA: é a chave privilegiada do backend, não é superfície
+-- externa, e não é o que os lints assinalam.
+--
+-- O que este lint continua a assinalar, de propósito e fora do âmbito desta
+-- migration, são as quatro funções que são MESMO para chamar por RPC:
+-- admin_list_users, can_review_bugs, is_admin e handle_new_user.
+-- ============================================================================
+
+revoke execute on function public.sync_plan_end_to_race_date() from public, anon, authenticated;
+revoke execute on function public.sync_bug_report_status_from_response() from public, anon, authenticated;

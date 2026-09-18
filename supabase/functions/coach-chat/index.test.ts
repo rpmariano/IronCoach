@@ -3235,26 +3235,33 @@ Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou 
 
 // ── O plano tem de saber da prova ───────────────────────────────────────────
 // Um cliente falso que responde a race_events e delega o resto no de sempre.
+// Duas leituras diferentes: a lista das provas do período (then) e a
+// prova-objetivo por id (maybeSingle, filtrada pelo eq("id", ...)).
 // deno-lint-ignore no-explicit-any
 function makePlanSbWithRaces(races: any[]) {
   const { sb, calls } = makePlanSb();
-  const chain = (data: unknown) => {
+  // deno-lint-ignore no-explicit-any
+  const withDefaults = (races || []).map((r: any) => ({ race_priority: "a", status: "agendada", ...r }));
+  const chain = () => {
+    let byId: string | null = null;
     const q = {
-      eq: () => q, gte: () => q, lte: () => q,
-      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data, error: null }),
+      eq: (col: string, val: string) => { if (col === "id") byId = val; return q; },
+      gte: () => q, lte: () => q,
+      maybeSingle: () => Promise.resolve({ data: withDefaults.find((r) => r.id === byId) ?? null, error: null }),
+      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data: withDefaults, error: null }),
     };
     return q;
   };
   const inner = sb.from.bind(sb);
   // deno-lint-ignore no-explicit-any
-  sb.from = (table: string): any => table === "race_events" ? { select: () => chain(races) } : inner(table);
+  sb.from = (table: string): any => table === "race_events" ? { select: () => chain() } : inner(table);
   return { sb, calls };
 }
 
 Deno.test("plano com prova no período: o dia da prova vira 'prova' e uma prova esquecida entra sozinha", async () => {
   const { sb, calls } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
   const result = await runProposeTrainingPlan(sb, "user-1", {
-    period_start: "2026-08-10", period_end: "2026-08-16", summary: "semana da prova",
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "semana da prova",
     items: [
       { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
       { planned_date: "2026-08-15", kind: "corrida", training_type: "continuo", target_distance_km: 10 },
@@ -3267,7 +3274,7 @@ Deno.test("plano com prova no período: o dia da prova vira 'prova' e uma prova 
 
   const { sb: sb2, calls: calls2 } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
   const r2 = await runProposeTrainingPlan(sb2, "user-1", {
-    period_start: "2026-08-10", period_end: "2026-08-16", summary: "sem a prova",
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "sem a prova",
     items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
   });
   assertEquals(r2.startsWith("Erro"), false, r2);
@@ -3279,18 +3286,21 @@ Deno.test("plano com prova no período: o dia da prova vira 'prova' e uma prova 
 Deno.test("plano com prova: ginásio no dia da prova, treino forte na véspera e 'prova' sem prova são erros", async () => {
   const races = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }];
   const gymOnRaceDay = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
-    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
     items: [{ planned_date: "2026-08-15", kind: "ginasio", categories: ["Pernas"], target_duration_min: 45 }],
   });
   assertStringIncludes(gymOnRaceDay, "dia da prova");
   const hardEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
-    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
     items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
   });
   assertStringIncludes(hardEve, "a 1 dia(s) da prova");
   const easyEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
-    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
-    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "recuperacao", target_distance_km: 3 }],
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
+    items: [
+      { planned_date: "2026-08-14", kind: "corrida", training_type: "recuperacao", target_distance_km: 3 },
+      { planned_date: "2026-08-15", kind: "corrida", training_type: "prova", target_distance_km: 10 },
+    ],
   });
   assertEquals(easyEve.startsWith("Erro"), false, easyEve);
   const provaSemProva = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
@@ -3298,6 +3308,89 @@ Deno.test("plano com prova: ginásio no dia da prova, treino forte na véspera e
     items: [{ planned_date: "2026-08-12", kind: "corrida", training_type: "prova", target_distance_km: 10 }],
   });
   assertStringIncludes(provaSemProva, "só num dia com prova agendada");
+});
+
+// ── O plano é para uma prova (specs/plano-vinculado-a-prova.md §4.1) ────────
+Deno.test("plano vinculado: period_end tem de ser o dia da prova", async () => {
+  const races = [{ id: "r1", name: "Maratona do Porto", date: "2026-08-15", distance_km: 42.2 }];
+  const r = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-20", summary: "x",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertStringIncludes(r, "tem de ser 2026-08-15");
+});
+
+Deno.test("plano vinculado: race_id desconhecido ou prova já concluída são recusados", async () => {
+  const races = [{ id: "r1", name: "Maratona do Porto", date: "2026-08-15", distance_km: 42.2 }];
+  const desconhecida = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    race_id: "nao-existe", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertStringIncludes(desconhecida, "não corresponde a nenhuma prova");
+
+  const concluida = await runProposeTrainingPlan(
+    makePlanSbWithRaces([{ id: "r1", name: "Maratona do Porto", date: "2026-08-15", distance_km: 42.2, status: "concluida" }]).sb,
+    "user-1",
+    {
+      race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
+      items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+    },
+  );
+  assertStringIncludes(concluida, "já está concluída");
+});
+
+Deno.test("plano vinculado: outra PRINCIPAL pelo caminho trava o plano e diz as duas saídas", async () => {
+  const races = [
+    { id: "r1", name: "Maratona do Porto", date: "2026-08-30", distance_km: 42.2, race_priority: "a" },
+    { id: "r2", name: "São Silvestre", date: "2026-08-16", distance_km: 10, race_priority: "a" },
+  ];
+  const r = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-30", summary: "x",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertStringIncludes(r, "São Silvestre");
+  assertStringIncludes(r, "PRINCIPAL");
+  assertStringIncludes(r, 'race_priority="b"');
+  assertStringIncludes(r, "period_end=2026-08-16");
+});
+
+Deno.test("plano vinculado: provas secundárias pelo caminho são treino, não obstáculo", async () => {
+  const races = [
+    { id: "r1", name: "Maratona do Porto", date: "2026-08-30", distance_km: 42.2, race_priority: "a" },
+    { id: "r2", name: "10k da Pista", date: "2026-08-16", distance_km: 10, race_priority: "b" },
+    { id: "r3", name: "Corrida da Vila", date: "2026-08-23", distance_km: 15, race_priority: "c" },
+  ];
+  const { sb, calls } = makePlanSbWithRaces(races);
+  const r = await runProposeTrainingPlan(sb, "user-1", {
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-30", summary: "bloco até ao Porto",
+    items: [
+      { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
+      { planned_date: "2026-08-16", kind: "corrida", training_type: "continuo", target_distance_km: 10 },
+      { planned_date: "2026-08-23", kind: "corrida", training_type: "continuo", target_distance_km: 15 },
+      { planned_date: "2026-08-30", kind: "corrida", training_type: "continuo", target_distance_km: 42.2 },
+    ],
+  });
+  assertEquals(r.startsWith("Erro"), false, r);
+  // As três viram 'prova' — a objetivo e as duas intermédias.
+  assertEquals(calls.itemInserts.filter((i) => i.training_type === "prova").length, 3);
+  assertEquals(calls.planInserts[0].race_id, "r1");
+});
+
+Deno.test("plano sem race_id não pode atravessar uma prova", async () => {
+  const races = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-12", distance_km: 10 }];
+  const r = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertStringIncludes(r, 'race_id="r1"');
+  assertStringIncludes(r, "period_end=2026-08-12");
+});
+
+Deno.test("plano sem provas nenhumas continua a poder não ter race_id", async () => {
+  const { sb, calls } = makePlanSbWithRaces([]);
+  const r = await runProposeTrainingPlan(sb, "user-1", VALID_PLAN);
+  assertEquals(r.startsWith("Erro"), false, r);
+  assertEquals(calls.planInserts[0].race_id, null);
 });
 
 Deno.test("sem provas (ou com a consulta a falhar) o plano segue como sempre", async () => {

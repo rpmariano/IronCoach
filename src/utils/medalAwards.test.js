@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { todayISO } from '../lib/utils';
 
 /* A sincronização das medalhas contra um cliente Supabase falso em memória:
    o que se guarda aqui é a política — a primeira vez é histórico (visto),
@@ -77,7 +78,8 @@ describe('syncMedalAwards', () => {
   });
 
   it('primeira sincronização de um atleta novo: a medalha desta semana fica por ver', async () => {
-    const hoje = new Date().toISOString().slice(0, 10);
+    // hora LOCAL, como a app (ver nota em GymRegistration.test.jsx)
+    const hoje = todayISO();
     const res = await syncMedalAwards({
       userId: 'u1',
       due: [due('ano_km', 'mes', '2026-01'), due('distancias', '5k', '', { awardedOn: hoje })],

@@ -1,3 +1,5 @@
+> **Protótipo.** Não existe como cartão próprio — em produção a voz da Carol aparece por `<Warning tone="coach">` e por `CoachText.jsx`. Usar só em mocks.
+
 A Carol a falar fora do chat — no onboarding, nos registos, nos cartões. Régua ciano, sem fundo. Este ficheiro exporta também ChatBubble e CoachAvatar.
 
 ```jsx

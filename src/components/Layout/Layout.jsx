@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets } from 'lucide-react';
+import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import BrandMark from '../shared/BrandMark';
 import AppBackground from './AppBackground';
 import WaterSheet from '../Home/WaterSheet';
+import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { useTabEnter } from '../../utils/useTabEnter';
 
@@ -42,6 +43,12 @@ export default function Layout({ children }) {
   const lastLogoClickAt = useRef(0);
   // Cada toque no logótipo toca um ciclo da animação da marca (BrandMark).
   const [logoPlays, setLogoPlays] = useState(0);
+  /* A calculadora de ritmo é uma ferramenta, não um ecrã: não muda de
+     separador nem entra no histórico de navegação — abre por cima do que
+     estiver à frente e fecha-se sem deixar rasto. Por isso vive em estado
+     local do Layout e não no store, ao contrário da persiana da água (que o
+     FAB também abre, de outro sítio). */
+  const [calculadoraAberta, setCalculadoraAberta] = useState(false);
 
   // Minhoca da barra inferior — uma só pílula de 4px em gradiente, absoluta
   // no topo da nav, a deslizar entre os quatro separadores (ponto 4 do
@@ -173,6 +180,12 @@ export default function Layout({ children }) {
             <BugNotificationsHandler />
             {/* O Calendário saiu da barra para aqui (2026-09-13): continua a um
                 toque, mas a barra ficou para o que a app é. */}
+            {/* Calculadora de ritmo: fica à esquerda do Calendário porque é a
+                única das três que não navega para lado nenhum — abre uma
+                persiana e devolve o atleta ao sítio onde estava. */}
+            <HeaderIconBtn label="Calculadora de ritmo" active={calculadoraAberta} onClick={() => setCalculadoraAberta(true)}>
+              <Calculator size={18} />
+            </HeaderIconBtn>
             <HeaderIconBtn label="Calendário" active={activeTab === 'calendario'} onClick={() => setActiveTab('calendario')}>
               <Calendar size={18} />
             </HeaderIconBtn>
@@ -200,6 +213,9 @@ export default function Layout({ children }) {
 
       {/* Registar água — só se abre pelo FAB (ver WaterSheet.jsx). */}
       <WaterSheet />
+      {/* Quem monta controla a existência; a Sheet trata da saída animada e
+          do Escape (pilha partilhada), por isso fecha-se por onClose. */}
+      {calculadoraAberta && <PaceCalculatorSheet onClose={() => setCalculadoraAberta(false)} />}
 
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
       {fabOpen && (
