@@ -202,7 +202,7 @@ Com estas duas ações, P4 passa de 3 para 8, P5 de 5 para 7 e P2 de 2 para 3. A
 - **Não repetir conversas anteriores ao registo no servidor.** O `coach_proactive_log` só existe desde hoje. Há três provas de que a conversa já aconteceu: o balanço gravado na prova; a Carol ter falado depois de a corrida da prova ser registada; e, no "como correu?" e no silêncio, a Carol ter falado depois do acontecimento.
 - **Migration em falta.** A `race_coach_balance`, escrita a 13 de setembro, nunca tinha sido aplicada. Até aqui, o balanço gravado na prova falhava em silêncio. Foi aplicada agora, com a versão `20260918163837`.
 
-**O cron ainda não está ligado.** A função está em produção, mas o job `coach-proactive-tick` só deve ser criado depois de o `sw.js` novo chegar aos telemóveis, através do deploy de `master`. Com o `sw.js` antigo, a notificação da Carol usava a etiqueta da água, as duas substituíam-se uma à outra, e o toque não abria o Coach. Para o criar, copia-se o comando do job da água, para o segredo não entrar no repositório:
+**O cron está ligado desde 2026-09-18, às 18h de Lisboa**, depois de o `sw.js` novo chegar a `master`. O texto abaixo fica como registo de como foi criado. Antes disso: A função está em produção, mas o job `coach-proactive-tick` só deve ser criado depois de o `sw.js` novo chegar aos telemóveis, através do deploy de `master`. Com o `sw.js` antigo, a notificação da Carol usava a etiqueta da água, as duas substituíam-se uma à outra, e o toque não abria o Coach. Para o criar, copia-se o comando do job da água, para o segredo não entrar no repositório:
 
 ```sql
 select cron.schedule('coach-proactive-tick', '7 * * * *',
