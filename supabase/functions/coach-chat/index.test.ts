@@ -3629,3 +3629,56 @@ Deno.test("buildPlanContext: o vínculo do plano ativo vai no contexto, com race
   assertStringIncludes(comVinculo!, 'race_id="r-obj"');
   assertStringIncludes(comVinculo!, "period_end=2026-10-04");
 });
+
+/* A1 da terceira revisão: com race_id de uma prova SECUNDÁRIA que calha antes
+   da principal vinculada, a proposta passava — a principal fica depois do
+   fim da proposta, o otherMain não a vê — e no cliente fechava o bloco dela. */
+// deno-lint-ignore no-explicit-any
+function makeSbWithBoundPlanAnd(extra: any) {
+  const { sb, calls } = makePlanSbWithRaces([
+    { id: "r-obj", name: "Maratona do Porto", date: "2026-10-04", distance_km: 42.2, race_priority: "a" },
+    extra,
+  ]);
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => {
+    if (table !== "coach_plans") return inner(table);
+    const base = inner(table);
+    return {
+      ...base,
+      select: () => {
+        const q = {
+          eq: () => q, gte: () => q, in: () => q,
+          then: (resolve: (v: { data: unknown; error: null }) => void) =>
+            resolve({ data: [{ id: "p-antigo", period_start: "2026-08-01", period_end: "2026-10-04", race_id: "r-obj", coach_plan_items: [{ kind: "corrida" }] }], error: null }),
+        };
+        return q;
+      },
+    };
+  };
+  return { sb, calls };
+}
+
+const ATE_A_SECUNDARIA = {
+  race_id: "r-sec", period_start: "2026-08-10", period_end: "2026-08-23", summary: "até à secundária",
+  items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+};
+
+Deno.test("A1: um plano PARA uma secundária não pode tirar o lugar ao plano da principal", async () => {
+  const r = await runProposeTrainingPlan(
+    makeSbWithBoundPlanAnd({ id: "r-sec", name: "10k da Pista", date: "2026-08-23", distance_km: 10, race_priority: "b" }).sb,
+    "user-1", ATE_A_SECUNDARIA,
+  );
+  assertStringIncludes(r, "é secundária");
+  assertStringIncludes(r, "Maratona do Porto");
+  // As saídas: ajustar o plano da principal, ou promover a secundária primeiro.
+  assertStringIncludes(r, 'race_id="r-obj"');
+  assertStringIncludes(r, 'race_priority="a"');
+});
+
+Deno.test("A1: mudar o objetivo para uma intermédia PRINCIPAL continua a ser possível (a segunda saída do conflito)", async () => {
+  const { sb, calls } = makeSbWithBoundPlanAnd({ id: "r-sec", name: "Meia de Lisboa", date: "2026-08-23", distance_km: 21.1, race_priority: "a" });
+  const r = await runProposeTrainingPlan(sb, "user-1", ATE_A_SECUNDARIA);
+  assertEquals(r.startsWith("Erro"), false, r);
+  assertEquals(calls.planInserts[0].race_id, "r-sec");
+});

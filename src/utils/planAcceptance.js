@@ -56,7 +56,12 @@ export function dayBeforeISO(iso) {
  *   coach_plans_period_order recusa) — sai como recusado.
  */
 export function closeOldBlock(original, proposal) {
-  const end = dayBeforeISO(proposal.period_start);
-  if (end < original.period_start) return { action: 'reject' };
+  const vespera = dayBeforeISO(proposal.period_start);
+  if (vespera < original.period_start) return { action: 'reject' };
+  // Fechar só encurta, nunca alarga: se o bloco antigo já acabava antes da
+  // véspera do novo, fica como estava. Sem este min(), escolher por engano
+  // um bloco já fechado esticava-o até à véspera do novo (observação da
+  // terceira revisão pré-deploy de 2026-09-18).
+  const end = original.period_end && original.period_end < vespera ? original.period_end : vespera;
   return { action: 'close', period_end: end, cancelFrom: proposal.period_start };
 }

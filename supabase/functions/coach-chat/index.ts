@@ -2281,10 +2281,12 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // descreve. Validado aqui, antes de gravar, e devolvido como erro com as
   // saídas possíveis — é o que obriga a Carol a resolver com o atleta em vez
   // de propor um plano incoerente.
+  // deno-lint-ignore no-explicit-any
+  let targetRace: any = null;
   if (raceId) {
     const { data: target, error: targetErr } = await sb
       .from("race_events")
-      .select("id, name, date, status")
+      .select("id, name, date, status, race_priority")
       .eq("id", raceId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -2293,6 +2295,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (target.status === "concluida") {
       return `Erro: a prova "${target.name}" já está concluída — um plano prepara uma prova por correr. Se o atleta quer o plano seguinte, usa a próxima prova agendada.`;
     }
+    targetRace = target;
     if (target.date !== period_end) {
       return `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
     }
@@ -2439,7 +2442,19 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
 
   let supersedesPlanId: string | null = null;
   if (replace_active_plan === true) {
-    supersedesPlanId = trainingPlans[0]?.id ?? null;
+    /* O plano a substituir é o que se SOBREPÕE à proposta — de preferência
+       o vinculado. trainingPlans[0] vinha de uma consulta sem ordem nem
+       filtro: depois de um bloco novo a começar no futuro há dois planos de
+       treino ativos, e podia calhar o bloco antigo, já fechado
+       (observação da terceira revisão pré-deploy de 2026-09-18). */
+    // deno-lint-ignore no-explicit-any
+    const overlapsProposal = (p: any) => p.period_start <= period_end && p.period_end >= period_start;
+    // deno-lint-ignore no-explicit-any
+    const chosen = trainingPlans.find((p: any) => overlapsProposal(p) && p.race_id)
+      // deno-lint-ignore no-explicit-any
+      || trainingPlans.find((p: any) => overlapsProposal(p))
+      || trainingPlans[0];
+    supersedesPlanId = chosen?.id ?? null;
   }
 
   /* Uma proposta sem race_id não pode desvincular por descuido o plano da
@@ -2468,18 +2483,50 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
       p.race_id && p.period_start <= period_end && p.period_end >= period_start
     );
     if (bound) {
-      const { data: boundRace } = await sb
+      const { data: boundRace, error: boundErr } = await sb
         .from("race_events")
         .select("id, name, race_priority, status")
         .eq("id", bound.race_id)
         .eq("user_id", userId)
         .maybeSingle();
+      // Falhar a leitura deixa passar (é uma guarda, não o registo — o mesmo
+      // compromisso de fetchScheduledRaces), mas não em silêncio.
+      if (boundErr) console.warn("Prova do plano vinculado não lida:", boundErr.message);
       if (boundRace && boundRace.status !== "concluida" && (boundRace.race_priority || "a") === "a") {
         return `Erro: o plano ativo prepara a prova "${boundRace.name}" (race_id="${bound.race_id}", acaba a ${bound.period_end}) e esta proposta sobrepõe-se a ele sem race_id — ` +
           `ao ser aceite, fechava o bloco dessa prova e deixava o atleta sem plano para ela, sem nenhum aviso. ` +
           `Se é um ajuste do mesmo bloco, passa race_id="${bound.race_id}" e period_end=${bound.period_end} (o plano continua a acabar no dia da prova; ajusta os treinos lá dentro). ` +
           `Se o atleta quer mudar de objetivo, passa o race_id da prova nova e o period_end do dia dela. ` +
           `Se quer mesmo deixar de preparar "${boundRace.name}", isso decide-se na prova: passa-a a secundária com update_race_event (race_priority="b") e depois propõe o plano — confirma com ele primeiro.`;
+      }
+    }
+  } else {
+    /* Com race_id de OUTRA prova, sobreposta a um plano vinculado a uma
+       principal: na aceitação é objetivo novo, e o bloco da principal fecha.
+       Isso só é legítimo se a prova nova também for principal — é a segunda
+       saída do conflito de principais ("o plano passa a preparar a
+       intermédia"). Se for secundária ou de treino, a principal perdia o
+       plano por causa de uma prova que o atleta marcou como treino: o
+       period_end colado a ela passava as validações, porque a principal fica
+       DEPOIS do fim da proposta e o otherMain não a vê (achado A1 da terceira
+       revisão pré-deploy de 2026-09-18). */
+    // deno-lint-ignore no-explicit-any
+    const bound = trainingPlans.find((p: any) =>
+      p.race_id && p.race_id !== raceId && p.period_start <= period_end && p.period_end >= period_start
+    );
+    if (bound && (targetRace?.race_priority || "a") !== "a") {
+      const { data: boundRace, error: boundErr } = await sb
+        .from("race_events")
+        .select("id, name, race_priority, status")
+        .eq("id", bound.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (boundErr) console.warn("Prova do plano vinculado não lida:", boundErr.message);
+      if (boundRace && boundRace.status !== "concluida" && (boundRace.race_priority || "a") === "a") {
+        return `Erro: "${targetRace?.name ?? "esta prova"}" é secundária (ou de treino), e um plano para ela fechava o plano da principal "${boundRace.name}" (race_id="${bound.race_id}", acaba a ${bound.period_end}). ` +
+          `Uma prova secundária entra NO plano da principal como treino de qualidade — não o substitui. ` +
+          `Se é isso, ajusta o plano da principal: race_id="${bound.race_id}" e period_end=${bound.period_end}, com o dia de "${targetRace?.name ?? "da secundária"}" como prova lá dentro. ` +
+          `Se o atleta quer mesmo que "${targetRace?.name ?? "esta prova"}" seja o objetivo, ela tem de passar a principal primeiro (update_race_event, race_priority="a") — e aí é o conflito de principais, que se fala com ele.`;
       }
     }
   }

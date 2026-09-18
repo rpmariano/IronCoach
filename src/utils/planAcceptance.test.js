@@ -71,3 +71,11 @@ describe('isTrainingPlan', () => {
     expect(isTrainingPlan({})).toBe(false);
   });
 });
+
+describe('closeOldBlock — fechar só encurta', () => {
+  it('um bloco que já acabava antes da véspera do novo fica como estava', () => {
+    const jaFechado = plano({ period_start: '2026-09-01', period_end: '2026-09-10' });
+    expect(closeOldBlock(jaFechado, plano({ period_start: '2026-09-18' })))
+      .toEqual({ action: 'close', period_end: '2026-09-10', cancelFrom: '2026-09-18' });
+  });
+});

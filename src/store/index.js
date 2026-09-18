@@ -409,7 +409,10 @@ export const useAppStore = create((set, get) => ({
       const overlappingAll = (activePlans || []).filter(p =>
         (p.period_start <= newPlan.period_end && p.period_end >= newPlan.period_start)
       );
-      const overlapping = overlappingAll.find(isTrainingPlan) || overlappingAll[0];
+      // Do mesmo tipo da proposta: uma proposta de treino vai ter com o plano
+      // de treino, uma só de descanso/refeições com o de refeições — senão
+      // fundi-la no de treino apagava-lhe os treinos nesse intervalo.
+      const overlapping = overlappingAll.find((p) => isTrainingPlan(p) === isTrainingPlan(newPlan)) || overlappingAll[0];
       if (overlapping) {
         targetPlanId = overlapping.id;
       }

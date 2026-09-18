@@ -122,3 +122,17 @@ describe('respondToPlan — sem supersedes, o plano de treino sobreposto é que 
     expect(updatesTo('coach_plans')[0].filters).toEqual([['id', 'p-treino']]);
   });
 });
+
+describe('respondToPlan — o plano sobreposto é o do mesmo tipo da proposta', () => {
+  it('uma proposta só de descanso não se funde no plano de treino', async () => {
+    db.active = [
+      { id: 'p-treino', period_start: '2026-09-01', period_end: '2026-10-04', coach_plan_items: treino },
+      { id: 'p-refeicoes', period_start: '2026-09-01', period_end: '2026-10-04', coach_plan_items: [{ kind: 'descanso' }] },
+    ];
+    db.plans['p-refeicoes'] = plano({ id: 'p-refeicoes', coach_plan_items: [{ kind: 'descanso' }] });
+    db.plans['p-novo'] = plano({ id: 'p-novo', period_start: '2026-09-18', period_end: '2026-09-24', coach_plan_items: [{ kind: 'descanso' }] });
+    expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(true);
+    const tocados = new Set(writes.flatMap((w) => w.filters.filter(([c]) => c === 'id' || c === 'plan_id').map(([, v]) => v)));
+    expect(tocados.has('p-treino')).toBe(false);
+  });
+});
