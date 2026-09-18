@@ -88,23 +88,32 @@ async function handler(req: Request): Promise<Response> {
 
   for (const [userId, userSubs] of byUser) {
     try {
-      const [{ data: races }, { data: runs }, last] = await Promise.all([
+      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last] = await Promise.all([
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance")
           .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 1)),
         sb.from("runs").select("id, date, race_id, kind, created_at")
           .eq("user_id", userId).gte("date", addDays(today, -8)),
         lastRecordDate(sb, userId),
       ]);
+      // Sem as provas ou as corridas, o momento escolhido podia ser o errado
+      // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
+      if (racesErr || runsErr) {
+        console.error("coach-proactive-tick: leitura falhou", userId, racesErr?.message ?? runsErr?.message);
+        tally.erro = (tally.erro || 0) + 1;
+        continue;
+      }
       const candidate = pickServerProactive({ raceEvents: races || [], runs: runs || [], lastRecordDate: last }, today);
 
       let decision = decidePush({ candidate, lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedToday: false, lastModelMessageAt: null, nowMs: now.getTime() });
       if (candidate && decision.send) {
         // Só se consulta o resto quando há mesmo um momento para notificar.
-        const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastModel }] = await Promise.all([
+        const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }] = await Promise.all([
           sb.from("coach_proactive_log").select("key").eq("user_id", userId).eq("key", candidate.key),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("key", candidate.key),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today).limit(1),
           sb.from("coach_messages").select("role, created_at").eq("user_id", userId)
+            .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+          sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
         ]);
         decision = decidePush({
@@ -113,7 +122,8 @@ async function handler(req: Request): Promise<Response> {
           deliveredKeys: new Set((delivered || []).map((d: { key: string }) => d.key)),
           pushedKeys: new Set((pushedKey || []).map((p: { key: string }) => p.key)),
           pushedToday: (pushedToday || []).length > 0,
-          lastModelMessageAt: lastModel?.role === "model" ? lastModel.created_at : null,
+          lastMessage: lastAny ?? null,
+          lastModelMessageAt: lastModel?.created_at ?? null,
           nowMs: now.getTime(),
           balanceDone: !!(races || []).find((r: { id: string; coach_balance?: string | null }) => r.id === candidate.raceId)?.coach_balance,
         });

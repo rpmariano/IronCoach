@@ -8,6 +8,12 @@ import { isWithinProactiveWindow, type ServerProactiveCandidate } from "../_shar
  *  prometer uma conversa que não ia acontecer. */
 export const QUIET_HOURS = 6;
 
+/** O dia de Lisboa de um instante — as datas dos acontecimentos são dias de
+ *  Lisboa, e comparar com o dia UTC falhava entre as 00:00 e a 01:00. */
+export function lisbonDateOf(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date(iso));
+}
+
 export type PushDecision =
   | { send: true }
   | { send: false; reason: "sem_momento" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" };
@@ -18,6 +24,12 @@ export function decidePush(input: {
   deliveredKeys: Set<string>;   // coach_proactive_log: a conversa já aconteceu
   pushedKeys: Set<string>;      // coach_proactive_pushes: já se notificou esta
   pushedToday: boolean;         // no máximo uma notificação dela por dia
+  /** A última mensagem da conversa, de quem for — só para a regra das 6
+   *  horas, que tem de bater com o shouldSkipProactive do coach-chat. */
+  lastMessage?: { role: string; created_at: string } | null;
+  /** A última mensagem DELA — para saber se já falou depois do acontecimento.
+   *  Não pode ser a última de todas: se o atleta escreveu por último (uma
+   *  resposta que falhou, o off-topic), a verificação saltava em silêncio. */
   lastModelMessageAt: string | null;
   nowMs: number;
   /** O balanço desta prova já está gravado na prova (race_events.coach_balance). */
@@ -43,11 +55,12 @@ export function decidePush(input: {
     return { send: false, reason: "ja_falou_depois" };
   }
   if ((c.trigger === "silence" || (c.trigger === "race_after" && !c.hasRun)) && c.anchorDate && input.lastModelMessageAt
-    && input.lastModelMessageAt.slice(0, 10) > c.anchorDate) {
+    && lisbonDateOf(input.lastModelMessageAt) > c.anchorDate) {
     return { send: false, reason: "ja_falou_depois" };
   }
-  if (input.lastModelMessageAt) {
-    const ageH = (input.nowMs - Date.parse(input.lastModelMessageAt)) / 3600000;
+  const last = input.lastMessage;
+  if (last?.role === "model" && last.created_at) {
+    const ageH = (input.nowMs - Date.parse(last.created_at)) / 3600000;
     if (ageH >= 0 && ageH < QUIET_HOURS) return { send: false, reason: "falou_ha_pouco" };
   }
   return { send: true };

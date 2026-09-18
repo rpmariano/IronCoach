@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { decidePush } from "./decide.ts";
+import { decidePush, lisbonDateOf } from "./decide.ts";
 
 const candidate = { trigger: "race_eve" as const, key: "race_eve:r1", raceId: "r1", raceName: "Meia", hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 const NOW = Date.parse("2026-09-18T15:00:00Z");
@@ -15,9 +15,11 @@ Deno.test("decidePush: cada travão, pela ordem", () => {
   assertEquals(decidePush({ ...base, deliveredKeys: new Set(["race_eve:r1"]) }), { send: false, reason: "ja_entregue" });
   assertEquals(decidePush({ ...base, pushedKeys: new Set(["race_eve:r1"]) }), { send: false, reason: "ja_notificado" });
   assertEquals(decidePush({ ...base, pushedToday: true }), { send: false, reason: "limite_diario" });
-  assertEquals(decidePush({ ...base, lastModelMessageAt: "2026-09-18T11:00:00Z" }), { send: false, reason: "falou_ha_pouco" });
+  assertEquals(decidePush({ ...base, lastMessage: { role: "model", created_at: "2026-09-18T11:00:00Z" } }), { send: false, reason: "falou_ha_pouco" });
   // Falou há mais de 6 horas: já não trava.
-  assertEquals(decidePush({ ...base, lastModelMessageAt: "2026-09-18T08:00:00Z" }), { send: true });
+  assertEquals(decidePush({ ...base, lastMessage: { role: "model", created_at: "2026-09-18T08:00:00Z" } }), { send: true });
+  // O atleta foi o último a escrever: ela não está a empilhar mensagens.
+  assertEquals(decidePush({ ...base, lastMessage: { role: "user", created_at: "2026-09-18T14:00:00Z" } }), { send: true });
 });
 
 Deno.test("decidePush: a manhã da prova sai às 6h; a véspera não", () => {
@@ -44,3 +46,20 @@ Deno.test("decidePush: o que aconteceu antes do registo no servidor não se repe
   assertEquals(decidePush({ ...base, candidate: silence, lastModelMessageAt: "2026-09-15T20:00:00Z" }), { send: false, reason: "ja_falou_depois" });
   assertEquals(decidePush({ ...base, candidate: silence, lastModelMessageAt: "2026-09-10T20:00:00Z" }), { send: true });
 });
+
+Deno.test("decidePush: 'já falou depois' usa a última mensagem DELA, mesmo que o atleta tenha escrito a seguir", () => {
+  const balance = { ...candidate, trigger: "race_after" as const, key: "race_after:r1:run1", hasRun: true, anchorDate: "2026-09-13", anchorAt: "2026-09-13T12:00:00+00:00" };
+  assertEquals(decidePush({
+    ...base,
+    candidate: balance,
+    lastMessage: { role: "user", created_at: "2026-09-17T10:00:00Z" },
+    lastModelMessageAt: "2026-09-13T22:32:00+00:00",
+  }), { send: false, reason: "ja_falou_depois" });
+});
+
+Deno.test("lisbonDateOf: a 00:30 de Lisboa no verão ainda é ontem em UTC", () => {
+  assertEquals(lisbonDateOf("2026-09-14T23:30:00Z"), "2026-09-15");
+  const silence = { ...candidate, trigger: "silence" as const, key: "silence:2026-09-14", silenceDays: 4, anchorDate: "2026-09-14" };
+  assertEquals(decidePush({ ...base, candidate: silence, lastModelMessageAt: "2026-09-14T23:30:00Z" }), { send: false, reason: "ja_falou_depois" });
+});
+
