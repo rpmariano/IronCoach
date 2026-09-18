@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
@@ -16,6 +16,7 @@ import MealSheet from './MealSheet';
 import RaceCard from './RaceCard';
 import StatusCard from './StatusCard';
 import FirstDayCard from './FirstDayCard';
+import CheckinCard from './CheckinCard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import MedalMoment from '../shared/MedalMoment';
@@ -43,6 +44,7 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, setEditingRaceId, setProfile, setCoachIntent, setOpenCreationMode,
+    dailySummary, logImpression, logImpressionDismissed,
   } = useAppStore();
   const pendingTopics = useAppStore(selectCoachPendingTopics);
 
@@ -58,6 +60,16 @@ export default function Home() {
   const medalMoment = useMedalMoment();
 
   const today = todayISO();
+
+  /* O que o Início mostrou (ação 2.4): a Carol lê-o para não repetir como
+     novidade o que o atleta já viu. O cartão dela conta quando existe para
+     hoje; os avisos e os insights contam quando a janela deles abre (ver
+     abaixo) — antes disso são só um número no botão. */
+  const cardDate = dailySummary?.date === today ? dailySummary.date : null;
+  useEffect(() => {
+    if (cardDate) logImpression({ kind: 'daily_card', key: cardDate });
+  }, [cardDate, logImpression]);
+
   const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
   const hasUpcomingRace = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= today);
   const firstDay = !hasRecords && !hasUpcomingRace;
@@ -199,9 +211,17 @@ export default function Home() {
       onDismiss: () => {
         dismissProactiveAlert(profile?.id, raceBalance.candidate);
         setBalanceDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: 'balanco', title: 'O balanço da prova' });
       },
     });
   }
+
+  /* Abrir a janela do botão flutuante é ver os avisos e os insights. */
+  const openInsights = () => {
+    for (const a of carolAlerts) logImpression({ kind: 'alert', key: a.id, title: a.title });
+    for (const i of homeInsights) logImpression({ kind: 'insights', key: i.id, title: i.title });
+    setShowInsights(true);
+  };
 
   // "Registar sessão" não marca logo — deixa isso ao ecrã de registo, que
   // grava o completePlanItem só depois de a corrida/sessão real estar
@@ -235,6 +255,7 @@ export default function Home() {
       const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
       if (error) throw error;
       setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
+      logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);
       showToast('Aviso dispensado.', 'success');
     } catch (err) {
@@ -268,6 +289,7 @@ export default function Home() {
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenRace={setEditingRaceId} onOpenPlano={() => setOpenCreationMode('plano')} />
 
       <SectionLabel>Como estou</SectionLabel>
+      <CheckinCard />
       <StatusCard rings={rings} mealsModel={todayMeals} onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })} />
 
       <SectionLabel>Para onde vou</SectionLabel>
@@ -296,7 +318,7 @@ export default function Home() {
         </Dialog>
       )}
 
-      <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={() => setShowInsights(true)} />
+      <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={openInsights} />
       {showInsights && <CoachInsightModal insights={homeInsights} alerts={carolAlerts} onClose={() => setShowInsights(false)} />}
       {medalMoment.award && (
         <MedalMoment

@@ -7,7 +7,7 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **6,0 / 10** (era 3,7 antes da Fase 1) | 6,0 / 10 | 8,6 / 10 |
+| **Omnisciência** | **7,0 / 10** (3,7 antes da Fase 1, 6,0 depois dela) | 6,0 / 10 | 8,6 / 10 |
 | **Omnipresença** | **3,7 / 10** (era 2,8 antes de P.1 e P.2) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
@@ -94,6 +94,30 @@ No chat, os blocos entram no fim do prompt do sistema, numa secção "A tua mem�
 | **2.2** Ligar o check-in à hierarquia de alarmes, para que dor ≥ 4 ou sono mau repetido disparem G2, G4 ou G5 sem o atleta ter de o dizer | O3 | M | `coach-chat` e `coach-daily-summary` |
 | **2.3** Ciclo menstrual, opcional e só com consentimento explícito, porque o RED-S depende dele | O3 | M | Campo no check-in e aviso de privacidade |
 | **2.4** Registar o que foi mostrado e dispensado: avisos do Início, insights, cartão | O7 | M | Tabela `coach_impressions`, escrita pelo cliente |
+
+#### Estado: Fase 2 implementada a 2026-09-18
+
+A migration `20260918151242_daily_checkins` já está aplicada em produção. Foi testada antes numa transação revertida.
+
+| Ação | Como ficou |
+|---|---|
+| 2.1 | Um cartão em "Como estou", por cima da órbita: "Como acordaste hoje?". A persiana pergunta o sono, a energia e o stress de 1 a 5, e a dor de 0 a 10 com o local. Há um check-in por dia e editá-lo substitui o anterior. Depois de feito, o cartão mostra o resumo e um botão para editar. Tabela `daily_checkins`. |
+| 2.2 | As regras vivem numa fórmula partilhada, `_shared/formulas/checkinAlarms.ts`, que o cliente usa via `@formulas` e o servidor lê: <br>• dor ≥ 4 hoje dá G2 se o local parecer osso, senão G5; <br>• sono ≤ 2 em 3 dos últimos 5 check-ins, com energia ≤ 2 ou stress ≥ 4, dá G4; <br>• sem menstruação há 90 dias, com o ciclo registado há pelo menos 90, dá G3. <br>Um alarme novo abre uma intervenção pelo canal de sempre, se não houver já uma em curso. A Carol lê o check-in no chat, no cartão diário e nas quatro análises. Os alarmes do check-in valem como se o atleta os tivesse dito. |
+| 2.3 | O ciclo só aparece num perfil feminino, e só depois de o atleta tocar em "Aceito registar". O consentimento fica em `profiles.cycle_tracking_consent_at`. Sem consentimento, o campo nem sai do telemóvel, e o servidor apaga-o antes de o passar à Carol. Retirar o consentimento apaga o ciclo de todos os check-ins, através de um trigger na base de dados. |
+| 2.4 | Tabela `coach_impressions`, com uma linha por dia, tipo e chave. O cartão da Carol conta como visto quando existe para hoje. Os avisos e os insights contam quando a janela do botão flutuante abre, porque antes disso são só um número. Os avisos dispensados ficam marcados. O chat lê os últimos 3 dias. |
+
+**Revisão pré-deploy, com tudo corrigido antes do push:**
+- **G4.** A chave passa a ser o primeiro dia mau da janela, estável por episódio. Só chama a Carol se o dia de hoje for um dos maus. Antes, chamava todos os dias, incluindo o primeiro em que o atleta dormiu bem.
+- **G3.** Exige pelo menos 20 respostas à pergunta do ciclo nos últimos 90 dias. Um check-in esquecido ou uma resposta em branco não conta como "não". O G3 fica no contexto da Carol, mas não abre uma intervenção, porque não é urgente.
+- **Consentimento na base de dados.** Um trigger limpa o ciclo se o perfil não tiver consentimento ou não for feminino. A migration é `20260918152840_daily_checkins_cycle_guard`.
+- **Acesso de admin.** Os check-ins deixaram de ser lidos pelo painel de admin.
+- **Texto do consentimento.** Passa a dizer a verdade: fica na conta, entra nas análises, que são feitas por um modelo de IA, e desligar apaga os dias marcados. Desligar pede confirmação.
+- **Data.** O servidor lê o check-in e as impressões com o dia de Lisboa, como o cliente os grava.
+- **Cartão diário.** É refeito depois de cada check-in, para refletir como o atleta acordou.
+
+**Ficou de fora:** um ecrã de privacidade para rever ou apagar os check-ins. Hoje, a única forma de apagar dados é retirar o consentimento do ciclo, que apaga só o ciclo.
+
+Com a Fase 2, O3 passa de 2 para 7 e O7 de 3 para 7. Contando também a ação 1.3, O1 fica em 9. A omnisciência sobe para **7,0**.
 
 ### Fase 3 — o que ela recomendou e o que aconteceu (O4) · 7,4 para 7,8
 

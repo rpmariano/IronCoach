@@ -20,6 +20,9 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
+import { normalizeGender } from "./formulas/vocabulary.ts";
+
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
 // empurravam as corridas da semana para fora do bloco (medido em produção:
@@ -35,6 +38,14 @@ const MAX_MESSAGE_CHARS = 280;
 // ── Utilitários ──────────────────────────────────────────────────────────
 
 const DAY_MS = 86400000;
+
+/* O dia do atleta, em Lisboa. O check-in e as impressões são gravados pelo
+   cliente com o dia local; comparar com o dia UTC fazia a Carol dizer "ainda
+   sem check-in" entre as 00:00 e a 01:00 de verão (revisão pré-deploy
+   2026-09-18). O resto do coach-chat continua em UTC, como sempre esteve. */
+export function lisbonTodayISO(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(now);
+}
 
 export function addDaysISO(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -396,6 +407,82 @@ export function memoryPromptSection(block: string | null | undefined): string {
   return block ? `${block}\n\n` : "";
 }
 
+// ── 2.1 a 2.3 — O check-in diário ────────────────────────────────────────
+
+/** Janela lida para o check-in: 120 dias, para o ciclo (90) ter margem. */
+export const CHECKIN_LOOKBACK_DAYS = 120;
+
+/**
+ * O bloco "como o atleta se sente". Lê o perfil (género e consentimento do
+ * ciclo) se não vier já lido. Sem consentimento, o campo do ciclo é apagado
+ * antes de chegar à fórmula: não há leitura nenhuma sem autorização.
+ */
+export async function fetchCheckinBlock(sb: any, userId: string, todayISO: string, profile?: any): Promise<string | null> {
+  try {
+    let prof = profile;
+    if (!prof || !("cycle_tracking_consent_at" in prof)) {
+      const { data, error } = await sb.from("profiles").select("gender, cycle_tracking_consent_at").eq("id", userId).maybeSingle();
+      warn("profiles(ciclo)", error);
+      prof = data || {};
+    }
+    const { data, error } = await sb.from("daily_checkins")
+      .select("date, sleep, energy, stress, pain, pain_location, period_today")
+      .eq("user_id", userId).gte("date", addDaysISO(todayISO, -(CHECKIN_LOOKBACK_DAYS - 1))).lte("date", todayISO)
+      .order("date", { ascending: true });
+    warn("daily_checkins", error);
+    const consentAt = prof?.cycle_tracking_consent_at ?? null;
+    const female = normalizeGender(prof?.gender ?? null) === "F";
+    // Sem consentimento, ou sem perfil feminino, o ciclo não chega à Carol.
+    const cycleAllowed = !!consentAt && female;
+    const rows: DailyCheckin[] = (data || []).map((c: any) => (cycleAllowed ? c : { ...c, period_today: null }));
+    return buildCheckinContext(rows, todayISO, { female, cycleConsentAt: consentAt });
+  } catch (e) {
+    console.warn("carolMemory: fetchCheckinBlock falhou:", e);
+    return null;
+  }
+}
+
+// ── 2.4 — O que o atleta viu na app ──────────────────────────────────────
+
+const IMPRESSION_KIND_LABELS: Record<string, string> = {
+  daily_card: "o teu cartão diário",
+  alert: "o aviso",
+  insights: "os alertas do motor de regras",
+};
+
+export function buildImpressionsContext(rows: any[] | null | undefined, todayISO: string): string | null {
+  const list = (rows || []).filter((r) => r && typeof r.date === "string" && r.kind);
+  if (!list.length) return null;
+  const byDate = new Map<string, string[]>();
+  for (const r of list.slice().sort((a, b) => String(a.shown_at ?? "").localeCompare(String(b.shown_at ?? "")))) {
+    const label = IMPRESSION_KIND_LABELS[r.kind] ?? r.kind;
+    const title = clip(r.title, 120);
+    const text = `${label}${title ? ` "${title.replace(/"/g, "'")}"` : ""}${r.dismissed_at ? " (dispensado por ele)" : ""}`;
+    const day = byDate.get(r.date) ?? [];
+    if (!day.includes(text)) day.push(text);
+    byDate.set(r.date, day);
+  }
+  const lines = [...byDate.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === addDaysISO(todayISO, -1) ? "Ontem" : date}: ${items.join("; ")}.`);
+  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que o Início lhe mostrou):\n${lines.join("\n")}\n` +
+    `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.`;
+}
+
+async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
+  try {
+    const { data, error } = await sb.from("coach_impressions")
+      .select("date, kind, key, title, shown_at, dismissed_at")
+      .eq("user_id", userId).gte("date", addDaysISO(todayISO, -2)).lte("date", todayISO)
+      .order("shown_at", { ascending: true }).limit(40);
+    warn("coach_impressions", error);
+    return buildImpressionsContext(data, todayISO);
+  } catch (e) {
+    console.warn("carolMemory: fetchImpressionsBlock falhou:", e);
+    return null;
+  }
+}
+
 /** Memória durável + conversa recente, para as análises e o cartão diário. */
 export async function fetchSharedMemoryBlock(sb: any, userId: string): Promise<string | null> {
   try {
@@ -407,7 +494,11 @@ export async function fetchSharedMemoryBlock(sb: any, userId: string): Promise<s
     ]);
     warn("coach_notes", e1);
     warn("coach_messages", e2);
-    return buildSharedMemoryBlock(notes, messages);
+    const shared = buildSharedMemoryBlock(notes, messages);
+    // Como o atleta se sente hoje (Fase 2): a análise de uma corrida com dor
+    // no check-in não pode ser igual à de uma corrida sem ela.
+    const checkin = await fetchCheckinBlock(sb, userId, lisbonTodayISO());
+    return [checkin, shared].filter(Boolean).join("\n\n") || null;
   } catch (e) {
     console.warn("carolMemory: fetchSharedMemoryBlock falhou:", e);
     return null;
@@ -421,17 +512,22 @@ export interface ChatMemoryBlocks {
   dailyCard: string | null;
   palmares: string | null;
   portrait: string | null;
+  checkin: string | null;
+  impressions: string | null;
 }
 
 /**
  * As consultas novas do chat, em paralelo. Cada bloco falha sozinho: uma
  * tabela em baixo tira esse bloco do prompt, não a resposta.
  */
-export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: string): Promise<ChatMemoryBlocks> {
+export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: string, profile?: any): Promise<ChatMemoryBlocks> {
   const recordsFrom = addDaysISO(todayISO, -(RECORD_MEMORY_DAYS - 1));
   const yearFrom = addDaysISO(todayISO, -364);
   const hasText = "notes.not.is.null,coach_notes.not.is.null";
   try {
+    // O check-in e as impressões usam o dia de Lisboa, como o cliente as grava.
+    const checkinPromise = fetchCheckinBlock(sb, userId, lisbonTodayISO(), profile);
+    const impressionsPromise = fetchImpressionsBlock(sb, userId, lisbonTodayISO());
     const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, yearRunsR, yearGymR, yearBodyR, yearRacesR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
@@ -507,9 +603,11 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
         body: yearBodyR.data || [],
         racesCompleted: Number(yearRacesR.count) || 0,
       }, todayISO),
+      checkin: await checkinPromise,
+      impressions: await impressionsPromise,
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, portrait: null };
+    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null };
   }
 }

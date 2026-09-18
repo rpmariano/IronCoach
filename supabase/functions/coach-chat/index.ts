@@ -4934,7 +4934,8 @@ async function handler(req: Request): Promise<Response> {
       .from("profiles")
       .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
         "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
-        "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach")
+        "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
+        "cycle_tracking_consent_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -4956,7 +4957,7 @@ async function handler(req: Request): Promise<Response> {
        Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
        abaixo): nesse caso só arranca depois, para não gastar as consultas. */
     let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
-      proactiveTrigger && !proactiveForce ? null : fetchChatMemoryBlocks(sb, userId, todayISO);
+      proactiveTrigger && !proactiveForce ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
@@ -5541,13 +5542,16 @@ async function handler(req: Request): Promise<Response> {
 
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.
-    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO));
+    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile));
     const memorySections = [
+      // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.
+      memoryBlocks.checkin,
       memoryBlocks.portrait,
       memoryBlocks.palmares,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
       memoryBlocks.dailyCard,
+      memoryBlocks.impressions,
     ].filter(Boolean);
     if (memorySections.length > 0) {
       finalSystemInstruction += "\n\n--- A TUA MEMÓRIA ALARGADA (o que já sabes, disseste e viste deste atleta fora desta conversa) ---\n" +

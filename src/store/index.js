@@ -3,6 +3,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
 import { todayISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
+import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
 
 const getInitialDashboardTab = () => {
   try {
@@ -36,6 +37,9 @@ export const useAppStore = create((set, get) => ({
   coachPlans: [],
   coachPlanItems: [],
   coachGoalProposals: [],
+  // Check-ins diários (Fase 2 de specs/carol-omnisciencia-omnipresenca.md):
+  // os últimos 120 dias, para o ciclo ter margem. Um por dia.
+  dailyCheckins: [],
   // Resumo diário do Coach (card rotativo do Início) — null até carregar,
   // depois {recap, warnings, meal_suggestion, tomorrow_prep, date, ...}.
   // Ver specs/plano-de-treino.md §11.
@@ -745,6 +749,106 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  // ── Check-in diário (Fase 2, ações 2.1 a 2.3) ───────────────────────────
+  /* Grava o check-in de hoje (um por dia; editar substitui). Se trouxer um
+     alarme novo — dor ≥ 4, sono mau persistente, ciclo parado —, abre uma
+     intervenção: é o mesmo canal que as análises usam, o Início mostra "A
+     Carol precisa de falar contigo" e o chat abre já com o motivo. Não se
+     sobrepõe a uma intervenção que já esteja em curso. Devolve
+     { ok, alarms } com os alarmes NOVOS. */
+  saveDailyCheckin: async (values) => {
+    const profile = get().profile;
+    const userId = get().session?.user?.id || profile?.id;
+    if (!userId) return { ok: false, alarms: [] };
+    const date = values.date || todayISO();
+    const row = {
+      user_id: userId,
+      date,
+      sleep: values.sleep ?? null,
+      energy: values.energy ?? null,
+      stress: values.stress ?? null,
+      pain: values.pain ?? null,
+      pain_location: values.pain > 0 && values.pain_location ? String(values.pain_location).trim().slice(0, 80) || null : null,
+      // Sem consentimento, o campo nem sai do telemóvel.
+      period_today: profile?.cycle_tracking_consent_at ? (values.period_today ?? null) : null,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase
+      .from('daily_checkins')
+      .upsert(row, { onConflict: 'user_id,date' })
+      .select()
+      .single();
+    if (error) { console.error('Erro a gravar o check-in:', error); return { ok: false, alarms: [] }; }
+
+    const before = get().dailyCheckins;
+    const after = mergeCheckin(before, data || row);
+    set({ dailyCheckins: after });
+
+    const alarms = newCheckinAlarms(before, after, date, profile);
+    const pending = ['needed', 'in_progress'].includes(profile?.coach_intervention_status);
+    if (alarms.length && !pending) {
+      const reason = interventionReasonFor(alarms);
+      const { error: upErr } = await supabase
+        .from('profiles')
+        .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason })
+        .eq('id', userId);
+      if (upErr) console.error('Erro a abrir a intervenção do check-in:', upErr);
+      else set({ profile: { ...get().profile, coach_intervention_status: 'needed', coach_intervention_reason: reason } });
+    }
+    // O cartão diário é gerado uma vez por dia, muitas vezes antes do
+    // check-in: refaz-se para a Carol do Início saber como ele acordou.
+    get().loadDailySummary({ force: true }).catch(() => {});
+    return { ok: true, alarms };
+  },
+
+  /* O consentimento para registar o ciclo (ação 2.3). Retirá-lo apaga o
+     ciclo de todos os check-ins no servidor (trigger da migration
+     daily_checkins) — aqui limpa-se também a cópia local. */
+  setCycleConsent: async (on) => {
+    const profile = get().profile;
+    if (!profile?.id) return false;
+    const value = on ? new Date().toISOString() : null;
+    const { error } = await supabase.from('profiles').update({ cycle_tracking_consent_at: value }).eq('id', profile.id);
+    if (error) { console.error('Erro a gravar o consentimento do ciclo:', error); return false; }
+    set((s) => ({
+      profile: { ...s.profile, cycle_tracking_consent_at: value },
+      dailyCheckins: on ? s.dailyCheckins : s.dailyCheckins.map((c) => ({ ...c, period_today: null })),
+    }));
+    return true;
+  },
+
+  // ── O que o Início mostrou (ação 2.4) ───────────────────────────────────
+  /* Uma linha por dia, tipo e chave em coach_impressions — a Carol lê-as
+     para saber o que o atleta já viu. Best-effort e silencioso: uma falha
+     aqui nunca pode estragar o Início. */
+  logImpression: async ({ kind, key, title = null }) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId || !kind || !key) return;
+    try {
+      const { error } = await supabase.from('coach_impressions').upsert(
+        { user_id: userId, date: todayISO(), kind, key: String(key).slice(0, 200), title: title ? String(title).slice(0, 200) : null },
+        { onConflict: 'user_id,date,kind,key', ignoreDuplicates: true },
+      );
+      if (error) console.warn('coach_impressions:', error.message);
+    } catch (e) {
+      console.warn('coach_impressions:', e);
+    }
+  },
+
+  logImpressionDismissed: async ({ kind, key, title = null }) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId || !kind || !key) return;
+    try {
+      const { error } = await supabase.from('coach_impressions').upsert(
+        { user_id: userId, date: todayISO(), kind, key: String(key).slice(0, 200), title: title ? String(title).slice(0, 200) : null, dismissed_at: new Date().toISOString() },
+        { onConflict: 'user_id,date,kind,key' },
+      );
+      if (error) console.warn('coach_impressions:', error.message);
+    } catch (e) {
+      console.warn('coach_impressions:', e);
+    }
+  },
+
   // Fetch initial user data (called after login)
   loadInitialData: async (userId) => {
     try {
@@ -775,7 +879,8 @@ export const useAppStore = create((set, get) => ({
         { data: coachPlans },
         { data: coachPlanItems },
         { data: shoes },
-        { data: dailySummary }
+        { data: dailySummary },
+        { data: dailyCheckins },
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -787,7 +892,11 @@ export const useAppStore = create((set, get) => ({
         supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
         supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
         supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle()
+        supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
+        // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
+        supabase.from('daily_checkins').select('*').eq('user_id', userId)
+          .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
+          .order('date', { ascending: true }),
       ]);
 
       set({
@@ -801,6 +910,7 @@ export const useAppStore = create((set, get) => ({
         coachPlans: coachPlans || [],
         coachPlanItems: coachPlanItems || [],
         shoes: shoes || [],
+        dailyCheckins: dailyCheckins || [],
         ...(dailySummary && { dailySummary })
       });
 

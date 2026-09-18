@@ -2,6 +2,9 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildAthletePortrait,
   buildBodyGoalsContext,
+  buildImpressionsContext,
+  fetchCheckinBlock,
+  lisbonTodayISO,
   buildDailyCardContext,
   buildPalmaresContext,
   buildRecordMemoryContext,
@@ -189,7 +192,9 @@ function fakeSb(tables: Record<string, { data?: unknown; error?: unknown; count?
       const result = tables[table] ?? { data: [], error: null };
       const chain: Record<string, unknown> = {};
       for (const m of ["select", "eq", "gte", "lte", "lt", "or", "not", "in", "order", "limit"]) chain[m] = () => chain;
-      chain.then = (resolve: (v: unknown) => unknown) => resolve({ data: result.data ?? null, error: result.error ?? null, count: result.count ?? null });
+      const payload = () => ({ data: result.data ?? null, error: result.error ?? null, count: result.count ?? null });
+      chain.maybeSingle = () => Promise.resolve({ ...payload(), data: Array.isArray(result.data) ? result.data[0] ?? null : result.data ?? null });
+      chain.then = (resolve: (v: unknown) => unknown) => resolve(payload());
       return chain;
     },
   };
@@ -213,3 +218,48 @@ Deno.test("fetchSharedMemoryBlock: uma exceção no cliente devolve null, não r
   const sb = { from() { throw new Error("rede em baixo"); } };
   assertEquals(await fetchSharedMemoryBlock(sb, "u1"), null);
 });
+
+Deno.test("impressões: por dia, o mais recente primeiro, sem repetidos, com o que foi dispensado", () => {
+  const text = buildImpressionsContext([
+    { date: "2026-09-18", kind: "daily_card", key: "2026-09-18", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "alert", key: "plano", title: "O plano precisa de um ajuste", shown_at: "2026-09-18T07:01:00Z", dismissed_at: "2026-09-18T07:02:00Z" },
+    { date: "2026-09-17", kind: "insights", key: "acwr", title: "Carga a subir depressa", shown_at: "2026-09-17T20:00:00Z" },
+  ], "2026-09-18")!;
+  assertStringIncludes(text, `- Hoje: o teu cartão diário; o aviso "O plano precisa de um ajuste" (dispensado por ele).`);
+  assertStringIncludes(text, `- Ontem: os alertas do motor de regras "Carga a subir depressa".`);
+  assert(text.indexOf("Hoje") < text.indexOf("Ontem"));
+  assertEquals(buildImpressionsContext([], "2026-09-18"), null);
+});
+
+Deno.test("fetchCheckinBlock: sem consentimento, o ciclo é apagado antes de chegar à Carol", async () => {
+  const rows = [{ date: "2026-09-18", sleep: 4, energy: 4, stress: 2, pain: 0, period_today: true }];
+  const without = await fetchCheckinBlock(fakeSb({ daily_checkins: { data: rows } }), "u1", "2026-09-18", { gender: "F", cycle_tracking_consent_at: null });
+  assertStringIncludes(without!, "- Hoje: sono 4, energia 4, stress 2, sem dor.");
+  assert(!without!.includes("menstruada"));
+  assert(!without!.includes("Ciclo"));
+  const withConsent = await fetchCheckinBlock(fakeSb({ daily_checkins: { data: rows } }), "u1", "2026-09-18", { gender: "F", cycle_tracking_consent_at: "2026-09-01T00:00:00Z" });
+  assertStringIncludes(withConsent!, "menstruada");
+  assertStringIncludes(withConsent!, "- Ciclo: último dia de menstruação registado a 2026-09-18 (há 0 dias).");
+});
+
+Deno.test("fetchCheckinBlock: com consentimento mas perfil não feminino, o ciclo não passa", async () => {
+  const rows = [{ date: "2026-09-18", sleep: 4, energy: 4, stress: 2, pain: 0, period_today: true }];
+  const text = await fetchCheckinBlock(fakeSb({ daily_checkins: { data: rows } }), "u1", "2026-09-18", { gender: "M", cycle_tracking_consent_at: "2026-09-01" });
+  assert(!text!.includes("menstruada"));
+});
+
+Deno.test("lisbonTodayISO: à 00:30 de Lisboa no verão, UTC ainda é ontem", () => {
+  assertEquals(lisbonTodayISO(new Date("2026-09-17T23:30:00Z")), "2026-09-18");
+  assertEquals(lisbonTodayISO(new Date("2026-01-17T23:30:00Z")), "2026-01-17");
+});
+
+Deno.test("fetchCheckinBlock: sem perfil passado, lê o género e o consentimento", async () => {
+  const sb = fakeSb({
+    profiles: { data: [{ gender: "feminino", cycle_tracking_consent_at: "2026-05-01" }] },
+    daily_checkins: { data: Array.from({ length: 25 }, (_, i) => ({ date: new Date(Date.parse("2026-09-18T00:00:00Z") - i * 3 * 86400000).toISOString().slice(0, 10), period_today: false })) },
+  });
+  const text = await fetchCheckinBlock(sb, "u1", "2026-09-18");
+  assertStringIncludes(text!, "- G3: Nenhum dia de menstruação nos últimos 90 dias");
+  assert(sb.calls.includes("profiles"));
+});
+
