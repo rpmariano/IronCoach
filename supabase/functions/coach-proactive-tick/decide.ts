@@ -1,7 +1,7 @@
 // A decisão de notificar um atleta — pura, para os testes não precisarem de
 // rede (specs/carol-omnisciencia-omnipresenca.md, ação P.3).
 
-import { isWithinProactiveWindow, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
+import { ALL_PROACTIVE_TRIGGERS, isWithinProactiveWindow, type PushPreferences, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 /** A mesma regra do coach-chat (PROACTIVE_QUIET_HOURS): se ela falou há menos
  *  de 6 horas, o chat recusava a mensagem ao abrir — e a notificação ficava a
@@ -16,14 +16,17 @@ export function lisbonDateOf(iso: string): string {
 
 export type PushDecision =
   | { send: true }
-  | { send: false; reason: "sem_momento" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" };
+  | { send: false; reason: "sem_momento" | "tipo_desligado" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" };
 
 export function decidePush(input: {
   candidate: ServerProactiveCandidate | null;
   lisbonHour: number;
   deliveredKeys: Set<string>;   // coach_proactive_log: a conversa já aconteceu
   pushedKeys: Set<string>;      // coach_proactive_pushes: já se notificou esta
-  pushedToday: boolean;         // no máximo uma notificação dela por dia
+  /** Quantas notificações dela já saíram hoje (dia de Lisboa). */
+  pushedTodayCount: number;
+  /** As preferências do atleta (P.6); sem elas, os valores por omissão. */
+  prefs?: PushPreferences;
   /** A última mensagem da conversa, de quem for — só para a regra das 6
    *  horas, que tem de bater com o shouldSkipProactive do coach-chat. */
   lastMessage?: { role: string; created_at: string } | null;
@@ -37,10 +40,14 @@ export function decidePush(input: {
 }): PushDecision {
   const c = input.candidate;
   if (!c) return { send: false, reason: "sem_momento" };
-  if (!isWithinProactiveWindow(c.trigger, input.lisbonHour)) return { send: false, reason: "fora_de_horas" };
+  const prefs = input.prefs ?? {};
+  const types = Array.isArray(prefs.types) ? prefs.types : ALL_PROACTIVE_TRIGGERS;
+  if (!types.includes(c.trigger)) return { send: false, reason: "tipo_desligado" };
+  if (!isWithinProactiveWindow(c.trigger, input.lisbonHour, prefs)) return { send: false, reason: "fora_de_horas" };
   if (input.deliveredKeys.has(c.key)) return { send: false, reason: "ja_entregue" };
   if (input.pushedKeys.has(c.key)) return { send: false, reason: "ja_notificado" };
-  if (input.pushedToday) return { send: false, reason: "limite_diario" };
+  const maxPerDay = Number.isInteger(prefs.maxPerDay) && prefs.maxPerDay! >= 1 ? Math.min(prefs.maxPerDay!, 3) : 1;
+  if (input.pushedTodayCount >= maxPerDay) return { send: false, reason: "limite_diario" };
   /* O coach_proactive_log só existe desde 2026-09-18: o que a Carol entregou
      antes disso só está no localStorage de cada telemóvel (revisão pré-deploy
      da P.3). Duas provas de que a conversa já aconteceu, lidas no servidor:

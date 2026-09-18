@@ -20,7 +20,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { pickServerProactive, proactivePushMessage } from "../_shared/formulas/proactiveTriggers.ts";
+import { pickServerProactive, proactivePushMessage, type PushPreferences } from "../_shared/formulas/proactiveTriggers.ts";
 import { decidePush } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
@@ -69,16 +69,24 @@ async function handler(req: Request): Promise<Response> {
 
   const { data: subs, error: subsErr } = await sb.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth");
   if (subsErr) return jsonResponse({ error: subsErr.message }, 500);
-  /* Só quem tem as notificações ligadas. Hoje o único interruptor é o dos
-     lembretes de água: desligá-lo não apaga a subscrição do browser, e sem
-     este filtro a Carol ia notificar precisamente quem as desligou
-     (revisão pré-deploy da P.3). A P.6 traz um interruptor próprio. */
+  /* Só quem ligou as notificações da Carol no Perfil (P.6, opt-in). A
+     subscrição do browser fica depois de as desligar — por isso o filtro é o
+     interruptor, não a subscrição. Cada atleta traz as suas preferências. */
   const userIds = [...new Set((subs || []).map((s: { user_id: string }) => s.user_id))];
   const { data: enabled, error: profErr } = userIds.length
-    ? await sb.from("profiles").select("id").in("id", userIds).eq("water_reminder_enabled", true)
+    ? await sb.from("profiles")
+      .select("id, carol_push_start_hour, carol_push_end_hour, carol_push_max_per_day, carol_push_types")
+      .in("id", userIds).eq("carol_push_enabled", true)
     : { data: [], error: null };
   if (profErr) return jsonResponse({ error: profErr.message }, 500);
-  const allowed = new Set((enabled || []).map((p: { id: string }) => p.id));
+  // deno-lint-ignore no-explicit-any
+  const prefsById = new Map<string, PushPreferences>((enabled || []).map((p: any) => [p.id, {
+    startHour: p.carol_push_start_hour,
+    endHour: p.carol_push_end_hour,
+    maxPerDay: p.carol_push_max_per_day,
+    types: p.carol_push_types,
+  }]));
+  const allowed = new Set(prefsById.keys());
   // deno-lint-ignore no-explicit-any
   const byUser = new Map<string, any[]>();
   for (const s of subs || []) if (allowed.has(s.user_id)) byUser.set(s.user_id, [...(byUser.get(s.user_id) || []), s]);
@@ -104,13 +112,14 @@ async function handler(req: Request): Promise<Response> {
       }
       const candidate = pickServerProactive({ raceEvents: races || [], runs: runs || [], lastRecordDate: last }, today);
 
-      let decision = decidePush({ candidate, lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedToday: false, lastModelMessageAt: null, nowMs: now.getTime() });
+      const prefs = prefsById.get(userId) ?? {};
+      let decision = decidePush({ candidate, lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
       if (candidate && decision.send) {
         // Só se consulta o resto quando há mesmo um momento para notificar.
         const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }] = await Promise.all([
           sb.from("coach_proactive_log").select("key").eq("user_id", userId).eq("key", candidate.key),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("key", candidate.key),
-          sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today).limit(1),
+          sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today),
           sb.from("coach_messages").select("role, created_at").eq("user_id", userId)
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
           sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
@@ -121,7 +130,8 @@ async function handler(req: Request): Promise<Response> {
           lisbonHour: hour,
           deliveredKeys: new Set((delivered || []).map((d: { key: string }) => d.key)),
           pushedKeys: new Set((pushedKey || []).map((p: { key: string }) => p.key)),
-          pushedToday: (pushedToday || []).length > 0,
+          pushedTodayCount: (pushedToday || []).length,
+          prefs,
           lastMessage: lastAny ?? null,
           lastModelMessageAt: lastModel?.created_at ?? null,
           nowMs: now.getTime(),

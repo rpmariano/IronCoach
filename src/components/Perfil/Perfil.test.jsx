@@ -27,6 +27,12 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
+// As notificações pedem a permissão ao browser: aqui responde-se pelo teste.
+const push = vi.hoisted(() => ({ result: { ok: true, error: null } }));
+vi.mock('../../lib/push', () => ({
+  ensurePushSubscription: () => Promise.resolve(push.result),
+}));
+
 // Valores distintos entre si para as consultas por valor não serem ambíguas.
 const PROFILE = {
   id: 'user-1',
@@ -436,3 +442,60 @@ describe('Perfil — etiquetas programáticas', () => {
     expect(semNome.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
   });
 });
+
+describe('Perfil — notificações da Carol (P.6)', () => {
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    push.result = { ok: true, error: null };
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+    });
+  });
+
+  it('começa desligado; ligar mostra as preferências e grava só o que mudou', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.queryByTestId('perfil-carol-push-prefs')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Ativar notificações da Carol'));
+    await waitFor(() => expect(screen.getByTestId('perfil-carol-push-prefs')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('No máximo, por dia'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('A partir das'), { target: { value: '8' } });
+    const silencio = screen.getByRole('button', { name: 'Dias sem registos' });
+    expect(silencio).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(silencio);
+    expect(silencio).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({
+      carol_push_enabled: true,
+      carol_push_max_per_day: 2,
+      carol_push_start_hour: 8,
+      carol_push_types: ['race_morning', 'race_eve', 'race_after'],
+    });
+  });
+
+  it('se o browser recusar a permissão, o interruptor fica desligado', async () => {
+    push.result = { ok: false, error: 'Notificações bloqueadas.' };
+    render(<Perfil />);
+    abrirMetas();
+    fireEvent.click(screen.getByLabelText('Ativar notificações da Carol'));
+    // O pedido de permissão resolve-se; o interruptor não chega a ligar.
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByLabelText('Ativar notificações da Carol')).toBeInTheDocument();
+    expect(screen.queryByTestId('perfil-carol-push-prefs')).not.toBeInTheDocument();
+  });
+
+  it('é independente da água: ligar a Carol não mexe nos lembretes de água', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    fireEvent.click(screen.getByLabelText('Ativar notificações da Carol'));
+    await waitFor(() => expect(screen.getByTestId('perfil-carol-push-prefs')).toBeInTheDocument());
+    expect(screen.getByLabelText('Ativar lembretes de água')).toBeInTheDocument();
+  });
+});
+

@@ -7,8 +7,8 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **7,0 / 10** (3,7 antes da Fase 1, 6,0 depois dela) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **6,1 / 10** (2,8 de manhã; 3,7 depois de P.1 e P.2) | — | 9,0 / 10 |
+| **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
+| **Omnipresença** | **6,6 / 10** (2,8 de manhã; 6,1 depois da P.3) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -126,6 +126,19 @@ Com a Fase 2, O3 passa de 2 para 7 e O7 de 3 para 7. Contando também a ação 1
 | **3.1** Guardar cada recomendação concreta com um identificador: refeição sugerida, treino ajustado, descanso | O4 | M | `save_meal_suggestions`, itens do plano, memória |
 | **3.2** Comparar automaticamente recomendação e registo seguinte, e entregar o resultado no contexto | O4 | M | Helper em `_shared`, lido pelo chat e pelo cartão |
 
+#### Estado: Fase 3 implementada a 2026-09-19
+
+| Ação | Como ficou |
+|---|---|
+| 3.1 | Não precisou de nada novo. As prescrições concretas já tinham identificador: cada treino do plano e a sugestão de refeições de cada dia são linhas de `coach_plan_items`, com `meal_macros`. O que faltava era cruzá-las. |
+| 3.2 | `_shared/formulas/prescriptionAdherence.ts` cruza cada prescrição dos últimos 14 dias com o registo real, só de planos aceites e sem os itens cancelados. <br>• **Corrida:** a distância prescrita, ou a duração se não houver distância, contra o registado. Dentro de ±15% é "cumprido"; fora disso é "a menos" ou "a mais"; sem registo é "não feito". <br>• **Ginásio:** a duração, da mesma forma. <br>• **Descanso:** se foi respeitado. <br>• **Refeições:** as kcal e a proteína sugeridas contra o que foi comido. <br>O treino marcado como feito usa a corrida ou a sessão ligada. Sem ligação, conta o que foi registado nesse dia, porque a maior parte dos atletas não marca. |
+
+A Carol lê o bloco "O que prescreveste vs o que aconteceu" no chat. Tem um resumo, por exemplo "8 treinos prescritos: 5 cumpridos, 2 a menos, 1 não feito; descanso respeitado em 3 de 4 dias", e a média de proteína. A instrução é usar os números para calibrar, e não para cobrar: um dia isolado não é um padrão, e um treino "não feito" pode ter sido registado noutro dia.
+
+**Diferença face ao plano:** o cartão diário ainda não lê este bloco, só o chat. As recomendações soltas que ela dá na conversa, fora do plano, também não entram, porque não ficam gravadas de forma estruturada.
+
+Com a Fase 3, O4 passa de 6 para 9. A omnisciência sobe para **7,5**.
+
 ### Fase 4 — os dados que o atleta não escreve (O6, O8) · 7,8 para 8,6
 
 | Ação | Dimensão | Esforço | Onde |
@@ -202,7 +215,7 @@ Com estas duas ações, P4 passa de 3 para 8, P5 de 5 para 7 e P2 de 2 para 3. A
 - **Não repetir conversas anteriores ao registo no servidor.** O `coach_proactive_log` só existe desde hoje. Há três provas de que a conversa já aconteceu: o balanço gravado na prova; a Carol ter falado depois de a corrida da prova ser registada; e, no "como correu?" e no silêncio, a Carol ter falado depois do acontecimento.
 - **Migration em falta.** A `race_coach_balance`, escrita a 13 de setembro, nunca tinha sido aplicada. Até aqui, o balanço gravado na prova falhava em silêncio. Foi aplicada agora, com a versão `20260918163837`.
 
-**O cron ainda não está ligado.** A função está em produção, mas o job `coach-proactive-tick` só deve ser criado depois de o `sw.js` novo chegar aos telemóveis, através do deploy de `master`. Com o `sw.js` antigo, a notificação da Carol usava a etiqueta da água, as duas substituíam-se uma à outra, e o toque não abria o Coach. Para o criar, copia-se o comando do job da água, para o segredo não entrar no repositório:
+**O cron está ligado desde 2026-09-18, às 18h de Lisboa**, depois de o `sw.js` novo chegar a `master`. O texto abaixo fica como registo de como foi criado. Antes disso: A função está em produção, mas o job `coach-proactive-tick` só deve ser criado depois de o `sw.js` novo chegar aos telemóveis, através do deploy de `master`. Com o `sw.js` antigo, a notificação da Carol usava a etiqueta da água, as duas substituíam-se uma à outra, e o toque não abria o Coach. Para o criar, copia-se o comando do job da água, para o segredo não entrar no repositório:
 
 ```sql
 select cron.schedule('coach-proactive-tick', '7 * * * *',
@@ -214,6 +227,20 @@ select cron.schedule('coach-proactive-tick', '7 * * * *',
 - O texto da notificação é fixo. O texto gerado por ela é a P.4.
 
 Com a P.3, P1 passa de 1 para 7, P2 de 3 para 5, P3 de 4 para 6 e P6 de 5 para 6. A omnipresença sobe para **6,1**.
+
+#### Estado: P.6 implementada a 2026-09-18
+
+A migration `20260918173342_carol_push_preferences` está aplicada em produção.
+
+| Peça | Como ficou |
+|---|---|
+| Perfil | Um bloco "Notificações da Carol" logo a seguir aos lembretes de água, no mesmo cartão e com o mesmo padrão. Ligar pede a permissão do browser na hora, e o resto fica com o Guardar. As opções são as horas de início e de fim, o máximo por dia (1, 2 ou 3) e os momentos aceites: manhã da prova, véspera, balanço e dias sem registos. |
+| Base de dados | Cinco colunas novas em `profiles`: `carol_push_enabled`, desligado por omissão, porque é opt-in; `carol_push_start_hour` e `carol_push_end_hour`, das 9h às 21h por omissão; `carol_push_max_per_day`, de 1 a 3; e `carol_push_types`, com um check que só aceita os quatro momentos. |
+| Servidor | O `coach-proactive-tick` deixa de depender da água. Notifica quem ligou a Carol, na janela dessa pessoa, até ao máximo dela, e só nos momentos que ela aceitou. A manhã da prova pode adiantar-se até às 6h, porque a prova não espera, mas nunca passa do fim da janela. |
+
+**Por omissão ninguém recebe nada.** Cada atleta tem de ligar as notificações da Carol no Perfil. O ecrã só chega com o deploy de `master`.
+
+Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depender da água. A omnipresença sobe para **6,6**.
 
 ---
 
