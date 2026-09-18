@@ -8,7 +8,7 @@
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
 | **Omnisciência** | **7,0 / 10** (3,7 antes da Fase 1, 6,0 depois dela) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **3,7 / 10** (era 2,8 antes de P.1 e P.2) | — | 9,0 / 10 |
+| **Omnipresença** | **6,1 / 10** (2,8 de manhã; 3,7 depois de P.1 e P.2) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -186,6 +186,34 @@ Depende da Fase 1 da omnisciência. Um gatilho no servidor precisa do mesmo cont
 | P.2 | O push da água passa a ter o título "Carol" e uma frase com os números do atleta: quanto bebeu, quanto falta e se está atrás do ritmo do dia. A frase é determinística, sem modelo, e está em `send-water-reminders/message.ts`. Um teste garante que nenhuma combinação produz emoji ou ponto de exclamação. |
 
 Com estas duas ações, P4 passa de 3 para 8, P5 de 5 para 7 e P2 de 2 para 3. A omnipresença sobe de **2,8 para 3,7**. O salto grande continua a ser a P.3: os gatilhos avaliados no servidor.
+
+#### Estado: P.3 implementada a 2026-09-18
+
+| Peça | Como ficou |
+|---|---|
+| Regras | `_shared/formulas/proactiveTriggers.ts` avalia os mesmos quatro momentos que o cliente, com as mesmas chaves: manhã da prova, véspera, balanço e silêncio. Um teste no cliente, `src/utils/proactiveParity.test.js`, compara as duas versões com os mesmos dados. |
+| Função | `coach-proactive-tick`, chamada pelo `pg_cron` de hora a hora, ao minuto 7, com o `CRON_SECRET`. Tem `verify_jwt = false` declarado em `supabase/config.toml`. A decisão de enviar é pura e está em `decide.ts`. |
+| Travões | Janela das 9h às 21h em Lisboa, ou a partir das 6h para a manhã da prova. Não notifica uma conversa que já aconteceu nem uma chave já notificada. Envia no máximo uma notificação por dia. Não envia se ela falou há menos de 6 horas, porque o chat recusaria a mensagem ao abrir. A chave é gravada antes do envio, para duas execuções cruzadas não enviarem duas vezes. |
+| Notificação | O título é "Carol" e a frase é fixa por momento, na voz dela. Tocar abre o Coach: com a app fechada, através de `?tab=coach`; com a app aberta, por mensagem do service worker. É aí que o `coach-chat` escreve a mensagem a sério. |
+| Tabela | `coach_proactive_pushes`, com uma linha por chave e o dia de Lisboa. Só o service role escreve. |
+
+**Revisão pré-deploy, com tudo corrigido:**
+- **Só quem tem as notificações ligadas.** A subscrição do browser fica depois de o atleta desligar os lembretes, e sem este filtro a Carol ia notificar precisamente quem as desligou. Hoje o único interruptor é o da água, por isso exige-se `water_reminder_enabled = true`.
+- **Não repetir conversas anteriores ao registo no servidor.** O `coach_proactive_log` só existe desde hoje. Há três provas de que a conversa já aconteceu: o balanço gravado na prova; a Carol ter falado depois de a corrida da prova ser registada; e, no "como correu?" e no silêncio, a Carol ter falado depois do acontecimento.
+- **Migration em falta.** A `race_coach_balance`, escrita a 13 de setembro, nunca tinha sido aplicada. Até aqui, o balanço gravado na prova falhava em silêncio. Foi aplicada agora, com a versão `20260918163837`.
+
+**O cron ainda não está ligado.** A função está em produção, mas o job `coach-proactive-tick` só deve ser criado depois de o `sw.js` novo chegar aos telemóveis, através do deploy de `master`. Com o `sw.js` antigo, a notificação da Carol usava a etiqueta da água, as duas substituíam-se uma à outra, e o toque não abria o Coach. Para o criar, copia-se o comando do job da água, para o segredo não entrar no repositório:
+
+```sql
+select cron.schedule('coach-proactive-tick', '7 * * * *',
+  replace((select command from cron.job where jobname = 'send-water-reminders'), 'send-water-reminders', 'coach-proactive-tick'));
+```
+
+**Limites:**
+- Só chega a quem tem notificações ligadas, e hoje as notificações só se ligam nos lembretes de água. Quem não usa os lembretes não recebe a Carol. As preferências da P.6 devem trazer um interruptor próprio.
+- O texto da notificação é fixo. O texto gerado por ela é a P.4.
+
+Com a P.3, P1 passa de 1 para 7, P2 de 3 para 5, P3 de 4 para 6 e P6 de 5 para 6. A omnipresença sobe para **6,1**.
 
 ---
 

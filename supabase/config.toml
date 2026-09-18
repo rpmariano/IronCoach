@@ -422,3 +422,10 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# O coach-proactive-tick é chamado pelo pg_cron, sem JWT de utilizador: a
+# autenticação é o cabeçalho x-cron-secret, verificado dentro da função (como
+# no send-water-reminders). Sem isto, o deploy criava-a com verify_jwt = true
+# e o gateway recusava todas as chamadas do cron com 401.
+[functions.coach-proactive-tick]
+verify_jwt = false
