@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planAcceptanceMode, closeOldBlock, dayBeforeISO, isTrainingPlan } from './planAcceptance';
+import { planAcceptanceMode, closeOldBlock, dayBeforeISO, isTrainingPlan, doneItemKeys } from './planAcceptance';
 
 /* specs/plano-vinculado-a-prova.md §2.2 — "assim que o atleta pedir novo
    plano, deverá ser criado um plano novo de raiz para o novo objetivo". */
@@ -79,3 +79,19 @@ describe('closeOldBlock — fechar só encurta', () => {
       .toEqual({ action: 'close', period_end: '2026-09-10', cancelFrom: '2026-09-18' });
   });
 });
+
+describe('doneItemKeys — os pares (dia, tipo) do que já está feito', () => {
+  it('um par por dia e tipo, sem repetidos, ignorando o que não tem dia ou tipo', () => {
+    expect(doneItemKeys([
+      { planned_date: '2026-09-18', kind: 'corrida' },
+      { planned_date: '2026-09-18', kind: 'corrida' },
+      { planned_date: '2026-09-18', kind: 'ginasio' },
+      { planned_date: null, kind: 'corrida' },
+    ])).toEqual([
+      { planned_date: '2026-09-18', kind: 'corrida' },
+      { planned_date: '2026-09-18', kind: 'ginasio' },
+    ]);
+    expect(doneItemKeys(null)).toEqual([]);
+  });
+});
+

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { planAcceptanceMode, closeOldBlock, isTrainingPlan } from '../utils/planAcceptance';
+import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
 import { todayISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 
@@ -440,6 +440,43 @@ export const useAppStore = create((set, get) => ({
          outra vez (M-1 da segunda revisão pré-deploy). Se falhar só o aceite,
          recupera-se sozinho: à segunda tentativa já não há sobreposição e cai
          no caso B. */
+
+      /* Os treinos já FEITOS do bloco antigo a partir do primeiro dia do
+         novo passam para o bloco novo, que é o que cobre esses dias. Sem isto
+         perdiam-se das vistas do plano: no ramo `reject` o bloco inteiro ia a
+         "recusado" — e com ele o treino de hoje, já registado —, e no `close`
+         ficavam num bloco que acaba antes deles. O registo da corrida nunca se
+         perdia, mas o plano deixava de mostrar que aquele dia foi cumprido
+         (observação da terceira revisão pré-deploy de 2026-09-18).
+
+         Vem ANTES do fecho de propósito: se o fecho falhar a seguir, os
+         treinos já estão no plano novo e a segunda tentativa não os perde; ao
+         contrário, ficavam presos num bloco já fechado. */
+      const { data: feitos, error: feitosErr } = await supabase
+        .from('coach_plan_items')
+        .select('id, planned_date, kind')
+        .eq('plan_id', originalPlan.id)
+        .eq('status', 'concluido')
+        .gte('planned_date', newPlan.period_start);
+      if (feitosErr) { console.error('Error reading done items of old block:', feitosErr); return false; }
+      if ((feitos || []).length > 0) {
+        const { error: moveErr } = await supabase
+          .from('coach_plan_items')
+          .update({ plan_id: planId })
+          .in('id', feitos.map((i) => i.id));
+        if (moveErr) { console.error('Error moving done items to new block:', moveErr); return false; }
+        for (const { planned_date, kind } of doneItemKeys(feitos)) {
+          const { error: dupErr } = await supabase
+            .from('coach_plan_items')
+            .update({ status: 'cancelado' })
+            .eq('plan_id', planId)
+            .eq('status', 'pendente')
+            .eq('planned_date', planned_date)
+            .eq('kind', kind);
+          if (dupErr) { console.error('Error cancelling redundant item:', dupErr); return false; }
+        }
+      }
+
       if (fecho.action === 'reject') {
         const { error: rejectErr } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', originalPlan.id);
         if (rejectErr) { console.error('Error rejecting old block:', rejectErr); return false; }
