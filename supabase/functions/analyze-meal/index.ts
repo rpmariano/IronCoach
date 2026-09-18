@@ -9,6 +9,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -506,6 +507,7 @@ async function generateMealCoachNotes(
   recentCompletedWorkouts: { runs: any[]; gym: any[] } = { runs: [], gym: [] },
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
+  memoryBlock: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
@@ -569,6 +571,7 @@ async function generateMealCoachNotes(
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
     `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    memoryPromptSection(memoryBlock) +
     `Refeição: ${typeLabel}, ${meal.date}\n` +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
     `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +
@@ -652,6 +655,9 @@ async function attachMealCoachNotes(
   geminiKey: string,
 ): Promise<void> {
   try {
+    // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
+    // Carol que comenta este registo é a mesma que falou com ele ontem.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
     const { data: profile } = await sb
       .from("profiles")
       .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes")
@@ -734,6 +740,7 @@ async function attachMealCoachNotes(
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
       },
+      await memoryPromise,
     );
 
     if (result.text) {

@@ -18,6 +18,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -412,6 +413,7 @@ async function generateCoachNotes(
   // deno-lint-ignore no-explicit-any
   sameDayRuns: any[],
   geminiKey: string,
+  memoryBlock: string | null = null,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
@@ -574,6 +576,7 @@ async function generateCoachNotes(
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a corrida que ele acabou de registar. ` +
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    memoryPromptSection(memoryBlock) +
     `REGRAS OBRIGATÓRIAS:\n` +
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
@@ -685,6 +688,9 @@ async function attachCoachNotes(
   geminiKey: string,
 ): Promise<void> {
   try {
+    // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
+    // Carol que comenta este registo é a mesma que falou com ele ontem.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
     // Segmentação do histórico usado na comparação:
     // - Competição: só compara com outras competições (não treinos) — e,
     //   dentro das competições, Trail só compara com Trail (terreno/esforço
@@ -785,6 +791,7 @@ async function attachCoachNotes(
       recentGym || [],
       sameDayRuns || [],
       geminiKey,
+      await memoryPromise,
     );
 
     if (coachResult.text) {

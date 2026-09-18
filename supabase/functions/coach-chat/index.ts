@@ -20,6 +20,7 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
+import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
@@ -4865,7 +4866,9 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason")
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
+        "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
+        "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach")
       .eq("id", userId)
       .maybeSingle();
 
@@ -4878,6 +4881,16 @@ async function handler(req: Request): Promise<Response> {
     const startDate = new Date();
     startDate.setUTCDate(startDate.getUTCDate() - (NUTRITION_WINDOW_DAYS - 1));
     const startISO = startDate.toISOString().slice(0, 10);
+
+    /* A memória alargada (specs/carol-omnisciencia-omnipresenca.md, Fase 1):
+       os comentários que ela própria escreveu em cada registo, as notas do
+       atleta, o cartão diário, o Palmarés e o retrato da época. Arranca já,
+       em paralelo com as consultas abaixo, e só se espera por ela ao montar
+       o prompt. Nunca rejeita — cada bloco que falhe fica de fora.
+       Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
+       abaixo): nesse caso só arranca depois, para não gastar as consultas. */
+    let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
+      proactiveTrigger && !proactiveForce ? null : fetchChatMemoryBlocks(sb, userId, todayISO);
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
@@ -5141,7 +5154,7 @@ async function handler(req: Request): Promise<Response> {
     const bodyStartISO = bodyStartD.toISOString().slice(0, 10);
     const { data: bodyAssessments, error: err_bodyAssessments } = await sb
       .from("body_assessments")
-      .select("assessed_at:date, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg")
+      .select("assessed_at:date, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg, muscle_mass_kg")
       .eq("user_id", userId)
       .gte("date", bodyStartISO)
       .order("date", { ascending: false })
@@ -5458,6 +5471,21 @@ async function handler(req: Request): Promise<Response> {
     );
 
     let finalSystemInstruction = systemInstruction;
+
+    // Do mais largo para o mais próximo: a época, o que já conquistou, as
+    // metas, o que se disse em cada registo, e o cartão de hoje.
+    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO));
+    const memorySections = [
+      memoryBlocks.portrait,
+      memoryBlocks.palmares,
+      buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
+      memoryBlocks.records,
+      memoryBlocks.dailyCard,
+    ].filter(Boolean);
+    if (memorySections.length > 0) {
+      finalSystemInstruction += "\n\n--- A TUA MEMÓRIA ALARGADA (o que já sabes, disseste e viste deste atleta fora desta conversa) ---\n" +
+        memorySections.join("\n\n");
+    }
     const hasActiveInsights = Array.isArray(body.activeInsights) && body.activeInsights.length > 0;
     if (hasActiveInsights) {
       const insightsContext = body.activeInsights.map((i: any) =>

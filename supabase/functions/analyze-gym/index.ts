@@ -15,6 +15,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -520,6 +521,7 @@ async function generateGymCoachNotes(
   // deno-lint-ignore no-explicit-any
   sameDayRuns: any[],
   geminiKey: string,
+  memoryBlock: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
 
@@ -570,6 +572,7 @@ async function generateGymCoachNotes(
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a sessão de ginásio que ele acabou de registar. ` +
     `Escreve uma análise técnica curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    memoryPromptSection(memoryBlock) +
     `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n` +
     crossActivitiesSection + planSection + `\n` +
     `REGRAS:\n` +
@@ -643,6 +646,9 @@ async function attachGymCoachNotes(
   geminiKey: string,
 ): Promise<void> {
   try {
+    // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
+    // Carol que comenta este registo é a mesma que falou com ele ontem.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
     const { data: previous } = await sb
       .from("workout_sessions")
       .select("date, duration_seconds, calories_kcal, avg_hr, max_hr, exertion")
@@ -699,6 +705,7 @@ async function attachGymCoachNotes(
       hasUpcomingRace,
       sameDayRuns || [],
       geminiKey,
+      await memoryPromise,
     );
 
     if (result.text) {
