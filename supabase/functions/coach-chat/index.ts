@@ -207,14 +207,13 @@ const PROPOSE_PLAN_TOOL = {
     "fica pendente de aceitação pelo atleta, que a revê e decide aqui mesmo no Coach. Depois de a criares, " +
     "menciona na tua resposta que a proposta está lá para ele aceitar. NÃO uses esta função " +
     "para responder a perguntas sobre treinos já feitos, nem quando o utilizador só quer uma " +
-    "opinião sem plano concreto. DURAÇÃO DO PLANO: a janela ideal é 7-14 dias (um microciclo). " +
-    "Se o utilizador não especificar duração, pergunta-lhe antes de propor se quer um plano de " +
-    "7 ou 14 dias e explica brevemente que adaptações musculares e cardiovasculares precisam de " +
-    "pelo menos 7 dias de estímulo consistente para ocorrer — mudar mais rápido introduz ruído " +
-    "que impede a supercompensação. Se pedir menos de 7 dias, aceita o pedido mas aconselha " +
-    "a extender para 7 e explica o mesmo racional — a decisão final é sempre do atleta. " +
+    "opinião sem plano concreto. DURAÇÃO — DUAS COISAS DIFERENTES, NÃO AS CONFUNDAS: " +
+    "(1) o PERÍODO do plano (period_start→period_end) é o bloco inteiro: com uma prova-objetivo vai até ao dia dela, mesmo que sejam 10 semanas; " +
+    "(2) os TREINOS que escreves em items são só o microciclo à frente, 7-14 dias, porque é essa a janela em que um plano detalhado ainda é verdade (adaptações precisam de pelo menos 7 dias de estímulo consistente; mudar mais rápido introduz ruído que impede a supercompensação). " +
+    "Escreve os treinos das próximas 1-2 semanas, diz ao atleta que o resto do bloco se detalha à medida que chega, e ajusta depois com replace_active_plan=true mantendo o mesmo race_id e o mesmo period_end. " +
+    "Sem prova nenhuma agendada, o período e os treinos coincidem: pergunta-lhe se quer 7 ou 14 dias. Se pedir menos de 7, aceita mas aconselha a estender para 7 com o mesmo racional — a decisão final é sempre do atleta. " +
     "ADAPTAR PLANO ATIVO: se o contexto mostrar um plano em curso e o atleta pedir para o adaptar (ou se notares muitos treinos em atraso e sugerires tu próprio uma adaptação), " +
-    "chama esta função com replace_active_plan=true abrangendo as novas datas propostas. " +
+    "chama esta função com replace_active_plan=true. Se o plano ativo tem prova-objetivo, o ajuste MANTÉM o mesmo race_id e o mesmo period_end — muda-se o que está lá dentro, não o objetivo nem o fim do bloco; propor um período mais curto sem race_id desvincularia o plano da prova e é recusado. " +
     "A nova proposta irá sobrepor-se aos dias futuros do plano atual, mas o histórico passado do atleta será preservado. Podes avançar diretamente com a proposta de adaptação se for claro o que ajustar. " +
     "O PLANO É PARA UMA PROVA: se o atleta tem provas agendadas, o plano prepara UMA delas — passa o race_id dessa prova e period_end = o dia dela, porque é nesse dia que o plano termina. " +
     "Entre hoje e essa prova só pode haver UMA prova principal (a que é o objetivo). As provas pelo caminho marcadas como secundárias (b) ou de treino (c) são para enquadrares no plano como treino de qualidade — é assim que o atleta as quer. " +
@@ -2282,10 +2281,12 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // descreve. Validado aqui, antes de gravar, e devolvido como erro com as
   // saídas possíveis — é o que obriga a Carol a resolver com o atleta em vez
   // de propor um plano incoerente.
+  // deno-lint-ignore no-explicit-any
+  let targetRace: any = null;
   if (raceId) {
     const { data: target, error: targetErr } = await sb
       .from("race_events")
-      .select("id, name, date, status")
+      .select("id, name, date, status, race_priority")
       .eq("id", raceId)
       .eq("user_id", userId)
       .maybeSingle();
@@ -2294,6 +2295,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     if (target.status === "concluida") {
       return `Erro: a prova "${target.name}" já está concluída — um plano prepara uma prova por correr. Se o atleta quer o plano seguinte, usa a próxima prova agendada.`;
     }
+    targetRace = target;
     if (target.date !== period_end) {
       return `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
     }
@@ -2308,14 +2310,24 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
         `Explica-lhe porquê: duas provas principais seguidas obrigam a dois polimentos incompatíveis. A decisão é dele.`;
     }
   } else {
-    // Sem race_id, nenhuma prova pode cair no período: ou o plano é para ela
-    // (e então tem race_id), ou o plano estava a atravessar uma prova sem a
-    // assumir como objetivo — que é exatamente a falha que a spec corrige.
-    const stray = racesInPeriod[0];
-    if (stray) {
-      return `Erro: a prova "${stray.name}" (${stray.date}) cai dentro deste plano, mas não indicaste race_id. ` +
-        `Se o plano é para ela, chama outra vez com race_id="${stray.id}" e period_end=${stray.date} — o plano acaba no dia da prova. ` +
-        `Se o plano é para uma prova mais à frente, passa o race_id dessa e o period_end do dia dela.`;
+    // Sem race_id, só uma prova PRINCIPAL no período é que é erro: essa é um
+    // objetivo por assumir, e um plano que a atravessa sem a assumir é
+    // exatamente a falha que a spec corrige.
+    //
+    // As secundárias e as de treino ficam de fora desta recusa, de propósito.
+    // Marcar uma prova como b/c é o atleta a dizer "esta é para eu usar como
+    // treino" (doutrina 02-corrida-prova #5), e um bloco de base que passe
+    // por uma delas é legítimo — o dia dela continua a ser a prova, que a
+    // validação por item mais abaixo já garante. Recusar aqui deixava sem
+    // saída nenhuma quem tem uma prova de treino a três semanas e mais nada:
+    // omitir o race_id era recusado, e passá-lo forçava o plano a acabar no
+    // dia de uma prova que não é objetivo de coisa nenhuma (achado B2 da
+    // revisão pré-deploy de 2026-09-18).
+    const strayMain = racesInPeriod.find((r) => r.race_priority === "a");
+    if (strayMain) {
+      return `Erro: a prova "${strayMain.name}" (${strayMain.date}) é PRINCIPAL e cai dentro deste plano, mas não indicaste race_id. ` +
+        `Se o plano é para ela, chama outra vez com race_id="${strayMain.id}" e period_end=${strayMain.date} — o plano acaba no dia da prova. ` +
+        `Se o atleta não quer que seja o objetivo, fala com ele: ou ela passa a secundária (update_race_event, race_priority="b") e entra no plano como treino, ou o plano é para uma prova mais à frente e passas o race_id dessa.`;
     }
   }
 
@@ -2412,21 +2424,111 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // deixava o atleta sem plano nenhum se ele depois recusasse a alternativa
   // que pediu para ver. Só planos com treino real (corrida/ginásio) contam;
   // um plano de refeições aceite em paralelo nunca é substituído.
+  // Os planos de TREINO aceites ainda ativos. Servem duas coisas: a guarda
+  // do vínculo (sempre) e a escolha do plano a substituir (com
+  // replace_active_plan). Planos só de refeições não contam para nenhuma.
+  const todayPlansISO = new Date().toISOString().slice(0, 10);
+  const { data: activePlans } = await sb
+    .from("coach_plans")
+    .select("id, period_start, period_end, race_id, coach_plan_items(kind)")
+    .eq("user_id", userId)
+    .eq("status", "aceite")
+    .gte("period_end", todayPlansISO);
+  // deno-lint-ignore no-explicit-any
+  const trainingPlans = (activePlans || []).filter((p: any) =>
+    // deno-lint-ignore no-explicit-any
+    (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio")
+  );
+
   let supersedesPlanId: string | null = null;
   if (replace_active_plan === true) {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const { data: activePlans } = await sb
-      .from("coach_plans")
-      .select("id, period_start, coach_plan_items(kind)")
-      .eq("user_id", userId)
-      .eq("status", "aceite")
-      .gte("period_end", todayISO);
+    /* O plano a substituir é o que se SOBREPÕE à proposta — de preferência
+       o vinculado. trainingPlans[0] vinha de uma consulta sem ordem nem
+       filtro: depois de um bloco novo a começar no futuro há dois planos de
+       treino ativos, e podia calhar o bloco antigo, já fechado
+       (observação da terceira revisão pré-deploy de 2026-09-18). */
     // deno-lint-ignore no-explicit-any
-    const candidate = (activePlans || []).find((p: any) =>
+    const overlapsProposal = (p: any) => p.period_start <= period_end && p.period_end >= period_start;
+    // deno-lint-ignore no-explicit-any
+    const chosen = trainingPlans.find((p: any) => overlapsProposal(p) && p.race_id)
       // deno-lint-ignore no-explicit-any
-      (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio")
+      || trainingPlans.find((p: any) => overlapsProposal(p))
+      || trainingPlans[0];
+    supersedesPlanId = chosen?.id ?? null;
+  }
+
+  /* Uma proposta sem race_id não pode desvincular por descuido o plano da
+     prova. Na aceitação (respondToPlan, src/store/index.js), uma proposta
+     com outro race_id — incluindo nenhum — que se sobreponha a um plano de
+     treino vinculado conta como objetivo novo: o bloco da prova fecha na
+     véspera e começa um plano sem prova (src/utils/planAcceptance.js). Se
+     isso acontecesse por um microciclo que só se esqueceu do race_id, o
+     atleta ficava sem plano para a prova e sem sinal nenhum.
+
+     A guarda vale COM OU SEM replace_active_plan. A primeira versão só a
+     aplicava com replace, e o erro mais provável do modelo — um microciclo
+     de 14 dias sem race_id e sem replace, com a prova a 10 semanas — passava
+     no servidor e fechava o bloco no cliente (achado B-A da segunda revisão
+     pré-deploy de 2026-09-18). O strayMain acima não o apanha: só olha para
+     provas DENTRO do período proposto.
+
+     Só trava se a prova do plano ainda for principal e por correr. Deixar
+     de preparar uma prova é legítimo — mas decide-se na prova (passá-la a
+     secundária, ou dá-la por concluída), não omitindo um campo. Sem esta
+     exceção, um atleta que desistisse de uma prova ficava preso: a guarda
+     recusava todos os planos novos enquanto o antigo estivesse ativo. */
+  if (!raceId) {
+    // deno-lint-ignore no-explicit-any
+    const bound = trainingPlans.find((p: any) =>
+      p.race_id && p.period_start <= period_end && p.period_end >= period_start
     );
-    supersedesPlanId = candidate?.id ?? null;
+    if (bound) {
+      const { data: boundRace, error: boundErr } = await sb
+        .from("race_events")
+        .select("id, name, race_priority, status")
+        .eq("id", bound.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      // Falhar a leitura deixa passar (é uma guarda, não o registo — o mesmo
+      // compromisso de fetchScheduledRaces), mas não em silêncio.
+      if (boundErr) console.warn("Prova do plano vinculado não lida:", boundErr.message);
+      if (boundRace && boundRace.status !== "concluida" && (boundRace.race_priority || "a") === "a") {
+        return `Erro: o plano ativo prepara a prova "${boundRace.name}" (race_id="${bound.race_id}", acaba a ${bound.period_end}) e esta proposta sobrepõe-se a ele sem race_id — ` +
+          `ao ser aceite, fechava o bloco dessa prova e deixava o atleta sem plano para ela, sem nenhum aviso. ` +
+          `Se é um ajuste do mesmo bloco, passa race_id="${bound.race_id}" e period_end=${bound.period_end} (o plano continua a acabar no dia da prova; ajusta os treinos lá dentro). ` +
+          `Se o atleta quer mudar de objetivo, passa o race_id da prova nova e o period_end do dia dela. ` +
+          `Se quer mesmo deixar de preparar "${boundRace.name}", isso decide-se na prova: passa-a a secundária com update_race_event (race_priority="b") e depois propõe o plano — confirma com ele primeiro.`;
+      }
+    }
+  } else {
+    /* Com race_id de OUTRA prova, sobreposta a um plano vinculado a uma
+       principal: na aceitação é objetivo novo, e o bloco da principal fecha.
+       Isso só é legítimo se a prova nova também for principal — é a segunda
+       saída do conflito de principais ("o plano passa a preparar a
+       intermédia"). Se for secundária ou de treino, a principal perdia o
+       plano por causa de uma prova que o atleta marcou como treino: o
+       period_end colado a ela passava as validações, porque a principal fica
+       DEPOIS do fim da proposta e o otherMain não a vê (achado A1 da terceira
+       revisão pré-deploy de 2026-09-18). */
+    // deno-lint-ignore no-explicit-any
+    const bound = trainingPlans.find((p: any) =>
+      p.race_id && p.race_id !== raceId && p.period_start <= period_end && p.period_end >= period_start
+    );
+    if (bound && (targetRace?.race_priority || "a") !== "a") {
+      const { data: boundRace, error: boundErr } = await sb
+        .from("race_events")
+        .select("id, name, race_priority, status")
+        .eq("id", bound.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (boundErr) console.warn("Prova do plano vinculado não lida:", boundErr.message);
+      if (boundRace && boundRace.status !== "concluida" && (boundRace.race_priority || "a") === "a") {
+        return `Erro: "${targetRace?.name ?? "esta prova"}" é secundária (ou de treino), e um plano para ela fechava o plano da principal "${boundRace.name}" (race_id="${bound.race_id}", acaba a ${bound.period_end}). ` +
+          `Uma prova secundária entra NO plano da principal como treino de qualidade — não o substitui. ` +
+          `Se é isso, ajusta o plano da principal: race_id="${bound.race_id}" e period_end=${bound.period_end}, com o dia de "${targetRace?.name ?? "da secundária"}" como prova lá dentro. ` +
+          `Se o atleta quer mesmo que "${targetRace?.name ?? "esta prova"}" seja o objetivo, ela tem de passar a principal primeiro (update_race_event, race_priority="a") — e aí é o conflito de principais, que se fala com ele.`;
+      }
+    }
   }
 
   // Nunca mais de UMA proposta de plano de treino pendente ao mesmo tempo —
@@ -3170,6 +3272,15 @@ export function buildRaceEventsContext(
         : null);
     const effectiveLevel = e.experience_level || profileLevel;
     const extras = [
+      /* O id TEM de vir no contexto: é o que o propose_training_plan pede
+         em race_id para vincular o plano à prova, e a descrição da
+         ferramenta manda o modelo ir buscá-lo aqui. Sem ele a Carol não
+         tinha por onde o passar, e a saída mais barata era encurtar o
+         period_end até a prova cair fora do plano — que passava a validação
+         sem vinculação nenhuma, em silêncio, exatamente a falha que
+         specs/plano-vinculado-a-prova.md existe para corrigir. Mesmo padrão
+         [id: ...] das notas do atleta (buildCoachNotesContext). */
+      `id: ${e.id}`,
       e.location ? `local: ${e.location}` : null,
       // A hora de partida decide a véspera e a manhã (ver buildRaceEveContext);
       // sem ela a Carol pergunta-a em vez de aconselhar em abstrato.
@@ -3298,7 +3409,13 @@ export function buildCoachingModeContext(mode: CoachingMode): string {
     `orientação que pressuponha plano ou prova.`;
 }
 
-export function buildPlanContext(pendingItems: any[], activeItems: any[], todayISO: string): string | null {
+export function buildPlanContext(
+  pendingItems: any[],
+  activeItems: any[],
+  todayISO: string,
+  // deno-lint-ignore no-explicit-any
+  boundPlan: any = null,
+): string | null {
   const sections: string[] = [];
 
   // Plano PROPOSTO (aguarda aceitação do atleta)
@@ -3317,9 +3434,14 @@ export function buildPlanContext(pendingItems: any[], activeItems: any[], todayI
       const refeicao = i.meal_suggestion ? ` [sugestão alimentar: ${i.meal_suggestion}]` : "";
       return `  - ${i.planned_date}: ${describeItem(i)}${i.notes ? ` (${i.notes})` : ""}${refeicao}`;
     });
+    /* Um ajuste tem de manter o objetivo e o fim do bloco: é o que o
+       servidor valida, e é aqui que o modelo fica a saber quais são. */
+    const vinculo = boundPlan?.race_id
+      ? `\n  ESTE PLANO PREPARA UMA PROVA: ao ajustá-lo (replace_active_plan=true) passa race_id="${boundPlan.race_id}" e period_end=${boundPlan.period_end} — o bloco continua a acabar no dia da prova; muda-se o que está lá dentro, não o objetivo.`
+      : "";
     sections.push(
       `PLANO ACEITE EM CURSO (microciclo ativo — NÃO propões plano novo a não ser que o atleta ` +
-      `refira explicitamente um dos sinais de interrupção abaixo):\n${lines.join("\n")}`
+      `refira explicitamente um dos sinais de interrupção abaixo):\n${lines.join("\n")}${vinculo}`
     );
   }
 
@@ -4541,7 +4663,7 @@ export function buildSystemInstruction(
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Início) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). Exceção só por limite técnico: se esse período tiver MAIS de 14 dias a partir de hoje (não deveria acontecer — a doutrina Issurin 2008/Daniels 2021/Bompa 2015 e o próprio limite MAX_PLAN_ITEMS já capam qualquer plano a 7-14 dias por microciclo), cobre só os primeiros 14 dias e diz ao atleta que o resto fica para o próximo microciclo, a reavaliar no fim deste (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
     : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
       `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
       `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
@@ -5108,7 +5230,7 @@ async function handler(req: Request): Promise<Response> {
     // O modelo precisa de saber que existe para não propor outro sem sinal claro.
     const { data: activePlans } = await sb
       .from("coach_plans")
-      .select("id, period_end")
+      .select("id, period_end, race_id")
       .eq("user_id", userId)
       .eq("status", "aceite")
       .gte("period_end", todayISO);
@@ -5128,7 +5250,13 @@ async function handler(req: Request): Promise<Response> {
       activePlanItems = data || [];
     }
 
-    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO);
+    /* A vinculação do plano ativo à prova vai no contexto: sem ela o modelo
+       não tinha como devolver o mesmo race_id num ajuste, e o servidor
+       recusa ajustes que a deitem fora (ver runProposeTrainingPlan). Dizer
+       "não podes" sem dizer "usa este" era mandá-lo adivinhar. */
+    // deno-lint-ignore no-explicit-any
+    const boundPlan = (activePlans || []).find((p: any) => p.race_id) || null;
+    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan);
 
     // ── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ────
     // Uma janela mais larga do que a de 7 dias usada acima (nutritionSummary/
@@ -5362,7 +5490,10 @@ async function handler(req: Request): Promise<Response> {
     // deno-lint-ignore no-explicit-any
     const rcRaces: any[] = Array.isArray(rc?.races) ? rc.races.slice(0, 4) : [];
     // deno-lint-ignore no-explicit-any
-    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)})`;
+    // O id vai junto pela mesma razão do contexto das provas: as duas saídas
+    // que a Carol tem de propor (update_race_event, propose_training_plan)
+    // precisam dele, e sem o ter à frente ficava a adivinhar.
+    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)}, id: ${String(r?.id || "?").slice(0, 40)})`;
     const raceConflictPrompt = rc && rcRaces.length > 0
       ? `A app detetou um conflito de calendário e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `${rcRaces.length === 1 ? "A prova" : "As provas"} ${rcRaces.map(rcName).join(", ")} ` +

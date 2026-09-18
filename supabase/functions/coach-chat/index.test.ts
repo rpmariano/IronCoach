@@ -976,7 +976,15 @@ Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curt
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
-  assertStringIncludes(sys, "se esse período tiver MAIS de 14 dias a partir de hoje");
+  // O teto de 14 dias passou a valer SÓ para planos sem prova-objetivo
+  // (2026-09-18): com um plano vinculado, encurtar o período desvincula-o da
+  // prova, e o servidor recusa. A regra tem agora os dois ramos, e o teste
+  // exige os dois — ficar só com o teto deixava passar a versão que
+  // destruía a vinculação.
+  assertStringIncludes(sys, "SE ESSE PLANO TIVER PROVA-OBJETIVO");
+  assertStringIncludes(sys, "o period_end continua a ser o dia da prova e passas o MESMO race_id");
+  assertStringIncludes(sys, "Só num plano SEM prova-objetivo");
+  assertStringIncludes(sys, "se o período restante tiver mais de 14 dias");
 });
 
 Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas objetivos ao recalculares macros para o plano seguinte", () => {
@@ -3478,4 +3486,199 @@ Deno.test("computeMealTypicalTimes: mediana por tipo, só com 2+ registos com ho
   ];
   assertEquals(computeMealTypicalTimes(meals), { almoco: "13:10" });
   assertEquals(computeMealTypicalTimes([]), {});
+});
+
+/* O id da prova TEM de estar no contexto: é o que o propose_training_plan
+   pede em race_id para vincular o plano à prova, e a descrição da ferramenta
+   manda o modelo ir buscá-lo aqui (specs/plano-vinculado-a-prova.md §4.4).
+   Sem ele, a Carol não tinha por onde passar o race_id, e a saída mais
+   barata era encurtar o period_end até a prova cair fora do período — o
+   plano passava a validação sem vinculação nenhuma, em silêncio. Apanhado
+   pela revisão pré-deploy de 2026-09-18. */
+Deno.test("buildRaceEventsContext: o id da prova vai no contexto, para o race_id ser passável", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ id: "race-abc-123", date: "2026-11-15" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "id: race-abc-123");
+});
+
+Deno.test("buildRaceEventsContext: cada prova leva o SEU id, sem trocas", () => {
+  const ctx = buildRaceEventsContext(
+    [
+      makeRaceEvent({ id: "race-primeira", name: "Meia do Porto", date: "2026-11-15" }),
+      makeRaceEvent({ id: "race-segunda", name: "Maratona de Lisboa", date: "2026-12-20" }),
+    ],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  const linhas = ctx!.split("\n");
+  const daPrimeira = linhas.find((l) => l.includes("Meia do Porto"))!;
+  const daSegunda = linhas.find((l) => l.includes("Maratona de Lisboa"))!;
+  assertStringIncludes(daPrimeira, "id: race-primeira");
+  assertStringIncludes(daSegunda, "id: race-segunda");
+  assertEquals(daPrimeira.includes("race-segunda"), false);
+});
+
+/* Achados B2 e B3 da revisão pré-deploy de 2026-09-18 — a regra do plano
+   vinculado tinha dois casos sem saída possível. */
+
+Deno.test("B2: uma prova secundária no período não obriga a vincular o plano — é treino", async () => {
+  const races = [{ id: "r-treino", name: "10k da Pista", date: "2026-08-12", distance_km: 10, race_priority: "b" }];
+  const { sb, calls } = makePlanSbWithRaces(races);
+  const r = await runProposeTrainingPlan(sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "bloco de base",
+    items: [
+      { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
+      { planned_date: "2026-08-12", kind: "corrida", training_type: "prova", target_distance_km: 10 },
+    ],
+  });
+  assertEquals(r.startsWith("Erro"), false, r);
+  assertEquals(calls.planInserts[0].race_id, null);
+});
+
+Deno.test("B2: uma prova PRINCIPAL no período continua a obrigar a assumir objetivo", async () => {
+  const races = [{ id: "r-principal", name: "Meia do Porto", date: "2026-08-12", distance_km: 21.1, race_priority: "a" }];
+  const r = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+  });
+  assertStringIncludes(r, "é PRINCIPAL");
+  assertStringIncludes(r, 'race_id="r-principal"');
+  // As duas saídas, para a Carol as levar ao atleta em vez de escolher por ele.
+  assertStringIncludes(r, 'race_priority="b"');
+});
+
+/* Um plano de treino aceite, vinculado a "r-obj" (principal a 2026-10-04),
+   ativo no store falso — é contra ele que a guarda do vínculo trabalha. */
+// deno-lint-ignore no-explicit-any
+function makeSbWithBoundPlan(raceOver: any = {}) {
+  const { sb, calls } = makePlanSbWithRaces([
+    { id: "r-obj", name: "Maratona do Porto", date: "2026-10-04", distance_km: 42.2, race_priority: "a", ...raceOver },
+  ]);
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => {
+    if (table !== "coach_plans") return inner(table);
+    const base = inner(table);
+    return {
+      ...base,
+      select: () => {
+        const q = {
+          eq: () => q, gte: () => q, in: () => q,
+          then: (resolve: (v: { data: unknown; error: null }) => void) =>
+            resolve({ data: [{ id: "p-antigo", period_start: "2026-08-01", period_end: "2026-10-04", race_id: "r-obj", coach_plan_items: [{ kind: "corrida" }] }], error: null }),
+        };
+        return q;
+      },
+    };
+  };
+  return { sb, calls };
+}
+
+const MICROCICLO = {
+  period_start: "2026-08-10", period_end: "2026-08-23", summary: "14 dias",
+  items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+};
+
+Deno.test("B3: ajustar um plano vinculado sem race_id é recusado — desvinculava em silêncio", async () => {
+  const r = await runProposeTrainingPlan(makeSbWithBoundPlan().sb, "user-1", { ...MICROCICLO, replace_active_plan: true });
+  assertStringIncludes(r, "o plano ativo prepara a prova");
+  // Diz-lhe o que usar, em vez de só dizer que não pode.
+  assertStringIncludes(r, 'race_id="r-obj"');
+  assertStringIncludes(r, "period_end=2026-10-04");
+});
+
+/* B-A da segunda revisão: a primeira versão da guarda só existia com
+   replace_active_plan=true. O erro mais provável do modelo — um microciclo
+   de 14 dias sem race_id e SEM replace — passava no servidor e, no cliente,
+   contava como objetivo novo e fechava o bloco da prova. */
+Deno.test("B-A: sem replace_active_plan, a guarda do vínculo aplica-se na mesma", async () => {
+  const r = await runProposeTrainingPlan(makeSbWithBoundPlan().sb, "user-1", MICROCICLO);
+  assertStringIncludes(r, "o plano ativo prepara a prova");
+  assertStringIncludes(r, 'race_id="r-obj"');
+});
+
+Deno.test("B-A: com o race_id da prova do plano, o microciclo passa", async () => {
+  // Só o fake do plano: não há outra principal pelo caminho, e o period_end
+  // tem de ser o dia da prova — o ajuste é do mesmo bloco.
+  const { sb, calls } = makeSbWithBoundPlan();
+  const r = await runProposeTrainingPlan(sb, "user-1", { ...MICROCICLO, race_id: "r-obj", period_end: "2026-10-04", replace_active_plan: true });
+  assertEquals(r.startsWith("Erro"), false, r);
+  assertEquals(calls.planInserts[0].race_id, "r-obj");
+});
+
+Deno.test("B-A: deixar de preparar a prova decide-se na prova — secundária ou concluída libertam a guarda", async () => {
+  const secundaria = await runProposeTrainingPlan(makeSbWithBoundPlan({ race_priority: "b" }).sb, "user-1", MICROCICLO);
+  assertEquals(secundaria.startsWith("Erro"), false, secundaria);
+  const concluida = await runProposeTrainingPlan(makeSbWithBoundPlan({ status: "concluida" }).sb, "user-1", MICROCICLO);
+  assertEquals(concluida.startsWith("Erro"), false, concluida);
+});
+
+Deno.test("B-A: a mensagem diz como deixar de preparar a prova, sem prender o atleta", async () => {
+  const r = await runProposeTrainingPlan(makeSbWithBoundPlan().sb, "user-1", MICROCICLO);
+  assertStringIncludes(r, 'race_priority="b"');
+});
+
+Deno.test("buildPlanContext: o vínculo do plano ativo vai no contexto, com race_id e period_end", () => {
+  const itens = [{ planned_date: "2026-08-11", kind: "corrida", training_type: "continuo", target_distance_km: 8 }];
+  const semVinculo = buildPlanContext([], itens, "2026-08-10");
+  assertEquals(semVinculo!.includes("ESTE PLANO PREPARA UMA PROVA"), false);
+
+  const comVinculo = buildPlanContext([], itens, "2026-08-10", { race_id: "r-obj", period_end: "2026-10-04" });
+  assertStringIncludes(comVinculo!, "ESTE PLANO PREPARA UMA PROVA");
+  assertStringIncludes(comVinculo!, 'race_id="r-obj"');
+  assertStringIncludes(comVinculo!, "period_end=2026-10-04");
+});
+
+/* A1 da terceira revisão: com race_id de uma prova SECUNDÁRIA que calha antes
+   da principal vinculada, a proposta passava — a principal fica depois do
+   fim da proposta, o otherMain não a vê — e no cliente fechava o bloco dela. */
+// deno-lint-ignore no-explicit-any
+function makeSbWithBoundPlanAnd(extra: any) {
+  const { sb, calls } = makePlanSbWithRaces([
+    { id: "r-obj", name: "Maratona do Porto", date: "2026-10-04", distance_km: 42.2, race_priority: "a" },
+    extra,
+  ]);
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => {
+    if (table !== "coach_plans") return inner(table);
+    const base = inner(table);
+    return {
+      ...base,
+      select: () => {
+        const q = {
+          eq: () => q, gte: () => q, in: () => q,
+          then: (resolve: (v: { data: unknown; error: null }) => void) =>
+            resolve({ data: [{ id: "p-antigo", period_start: "2026-08-01", period_end: "2026-10-04", race_id: "r-obj", coach_plan_items: [{ kind: "corrida" }] }], error: null }),
+        };
+        return q;
+      },
+    };
+  };
+  return { sb, calls };
+}
+
+const ATE_A_SECUNDARIA = {
+  race_id: "r-sec", period_start: "2026-08-10", period_end: "2026-08-23", summary: "até à secundária",
+  items: [{ planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 }],
+};
+
+Deno.test("A1: um plano PARA uma secundária não pode tirar o lugar ao plano da principal", async () => {
+  const r = await runProposeTrainingPlan(
+    makeSbWithBoundPlanAnd({ id: "r-sec", name: "10k da Pista", date: "2026-08-23", distance_km: 10, race_priority: "b" }).sb,
+    "user-1", ATE_A_SECUNDARIA,
+  );
+  assertStringIncludes(r, "é secundária");
+  assertStringIncludes(r, "Maratona do Porto");
+  // As saídas: ajustar o plano da principal, ou promover a secundária primeiro.
+  assertStringIncludes(r, 'race_id="r-obj"');
+  assertStringIncludes(r, 'race_priority="a"');
+});
+
+Deno.test("A1: mudar o objetivo para uma intermédia PRINCIPAL continua a ser possível (a segunda saída do conflito)", async () => {
+  const { sb, calls } = makeSbWithBoundPlanAnd({ id: "r-sec", name: "Meia de Lisboa", date: "2026-08-23", distance_km: 21.1, race_priority: "a" });
+  const r = await runProposeTrainingPlan(sb, "user-1", ATE_A_SECUNDARIA);
+  assertEquals(r.startsWith("Erro"), false, r);
+  assertEquals(calls.planInserts[0].race_id, "r-sec");
 });

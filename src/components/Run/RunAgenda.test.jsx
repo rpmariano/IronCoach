@@ -759,3 +759,46 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(botaoGuardar()).toBeEnabled();
   });
 });
+
+/* Apagar a prova-objetivo de um plano deixa-o sem objetivo — o atleta pode
+   fazê-lo, mas sabendo o que vem a seguir (specs/plano-vinculado-a-prova.md
+   §2.5). Este teste também guarda o caminho que só corre com um plano
+   vinculado no store: foi escrito a ler uma constante declarada mais abaixo
+   no componente, e sem um plano o callback nunca corria e o erro passava. */
+describe('RunAgenda — eliminar a prova-objetivo de um plano', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [EXISTING_RACE],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  const abrirEliminar = () => {
+    renderAgenda();
+    // Há um Eliminar em cada página do carrossel (Treino e Detalhes); os
+    // dois abrem o mesmo diálogo.
+    fireEvent.click(screen.getAllByRole('button', { name: /^Eliminar$/i })[0]);
+  };
+
+  it('avisa que o plano fica sem objetivo quando a prova é o objetivo de um plano aceite', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'race-1', period_start: todayISO(), period_end: EXISTING_RACE.date }],
+    });
+    abrirEliminar();
+    expect(screen.getByText(/é o objetivo do teu plano de treino/i)).toBeInTheDocument();
+    expect(screen.getByText(/a Carol vai querer falar contigo/i)).toBeInTheDocument();
+  });
+
+  it('sem plano vinculado, o aviso de sempre', () => {
+    useAppStore.setState({ coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'outra', period_start: todayISO(), period_end: EXISTING_RACE.date }] });
+    abrirEliminar();
+    expect(screen.getByText(/Tens a certeza que queres eliminar esta prova/i)).toBeInTheDocument();
+    expect(screen.queryByText(/é o objetivo do teu plano/i)).not.toBeInTheDocument();
+  });
+});
