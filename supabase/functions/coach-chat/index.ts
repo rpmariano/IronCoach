@@ -3170,6 +3170,15 @@ export function buildRaceEventsContext(
         : null);
     const effectiveLevel = e.experience_level || profileLevel;
     const extras = [
+      /* O id TEM de vir no contexto: é o que o propose_training_plan pede
+         em race_id para vincular o plano à prova, e a descrição da
+         ferramenta manda o modelo ir buscá-lo aqui. Sem ele a Carol não
+         tinha por onde o passar, e a saída mais barata era encurtar o
+         period_end até a prova cair fora do plano — que passava a validação
+         sem vinculação nenhuma, em silêncio, exatamente a falha que
+         specs/plano-vinculado-a-prova.md existe para corrigir. Mesmo padrão
+         [id: ...] das notas do atleta (buildCoachNotesContext). */
+      `id: ${e.id}`,
       e.location ? `local: ${e.location}` : null,
       // A hora de partida decide a véspera e a manhã (ver buildRaceEveContext);
       // sem ela a Carol pergunta-a em vez de aconselhar em abstrato.
@@ -5362,7 +5371,10 @@ async function handler(req: Request): Promise<Response> {
     // deno-lint-ignore no-explicit-any
     const rcRaces: any[] = Array.isArray(rc?.races) ? rc.races.slice(0, 4) : [];
     // deno-lint-ignore no-explicit-any
-    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)})`;
+    // O id vai junto pela mesma razão do contexto das provas: as duas saídas
+    // que a Carol tem de propor (update_race_event, propose_training_plan)
+    // precisam dele, e sem o ter à frente ficava a adivinhar.
+    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)}, id: ${String(r?.id || "?").slice(0, 40)})`;
     const raceConflictPrompt = rc && rcRaces.length > 0
       ? `A app detetou um conflito de calendário e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `${rcRaces.length === 1 ? "A prova" : "As provas"} ${rcRaces.map(rcName).join(", ")} ` +

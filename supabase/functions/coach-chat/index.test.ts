@@ -3479,3 +3479,34 @@ Deno.test("computeMealTypicalTimes: mediana por tipo, só com 2+ registos com ho
   assertEquals(computeMealTypicalTimes(meals), { almoco: "13:10" });
   assertEquals(computeMealTypicalTimes([]), {});
 });
+
+/* O id da prova TEM de estar no contexto: é o que o propose_training_plan
+   pede em race_id para vincular o plano à prova, e a descrição da ferramenta
+   manda o modelo ir buscá-lo aqui (specs/plano-vinculado-a-prova.md §4.4).
+   Sem ele, a Carol não tinha por onde passar o race_id, e a saída mais
+   barata era encurtar o period_end até a prova cair fora do período — o
+   plano passava a validação sem vinculação nenhuma, em silêncio. Apanhado
+   pela revisão pré-deploy de 2026-09-18. */
+Deno.test("buildRaceEventsContext: o id da prova vai no contexto, para o race_id ser passável", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ id: "race-abc-123", date: "2026-11-15" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "id: race-abc-123");
+});
+
+Deno.test("buildRaceEventsContext: cada prova leva o SEU id, sem trocas", () => {
+  const ctx = buildRaceEventsContext(
+    [
+      makeRaceEvent({ id: "race-primeira", name: "Meia do Porto", date: "2026-11-15" }),
+      makeRaceEvent({ id: "race-segunda", name: "Maratona de Lisboa", date: "2026-12-20" }),
+    ],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  const linhas = ctx!.split("\n");
+  const daPrimeira = linhas.find((l) => l.includes("Meia do Porto"))!;
+  const daSegunda = linhas.find((l) => l.includes("Maratona de Lisboa"))!;
+  assertStringIncludes(daPrimeira, "id: race-primeira");
+  assertStringIncludes(daSegunda, "id: race-segunda");
+  assertEquals(daPrimeira.includes("race-segunda"), false);
+});
