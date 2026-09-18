@@ -18,6 +18,9 @@ export const ADHERENCE_WINDOW_DAYS = 14;
 export const ADHERENCE_TOLERANCE = 0.15;
 const MAX_TRAINING_LINES = 10;
 const MAX_NUTRITION_LINES = 5;
+/** Um dia com menos refeições do que isto está meio registado: não entra na
+ *  média da proteína (revisão pré-master da Fase 3). */
+export const MIN_MEALS_FOR_AVERAGE = 2;
 const DAY_MS = 86400000;
 
 export interface PlanItemRow {
@@ -31,6 +34,8 @@ export interface PlanItemRow {
   completed_run_id?: string | null;
   completed_session_id?: string | null;
   meal_macros?: { kcal?: number; protein_g?: number; carbs_g?: number; fat_g?: number } | null;
+  actual_date?: string | null;
+  plan_id?: string | null;
 }
 
 export interface RunRow { id?: string; date: string; distance_km?: number | string | null; duration_seconds?: number | null; effort_rpe?: number | null }
@@ -78,14 +83,28 @@ function describePrescription(item: PlanItemRow): string {
   return target ? `${name} (${target})` : name;
 }
 
-/** Um item de treino já vivido, cruzado com o que ficou registado. */
-export function evaluateTrainingItem(item: PlanItemRow, runs: RunRow[], gym: GymRow[]): TrainingResult {
+/** Um item de treino já vivido, cruzado com o que ficou registado.
+ *  `takenRunIds`/`takenGymIds`: registos já ligados a OUTROS itens — não
+ *  servem de recurso por data a este (terça ligada à corrida de quarta não
+ *  pode fazer a quarta parecer feita). */
+export function evaluateTrainingItem(
+  item: PlanItemRow,
+  runs: RunRow[],
+  gym: GymRow[],
+  takenRunIds: Set<string> = new Set(),
+  takenGymIds: Set<string> = new Set(),
+): TrainingResult {
   const date = item.planned_date.slice(0, 10);
+  // Onde procurar sem ligação: o dia em que foi feito, se estiver marcado.
+  const matchDate = (item.actual_date || item.planned_date).slice(0, 10);
   const linkedRun = item.completed_run_id ? runs.find((r) => r.id === item.completed_run_id) : undefined;
   const linkedGym = item.completed_session_id ? gym.find((g) => g.id === item.completed_session_id) : undefined;
-  const dayRuns = linkedRun ? [linkedRun] : runs.filter((r) => r.date === date);
-  const dayGym = linkedGym ? [linkedGym] : gym.filter((g) => g.date === date);
+  const dayRuns = linkedRun ? [linkedRun] : runs.filter((r) => r.date === matchDate && !(r.id && takenRunIds.has(r.id)));
+  const dayGym = linkedGym ? [linkedGym] : gym.filter((g) => g.date === matchDate && !(g.id && takenGymIds.has(g.id)));
   const prescription = describePrescription(item);
+  // Marcado como feito, mas o registo ligado não está na janela (ou nem há
+  // ligação, como na prova marcada à mão): é feito, sem números.
+  const markedDone = item.status === "concluido";
 
   if (item.kind === "descanso") {
     const trained = runs.some((r) => r.date === date) || gym.some((g) => g.date === date);
@@ -97,7 +116,11 @@ export function evaluateTrainingItem(item: PlanItemRow, runs: RunRow[], gym: Gym
   }
 
   if (item.kind === "corrida") {
-    if (!dayRuns.length) return { date, outcome: "falhado", text: `${date} · ${prescription} → não feito` };
+    if (!dayRuns.length) {
+      return markedDone
+        ? { date, outcome: "cumprido", text: `${date} · ${prescription} → marcado como feito` }
+        : { date, outcome: "falhado", text: `${date} · ${prescription} → não feito` };
+    }
     const dist = dayRuns.reduce((s, r) => s + num(r.distance_km), 0);
     const durMin = dayRuns.reduce((s, r) => s + num(r.duration_seconds), 0) / 60;
     const rpe = Math.max(0, ...dayRuns.map((r) => num(r.effort_rpe)));
@@ -116,7 +139,11 @@ export function evaluateTrainingItem(item: PlanItemRow, runs: RunRow[], gym: Gym
   }
 
   // Ginásio (e qualquer outro tipo de treino).
-  if (!dayGym.length) return { date, outcome: "falhado", text: `${date} · ${prescription} → não feito` };
+  if (!dayGym.length) {
+    return markedDone
+      ? { date, outcome: "cumprido", text: `${date} · ${prescription} → marcado como feito` }
+      : { date, outcome: "falhado", text: `${date} · ${prescription} → não feito` };
+  }
   const durMin = dayGym.reduce((s, g) => s + num(g.duration_seconds), 0) / 60;
   const targetDur = num(item.target_duration_min);
   let outcome: TrainingOutcome = "cumprido";
@@ -152,9 +179,21 @@ export function evaluatePrescriptions(
   const counts: Record<TrainingOutcome, number> = {
     cumprido: 0, a_menos: 0, a_mais: 0, falhado: 0, descanso_respeitado: 0, descanso_nao_respeitado: 0,
   };
+  /* As sugestões de refeição avulsas também são gravadas como itens
+     "descanso" (runSaveMealSuggestions), em planos só de refeições. Esses
+     dias não são descanso prescrito: só contam os descansos de planos que
+     têm treinos (revisão pré-master). Sem plan_id, conta como antes. */
+  const trainingPlans = new Set(items.filter((i) => i.kind === "corrida" || i.kind === "ginasio").map((i) => i.plan_id ?? "sem-plano"));
+  const takenRunIds = new Set(items.map((i) => i.completed_run_id).filter((x): x is string => !!x));
+  const takenGymIds = new Set(items.map((i) => i.completed_session_id).filter((x): x is string => !!x));
   const training = items
-    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || i.kind === "descanso")
-    .map((i) => evaluateTrainingItem(i, runs, gym));
+    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || (i.kind === "descanso" && trainingPlans.has(i.plan_id ?? "sem-plano")))
+    .map((i) => {
+      // O registo ligado a ESTE item não conta como "tomado" para ele.
+      const ownRuns = new Set([...takenRunIds].filter((id) => id !== i.completed_run_id));
+      const ownGym = new Set([...takenGymIds].filter((id) => id !== i.completed_session_id));
+      return evaluateTrainingItem(i, runs, gym, ownRuns, ownGym);
+    });
   for (const t of training) counts[t.outcome]++;
 
   const meals = input.mealsByDate || {};
@@ -169,11 +208,14 @@ export function evaluatePrescriptions(
       }
       const kcalPct = Math.round((day.kcal / num(m.kcal)) * 100);
       const proteinPct = num(m.protein_g) > 0 ? Math.round((day.prot / num(m.protein_g)) * 100) : null;
+      const partial = day.meals < MIN_MEALS_FOR_AVERAGE;
       return {
         date: i.planned_date,
-        text: `${i.planned_date} · sugeriste ${suggested} → comeu ${Math.round(day.kcal)} kcal (${kcalPct}%) / ${Math.round(day.prot)} g proteína${proteinPct !== null ? ` (${proteinPct}%)` : ""}`,
-        proteinPct,
-        kcalPct,
+        text: `${i.planned_date} · sugeriste ${suggested} → comeu ${Math.round(day.kcal)} kcal (${kcalPct}%) / ${Math.round(day.prot)} g proteína${proteinPct !== null ? ` (${proteinPct}%)` : ""}` +
+          ` em ${day.meals} ${day.meals === 1 ? "refeição" : "refeições"}${partial ? " — dia meio registado, fora da média" : ""}`,
+        // Um dia meio registado não entra na média: puxava-a para baixo.
+        proteinPct: partial ? null : proteinPct,
+        kcalPct: partial ? null : kcalPct,
       };
     });
 

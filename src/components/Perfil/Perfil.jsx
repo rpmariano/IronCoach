@@ -854,7 +854,11 @@ export default function Perfil() {
                 <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                   {carolTypes.length === 0
                     ? 'Sem nenhum momento escolhido, a Carol não te chama.'
-                    : 'Hora de Portugal continental. A manhã da prova pode chegar a partir das 06:00, mesmo antes do teu início: a prova não espera.'}
+                    : carolStartHour === carolEndHour
+                      ? 'Início igual ao fim: a Carol usa a janela das 09:00 às 21:00.'
+                      : carolStartHour < carolEndHour && carolStartHour > 6 && carolTypes.includes('race_morning')
+                        ? 'Hora de Portugal continental. A manhã da prova pode chegar a partir das 06:00: a prova não espera.'
+                        : 'Hora de Portugal continental.'}
                 </p>
               </div>
             )}

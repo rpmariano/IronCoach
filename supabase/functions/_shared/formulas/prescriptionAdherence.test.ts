@@ -46,7 +46,7 @@ Deno.test("evaluatePrescriptions: só os 14 dias antes de hoje, sem cancelados; 
   }, TODAY);
   assertEquals(summary.training.map((t) => t.outcome), ["cumprido", "descanso_respeitado", "descanso_respeitado"]);
   assertEquals(summary.nutrition.map((n) => n.text), [
-    "2026-09-16 · sugeriste 2000 kcal / 125 g proteína → comeu 1600 kcal (80%) / 80 g proteína (64%)",
+    "2026-09-16 · sugeriste 2000 kcal / 125 g proteína → comeu 1600 kcal (80%) / 80 g proteína (64%) em 3 refeições",
     "2026-09-17 · sugeriste 2000 kcal / 125 g proteína → sem refeições registadas",
   ]);
 
@@ -68,3 +68,45 @@ Deno.test("mealTotalsByDate: soma por 100 g e conta as refeições", () => {
   assertEquals(totals[TODAY], { kcal: 300, prot: 40, carbs: 10, fat: 12, meals: 2 });
   assert(!("2026-09-17" in totals));
 });
+
+Deno.test("revisão: descanso só de planos com treinos; um dia meio registado sai da média", () => {
+  const summary = evaluatePrescriptions({
+    items: [
+      { planned_date: "2026-09-14", kind: "corrida", target_distance_km: 10, plan_id: "treino" },
+      { planned_date: "2026-09-15", kind: "descanso", plan_id: "treino" },
+      // Sugestão de refeição avulsa: plano só de refeições, gravada como "descanso".
+      { planned_date: "2026-09-16", kind: "descanso", plan_id: "refeicoes", meal_macros: { kcal: 2000, protein_g: 100 } },
+      { planned_date: "2026-09-17", kind: "descanso", plan_id: "refeicoes", meal_macros: { kcal: 2000, protein_g: 100 } },
+    ],
+    runs: [{ date: "2026-09-14", distance_km: 10 }, { date: "2026-09-16", distance_km: 6 }],
+    gym: [],
+    mealsByDate: {
+      "2026-09-16": { kcal: 1900, prot: 95, carbs: 0, fat: 0, meals: 3 },
+      "2026-09-17": { kcal: 400, prot: 20, carbs: 0, fat: 0, meals: 1 },
+    },
+  }, TODAY);
+  // A corrida de dia 16 não é "descanso NÃO respeitado": esse dia nunca foi descanso prescrito.
+  assertEquals(summary.training.map((t) => t.outcome), ["cumprido", "descanso_respeitado"]);
+  assertStringIncludes(summary.nutrition[1].text, "dia meio registado, fora da média");
+  assertStringIncludes(buildPrescriptionAdherenceContext(summary)!, "a proteína ficou em média em 95% do que sugeriste");
+});
+
+Deno.test("revisão: marcado como feito conta; a data real conta; uma corrida ligada não serve a outro dia", () => {
+  // Feito e marcado, com a corrida fora da janela: feito, sem números.
+  assertEquals(evaluateTrainingItem({ planned_date: "2026-09-14", kind: "corrida", status: "concluido", completed_run_id: "longe" }, [], []).text,
+    "2026-09-14 · Corrida → marcado como feito");
+  // Marcado para outro dia: procura-se no dia em que foi feito.
+  assertEquals(evaluateTrainingItem({ planned_date: "2026-09-14", kind: "corrida", actual_date: "2026-09-13", target_distance_km: 8 }, [{ date: "2026-09-13", distance_km: 8 }], []).outcome, "cumprido");
+  // Terça ligada à corrida de quarta: a quarta não fica "feita" com ela.
+  const summary = evaluatePrescriptions({
+    items: [
+      { planned_date: "2026-09-15", kind: "corrida", target_distance_km: 8, status: "concluido", completed_run_id: "r-qua" },
+      { planned_date: "2026-09-16", kind: "corrida", target_distance_km: 8 },
+    ],
+    runs: [{ id: "r-qua", date: "2026-09-16", distance_km: 8 }],
+    gym: [],
+    mealsByDate: {},
+  }, TODAY);
+  assertEquals(summary.training.map((t) => t.outcome), ["cumprido", "falhado"]);
+});
+

@@ -79,8 +79,9 @@ Deno.test("janela do atleta (P.6): respeita a dele, a manhã da prova pode adian
   assert(!isWithinProactiveWindow("race_morning", 20, prefs));
   // Janela que já começa antes das 6h: a manhã da prova segue-a.
   assert(isWithinProactiveWindow("race_morning", 5, { startHour: 5, endHour: 22 }));
-  // Início igual ao fim: 24 horas.
-  assert(isWithinProactiveWindow("silence", 3, { startHour: 0, endHour: 0 }));
+  // Início igual ao fim: a janela por omissão, nunca 24 horas.
+  assert(!isWithinProactiveWindow("silence", 3, { startHour: 0, endHour: 0 }));
+  assert(isWithinProactiveWindow("silence", 12, { startHour: 9, endHour: 9 }));
   // A atravessar a meia-noite.
   assert(isWithinProactiveWindow("silence", 23, { startHour: 22, endHour: 2 }));
   assert(!isWithinProactiveWindow("silence", 12, { startHour: 22, endHour: 2 }));

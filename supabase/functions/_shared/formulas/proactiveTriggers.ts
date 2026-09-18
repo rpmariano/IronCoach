@@ -151,8 +151,12 @@ function inWindow(hour: number, start: number, end: number): boolean {
  *  manhã da prova é a exceção: a prova não espera, e pode sair a partir das
  *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela. */
 export function isWithinProactiveWindow(trigger: ProactiveTriggerName, lisbonHour: number, prefs: PushPreferences = {}): boolean {
-  const start = Number.isInteger(prefs.startHour) ? prefs.startHour! : DEFAULT_PUSH_START_HOUR;
-  const end = Number.isInteger(prefs.endHour) ? prefs.endHour! : DEFAULT_PUSH_END_HOUR;
+  let start = Number.isInteger(prefs.startHour) ? prefs.startHour! : DEFAULT_PUSH_START_HOUR;
+  let end = Number.isInteger(prefs.endHour) ? prefs.endHour! : DEFAULT_PUSH_END_HOUR;
+  /* Início igual ao fim é, quase sempre, um engano no Perfil — e na Carol
+     não pode querer dizer "24 horas": um "Estás bem?" às 3h da manhã. Cai na
+     janela por omissão (revisão pré-master da P.6). */
+  if (start === end) { start = DEFAULT_PUSH_START_HOUR; end = DEFAULT_PUSH_END_HOUR; }
   if (inWindow(lisbonHour, start, end)) return true;
   if (trigger === "race_morning" && start < end && start > RACE_MORNING_EARLIEST_HOUR) {
     return lisbonHour >= RACE_MORNING_EARLIEST_HOUR && lisbonHour < end;
