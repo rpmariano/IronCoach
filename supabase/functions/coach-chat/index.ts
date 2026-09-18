@@ -2421,45 +2421,66 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // deixava o atleta sem plano nenhum se ele depois recusasse a alternativa
   // que pediu para ver. Só planos com treino real (corrida/ginásio) contam;
   // um plano de refeições aceite em paralelo nunca é substituído.
+  // Os planos de TREINO aceites ainda ativos. Servem duas coisas: a guarda
+  // do vínculo (sempre) e a escolha do plano a substituir (com
+  // replace_active_plan). Planos só de refeições não contam para nenhuma.
+  const todayPlansISO = new Date().toISOString().slice(0, 10);
+  const { data: activePlans } = await sb
+    .from("coach_plans")
+    .select("id, period_start, period_end, race_id, coach_plan_items(kind)")
+    .eq("user_id", userId)
+    .eq("status", "aceite")
+    .gte("period_end", todayPlansISO);
+  // deno-lint-ignore no-explicit-any
+  const trainingPlans = (activePlans || []).filter((p: any) =>
+    // deno-lint-ignore no-explicit-any
+    (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio")
+  );
+
   let supersedesPlanId: string | null = null;
   if (replace_active_plan === true) {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const { data: activePlans } = await sb
-      .from("coach_plans")
-      .select("id, period_start, period_end, race_id, coach_plan_items(kind)")
-      .eq("user_id", userId)
-      .eq("status", "aceite")
-      .gte("period_end", todayISO);
+    supersedesPlanId = trainingPlans[0]?.id ?? null;
+  }
+
+  /* Uma proposta sem race_id não pode desvincular por descuido o plano da
+     prova. Na aceitação (respondToPlan, src/store/index.js), uma proposta
+     com outro race_id — incluindo nenhum — que se sobreponha a um plano de
+     treino vinculado conta como objetivo novo: o bloco da prova fecha na
+     véspera e começa um plano sem prova (src/utils/planAcceptance.js). Se
+     isso acontecesse por um microciclo que só se esqueceu do race_id, o
+     atleta ficava sem plano para a prova e sem sinal nenhum.
+
+     A guarda vale COM OU SEM replace_active_plan. A primeira versão só a
+     aplicava com replace, e o erro mais provável do modelo — um microciclo
+     de 14 dias sem race_id e sem replace, com a prova a 10 semanas — passava
+     no servidor e fechava o bloco no cliente (achado B-A da segunda revisão
+     pré-deploy de 2026-09-18). O strayMain acima não o apanha: só olha para
+     provas DENTRO do período proposto.
+
+     Só trava se a prova do plano ainda for principal e por correr. Deixar
+     de preparar uma prova é legítimo — mas decide-se na prova (passá-la a
+     secundária, ou dá-la por concluída), não omitindo um campo. Sem esta
+     exceção, um atleta que desistisse de uma prova ficava preso: a guarda
+     recusava todos os planos novos enquanto o antigo estivesse ativo. */
+  if (!raceId) {
     // deno-lint-ignore no-explicit-any
-    const candidate = (activePlans || []).find((p: any) =>
-      // deno-lint-ignore no-explicit-any
-      (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio")
+    const bound = trainingPlans.find((p: any) =>
+      p.race_id && p.period_start <= period_end && p.period_end >= period_start
     );
-    supersedesPlanId = candidate?.id ?? null;
-
-    /* Substituir um plano VINCULADO não pode desvinculá-lo por descuido.
-       Na aceitação (respondToPlan, src/store/index.js), uma proposta com
-       outro race_id — incluindo nenhum — conta como objetivo novo: o bloco
-       da prova fecha na véspera e começa um plano sem prova
-       (src/utils/planAcceptance.js). Se isso acontecesse por um ajuste que
-       só se esqueceu do race_id, o atleta ficava sem plano para a prova e
-       sem sinal nenhum disso — detectRaceConflict só olha para planos com
-       race_id.
-
-       O caminho mais provável para lá chegar é a própria regra 5c do
-       prompt do sistema, que manda cobrir 14 dias com
-       replace_active_plan=true: com planos longos passa a ser a norma.
-       Por isso a guarda vive aqui, no servidor, e não só na instrução.
-
-       Mudar de objetivo continua a ser possível — é o que o conflito de
-       provas principais pede — mas tem de ser explícito, com o race_id da
-       prova nova. O que se recusa é o ajuste que o deita fora em silêncio
-       (achado B3 da revisão pré-deploy de 2026-09-18). */
-    if (candidate?.race_id && !raceId) {
-      return `Erro: o plano ativo prepara uma prova (race_id="${candidate.race_id}", acaba a ${candidate.period_end}) e esta proposta vem sem race_id — ` +
-        `ao ser aceite, deixava o atleta sem plano para essa prova, e sem nenhum aviso disso. ` +
-        `Se é um ajuste do mesmo bloco, passa race_id="${candidate.race_id}" e period_end=${candidate.period_end} (o plano continua a acabar no dia da prova; ajusta os treinos lá dentro). ` +
-        `Se o atleta quer mesmo mudar de objetivo, passa o race_id da prova nova e o period_end do dia dela — mas confirma com ele primeiro.`;
+    if (bound) {
+      const { data: boundRace } = await sb
+        .from("race_events")
+        .select("id, name, race_priority, status")
+        .eq("id", bound.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (boundRace && boundRace.status !== "concluida" && (boundRace.race_priority || "a") === "a") {
+        return `Erro: o plano ativo prepara a prova "${boundRace.name}" (race_id="${bound.race_id}", acaba a ${bound.period_end}) e esta proposta sobrepõe-se a ele sem race_id — ` +
+          `ao ser aceite, fechava o bloco dessa prova e deixava o atleta sem plano para ela, sem nenhum aviso. ` +
+          `Se é um ajuste do mesmo bloco, passa race_id="${bound.race_id}" e period_end=${bound.period_end} (o plano continua a acabar no dia da prova; ajusta os treinos lá dentro). ` +
+          `Se o atleta quer mudar de objetivo, passa o race_id da prova nova e o period_end do dia dela. ` +
+          `Se quer mesmo deixar de preparar "${boundRace.name}", isso decide-se na prova: passa-a a secundária com update_race_event (race_priority="b") e depois propõe o plano — confirma com ele primeiro.`;
+      }
     }
   }
 

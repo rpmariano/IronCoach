@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
-import { planAcceptanceMode, closeOldBlock } from '../utils/planAcceptance';
+import { planAcceptanceMode, closeOldBlock, isTrainingPlan } from '../utils/planAcceptance';
 import { todayISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 
@@ -396,14 +396,20 @@ export const useAppStore = create((set, get) => ({
     if (!targetPlanId) {
       const { data: activePlans } = await supabase
         .from('coach_plans')
-        .select('id, period_start, period_end, summary')
+        .select('id, period_start, period_end, summary, coach_plan_items(kind)')
         .eq('user_id', userId)
         .eq('status', 'aceite')
         .neq('id', planId);
 
-      const overlapping = (activePlans || []).find(p =>
+      // Havendo mais de um plano sobreposto, o de TREINO é o que conta: é
+      // ele que tem objetivo. Com um .find() simples, um plano só de
+      // refeições que viesse primeiro na lista ganhava, a proposta fundia-se
+      // nele e o race_id dela perdia-se — e a mudança de objetivo depende
+      // deste caminho (observação da segunda revisão pré-deploy).
+      const overlappingAll = (activePlans || []).filter(p =>
         (p.period_start <= newPlan.period_end && p.period_end >= newPlan.period_start)
       );
+      const overlapping = overlappingAll.find(isTrainingPlan) || overlappingAll[0];
       if (overlapping) {
         targetPlanId = overlapping.id;
       }
@@ -425,19 +431,37 @@ export const useAppStore = create((set, get) => ({
     // do novo — ver src/utils/planAcceptance.js, e o bug que isto corrige.
     if (originalPlan && planAcceptanceMode(originalPlan, newPlan) === 'new_block') {
       const fecho = closeOldBlock(originalPlan, newPlan);
+      /* Cada escrita verifica o erro e PÁRA antes de aceitar o plano novo:
+         sem transação no cliente, aceitar depois de um fecho falhado deixava
+         dois planos aceites sobrepostos com objetivos diferentes — o conflito
+         outra vez (M-1 da segunda revisão pré-deploy). Se falhar só o aceite,
+         recupera-se sozinho: à segunda tentativa já não há sobreposição e cai
+         no caso B. */
       if (fecho.action === 'reject') {
-        await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', originalPlan.id);
+        const { error: rejectErr } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', originalPlan.id);
+        if (rejectErr) { console.error('Error rejecting old block:', rejectErr); return false; }
       } else {
+        /* O bloco fecha E desvincula-se. Com o race_id lá, ficava vinculado a
+           uma prova que já não prepara e a acabar antes dela — e se a data
+           dessa prova mudasse depois, o trigger sync_plan_end_to_race_date
+           voltava a esticá-lo até ela: dois planos ativos e o conflito de
+           volta (B-B da segunda revisão pré-deploy). Primeiro o fecho, depois
+           o cancelamento: se o segundo falhar, o bloco já não está ativo. */
+        const { error: closeErr } = await supabase
+          .from('coach_plans')
+          .update({ period_end: fecho.period_end, race_id: null })
+          .eq('id', originalPlan.id);
+        if (closeErr) { console.error('Error closing old block:', closeErr); return false; }
         // Os treinos do bloco antigo a partir do dia em que o novo começa
         // cancelam-se — ficariam pendentes fora do período, e o bloco novo
         // tem os seus. O que já passou fica tal como estava.
-        await supabase
+        const { error: cancelErr } = await supabase
           .from('coach_plan_items')
           .update({ status: 'cancelado' })
           .eq('plan_id', originalPlan.id)
           .eq('status', 'pendente')
           .gte('planned_date', fecho.cancelFrom);
-        await supabase.from('coach_plans').update({ period_end: fecho.period_end }).eq('id', originalPlan.id);
+        if (cancelErr) { console.error('Error cancelling old block items:', cancelErr); return false; }
       }
       const { error: acceptErr } = await supabase
         .from('coach_plans')
@@ -461,14 +485,16 @@ export const useAppStore = create((set, get) => ({
         const finalEnd = newPlan.period_end > originalPlan.period_end ? newPlan.period_end : originalPlan.period_end;
         const finalSummary = newPlan.summary || originalPlan.summary;
 
-        // 1. Atualizar limites e resumo do plano original. trimmed_at limpa-se:
-        //    se o plano tinha encurtado por a prova ter sido antecipada, este
-        //    ajuste é a resposta a isso, e o aviso deixa de ter razão de ser.
+        // 1. Atualizar limites e resumo do plano original. trimmed_at e
+        //    race_lost_at limpam-se: se o plano tinha encurtado, ou perdido a
+        //    prova, este ajuste é a resposta da Carol a isso — o aviso deixa
+        //    de ter razão de ser (M-2 da segunda revisão pré-deploy).
         await supabase.from('coach_plans').update({
           period_start: finalStart,
           period_end: finalEnd,
           summary: finalSummary,
           trimmed_at: null,
+          race_lost_at: null,
         }).eq('id', targetPlanId);
 
         // 2. Apagar os treinos do plano original nas datas que estão a ser substituídas
