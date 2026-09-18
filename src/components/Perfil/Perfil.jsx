@@ -85,6 +85,20 @@ const DEFAULT_REMINDER_END_HOUR = 22;
 
 const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 
+/* As notificações da Carol (specs/carol-omnisciencia-omnipresenca.md, P.6):
+   o interruptor dela, independente da água, e as preferências que o
+   coach-proactive-tick lê. Os valores por omissão são os da migration
+   carol_push_preferences. */
+const DEFAULT_CAROL_PUSH_START_HOUR = 9;
+const DEFAULT_CAROL_PUSH_END_HOUR = 21;
+const CAROL_PUSH_TYPES = [
+  { key: 'race_morning', label: 'Manhã da prova' },
+  { key: 'race_eve', label: 'Véspera da prova' },
+  { key: 'race_after', label: 'Balanço da prova' },
+  { key: 'silence', label: 'Dias sem registos' },
+];
+const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
+
 export default function Perfil() {
   const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
   const [tab, setTab] = useState('perfil');
@@ -238,6 +252,31 @@ export default function Perfil() {
     updateDraft('water_reminder_enabled', true);
   };
 
+  /* O mesmo contrato da água: ligar pede a permissão e subscreve já (é uma
+     ação do browser); o valor em si é rascunho e só fica com o Guardar. */
+  const toggleCarolPush = async () => {
+    const enabling = !draft.carol_push_enabled;
+    if (!enabling) {
+      updateDraft('carol_push_enabled', false);
+      return;
+    }
+    setSubscribingPush(true);
+    const { ok, error } = await ensurePushSubscription();
+    setSubscribingPush(false);
+    if (!ok) {
+      showToast(error, 'error');
+      return;
+    }
+    updateDraft('carol_push_enabled', true);
+  };
+
+  const toggleCarolPushType = (key) => {
+    const current = Array.isArray(draft.carol_push_types) ? draft.carol_push_types : ALL_CAROL_PUSH_TYPES;
+    const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    // A ordem é sempre a da lista, para o rascunho não parecer mudado sem estar.
+    updateDraft('carol_push_types', ALL_CAROL_PUSH_TYPES.filter((k) => next.includes(k)));
+  };
+
   const handleSave = async () => {
     if (!isDirty) return true;
     setIsSaving(true);
@@ -368,6 +407,10 @@ export default function Perfil() {
 
   const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;
   const reminderEndHour = draft.water_reminder_end_hour ?? DEFAULT_REMINDER_END_HOUR;
+  const carolStartHour = draft.carol_push_start_hour ?? DEFAULT_CAROL_PUSH_START_HOUR;
+  const carolEndHour = draft.carol_push_end_hour ?? DEFAULT_CAROL_PUSH_END_HOUR;
+  const carolMaxPerDay = draft.carol_push_max_per_day ?? 1;
+  const carolTypes = Array.isArray(draft.carol_push_types) ? draft.carol_push_types : ALL_CAROL_PUSH_TYPES;
 
   const leaveModal = (
     <UnsavedChangesModal
@@ -741,6 +784,77 @@ export default function Perfil() {
                     : reminderStartHour > reminderEndHour
                       ? 'A janela atravessa a meia-noite.'
                       : 'Hora de Portugal continental.'}
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]" data-testid="perfil-carol-push">
+              <div className="pr-4">
+                <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--coach)]" /> Notificações da Carol</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
+                  A Carol chama por ti quando é preciso: a prova, o balanço, dias sem registos. Tocar abre a conversa.
+                </p>
+              </div>
+              <button onClick={toggleCarolPush} type="button" disabled={subscribingPush}
+                aria-label={draft.carol_push_enabled ? 'Desativar notificações da Carol' : 'Ativar notificações da Carol'}
+                aria-pressed={!!draft.carol_push_enabled}
+                aria-busy={subscribingPush}
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
+                  draft.carol_push_enabled ? '' : 'bg-[var(--surface-strong)]'
+                }`}
+                style={draft.carol_push_enabled ? { background: 'var(--mod-coach-to)' } : undefined}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                  draft.carol_push_enabled ? 'translate-x-5' : 'translate-x-0'
+                }`} style={{ backgroundColor: draft.carol_push_enabled ? 'var(--coach-ink)' : 'var(--text-1)' }}></span>
+              </button>
+            </div>
+
+            {draft.carol_push_enabled && (
+              <div className="mt-3 space-y-3 fade-in" data-testid="perfil-carol-push-prefs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="perfil-carol-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">A partir das</label>
+                    <select id="perfil-carol-inicio" value={carolStartHour} onChange={e => updateDraft('carol_push_start_hour', parseInt(e.target.value))}
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="perfil-carol-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Até às</label>
+                    <select id="perfil-carol-fim" value={carolEndHour} onChange={e => updateDraft('carol_push_end_hour', parseInt(e.target.value))}
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="perfil-carol-maximo" className="text-[11px] text-[var(--text-3)] block mb-1">No máximo, por dia</label>
+                  <select id="perfil-carol-maximo" value={carolMaxPerDay} onChange={e => updateDraft('carol_push_max_per_day', parseInt(e.target.value))}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                    {[1, 2, 3].map(n => <option key={n} value={n}>{n === 1 ? '1 notificação' : `${n} notificações`}</option>)}
+                  </select>
+                </div>
+                <fieldset>
+                  <legend className="text-[11px] text-[var(--text-3)] mb-1">Quando é que a Carol te pode chamar</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CAROL_PUSH_TYPES.map(({ key, label }) => {
+                      const on = carolTypes.includes(key);
+                      return (
+                        <button key={key} type="button" aria-pressed={on} onClick={() => toggleCarolPushType(key)}
+                          className="min-h-[44px] rounded-xl px-3 text-[12px] font-bold text-left"
+                          style={on
+                            ? { background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }
+                            : { background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', color: 'var(--text-3)' }}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
+                  {carolTypes.length === 0
+                    ? 'Sem nenhum momento escolhido, a Carol não te chama.'
+                    : 'Hora de Portugal continental. A manhã da prova pode chegar a partir das 06:00, mesmo antes do teu início: a prova não espera.'}
                 </p>
               </div>
             )}

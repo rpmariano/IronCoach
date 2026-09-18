@@ -68,3 +68,20 @@ Deno.test("janela: a manhã da prova sai a partir das 6h, o resto das 9h às 21h
   assert(isWithinProactiveWindow("silence", 9));
   assert(!isWithinProactiveWindow("silence", 21));
 });
+
+Deno.test("janela do atleta (P.6): respeita a dele, a manhã da prova pode adiantar-se até às 6h", () => {
+  const prefs = { startHour: 10, endHour: 19 };
+  assert(!isWithinProactiveWindow("silence", 9, prefs));
+  assert(isWithinProactiveWindow("silence", 10, prefs));
+  assert(!isWithinProactiveWindow("race_eve", 19, prefs));
+  assert(isWithinProactiveWindow("race_morning", 7, prefs));
+  assert(!isWithinProactiveWindow("race_morning", 5, prefs));
+  assert(!isWithinProactiveWindow("race_morning", 20, prefs));
+  // Janela que já começa antes das 6h: a manhã da prova segue-a.
+  assert(isWithinProactiveWindow("race_morning", 5, { startHour: 5, endHour: 22 }));
+  // Início igual ao fim: 24 horas.
+  assert(isWithinProactiveWindow("silence", 3, { startHour: 0, endHour: 0 }));
+  // A atravessar a meia-noite.
+  assert(isWithinProactiveWindow("silence", 23, { startHour: 22, endHour: 2 }));
+  assert(!isWithinProactiveWindow("silence", 12, { startHour: 22, endHour: 2 }));
+});

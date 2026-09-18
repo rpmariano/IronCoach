@@ -8,7 +8,7 @@
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
 | **Omnisciência** | **7,0 / 10** (3,7 antes da Fase 1, 6,0 depois dela) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **6,1 / 10** (2,8 de manhã; 3,7 depois de P.1 e P.2) | — | 9,0 / 10 |
+| **Omnipresença** | **6,6 / 10** (2,8 de manhã; 6,1 depois da P.3) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -214,6 +214,20 @@ select cron.schedule('coach-proactive-tick', '7 * * * *',
 - O texto da notificação é fixo. O texto gerado por ela é a P.4.
 
 Com a P.3, P1 passa de 1 para 7, P2 de 3 para 5, P3 de 4 para 6 e P6 de 5 para 6. A omnipresença sobe para **6,1**.
+
+#### Estado: P.6 implementada a 2026-09-18
+
+A migration `20260918173342_carol_push_preferences` está aplicada em produção.
+
+| Peça | Como ficou |
+|---|---|
+| Perfil | Um bloco "Notificações da Carol" logo a seguir aos lembretes de água, no mesmo cartão e com o mesmo padrão. Ligar pede a permissão do browser na hora, e o resto fica com o Guardar. As opções são as horas de início e de fim, o máximo por dia (1, 2 ou 3) e os momentos aceites: manhã da prova, véspera, balanço e dias sem registos. |
+| Base de dados | Cinco colunas novas em `profiles`: `carol_push_enabled`, desligado por omissão, porque é opt-in; `carol_push_start_hour` e `carol_push_end_hour`, das 9h às 21h por omissão; `carol_push_max_per_day`, de 1 a 3; e `carol_push_types`, com um check que só aceita os quatro momentos. |
+| Servidor | O `coach-proactive-tick` deixa de depender da água. Notifica quem ligou a Carol, na janela dessa pessoa, até ao máximo dela, e só nos momentos que ela aceitou. A manhã da prova pode adiantar-se até às 6h, porque a prova não espera, mas nunca passa do fim da janela. |
+
+**Por omissão ninguém recebe nada.** Cada atleta tem de ligar as notificações da Carol no Perfil. O ecrã só chega com o deploy de `master`.
+
+Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depender da água. A omnipresença sobe para **6,6**.
 
 ---
 

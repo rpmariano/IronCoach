@@ -126,9 +126,36 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
   }
 }
 
-/** Janela de envio, em horas de Lisboa: a manhã da prova pode sair cedo; o
- *  resto só entre as 9h e as 21h. */
-export function isWithinProactiveWindow(trigger: ProactiveTriggerName, lisbonHour: number): boolean {
-  if (trigger === "race_morning") return lisbonHour >= 6 && lisbonHour < 21;
-  return lisbonHour >= 9 && lisbonHour < 21;
+export const DEFAULT_PUSH_START_HOUR = 9;
+export const DEFAULT_PUSH_END_HOUR = 21;
+export const RACE_MORNING_EARLIEST_HOUR = 6;
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["race_morning", "race_eve", "race_after", "silence"];
+
+/** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
+ *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão
+ *  da migration carol_push_preferences. */
+export interface PushPreferences {
+  startHour?: number | null;
+  endHour?: number | null;
+  maxPerDay?: number | null;
+  types?: string[] | null;
+}
+
+function inWindow(hour: number, start: number, end: number): boolean {
+  if (start === end) return true;                       // 24 horas
+  if (start < end) return hour >= start && hour < end;
+  return hour >= start || hour < end;                   // atravessa a meia-noite
+}
+
+/** Janela de envio, em horas de Lisboa, a do atleta (9h–21h por omissão). A
+ *  manhã da prova é a exceção: a prova não espera, e pode sair a partir das
+ *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela. */
+export function isWithinProactiveWindow(trigger: ProactiveTriggerName, lisbonHour: number, prefs: PushPreferences = {}): boolean {
+  const start = Number.isInteger(prefs.startHour) ? prefs.startHour! : DEFAULT_PUSH_START_HOUR;
+  const end = Number.isInteger(prefs.endHour) ? prefs.endHour! : DEFAULT_PUSH_END_HOUR;
+  if (inWindow(lisbonHour, start, end)) return true;
+  if (trigger === "race_morning" && start < end && start > RACE_MORNING_EARLIEST_HOUR) {
+    return lisbonHour >= RACE_MORNING_EARLIEST_HOUR && lisbonHour < end;
+  }
+  return false;
 }

@@ -3,7 +3,7 @@ import { decidePush, lisbonDateOf } from "./decide.ts";
 
 const candidate = { trigger: "race_eve" as const, key: "race_eve:r1", raceId: "r1", raceName: "Meia", hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 const NOW = Date.parse("2026-09-18T15:00:00Z");
-const base = { candidate, lisbonHour: 16, deliveredKeys: new Set<string>(), pushedKeys: new Set<string>(), pushedToday: false, lastModelMessageAt: null, nowMs: NOW };
+const base = { candidate, lisbonHour: 16, deliveredKeys: new Set<string>(), pushedKeys: new Set<string>(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: NOW };
 
 Deno.test("decidePush: envia quando nada o impede", () => {
   assertEquals(decidePush(base), { send: true });
@@ -14,7 +14,7 @@ Deno.test("decidePush: cada travão, pela ordem", () => {
   assertEquals(decidePush({ ...base, lisbonHour: 22 }), { send: false, reason: "fora_de_horas" });
   assertEquals(decidePush({ ...base, deliveredKeys: new Set(["race_eve:r1"]) }), { send: false, reason: "ja_entregue" });
   assertEquals(decidePush({ ...base, pushedKeys: new Set(["race_eve:r1"]) }), { send: false, reason: "ja_notificado" });
-  assertEquals(decidePush({ ...base, pushedToday: true }), { send: false, reason: "limite_diario" });
+  assertEquals(decidePush({ ...base, pushedTodayCount: 1 }), { send: false, reason: "limite_diario" });
   assertEquals(decidePush({ ...base, lastMessage: { role: "model", created_at: "2026-09-18T11:00:00Z" } }), { send: false, reason: "falou_ha_pouco" });
   // Falou há mais de 6 horas: já não trava.
   assertEquals(decidePush({ ...base, lastMessage: { role: "model", created_at: "2026-09-18T08:00:00Z" } }), { send: true });
@@ -61,5 +61,18 @@ Deno.test("lisbonDateOf: a 00:30 de Lisboa no verão ainda é ontem em UTC", () 
   assertEquals(lisbonDateOf("2026-09-14T23:30:00Z"), "2026-09-15");
   const silence = { ...candidate, trigger: "silence" as const, key: "silence:2026-09-14", silenceDays: 4, anchorDate: "2026-09-14" };
   assertEquals(decidePush({ ...base, candidate: silence, lastModelMessageAt: "2026-09-14T23:30:00Z" }), { send: false, reason: "ja_falou_depois" });
+});
+
+Deno.test("decidePush: as preferências do atleta (P.6)", () => {
+  // Um momento que ele desligou não sai.
+  assertEquals(decidePush({ ...base, prefs: { types: ["silence"] } }), { send: false, reason: "tipo_desligado" });
+  // Até 3 por dia, se ele quiser.
+  assertEquals(decidePush({ ...base, pushedTodayCount: 1, prefs: { maxPerDay: 2 } }), { send: true });
+  assertEquals(decidePush({ ...base, pushedTodayCount: 2, prefs: { maxPerDay: 2 } }), { send: false, reason: "limite_diario" });
+  // Um valor fora do intervalo cai para 3 no máximo, e para 1 se for inválido.
+  assertEquals(decidePush({ ...base, pushedTodayCount: 3, prefs: { maxPerDay: 9 } }), { send: false, reason: "limite_diario" });
+  assertEquals(decidePush({ ...base, pushedTodayCount: 1, prefs: { maxPerDay: 0 } }), { send: false, reason: "limite_diario" });
+  // A janela dele.
+  assertEquals(decidePush({ ...base, lisbonHour: 16, prefs: { startHour: 18, endHour: 22 } }), { send: false, reason: "fora_de_horas" });
 });
 
