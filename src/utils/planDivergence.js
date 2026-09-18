@@ -125,14 +125,18 @@ export function detectPlanDivergence({
     parts.push(`${key}:${ref}`);
   };
 
-  // 0. O plano tinha uma prova-objetivo e ela desapareceu (apagada). O plano
-  //    ficou sem para onde ir, e o period_end já não é o dia de prova nenhuma.
+  // 0. O plano perdeu a prova-objetivo — foi apagada, ou passou para antes do
+  //    início do plano. Lê-se de race_lost_at e não da ausência da prova: a
+  //    FK é `on delete set null`, por isso depois de apagar a prova o race_id
+  //    já é null, que é o mesmo estado de um plano de base que nunca teve
+  //    prova. A versão anterior procurava um race_id sem prova na agenda, um
+  //    estado que a base de dados não consegue produzir — o aviso nunca
+  //    disparava (achado M1 da revisão pré-deploy de 2026-09-18). O
+  //    race_lost_at é gravado por trigger no momento em que acontece
+  //    (migration 20260918074705).
   for (const plan of plans) {
-    if (!plan.race_id) continue;
-    const target = (raceEvents || []).find((r) => r && r.id === plan.race_id);
-    if (!target) {
-      push('plano_sem_prova', String(plan.race_id), 'O plano preparava uma prova que já não está na agenda.');
-    }
+    if (plan.race_id || !plan.race_lost_at) continue;
+    push('plano_sem_prova', `${plan.id}:${String(plan.race_lost_at).slice(0, 10)}`, 'O plano ficou sem a prova que preparava.');
   }
 
   for (const race of races) {
@@ -235,9 +239,13 @@ export function detectRaceConflict({ coachPlans = [], raceEvents = [], today = t
       if (r.status === 'concluida' || r.conflict_acknowledged_at) return false;
       const d = dayOf(r.date);
       // A partir de hoje: uma principal que já passou sem ser registada é
-      // assunto de registo, não de planeamento. O dia do objetivo não conta
-      // como "pelo caminho" — duas provas no mesmo dia são outro problema.
-      return d && d >= today && d >= start && d < end && (r.race_priority || 'a') === 'a';
+      // assunto de registo, não de planeamento. O intervalo é FECHADO nos
+      // dois extremos, como no servidor (racesInPeriod em
+      // runProposeTrainingPlan): uma segunda principal no próprio dia do
+      // objetivo também é conflito. Com `d < end` o servidor recusava o
+      // plano e o cliente não avisava de nada (achado M5 da revisão
+      // pré-deploy de 2026-09-18).
+      return d && d >= today && d >= start && d <= end && (r.race_priority || 'a') === 'a';
     }).sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
     if (races.length > 0) {
       return { plan, target: (raceEvents || []).find((r) => r && r.id === plan.race_id) || null, races };

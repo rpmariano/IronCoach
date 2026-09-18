@@ -1,7 +1,9 @@
 # Spec — O plano é para uma prova
 
-**Estado:** proposta, 2026-09-18. Origem: falha encontrada pelo utilizador —
-o plano de treino nunca ficou vinculado à prova que o motiva.
+**Estado:** implementado, 2026-09-18 (decisões de §5 confirmadas). Origem:
+falha encontrada pelo utilizador — o plano de treino nunca ficou vinculado à
+prova que o motiva. Revisto no mesmo dia depois da revisão pré-deploy: §4.1,
+§4.2, §4.3 e a §4.6 nova descrevem o que ficou, não a primeira proposta.
 Complementa `plano-de-treino.md` (o acordo) e `plano-de-prova.md` (o dia
 da prova dentro do plano). Onde esta spec contradiz as outras duas, esta
 manda; as alterações a fazer lá estão em §7.
@@ -29,8 +31,9 @@ O grande objetivo da app é um plano que leva o atleta a uma prova. Mas
 1. **Um plano tem uma prova-objetivo.** `coach_plans.race_id` aponta para
    ela. O `period_end` do plano **é** a data da prova; nesse dia o plano
    termina. Um plano sem prova (`race_id` null — base aeróbica, regresso de
-   lesão) continua a ser possível, mas só quando não há prova agendada
-   dentro do período.
+   lesão) continua a ser possível, mas só quando não há prova **principal**
+   agendada dentro do período — as secundárias e de treino podem estar lá,
+   são treino (§4.1).
 2. **O atleta pede plano quando quiser.** Cada pedido para uma prova cria
    um plano de raiz para esse objetivo. A Carol tem no contexto o plano
    anterior, o balanço da prova anterior (`race_after`) e o histórico — o
@@ -71,6 +74,18 @@ race_id   uuid null → race_events(id) on delete set null
 - `on delete set null`: apagar a prova não apaga o plano — passa a plano
   sem objetivo, e o cliente avisa (é uma divergência nova, §4.2).
 
+```
+race_lost_at   timestamptz null
+check (period_end >= period_start)     -- coach_plans_period_order
+```
+
+- `race_lost_at` é o que distingue um plano que **perdeu** a prova (apagada,
+  ou passada para antes do início do plano) de um plano de base que nunca a
+  teve — com `race_id` null, os dois eram indistinguíveis. Escrito pelos
+  triggers de §4.3 no momento em que acontece.
+- A restrição de ordem do período não existia: um caminho que a partisse
+  fazia o plano desaparecer do cliente sem aviso (§4.3).
+
 ### `race_events`
 
 ```
@@ -97,13 +112,25 @@ Parâmetro novo `race_id` (opcional). Validação, antes de gravar:
   `date ≥ hoje`; **`period_end` tem de ser a data dela** (erro claro ao
   modelo: "o plano para a prova X acaba no dia dela, YYYY-MM-DD").
 - `race_id` dado → **nenhuma outra prova `a`** com data em
-  `(period_start, period_end)`. Se houver: erro que diz qual é e as duas
-  saídas (passar a `b` com `update_race_event`, ou plano até ela com
-  `race_id` dela). É este erro que obriga a Carol a resolver com o atleta
-  antes de propor.
-- `race_id` ausente → nenhuma prova agendada em `[period_start, period_end]`
-  (senão o plano tinha uma prova que não é o objetivo; erro: "há a prova X
-  no período — é plano para ela? passa race_id").
+  `[period_start, period_end]` — intervalo **fechado**, o mesmo no servidor
+  e no cliente: uma segunda principal no próprio dia do objetivo também é
+  conflito. Se houver: erro que diz qual é e as duas saídas (passar a `b`
+  com `update_race_event`, ou plano até ela com `race_id` dela). É este erro
+  que obriga a Carol a resolver com o atleta antes de propor.
+- `race_id` ausente → nenhuma prova **`a`** agendada no período (senão o
+  plano atravessava um objetivo sem o assumir; o erro traz o id dela). As
+  `b`/`c` **passam**: um bloco de base pode atravessar uma prova de treino,
+  e é assim que o atleta as quer. A primeira versão recusava qualquer prova
+  no período, e quem tinha só uma prova de treino à frente ficava sem saída
+  nenhuma — omitir o `race_id` era recusado, passá-lo forçava o plano a
+  acabar no dia de uma prova que não é objetivo de nada.
+- `replace_active_plan` sobre um plano **vinculado** sem passar `race_id` →
+  recusado, com o `race_id` e o `period_end` certos na mensagem. Na
+  aceitação isso fecharia o bloco da prova (§4.6) sem ninguém dar por isso.
+- O `id` de cada prova vai no contexto (`buildRaceEventsContext`, `id: …`) e
+  o vínculo do plano ativo também (`buildPlanContext`). A primeira versão
+  pedia `race_id` ao modelo sem nunca lho mostrar, e a saída mais barata dele
+  era encurtar o `period_end` até a prova sair do período.
 - A validação atual da prova no dia/véspera mantém-se e passa a valer para
   todas as provas do período (a objetivo e as `b`/`c` intermédias).
 
@@ -117,11 +144,17 @@ ordem de gravidade:
 
 | chave | quando | como aparece |
 |---|---|---|
-| `race_conflict_a` | prova `a` com data em `(period_start, period_end)`, `id ≠ plan.race_id`, `conflict_acknowledged_at` null | **intervenção** — mesmo tratamento que `coach_intervention_status = 'needed'`: "precisa de falar contigo", sem dispensar, `coachIntent { kind: 'race_conflict', race, plan }` |
-| `race_added` | prova `b`/`c` no período sem item `training_type = 'prova'`, `conflict_acknowledged_at` null | divergência (dispensável), substitui o motivo atual "prova no período sem item" |
-| `plan_lost_race` | plano com `race_id` null mas que tinha (a prova foi apagada) — na prática: plano cujo `period_end` já não coincide com prova nenhuma | divergência |
+| `detectRaceConflict` (não é um motivo, é um canal) | prova `a` com data em `[period_start, period_end]`, a partir de hoje, `id ≠ plan.race_id`, `conflict_acknowledged_at` null | **intervenção** — "precisa de falar contigo", sem dispensar, `coachIntent { kind: 'race_conflict', races, target }` |
+| `prova_sem_item` | prova no período (incluindo `b`/`c`) sem item de prova, `conflict_acknowledged_at` null | divergência (dispensável) — já existia, e cobre a prova secundária nova |
+| `plano_sem_prova` | plano com `race_id` null **e** `race_lost_at` preenchido | divergência |
 
-`race_conflict_a` não passa pelo `wasDivergenceHandled` (localStorage) — a
+`plano_sem_prova` lê-se de `race_lost_at` (§3) e não da ausência da prova:
+a FK é `on delete set null`, por isso depois de apagar a prova o `race_id`
+já é null — o mesmo estado de um plano de base que nunca teve prova. A
+primeira versão procurava um `race_id` sem prova na agenda, estado que a BD
+não consegue produzir; o aviso nunca disparava.
+
+O conflito não passa pelo `wasDivergenceHandled` (localStorage) — a
 persistência é o `conflict_acknowledged_at` na BD, que a Carol escreve
 quando o atleta decide. É a diferença entre "já te disse" (dispensável) e
 "ainda não decidiste" (volta sempre).
@@ -129,21 +162,58 @@ quando o atleta decide. É a diferença entre "já te disse" (dispensável) e
 O cliente já sabe tudo o que precisa (`raceEvents`, `coachPlans` no
 store); sem chamada nova.
 
-### 4.3. Trigger em `race_events` — a data da prova mudou
+### 4.3. Triggers em `race_events` — a prova mudou ou foi apagada
 
-`after update of date, race_priority on race_events`:
+`before update of date, race_priority` (`sync_plan_end_to_race_date`):
 
-- Se `date` mudou e há `coach_plans` com `race_id = new.id` e
-  `status in ('proposto','aceite')`: `period_end = new.date`. Os itens
-  fora do período novo (prova adiada para mais cedo) ficam `cancelado`
-  com nota; a Carol vê a divergência "o plano encurtou" na próxima
-  conversa (motivo `plan_trimmed`, §4.2 — a acrescentar à tabela).
+- A prova passou para **antes do início** do plano: o plano já não a
+  contém. Não se encurta — daria `period_end < period_start`, que fazia o
+  plano desaparecer do cliente com todos os itens cancelados. O plano
+  aceite **perde a prova** (`race_id = null`, `race_lost_at = now()`) com os
+  itens intactos; uma proposta ainda por decidir passa a `recusado`.
+- Caso normal (a prova continua dentro): `period_end = new.date`, e os
+  itens pendentes para lá dela ficam `cancelado` com nota.
 - Se `date` ou `race_priority` mudaram: `conflict_acknowledged_at = null`.
+
+`before delete` (`mark_plan_race_lost`): marca `race_lost_at` nos planos
+aceites da prova **antes** de a FK pôr o `race_id` a null — depois já não
+havia por onde os encontrar. Propostas dessa prova passam a `recusado`.
+
+A invariante `check (period_end >= period_start)` fica na tabela
+(`coach_plans_period_order`), para nenhum outro caminho a poder partir.
+Tudo isto foi testado em produção num bloco que abortava no fim — ver o
+cabeçalho da migration `20260918074705_plan_race_lost.sql`.
+
+Ficou por fazer: um aviso próprio para "o plano encurtou" (`plan_trimmed`).
+Hoje o rasto é só a nota nos itens cancelados; o plano continua visível e a
+acabar no dia da prova, o que é o essencial.
 
 Alternativa sem trigger — o cliente deteta `period_end ≠ race.date` como
 divergência e a Carol reescreve. Mais simples, mas deixa o plano errado
 até alguém abrir a app. Preferência: trigger, porque `period_end` é a
 única coisa que o cliente lê para saber se o plano está ativo.
+
+### 4.6. Aceitar uma proposta — ajuste ou bloco novo
+
+`respondToPlan` (`src/store/index.js`) decide com `planAcceptanceMode`
+(`src/utils/planAcceptance.js`), quando a proposta se sobrepõe a um plano
+aceite:
+
+- **Mesmo objetivo** (mesmo `race_id`, ou nenhum dos dois com prova):
+  ajuste. Funde no plano original — mantém o id, o histórico e o vínculo.
+- **Objetivo novo** (outro `race_id`, ou passar a ter, ou deixar de ter):
+  plano novo de raiz, como pedido — o bloco antigo fecha na véspera do novo
+  (`closeOldBlock`), os treinos dele a partir desse dia cancelam-se, e o
+  novo é aceite como plano próprio. Se o antigo nem chegou a começar antes
+  do novo, sai como `recusado`.
+- **Planos só de refeições** (`save_meal_suggestions`, dias de `descanso`)
+  nunca abrem nem fecham um bloco: fundem, como antes.
+
+A primeira versão fundia tudo e ignorava o `race_id` da proposta. Resolver
+um conflito de principais pela segunda saída ("o plano passa a preparar a
+intermédia") não mudava nada: ficava o `race_id` antigo e o fim no dia da
+prova mais distante, o conflito continuava lá e a Carol voltava a pedir a
+mesma conversa.
 
 ### 4.4. coach-chat — o que a Carol sabe e diz
 
@@ -156,7 +226,7 @@ até alguém abrir a app. Preferência: trigger, porque `period_end` é a
   (`race_id` novo + `replace_active_plan`) conforme o atleta escolher; se
   o atleta quiser manter as duas, `update_race_event` com
   `conflict_acknowledged: true`.
-- `coachIntent` `adapt_plan` com motivo `race_added`: a Carol propõe o
+- `coachIntent` `adapt_plan` com motivo `prova_sem_item`: a Carol propõe o
   plano ajustado com a prova como treino de qualidade; se o atleta não
   quiser, dispensa e fica.
 - Depois da prova-objetivo (`race_after`, já existe): a Carol fecha o
@@ -170,7 +240,7 @@ cada vez" com a regra e as duas saídas, para o modelo o ter como doutrina
 e não só como erro de ferramenta. A regra de taper por prioridade
 (Corrida 2.3 #1) já existe e é o fundamento.
 
-## 5. Decisões tomadas nesta proposta (a confirmar)
+## 5. Decisões tomadas nesta proposta (confirmadas 2026-09-18)
 
 1. **`c` (treino) trata-se como `b`** para efeitos de enquadramento — a
    descrição só falava em principal/secundária. Uma prova de treino é, por
@@ -207,7 +277,7 @@ e não só como erro de ferramenta. A regra de taper por prioridade
 | migration | `coach_plans.race_id`, `race_events.conflict_acknowledged_at`, trigger §4.3 |
 | `coach-chat/index.ts` | `propose_training_plan`: `race_id` + validações §4.1; `update_race_event`: `conflict_acknowledged`; contexto §4.4; intent `race_conflict` |
 | `planDivergence.js` (+ teste) | motivos §4.2 |
-| `Home.jsx` | `race_conflict_a` → canal da intervenção, não da divergência |
+| `Home.jsx` | `detectRaceConflict` → canal da intervenção, não da divergência |
 | `Coach.jsx` | intent `race_conflict` |
 | `coach-knowledge/02-corrida-prova.md` | doutrina §4.5 |
 | `plano-de-treino.md` §3.1 | acrescentar `race_id`; §8 fecha a questão 4 parcialmente (o objetivo duradouro da época é a prova) |

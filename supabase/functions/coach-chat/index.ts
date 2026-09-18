@@ -2438,11 +2438,13 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     supersedesPlanId = candidate?.id ?? null;
 
     /* Substituir um plano VINCULADO não pode desvinculá-lo por descuido.
-       Na aceitação, o plano antigo vai a "recusado" (respondToPlan, em
-       src/store/index.js): se o novo vier sem race_id, ou com outro
-       period_end, a prova-objetivo evapora-se e nada volta a avisar —
-       detectRaceConflict e plano_sem_prova exigem race_id, por isso o
-       atleta ficava sem plano para a prova e sem sinal nenhum disso.
+       Na aceitação (respondToPlan, src/store/index.js), uma proposta com
+       outro race_id — incluindo nenhum — conta como objetivo novo: o bloco
+       da prova fecha na véspera e começa um plano sem prova
+       (src/utils/planAcceptance.js). Se isso acontecesse por um ajuste que
+       só se esqueceu do race_id, o atleta ficava sem plano para a prova e
+       sem sinal nenhum disso — detectRaceConflict só olha para planos com
+       race_id.
 
        O caminho mais provável para lá chegar é a própria regra 5c do
        prompt do sistema, que manda cobrir 14 dias com

@@ -153,6 +153,20 @@ export default function RunAgenda({ onClose }) {
      página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
 
+  /* Apagar a prova-objetivo de um plano deixa o plano sem objetivo
+     (race_lost_at, migration 20260918074705) — e a Carol vai querer falar
+     disso. O atleta pode fazê-lo, mas sabendo o que acontece a seguir; é o
+     mesmo princípio de decisão informada do resto do plano vinculado
+     (specs/plano-vinculado-a-prova.md §2.5). */
+  const isPlanObjective = !!editingEventId && (coachPlans || []).some(
+    // todayISO() e não todayIso: essa constante só é declarada mais abaixo,
+    // e lê-la aqui seria um ReferenceError no primeiro render (TDZ).
+    (p) => p?.status === 'aceite' && p.race_id === editingEventId && String(p.period_end || '').slice(0, 10) >= todayISO(),
+  );
+  const deleteMessage = isPlanObjective
+    ? 'Esta prova é o objetivo do teu plano de treino. Se a eliminares, o plano fica sem objetivo e a Carol vai querer falar contigo sobre o que fazer a seguir. Esta ação não pode ser desfeita.'
+    : 'Tens a certeza que queres eliminar esta prova? Esta ação não pode ser desfeita.';
+
   /* Aviso informativo: esta prova, como está a ser gravada, entra em conflito
      com o plano ativo. Só quando é PRINCIPAL e cai dentro de um plano aceite
      que prepara OUTRA prova — é o caso que não tem plano correto possível.
@@ -899,7 +913,7 @@ export default function RunAgenda({ onClose }) {
         onConfirm={handleDeleteRace}
         isDeleting={isDeleting}
         title="Eliminar prova"
-        message="Tens a certeza que queres eliminar esta prova? Esta ação não pode ser desfeita."
+        message={deleteMessage}
       />
 
       <div className="space-y-4">

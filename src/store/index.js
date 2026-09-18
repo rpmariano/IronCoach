@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
+import { planAcceptanceMode, closeOldBlock } from '../utils/planAcceptance';
 import { todayISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 
@@ -381,7 +382,7 @@ export const useAppStore = create((set, get) => ({
     // Obter dados da proposta a aceitar
     const { data: newPlan, error: fetchErr } = await supabase
       .from('coach_plans')
-      .select('id, period_start, period_end, summary, supersedes_plan_id')
+      .select('id, period_start, period_end, summary, supersedes_plan_id, race_id, coach_plan_items(kind)')
       .eq('id', planId)
       .single();
 
@@ -408,14 +409,53 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
+    // O plano sobreposto, se houver — é ele que decide entre ajuste e bloco novo.
+    let originalPlan = null;
     if (targetPlanId) {
-      // ── CASO A: Adaptação In-Place do Plano Ativo ──────────────────────────
-      const { data: originalPlan } = await supabase
+      const { data } = await supabase
         .from('coach_plans')
-        .select('id, period_start, period_end, summary')
+        .select('id, period_start, period_end, summary, race_id, coach_plan_items(kind)')
         .eq('id', targetPlanId)
         .single();
+      originalPlan = data || null;
+    }
 
+    // Objetivo novo (a prova-objetivo muda, ou aparece, ou desaparece) não é
+    // um ajuste: é um plano novo de raiz, e o bloco antigo fecha na véspera
+    // do novo — ver src/utils/planAcceptance.js, e o bug que isto corrige.
+    if (originalPlan && planAcceptanceMode(originalPlan, newPlan) === 'new_block') {
+      const fecho = closeOldBlock(originalPlan, newPlan);
+      if (fecho.action === 'reject') {
+        await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', originalPlan.id);
+      } else {
+        // Os treinos do bloco antigo a partir do dia em que o novo começa
+        // cancelam-se — ficariam pendentes fora do período, e o bloco novo
+        // tem os seus. O que já passou fica tal como estava.
+        await supabase
+          .from('coach_plan_items')
+          .update({ status: 'cancelado' })
+          .eq('plan_id', originalPlan.id)
+          .eq('status', 'pendente')
+          .gte('planned_date', fecho.cancelFrom);
+        await supabase.from('coach_plans').update({ period_end: fecho.period_end }).eq('id', originalPlan.id);
+      }
+      const { error: acceptErr } = await supabase
+        .from('coach_plans')
+        .update({ status: 'aceite', accepted_at: new Date().toISOString() })
+        .eq('id', planId);
+      if (acceptErr) {
+        console.error('Error accepting new-objective plan:', acceptErr);
+        return false;
+      }
+      await get().reloadCoachPlans();
+      get().loadDailySummary({ force: true }).catch(() => {});
+      return true;
+    }
+
+    if (targetPlanId) {
+      // ── CASO A: Adaptação In-Place do Plano Ativo ──────────────────────────
+      // Só para o MESMO objetivo (ou nenhum dos dois com prova): o vínculo do
+      // original mantém-se, e o fim do bloco também.
       if (originalPlan) {
         const finalStart = newPlan.period_start < originalPlan.period_start ? newPlan.period_start : originalPlan.period_start;
         const finalEnd = newPlan.period_end > originalPlan.period_end ? newPlan.period_end : originalPlan.period_end;
