@@ -7,7 +7,7 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **7,0 / 10** (3,7 antes da Fase 1, 6,0 depois dela) | 6,0 / 10 | 8,6 / 10 |
+| **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
 | **Omnipresença** | **6,6 / 10** (2,8 de manhã; 6,1 depois da P.3) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
@@ -125,6 +125,19 @@ Com a Fase 2, O3 passa de 2 para 7 e O7 de 3 para 7. Contando também a ação 1
 |---|---|---|---|
 | **3.1** Guardar cada recomendação concreta com um identificador: refeição sugerida, treino ajustado, descanso | O4 | M | `save_meal_suggestions`, itens do plano, memória |
 | **3.2** Comparar automaticamente recomendação e registo seguinte, e entregar o resultado no contexto | O4 | M | Helper em `_shared`, lido pelo chat e pelo cartão |
+
+#### Estado: Fase 3 implementada a 2026-09-19
+
+| Ação | Como ficou |
+|---|---|
+| 3.1 | Não precisou de nada novo. As prescrições concretas já tinham identificador: cada treino do plano e a sugestão de refeições de cada dia são linhas de `coach_plan_items`, com `meal_macros`. O que faltava era cruzá-las. |
+| 3.2 | `_shared/formulas/prescriptionAdherence.ts` cruza cada prescrição dos últimos 14 dias com o registo real, só de planos aceites e sem os itens cancelados. <br>• **Corrida:** a distância prescrita, ou a duração se não houver distância, contra o registado. Dentro de ±15% é "cumprido"; fora disso é "a menos" ou "a mais"; sem registo é "não feito". <br>• **Ginásio:** a duração, da mesma forma. <br>• **Descanso:** se foi respeitado. <br>• **Refeições:** as kcal e a proteína sugeridas contra o que foi comido. <br>O treino marcado como feito usa a corrida ou a sessão ligada. Sem ligação, conta o que foi registado nesse dia, porque a maior parte dos atletas não marca. |
+
+A Carol lê o bloco "O que prescreveste vs o que aconteceu" no chat. Tem um resumo, por exemplo "8 treinos prescritos: 5 cumpridos, 2 a menos, 1 não feito; descanso respeitado em 3 de 4 dias", e a média de proteína. A instrução é usar os números para calibrar, e não para cobrar: um dia isolado não é um padrão, e um treino "não feito" pode ter sido registado noutro dia.
+
+**Diferença face ao plano:** o cartão diário ainda não lê este bloco, só o chat. As recomendações soltas que ela dá na conversa, fora do plano, também não entram, porque não ficam gravadas de forma estruturada.
+
+Com a Fase 3, O4 passa de 6 para 9. A omnisciência sobe para **7,5**.
 
 ### Fase 4 — os dados que o atleta não escreve (O6, O8) · 7,8 para 8,6
 

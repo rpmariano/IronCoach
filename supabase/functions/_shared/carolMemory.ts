@@ -22,6 +22,7 @@
 
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
+import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, ADHERENCE_WINDOW_DAYS } from "./formulas/prescriptionAdherence.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
@@ -483,6 +484,47 @@ async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string):
   }
 }
 
+// ── Fase 3 — O que ela prescreveu e o que aconteceu ──────────────────────
+
+/**
+ * Os treinos e as refeições sugeridas dos últimos 14 dias, cruzados com o
+ * registo real (_shared/formulas/prescriptionAdherence.ts). Só planos aceites:
+ * uma proposta recusada não é uma prescrição.
+ */
+export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
+  try {
+    const from = addDaysISO(todayISO, -ADHERENCE_WINDOW_DAYS);
+    const [itemsR, runsR, gymR, mealsR] = await Promise.all([
+      sb.from("coach_plan_items")
+        .select("id, planned_date, kind, training_type, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
+        .eq("user_id", userId).eq("coach_plans.status", "aceite")
+        .gte("planned_date", from).lt("planned_date", todayISO),
+      sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+        .eq("user_id", userId).gte("date", from).lte("date", todayISO),
+      sb.from("workout_sessions").select("id, date, duration_seconds, exertion")
+        .eq("user_id", userId).eq("status", "concluido").gte("date", from).lte("date", todayISO),
+      sb.from("meals").select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .eq("user_id", userId).gte("date", from).lt("date", todayISO),
+    ]);
+    warn("coach_plan_items(adesão)", itemsR.error);
+    warn("runs(adesão)", runsR.error);
+    warn("workout_sessions(adesão)", gymR.error);
+    warn("meals(adesão)", mealsR.error);
+    // Sem os itens não há nada a cruzar; sem os registos, os "não feitos"
+    // seriam falsos — nesse caso não se diz nada.
+    if (itemsR.error || runsR.error || gymR.error) return null;
+    return buildPrescriptionAdherenceContext(evaluatePrescriptions({
+      items: itemsR.data || [],
+      runs: runsR.data || [],
+      gym: gymR.data || [],
+      mealsByDate: mealsR.error ? {} : mealTotalsByDate(mealsR.data || []),
+    }, todayISO));
+  } catch (e) {
+    console.warn("carolMemory: fetchAdherenceBlock falhou:", e);
+    return null;
+  }
+}
+
 /** Memória durável + conversa recente, para as análises e o cartão diário. */
 export async function fetchSharedMemoryBlock(sb: any, userId: string): Promise<string | null> {
   try {
@@ -514,6 +556,7 @@ export interface ChatMemoryBlocks {
   portrait: string | null;
   checkin: string | null;
   impressions: string | null;
+  adherence: string | null;
 }
 
 /**
@@ -528,6 +571,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O check-in e as impressões usam o dia de Lisboa, como o cliente as grava.
     const checkinPromise = fetchCheckinBlock(sb, userId, lisbonTodayISO(), profile);
     const impressionsPromise = fetchImpressionsBlock(sb, userId, lisbonTodayISO());
+    const adherencePromise = fetchAdherenceBlock(sb, userId, todayISO);
     const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, yearRunsR, yearGymR, yearBodyR, yearRacesR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
@@ -605,9 +649,10 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       }, todayISO),
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
+      adherence: await adherencePromise,
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null };
+    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, adherence: null };
   }
 }

@@ -5550,6 +5550,8 @@ async function handler(req: Request): Promise<Response> {
       memoryBlocks.palmares,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
+      // O que ela prescreveu e o que aconteceu (Fase 3).
+      memoryBlocks.adherence,
       memoryBlocks.dailyCard,
       memoryBlocks.impressions,
     ].filter(Boolean);
