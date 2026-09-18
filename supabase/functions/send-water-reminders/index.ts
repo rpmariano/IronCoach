@@ -14,6 +14,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
+import { waterReminderMessage } from "./message.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -112,6 +113,8 @@ async function handler(req: Request): Promise<Response> {
     // Quem já bateu a meta de hoje não precisa de mais lembretes — verifica-se
     // à parte (não dá para filtrar isto numa única query, é por utilizador).
     const due: typeof dueByTime = [];
+    // O total de hoje fica guardado: é o número que a Carol diz no lembrete.
+    const totalById = new Map<string, number>();
     for (const profile of dueByTime) {
       const { data: todayLogs } = await sb
         .from("water_logs")
@@ -120,7 +123,10 @@ async function handler(req: Request): Promise<Response> {
         .eq("date", todayISO);
       const todayTotal = (todayLogs || []).reduce((sum, l) => sum + (l.amount_ml || 0), 0);
       const goal = Number(profile.water_goal_ml) || 2000;
-      if (todayTotal < goal) due.push(profile);
+      if (todayTotal < goal) {
+        due.push(profile);
+        totalById.set(profile.id, todayTotal);
+      }
     }
 
     let sent = 0;
@@ -135,10 +141,15 @@ async function handler(req: Request): Promise<Response> {
       if (subsErr || !subs || subs.length === 0) continue;
 
       let anySuccess = false;
-      const payload = JSON.stringify({
-        title: "Hora de beber água 💧",
-        body: "Já passou algum tempo desde o teu último registo de água.",
-      });
+      // Na voz da Carol, com os números dele (message.ts) — já não o
+      // "Hora de beber água" com emoji, que o carolTone proíbe.
+      const payload = JSON.stringify(waterReminderMessage({
+        totalMl: totalById.get(profile.id) ?? 0,
+        goalMl: Number(profile.water_goal_ml) || 2000,
+        hour: currentHour,
+        startHour: profile.water_reminder_start_hour,
+        endHour: profile.water_reminder_end_hour,
+      }));
 
       for (const sub of subs) {
         try {

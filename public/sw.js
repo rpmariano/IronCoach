@@ -13,7 +13,9 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'IronHealth', body: 'Hora de beber água 💧' };
+  // Só se o payload não vier em JSON — o texto a sério vem do servidor, na
+  // voz da Carol (send-water-reminders/message.ts). Sem emoji, como ela.
+  let data = { title: 'Carol', body: 'Bebe um copo de água agora.' };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch (e) { /* payload não era JSON — usa os valores por omissão */ }

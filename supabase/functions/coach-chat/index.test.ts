@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3681,4 +3681,61 @@ Deno.test("A1: mudar o objetivo para uma intermédia PRINCIPAL continua a ser po
   const r = await runProposeTrainingPlan(sb, "user-1", ATE_A_SECUNDARIA);
   assertEquals(r.startsWith("Erro"), false, r);
   assertEquals(calls.planInserts[0].race_id, "r-sec");
+});
+
+/* A chave da mensagem proativa no servidor (coach_proactive_log, ação P.1):
+   um Supabase mínimo que guarda o que se pede e devolve o que se programar. */
+function makeProactiveLogSb(opts: { existing?: string[]; readError?: unknown; writeError?: unknown; throws?: boolean } = {}) {
+  const upserts: Array<{ row: Record<string, unknown>; options: Record<string, unknown> }> = [];
+  const filters: Array<[string, unknown]> = [];
+  const sb = {
+    from(table: string) {
+      if (opts.throws) throw new Error("rede em baixo");
+      assertEquals(table, "coach_proactive_log");
+      const chain = {
+        select: () => chain,
+        eq: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+        maybeSingle: () => {
+          const key = filters.find(([c]) => c === "key")?.[1] as string;
+          return Promise.resolve(opts.readError
+            ? { data: null, error: opts.readError }
+            : { data: (opts.existing || []).includes(key) ? { key } : null, error: null });
+        },
+        upsert: (row: Record<string, unknown>, options: Record<string, unknown>) => {
+          upserts.push({ row, options });
+          return Promise.resolve({ error: opts.writeError ?? null });
+        },
+      };
+      return chain;
+    },
+  };
+  return { sb, upserts, filters };
+}
+
+Deno.test("parseProactiveKey: só texto, sem espaços à volta, cortado a 200", () => {
+  assertEquals(parseProactiveKey("  race_eve:r1 "), "race_eve:r1");
+  assertEquals(parseProactiveKey(""), null);
+  assertEquals(parseProactiveKey("   "), null);
+  assertEquals(parseProactiveKey(42), null);
+  assertEquals(parseProactiveKey("x".repeat(300))?.length, 200);
+});
+
+Deno.test("wasProactiveDelivered: encontra a chave deste atleta; erro ou exceção falham abertos", async () => {
+  const hit = makeProactiveLogSb({ existing: ["race_eve:r1"] });
+  assertEquals(await wasProactiveDelivered(hit.sb, "u1", "race_eve:r1"), true);
+  assertEquals(hit.filters, [["user_id", "u1"], ["key", "race_eve:r1"]]);
+  assertEquals(await wasProactiveDelivered(makeProactiveLogSb().sb, "u1", "race_eve:r1"), false);
+  assertEquals(await wasProactiveDelivered(makeProactiveLogSb({ readError: { message: "sem tabela" } }).sb, "u1", "k"), false);
+  assertEquals(await wasProactiveDelivered(makeProactiveLogSb({ throws: true }).sb, "u1", "k"), false);
+});
+
+Deno.test("recordProactiveDelivered: grava a chave sem duplicar, e um erro não rebenta", async () => {
+  const { sb, upserts } = makeProactiveLogSb();
+  await recordProactiveDelivered(sb, "u1", "silence", "silence:2026-09-14");
+  assertEquals(upserts, [{
+    row: { user_id: "u1", trigger: "silence", key: "silence:2026-09-14" },
+    options: { onConflict: "user_id,key", ignoreDuplicates: true },
+  }]);
+  await recordProactiveDelivered(makeProactiveLogSb({ writeError: { message: "boom" } }).sb, "u1", "silence", "k");
+  await recordProactiveDelivered(makeProactiveLogSb({ throws: true }).sb, "u1", "silence", "k");
 });

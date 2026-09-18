@@ -7,8 +7,10 @@
    Este ficheiro só DECIDE qual (se alguma) se aplica agora e devolve a
    chave que a torna única — o texto é escrito pelo modelo no coach-chat
    (proactive_trigger), a partir do contexto real do atleta. A chave evita
-   que a mesma mensagem dispare duas vezes: guarda-se em localStorage por
-   utilizador (ver markProactiveSent) e o servidor ainda recusa se ela tiver
+   que a mesma mensagem dispare duas vezes: vai no pedido (proactive_key)
+   e o servidor regista-a em coach_proactive_log, recusando-a depois em
+   qualquer dispositivo. O localStorage (markProactiveSent) fica como
+   atalho para não fazer o pedido; o servidor ainda recusa se ela tiver
    falado há menos de 6 horas. */
 
 import { findRaceRun, formatDuration } from './run';

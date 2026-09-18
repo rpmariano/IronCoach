@@ -606,6 +606,54 @@ export function shouldSkipProactive(
   return ageH >= 0 && ageH < PROACTIVE_QUIET_HOURS;
 }
 
+/* A chave de cada mensagem proativa entregue fica no servidor
+   (coach_proactive_log, ação P.1 de specs/carol-omnisciencia-omnipresenca.md).
+   Até aqui vivia só no localStorage do cliente: noutro telemóvel a Carol
+   repetia a véspera da prova ou o "Estás bem?". O lock por utilizador do
+   coach-chat garante que dois dispositivos não passam os dois por aqui ao
+   mesmo tempo, por isso verificar antes e gravar depois chega.
+   As duas falham abertas: sem a tabela, ou com um erro de rede, a Carol
+   continua a falar como antes e o problema fica nos logs. */
+export const MAX_PROACTIVE_KEY_LEN = 200;
+
+export function parseProactiveKey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().slice(0, MAX_PROACTIVE_KEY_LEN);
+  return key || null;
+}
+
+// deno-lint-ignore no-explicit-any
+export async function wasProactiveDelivered(sb: any, userId: string, key: string): Promise<boolean> {
+  try {
+    const { data, error } = await sb
+      .from("coach_proactive_log")
+      .select("key")
+      .eq("user_id", userId)
+      .eq("key", key)
+      .maybeSingle();
+    if (error) {
+      console.warn("coach_proactive_log: leitura falhou:", error.message ?? error);
+      return false;
+    }
+    return !!data;
+  } catch (e) {
+    console.warn("coach_proactive_log: leitura falhou:", e);
+    return false;
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+export async function recordProactiveDelivered(sb: any, userId: string, trigger: ProactiveTrigger, key: string): Promise<void> {
+  try {
+    const { error } = await sb
+      .from("coach_proactive_log")
+      .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true });
+    if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
+  } catch (e) {
+    console.warn("coach_proactive_log: gravação falhou:", e);
+  }
+}
+
 const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   silence:
     `Está sem qualquer registo há 3 dias ou mais. Pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
@@ -4850,6 +4898,24 @@ async function handler(req: Request): Promise<Response> {
     // (pedido 2026-09-13) — aí a regra "ela falou há pouco, cala-te" não se
     // aplica: o atleta está a olhar para o sítio onde o balanço vai aparecer.
     const proactiveForce = proactiveTrigger === "race_after" && body.proactive_force === true;
+    // A chave que torna esta mensagem única (src/utils/coachProactive.js).
+    // Já entregue noutro dispositivo → não se repete. O pedido forçado do
+    // hub ("Falar com a Carol" no balanço) é o atleta a pedir: passa sempre.
+    const proactiveKey = proactiveTrigger ? parseProactiveKey(body.proactive_key) : null;
+    if (proactiveTrigger && proactiveKey && !proactiveForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+      return jsonResponse({
+        skipped: true,
+        reason: "already_sent",
+        proactive: proactiveTrigger,
+        user_message: null,
+        model_message: null,
+        suggestions: [],
+        usage: null,
+        plan_proposed: false,
+        goals_updated: false,
+        goal_proposed: false,
+      });
+    }
 
     // A legenda do mural (specs/gamificacao-provas.md §6): um pedido curto,
     // sem histórico, sem ferramentas e sem gravar mensagem nenhuma — a Carol
@@ -5369,6 +5435,7 @@ async function handler(req: Request): Promise<Response> {
     if (proactiveTrigger && !proactiveForce && shouldSkipProactive(recentHistory || [], Date.now())) {
       return jsonResponse({
         skipped: true,
+        reason: "quiet_hours",
         proactive: proactiveTrigger,
         user_message: null,
         model_message: null,
@@ -5850,6 +5917,10 @@ async function handler(req: Request): Promise<Response> {
         if (balanceErr) console.warn("Balanço não guardado na prova:", balanceErr.message);
       }
     }
+
+    // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
+    // registada, para nenhum outro dispositivo a repetir.
+    if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);

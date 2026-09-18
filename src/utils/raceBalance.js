@@ -75,6 +75,7 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
       message: '',
       proactive_trigger: 'race_after',
       proactive_details: candidate.details,
+      proactive_key: candidate.key,
       race_outcome: candidate.raceOutcome,
       proactive_force: true,
       userData: profile || {},

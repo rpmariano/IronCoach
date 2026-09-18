@@ -7,8 +7,8 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **3,7 / 10** | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **2,8 / 10** | — | 9,0 / 10 |
+| **Omnisciência** | **6,0 / 10** (era 3,7 antes da Fase 1) | 6,0 / 10 | 8,6 / 10 |
+| **Omnipresença** | **3,7 / 10** (era 2,8 antes de P.1 e P.2) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -153,6 +153,15 @@ Depende da Fase 1 da omnisciência. Um gatilho no servidor precisa do mesmo cont
 | **P.6** Preferências do atleta: horas de silêncio, máximo de mensagens por dia, tipos que aceita | P6 | M | Perfil e ecrã de definições |
 | **P.7** Identificar a sugestão de nível como fórmula, ou passá-la pela Carol | P5 | P | `RaceLevelSuggestion` |
 | **P.8** Alertas no relógio durante o treino | P7 | G | Só depois da ação 4.1 |
+
+#### Estado: P.1 e P.2 implementadas a 2026-09-18
+
+| Ação | Como ficou |
+|---|---|
+| P.1 | Nova tabela `coach_proactive_log`, com uma linha por atleta e por chave. O cliente envia a chave no pedido. O `coach-chat` recusa a chave que já tenha sido entregue, com o motivo `already_sent`, e grava-a depois de guardar a mensagem. O pedido forçado do balanço, feito pelo atleta, passa sempre. O `localStorage` fica como atalho, e o cliente também marca a chave quando o servidor responde `already_sent`. O lock por utilizador do `coach-chat` impede dois dispositivos de passarem ao mesmo tempo. **Falta:** os avisos do Início continuam a ler só o `localStorage`. Noutro dispositivo, o aviso pode aparecer até o chat ser aberto uma vez. |
+| P.2 | O push da água passa a ter o título "Carol" e uma frase com os números do atleta: quanto bebeu, quanto falta e se está atrás do ritmo do dia. A frase é determinística, sem modelo, e está em `send-water-reminders/message.ts`. Um teste garante que nenhuma combinação produz emoji ou ponto de exclamação. |
+
+Com estas duas ações, P4 passa de 3 para 8, P5 de 5 para 7 e P2 de 2 para 3. A omnipresença sobe de **2,8 para 3,7**. O salto grande continua a ser a P.3: os gatilhos avaliados no servidor.
 
 ---
 
