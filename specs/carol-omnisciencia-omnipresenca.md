@@ -8,7 +8,7 @@
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
 | **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **7,0 / 10** (2,8 no início; 6,1 depois da P.3; 6,6 depois da P.6) | — | 9,0 / 10 |
+| **Omnipresença** | **7,6 / 10** (2,8 no início; 6,1 depois da P.3; 7,0 depois da P.4) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -256,6 +256,28 @@ Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depend
 **Limite:** a notificação e a primeira mensagem do chat são escritas em momentos diferentes. Dizem o mesmo assunto, mas não com as mesmas palavras.
 
 Com a P.4, P2 passa de 6 para 8. A omnipresença sobe para **7,0**.
+
+#### Estado: P.5 implementada a 2026-09-19
+
+A migration `20260918234452_proactive_p5_triggers` está aplicada em produção. Alarga as listas de momentos aceites aos sete, e os perfis que tinham a lista por omissão passaram a ter os sete.
+
+| Momento | Quando | O toque abre |
+|---|---|---|
+| **Assunto por resolver** (`intervention`) | Há uma intervenção aberta: dor ou sono mau no check-in, ou um desvio que uma análise marcou. Cobre o "pós-treino com intervenção" e o "risco do check-in". A chave muda quando o motivo muda. | O Início, onde está o aviso com "Falar com a Carol" |
+| **Provas em conflito** (`race_conflict`) | Duas provas principais no mesmo bloco, com a mesma régua do cliente. | O Início, onde está o aviso do conflito |
+| **Fim de bloco** (`block_end`) | Um plano de treino sem prova acaba hoje ou nos próximos 2 dias, e não há outro a seguir. Planos só de refeições não contam. | O Coach, onde ela faz o ponto do bloco e pergunta se preparam o próximo, sem propor o plano antes de o atleta dizer que sim |
+
+**Prioridade no servidor:** assunto por resolver, manhã da prova, véspera, conflito, balanço, fim de bloco e silêncio.
+
+**Privacidade:** o texto do assunto por resolver é sempre genérico e nunca passa pelo gerador: "Preciso de falar contigo sobre uma coisa que vi". O motivo pode ser de saúde e não vai para o ecrã bloqueado.
+
+**Paridade:** o fim de bloco também existe no cliente, em `pickProactiveTrigger`, e no `coach-chat`, com uma instrução própria. O teste de paridade confirma que a chave é a mesma dos dois lados. Os outros dois momentos novos são só do servidor, porque no cliente já têm o seu aviso no Início.
+
+**Perfil:** as preferências passam a ter os sete momentos.
+
+**Ficou de fora:** alertas durante o treino, que dependem do relógio (P.8).
+
+Com a P.5, P3 passa de 6 para 9. A omnipresença sobe para **7,6**.
 
 ---
 

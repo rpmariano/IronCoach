@@ -590,8 +590,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -677,6 +677,12 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   race_after:
     `A prova já passou e ainda não há corrida registada para ela. Pergunta-lhe como correu e pede-lhe que registe a prova ` +
     `(tempo oficial, como se sentiu) — sem balanço inventado e sem parabéns automáticos: ainda não sabes o que aconteceu.`,
+  // P.5 de specs/carol-omnisciencia-omnipresenca.md: o bloco de treino (sem
+  // prova) acaba e não há outro a seguir.
+  block_end:
+    `O bloco de treino dele acaba hoje ou nos próximos dias e não há outro a seguir. Faz o ponto em duas ou três frases, com os ` +
+    `números do bloco O QUE PRESCREVESTE vs O QUE ACONTECEU: o que correu bem e o que ficou por fazer, sem sermão. Depois pergunta ` +
+    `se preparamos o próximo bloco e com que objetivo (manter, subir volume, uma prova). NÃO proponhas já o plano — espera que ele diga que sim.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────

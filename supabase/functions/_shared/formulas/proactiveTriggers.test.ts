@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, proactivePushMessage } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer } from "./proactiveTriggers.ts";
 
 const TODAY = "2026-09-18";
 const race = (over: Record<string, unknown> = {}) => ({ id: "r1", name: "Meia de Lisboa", date: TODAY, status: "agendada", ...over });
@@ -86,3 +86,59 @@ Deno.test("janela do atleta (P.6): respeita a dele, a manhã da prova pode adian
   assert(isWithinProactiveWindow("silence", 23, { startHour: 22, endHour: 2 }));
   assert(!isWithinProactiveWindow("silence", 12, { startHour: 22, endHour: 2 }));
 });
+
+Deno.test("P.5: um assunto por resolver passa à frente de tudo, com chave pelo motivo", () => {
+  const c = pickServerProactive({ raceEvents: [race()], runs: [], lastRecordDate: TODAY, intervention: { status: "needed", reason: "Check-in: dor 6/10" } }, TODAY)!;
+  assertEquals(c.trigger, "intervention");
+  assertEquals(c.key, `intervention:${shortHash("Check-in: dor 6/10")}`);
+  assert(shortHash("a") !== shortHash("b"));
+  // Resolvida ou em curso não chama.
+  assertEquals(pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: TODAY, intervention: { status: "in_progress", reason: "x" } }, TODAY), null);
+  // O texto não diz o motivo (pode ser de saúde) e o toque abre o Início.
+  assert(!proactivePushMessage(c).body.includes("dor"));
+  assertEquals(proactiveTab("intervention"), "home");
+});
+
+Deno.test("P.5: conflito de provas — a mesma régua do cliente, depois da véspera", () => {
+  const plans = [{ id: "p1", status: "aceite", race_id: "alvo", period_start: "2026-09-01", period_end: "2026-10-20" }];
+  const races = [
+    { id: "alvo", name: "Maratona", date: "2026-10-20", status: "agendada", race_priority: "a" },
+    { id: "meio", name: "Meia", date: "2026-10-04", status: "agendada", race_priority: "a" },
+  ];
+  const c = pickServerProactive({ raceEvents: races, runs: [], lastRecordDate: TODAY, plans }, TODAY)!;
+  assertEquals(c.trigger, "race_conflict");
+  assertEquals(c.key, "race_conflict:p1:meio");
+  assertEquals(c.conflictRaceNames, ["Meia"]);
+  assertEquals(proactiveTab("race_conflict"), "home");
+  // Secundária, reconhecida ou fora do bloco: nada.
+  assertEquals(detectRaceConflictServer(plans, [races[0], { ...races[1], race_priority: "b" }], TODAY), null);
+  assertEquals(detectRaceConflictServer(plans, [races[0], { ...races[1], conflict_acknowledged_at: "2026-09-10" }], TODAY), null);
+  assertEquals(detectRaceConflictServer(plans, [races[0], { ...races[1], date: "2026-10-21" }], TODAY), null);
+});
+
+Deno.test("P.5: fim de bloco — plano de treino sem prova a acabar, sem outro a seguir", () => {
+  const block = { id: "b1", status: "aceite", race_id: null, period_start: "2026-09-06", period_end: "2026-09-20", hasTraining: true };
+  const c = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: TODAY, plans: [block] }, TODAY)!;
+  assertEquals(c.trigger, "block_end");
+  assertEquals(c.key, "block_end:b1");
+  assertEquals(c.blockEnd, "2026-09-20");
+  assertEquals(proactiveTab("block_end"), "coach");
+  // Mais de 2 dias para o fim: ainda não.
+  assertEquals(findEndingBlock([{ ...block, period_end: "2026-09-21" }], TODAY), null);
+  // Já há outro bloco (aceite ou proposto) a seguir: não.
+  assertEquals(findEndingBlock([block, { id: "b2", status: "proposto", period_end: "2026-10-04", hasTraining: true }], TODAY), null);
+  // Plano só de refeições, ou vinculado a prova: não.
+  assertEquals(findEndingBlock([{ ...block, hasTraining: false }], TODAY), null);
+  assertEquals(findEndingBlock([{ ...block, race_id: "r1" }], TODAY), null);
+  // O silêncio fica para depois do fim de bloco.
+  assertEquals(pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-10", plans: [block] }, TODAY)?.trigger, "block_end");
+});
+
+Deno.test("P.5: os textos novos, sem emoji nem exclamação", () => {
+  for (const trigger of ["intervention", "race_conflict", "block_end"] as const) {
+    const body = proactivePushMessage({ trigger, key: "k", raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null }).body;
+    assert(!/\p{Extended_Pictographic}/u.test(body), body);
+    assert(!body.includes("!"), body);
+  }
+});
+

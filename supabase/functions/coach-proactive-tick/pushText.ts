@@ -41,6 +41,9 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
   race_eve: "É a véspera da prova. A notificação chama-o para o plano de hoje à noite (jantar, sono) e de amanhã de manhã.",
   race_after: "A prova já foi. A notificação chama-o para o balanço contigo.",
   silence: "Ele não regista nada há vários dias. A notificação pergunta se está bem, sem sermão.",
+  intervention: "Há um assunto por resolver.",
+  race_conflict: "Ele tem duas provas principais no mesmo bloco de treino. A notificação chama-o para decidirem juntos qual é o objetivo.",
+  block_end: "O bloco de treino dele está a acabar e não há outro a seguir. A notificação chama-o para fazerem o ponto e prepararem o próximo.",
 };
 
 /** Os dados do momento, em linhas — só o que existe; nada é inventado. */
@@ -48,7 +51,13 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
   const lines: string[] = [];
   if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
   if (c.trigger === "silence") lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);
-  if (c.trigger !== "silence") {
+  if (c.trigger === "block_end" && c.blockEnd) lines.push(`Último dia do bloco: ${c.blockEnd}`);
+  if (c.trigger === "race_conflict") {
+    if (c.raceName) lines.push(`Prova-objetivo do bloco: ${c.raceName}`);
+    if (c.conflictRaceNames?.length) lines.push(`Outra(s) principal(is) no mesmo bloco: ${c.conflictRaceNames.join(", ")}`);
+    return lines;
+  }
+  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention") {
     const name = (f.raceName || c.raceName || "").trim();
     if (name) lines.push(`Prova: ${name}`);
     const km = Number(f.distanceKm);
@@ -119,7 +128,10 @@ export async function composePushMessage(
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ title: string; body: string; generated: boolean }> {
   const fallback = proactivePushMessage(c);
-  if (!geminiKey) return { ...fallback, generated: false };
+  /* O assunto por resolver nunca passa pelo gerador: o motivo pode ser de
+     saúde (uma dor, um sinal de sobretreino) e não vai para o ecrã
+     bloqueado. Sai sempre a frase genérica. */
+  if (!geminiKey || c.trigger === "intervention") return { ...fallback, generated: false };
   try {
     const res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,

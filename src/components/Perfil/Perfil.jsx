@@ -92,9 +92,12 @@ const formatHour = (h) => `${String(h).padStart(2, '0')}:00`;
 const DEFAULT_CAROL_PUSH_START_HOUR = 9;
 const DEFAULT_CAROL_PUSH_END_HOUR = 21;
 const CAROL_PUSH_TYPES = [
+  { key: 'intervention', label: 'Assuntos por resolver' },
   { key: 'race_morning', label: 'Manhã da prova' },
   { key: 'race_eve', label: 'Véspera da prova' },
+  { key: 'race_conflict', label: 'Provas em conflito' },
   { key: 'race_after', label: 'Balanço da prova' },
+  { key: 'block_end', label: 'Fim de bloco' },
   { key: 'silence', label: 'Dias sem registos' },
 ];
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);

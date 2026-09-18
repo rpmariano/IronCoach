@@ -10,13 +10,16 @@
 // duas funções com os mesmos dados.
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
-// silêncio.
+// fim de bloco > silêncio. O servidor tem mais dois momentos que o cliente
+// trata pelo Início, não pelo chat (P.5): um assunto por resolver
+// (intervenção — dor no check-in, desvio num registo) passa à frente de
+// tudo, e o conflito de provas vem logo a seguir à véspera.
 
 export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
-export type ProactiveTriggerName = "race_morning" | "race_eve" | "race_after" | "silence";
+export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence";
 
 export interface TriggerRace {
   id: string;
@@ -24,7 +27,22 @@ export interface TriggerRace {
   date: string;
   status?: string | null;
   distance_km?: number | string | null;
+  race_priority?: string | null;
+  conflict_acknowledged_at?: string | null;
 }
+
+/** Um plano, com a informação de ter treinos (e não só refeições). */
+export interface TriggerPlan {
+  id: string;
+  status?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  race_id?: string | null;
+  hasTraining?: boolean;
+}
+
+/** Quantos dias antes do fim de um bloco a Carol chama por ele. */
+export const BLOCK_END_DAYS = 2;
 
 export interface TriggerRun {
   id?: string | null;
@@ -48,9 +66,63 @@ export interface ServerProactiveCandidate {
   /** No balanço com corrida: quando a corrida foi registada. O balanço
    *  acontece depois disso — se a Carol já falou depois, já o fez. */
   anchorAt: string | null;
+  /** Conflito de provas e fim de bloco: o plano em causa. */
+  planId?: string | null;
+  /** Fim de bloco: o último dia do plano. */
+  blockEnd?: string | null;
+  /** Conflito de provas: as outras principais dentro do bloco. */
+  conflictRaceNames?: string[];
 }
 
 const DAY_MS = 86400000;
+
+/** Um resumo curto e estável de um texto — a chave da intervenção muda
+ *  quando o motivo muda, e só aí (djb2, em base 36). */
+export function shortHash(text: string): string {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function dayOf(v: unknown): string | null {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
+}
+
+/** A mesma regra de src/utils/planDivergence.js detectRaceConflict: uma
+ *  segunda prova principal, ainda por correr e não reconhecida, dentro de um
+ *  bloco aceite vinculado a outra prova (intervalo fechado nos dois lados). */
+export function detectRaceConflictServer(plans: TriggerPlan[] | null | undefined, races: TriggerRace[] | null | undefined, todayISO: string): { plan: TriggerPlan; races: TriggerRace[] } | null {
+  const bound = (plans || []).filter((p) => p && p.status === "aceite" && p.race_id && dayOf(p.period_start) && dayOf(p.period_end) && dayOf(p.period_end)! >= todayISO);
+  for (const plan of bound) {
+    const start = dayOf(plan.period_start)!;
+    const end = dayOf(plan.period_end)!;
+    const others = (races || []).filter((r) => {
+      if (!r || r.id === plan.race_id) return false;
+      if (r.status === "concluida" || r.conflict_acknowledged_at) return false;
+      const d = dayOf(r.date);
+      return !!d && d >= todayISO && d >= start && d <= end && (r.race_priority || "a") === "a";
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    if (others.length) return { plan, races: others };
+  }
+  return null;
+}
+
+/** O bloco de treino (sem prova) que acaba hoje ou nos próximos dias, sem
+ *  outro plano de treino a seguir. Com prova, o fim do bloco é a prova — e
+ *  essa já tem os seus momentos. */
+export function findEndingBlock(plans: TriggerPlan[] | null | undefined, todayISO: string): TriggerPlan | null {
+  const training = (plans || []).filter((p) => p && p.hasTraining && (p.status === "aceite" || p.status === "proposto") && dayOf(p.period_end));
+  const limit = new Date(Date.parse(`${todayISO}T00:00:00Z`) + BLOCK_END_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const ending = training
+    .filter((p) => p.status === "aceite" && !p.race_id && dayOf(p.period_end)! >= todayISO && dayOf(p.period_end)! <= limit)
+    .sort((a, b) => dayOf(a.period_end)!.localeCompare(dayOf(b.period_end)!));
+  for (const plan of ending) {
+    const end = dayOf(plan.period_end)!;
+    const next = training.some((p) => p.id !== plan.id && dayOf(p.period_end)! > end);
+    if (!next) return plan;
+  }
+  return null;
+}
 
 function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((Date.parse(`${toIso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${fromIso.slice(0, 10)}T00:00:00Z`)) / DAY_MS);
@@ -68,18 +140,46 @@ export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: T
 }
 
 export function pickServerProactive(
-  input: { raceEvents: TriggerRace[] | null | undefined; runs: TriggerRun[] | null | undefined; lastRecordDate: string | null },
+  input: {
+    raceEvents: TriggerRace[] | null | undefined;
+    runs: TriggerRun[] | null | undefined;
+    lastRecordDate: string | null;
+    /** P.5: o assunto por resolver do perfil (coach_intervention_*). */
+    intervention?: { status?: string | null; reason?: string | null } | null;
+    /** P.5: os planos, para o conflito de provas e o fim de bloco. */
+    plans?: TriggerPlan[] | null;
+  },
   todayISO: string,
 ): ServerProactiveCandidate | null {
   const races = (input.raceEvents || []).filter((r) => r && typeof r.date === "string");
   const scheduled = races.filter((r) => r.status !== "concluida");
   const base = { raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 
+  // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
+  // que ela já decidiu que precisa de conversa.
+  if (input.intervention?.status === "needed") {
+    return { ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` };
+  }
+
   const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
   if (morning) return { ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null };
 
   const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
   if (eve) return { ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null };
+
+  const conflict = detectRaceConflictServer(input.plans, races, todayISO);
+  if (conflict) {
+    const target = races.find((r) => r.id === conflict.plan.race_id) ?? null;
+    return {
+      ...base,
+      trigger: "race_conflict",
+      key: `race_conflict:${conflict.plan.id}:${conflict.races.map((r) => r.id).sort().join(",")}`,
+      raceId: target?.id ?? null,
+      raceName: target?.name ?? null,
+      planId: conflict.plan.id,
+      conflictRaceNames: conflict.races.map((r) => r.name || "outra prova"),
+    };
+  }
 
   const past = races
     .map((race) => ({ race, gap: daysBetween(race.date.slice(0, 10), todayISO) }))
@@ -93,6 +193,11 @@ export function pickServerProactive(
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
       return { ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, anchorDate: race.date.slice(0, 10) };
     }
+  }
+
+  const block = findEndingBlock(input.plans, todayISO);
+  if (block) {
+    return { ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) };
   }
 
   const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
@@ -123,13 +228,28 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
       };
     case "silence":
       return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+    // Genérica de propósito: o motivo pode ser de saúde (uma dor), e o
+    // ecrã bloqueado não é sítio para o dizer.
+    case "intervention":
+      return { title, body: "Preciso de falar contigo sobre uma coisa que vi. Abre a app quando puderes." };
+    case "race_conflict":
+      return { title, body: "Tens duas provas principais no mesmo bloco. Temos de decidir qual é o objetivo." };
+    case "block_end":
+      return { title, body: "O teu bloco de treino está a acabar. Vamos ver como correu e preparar o próximo." };
   }
+}
+
+/** O separador que o toque abre. O assunto por resolver e o conflito de
+ *  provas têm o seu aviso no Início, com "Falar com a Carol" — que abre a
+ *  conversa certa. Os outros abrem o Coach, onde ela escreve a mensagem. */
+export function proactiveTab(trigger: ProactiveTriggerName): "coach" | "home" {
+  return trigger === "intervention" || trigger === "race_conflict" ? "home" : "coach";
 }
 
 export const DEFAULT_PUSH_START_HOUR = 9;
 export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
-export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["race_morning", "race_eve", "race_after", "silence"];
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
  *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão

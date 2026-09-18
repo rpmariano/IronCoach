@@ -351,7 +351,7 @@ export default function Coach() {
   const proactiveAttempted = useRef(false);
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
-    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
+    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems });
     if (!candidate || wasProactiveSent(profile?.id, candidate)) return;
     proactiveAttempted.current = true;
     sendCoachInitiatedPayload({
