@@ -139,6 +139,27 @@ export function detectPlanDivergence({
     push('plano_sem_prova', `${plan.id}:${String(plan.race_lost_at).slice(0, 10)}`, 'O plano ficou sem a prova que preparava.');
   }
 
+  // 0b. A prova-objetivo foi antecipada e o plano encurtou até ela, com
+  //     treinos cancelados pelo caminho. Sem isto o atleta via "a prova não
+  //     está no plano" (o item de prova do dia antigo também é cancelado) —
+  //     o quê, mas não o porquê, nem que perdeu treinos. trimmed_at só é
+  //     marcado quando algum treino foi mesmo cancelado (trigger, migration
+  //     20260918081148), e limpa-se quando a Carol ajusta o plano. Vem antes
+  //     dos motivos por prova porque é a causa deles: é por aqui que a
+  //     conversa começa.
+  for (const plan of plans) {
+    if (!plan.race_id || !plan.trimmed_at) continue;
+    const race = (raceEvents || []).find((r) => r && r.id === plan.race_id);
+    const quando = race ? raceLabel(race) : formatDayMonth(dayOf(plan.period_end));
+    push(
+      'plano_encurtou',
+      `${plan.id}:${String(plan.trimmed_at).slice(0, 10)}`,
+      race
+        ? `A ${quando} foi antecipada e o plano encurtou até ela: os treinos que ficavam depois foram cancelados.`
+        : `A prova foi antecipada para ${quando} e o plano encurtou até lá: os treinos que ficavam depois foram cancelados.`,
+    );
+  }
+
   for (const race of races) {
     if (conflicting.has(race.id)) continue;
     const date = dayOf(race.date);

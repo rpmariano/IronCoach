@@ -147,6 +147,7 @@ ordem de gravidade:
 | `detectRaceConflict` (não é um motivo, é um canal) | prova `a` com data em `[period_start, period_end]`, a partir de hoje, `id ≠ plan.race_id`, `conflict_acknowledged_at` null | **intervenção** — "precisa de falar contigo", sem dispensar, `coachIntent { kind: 'race_conflict', races, target }` |
 | `prova_sem_item` | prova no período (incluindo `b`/`c`) sem item de prova, `conflict_acknowledged_at` null | divergência (dispensável) — já existia, e cobre a prova secundária nova |
 | `plano_sem_prova` | plano com `race_id` null **e** `race_lost_at` preenchido | divergência |
+| `plano_encurtou` | plano vinculado com `trimmed_at` preenchido | divergência — vem primeiro, é a causa do `prova_sem_item` que a acompanha |
 
 `plano_sem_prova` lê-se de `race_lost_at` (§3) e não da ausência da prova:
 a FK é `on delete set null`, por isso depois de apagar a prova o `race_id`
@@ -184,9 +185,13 @@ A invariante `check (period_end >= period_start)` fica na tabela
 Tudo isto foi testado em produção num bloco que abortava no fim — ver o
 cabeçalho da migration `20260918074705_plan_race_lost.sql`.
 
-Ficou por fazer: um aviso próprio para "o plano encurtou" (`plan_trimmed`).
-Hoje o rasto é só a nota nos itens cancelados; o plano continua visível e a
-acabar no dia da prova, o que é o essencial.
+"O plano encurtou": quando o caso normal cancela algum treino, o trigger
+marca `coach_plans.trimmed_at` (só nos planos onde houve de facto um
+cancelado — encurtar um plano sem nada para lá do dia novo não merece aviso,
+e adiar a prova também não). O cliente mostra `plano_encurtou`, antes dos
+motivos por prova, porque é a causa deles; `respondToPlan` limpa a marca
+quando a Carol ajusta o plano (migration `20260918081148`, testada em
+produção da mesma forma).
 
 Alternativa sem trigger — o cliente deteta `period_end ≠ race.date` como
 divergência e a Carol reescreve. Mais simples, mas deixa o plano errado

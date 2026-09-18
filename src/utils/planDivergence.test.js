@@ -276,3 +276,35 @@ describe('detectRaceConflict — duas provas principais no mesmo bloco', () => {
     expect(r.races.map((x) => x.id)).toEqual(['r-dia']);
   });
 });
+
+/* "O plano encurtou" — a prova-objetivo foi antecipada e o trigger cancelou
+   os treinos que ficavam depois (migration 20260918081148). */
+describe('detectPlanDivergence — o plano encurtou', () => {
+  const objetivo = { id: 'r-obj', name: 'Maratona do Porto', date: '2026-09-20', status: 'agendada', race_priority: 'a' };
+  const encurtado = (over = {}) => plan({ race_id: 'r-obj', period_end: '2026-09-20', trimmed_at: '2026-09-13T08:00:00Z', ...over });
+
+  it('avisa, com a prova e o porquê', () => {
+    const r = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado()], raceEvents: [objetivo] });
+    const aviso = r.reasons.find((x) => x.key === 'plano_encurtou');
+    expect(aviso.text).toContain('Maratona do Porto');
+    expect(aviso.text).toContain('foi antecipada');
+    expect(aviso.text).toContain('foram cancelados');
+  });
+
+  it('vem antes do "a prova não está no plano" — é a causa dele', () => {
+    const r = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado()], raceEvents: [objetivo] });
+    expect(keys(r)[0]).toBe('plano_encurtou');
+    expect(keys(r)).toContain('prova_sem_item');
+  });
+
+  it('sem trimmed_at não há aviso — encurtar sem cortar treinos não o merece', () => {
+    const r = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado({ trimmed_at: null })], raceEvents: [objetivo] });
+    expect(keys(r)).not.toContain('plano_encurtou');
+  });
+
+  it('a assinatura muda se voltar a encurtar, para a Carol ser chamada outra vez', () => {
+    const a = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado()], raceEvents: [objetivo] });
+    const b = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado({ trimmed_at: '2026-09-15T08:00:00Z' })], raceEvents: [objetivo] });
+    expect(a.signature).not.toBe(b.signature);
+  });
+});

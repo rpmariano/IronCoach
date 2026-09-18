@@ -461,11 +461,14 @@ export const useAppStore = create((set, get) => ({
         const finalEnd = newPlan.period_end > originalPlan.period_end ? newPlan.period_end : originalPlan.period_end;
         const finalSummary = newPlan.summary || originalPlan.summary;
 
-        // 1. Atualizar limites e resumo do plano original
+        // 1. Atualizar limites e resumo do plano original. trimmed_at limpa-se:
+        //    se o plano tinha encurtado por a prova ter sido antecipada, este
+        //    ajuste é a resposta a isso, e o aviso deixa de ter razão de ser.
         await supabase.from('coach_plans').update({
           period_start: finalStart,
           period_end: finalEnd,
           summary: finalSummary,
+          trimmed_at: null,
         }).eq('id', targetPlanId);
 
         // 2. Apagar os treinos do plano original nas datas que estão a ser substituídas
