@@ -477,6 +477,16 @@ export default function App() {
       setActiveTab(tabParam);
     }
 
+    /* Uma notificação da Carol tocada com a app já aberta (ação P.3): o
+       service worker pede o separador, e só se aceita o do Coach. Com a app
+       fechada, a notificação abre-a com ?tab=coach, que o bloco acima trata. */
+    const onWorkerMessage = (event) => {
+      if (event?.data?.type === 'open-tab' && event.data.tab === 'coach') setActiveTab('coach');
+    };
+    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.addEventListener) {
+      navigator.serviceWorker.addEventListener('message', onWorkerMessage);
+    }
+
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
       if (existingSession?.user) {
         setSession(existingSession);
@@ -549,7 +559,10 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (typeof navigator !== 'undefined') navigator.serviceWorker?.removeEventListener?.('message', onWorkerMessage);
+    };
   }, [setSession, setProfile, loadInitialData, setActiveTab]);
 
   if (activeTab === 'design-system') {
