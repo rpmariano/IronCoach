@@ -602,6 +602,8 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     expect(body.proactive_trigger).toBe('silence');
     expect(body.message).toBe('');
     expect(body.proactive_details).toMatch(/há 5 dias/);
+    // A chave vai para o servidor, que a regista para todos os dispositivos.
+    expect(body.proactive_key).toBe(`silence:${fiveDaysAgo}`);
 
     // Segunda abertura: já foi dito, não volta a perguntar.
     unmount();
@@ -624,6 +626,22 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     unmount();
     renderCoach();
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+  });
+
+  it('se outro dispositivo já recebeu a mensagem (already_sent), fica marcada — não volta a pedir', async () => {
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'already_sent', proactive: 'silence', model_message: null, suggestions: [] }, error: null });
+
+    const { unmount } = renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText(/Estás bem/)).not.toBeInTheDocument();
+
+    unmount();
+    renderCoach();
+    await act(async () => { await Promise.resolve(); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
   });
 
   it('INCIDENTE 2026-09-12 — se o servidor recusar (409 busy), a mensagem proativa falha em silêncio: sem "A tua mensagem não saiu"', async () => {

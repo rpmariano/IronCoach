@@ -213,6 +213,13 @@ aceite:
   do novo, sai como `recusado`.
 - **Planos só de refeições** (`save_meal_suggestions`, dias de `descanso`)
   nunca abrem nem fecham um bloco: fundem, como antes.
+- **Os treinos já feitos não se perdem.** Antes de fechar (ou recusar) o
+  bloco antigo, os itens `concluido` dele a partir do primeiro dia do novo
+  passam para o plano novo, que é o que cobre esses dias; um item pendente do
+  mesmo tipo no mesmo dia, no plano novo, cancela-se (já está feito). Sem
+  isto, no ramo `reject` o treino de hoje ia a `recusado` com o bloco, e no
+  `close` ficava num bloco que acaba antes dele — o registo da corrida nunca
+  se perdia, mas o plano deixava de mostrar o dia como cumprido.
 
 A primeira versão fundia tudo e ignorava o `race_id` da proposta. Resolver
 um conflito de principais pela segunda saída ("o plano passa a preparar a

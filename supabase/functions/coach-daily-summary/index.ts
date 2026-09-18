@@ -21,6 +21,7 @@ import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -568,12 +569,13 @@ const RESPONSE_SCHEMA = {
 };
 
 // deno-lint-ignore no-explicit-any
-async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string): Promise<any> {
+async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null): Promise<any> {
   const prompt =
     `És a Carol, a treinadora deste atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
     `conteúdos independentes para o cartão diário do Início, em primeira pessoa. Nunca genérico. ` +
     `Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    memoryPromptSection(memoryBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS A PREENCHER:\n\n` +
     `1. recap — mensagem do Coach ao atleta (máx. 3 frases). ` +
@@ -694,6 +696,10 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (cached) return jsonResponse({ summary: cached, cached: true });
     }
+
+    // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): o
+    // cartão não pode contradizer o que a Carol combinou ontem no chat.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     const [
@@ -845,7 +851,7 @@ Deno.serve(async (req) => {
     let usage: { input_tokens: number; output_tokens: number } | null = null;
 
     try {
-      const result = await generateSummary(ctx, geminiKey, todayConcept.title);
+      const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise);
       generated = result.parsed;
       usage = result.usage;
     } catch (e) {

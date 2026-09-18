@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "A vida da Carol — o que vê, como pensa, o que faz, onde está",
+    "output": "specs/carol-vida.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "ve",
+        "label": "O que ela vê",
+        "focus": [
+          "dados",
+          "app",
+          "chat"
+        ],
+        "note": "Janelas fixas: nutrição 7 dias; corrida, ginásio e corpo 30 dias; 5 provas de ontem em diante; 30 mensagens."
+      },
+      {
+        "id": "cega",
+        "label": "O que ela não vê",
+        "focus": [
+          "chat",
+          "analises",
+          "diario"
+        ],
+        "note": "Palmarés, notas livres, fotos — e as suas próprias análises por registo e o cartão diário."
+      },
+      {
+        "id": "corpos",
+        "label": "Os três corpos",
+        "focus": [
+          "chat",
+          "analises",
+          "diario"
+        ],
+        "note": "Três Edge Functions falam como Carol com o mesmo tom, mas não partilham memória."
+      },
+      {
+        "id": "faz",
+        "label": "O que ela faz",
+        "focus": [
+          "chat",
+          "analises",
+          "propostas",
+          "escritas"
+        ],
+        "note": "Plano e metas precisam do aceite do atleta; o resto grava diretamente."
+      },
+      {
+        "id": "presenca",
+        "label": "Onde está",
+        "focus": [
+          "app",
+          "inicio",
+          "fora"
+        ],
+        "note": "Toda a proatividade dispara quando o atleta entra. Fora da app, só o push da água."
+      }
+    ],
+    "viewBox": [
+      1060,
+      606
+    ]
+  },
+  "stages": [
+    {
+      "label": "Fontes"
+    },
+    {
+      "label": "A Carol"
+    },
+    {
+      "label": "Ações"
+    },
+    {
+      "label": "Presença"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "dados",
+      "type": "database",
+      "label": "Dados do atleta",
+      "sublabel": "registos · provas · plano",
+      "stage": 0,
+      "row": 0,
+      "tag": "janelas"
+    },
+    {
+      "id": "app",
+      "type": "frontend",
+      "label": "A app",
+      "sublabel": "decide quando chamar",
+      "stage": 0,
+      "row": 2,
+      "tag": "gatilhos"
+    },
+    {
+      "id": "chat",
+      "type": "backend",
+      "label": "Carol · chat",
+      "sublabel": "4 modos · 9 ferramentas",
+      "stage": 1,
+      "row": 0,
+      "tag": "o cérebro"
+    },
+    {
+      "id": "analises",
+      "type": "backend",
+      "label": "Análises",
+      "sublabel": "comenta cada registo",
+      "stage": 1,
+      "row": 2,
+      "tag": "ao gravar"
+    },
+    {
+      "id": "diario",
+      "type": "backend",
+      "label": "Cartão diário",
+      "sublabel": "recap · prontidão",
+      "stage": 1,
+      "row": 3,
+      "tag": "1× por dia"
+    },
+    {
+      "id": "propostas",
+      "type": "backend",
+      "label": "Propostas",
+      "sublabel": "plano · metas",
+      "stage": 2,
+      "row": 0,
+      "tag": "com aceite",
+      "yOffset": -7
+    },
+    {
+      "id": "escritas",
+      "type": "database",
+      "label": "Escritas diretas",
+      "sublabel": "prova · memória · notas",
+      "stage": 2,
+      "row": 2,
+      "tag": "sem revisão",
+      "yOffset": -7
+    },
+    {
+      "id": "fora",
+      "type": "external",
+      "label": "Fora da app",
+      "sublabel": "só o push da água",
+      "stage": 3,
+      "row": 0,
+      "tag": "silêncio"
+    },
+    {
+      "id": "inicio",
+      "type": "frontend",
+      "label": "Início e Coach",
+      "sublabel": "cartão · halo · chat",
+      "stage": 3,
+      "row": 1,
+      "tag": "só na app"
+    }
+  ],
+  "flows": [
+    {
+      "id": "f-dados-chat",
+      "from": "dados",
+      "to": "chat",
+      "label": "7 a 30 dias",
+      "classification": "janelas fixas",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "f-app-chat",
+      "from": "app",
+      "to": "chat",
+      "label": "gatilho · insights",
+      "classification": "ao abrir o chat",
+      "variant": "default",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [
+        [
+          100,
+          270
+        ],
+        [
+          315,
+          270
+        ]
+      ],
+      "labelAt": [
+        190,
+        258
+      ]
+    },
+    {
+      "id": "f-app-analises",
+      "from": "app",
+      "to": "analises",
+      "label": "registo gravado",
+      "classification": "cada registo",
+      "variant": "default"
+    },
+    {
+      "id": "f-app-diario",
+      "from": "app",
+      "to": "diario",
+      "label": "abrir o Início",
+      "classification": "cache diária",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [
+        [
+          100,
+          499
+        ]
+      ],
+      "labelAt": [
+        180,
+        487
+      ]
+    },
+    {
+      "id": "f-chat-propostas",
+      "from": "chat",
+      "to": "propostas",
+      "label": "plano · metas",
+      "classification": "proposto",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-analises-escritas",
+      "from": "analises",
+      "to": "escritas",
+      "label": "notas · intervenção",
+      "classification": "grava já",
+      "variant": "default",
+      "labelDy": 22
+    },
+    {
+      "id": "f-chat-escritas",
+      "from": "chat",
+      "to": "escritas",
+      "label": "prova · memória",
+      "classification": "grava já",
+      "variant": "default"
+    },
+    {
+      "id": "f-propostas-inicio",
+      "from": "propostas",
+      "to": "inicio",
+      "label": "aceitar ou recusar",
+      "classification": "decisão do atleta",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f-escritas-inicio",
+      "from": "escritas",
+      "to": "inicio",
+      "label": "assuntos · halo",
+      "classification": "intervenção",
+      "variant": "default"
+    },
+    {
+      "id": "f-diario-inicio",
+      "from": "diario",
+      "to": "inicio",
+      "label": "cartão",
+      "classification": "1× por dia",
+      "variant": "default",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          745,
+          499
+        ]
+      ],
+      "labelAt": [
+        640,
+        488
+      ]
+    },
+    {
+      "id": "f-inicio-fora",
+      "from": "inicio",
+      "to": "fora",
+      "label": "nada dela sai",
+      "classification": "sem push próprio",
+      "variant": "dashed",
+      "labelAt": [
+        745,
+        213
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Omnisciente? Não",
+      "items": [
+        "Vê por janelas: 7 a 30 dias, 5 provas, 30 mensagens.",
+        "Não vê Palmarés, notas livres, fotos, nem as suas análises."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Omnipresente? Não",
+      "items": [
+        "Os gatilhos só disparam quando o atleta abre a app.",
+        "Fora da app, só o push da água, e não é a voz dela."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Onde é forte",
+      "items": [
+        "Comenta cada registo ao gravar e pode pedir intervenção.",
+        "Plano e metas exigem sempre o aceite do atleta."
+      ]
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
+import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
@@ -603,6 +604,54 @@ export function shouldSkipProactive(
   if (!last || last.role !== "model" || !last.created_at) return false;
   const ageH = (nowMs - new Date(last.created_at).getTime()) / 3600000;
   return ageH >= 0 && ageH < PROACTIVE_QUIET_HOURS;
+}
+
+/* A chave de cada mensagem proativa entregue fica no servidor
+   (coach_proactive_log, ação P.1 de specs/carol-omnisciencia-omnipresenca.md).
+   Até aqui vivia só no localStorage do cliente: noutro telemóvel a Carol
+   repetia a véspera da prova ou o "Estás bem?". O lock por utilizador do
+   coach-chat garante que dois dispositivos não passam os dois por aqui ao
+   mesmo tempo, por isso verificar antes e gravar depois chega.
+   As duas falham abertas: sem a tabela, ou com um erro de rede, a Carol
+   continua a falar como antes e o problema fica nos logs. */
+export const MAX_PROACTIVE_KEY_LEN = 200;
+
+export function parseProactiveKey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const key = raw.trim().slice(0, MAX_PROACTIVE_KEY_LEN);
+  return key || null;
+}
+
+// deno-lint-ignore no-explicit-any
+export async function wasProactiveDelivered(sb: any, userId: string, key: string): Promise<boolean> {
+  try {
+    const { data, error } = await sb
+      .from("coach_proactive_log")
+      .select("key")
+      .eq("user_id", userId)
+      .eq("key", key)
+      .maybeSingle();
+    if (error) {
+      console.warn("coach_proactive_log: leitura falhou:", error.message ?? error);
+      return false;
+    }
+    return !!data;
+  } catch (e) {
+    console.warn("coach_proactive_log: leitura falhou:", e);
+    return false;
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+export async function recordProactiveDelivered(sb: any, userId: string, trigger: ProactiveTrigger, key: string): Promise<void> {
+  try {
+    const { error } = await sb
+      .from("coach_proactive_log")
+      .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true });
+    if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
+  } catch (e) {
+    console.warn("coach_proactive_log: gravação falhou:", e);
+  }
 }
 
 const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
@@ -4849,6 +4898,24 @@ async function handler(req: Request): Promise<Response> {
     // (pedido 2026-09-13) — aí a regra "ela falou há pouco, cala-te" não se
     // aplica: o atleta está a olhar para o sítio onde o balanço vai aparecer.
     const proactiveForce = proactiveTrigger === "race_after" && body.proactive_force === true;
+    // A chave que torna esta mensagem única (src/utils/coachProactive.js).
+    // Já entregue noutro dispositivo → não se repete. O pedido forçado do
+    // hub ("Falar com a Carol" no balanço) é o atleta a pedir: passa sempre.
+    const proactiveKey = proactiveTrigger ? parseProactiveKey(body.proactive_key) : null;
+    if (proactiveTrigger && proactiveKey && !proactiveForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+      return jsonResponse({
+        skipped: true,
+        reason: "already_sent",
+        proactive: proactiveTrigger,
+        user_message: null,
+        model_message: null,
+        suggestions: [],
+        usage: null,
+        plan_proposed: false,
+        goals_updated: false,
+        goal_proposed: false,
+      });
+    }
 
     // A legenda do mural (specs/gamificacao-provas.md §6): um pedido curto,
     // sem histórico, sem ferramentas e sem gravar mensagem nenhuma — a Carol
@@ -4865,7 +4932,10 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason")
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
+        "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
+        "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
+        "cycle_tracking_consent_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -4878,6 +4948,16 @@ async function handler(req: Request): Promise<Response> {
     const startDate = new Date();
     startDate.setUTCDate(startDate.getUTCDate() - (NUTRITION_WINDOW_DAYS - 1));
     const startISO = startDate.toISOString().slice(0, 10);
+
+    /* A memória alargada (specs/carol-omnisciencia-omnipresenca.md, Fase 1):
+       os comentários que ela própria escreveu em cada registo, as notas do
+       atleta, o cartão diário, o Palmarés e o retrato da época. Arranca já,
+       em paralelo com as consultas abaixo, e só se espera por ela ao montar
+       o prompt. Nunca rejeita — cada bloco que falhe fica de fora.
+       Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
+       abaixo): nesse caso só arranca depois, para não gastar as consultas. */
+    let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
+      proactiveTrigger && !proactiveForce ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
@@ -5141,7 +5221,7 @@ async function handler(req: Request): Promise<Response> {
     const bodyStartISO = bodyStartD.toISOString().slice(0, 10);
     const { data: bodyAssessments, error: err_bodyAssessments } = await sb
       .from("body_assessments")
-      .select("assessed_at:date, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg")
+      .select("assessed_at:date, weight_kg, body_fat_pct, visceral_fat, body_water_pct, lean_body_mass_kg, muscle_mass_kg")
       .eq("user_id", userId)
       .gte("date", bodyStartISO)
       .order("date", { ascending: false })
@@ -5356,6 +5436,7 @@ async function handler(req: Request): Promise<Response> {
     if (proactiveTrigger && !proactiveForce && shouldSkipProactive(recentHistory || [], Date.now())) {
       return jsonResponse({
         skipped: true,
+        reason: "quiet_hours",
         proactive: proactiveTrigger,
         user_message: null,
         model_message: null,
@@ -5458,6 +5539,24 @@ async function handler(req: Request): Promise<Response> {
     );
 
     let finalSystemInstruction = systemInstruction;
+
+    // Do mais largo para o mais próximo: a época, o que já conquistou, as
+    // metas, o que se disse em cada registo, e o cartão de hoje.
+    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile));
+    const memorySections = [
+      // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.
+      memoryBlocks.checkin,
+      memoryBlocks.portrait,
+      memoryBlocks.palmares,
+      buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
+      memoryBlocks.records,
+      memoryBlocks.dailyCard,
+      memoryBlocks.impressions,
+    ].filter(Boolean);
+    if (memorySections.length > 0) {
+      finalSystemInstruction += "\n\n--- A TUA MEMÓRIA ALARGADA (o que já sabes, disseste e viste deste atleta fora desta conversa) ---\n" +
+        memorySections.join("\n\n");
+    }
     const hasActiveInsights = Array.isArray(body.activeInsights) && body.activeInsights.length > 0;
     if (hasActiveInsights) {
       const insightsContext = body.activeInsights.map((i: any) =>
@@ -5822,6 +5921,10 @@ async function handler(req: Request): Promise<Response> {
         if (balanceErr) console.warn("Balanço não guardado na prova:", balanceErr.message);
       }
     }
+
+    // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
+    // registada, para nenhum outro dispositivo a repetir.
+    if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);

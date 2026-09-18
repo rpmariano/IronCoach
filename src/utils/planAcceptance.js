@@ -65,3 +65,23 @@ export function closeOldBlock(original, proposal) {
   const end = original.period_end && original.period_end < vespera ? original.period_end : vespera;
   return { action: 'close', period_end: end, cancelFrom: proposal.period_start };
 }
+
+/**
+ * Os pares (dia, tipo) dos treinos já feitos que passam para o bloco novo —
+ * é por eles que se cancelam, no bloco novo, os treinos pendentes que ficam
+ * redundantes: se o atleta já correu hoje, um "corrida" pendente para hoje no
+ * plano novo só faria aparecer o "Registar sessão" de uma coisa já feita.
+ * Só o MESMO tipo: um ginásio feito não apaga uma corrida planeada.
+ */
+export function doneItemKeys(items) {
+  const seen = new Set();
+  const out = [];
+  for (const i of items || []) {
+    if (!i?.planned_date || !i?.kind) continue;
+    const k = `${i.planned_date}|${i.kind}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ planned_date: i.planned_date, kind: i.kind });
+  }
+  return out;
+}

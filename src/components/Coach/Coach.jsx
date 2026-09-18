@@ -259,6 +259,7 @@ export default function Coach() {
     message: '',
     proactive_trigger: candidate.trigger,
     proactive_details: candidate.details,
+    proactive_key: candidate.key,
     ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
     proactive_force: true,
     userData: profile || {},
@@ -357,6 +358,9 @@ export default function Coach() {
       message: '',
       proactive_trigger: candidate.trigger,
       proactive_details: candidate.details,
+      // A chave vai para o servidor (coach_proactive_log): se outro
+      // dispositivo já recebeu esta mensagem, ela não se repete aqui.
+      proactive_key: candidate.key,
       // Só no balanço da prova com a corrida registada: o veredicto calculado
       // pela app (utils/raceOutcome.js), para o servidor escrever o balanço
       // com os números certos — superado / perto / aquém.
@@ -364,7 +368,10 @@ export default function Coach() {
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
     }, { silent: true }).then((data) => {
-      if (data && !data.skipped) markProactiveSent(profile?.id, candidate);
+      // "already_sent" é o servidor a dizer que outro dispositivo já a
+      // recebeu: marca-se também aqui, para não voltar a perguntar. O
+      // "quiet_hours" (ela falou há pouco) não marca — tenta-se depois.
+      if (data && (!data.skipped || data.reason === 'already_sent')) markProactiveSent(profile?.id, candidate);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

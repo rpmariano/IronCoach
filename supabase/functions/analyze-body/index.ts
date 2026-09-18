@@ -9,6 +9,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -232,7 +233,7 @@ function historyContext(history: any[]): string {
     lines.join("\n");
 }
 
-function buildPrompt(notes: string | null, history: unknown[]): string {
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null): string {
   const mapping = METRIC_FIELDS
     .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
     .join("\n");
@@ -259,7 +260,13 @@ function buildPrompt(notes: string | null, history: unknown[]): string {
     "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n\n" +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
-    "\n\nNo campo \"summary\" escreve uma breve avaliação (2 a 4 frases, em português de Portugal) " +
+    "\n\n" +
+    (memoryBlock
+      ? memoryPromptSection(memoryBlock) +
+        "A memória acima serve só para o campo \"summary\". Os valores de \"metrics\" vêm SEMPRE e só das imagens, " +
+        "nunca do que o atleta disse no chat nem de notas antigas.\n\n"
+      : "") +
+    "No campo \"summary\" escreve uma breve avaliação (2 a 4 frases, em português de Portugal) " +
     "dos valores desta pesagem: o que está bom e o que merece atenção. " +
     "Se existir histórico acima, compara com a avaliação mais recente e comenta a evolução " +
     "(o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
@@ -289,10 +296,11 @@ async function analyzeWithGemini(
   notes: string | null,
   history: unknown[],
   geminiKey: string,
+  memoryBlock: string | null = null,
 ): Promise<
   { metrics: Record<string, number | null>; classifications: Record<string, string>; summary: string; usage: GeminiUsage }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -375,6 +383,7 @@ async function generateBodySummaryFromMetrics(
   notes: string | null,
   history: unknown[],
   geminiKey: string,
+  memoryBlock: string | null = null,
 ): Promise<{ text: string | null }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
   if (!hasAny) return { text: null };
@@ -387,6 +396,7 @@ async function generateBodySummaryFromMetrics(
   const prompt =
     "És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a avaliação corporal que ele acabou de registar.\n" +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    memoryPromptSection(memoryBlock) +
     "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
     `corporal (sem foto):\n${metricLines}\n\n` +
     // deno-lint-ignore no-explicit-any
@@ -457,6 +467,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
+    // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
+    // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
@@ -517,7 +531,7 @@ Deno.serve(async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -595,7 +609,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -663,7 +677,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
