@@ -1,0 +1,146 @@
+// O texto da notificação, escrito pela Carol (specs/carol-omnisciencia-
+// omnipresenca.md, ação P.4).
+//
+// Na P.3 o texto era uma frase fixa por momento. Agora pede-se ao Gemini uma
+// notificação curta, na voz dela, com os dados reais do momento — o nome da
+// prova, a distância, a hora de partida, o tempo feito face ao objetivo, os
+// dias sem registos. A conversa a sério continua a ser escrita pelo
+// coach-chat quando o atleta abre o Coach; isto é só o que aparece no ecrã
+// bloqueado para ele abrir.
+//
+// Três guardas: o texto é validado (tamanho, sem emoji, sem "!", uma linha);
+// se falhar a validação, a chamada, ou demorar, sai a frase fixa de
+// proactivePushMessage; e o prompt proíbe inventar números que não estão lá.
+
+import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { proactivePushMessage, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
+
+export const PUSH_TEXT_MIN = 15;
+export const PUSH_TEXT_MAX = 140;
+const GEMINI_MODEL = "gemini-flash-latest";
+const GEMINI_TIMEOUT_MS = 10000;
+
+export interface PushFacts {
+  firstName?: string | null;
+  raceName?: string | null;
+  distanceKm?: number | string | null;
+  startTime?: string | null;           // "09:00:00"
+  targetSeconds?: number | null;
+  runSeconds?: number | null;           // balanço com corrida: o tempo feito
+  runDistanceKm?: number | string | null;
+}
+
+function hhmmss(total: number): string {
+  const s = Math.round(total);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
+  race_morning: "É a manhã da prova. Ele vai abrir a app antes da partida: a notificação chama-o para as duas coisas que lhe queres dizer.",
+  race_eve: "É a véspera da prova. A notificação chama-o para o plano de hoje à noite (jantar, sono) e de amanhã de manhã.",
+  race_after: "A prova já foi. A notificação chama-o para o balanço contigo.",
+  silence: "Ele não regista nada há vários dias. A notificação pergunta se está bem, sem sermão.",
+};
+
+/** Os dados do momento, em linhas — só o que existe; nada é inventado. */
+export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string[] {
+  const lines: string[] = [];
+  if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
+  if (c.trigger === "silence") lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);
+  if (c.trigger !== "silence") {
+    const name = (f.raceName || c.raceName || "").trim();
+    if (name) lines.push(`Prova: ${name}`);
+    const km = Number(f.distanceKm);
+    if (Number.isFinite(km) && km > 0) lines.push(`Distância: ${Math.round(km * 10) / 10} km`);
+    if ((c.trigger === "race_morning" || c.trigger === "race_eve") && f.startTime) lines.push(`Partida: ${String(f.startTime).slice(0, 5)}`);
+    const target = Number(f.targetSeconds);
+    if (Number.isFinite(target) && target > 0) lines.push(`Objetivo de tempo: ${hhmmss(target)}`);
+    if (c.trigger === "race_after") {
+      const run = Number(f.runSeconds);
+      if (c.hasRun && Number.isFinite(run) && run > 0) {
+        lines.push(`Tempo feito: ${hhmmss(run)}`);
+        if (Number.isFinite(target) && target > 0) {
+          const delta = run - target;
+          lines.push(delta <= 0 ? `Bateu o objetivo por ${hhmmss(-delta)}` : `Ficou ${hhmmss(delta)} acima do objetivo`);
+        }
+      } else {
+        lines.push("A corrida da prova ainda não está registada.");
+      }
+    }
+  }
+  return lines;
+}
+
+export function buildPushPrompt(c: ServerProactiveCandidate, f: PushFacts): string {
+  return (
+    `És a Carol, a treinadora deste atleta. Escreve o texto de UMA notificação no telemóvel — não é a conversa: ` +
+    `é a frase que aparece no ecrã bloqueado e que o faz abrir a app.\n\n` +
+    `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `REGRAS DA NOTIFICAÇÃO:\n` +
+    `- Uma ou duas frases, no máximo ${PUSH_TEXT_MAX} caracteres no total. Uma linha só.\n` +
+    `- Sem emoji. Sem ponto de exclamação. Sem aspas.\n` +
+    `- Específica para este momento, com os dados abaixo. Não uses números que não estejam nos dados.\n` +
+    `- Não comeces pelo nome dele, e não assines.\n\n` +
+    `MOMENTO: ${MOMENT[c.trigger]}\n` +
+    `DADOS:\n${describeFacts(c, f).map((l) => `- ${l}`).join("\n") || "- (sem dados adicionais)"}\n\n` +
+    `Devolve só o texto da notificação.`
+  );
+}
+
+/** O texto limpo, ou null se não servir (e aí sai a frase fixa). */
+export function validatePushText(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/\s+/g, " ").trim().replace(/^["'«“]+|["'»”]+$/g, "").trim();
+  if (text.length < PUSH_TEXT_MIN || text.length > PUSH_TEXT_MAX) return null;
+  if (/\p{Extended_Pictographic}/u.test(text)) return null;
+  if (text.includes("!")) return null;
+  return text;
+}
+
+/** O primeiro texto das partes da resposta (o modelo pode pôr partes de
+ *  raciocínio à frente — ver extractReplyText no coach-chat). */
+// deno-lint-ignore no-explicit-any
+export function extractText(json: any): string | null {
+  const parts = json?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return null;
+  for (const p of parts) if (typeof p?.text === "string" && p.text.trim() && !p.thought) return p.text;
+  return null;
+}
+
+/**
+ * O título e o corpo da notificação. Nunca rejeita: qualquer falha dá a frase
+ * fixa. `fetchImpl` é injetável para os testes.
+ */
+export async function composePushMessage(
+  c: ServerProactiveCandidate,
+  facts: PushFacts,
+  geminiKey: string | null | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ title: string; body: string; generated: boolean }> {
+  const fallback = proactivePushMessage(c);
+  if (!geminiKey) return { ...fallback, generated: false };
+  try {
+    const res = await fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildPushPrompt(c, facts) }] }],
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.8 },
+        }),
+        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      console.warn("coach-proactive-tick: texto gerado falhou", res.status);
+      return { ...fallback, generated: false };
+    }
+    const text = validatePushText(extractText(await res.json()));
+    return text ? { title: fallback.title, body: text, generated: true } : { ...fallback, generated: false };
+  } catch (e) {
+    console.warn("coach-proactive-tick: texto gerado falhou", e);
+    return { ...fallback, generated: false };
+  }
+}

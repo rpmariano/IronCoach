@@ -8,7 +8,7 @@
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
 | **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **6,6 / 10** (2,8 de manhã; 6,1 depois da P.3) | — | 9,0 / 10 |
+| **Omnipresença** | **7,0 / 10** (2,8 no início; 6,1 depois da P.3; 6,6 depois da P.6) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -241,6 +241,21 @@ A migration `20260918173342_carol_push_preferences` está aplicada em produção
 **Por omissão ninguém recebe nada.** Cada atleta tem de ligar as notificações da Carol no Perfil. O ecrã só chega com o deploy de `master`.
 
 Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depender da água. A omnipresença sobe para **6,6**.
+
+#### Estado: P.4 implementada a 2026-09-19
+
+**O texto da notificação passa a ser escrito por ela.** No momento de enviar, o `coach-proactive-tick` pede ao Gemini uma notificação curta na voz da Carol, com os dados reais do momento: o primeiro nome, a prova, a distância, a hora de partida, o objetivo, o tempo feito e a diferença para o objetivo, ou os dias sem registos. O código está em `coach-proactive-tick/pushText.ts`.
+
+**Guardas:**
+- As regras de tom são as da `carolTone`. O texto tem no máximo 140 caracteres, numa só linha.
+- O prompt proíbe números que não estejam nos dados.
+- O texto é validado: comprimento, sem emoji, sem ponto de exclamação. Se falhar a validação, se a chamada falhar ou se demorar mais de 10 segundos, sai a frase fixa da P.3.
+
+**Decisão:** a conversa a sério continua a ser escrita pelo `coach-chat` quando o atleta abre o Coach. Gerar a mensagem inteira do chat no servidor obrigava a um caminho, autenticado por segredo, para agir em nome de qualquer atleta. É um risco de segurança que não compensa. O toque já abre o Coach no momento certo, desde a P.3.
+
+**Limite:** a notificação e a primeira mensagem do chat são escritas em momentos diferentes. Dizem o mesmo assunto, mas não com as mesmas palavras.
+
+Com a P.4, P2 passa de 6 para 8. A omnipresença sobe para **7,0**.
 
 ---
 
