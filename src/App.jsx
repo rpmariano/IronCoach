@@ -10,6 +10,8 @@ import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import { MedalhaoDefs } from './components/shared/Medalhao';
+import CarolWelcome from './components/Welcome/CarolWelcome';
+import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -412,6 +414,42 @@ export default function App() {
     if (silentlyDone) markOnboardingDone();
   }, [silentlyDone, markOnboardingDone]);
 
+  /* As boas-vindas da Carol (utils/carolWelcome.js): antes da Home, na
+     primeira abertura dentro de cada faixa do dia — ao arrancar a app e ao
+     voltar a ela. Nunca por cima do arranque (que já é ela a receber), nem
+     quando a app abre por uma notificação (?tab=, o atleta vem ao que a
+     notificação disse); nesses casos a faixa conta como vista. */
+  const [welcome, setWelcome] = useState(null);
+  const openedWithTabRef = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tab'));
+  const welcomeReady = !isInitializing && !!session && !showOnboarding;
+  const welcomeReadyRef = useRef(false);
+  welcomeReadyRef.current = welcomeReady;
+  const markCurrentSlotSeen = useCallback(() => {
+    const uid = useAppStore.getState().session?.user?.id;
+    if (uid) markSeen(uid, [slotKey().key]);
+  }, []);
+  const tryWelcome = useCallback(() => {
+    const s = useAppStore.getState();
+    const uid = s.session?.user?.id;
+    if (!uid) return;
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) });
+    if (!decision) return;
+    markSeen(uid, decision.markKeys);
+    setWelcome({ ...buildWelcome(decision.variant, s), key: decision.key, at: new Date() });
+  }, []);
+  useEffect(() => {
+    if (showOnboarding) markCurrentSlotSeen();
+  }, [showOnboarding, markCurrentSlotSeen]);
+  useEffect(() => {
+    if (!welcomeReady) return;
+    if (openedWithTabRef.current) {
+      openedWithTabRef.current = false;
+      markCurrentSlotSeen();
+      return;
+    }
+    tryWelcome();
+  }, [welcomeReady, tryWelcome, markCurrentSlotSeen]);
+
   // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)
   // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
   // é usado no JSX.
@@ -427,6 +465,12 @@ export default function App() {
   useEffect(() => {
     const onVisibilityChange = () => {
       const userId = loadedUserIdRef.current;
+      // Voltar à app numa faixa nova também é "abrir a app" — com nada a
+      // meio (um registo aberto passa à frente de uma saudação).
+      if (document.visibilityState === 'visible' && welcomeReadyRef.current
+        && !formOpenRef.current && !useAppStore.getState().navGuard) {
+        tryWelcome();
+      }
       // Formulário aberto: os ecrãs de topo (registo, prova, onboarding) e,
       // para os que abrem por dentro de outro ecrã (editar uma corrida a
       // partir do Calendário), a guarda de navegação que todos os
@@ -444,7 +488,7 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [loadInitialData]);
+  }, [loadInitialData, tryWelcome]);
 
   // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
   // o ecrã de topo em vez de sair da app inteira — ver o comentário
@@ -664,6 +708,7 @@ export default function App() {
           {openCreationMode === 'plano' && <PlanoScreen onClose={() => setOpenCreationMode(null)} />}
         </Suspense>
       </Layout>
+      {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={() => setWelcome(null)} />}
     </ToastProvider>
   );
 }
