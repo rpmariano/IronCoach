@@ -98,11 +98,13 @@ describe('DayPlanCard — "Ver detalhe do treino"', () => {
     expect(screen.queryByTestId('day-plan-detail-toggle')).not.toBeInTheDocument();
   });
 
-  it('um treino já dado troca o botão por um estado "Concluído"', () => {
+  it('um treino já dado: o feito fica à vista, fora da gaveta, e o botão sai', () => {
     renderCard([{ ...training, status: 'concluido' }]);
+    // Sem a corrida ligada no store, fica o "Feito." — sem números inventados.
+    expect(screen.getByTestId('day-plan-done')).toHaveTextContent('Feito.');
     fireEvent.click(screen.getByTestId('day-plan-detail-toggle'));
-    expect(screen.getByTestId('day-plan-status')).toHaveTextContent('Concluído');
     expect(screen.queryByText('Registar sessão')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-plan-status')).not.toBeInTheDocument();
     expect(screen.getByTestId('day-plan-date')).toHaveStyle({ color: 'var(--ok)' });
   });
 });

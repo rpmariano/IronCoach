@@ -516,6 +516,12 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .week-done-dot { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
 @media (prefers-reduced-motion: reduce) { .week-done-line, .week-done-dot { animation: none; } }
 
+/* O dia fechado (Home/DayPlanCard.jsx), só na primeira vez que se vê: o
+   visto com o impulso da confirmação de registo, e o feito a entrar. */
+.day-done-check { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+.day-done-text { animation: welcomeBubble 420ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .day-done-check, .day-done-text { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

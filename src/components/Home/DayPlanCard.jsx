@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, Check, X as XIcon, MessageCircle } from 'lucide-react';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
 import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
 import WeekDoneRibbon from './WeekDoneRibbon';
+import { useAppStore } from '../../store';
+import { doneLine, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
 import { weekDone } from './weekDone';
 
 /* "O que faço hoje" — o plano de HOJE, e só de hoje (redesenho 2026-09-15).
@@ -49,6 +51,9 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
   const [open, setOpen] = useState(false);
+  const runs = useAppStore((s) => s.runs);
+  const gymSessions = useAppStore((s) => s.gymSessions);
+  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
 
   const pendingCount = useMemo(() => (plans || []).filter((p) => p.status === 'proposto').length, [plans]);
   const planWindow = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
@@ -82,6 +87,18 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
       <ChevronRight size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
     </button>
   );
+
+  /* Os hooks do dia fechado vivem aqui, antes do return antecipado. O
+     momento decide-se ao montar — que é quando se volta do registo que
+     fechou o dia — e marca-se como visto logo a seguir. */
+  const todayDone = useMemo(() => {
+    const t = trainingItems(day?.items || []).filter((i) => !i.isRace && !isRacePlanItem(i));
+    return t.length > 0 && t.every((i) => i.status === 'concluido');
+  }, [day]);
+  const [doneMoment] = useState(() => todayDone && !wasDayDoneSeen(userId, today));
+  useEffect(() => {
+    if (todayDone) markDayDoneSeen(userId, today);
+  }, [todayDone, userId, today]);
 
   if (!planWindow || !day) {
     return (
@@ -126,7 +143,13 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
      linha que promete detalhe e abre para nada. No dia da prova dá isto
      falso sozinho (a instrução, o botão e o estado saltam sempre o item da
      prova), e o que fica à vista é "Abrir a prova". */
-  const hasDetail = instructions.length > 0 || !!session || done || cancelled;
+  const hasDetail = instructions.length > 0 || !!session || cancelled;
+
+  /* O dia fechado (dayDone.js): feito o treino, o que foi feito fica à
+     vista — os números do registo contra o que o plano pedia —, fora da
+     gaveta. Na primeira vez que se vê, o visto dá o impulso da confirmação
+     de registo; depois fica só lá. */
+  const doneLines = done ? trainings.map((i) => ({ id: i.id, title: planItemTitle(i, dayRace?.name || null), ...doneLine(i, { runs, gymSessions }) })) : [];
 
   return (
     <div className="flex flex-col gap-2">
@@ -141,6 +164,27 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
         <h2 className="text-[20px] font-black leading-[1.15] mt-2" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
           {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
         </h2>
+
+        {done && (
+          <div data-testid="day-plan-done" className="flex flex-col gap-1.5 mt-2.5">
+            {doneLines.map((l, idx) => (
+              <div key={l.id} className="flex items-start gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className={`shrink-0 inline-flex items-center justify-center rounded-full${doneMoment ? ' day-done-check' : ''}`}
+                  style={{ width: 22, height: 22, marginTop: 1, background: 'var(--ok)', color: 'var(--bg-app)', animationDelay: doneMoment ? `${150 + idx * 120}ms` : undefined }}
+                >
+                  <Check size={13} strokeWidth={3.2} />
+                </span>
+                <p className={`flex-1 min-w-0 text-[13px] leading-[1.45]${doneMoment ? ' day-done-text' : ''}`} style={{ margin: 0, color: 'var(--text-2)', animationDelay: doneMoment ? `${260 + idx * 120}ms` : undefined }}>
+                  {doneLines.length > 1 && <span className="font-bold" style={{ color: 'var(--text-1)' }}>{l.title}: </span>}
+                  <span className="font-bold" style={{ color: 'var(--text-1)' }}>{l.text}</span>
+                  {l.verdict && <span style={{ color: l.verdict === 'Cumprido.' ? 'var(--ok)' : 'var(--text-3)' }}> {l.verdict}</span>}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {hasDetail && (
           <button
@@ -172,7 +216,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
                 <Check size={15} /> Registar sessão
               </button>
             )}
-            {!session && (done || cancelled) && (
+            {!session && cancelled && (
               <div data-testid="day-plan-status" className="inline-flex items-center gap-[6px] min-h-[32px] mt-2.5 px-3 rounded-[11px] text-[12px] font-extrabold" style={done
                 ? { background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }
                 : { background: 'var(--tint-danger-bg)', border: '1px solid var(--tint-danger-bd)', color: 'var(--danger)' }}>
