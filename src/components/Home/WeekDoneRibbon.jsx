@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Check } from 'lucide-react';
 import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { weekDoneLine, wasWeekCelebrated, markWeekCelebrated } from './weekDone';
+import useMomentOnce from '../../utils/useMomentOnce';
 
 /* A semana cumprida (weekDone.js), por cima de "O que faço hoje": a frase
    dela e os sete dias da semana do plano, com os treinos feitos marcados.
@@ -13,10 +14,8 @@ import { weekDoneLine, wasWeekCelebrated, markWeekCelebrated } from './weekDone'
    CAROL.md pede uma frase, não uma festa por cada visita à Home. */
 export default function WeekDoneRibbon({ done }) {
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
-  const [celebrate] = useState(() => !wasWeekCelebrated(userId, done.weekStart));
-  useEffect(() => {
-    if (celebrate) markWeekCelebrated(userId, done.weekStart);
-  }, [celebrate, userId, done.weekStart]);
+  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
+  const celebrate = useMomentOnce(true, () => wasWeekCelebrated(userId, done.weekStart), () => markWeekCelebrated(userId, done.weekStart));
 
   const line = weekDoneLine(done);
   return (

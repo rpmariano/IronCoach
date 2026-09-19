@@ -27,7 +27,8 @@ export function checkinStreak(checkins, today) {
   return n;
 }
 
-const MARCOS = new Set([7, 14, 30, 60, 100, 200, 365]);
+// Até 100: o store só carrega 119 dias de check-ins, mais do que isso nunca se contava.
+const MARCOS = new Set([7, 14, 30, 60, 100]);
 const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 
 /**
@@ -53,8 +54,8 @@ export function checkinReply(checkins, today) {
   if (sono != null && sono <= 2) {
     const outraVez = ontem && num(ontem.sleep) != null && num(ontem.sleep) <= 2;
     return { mood: 'worried', tone: 'coach', text: outraVez
-      ? 'Segunda noite má seguida. Hoje o treino fica leve, e esta noite deitas-te mais cedo.'
-      : 'Dormiste mal. Hoje o treino fica leve, sem olhar para o relógio.' };
+      ? 'Segunda noite má seguida. Hoje não se força nada, e esta noite deitas-te mais cedo.'
+      : 'Dormiste mal. Hoje não se força nada, nem se olha para o relógio.' };
   }
   if (stress != null && stress >= 4) {
     return { mood: 'neutral', tone: 'coach', text: 'O stress também pesa como carga. Hoje não somo mais nada em cima dele.' };
@@ -81,5 +82,5 @@ export function checkinReply(checkins, today) {
   }
 
   // 4. O dia normal: curto e seco — é a centésima vez.
-  return { mood: 'neutral', tone: 'coach', text: 'Anotado. Dia normal, plano normal.' };
+  return { mood: 'neutral', tone: 'coach', text: 'Anotado. Dia normal.' };
 }

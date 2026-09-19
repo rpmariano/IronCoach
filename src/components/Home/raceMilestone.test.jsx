@@ -21,7 +21,7 @@ describe('raceMilestoneLine', () => {
 describe('RaceCard — o marco no cartão', () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' } });
+    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear' });
   });
 
   const renderAt = (days) => render(

@@ -36,7 +36,11 @@ export function runRecordMoment(run, runs = []) {
   for (const alvo of ESCALOES) {
     const antes = computeBestPace(outras, alvo);
     const agora = computeBestPace([run], alvo);
-    if (antes && agora && antes.pace - agora.pace >= MIN_GANHO_RITMO) {
+    // A tolerância da fórmula (5 km aceita 4,0–6,5) serve os KPIs; um recorde
+    // "nos 5 km" com 4 km corridos não é recorde. Pela corrida inteira, pelo
+    // menos 95% da distância.
+    const curta = agora?.source === 'run' && Number(run.distance_km) < alvo * 0.95;
+    if (antes && agora && !curta && antes.pace - agora.pace >= MIN_GANHO_RITMO) {
       const ganho = Math.round(antes.pace - agora.pace);
       return {
         kind: 'pace',

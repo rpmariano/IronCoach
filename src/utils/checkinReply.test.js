@@ -13,7 +13,7 @@ describe('checkinReply', () => {
   });
 
   it('o dia normal é curto e seco', () => {
-    expect(checkinReply([dia(HOJE)], HOJE)).toMatchObject({ text: 'Anotado. Dia normal, plano normal.', mood: 'neutral' });
+    expect(checkinReply([dia(HOJE)], HOJE)).toMatchObject({ text: 'Anotado. Dia normal.', mood: 'neutral' });
   });
 
   it('a dor forte passa à frente de tudo, com o local', () => {
@@ -39,7 +39,7 @@ describe('checkinReply', () => {
     const semana = Array.from({ length: 7 }, (_, i) => dia(`2026-09-${String(13 + i).padStart(2, '0')}`));
     expect(checkinStreak(semana, HOJE)).toBe(7);
     expect(checkinReply(semana, HOJE).text).toMatch(/^7 dias seguidos/);
-    expect(checkinReply(semana.slice(1), HOJE).text).toBe('Anotado. Dia normal, plano normal.');
+    expect(checkinReply(semana.slice(1), HOJE).text).toBe('Anotado. Dia normal.');
   });
 
   it('a voz dela: nunca exclamações', () => {

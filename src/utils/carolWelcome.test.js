@@ -143,3 +143,30 @@ describe('buildWelcome — o que ela diz', () => {
     expect(w.chip).toBeNull();
   });
 });
+
+describe('revisão pré-master de 2026-09-19', () => {
+  it('de madrugada, mesmo no dia da prova, é a madrugada — a da prova fica para a manhã', () => {
+    const raceEvents = [{ id: 'r1', name: 'Maratona do Porto', date: '2026-11-08', status: 'agendada' }];
+    const madrugada = decideWelcome({ now: at('2026-11-08T00:30:00'), raceEvents, seen: [] });
+    expect(madrugada.variant).toBe('madrugada');
+    expect(decideWelcome({ now: at('2026-11-08T06:30:00'), raceEvents, seen: madrugada.markKeys })?.variant).toBe('prova');
+  });
+
+  it('um treino não registado pergunta-se, não se dá como falhado', () => {
+    const hoje = '2026-09-19';
+    const data = {
+      profile: { display_name: 'Rui' },
+      coachPlans: [{ id: 'p1', status: 'aceite' }],
+      coachPlanItems: [{ id: 'i', plan_id: 'p1', planned_date: hoje, kind: 'corrida', training_type: 'rodagem', target_distance_km: 8, status: 'pendente' }],
+      runs: [], meals: [], raceEvents: [],
+    };
+    const w = buildWelcome('noite', data, at(`${hoje}T21:00:00`));
+    expect(w.lines[0]).toBe('Não vi o treino de hoje registado. Aconteceu alguma coisa?');
+  });
+
+  it('o género lê-se normalizado; o botão da prova não tem género', () => {
+    expect(buildWelcome('madrugada', { profile: { display_name: 'Ana', gender: 'feminino' } }, at('2026-09-19T01:00:00')).greeting).toBe('Ainda acordada, Ana?');
+    const raceEvents = [{ id: 'r1', name: 'X', date: '2026-11-08', status: 'agendada' }];
+    expect(buildWelcome('prova', { raceEvents }, at('2026-11-08T06:00:00')).cta).toBe('Vamos a isso');
+  });
+});

@@ -23,7 +23,8 @@ function quando(today, dateISO) {
   return `daqui a ${d} dias`;
 }
 
-const lowerFirst = (s) => (s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+const lowerFirst = (s) => (!s || /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2}/.test(s) ? s : s.charAt(0).toLowerCase() + s.slice(1));
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /** { title, sub } para o plano acabado de aceitar, ou null. */
 export function planStartMoment(plan, items = [], today) {
@@ -39,7 +40,7 @@ export function planStartMoment(plan, items = [], today) {
   if (plan.supersedes_plan_id) {
     return {
       title: 'Plano ajustado.',
-      sub: [`A partir de ${quando(today, inicio)}, é este que conta.`, primeiroTreino, 'O que já fizeste fica feito.'].filter(Boolean).join(' '),
+      sub: [`${cap(quando(today, inicio))}, é este que conta.`, primeiroTreino, 'O que já fizeste fica feito.'].filter(Boolean).join(' '),
     };
   }
 

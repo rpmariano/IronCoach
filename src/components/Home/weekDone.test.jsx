@@ -54,7 +54,7 @@ describe('WeekDoneRibbon', () => {
   const done = weekDone({ plans: [plan], planItems: [item('a', '2026-09-14'), item('b', '2026-09-16')], today: '2026-09-19' });
   beforeEach(() => {
     window.localStorage.clear();
-    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' } });
+    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear' });
   });
 
   it('a primeira vez é o momento; da segunda, fica só lá', () => {

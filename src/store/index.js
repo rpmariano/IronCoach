@@ -171,6 +171,12 @@ export const useAppStore = create((set, get) => ({
   // redesenho 2026-09: a órbita do Início é só leitura, o registo vive aqui.
   waterSheetOpen: false,
   setWaterSheetOpen: (open) => set({ waterSheetOpen: !!open }),
+
+  /* A cancela dos momentos da Carol (utils/useMomentOnce.js): 'pending'
+     enquanto o App decide se mostra as boas-vindas, 'open' enquanto estão
+     abertas, 'clear' quando os momentos da Home podem acontecer. */
+  welcomeGate: 'pending',
+  setWelcomeGate: (gate) => set({ welcomeGate: gate }),
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
   

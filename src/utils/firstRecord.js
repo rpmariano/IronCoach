@@ -14,7 +14,7 @@
 const LISTA = { run: 'runs', meal: 'meals', gym: 'gymSessions', body: 'bodyAssessments' };
 
 const FRASE = {
-  run: { title: 'A primeira corrida.', sub: 'Agora já sei por onde começar. Mais duas e digo-te onde está o teu ritmo de base.' },
+  run: { title: 'A primeira corrida.', sub: 'Agora já sei por onde começar: o teu ritmo, a tua distância, o teu esforço.' },
   meal: { title: 'A primeira refeição.', sub: 'Os anéis começam a encher-se a partir daqui. É assim que percebo como comes.' },
   gym: { title: 'O primeiro treino de ginásio.', sub: 'Já sei o que levantas. Da próxima vez, digo-te se é para subir.' },
   body: { title: 'A primeira avaliação.', sub: 'É o ponto de partida. Tudo o que o corpo mudar, vou medir contra isto.' },

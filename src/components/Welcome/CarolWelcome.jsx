@@ -160,7 +160,7 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
             <span className="welcome-halo absolute rounded-full" style={{ inset: -22, background: `radial-gradient(circle, ${race ? 'rgba(251,191,36,.28)' : 'rgba(34,211,238,.28)'}, transparent 68%)` }} />
             <CoachAvatar
               size={88}
-              mood="happy"
+              mood={race ? 'happy' : welcome.variant === 'madrugada' ? 'worried' : 'neutral'}
               style={{ position: 'relative', boxShadow: race ? '0 0 0 10px rgba(251,191,36,.10), 0 18px 40px rgba(251,191,36,.30)' : '0 0 0 10px rgba(34,211,238,.08), 0 18px 40px rgba(34,211,238,.30)' }}
             />
           </div>

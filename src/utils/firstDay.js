@@ -59,7 +59,7 @@ const PEDIDO = {
   },
   ritmo: {
     title: (n) => (n ? `${n}, vamos pôr-te mais rápido.` : 'Vamos pôr-te mais rápido.'),
-    body: 'Primeiro preciso de ver como corres hoje. Três corridas registadas e digo-te onde está o teu ritmo de base.',
+    body: 'Primeiro preciso de ver como corres hoje. Regista as próximas corridas e falamos do teu ritmo de base.',
     primary: 'run',
   },
   saude: {

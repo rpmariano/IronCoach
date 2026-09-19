@@ -30,7 +30,9 @@ export function classifyAnalysisFailure(detail, online = typeof navigator === 'u
   const d = String(detail || '');
   if (!online || /failed to fetch|networkerror|network request failed|load failed|offline|sem rede/i.test(d)) return 'offline';
   if (/timeout|timed out|demorou|aborted|tempo esgotado/i.test(d)) return 'timeout';
-  if (/\b401\b|jwt|sess[aã]o|session|unauthori[sz]ed|not authenticated/i.test(d)) return 'session';
+  // Só o que é mesmo autenticação: "sessão" também é a do ginásio ("Máximo
+  // de N imagens por sessão"), e isso não é uma sessão expirada.
+  if (/\b401\b|jwt|unauthori[sz]ed|not authenticated|n[aã]o autenticad|session (?:has )?expired|sess[aã]o expirad/i.test(d)) return 'session';
   return 'other';
 }
 

@@ -44,3 +44,9 @@ describe('runRecordMoment', () => {
     expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
   });
 });
+
+describe('revisão pré-master de 2026-09-19', () => {
+  it('uma corrida de 4 km não é recorde nos 5 km', () => {
+    expect(runRecordMoment(run('n', 4.1, 1100), [run('a', 5, 1500)])).toBeNull();
+  });
+});

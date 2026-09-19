@@ -47,7 +47,7 @@ describe('CheckinCard', () => {
     renderCard();
     expect(screen.getByTestId('checkin-card-done')).toHaveTextContent('Sono bom · Energia: normal · Stress: calmo · Sem dor');
     // Quem responde é ela, não um "guardado".
-    expect(screen.getByTestId('checkin-reply')).toHaveTextContent('Anotado. Dia normal, plano normal.');
+    expect(screen.getByTestId('checkin-reply')).toHaveTextContent('Anotado. Dia normal.');
     fireEvent.click(screen.getByRole('button', { name: 'Editar o check-in de hoje' }));
     expect(screen.getByRole('button', { name: /Como dormiste\? 4 de 5/ })).toHaveAttribute('aria-pressed', 'true');
   });

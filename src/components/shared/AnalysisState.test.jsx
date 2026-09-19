@@ -62,3 +62,11 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
     expect(screen.getByText('Outro título')).toBeInTheDocument();
   });
 });
+
+describe('revisão pré-master de 2026-09-19', () => {
+  it('a "sessão" do ginásio não é uma sessão expirada', () => {
+    expect(classifyAnalysisFailure('Máximo de 4 imagens por sessão')).toBe('other');
+    expect(classifyAnalysisFailure('Falha a gravar sessão: erro')).toBe('other');
+    expect(classifyAnalysisFailure('Invalid JWT')).toBe('session');
+  });
+});

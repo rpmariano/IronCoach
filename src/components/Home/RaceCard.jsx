@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Target, Trophy } from 'lucide-react';
 import { todayISO } from '../../lib/utils';
 import { findRaceRun, formatDuration, formatPace } from '../../utils/run';
@@ -15,6 +15,7 @@ import { useCountUpText } from '../../utils/useCountUp';
 import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { raceMilestoneLine, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
+import useMomentOnce from '../../utils/useMomentOnce';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
    fase atual, "semana 6 de 18", os dias em número grande, o trilho do
@@ -141,10 +142,8 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
 function RaceMilestoneLine({ raceId, days }) {
   const line = raceMilestoneLine(days);
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
-  const [moment] = useState(() => !!line && !wasMilestoneSeen(userId, raceId, days));
-  useEffect(() => {
-    if (line) markMilestoneSeen(userId, raceId, days);
-  }, [line, userId, raceId, days]);
+  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
+  const moment = useMomentOnce(!!line, () => wasMilestoneSeen(userId, raceId, days), () => markMilestoneSeen(userId, raceId, days));
   if (!line) return null;
   return (
     <div data-testid="race-milestone" className="flex items-start gap-2.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(251,191,36,.18)' }}>

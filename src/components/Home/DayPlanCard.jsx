@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, Check, X as XIcon, MessageCircle } from 'lucide-react';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
@@ -7,6 +7,7 @@ import GlassCard from '../shared/GlassCard';
 import WeekDoneRibbon from './WeekDoneRibbon';
 import { useAppStore } from '../../store';
 import { doneLine, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
+import useMomentOnce from '../../utils/useMomentOnce';
 import { weekDone } from './weekDone';
 
 /* "O que faço hoje" — o plano de HOJE, e só de hoje (redesenho 2026-09-15).
@@ -95,10 +96,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     const t = trainingItems(day?.items || []).filter((i) => !i.isRace && !isRacePlanItem(i));
     return t.length > 0 && t.every((i) => i.status === 'concluido');
   }, [day]);
-  const [doneMoment] = useState(() => todayDone && !wasDayDoneSeen(userId, today));
-  useEffect(() => {
-    if (todayDone) markDayDoneSeen(userId, today);
-  }, [todayDone, userId, today]);
+  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
+  const doneMoment = useMomentOnce(todayDone, () => wasDayDoneSeen(userId, today), () => markDayDoneSeen(userId, today));
 
   if (!planWindow || !day) {
     return (

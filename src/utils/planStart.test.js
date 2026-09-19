@@ -36,3 +36,10 @@ describe('planStartMoment', () => {
     expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
   });
 });
+
+describe('revisão pré-master de 2026-09-19', () => {
+  it('o ajuste diz o dia sem "a partir de na…"', () => {
+    const m = planStartMoment({ ...plan, supersedes_plan_id: 'p0' }, [], TODAY);
+    expect(m.sub).toMatch(/^Na segunda-feira, é este que conta\./);
+  });
+});

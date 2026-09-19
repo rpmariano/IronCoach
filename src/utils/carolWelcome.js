@@ -16,6 +16,7 @@
    emoji nem exclamação. */
 
 import { formatPace } from './run';
+import { normalizeGender } from '@formulas/vocabulary.ts';
 import { planItemTitle, raceNameForDate } from './homeModels';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
@@ -73,7 +74,9 @@ export function raceToday(raceEvents, dateISO) {
 export function decideWelcome({ now = new Date(), raceEvents = [], seen = [] } = {}) {
   const { slot, key, date } = slotKey(now);
   const vistas = new Set(seen || []);
-  const race = raceToday(raceEvents, date);
+  // De madrugada, mesmo no dia da prova, é a madrugada: a versão da prova é
+  // para quando o dia começa (a partir das 5h), não para as 00:30.
+  const race = slot === 'madrugada' ? null : raceToday(raceEvents, date);
   if (race) {
     const raceKey = `${date}:prova`;
     if (!vistas.has(raceKey)) return { variant: 'prova', key: raceKey, markKeys: [raceKey, key], race };
@@ -108,11 +111,11 @@ const GREETING = {
   manha: (n) => `Bom dia${n ? `, ${n}` : ''}.`,
   tarde: (n) => `Boa tarde${n ? `, ${n}` : ''}.`,
   noite: (n) => `Boa noite${n ? `, ${n}` : ''}.`,
-  madrugada: (n, g) => (n ? `Ainda ${g === 'F' ? 'acordada' : 'acordado'}, ${n}?` : 'Ainda por aqui?'),
+  madrugada: (n, g) => (n ? `Ainda ${normalizeGender(g) === 'F' ? 'acordada' : 'acordado'}, ${n}?` : 'Ainda por aqui?'),
   prova: (n) => `É hoje${n ? `, ${n}` : ''}.`,
 };
 
-const CTA = { manha: 'Começar o dia', tarde: 'Entrar', noite: 'Ver o meu dia', madrugada: 'Entrar na mesma', prova: 'Estou pronto' };
+const CTA = { manha: 'Começar o dia', tarde: 'Entrar', noite: 'Ver o meu dia', madrugada: 'Entrar na mesma', prova: 'Vamos a isso' };
 
 const km = (v) => {
   const n = Number(v);
@@ -141,8 +144,10 @@ function runsOn(runs, dateISO) {
   return (runs || []).filter((r) => String(r?.date).slice(0, 10) === dateISO);
 }
 
+// Só a primeira letra de uma palavra normal: "HIIT" fica "HIIT", não "hIIT".
 function lowerFirst(s) {
-  return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+  if (!s || /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{2}/.test(s)) return s;
+  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 /**
@@ -206,7 +211,8 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     const ritmo = feita && Number(feita.distance_km) > 0 && Number(feita.duration_seconds) > 0
       ? formatPace(Number(feita.duration_seconds) / Number(feita.distance_km)) : null;
     if (dist) lines.push(`Hoje ficaram ${dist} km${ritmo ? ` a ${ritmo} por km` : ''}.`);
-    else if (tituloHoje && tituloHoje !== 'Descanso' && !treinoHojeFeito) lines.push(`${tituloHoje} ficou por fazer hoje. Amanhã falamos disso.`);
+    // CAROL.md §3: um treino não registado pergunta-se, não se dá como falhado.
+    else if (tituloHoje && tituloHoje !== 'Descanso' && !treinoHojeFeito && !/^Prova/.test(tituloHoje)) lines.push('Não vi o treino de hoje registado. Aconteceu alguma coisa?');
     if (tituloAmanha === 'Descanso') lines.push('Amanhã é descanso.');
     else if (tituloAmanha) lines.push(`Amanhã tens ${lowerFirst(tituloAmanha)}.`);
     if (tituloAmanha) chip = { label: 'Amanhã', value: tituloAmanha, icon: tituloAmanha === 'Descanso' ? 'moon' : 'run' };

@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh } from './lib/appUpdate';
+import { reloadFresh, isBusy } from './lib/appUpdate';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -429,11 +429,21 @@ export default function App() {
   const tryWelcome = useCallback(() => {
     const s = useAppStore.getState();
     const uid = s.session?.user?.id;
-    if (!uid) return;
+    const clear = () => { if (useAppStore.getState().welcomeGate !== 'open') s.setWelcomeGate('clear'); };
+    if (!uid) { clear(); return; }
+    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento da
+       medalha, um campo com o foco (a mesma regra da atualização automática,
+       lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
+    if (isBusy(document)) { clear(); return; }
     const decision = decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) });
-    if (!decision) return;
+    if (!decision) { clear(); return; }
     markSeen(uid, decision.markKeys);
+    s.setWelcomeGate('open');
     setWelcome({ ...buildWelcome(decision.variant, s), key: decision.key, at: new Date() });
+  }, []);
+  const closeWelcome = useCallback(() => {
+    setWelcome(null);
+    useAppStore.getState().setWelcomeGate('clear');
   }, []);
   useEffect(() => {
     if (showOnboarding) markCurrentSlotSeen();
@@ -443,6 +453,7 @@ export default function App() {
     if (openedWithTabRef.current) {
       openedWithTabRef.current = false;
       markCurrentSlotSeen();
+      useAppStore.getState().setWelcomeGate('clear');
       return;
     }
     tryWelcome();
@@ -527,7 +538,14 @@ export default function App() {
        fechada, a notificação abre-a com ?tab=coach, que o bloco acima trata. */
     const onWorkerMessage = (event) => {
       // O Coach, ou o Início (onde vivem o assunto por resolver e o conflito de provas — P.5).
-      if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) setActiveTab(event.data.tab);
+      if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) {
+        // Veio por uma notificação: o atleta vem ao que ela disse. As
+        // boas-vindas não o tapam, e a faixa conta como vista.
+        markCurrentSlotSeen();
+        setWelcome(null);
+        useAppStore.getState().setWelcomeGate('clear');
+        setActiveTab(event.data.tab);
+      }
     };
     if (typeof navigator !== 'undefined' && navigator.serviceWorker?.addEventListener) {
       navigator.serviceWorker.addEventListener('message', onWorkerMessage);
@@ -706,7 +724,7 @@ export default function App() {
           {openCreationMode === 'plano' && <PlanoScreen onClose={() => setOpenCreationMode(null)} />}
         </Suspense>
       </Layout>
-      {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={() => setWelcome(null)} />}
+      {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={closeWelcome} />}
     </ToastProvider>
   );
 }
