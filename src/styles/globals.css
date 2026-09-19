@@ -447,6 +447,18 @@ a[href]:not(.no-tap-scale):active {
    "de onde vem" a 6. */
 .coach-bubble-user  { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #f1f5f9; border-radius: 20px 20px 6px 20px; }
 .coach-bubble-model { background: rgba(34,211,238,.09); border: 1px solid rgba(34,211,238,.26); color: var(--text-2); border-radius: 20px 20px 20px 6px; }
+/* O fecho do arranque: as semanas até à prova nascem uma a uma
+   (StepFecho/RaceWeeks) e a da prova chega por último, com o impulso da
+   confirmação de registo. Os atrasos vêm do JSX (zero sob
+   prefers-reduced-motion); as durações dos tokens encurtam sozinhas. */
+.onb-week { transform-origin: bottom; animation: onbWeek var(--dur-confirm) var(--ease-out) both; }
+@keyframes onbWeek {
+  from { transform: scaleY(.15); opacity: 0; }
+  to   { transform: scaleY(1); opacity: 1; }
+}
+.onb-week-race { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+.onb-done-badge { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) 180ms both; }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

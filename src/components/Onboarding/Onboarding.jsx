@@ -14,6 +14,7 @@ import {
   OBJETIVOS, TEMPO_A_CORRER,
 } from './OnboardingSteps';
 import { dietaryRestrictionLabel } from '../../utils/diet';
+import { firstName, reactToRace } from './carolReactions';
 
 /* ════════════════════════════════════════════════════════════════════════
    Onboarding — o arranque (ponto 8 do handoff 2026-09, direção 6c)
@@ -262,9 +263,11 @@ export default function Onboarding({ reentry = false, onDone }) {
     return linhas;
   }, [draft, temProva]);
 
+  const nome = firstName(draft.display_name);
+  const feito = nome ? `Está feito, ${nome}.` : 'Está feito.';
   const tituloFecho = temProva && semanas != null
-    ? <>Está feito.<br />{semanas} {semanas === 1 ? 'semana' : 'semanas'} até {draft.race_name.trim()}.</>
-    : <>Está feito.<br />Vamos começar.</>;
+    ? <>{feito}<br />{semanas} {semanas === 1 ? 'semana' : 'semanas'} até {draft.race_name.trim()}.</>
+    : <>{feito}<br />Vamos começar.</>;
 
   /* ── gravação ─────────────────────────────────────────────────────────
      Um só UPDATE no perfil, no fim. Tolera a coluna `onboarding_done` ainda
@@ -338,9 +341,14 @@ export default function Onboarding({ reentry = false, onDone }) {
     onDone?.();
   }, [isSaving, gravar, reentry, temProva, draft, setActiveTab, setOpenCreationMode, setRacePrefill, onDone]);
 
-  const avancar = () => setStep((s) => Math.min(LAST_STEP, s + 1));
+  /* O passo seguinte entra do lado de onde se vem — da direita a avançar,
+     da esquerda a recuar — com a mesma entrada dos separadores (tabEnter,
+     --dur-tab-content). */
+  const [sentido, setSentido] = useState(1);
+  const avancar = () => { setSentido(1); setStep((s) => Math.min(LAST_STEP, s + 1)); };
   const recuar = () => {
     if (step === 0) { onDone?.(); return; }
+    setSentido(-1);
     setStep((s) => Math.max(0, s - 1));
   };
 
@@ -359,8 +367,8 @@ export default function Onboarding({ reentry = false, onDone }) {
       case 'objetivo': return <StepObjetivo draft={draft} set={set} />;
       case 'como-corres': return <StepComoCorres draft={draft} set={set} />;
       case 'como-comes': return <StepComoComes draft={draft} set={set} />;
-      case 'prova': return <StepProva draft={draft} set={set} carolNote={notaProva} />;
-      default: return <StepFecho titulo={tituloFecho} resumo={resumo} />;
+      case 'prova': return <StepProva draft={draft} set={set} carolNote={notaProva} reaction={reactToRace(draft, semanas)} />;
+      default: return <StepFecho titulo={tituloFecho} resumo={resumo} semanas={temProva ? semanas : null} raceName={temProva ? draft.race_name.trim() : ''} />;
     }
   })();
 
@@ -468,7 +476,7 @@ export default function Onboarding({ reentry = false, onDone }) {
                   <span
                     key={i}
                     aria-hidden="true"
-                    style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? 'var(--coach)' : 'rgba(255,255,255,.14)' }}
+                    style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? 'var(--coach)' : 'rgba(255,255,255,.14)', transition: 'background-color var(--dur-tab-content) var(--ease-out)' }}
                   />
                 ))}
               </div>
@@ -488,7 +496,13 @@ export default function Onboarding({ reentry = false, onDone }) {
           boxSizing: 'border-box',
         }}
       >
-        {corpo}
+        <div
+          key={step}
+          className="tab-enter flex-1 flex flex-col"
+          style={{ '--tab-enter-from': `${sentido * 14}px` }}
+        >
+          {corpo}
+        </div>
       </div>
 
       {barra}

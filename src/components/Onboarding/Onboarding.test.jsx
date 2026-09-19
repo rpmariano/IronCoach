@@ -386,3 +386,58 @@ describe('Onboarding — progresso anunciado', () => {
     expect(barra).toHaveAttribute('aria-valuetext', 'Passo 2 de 6');
   });
 });
+
+describe('Onboarding — a Carol responde', () => {
+  it('trata o atleta pelo nome a partir do passo 3 e no fecho', () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    fireEvent.change(screen.getByLabelText(/Como te chamo/), { target: { value: 'Rui Mariano' } });
+    clicar('Continuar');
+    expect(screen.getByText('O que te traz aqui, Rui?')).toBeInTheDocument();
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Ainda não tenho prova marcada');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Está feito, Rui.');
+  });
+
+  it('a nota do passo passa a ser a resposta dela à escolha', () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    expect(screen.queryByTestId('carol-note')).not.toBeInTheDocument();
+    clicar(/Voltar depois de uma pausa/);
+    const nota = screen.getByTestId('carol-note');
+    expect(nota).toHaveTextContent(/as pernas não/);
+    expect(nota).toHaveAttribute('data-reacting', 'true');
+    // Desfazer a escolha cala-a outra vez.
+    clicar(/Voltar depois de uma pausa/);
+    expect(screen.queryByTestId('carol-note')).not.toBeInTheDocument();
+  });
+
+  it('com prova marcada, o fecho desenha as semanas até lá, uma a uma', () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    const d = new Date();
+    d.setDate(d.getDate() + 7 * 12 + 2);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Maratona do Porto' } });
+    fireEvent.change(screen.getByLabelText(/^Data/), { target: { value: iso } });
+    fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '42.2' } });
+    clicar('Criar o meu plano');
+    const semanas = screen.getByTestId('onboarding-semanas');
+    expect(semanas).toHaveAttribute('aria-label', '12 semanas até Maratona do Porto');
+    expect(semanas.querySelectorAll('.onb-week')).toHaveLength(12);
+    expect(semanas.querySelectorAll('.onb-week-race')).toHaveLength(1);
+  });
+
+  it('sem prova, o fecho não desenha semanas', () => {
+    renderOnboarding();
+    percorrerTudo();
+    expect(screen.queryByTestId('onboarding-semanas')).not.toBeInTheDocument();
+  });
+});
