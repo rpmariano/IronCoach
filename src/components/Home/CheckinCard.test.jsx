@@ -13,13 +13,15 @@ import CheckinCard from './CheckinCard';
 
 const saveDailyCheckin = vi.fn();
 const setCycleConsent = vi.fn();
+const deleteAllCheckins = vi.fn();
 
 const renderCard = () => render(<ToastProvider><CheckinCard /></ToastProvider>);
 
 beforeEach(() => {
   saveDailyCheckin.mockReset().mockResolvedValue({ ok: true, alarms: [] });
   setCycleConsent.mockReset().mockResolvedValue(true);
-  useAppStore.setState({ dailyCheckins: [], profile: { id: 'u1', gender: 'M' }, saveDailyCheckin, setCycleConsent });
+  deleteAllCheckins.mockReset().mockResolvedValue(true);
+  useAppStore.setState({ dailyCheckins: [], profile: { id: 'u1', gender: 'M' }, saveDailyCheckin, setCycleConsent, deleteAllCheckins });
 });
 
 describe('CheckinCard', () => {
@@ -78,3 +80,23 @@ describe('CheckinCard', () => {
     expect(saveDailyCheckin.mock.calls[0][0].period_today).toBe(true);
   });
 });
+
+describe('CheckinCard — apagar os check-ins (privacidade)', () => {
+  it('sem check-ins guardados, o botão não aparece', () => {
+    renderCard();
+    fireEvent.click(screen.getByTestId('checkin-card'));
+    expect(screen.queryByText('Apagar todos os meus check-ins')).not.toBeInTheDocument();
+  });
+
+  it('pede confirmação, e só depois apaga', async () => {
+    useAppStore.setState({ dailyCheckins: [{ date: '2026-09-01', sleep: 3 }, { date: '2026-09-02', sleep: 4 }] });
+    renderCard();
+    fireEvent.click(screen.getByTestId('checkin-card'));
+    fireEvent.click(screen.getByRole('button', { name: 'Apagar todos os meus check-ins' }));
+    expect(screen.getByTestId('checkin-delete-all')).toHaveTextContent('Apago os 2 check-ins');
+    expect(deleteAllCheckins).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Apagar tudo' }));
+    await waitFor(() => expect(deleteAllCheckins).toHaveBeenCalledTimes(1));
+  });
+});
+

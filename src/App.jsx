@@ -481,7 +481,8 @@ export default function App() {
        service worker pede o separador, e só se aceita o do Coach. Com a app
        fechada, a notificação abre-a com ?tab=coach, que o bloco acima trata. */
     const onWorkerMessage = (event) => {
-      if (event?.data?.type === 'open-tab' && event.data.tab === 'coach') setActiveTab('coach');
+      // O Coach, ou o Início (onde vivem o assunto por resolver e o conflito de provas — P.5).
+      if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) setActiveTab(event.data.tab);
     };
     if (typeof navigator !== 'undefined' && navigator.serviceWorker?.addEventListener) {
       navigator.serviceWorker.addEventListener('message', onWorkerMessage);

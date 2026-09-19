@@ -16,6 +16,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
+import { findEndingBlock } from '@formulas/proactiveTriggers.ts';
 
 export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
@@ -62,7 +63,7 @@ function daysBetween(fromIso, toIso) {
 /** Escolhe a mensagem proativa para este momento, ou null. Prioridade: manhã
  *  da prova > véspera > depois da prova > silêncio — o dia da prova manda
  *  em tudo o resto. `now` é injetável para os testes. */
-export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
+export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [] }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
@@ -87,6 +88,24 @@ export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments
 
   const afterCandidate = pickRaceAfter({ races, runs, profile, today });
   if (afterCandidate) return afterCandidate;
+
+  /* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A
+     régua é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser
+     a mesma da notificação. Um plano só de refeições não é um bloco. */
+  const trainingPlanIds = new Set((coachPlanItems || [])
+    .filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio')
+    .map((i) => i.plan_id));
+  const block = findEndingBlock((coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })), today);
+  if (block) {
+    const end = String(block.period_end).slice(0, 10);
+    const gap = daysBetween(today, end);
+    const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
+    return {
+      trigger: 'block_end',
+      key: `block_end:${block.id}`,
+      details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
+    };
+  }
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
   if (last) {

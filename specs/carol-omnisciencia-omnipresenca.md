@@ -7,8 +7,8 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
-| **Omnipresença** | **6,6 / 10** (2,8 de manhã; 6,1 depois da P.3) | — | 9,0 / 10 |
+| **Omnisciência** | **7,7 / 10** (3,7 no início; 7,0 depois da Fase 2; 7,5 depois da Fase 3) | 6,0 / 10 | 8,6 / 10 |
+| **Omnipresença** | **7,6 / 10** (2,8 no início; 6,1 depois da P.3; 7,0 depois da P.4) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
@@ -147,6 +147,27 @@ Com a Fase 3, O4 passa de 6 para 9. A omnisciência sobe para **7,5**.
 | **4.2** Meteorologia da prova a 7 dias e na véspera, e do dia do treino longo | O8 | P | Estender `enrich-race-event` com uma API de meteorologia |
 | **4.3** Perfil altimétrico do percurso da prova | O8 | M | `enrich-race-event` |
 
+#### Estado: 4.2 implementada a 2026-09-19
+
+**Fonte:** Open-Meteo, que é gratuito e não precisa de chave. As provas não têm coordenadas, só o nome do local. Por isso o local é primeiro procurado em Portugal e, se não aparecer, em qualquer país. Depois pede-se a previsão horária desse dia, em hora de Lisboa. O código está em `_shared/raceWeatherFetch.ts`.
+
+**Quando:** só quando a prova é nos próximos 7 dias e tem o local preenchido. Nada fica guardado: a previsão pede-se no momento, com um limite de 4 segundos. Se falhar, não há bloco.
+
+**O que ela recebe:** as horas em que o atleta vai estar a correr, da partida até ao fim previsto pelo objetivo de tempo, ou pela distância a 6,5 min/km. Para essas horas recebe:
+- a temperatura e a sensação térmica;
+- a humidade, a chuva e o vento;
+- o conselho da régua de calor, em `_shared/formulas/raceWeather.ts`. Abaixo de 20 °C de sensação, as condições são boas. Até 25 °C, o ritmo fica 1 a 3% mais lento. Até 30 °C, abranda 3 a 6% e junta sal. Acima de 30 °C, o objetivo de tempo deixa de ser realista.
+
+Chuva a partir de 60% e vento a partir de 25 km/h trazem um aviso próprio. O bloco diz o que foi assumido quando falta a hora de partida ou o objetivo.
+
+**Onde:** no chat, como bloco "Meteorologia da prova". No cartão diário, como `meteorologia_prova`, que ela tem em conta na prontidão e no balanço.
+
+**Ficou de fora:**
+- A meteorologia do treino longo, porque a app não sabe onde o atleta treina: o perfil não tem local.
+- O perfil altimétrico, a ação 4.3.
+
+Com a 4.2, O8 passa de 4 para 7. A omnisciência sobe para **7,7**.
+
 ---
 
 # Parte 2 — Omnipresença
@@ -242,6 +263,43 @@ A migration `20260918173342_carol_push_preferences` está aplicada em produção
 
 Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depender da água. A omnipresença sobe para **6,6**.
 
+#### Estado: P.4 implementada a 2026-09-19
+
+**O texto da notificação passa a ser escrito por ela.** No momento de enviar, o `coach-proactive-tick` pede ao Gemini uma notificação curta na voz da Carol, com os dados reais do momento: o primeiro nome, a prova, a distância, a hora de partida, o objetivo, o tempo feito e a diferença para o objetivo, ou os dias sem registos. O código está em `coach-proactive-tick/pushText.ts`.
+
+**Guardas:**
+- As regras de tom são as da `carolTone`. O texto tem no máximo 140 caracteres, numa só linha.
+- O prompt proíbe números que não estejam nos dados.
+- O texto é validado: comprimento, sem emoji, sem ponto de exclamação. Se falhar a validação, se a chamada falhar ou se demorar mais de 10 segundos, sai a frase fixa da P.3.
+
+**Decisão:** a conversa a sério continua a ser escrita pelo `coach-chat` quando o atleta abre o Coach. Gerar a mensagem inteira do chat no servidor obrigava a um caminho, autenticado por segredo, para agir em nome de qualquer atleta. É um risco de segurança que não compensa. O toque já abre o Coach no momento certo, desde a P.3.
+
+**Limite:** a notificação e a primeira mensagem do chat são escritas em momentos diferentes. Dizem o mesmo assunto, mas não com as mesmas palavras.
+
+Com a P.4, P2 passa de 6 para 8. A omnipresença sobe para **7,0**.
+
+#### Estado: P.5 implementada a 2026-09-19
+
+A migration `20260918234452_proactive_p5_triggers` está aplicada em produção. Alarga as listas de momentos aceites aos sete, e os perfis que tinham a lista por omissão passaram a ter os sete.
+
+| Momento | Quando | O toque abre |
+|---|---|---|
+| **Assunto por resolver** (`intervention`) | Há uma intervenção aberta: dor ou sono mau no check-in, ou um desvio que uma análise marcou. Cobre o "pós-treino com intervenção" e o "risco do check-in". A chave muda quando o motivo muda. | O Início, onde está o aviso com "Falar com a Carol" |
+| **Provas em conflito** (`race_conflict`) | Duas provas principais no mesmo bloco, com a mesma régua do cliente. | O Início, onde está o aviso do conflito |
+| **Fim de bloco** (`block_end`) | Um plano de treino sem prova acaba hoje ou nos próximos 2 dias, e não há outro a seguir. Planos só de refeições não contam. | O Coach, onde ela faz o ponto do bloco e pergunta se preparam o próximo, sem propor o plano antes de o atleta dizer que sim |
+
+**Prioridade no servidor:** assunto por resolver, manhã da prova, véspera, conflito, balanço, fim de bloco e silêncio.
+
+**Privacidade:** o texto do assunto por resolver é sempre genérico e nunca passa pelo gerador: "Preciso de falar contigo sobre uma coisa que vi". O motivo pode ser de saúde e não vai para o ecrã bloqueado.
+
+**Paridade:** o fim de bloco também existe no cliente, em `pickProactiveTrigger`, e no `coach-chat`, com uma instrução própria. O teste de paridade confirma que a chave é a mesma dos dois lados. Os outros dois momentos novos são só do servidor, porque no cliente já têm o seu aviso no Início.
+
+**Perfil:** as preferências passam a ter os sete momentos.
+
+**Ficou de fora:** alertas durante o treino, que dependem do relógio (P.8).
+
+Com a P.5, P3 passa de 6 para 9. A omnipresença sobe para **7,6**.
+
 ---
 
 # Ordem recomendada
@@ -257,3 +315,18 @@ Com a P.6, P6 passa de 6 para 9 e P2 de 5 para 6, porque a Carol deixa de depend
 - **Tamanho e custo do prompt.** Cada bloco novo aumenta os tokens por mensagem. É preciso medir antes e depois da Fase 1.
 - **Privacidade.** O check-in, o ciclo menstrual e os dados de relógio são dados de saúde. Precisam de consentimento explícito e de RLS revista.
 - **Fadiga.** Uma Carol omnipresente e mal calibrada passa a ser ruído. O limite diário e as preferências da ação P.6 têm de chegar antes dos gatilhos novos, ou ao mesmo tempo.
+
+# Pendentes fechados a 2026-09-19
+
+- **Recusar uma proposta devolve os treinos feitos** ao bloco de onde vieram. Até aqui, se um aceite tivesse falhado a meio e o atleta recusasse depois, os dias cumpridos deixavam de aparecer no plano.
+- **O treino feito noutro dia** cancela o treino redundante do dia em que foi feito, e não o do dia planeado.
+- **As refeições do Início** mostram a sugestão mais recente do dia. Antes, podia aparecer a do bloco antigo.
+- **Um momento desligado no Perfil não esconde os seguintes.** Por exemplo, com o balanço desligado, o "Estás bem?" ainda pode sair.
+- **O cartão diário lê o que ela prescreveu e o que aconteceu** (Fase 3), como `prescrito_vs_feito`, e usa-o no balanço.
+- **Apagar os check-ins.** A persiana do check-in tem "Apagar todos os meus check-ins", com confirmação.
+
+**Custo, primeira medida:** o cartão diário passou de cerca de 4 750 para cerca de 7 000 tokens de entrada por chamada. Há só 2 chamadas depois da mudança, por isso é um sinal e não uma medida. O chat ainda não tem nenhuma chamada registada desde a memória nova. Convém repetir a medição daqui a uma semana, pelo `app_logs`.
+
+**Ficou por fazer, e porquê:**
+- **A água à meia-noite.** Entre as 00:00 e a 01:00, a notificação da água pode usar o total do dia anterior. Isto só acontece a quem tem a janela dos lembretes a atravessar a meia-noite. A correção obriga a mudar em que dia se grava a água, e isso mexe em registos existentes. Não compensa para uma hora por dia de um caso raro.
+- **O relógio**, adiado por decisão do produto.

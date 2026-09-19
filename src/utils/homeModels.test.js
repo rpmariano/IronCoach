@@ -85,6 +85,17 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(parseMealSuggestion('')).toEqual([]);
   });
 
+  it('refeições do dia: com duas sugestões para o mesmo dia, vale a mais recente', () => {
+    // O treino feito veio do bloco antigo com a sugestão antiga; o item
+    // cancelado do bloco novo traz a sugestão nova.
+    const meals = mealsForDay([
+      { kind: 'corrida', status: 'concluido', created_at: '2026-09-01T10:00:00Z', meal_macros: { kcal: 1800, items: [{ tipo: 'almoco', texto: 'Antiga' }] } },
+      { kind: 'corrida', status: 'cancelado', created_at: '2026-09-17T10:00:00Z', meal_macros: { kcal: 2200, items: [{ tipo: 'almoco', texto: 'Nova' }] } },
+    ]);
+    expect(meals.kcal).toBe(2200);
+    expect(meals.meals[0].texto).toBe('Nova');
+  });
+
   it('refeições do dia: estrutura da Carol primeiro, texto como recurso; o almoço é a pré-visualização', () => {
     const structured = mealsForDay([{ kind: 'corrida', meal_suggestion: 'Almoço: texto', meal_macros: { kcal: 2150.4, items: [{ tipo: 'pequeno-almoco', texto: 'Omelete' }, { tipo: 'almoco', texto: 'Atum ao natural com grão-de-bico' }] }, notes: 'Hidratos altos para os 16 km.' }]);
     expect(structured.kcal).toBe(2150);

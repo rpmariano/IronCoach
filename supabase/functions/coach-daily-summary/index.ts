@@ -21,7 +21,8 @@ import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
-import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { fetchAdherenceBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -585,7 +586,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `(c) uma sugestão prática para os próximos dias. ` +
     `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
     `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
-    `Lê "fase_do_plano" e calibra o tom. Só preenches se houver histórico — caso contrário null.\n` +
+    `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +
+    `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. Só preenches se houver histórico — caso contrário null.\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
     `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +
@@ -604,6 +606,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `CRÍTICO: NÃO sugiras ingredientes ou pratos específicos (ex: frango grelhado, arroz), pois o atleta já tem um plano alimentar detalhado a cumprir. ` +
     `Foca-te exclusivamente no *porquê* e na estratégia fisiológica. Respeita SEMPRE restrições alimentares do contexto.\n\n` +
     `3. race_readiness — avalia a prontidão para "proxima_prova". Devolve null se não houver prova. ` +
+    `Se existir "meteorologia_prova", tem-na em conta aqui e no recap (calor, chuva, vento), com os números dela. ` +
     `Critérios de level:\n` +
     `  "green" — preparação adequada: semanas suficientes, volume ok, ACWR < 1.3, ` +
     `paces (se disponíveis) dentro do intervalo necessário para o target_time, exertion controlada.\n` +
@@ -731,7 +734,7 @@ Deno.serve(async (req) => {
         .eq("status", "aceite")
         .order("created_at", { ascending: false }),
       // 3 próximas provas com prioridade e distância para alertas de taper corretos
-      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_time_seconds, target_pace_seconds_per_km, start_time")
+      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_time_seconds, target_pace_seconds_per_km, start_time, location")
         .eq("user_id", userId).gte("date", today)
         .order("date", { ascending: true }).limit(3),
       // Composição corporal: 30 dias para RED-S e tendência de peso
@@ -804,6 +807,12 @@ Deno.serve(async (req) => {
     const lastWeekPlan = isMonday && lastWeekItems.length > 0
       ? computeLastWeekAdherence(lastWeekItems, recentRuns || [], recentGym || [])
       : null;
+    // A meteorologia da prova, se for nos próximos 7 dias (ação 4.2), e o
+    // que ela prescreveu nos últimos 14 dias face ao que aconteceu (Fase 3).
+    const [raceWeather, adherence] = await Promise.all([
+      fetchRaceWeatherContext(nextRace, today),
+      fetchAdherenceBlock(sb, userId, today),
+    ]);
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
@@ -814,6 +823,8 @@ Deno.serve(async (req) => {
       lastWeekPlan,
       vesperaDaProva: raceEveForSummary,
     });
+    if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
+    if (adherence) (ctx as Record<string, unknown>).prescrito_vs_feito = adherence;
 
     // No dia da prova o aviso é a prova (o cliente escreve-a): listar aqui
     // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E

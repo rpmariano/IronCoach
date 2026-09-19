@@ -38,6 +38,7 @@ function builder(table) {
     in: (c, v) => { q.filters.push([c, v, 'in']); return chain; },
     lte: () => chain,
     single: () => Promise.resolve(run()),
+    maybeSingle: () => Promise.resolve(run()),
     then: (resolve, reject) => Promise.resolve(run()).then(resolve, reject),
   };
   return chain;
@@ -195,6 +196,43 @@ describe('respondToPlan — os treinos já feitos passam para o bloco novo', () 
     failOn = (table, data) => table === 'coach_plan_items' && 'plan_id' in data;
     expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(false);
     expect(writes.some((w) => w.table === 'coach_plans')).toBe(false);
+  });
+});
+
+/* Revisão pré-master de 2026-09-18: o que ficava mal depois de um aceite
+   falhado a meio, e o dia que conta para o treino redundante. */
+describe('respondToPlan — recusar e o dia em que o treino foi feito', () => {
+  it('recusar uma proposta devolve os treinos feitos ao bloco de onde vieram, antes de a recusar', async () => {
+    db.plans['p-novo'] = plano({ id: 'p-novo', supersedes_plan_id: 'p-antigo' });
+    expect(await useAppStore.getState().respondToPlan('p-novo', false)).toBe(true);
+    const devolve = writes.findIndex((w) => w.table === 'coach_plan_items' && w.data?.plan_id === 'p-antigo');
+    expect(devolve).toBeGreaterThan(-1);
+    expect(writes[devolve].filters).toEqual([['plan_id', 'p-novo'], ['status', 'concluido']]);
+    const recusa = writes.findIndex((w) => w.table === 'coach_plans' && w.data?.status === 'recusado');
+    expect(devolve).toBeLessThan(recusa);
+  });
+
+  it('recusar uma proposta sem plano de origem não mexe nos itens', async () => {
+    db.plans['p-novo'] = plano({ id: 'p-novo' });
+    expect(await useAppStore.getState().respondToPlan('p-novo', false)).toBe(true);
+    expect(writes.some((w) => w.table === 'coach_plan_items')).toBe(false);
+  });
+
+  it('se a devolução falhar, a proposta não é recusada', async () => {
+    db.plans['p-novo'] = plano({ id: 'p-novo', supersedes_plan_id: 'p-antigo' });
+    failOn = (table, data) => table === 'coach_plan_items' && 'plan_id' in data;
+    expect(await useAppStore.getState().respondToPlan('p-novo', false)).toBe(false);
+    expect(writes.some((w) => w.data?.status === 'recusado')).toBe(false);
+  });
+
+  it('o treino feito noutro dia cancela o redundante do dia em que foi feito', async () => {
+    db.plans['p-antigo'] = plano({ id: 'p-antigo', race_id: 'r-longe' });
+    db.plans['p-novo'] = plano({ id: 'p-novo', period_start: '2026-09-18', period_end: '2026-09-27', race_id: 'r-perto', supersedes_plan_id: 'p-antigo' });
+    // Planeado para dia 19, feito no dia 18.
+    db.items = [{ id: 'cedo', plan_id: 'p-antigo', planned_date: '2026-09-19', actual_date: '2026-09-18', kind: 'corrida', status: 'concluido' }];
+    expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(true);
+    const redundante = writes.find((w) => w.data?.status === 'cancelado' && w.filters.some(([c, v]) => c === 'plan_id' && v === 'p-novo'));
+    expect(redundante.filters).toContainEqual(['planned_date', '2026-09-18']);
   });
 });
 

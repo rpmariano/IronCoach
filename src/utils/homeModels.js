@@ -172,7 +172,12 @@ export function parseMealSuggestion(text) {
 /** As refeições sugeridas de um dia do plano: estruturadas (meal_macros)
  *  quando existem, texto corrido dividido quando não. */
 export function mealsForDay(items = []) {
-  const item = (items || []).find((i) => i.meal_macros?.items?.length) || (items || []).find((i) => i.meal_suggestion);
+  /* A sugestão MAIS RECENTE do dia. Quando um bloco novo é aceite, o treino
+     já feito passa do bloco antigo para o novo com a sugestão antiga, e o
+     item redundante do bloco novo (que traz a sugestão nova) é cancelado —
+     a primeira encontrada era a velha (revisão pré-master de 2026-09-18). */
+  const byNewest = (items || []).slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  const item = byNewest.find((i) => i.meal_macros?.items?.length) || byNewest.find((i) => i.meal_suggestion);
   if (!item) return null;
   const structured = item.meal_macros?.items?.length
     ? item.meal_macros.items.map((r) => ({ tipo: r.tipo, label: MEAL_LABEL_BY_TIPO[r.tipo] || r.tipo, texto: r.texto }))

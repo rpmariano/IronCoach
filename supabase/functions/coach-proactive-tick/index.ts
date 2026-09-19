@@ -20,7 +20,8 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { pickServerProactive, proactivePushMessage, type PushPreferences } from "../_shared/formulas/proactiveTriggers.ts";
+import { pickServerProactive, proactiveTab, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { composePushMessage } from "./pushText.ts";
 import { decidePush } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
@@ -75,7 +76,7 @@ async function handler(req: Request): Promise<Response> {
   const userIds = [...new Set((subs || []).map((s: { user_id: string }) => s.user_id))];
   const { data: enabled, error: profErr } = userIds.length
     ? await sb.from("profiles")
-      .select("id, carol_push_start_hour, carol_push_end_hour, carol_push_max_per_day, carol_push_types")
+      .select("id, display_name, carol_push_start_hour, carol_push_end_hour, carol_push_max_per_day, carol_push_types, coach_intervention_status, coach_intervention_reason")
       .in("id", userIds).eq("carol_push_enabled", true)
     : { data: [], error: null };
   if (profErr) return jsonResponse({ error: profErr.message }, 500);
@@ -87,6 +88,15 @@ async function handler(req: Request): Promise<Response> {
     types: p.carol_push_types,
   }]));
   const allowed = new Set(prefsById.keys());
+  // O primeiro nome, para a Carol escrever a notificação (P.4).
+  const firstNameById = new Map<string, string | null>((enabled || []).map((p: { id: string; display_name?: string | null }) =>
+    [p.id, (p.display_name || "").trim().split(/\s+/)[0] || null]));
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  // O assunto por resolver de cada atleta (P.5).
+  const interventionById = new Map<string, { status: string | null; reason: string | null }>(
+    (enabled || []).map((p: { id: string; coach_intervention_status?: string | null; coach_intervention_reason?: string | null }) =>
+      [p.id, { status: p.coach_intervention_status ?? null, reason: p.coach_intervention_reason ?? null }]),
+  );
   // deno-lint-ignore no-explicit-any
   const byUser = new Map<string, any[]>();
   for (const s of subs || []) if (allowed.has(s.user_id)) byUser.set(s.user_id, [...(byUser.get(s.user_id) || []), s]);
@@ -96,21 +106,44 @@ async function handler(req: Request): Promise<Response> {
 
   for (const [userId, userSubs] of byUser) {
     try {
-      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last] = await Promise.all([
-        sb.from("race_events").select("id, name, date, status, distance_km, coach_balance")
-          .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 1)),
-        sb.from("runs").select("id, date, race_id, kind, created_at")
+      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last, { data: plans, error: plansErr }] = await Promise.all([
+        // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
+        sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
+          .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183)),
+        sb.from("runs").select("id, date, race_id, kind, created_at, duration_seconds, distance_km")
           .eq("user_id", userId).gte("date", addDays(today, -8)),
         lastRecordDate(sb, userId),
+        // Os planos em vigor ou propostos, com os tipos dos itens — para o
+        // conflito de provas e o fim de bloco (um plano só de refeições não
+        // é um bloco de treino).
+        sb.from("coach_plans").select("id, status, period_start, period_end, race_id, coach_plan_items(kind)")
+          .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", today),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
-      if (racesErr || runsErr) {
-        console.error("coach-proactive-tick: leitura falhou", userId, racesErr?.message ?? runsErr?.message);
+      if (racesErr || runsErr || plansErr) {
+        console.error("coach-proactive-tick: leitura falhou", userId, racesErr?.message ?? runsErr?.message ?? plansErr?.message);
         tally.erro = (tally.erro || 0) + 1;
         continue;
       }
-      const candidate = pickServerProactive({ raceEvents: races || [], runs: runs || [], lastRecordDate: last }, today);
+      // deno-lint-ignore no-explicit-any
+      const triggerPlans: TriggerPlan[] = (plans || []).map((p: any) => ({
+        id: p.id,
+        status: p.status,
+        period_start: p.period_start,
+        period_end: p.period_end,
+        race_id: p.race_id,
+        hasTraining: (p.coach_plan_items || []).some((i: { kind?: string }) => i?.kind === "corrida" || i?.kind === "ginasio"),
+      }));
+      const candidate = pickServerProactive({
+        raceEvents: races || [],
+        runs: runs || [],
+        lastRecordDate: last,
+        intervention: interventionById.get(userId) ?? null,
+        plans: triggerPlans,
+        // Um momento desligado no Perfil não esconde os seguintes.
+        allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
+      }, today);
 
       const prefs = prefsById.get(userId) ?? {};
       let decision = decidePush({ candidate, lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
@@ -147,7 +180,26 @@ async function handler(req: Request): Promise<Response> {
         .insert({ user_id: userId, key: candidate.key, trigger: candidate.trigger, sent_date: today });
       if (claimErr) { tally.ja_notificado = (tally.ja_notificado || 0) + 1; continue; }
 
-      const payload = JSON.stringify({ ...proactivePushMessage(candidate), tag: "carol-proactive", tab: "coach" });
+      /* O texto, escrito por ela com os dados do momento (P.4). Qualquer
+         falha — sem chave, erro, texto que não passa a validação — dá a
+         frase fixa da P.3. Os números vêm só daqui, nunca do modelo. */
+      // deno-lint-ignore no-explicit-any
+      const race: any = (races || []).find((r: { id: string }) => r.id === candidate.raceId) ?? null;
+      // deno-lint-ignore no-explicit-any
+      const raceRun: any = candidate.hasRun && race
+        ? (runs || []).find((r: { race_id?: string | null }) => r.race_id === race.id) ?? null
+        : null;
+      const message = await composePushMessage(candidate, {
+        firstName: firstNameById.get(userId) ?? null,
+        raceName: race?.name ?? null,
+        distanceKm: race?.distance_km ?? null,
+        startTime: race?.start_time ?? null,
+        targetSeconds: race?.target_time_seconds ?? null,
+        runSeconds: raceRun?.duration_seconds ?? null,
+        runDistanceKm: raceRun?.distance_km ?? null,
+      }, geminiKey);
+      if (message.generated) tally.texto_gerado = (tally.texto_gerado || 0) + 1;
+      const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: proactiveTab(candidate.trigger) });
       let anySuccess = false;
       for (const sub of userSubs) {
         try {
