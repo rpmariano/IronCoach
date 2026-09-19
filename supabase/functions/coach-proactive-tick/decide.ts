@@ -72,3 +72,31 @@ export function decidePush(input: {
   }
   return { send: true };
 }
+
+/* Os motivos que valem para o atleta, não para um momento: o limite do dia e
+   "ela falou há pouco". Com um destes, nenhum momento da lista sai agora. */
+const GLOBAL_REASONS = new Set(["limite_diario", "falou_ha_pouco"]);
+
+/** Percorre os momentos por ordem de prioridade (listServerProactive) e fica
+ *  com o primeiro que pode sair. Um momento já notificado, já entregue,
+ *  desligado ou fora da sua janela passa a vez ao seguinte; o limite do dia e
+ *  a regra das 6 horas param a lista toda (e são esse o motivo). Sem nenhum,
+ *  o motivo devolvido é o do primeiro — o mais importante — para a contagem
+ *  do tick. */
+export function choosePush(
+  candidates: ServerProactiveCandidate[],
+  ctx: Omit<Parameters<typeof decidePush>[0], "candidate" | "balanceDone"> & {
+    balanceDoneFor?: (c: ServerProactiveCandidate) => boolean;
+  },
+): { candidate: ServerProactiveCandidate | null; decision: PushDecision } {
+  if (!candidates.length) return { candidate: null, decision: { send: false, reason: "sem_momento" } };
+  let first: PushDecision | null = null;
+  for (const candidate of candidates) {
+    const decision = decidePush({ ...ctx, candidate, balanceDone: ctx.balanceDoneFor?.(candidate) ?? false });
+    if (decision.send) return { candidate, decision };
+    // O motivo global é o verdadeiro: é ele que cala a lista inteira.
+    if (GLOBAL_REASONS.has(decision.reason)) return { candidate: null, decision };
+    first ??= decision;
+  }
+  return { candidate: null, decision: first! };
+}
