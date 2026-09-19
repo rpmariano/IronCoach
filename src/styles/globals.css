@@ -494,6 +494,11 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
   /* A linha fica: diz quanto falta para fechar, não é decoração. */
 }
 
+/* A Home no primeiro dia: o que a Carol guardou do arranque entra facto a
+   facto (Home/FirstDayCard.jsx; atrasos no JSX). */
+.first-day-fact { animation: welcomeBubble 420ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .first-day-fact { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

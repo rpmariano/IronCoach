@@ -7,6 +7,7 @@ import { pendingRaceBalanceCandidate, dismissProactiveAlert } from '../../utils/
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
+import { goalFromNotes, knownFacts } from '../../utils/firstDay';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import SectionLabel from '../shared/SectionLabel';
 import { Dialog } from '../shared/Sheet';
@@ -73,6 +74,19 @@ export default function Home() {
   const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
   const hasUpcomingRace = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= today);
   const firstDay = !hasRecords && !hasUpcomingRace;
+
+  /* No primeiro dia a Carol lembra-se do arranque (utils/firstDay.js): o
+     objetivo e o que o atleta contou vêm da Memória do Coach, que o
+     arranque acabou de escrever. Numa sessão nova a memória não vem com os
+     dados iniciais — lê-se aqui, uma vez, só no primeiro dia. */
+  const coachNotes = useAppStore((s) => s.coachNotes);
+  const reloadCoachNotes = useAppStore((s) => s.reloadCoachNotes);
+  const notesEmpty = !(coachNotes || []).length;
+  useEffect(() => {
+    if (firstDay && notesEmpty) reloadCoachNotes?.();
+  }, [firstDay, notesEmpty, reloadCoachNotes]);
+  const firstDayGoal = firstDay ? goalFromNotes(coachNotes) : null;
+  const firstDayFacts = useMemo(() => (firstDay ? knownFacts({ profile, coachNotes }) : []), [firstDay, profile, coachNotes]);
 
   const rings = useMemo(() => buildOrbitRings({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
 
@@ -269,14 +283,25 @@ export default function Home() {
   if (firstDay) {
     return (
       <div className="flex flex-col gap-3 fade-in pb-2">
-        <FirstDayCard firstName={firstNameOf(profile?.display_name)} onTalk={() => setActiveTab('coach')} onCreateRace={createRace} />
+        <FirstDayCard
+          firstName={firstNameOf(profile?.display_name)}
+          goal={firstDayGoal}
+          facts={firstDayFacts}
+          onTalk={() => setActiveTab('coach')}
+          onCreateRace={createRace}
+          onRegisterRun={registerRun}
+          onRegisterMeal={registerMeal}
+        />
         <SectionLabel style={{ marginTop: 4 }}>Entretanto, começa a registar</SectionLabel>
         <StatusCard empty onRegisterMeal={registerMeal} />
+        {/* Quando o pedido dela já é a corrida, a linha repetia o botão. */}
+        {firstDayGoal !== 'ritmo' && firstDayGoal !== 'regresso' && (
         <button type="button" onClick={registerRun} className="flex items-center gap-2.5 w-full text-left rounded-[18px]" style={{ padding: '14px 16px', minHeight: 44, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
           <Footprints size={16} style={{ color: 'var(--run)' }} className="shrink-0" />
           <span className="flex-1 text-[12.5px]" style={{ color: 'var(--text-3)' }}>Já correste hoje? Regista e eu ajusto o plano.</span>
           <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
         </button>
+        )}
       </div>
     );
   }
