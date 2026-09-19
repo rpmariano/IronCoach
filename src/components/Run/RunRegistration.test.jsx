@@ -9,6 +9,7 @@ import { todayISO } from '../../lib/utils';
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
 vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
+vi.mock('../../utils/runRecord', () => ({ runRecordMoment: () => null }));
 
 // analyze-run é a única coisa que estes testes exercitam de facto — supabase
 // (usado só pelo registo manual/Provas, não pelo caminho de IA) fica com um

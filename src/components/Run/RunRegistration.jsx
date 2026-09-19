@@ -26,6 +26,7 @@ import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
+import { runRecordMoment } from '../../utils/runRecord';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -377,9 +378,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
-    // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
-    const first = !runIdToEdit && firstRecordMoment('run', useAppStore.getState(), createdRecord);
+    // O primeiro registo deste tipo, ou um recorde de treino (ritmo aos
+    // 5/10/21 km, a corrida mais longa): a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js, utils/runRecord.js). Só ao criar — editar a
+    // única corrida não é "a primeira", nem um recorde novo.
+    const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
+      || runRecordMoment(createdRecord, useAppStore.getState().runs));
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {

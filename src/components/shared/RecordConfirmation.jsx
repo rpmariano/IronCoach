@@ -51,8 +51,9 @@ const TONES = {
 const DUR_ACHIEVEMENT_IN = 300;
 const DUR_CONFIRM_EXIT_ACHIEVEMENT = 1600;
 
-/* O primeiro registo de um tipo (utils/firstRecord.js): a Carol entra por
-   baixo do visto e diz o que ele quer dizer. Fica 3 s — é tempo de LEITURA,
+/* O primeiro registo de um tipo (utils/firstRecord.js), ou um recorde de
+   treino (utils/runRecord.js): a Carol entra por baixo do visto e diz o que
+   ele quer dizer. Fica 3 s — é tempo de LEITURA,
    não de animação, por isso o movimento reduzido não o encurta (só lhe tira
    o movimento). Um toque em qualquer sítio segue logo. */
 export const DUR_FIRST_IN = 350;
