@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { HeartPulse, ChevronRight, Pencil } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -6,6 +6,8 @@ import GlassCard from '../shared/GlassCard';
 import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
 import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
+import { checkinReply } from '../../utils/checkinReply';
+import CoachAvatar from '../Coach/CoachAvatar';
 
 /* O check-in diário (specs/carol-omnisciencia-omnipresenca.md, Fase 2). Vive
    em "Como estou", por cima da órbita: é a parte do "como estou" que só o
@@ -14,22 +16,37 @@ import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../.
 
    A Carol lê isto no chat, no cartão diário e nas análises dos registos. Uma
    dor ≥ 4 ou sono mau persistente chama-a pelo canal da intervenção (ver
-   saveDailyCheckin no store). */
+   saveDailyCheckin no store).
+
+   Feito o check-in, quem responde é ela (utils/checkinReply.js): uma frase
+   sobre o que o atleta disse, que fica no cartão o resto do dia, com o
+   resumo por baixo — em vez de um "Check-in guardado" que ninguém lê. Acabado
+   de gravar, ela respira e a frase entra; ao voltar mais tarde, está só lá. */
 export default function CheckinCard() {
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const [open, setOpen] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const today = todayISO();
   const checkin = todaysCheckin(dailyCheckins, today);
+  const reply = useMemo(() => checkinReply(dailyCheckins, today), [dailyCheckins, today]);
 
   return (
     <>
       {checkin ? (
-        <GlassCard padding="12px 16px" data-testid="checkin-card-done">
-          <div className="flex items-center gap-3">
-            <HeartPulse size={16} style={{ color: 'var(--coach)' }} className="shrink-0" aria-hidden="true" />
+        <GlassCard padding="12px 14px 12px 16px" data-testid="checkin-card-done">
+          <div className="flex items-start gap-3">
+            <CoachAvatar key={justSaved ? 'acabado' : 'antes'} size={30} mood={reply?.mood} breathing={justSaved} style={{ marginTop: 1 }} />
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-extrabold uppercase tracking-[.08em]" style={{ color: 'var(--text-4)' }}>Check-in de hoje</p>
-              <p className="text-[12.5px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-2)' }}>{summarizeCheckin(checkin)}</p>
+              <p
+                key={reply?.text}
+                data-testid="checkin-reply"
+                data-tone={reply?.tone}
+                className={`text-[13px] font-bold leading-[1.45]${justSaved ? ' checkin-reply' : ''}`}
+                style={{ color: 'var(--text-1)', textWrap: 'pretty' }}
+              >
+                {reply?.text}
+              </p>
+              <p className="text-[11.5px] leading-[1.45] mt-1" style={{ color: reply?.tone === 'warn' ? 'var(--warn)' : 'var(--text-4)' }}>{summarizeCheckin(checkin)}</p>
             </div>
             <button type="button" onClick={() => setOpen(true)} aria-label="Editar o check-in de hoje" className="tap-area-44 inline-flex items-center justify-center shrink-0 w-11 h-11 rounded-[11px]" style={{ color: 'var(--text-3)' }}>
               <Pencil size={15} />
@@ -46,7 +63,7 @@ export default function CheckinCard() {
           <ChevronRight size={16} style={{ color: 'var(--text-4)' }} className="shrink-0" aria-hidden="true" />
         </button>
       )}
-      {open && <CheckinSheet initial={checkin} onClose={() => setOpen(false)} />}
+      {open && <CheckinSheet initial={checkin} onClose={() => setOpen(false)} onSaved={() => setJustSaved(true)} />}
     </>
   );
 }
@@ -89,7 +106,7 @@ function ScaleRow({ field, label, value, onChange }) {
   );
 }
 
-export function CheckinSheet({ initial = null, onClose }) {
+export function CheckinSheet({ initial = null, onClose, onSaved }) {
   const { profile, saveDailyCheckin, setCycleConsent, deleteAllCheckins, dailyCheckins } = useAppStore();
   const { showToast } = useToast();
   const [values, setValues] = useState({
@@ -116,7 +133,10 @@ export function CheckinSheet({ initial = null, onClose }) {
     const { ok, alarms } = await saveDailyCheckin(values);
     setBusy(false);
     if (!ok) { showToast('Não consegui guardar o check-in. Tenta outra vez.', 'error'); return; }
-    showToast(alarms.length ? 'Guardado. Quero falar contigo sobre isto.' : 'Check-in guardado.');
+    // A confirmação é a resposta dela no cartão; o aviso só fica para quando
+    // o check-in a chama para uma conversa.
+    if (alarms.length) showToast('Guardado. Quero falar contigo sobre isto.');
+    onSaved?.();
     onClose();
   };
 

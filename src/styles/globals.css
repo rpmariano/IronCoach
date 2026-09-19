@@ -505,6 +505,11 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .first-record-drain { transform-origin: left; animation: welcomeDrain linear both; }
 @media (prefers-reduced-motion: reduce) { .first-record-card { animation: none; } }
 
+/* A resposta da Carol ao check-in (Home/CheckinCard.jsx): entra como uma
+   bolha do chat, só no momento em que o atleta acabou de o fazer. */
+.checkin-reply { animation: welcomeBubble 480ms var(--ease-out) 160ms both; }
+@media (prefers-reduced-motion: reduce) { .checkin-reply { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;
