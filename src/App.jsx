@@ -19,7 +19,7 @@ import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './util
 // rede extra. Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
-import BrandMark from './components/shared/BrandMark';
+import LogoLoader from './components/shared/LogoLoader';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -140,18 +140,12 @@ function usePreloadOnNavTouch() {
    chegar. Na prática quase nunca aparece — o pré-carregamento acima trata
    disso — e existe sobretudo para a primeira visita a cada separador com
    rede lenta. */
+/* O ecrã a chegar: o brasão desenhado a traço (shared/LogoLoader), onde o
+   conteúdo vai aparecer — em vez dos retângulos a pulsar. */
 function ScreenSkeleton() {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-label="A carregar o ecrã"
-      data-testid="screen-skeleton"
-      className="flex flex-col gap-3 pt-2 animate-pulse"
-    >
-      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-      <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
+    <div data-testid="screen-skeleton" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
+      <LogoLoader size={64} label="A carregar o ecrã" />
     </div>
   );
 }
@@ -161,8 +155,12 @@ function ScreenSkeleton() {
    `isInitializing` — a troca entre os dois é invisível. */
 function FullScreenLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent" role="status" aria-label="A carregar">
-      <BrandMark variant="lockup" animated size={240} className="rounded-2xl" />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" style={{ gap: 18 }}>
+      <LogoLoader size={112} label="A carregar" />
+      {/* A palavra entra quando o brasão acaba de se desenhar. */}
+      <span aria-hidden="true" className="logo-loader-word" style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.32em', color: 'var(--text-3)', paddingLeft: '.32em' }}>
+        IRONCOACH
+      </span>
     </div>
   );
 }

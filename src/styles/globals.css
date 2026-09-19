@@ -532,6 +532,36 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .race-milestone-line { animation: welcomeBubble 480ms var(--ease-out) 200ms both; }
 @media (prefers-reduced-motion: reduce) { .race-milestone-line { animation: none; } }
 
+/* O carregamento com a marca (shared/LogoLoader.jsx): o hexágono a traço,
+   os dois chevrons a seguir, o preenchimento, e no fim o brasão brilha. Se a
+   página ainda não chegou, o brilho respira devagar (não volta a desenhar).
+   ~1,9 s até ao brilho. */
+.logo-loader { display: inline-flex; align-items: center; justify-content: center; }
+.logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }
+.logo-loader-hex-in { animation: logoDraw 620ms cubic-bezier(.65,0,.35,1) 260ms forwards; }
+.logo-loader-chev-ouro  { animation: logoDraw 480ms cubic-bezier(.65,0,.35,1) 640ms forwards; }
+.logo-loader-chev-ciano { animation: logoDraw 480ms cubic-bezier(.65,0,.35,1) 880ms forwards; }
+@keyframes logoDraw { to { stroke-dashoffset: 0; } }
+.logo-loader-fill { opacity: 0; }
+.logo-loader-fill-ouro  { animation: logoFill 320ms var(--ease-out) 1240ms forwards; }
+.logo-loader-fill-ciano { animation: logoFill 320ms var(--ease-out) 1360ms forwards; }
+@keyframes logoFill { to { opacity: 1; } }
+.logo-loader-aura { opacity: 0; animation: logoFlash 700ms var(--ease-out) 1520ms forwards, logoBreathe 2600ms ease-in-out 2220ms infinite; }
+@keyframes logoFlash { 0% { opacity: 0; } 45% { opacity: .75; } 100% { opacity: .32; } }
+@keyframes logoBreathe { 0%, 100% { opacity: .32; } 50% { opacity: .55; } }
+.logo-loader svg { transform-origin: center; animation: logoPop 520ms var(--ease-spring) 1480ms both; }
+@keyframes logoPop { 0% { transform: scale(1); } 40% { transform: scale(1.045); } 100% { transform: scale(1); } }
+html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
+.logo-loader-word { animation: welcomeBubble 520ms var(--ease-out) 1500ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { animation: none; stroke-dashoffset: 0; }
+  .logo-loader-fill { animation: none; opacity: 1; }
+  .logo-loader-aura { animation: none; opacity: .32; }
+  .logo-loader svg { animation: none; }
+  .logo-loader-word { animation: none; }
+}
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;
