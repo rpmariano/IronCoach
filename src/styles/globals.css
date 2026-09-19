@@ -510,6 +510,12 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .checkin-reply { animation: welcomeBubble 480ms var(--ease-out) 160ms both; }
 @media (prefers-reduced-motion: reduce) { .checkin-reply { animation: none; } }
 
+/* A semana cumprida (Home/WeekDoneRibbon.jsx), só na primeira vez que se
+   vê: a frase entra e os dias feitos enchem-se um a um. */
+.week-done-line { animation: welcomeBubble 480ms var(--ease-out) both; }
+.week-done-dot { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+@media (prefers-reduced-motion: reduce) { .week-done-line, .week-done-dot { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

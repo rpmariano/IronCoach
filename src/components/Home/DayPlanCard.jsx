@@ -4,6 +4,8 @@ import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
 import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
+import WeekDoneRibbon from './WeekDoneRibbon';
+import { weekDone } from './weekDone';
 
 /* "O que faço hoje" — o plano de HOJE, e só de hoje (redesenho 2026-09-15).
    O carrossel de dias que aqui vivia (setas, pontos, contador, a altura a
@@ -61,6 +63,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
 
   const day = days[0];
   const week = planWeekLabel(planWindow, today);
+  // A semana do plano toda cumprida: a frase dela por cima do cartão (weekDone.js).
+  const doneWeek = useMemo(() => weekDone({ plans, planItems, today }), [plans, planItems, today]);
 
   // O título de amanhã em minúscula, porque entra a meio da frase do rodapé
   // ("Ver o plano · amanhã: rodagem longa · 14 km").
@@ -127,6 +131,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   return (
     <div className="flex flex-col gap-2">
       <PendingBanner />
+      {doneWeek && <WeekDoneRibbon done={doneWeek} />}
       <GlassCard tone="gym" glow padding="14px 16px" data-testid="day-plan-card">
         <div className="flex items-center justify-between gap-2">
           <span data-testid="day-plan-date" className="text-[11.5px] font-extrabold uppercase whitespace-nowrap" style={{ color: dateColor(status), letterSpacing: '.06em' }}>{formatDayLabel(day.dateISO)}</span>
