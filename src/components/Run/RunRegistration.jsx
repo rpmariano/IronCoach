@@ -25,6 +25,7 @@ import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import { firstRecordMoment } from '../../utils/firstRecord';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -376,7 +377,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    setConfirmation({ label, done: () => {
+    // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
+    const first = !runIdToEdit && firstRecordMoment('run', useAppStore.getState(), createdRecord);
+    setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
         setNavGuard(null);
@@ -2576,7 +2580,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
     </div>
   );
 }

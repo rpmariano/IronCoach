@@ -499,6 +499,12 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .first-day-fact { animation: welcomeBubble 420ms var(--ease-out) both; }
 @media (prefers-reduced-motion: reduce) { .first-day-fact { animation: none; } }
 
+/* O primeiro registo de um tipo (shared/RecordConfirmation.jsx): a Carol
+   sobe por baixo do visto; a linha esvazia-se até seguir. */
+.first-record-card { animation: welcomeBubble 480ms var(--ease-out) both; }
+.first-record-drain { transform-origin: left; animation: welcomeDrain linear both; }
+@media (prefers-reduced-motion: reduce) { .first-record-card { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

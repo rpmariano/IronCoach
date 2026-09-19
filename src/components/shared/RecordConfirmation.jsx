@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
+import CoachAvatar from '../Coach/CoachAvatar';
 
 /**
  * "Registo confirmado" — animação 6 de `design/IronCoach - Animacoes.dc.html`:
@@ -50,17 +51,34 @@ const TONES = {
 const DUR_ACHIEVEMENT_IN = 300;
 const DUR_CONFIRM_EXIT_ACHIEVEMENT = 1600;
 
-export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', achievement = null, onDone }) {
+/* O primeiro registo de um tipo (utils/firstRecord.js): a Carol entra por
+   baixo do visto e diz o que ele quer dizer. Fica 3 s — é tempo de LEITURA,
+   não de animação, por isso o movimento reduzido não o encurta (só lhe tira
+   o movimento). Um toque em qualquer sítio segue logo. */
+export const DUR_FIRST_IN = 350;
+export const DUR_CONFIRM_EXIT_FIRST = 3000;
+
+export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', achievement = null, first = null, onDone }) {
   const { ring, fill, label: labelColor, Icon } = TONES[tone] || TONES.ok;
   const [showAchievement, setShowAchievement] = useState(false);
+  // Com movimento reduzido, ela já lá está no primeiro render.
+  const [showFirst, setShowFirst] = useState(() => !!first && prefersReducedMotion());
+  const doneRef = React.useRef(false);
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone?.();
+  };
   useEffect(() => {
     // Movimento reduzido mantém a regra da app: tudo a 120 ms, incluindo o
     // tempo até sair. A conquista não se perde — o hub mostra-a a seguir,
     // na secção "Conquistas".
     const reduced = prefersReducedMotion();
-    const delay = reduced ? DUR_TAP : (achievement ? DUR_CONFIRM_EXIT_ACHIEVEMENT : DUR_CONFIRM_EXIT);
-    const timers = [setTimeout(() => { onDone?.(); }, delay)];
-    if (achievement) timers.push(setTimeout(() => setShowAchievement(true), reduced ? 0 : DUR_ACHIEVEMENT_IN));
+    const delay = first ? DUR_CONFIRM_EXIT_FIRST
+      : reduced ? DUR_TAP : (achievement ? DUR_CONFIRM_EXIT_ACHIEVEMENT : DUR_CONFIRM_EXIT);
+    const timers = [setTimeout(finish, delay)];
+    if (achievement && !first) timers.push(setTimeout(() => setShowAchievement(true), reduced ? 0 : DUR_ACHIEVEMENT_IN));
+    if (first && !reduced) timers.push(setTimeout(() => setShowFirst(true), DUR_FIRST_IN));
     return () => timers.forEach(clearTimeout);
     // `onDone` muda de identidade a cada render de quem nos monta; re-armar o
     // temporizador por causa disso adiava a saída para sempre.
@@ -70,10 +88,12 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
     <div
       data-testid="record-confirmation"
       data-tone={tone}
+      data-first={first ? 'true' : undefined}
       role="status"
       aria-live="polite"
+      onClick={first ? finish : undefined}
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
-      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)' }}
+      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: first ? 'pointer' : undefined }}
     >
       <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
         <span aria-hidden="true" className="record-confirm-halo absolute inset-0 rounded-full" style={{ border: `2px solid ${ring}` }} />
@@ -86,6 +106,33 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
         </span>
       </div>
       <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: labelColor }}>{label}</div>
+
+      {showFirst && first && (
+        <div
+          data-testid="record-confirmation-first"
+          className="first-record-card flex items-start gap-3 mx-6 mt-6"
+          style={{
+            maxWidth: 330,
+            borderRadius: 20,
+            background: 'rgba(12,20,34,.92)',
+            border: '1px solid rgba(34,211,238,.32)',
+            padding: '14px 16px 12px',
+            boxShadow: '0 18px 40px rgba(0,0,0,.45)',
+          }}
+        >
+          <CoachAvatar size={40} mood="happy" breathing />
+          <div className="min-w-0 flex-1">
+            <div className="text-[17px] font-black leading-[1.2]" style={{ color: 'var(--text-1)', letterSpacing: '-.015em' }}>{first.title}</div>
+            <div className="text-[13px] leading-[1.5] mt-1" style={{ color: 'var(--text-3)' }}>{first.sub}</div>
+            <div aria-hidden="true" className="flex items-center gap-2 mt-3">
+              <span className="flex-1 overflow-hidden" style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,.08)' }}>
+                <span className="first-record-drain block h-full" style={{ background: 'var(--coach)', opacity: 0.7, animationDuration: `${DUR_CONFIRM_EXIT_FIRST - DUR_FIRST_IN}ms` }} />
+              </span>
+              <span className="text-[10.5px] font-semibold" style={{ color: 'var(--text-4)' }}>Toca para seguir</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAchievement && achievement && (
         <div

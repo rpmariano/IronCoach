@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
-import RecordConfirmation from './RecordConfirmation';
+import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST } from './RecordConfirmation';
 import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
 
 /* "Registo confirmado" — animação 6 de `IronCoach - Animacoes.dc.html`:
@@ -143,6 +143,43 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
 
     act(() => { vi.advanceTimersByTime(DUR_TAP); });
     expect(screen.getByTestId('record-confirmation-achievement')).toBeInTheDocument();
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RecordConfirmation — o primeiro registo de um tipo', () => {
+  const FIRST = { title: 'A primeira corrida.', sub: 'Agora já sei por onde começar.' };
+  beforeEach(() => { window.matchMedia = () => ({ matches: false }); });
+
+  it('a Carol entra depois do visto e diz o que ele quer dizer', () => {
+    vi.useFakeTimers();
+    render(<RecordConfirmation label="Corrida registada" first={FIRST} onDone={vi.fn()} />);
+    expect(screen.queryByTestId('record-confirmation-first')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(DUR_FIRST_IN); });
+    expect(screen.getByTestId('record-confirmation-first')).toHaveTextContent('A primeira corrida.');
+  });
+
+  it('fica o tempo de ler — e um toque segue logo, uma vez só', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation first={FIRST} onDone={onDone} />);
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT - 1 + 100); });
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('record-confirmation'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('com movimento reduzido não encurta — é tempo de leitura, não de animação', () => {
+    window.matchMedia = () => ({ matches: true });
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation first={FIRST} onDone={onDone} />);
+    expect(screen.getByTestId('record-confirmation-first')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST - 1); });
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1); });
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
