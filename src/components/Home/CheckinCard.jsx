@@ -90,7 +90,7 @@ function ScaleRow({ field, label, value, onChange }) {
 }
 
 export function CheckinSheet({ initial = null, onClose }) {
-  const { profile, saveDailyCheckin, setCycleConsent } = useAppStore();
+  const { profile, saveDailyCheckin, setCycleConsent, deleteAllCheckins, dailyCheckins } = useAppStore();
   const { showToast } = useToast();
   const [values, setValues] = useState({
     sleep: initial?.sleep ?? null,
@@ -103,6 +103,7 @@ export function CheckinSheet({ initial = null, onClose }) {
   const [busy, setBusy] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const set = (field) => (v) => setValues((s) => ({ ...s, [field]: v }));
 
   const showCycle = canTrackCycle(profile);
@@ -126,6 +127,13 @@ export function CheckinSheet({ initial = null, onClose }) {
     setConfirmRevoke(false);
     if (!on) setValues((s) => ({ ...s, period_today: null }));
     showToast(on ? 'Ciclo ligado.' : 'Ciclo desligado. Apaguei os dias que tinhas marcado.');
+  };
+
+  const deleteAll = async () => {
+    const done = await deleteAllCheckins();
+    if (!done) { showToast('Não consegui apagar os check-ins. Tenta outra vez.', 'error'); return; }
+    showToast('Apaguei todos os teus check-ins.');
+    onClose();
   };
 
   return (
@@ -241,6 +249,30 @@ export function CheckinSheet({ initial = null, onClose }) {
       >
         {busy ? 'A guardar…' : ready ? 'Guardar' : 'Falta escolher o sono, a energia e o stress'}
       </button>
+
+      {(dailyCheckins || []).length > 0 && (
+        <div className="mt-4 pt-3 text-center" style={{ borderTop: '1px solid rgba(255,255,255,.09)' }}>
+          {confirmDeleteAll ? (
+            <div data-testid="checkin-delete-all">
+              <p className="text-[12px] leading-[1.5]" style={{ color: 'var(--text-3)' }}>
+                Apago os {dailyCheckins.length} check-ins que tens guardados, com o ciclo incluído. Não dá para desfazer.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 mt-2">
+                <button type="button" onClick={deleteAll} className="min-h-[44px] rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'rgba(248,113,113,.12)', border: '1px solid rgba(248,113,113,.4)', color: 'var(--danger)' }}>
+                  Apagar tudo
+                </button>
+                <button type="button" onClick={() => setConfirmDeleteAll(false)} className="min-h-[44px] rounded-[11px] text-[12.5px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+                  Manter
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmDeleteAll(true)} className="min-h-[44px] text-[11.5px] font-semibold underline" style={{ color: 'var(--text-4)' }}>
+              Apagar todos os meus check-ins
+            </button>
+          )}
+        </div>
+      )}
     </Sheet>
   );
 }

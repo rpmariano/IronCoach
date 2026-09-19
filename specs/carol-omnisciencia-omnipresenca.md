@@ -315,3 +315,18 @@ Com a P.5, P3 passa de 6 para 9. A omnipresença sobe para **7,6**.
 - **Tamanho e custo do prompt.** Cada bloco novo aumenta os tokens por mensagem. É preciso medir antes e depois da Fase 1.
 - **Privacidade.** O check-in, o ciclo menstrual e os dados de relógio são dados de saúde. Precisam de consentimento explícito e de RLS revista.
 - **Fadiga.** Uma Carol omnipresente e mal calibrada passa a ser ruído. O limite diário e as preferências da ação P.6 têm de chegar antes dos gatilhos novos, ou ao mesmo tempo.
+
+# Pendentes fechados a 2026-09-19
+
+- **Recusar uma proposta devolve os treinos feitos** ao bloco de onde vieram. Até aqui, se um aceite tivesse falhado a meio e o atleta recusasse depois, os dias cumpridos deixavam de aparecer no plano.
+- **O treino feito noutro dia** cancela o treino redundante do dia em que foi feito, e não o do dia planeado.
+- **As refeições do Início** mostram a sugestão mais recente do dia. Antes, podia aparecer a do bloco antigo.
+- **Um momento desligado no Perfil não esconde os seguintes.** Por exemplo, com o balanço desligado, o "Estás bem?" ainda pode sair.
+- **O cartão diário lê o que ela prescreveu e o que aconteceu** (Fase 3), como `prescrito_vs_feito`, e usa-o no balanço.
+- **Apagar os check-ins.** A persiana do check-in tem "Apagar todos os meus check-ins", com confirmação.
+
+**Custo, primeira medida:** o cartão diário passou de cerca de 4 750 para cerca de 7 000 tokens de entrada por chamada. Há só 2 chamadas depois da mudança, por isso é um sinal e não uma medida. O chat ainda não tem nenhuma chamada registada desde a memória nova. Convém repetir a medição daqui a uma semana, pelo `app_logs`.
+
+**Ficou por fazer, e porquê:**
+- **A água à meia-noite.** Entre as 00:00 e a 01:00, a notificação da água pode usar o total do dia anterior. Isto só acontece a quem tem a janela dos lembretes a atravessar a meia-noite. A correção obriga a mudar em que dia se grava a água, e isso mexe em registos existentes. Não compensa para uma hora por dia de um caso raro.
+- **O relógio**, adiado por decisão do produto.

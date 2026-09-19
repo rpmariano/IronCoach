@@ -148,26 +148,30 @@ export function pickServerProactive(
     intervention?: { status?: string | null; reason?: string | null } | null;
     /** P.5: os planos, para o conflito de provas e o fim de bloco. */
     plans?: TriggerPlan[] | null;
+    /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
+     *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam. */
+    allowed?: string[] | null;
   },
   todayISO: string,
 ): ServerProactiveCandidate | null {
+  const ok = (t: ProactiveTriggerName) => !Array.isArray(input.allowed) || input.allowed.includes(t);
   const races = (input.raceEvents || []).filter((r) => r && typeof r.date === "string");
   const scheduled = races.filter((r) => r.status !== "concluida");
   const base = { raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
-  if (input.intervention?.status === "needed") {
+  if (ok("intervention") && input.intervention?.status === "needed") {
     return { ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` };
   }
 
-  const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
+  const morning = ok("race_morning") ? scheduled.find((r) => r.date.slice(0, 10) === todayISO) : undefined;
   if (morning) return { ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null };
 
-  const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
+  const eve = ok("race_eve") ? scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1) : undefined;
   if (eve) return { ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null };
 
-  const conflict = detectRaceConflictServer(input.plans, races, todayISO);
+  const conflict = ok("race_conflict") ? detectRaceConflictServer(input.plans, races, todayISO) : null;
   if (conflict) {
     const target = races.find((r) => r.id === conflict.plan.race_id) ?? null;
     return {
@@ -181,7 +185,7 @@ export function pickServerProactive(
     };
   }
 
-  const past = races
+  const past = !ok("race_after") ? [] : races
     .map((race) => ({ race, gap: daysBetween(race.date.slice(0, 10), todayISO) }))
     .filter(({ gap }) => gap >= 0 && gap <= RACE_AFTER_DAYS_WITH_RUN)
     .sort((a, b) => a.gap - b.gap);
@@ -195,12 +199,12 @@ export function pickServerProactive(
     }
   }
 
-  const block = findEndingBlock(input.plans, todayISO);
+  const block = ok("block_end") ? findEndingBlock(input.plans, todayISO) : null;
   if (block) {
     return { ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) };
   }
 
-  const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
+  const last = ok("silence") && input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
   if (last) {
     const gap = daysBetween(last, todayISO);
     if (gap >= SILENCE_DAYS) return { ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last };

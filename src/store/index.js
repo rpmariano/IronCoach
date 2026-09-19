@@ -374,6 +374,20 @@ export const useAppStore = create((set, get) => ({
   // alternativa, não para deitar fora o microciclo que estava a cumprir.
   respondToPlan: async (planId, accept) => {
     if (!accept) {
+      /* Se um aceite anterior falhou a meio, os treinos já FEITOS do bloco
+         antigo podem já estar nesta proposta (a mudança vem antes do fecho —
+         ver mais abaixo). Recusá-la levava-os com ela, e o plano deixava de
+         mostrar esses dias como cumpridos. Voltam ao bloco de onde vieram
+         antes de a proposta ser recusada (revisão pré-master de 2026-09-18). */
+      const { data: proposal } = await supabase.from('coach_plans').select('supersedes_plan_id').eq('id', planId).maybeSingle();
+      if (proposal?.supersedes_plan_id) {
+        const { error: backErr } = await supabase
+          .from('coach_plan_items')
+          .update({ plan_id: proposal.supersedes_plan_id })
+          .eq('plan_id', planId)
+          .eq('status', 'concluido');
+        if (backErr) { console.error('Error returning done items to old block:', backErr); return false; }
+      }
       const { error } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', planId);
       if (error) { console.error('Error rejecting plan:', error); return false; }
       await get().reloadCoachPlans();
@@ -458,7 +472,7 @@ export const useAppStore = create((set, get) => ({
          contrário, ficavam presos num bloco já fechado. */
       const { data: feitos, error: feitosErr } = await supabase
         .from('coach_plan_items')
-        .select('id, planned_date, kind')
+        .select('id, planned_date, actual_date, kind')
         .eq('plan_id', originalPlan.id)
         .eq('status', 'concluido')
         .gte('planned_date', newPlan.period_start);
@@ -469,7 +483,11 @@ export const useAppStore = create((set, get) => ({
           .update({ plan_id: planId })
           .in('id', feitos.map((i) => i.id));
         if (moveErr) { console.error('Error moving done items to new block:', moveErr); return false; }
-        for (const { planned_date, kind } of doneItemKeys(feitos)) {
+        /* O dia que conta é o em que o treino foi FEITO: uma corrida de
+           quarta feita na terça cancela a de terça do bloco novo, não a de
+           quarta (revisão pré-master de 2026-09-18). */
+        const feitosPorDia = feitos.map((i) => ({ ...i, planned_date: i.actual_date || i.planned_date }));
+        for (const { planned_date, kind } of doneItemKeys(feitosPorDia)) {
           const { error: dupErr } = await supabase
             .from('coach_plan_items')
             .update({ status: 'cancelado' })
@@ -814,6 +832,17 @@ export const useAppStore = create((set, get) => ({
       profile: { ...s.profile, cycle_tracking_consent_at: value },
       dailyCheckins: on ? s.dailyCheckins : s.dailyCheckins.map((c) => ({ ...c, period_today: null })),
     }));
+    return true;
+  },
+
+  /* Apagar todos os check-ins do atleta (privacidade, pendente da Fase 2).
+     O RLS "own daily_checkins" é FOR ALL: só apaga as linhas dele. */
+  deleteAllCheckins: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return false;
+    const { error } = await supabase.from('daily_checkins').delete().eq('user_id', userId);
+    if (error) { console.error('Erro a apagar os check-ins:', error); return false; }
+    set({ dailyCheckins: [] });
     return true;
   },
 

@@ -141,6 +141,8 @@ async function handler(req: Request): Promise<Response> {
         lastRecordDate: last,
         intervention: interventionById.get(userId) ?? null,
         plans: triggerPlans,
+        // Um momento desligado no Perfil não esconde os seguintes.
+        allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
       }, today);
 
       const prefs = prefsById.get(userId) ?? {};

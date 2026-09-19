@@ -142,3 +142,13 @@ Deno.test("P.5: os textos novos, sem emoji nem exclamação", () => {
   }
 });
 
+Deno.test("P.6: um momento desligado não esconde os seguintes", () => {
+  const races = [{ id: "r1", name: "Meia", date: "2026-09-16", status: "agendada" }];
+  // Sem filtro, o balanço sem registo ganha ao silêncio.
+  assertEquals(pickServerProactive({ raceEvents: races, runs: [], lastRecordDate: "2026-09-10" }, TODAY)?.trigger, "race_after");
+  // Com o balanço desligado, passa ao silêncio em vez de não dizer nada.
+  assertEquals(pickServerProactive({ raceEvents: races, runs: [], lastRecordDate: "2026-09-10", allowed: ["silence"] }, TODAY)?.trigger, "silence");
+  // Tudo desligado: nada.
+  assertEquals(pickServerProactive({ raceEvents: races, runs: [], lastRecordDate: "2026-09-10", allowed: [] }, TODAY), null);
+});
+
