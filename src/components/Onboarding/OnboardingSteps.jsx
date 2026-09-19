@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw, Check, Bot, LayoutGrid, Lightbulb } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
+import { prefersReducedMotion, typingDelayFor } from '../../utils/coachBubbles';
+import { firstName, reactToGoal, reactToRunning, reactToFood } from './carolReactions';
 
 /* Os sete ecrãs do arranque (6 passos + fecho), recriados a partir da secção
    "Onboarding · o arranque" de specs/design-handoff-2026-09/design/
@@ -38,14 +40,17 @@ export function CarolHead({ title, children, mood = 'neutral' }) {
 
 /* A nota da Carol no fim do passo — barra ciano à esquerda, texto em
    --coach-soft. Um por passo, como o mock. */
-export function CarolNote({ children, style }) {
+export function CarolNote({ children, style, reacting = false }) {
   return (
     <div
       data-testid="carol-note"
+      data-reacting={reacting ? 'true' : undefined}
       className="shrink-0"
       style={{ marginTop: 20, borderLeft: '3px solid var(--coach)', padding: '2px 0 2px 14px', ...style }}
     >
-      <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: 'var(--coach-soft)' }}>{children}</p>
+      {/* Quando responde ao atleta, a nota ganha o texto mais claro: deixou
+          de ser a explicação do passo e passou a ser ela a falar com ele. */}
+      <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.55, color: reacting ? 'var(--text-2)' : 'var(--coach-soft)' }}>{children}</p>
     </div>
   );
 }
@@ -133,6 +138,54 @@ export function OptionCard({ icon, title, description, selected, tone = 'coach',
         </span>
       )}
     </button>
+  );
+}
+
+/* A nota que responde. Enquanto não há resposta, mostra a nota do passo
+   (`children`); quando o atleta escolhe ou escreve, a Carol "lê" — os três
+   pontos do "a escrever…" do chat, 600 a 900 ms (CAROL.md §5) — e responde
+   com o que acha dessa resposta (carolReactions.js). O compasso também serve
+   de travão: a escrever um número, ela só fala quando o atleta pára.
+   prefers-reduced-motion: responde de imediato, sem os pontos.
+   A região é aria-live="polite": quem usa leitor de ecrã ouve-a responder. */
+export function CarolReply({ reaction, children, style }) {
+  const text = reaction?.text || null;
+  const [shown, setShown] = useState(text);
+  const [typing, setTyping] = useState(false);
+  const primeira = useRef(true);
+
+  useEffect(() => {
+    // Ao montar (reentrada com respostas já dadas) responde logo — ela não
+    // está a ler nada de novo.
+    if (primeira.current) { primeira.current = false; return undefined; }
+    if (!text || prefersReducedMotion()) { setTyping(false); setShown(text); return undefined; }
+    setTyping(true);
+    const t = setTimeout(() => { setTyping(false); setShown(text); }, typingDelayFor(text));
+    return () => clearTimeout(t);
+  }, [text]);
+
+  let corpo = null;
+  if (typing) {
+    corpo = (
+      <span className="inline-flex items-center gap-2" style={{ minHeight: 19 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--coach-soft)' }}>a escrever…</span>
+        <span className="inline-flex items-center gap-1" aria-hidden="true">
+          <span className="coach-typing-dot" />
+          <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
+          <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
+        </span>
+      </span>
+    );
+  } else if (shown) {
+    corpo = <span key={shown} className="fade-in" style={{ display: 'block' }}>{shown}</span>;
+  } else if (children) {
+    corpo = children;
+  }
+
+  return (
+    <div aria-live="polite" className="shrink-0">
+      {corpo && <CarolNote style={style} reacting={!!shown && !typing}>{corpo}</CarolNote>}
+    </div>
   );
 }
 
@@ -262,9 +315,11 @@ export const OBJETIVOS = [
 ];
 
 export function StepObjetivo({ draft, set }) {
+  const nome = firstName(draft.display_name);
+  const reacao = reactToGoal(draft);
   return (
     <>
-      <CarolHead title="O que te traz aqui?">
+      <CarolHead title={nome ? `O que te traz aqui, ${nome}?` : 'O que te traz aqui?'} mood={reacao?.mood}>
         Escolhe um. É isto que define as fases do plano — podes mudar mais tarde.
       </CarolHead>
 
@@ -281,6 +336,10 @@ export function StepObjetivo({ draft, set }) {
           />
         ))}
       </div>
+
+      {/* No mock este passo não tem nota: só aparece quando há uma escolha
+          a que responder. */}
+      <CarolReply reaction={reacao} />
     </>
   );
 }
@@ -299,9 +358,10 @@ export const TEMPO_A_CORRER = [
 ];
 
 export function StepComoCorres({ draft, set }) {
+  const reacao = reactToRunning(draft);
   return (
     <>
-      <CarolHead title="Onde estás agora?">
+      <CarolHead title="Onde estás agora?" mood={reacao?.mood}>
         Preciso do teu ponto de partida para não te dar volume a mais. É a causa número um de lesão em quem começa um plano.
       </CarolHead>
 
@@ -342,9 +402,9 @@ export function StepComoCorres({ draft, set }) {
         />
       </div>
 
-      <CarolNote>
+      <CarolReply reaction={reacao}>
         Não sabes ao certo? Diz por baixo. Corrijo assim que tiver três corridas registadas.
-      </CarolNote>
+      </CarolReply>
     </>
   );
 }
@@ -362,9 +422,10 @@ const CHIPS = CHIP_ORDER.map((k) => DIETARY_RESTRICTIONS.find((r) => r.key === k
 
 export function StepComoComes({ draft, set }) {
   const ativas = draft.dietary_restrictions || [];
+  const reacao = reactToFood(draft);
   return (
     <>
-      <CarolHead title={<>O que não posso<br />pôr no teu prato?</>}>
+      <CarolHead title={<>O que não posso<br />pôr no teu prato?</>} mood={reacao?.mood}>
         Trato isto como regra absoluta: nunca te vou sugerir nada que contrarie o que escreveres aqui.
       </CarolHead>
 
@@ -407,19 +468,19 @@ export function StepComoComes({ draft, set }) {
         onChange={(e) => set('dietary_notes', e.target.value)}
       />
 
-      <CarolNote>
+      <CarolReply reaction={reacao}>
         Podes mudar isto a qualquer momento no Perfil. Da próxima refeição em diante, já conto com a alteração.
-      </CarolNote>
+      </CarolReply>
     </>
   );
 }
 
 /* ── 6 · A tua prova ─────────────────────────────────────────────────────── */
 
-export function StepProva({ draft, set, carolNote }) {
+export function StepProva({ draft, set, carolNote, reaction }) {
   return (
     <>
-      <CarolHead title="Para que dia treinamos?">
+      <CarolHead title="Para que dia treinamos?" mood={reaction?.mood}>
         A data da prova define tudo: quantas semanas de base, quando entra a intensidade, quando alivio antes do dia.
       </CarolHead>
 
@@ -480,7 +541,7 @@ export function StepProva({ draft, set, carolNote }) {
         </div>
       </div>
 
-      <CarolNote>{carolNote}</CarolNote>
+      <CarolReply reaction={reaction}>{carolNote}</CarolReply>
     </>
   );
 }
@@ -493,17 +554,69 @@ const ONDE_ME_ENCONTRAS = [
   { icon: <Lightbulb size={18} />, title: 'Dentro de cada registo', text: 'Comento o que registas, sem teres de perguntar' },
 ];
 
-export function StepFecho({ titulo, resumo }) {
+/* As semanas até à prova, uma a uma. O plano da Carol conta-se para trás a
+   partir da data ("quantas semanas de base, quando entra a intensidade,
+   quando alivio" — passo 6); aqui o atleta vê pela primeira vez esse
+   horizonte inteiro. Cada traço é uma semana; o último, mais alto e na cor
+   da prova, é a semana dela. Os traços nascem um a um, em menos de um
+   segundo no total, e o da prova chega por último com o impulso da
+   confirmação de registo. Acima de 60 semanas não se desenha — a prova está
+   longe demais para o desenho dizer alguma coisa. */
+const MAX_SEMANAS_DESENHADAS = 60;
+
+export function RaceWeeks({ semanas, raceName }) {
+  if (!Number.isFinite(semanas) || semanas < 1 || semanas > MAX_SEMANAS_DESENHADAS) return null;
+  const calmo = prefersReducedMotion();
+  const passo = calmo ? 0 : Math.min(26, 760 / semanas);
+  return (
+    <div
+      data-testid="onboarding-semanas"
+      role="img"
+      aria-label={`${semanas} ${semanas === 1 ? 'semana' : 'semanas'} até ${raceName}`}
+      className="shrink-0 flex flex-wrap justify-center items-end"
+      style={{ gap: '10px 4px', marginTop: 22, padding: '0 6px' }}
+    >
+      {Array.from({ length: semanas }, (_, i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          className="onb-week"
+          style={{ width: 5, height: 20, borderRadius: 3, background: 'color-mix(in srgb, var(--coach) 55%, transparent)', animationDelay: `${Math.round(i * passo)}ms` }}
+        />
+      ))}
+      <span
+        aria-hidden="true"
+        className="onb-week-race flex items-center justify-center"
+        style={{ width: 26, height: 30, marginLeft: 3, borderRadius: 8, background: 'var(--grad-race)', color: 'var(--race-ink)', boxShadow: '0 6px 16px rgba(251,191,36,.28)', animationDelay: `${Math.round(semanas * passo)}ms` }}
+      >
+        <Trophy size={14} strokeWidth={2.4} />
+      </span>
+    </div>
+  );
+}
+
+export function StepFecho({ titulo, resumo, semanas, raceName }) {
   return (
     <>
+      {/* Quem fecha o arranque é ela, contente (CAROL.md §4), com o visto de
+          "feito" ao canto — em vez de um visto sozinho, sem ninguém. */}
       <div className="shrink-0 flex justify-center">
-        <span className="flex items-center justify-center" style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--tint-ok-bg)', border: '1.5px solid var(--ok)', color: 'var(--ok)', boxShadow: '0 0 0 10px rgba(52,211,153,.07)' }}>
-          <Check size={30} />
+        <span className="relative inline-flex">
+          <CoachAvatar size={64} mood="happy" style={{ boxShadow: '0 0 0 9px rgba(34,211,238,.08), 0 12px 30px rgba(34,211,238,.24)' }} />
+          <span
+            aria-hidden="true"
+            className="absolute flex items-center justify-center onb-done-badge"
+            style={{ right: -4, bottom: -4, width: 24, height: 24, borderRadius: '50%', background: 'var(--ok)', color: 'var(--bg-app)', border: '2.5px solid var(--bg-app)' }}
+          >
+            <Check size={13} strokeWidth={3} />
+          </span>
         </span>
       </div>
-      <h2 className="shrink-0" style={{ margin: '20px 0 0', fontSize: 26, fontWeight: 900, color: 'var(--text-1)', letterSpacing: '-.025em', lineHeight: 1.16, textAlign: 'center' }}>
+      <h2 className="shrink-0" style={{ margin: '20px 0 0', fontSize: 26, fontWeight: 900, color: 'var(--text-1)', letterSpacing: '-.025em', lineHeight: 1.16, textAlign: 'center', textWrap: 'balance' }}>
         {titulo}
       </h2>
+
+      {raceName && <RaceWeeks semanas={semanas} raceName={raceName} />}
 
       {/* Resumo do que ficou respondido. O mock tem aqui uma frase sobre o
           plano da primeira semana; o plano é gerado pela Carol, não por este
