@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Target, Trophy } from 'lucide-react';
 import { todayISO } from '../../lib/utils';
 import { findRaceRun, formatDuration, formatPace } from '../../utils/run';
@@ -12,6 +12,9 @@ import CarouselDots from '../shared/CarouselDots';
 import { AchievementChip } from '../shared/AchievementCard';
 import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUpText } from '../../utils/useCountUp';
+import { useAppStore } from '../../store';
+import CoachAvatar from '../Coach/CoachAvatar';
+import { raceMilestoneLine, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
    fase atual, "semana 6 de 18", os dias em número grande, o trilho do
@@ -129,6 +132,25 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
       </div>
       <AllRacesLink onOpen={onOpenAllRaces} />
     </GlassCard>
+  );
+}
+
+/* O marco da contagem (raceMilestone.js): nos dias que não são iguais aos
+   outros — 100, 50, 30, 14, 7 e 3 —, a Carol diz o que ele quer dizer.
+   Na primeira vez que se vê nesse dia, ela respira e a frase entra. */
+function RaceMilestoneLine({ raceId, days }) {
+  const line = raceMilestoneLine(days);
+  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
+  const [moment] = useState(() => !!line && !wasMilestoneSeen(userId, raceId, days));
+  useEffect(() => {
+    if (line) markMilestoneSeen(userId, raceId, days);
+  }, [line, userId, raceId, days]);
+  if (!line) return null;
+  return (
+    <div data-testid="race-milestone" className="flex items-start gap-2.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(251,191,36,.18)' }}>
+      <CoachAvatar size={26} mood="neutral" breathing={moment} />
+      <p className={`flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.45]${moment ? ' race-milestone-line' : ''}`} style={{ margin: 0, color: 'var(--text-2)' }}>{line}</p>
+    </div>
   );
 }
 
@@ -276,6 +298,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
           )}
         </div>
         <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
+        {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} />}
       </div>
 
       {/* A ação do dia da prova: âmbar cheio, porque é a única coisa que

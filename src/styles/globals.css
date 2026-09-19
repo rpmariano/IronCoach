@@ -522,6 +522,16 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 .day-done-text { animation: welcomeBubble 420ms var(--ease-out) both; }
 @media (prefers-reduced-motion: reduce) { .day-done-check, .day-done-text { animation: none; } }
 
+/* A meta da água passada (Home/WaterSheet.jsx): a Carol entra onde
+   estavam os botões. */
+.water-goal-moment { animation: welcomeBubble 480ms var(--ease-out) 200ms both; }
+@media (prefers-reduced-motion: reduce) { .water-goal-moment { animation: none; } }
+
+/* O marco da contagem para a prova (Home/RaceCard.jsx), na primeira vez
+   que se vê nesse dia. */
+.race-milestone-line { animation: welcomeBubble 480ms var(--ease-out) 200ms both; }
+@media (prefers-reduced-motion: reduce) { .race-milestone-line { animation: none; } }
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;
