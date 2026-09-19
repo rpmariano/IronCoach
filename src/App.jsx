@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
+import { reloadFresh } from './lib/appUpdate';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -44,7 +45,9 @@ function retryOnce(load) {
       if (!already) sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
     } catch { already = true; }
     if (!already && typeof window !== 'undefined') {
-      window.location.reload();
+      // Sem passar pela cache do index.html (max-age=600 no GitHub Pages),
+      // que ainda apontaria para os chunks que acabaram de desaparecer.
+      reloadFresh();
       return new Promise(() => {});
     }
     throw err;

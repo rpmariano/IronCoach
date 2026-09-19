@@ -11,6 +11,27 @@ import { fileURLToPath, URL } from 'node:url';
    subcaminho — foi o que quebrou a produção a 2026-08-04. */
 const base = process.env.VITE_BASE || '/';
 
+/* Id de cada build, para a app saber que saiu uma versão nova e se
+   recarregar sozinha (src/lib/appUpdate.js). Vai para o código como
+   __APP_BUILD__ e para dist/version.json; em desenvolvimento fica vazio e a
+   verificação não corre. No GitHub Actions é o commit; noutro lado, a hora. */
+function appBuildId() {
+  let id = '';
+  return {
+    name: 'ironcoach-build-id',
+    config(_, { command }) {
+      id = command === 'build'
+        ? (process.env.GITHUB_SHA || '').slice(0, 12) || Date.now().toString(36)
+        : '';
+      return { define: { __APP_BUILD__: JSON.stringify(id) } };
+    },
+    generateBundle() {
+      if (!id) return;
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: id }) });
+    },
+  };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   base,
@@ -48,7 +69,8 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    react()
+    react(),
+    appBuildId(),
   ],
   resolve: {
     alias: {
