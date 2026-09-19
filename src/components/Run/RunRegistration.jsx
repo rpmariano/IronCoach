@@ -1577,7 +1577,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do print falha. */
   const renderAnalysisStates = () => (
     <>
-      {analyzingRun && <AnalysisSkeleton />}
+      {analyzingRun && <AnalysisSkeleton kind="run" />}
 
       {analysis.hasFailed && (
         <AnalysisFailure

@@ -476,7 +476,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         </div>
 
         {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão). */}
-        {isAnalyzing && <AnalysisSkeleton />}
+        {isAnalyzing && <AnalysisSkeleton kind="body" />}
 
         {analysis.hasFailed && (
           <AnalysisFailure

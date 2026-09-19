@@ -705,7 +705,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
         {/* Ponto 7 — espera: esqueleto onde o resultado vai aparecer, com o
             formulário bloqueado mas visível. */}
-        {isAnalyzing && <AnalysisSkeleton />}
+        {isAnalyzing && <AnalysisSkeleton kind="gym" />}
 
         {/* Ponto 7 — erro: aviso coral na voz da Carol, com "Tentar de novo"
             (mesma chamada, mesmos dados) e a alternativa manual. */}
