@@ -9,6 +9,7 @@ import { ScanLine, X, ImagePlus, Camera, PencilLine, MessageSquare } from 'lucid
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
+import { bodyGoalMoment } from '../../utils/bodyGoal';
 import Chip from '../shared/Chip';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -156,7 +157,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     const hadPendingNav = !!pendingNavTarget.current;
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
-    const first = !isEditing && firstRecordMoment('body', useAppStore.getState(), createdRecord);
+    const st = useAppStore.getState();
+    // …ou a avaliação que atravessa uma meta do Corpo (utils/bodyGoal.js).
+    const first = !isEditing && (firstRecordMoment('body', st, createdRecord)
+      || bodyGoalMoment(createdRecord, st.bodyAssessments, st.profile));
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {

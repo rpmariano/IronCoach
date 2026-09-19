@@ -7,6 +7,7 @@ import BodyRegistration from './BodyRegistration';
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
 vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
+vi.mock('../../utils/bodyGoal', () => ({ bodyGoalMoment: () => null }));
 
 // analyze-body é a única coisa que estes testes exercitam de facto — tanto
 // a foto como o manual gravam a avaliação e geram o comentário do Coach
