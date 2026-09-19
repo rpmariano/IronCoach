@@ -44,6 +44,7 @@ describe('reactToRunning', () => {
     const r = reactToRunning({ experience_level: 'iniciante', weekly_km: '40', days_per_week: '4' });
     expect(r.mood).toBe('worried');
     expect(r.text).toMatch(/^40 km/);
+    expect(reactToRunning({ experience_level: 'iniciante', weekly_km: '35.5' }).text).toMatch(/^35,5 km/);
   });
 
   it('saídas longas em média: diz a conta', () => {
@@ -65,6 +66,7 @@ describe('reactToFood', () => {
 
   it('várias: fica tudo como regra', () => {
     expect(reactToFood({ dietary_restrictions: ['vegano', 'sem_gluten'] }).text).toMatch(/^As duas ficam como regra/);
+    expect(reactToFood({ dietary_restrictions: ['vegano', 'sem_gluten', 'sem_lactose'] }).text).toMatch(/^As três/);
   });
 
   it('só o texto livre também é ouvido', () => {

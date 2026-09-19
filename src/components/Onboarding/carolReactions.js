@@ -17,6 +17,9 @@ const num = (v) => {
   const n = parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
 };
+// Os números na boca dela vão em português: 35,5 e não 35.5.
+const pt = (n) => String(n).replace('.', ',');
+const POR_EXTENSO = { 2: 'As duas', 3: 'As três', 4: 'As quatro' };
 
 /** O primeiro nome, para ela tratar o atleta por ele. */
 export function firstName(displayName) {
@@ -49,7 +52,7 @@ export function reactToRunning(draft) {
     return { mood: 'worried', text: 'Sete dias por semana não deixa espaço para recuperar, e é na recuperação que o treino rende. Vou propor-te pelo menos um de descanso.' };
   }
   if (nivel === 'iniciante' && km != null && km >= 35) {
-    return { mood: 'worried', text: `${km} km por semana com menos de um ano a correr é muito. Guardo o número, mas confirmo-o com as tuas primeiras corridas antes de construir em cima dele.` };
+    return { mood: 'worried', text: `${pt(km)} km por semana com menos de um ano a correr é muito. Guardo o número, mas confirmo-o com as tuas primeiras corridas antes de construir em cima dele.` };
   }
   if (km != null && dias != null && dias > 0 && km / dias >= 25) {
     return { mood: 'neutral', text: `Dá ${Math.round(km / dias)} km por saída, em média. São saídas longas. Vou olhar para elas antes de te pedir mais volume.` };
@@ -82,7 +85,7 @@ export function reactToFood(draft) {
   const notas = String(draft?.dietary_notes || '').trim();
 
   if (ativas.length > 1) {
-    return { mood: 'neutral', text: `${ativas.length === 2 ? 'As duas' : `As ${ativas.length}`} ficam como regra. Nenhuma sugestão minha vai falhar uma delas${notas ? ', nem o que escreveste por baixo' : ''}.` };
+    return { mood: 'neutral', text: `${POR_EXTENSO[ativas.length] || 'Todas'} ficam como regra. Nenhuma sugestão minha vai falhar uma delas${notas ? ', nem o que escreveste por baixo' : ''}.` };
   }
   if (ativas.length === 1) {
     return { mood: 'neutral', text: SOBRE_RESTRICAO[ativas[0]] };

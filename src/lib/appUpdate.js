@@ -36,7 +36,10 @@ export function currentBuild() {
 /** O id publicado agora, ou null se não se conseguiu saber (sem rede, 404…). */
 export async function fetchPublishedBuild(fetchImpl = globalThis.fetch, base = import.meta.env.BASE_URL || '/') {
   try {
-    const res = await fetchImpl(`${base}version.json?t=${Date.now()}`, { cache: 'no-store' });
+    // Com prazo: um pedido pendurado (rede má, iOS a suspender a app) deixava
+    // o vigia à espera para sempre e ele nunca mais verificava.
+    const signal = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined;
+    const res = await fetchImpl(`${base}version.json?t=${Date.now()}`, { cache: 'no-store', signal });
     if (!res.ok) return null;
     const data = await res.json();
     return typeof data?.build === 'string' && data.build ? data.build : null;
@@ -48,10 +51,11 @@ export async function fetchPublishedBuild(fetchImpl = globalThis.fetch, base = i
 /** Há alguma coisa a meio que uma recarga deitaria fora?
     Os registos e edições abrem todos numa folha ou modal (role="dialog"); a
     conversa com a Carol é uma textarea no ecrã. Um campo com o foco também
-    conta: o atleta está a escrever. */
+    conta: o atleta está a escrever. O arranque também: o rascunho sobrevive
+    a uma recarga, o passo em que ia não. */
 export function isBusy(doc = globalThis.document) {
   if (!doc) return true;
-  if (doc.querySelector('[role="dialog"], [aria-modal="true"]')) return true;
+  if (doc.querySelector('[role="dialog"], [aria-modal="true"], [data-testid="onboarding"]')) return true;
   for (const t of doc.querySelectorAll('textarea')) {
     if (typeof t.value === 'string' && t.value.trim()) return true;
   }

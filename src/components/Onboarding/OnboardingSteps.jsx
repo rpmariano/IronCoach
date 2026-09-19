@@ -4,6 +4,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
 import { prefersReducedMotion, typingDelayFor } from '../../utils/coachBubbles';
 import { firstName, reactToGoal, reactToRunning, reactToFood } from './carolReactions';
+import { todayISO } from '../../lib/utils';
 
 /* Os sete ecrãs do arranque (6 passos + fecho), recriados a partir da secção
    "Onboarding · o arranque" de specs/design-handoff-2026-09/design/
@@ -147,7 +148,9 @@ export function OptionCard({ icon, title, description, selected, tone = 'coach',
    com o que acha dessa resposta (carolReactions.js). O compasso também serve
    de travão: a escrever um número, ela só fala quando o atleta pára.
    prefers-reduced-motion: responde de imediato, sem os pontos.
-   A região é aria-live="polite": quem usa leitor de ecrã ouve-a responder. */
+   Quem usa leitor de ecrã ouve-a responder: a região só é aria-live quando
+   o que lá está é a resposta dela — o "a escrever…" e a nota do passo (que
+   no passo 6 muda a cada tecla) não são anunciados. */
 export function CarolReply({ reaction, children, style }) {
   const text = reaction?.text || null;
   const [shown, setShown] = useState(text);
@@ -167,7 +170,7 @@ export function CarolReply({ reaction, children, style }) {
   let corpo = null;
   if (typing) {
     corpo = (
-      <span className="inline-flex items-center gap-2" style={{ minHeight: 19 }}>
+      <span aria-hidden="true" className="inline-flex items-center gap-2" style={{ minHeight: 19 }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--coach-soft)' }}>a escrever…</span>
         <span className="inline-flex items-center gap-1" aria-hidden="true">
           <span className="coach-typing-dot" />
@@ -183,7 +186,7 @@ export function CarolReply({ reaction, children, style }) {
   }
 
   return (
-    <div aria-live="polite" className="shrink-0">
+    <div aria-live={shown && !typing ? 'polite' : 'off'} className="shrink-0">
       {corpo && <CarolNote style={style} reacting={!!shown && !typing}>{corpo}</CarolNote>}
     </div>
   );
@@ -495,6 +498,7 @@ export function StepProva({ draft, set, carolNote, reaction }) {
           <Field
             label="Data"
             type="date"
+            min={todayISO()}
             style={{ flex: 1, minWidth: 0 }}
             value={draft.race_date}
             onChange={(e) => set('race_date', e.target.value)}

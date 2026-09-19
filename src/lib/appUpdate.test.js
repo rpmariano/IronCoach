@@ -122,6 +122,11 @@ describe('isBusy', () => {
     expect(isBusy(document)).toBe(true);
   });
 
+  it('o arranque a meio conta como ocupado', () => {
+    document.body.innerHTML = '<div data-testid="onboarding"></div>';
+    expect(isBusy(document)).toBe(true);
+  });
+
   it('o Início parado não está ocupado', () => {
     document.body.innerHTML = '<main><button>Registar</button><textarea></textarea></main>';
     expect(isBusy(document)).toBe(false);
@@ -143,7 +148,7 @@ describe('URLs', () => {
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ build: 'bbb' }) });
     await expect(fetchPublishedBuild(fetchImpl, '/IronCoach/')).resolves.toBe('bbb');
     expect(fetchImpl.mock.calls[0][0]).toMatch(/^\/IronCoach\/version\.json\?t=\d+$/);
-    expect(fetchImpl.mock.calls[0][1]).toEqual({ cache: 'no-store' });
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({ cache: 'no-store' });
   });
 
   it('fetchPublishedBuild devolve null num 404 ou erro de rede', async () => {
