@@ -20,9 +20,9 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { pickServerProactive, proactiveTab, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { listServerProactive, proactiveTab, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { composePushMessage } from "./pushText.ts";
-import { decidePush } from "./decide.ts";
+import { choosePush } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -135,7 +135,7 @@ async function handler(req: Request): Promise<Response> {
         race_id: p.race_id,
         hasTraining: (p.coach_plan_items || []).some((i: { kind?: string }) => i?.kind === "corrida" || i?.kind === "ginasio"),
       }));
-      const candidate = pickServerProactive({
+      const candidates = listServerProactive({
         raceEvents: races || [],
         runs: runs || [],
         lastRecordDate: last,
@@ -146,20 +146,21 @@ async function handler(req: Request): Promise<Response> {
       }, today);
 
       const prefs = prefsById.get(userId) ?? {};
-      let decision = decidePush({ candidate, lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
+      // Primeiro sem ir à base de dados: se nenhum momento passa sequer a
+      // janela e os tipos, não vale a pena ler o resto.
+      let { candidate, decision } = choosePush(candidates, { lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
       if (candidate && decision.send) {
-        // Só se consulta o resto quando há mesmo um momento para notificar.
+        const keys = candidates.map((c) => c.key);
         const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }] = await Promise.all([
-          sb.from("coach_proactive_log").select("key").eq("user_id", userId).eq("key", candidate.key),
-          sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("key", candidate.key),
+          sb.from("coach_proactive_log").select("key").eq("user_id", userId).in("key", keys),
+          sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).in("key", keys),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today),
           sb.from("coach_messages").select("role, created_at").eq("user_id", userId)
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
           sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
         ]);
-        decision = decidePush({
-          candidate,
+        ({ candidate, decision } = choosePush(candidates, {
           lisbonHour: hour,
           deliveredKeys: new Set((delivered || []).map((d: { key: string }) => d.key)),
           pushedKeys: new Set((pushedKey || []).map((p: { key: string }) => p.key)),
@@ -168,11 +169,12 @@ async function handler(req: Request): Promise<Response> {
           lastMessage: lastAny ?? null,
           lastModelMessageAt: lastModel?.created_at ?? null,
           nowMs: now.getTime(),
-          balanceDone: !!(races || []).find((r: { id: string; coach_balance?: string | null }) => r.id === candidate.raceId)?.coach_balance,
-        });
+          balanceDoneFor: (c) => !!(races || []).find((r: { id: string; coach_balance?: string | null }) => r.id === c.raceId)?.coach_balance,
+        }));
       }
       const reason = decision.send ? "enviada" : decision.reason;
       if (!decision.send || !candidate) { tally[reason] = (tally[reason] || 0) + 1; continue; }
+      const picked = candidate; // fixo, para os callbacks abaixo
 
       // Registar ANTES de enviar: se duas execuções se cruzarem, a segunda
       // bate na chave primária e não envia outra vez.
@@ -184,7 +186,7 @@ async function handler(req: Request): Promise<Response> {
          falha — sem chave, erro, texto que não passa a validação — dá a
          frase fixa da P.3. Os números vêm só daqui, nunca do modelo. */
       // deno-lint-ignore no-explicit-any
-      const race: any = (races || []).find((r: { id: string }) => r.id === candidate.raceId) ?? null;
+      const race: any = (races || []).find((r: { id: string }) => r.id === picked.raceId) ?? null;
       // deno-lint-ignore no-explicit-any
       const raceRun: any = candidate.hasRun && race
         ? (runs || []).find((r: { race_id?: string | null }) => r.race_id === race.id) ?? null

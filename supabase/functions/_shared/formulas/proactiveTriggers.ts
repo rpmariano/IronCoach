@@ -139,8 +139,8 @@ export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: T
   return list.find((r) => !r?.race_id && r?.kind === "competicao" && r?.date === race.date) || null;
 }
 
-export function pickServerProactive(
-  input: {
+/** O input dos momentos proativos do servidor. */
+export type ServerProactiveInput = {
     raceEvents: TriggerRace[] | null | undefined;
     runs: TriggerRun[] | null | undefined;
     lastRecordDate: string | null;
@@ -151,9 +151,22 @@ export function pickServerProactive(
     /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
      *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam. */
     allowed?: string[] | null;
-  },
-  todayISO: string,
-): ServerProactiveCandidate | null {
+};
+
+/** O momento mais importante agora, ou null. */
+export function pickServerProactive(input: ServerProactiveInput, todayISO: string): ServerProactiveCandidate | null {
+  return listServerProactive(input, todayISO)[0] ?? null;
+}
+
+/** TODOS os momentos que se aplicam agora, por ordem de prioridade (um por
+ *  tipo). A notificação não pode ficar só com o primeiro: um assunto por
+ *  resolver que o atleta não abre repete a mesma chave em todas as horas, e
+ *  depois de notificado uma vez tapava a véspera e a manhã da prova para
+ *  sempre (revisão pré-master de 2026-09-19). Quem notifica percorre a lista
+ *  e fica com o primeiro que ainda pode sair — coach-proactive-tick/decide.ts
+ *  (choosePush). */
+export function listServerProactive(input: ServerProactiveInput, todayISO: string): ServerProactiveCandidate[] {
+  const out: ServerProactiveCandidate[] = [];
   const ok = (t: ProactiveTriggerName) => !Array.isArray(input.allowed) || input.allowed.includes(t);
   const races = (input.raceEvents || []).filter((r) => r && typeof r.date === "string");
   const scheduled = races.filter((r) => r.status !== "concluida");
@@ -162,19 +175,19 @@ export function pickServerProactive(
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
   if (ok("intervention") && input.intervention?.status === "needed") {
-    return { ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` };
+    out.push({ ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` });
   }
 
   const morning = ok("race_morning") ? scheduled.find((r) => r.date.slice(0, 10) === todayISO) : undefined;
-  if (morning) return { ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null };
+  if (morning) out.push({ ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null });
 
   const eve = ok("race_eve") ? scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1) : undefined;
-  if (eve) return { ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null };
+  if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
 
   const conflict = ok("race_conflict") ? detectRaceConflictServer(input.plans, races, todayISO) : null;
   if (conflict) {
     const target = races.find((r) => r.id === conflict.plan.race_id) ?? null;
-    return {
+    out.push({
       ...base,
       trigger: "race_conflict",
       key: `race_conflict:${conflict.plan.id}:${conflict.races.map((r) => r.id).sort().join(",")}`,
@@ -182,34 +195,37 @@ export function pickServerProactive(
       raceName: target?.name ?? null,
       planId: conflict.plan.id,
       conflictRaceNames: conflict.races.map((r) => r.name || "outra prova"),
-    };
+    });
   }
 
   const past = !ok("race_after") ? [] : races
     .map((race) => ({ race, gap: daysBetween(race.date.slice(0, 10), todayISO) }))
     .filter(({ gap }) => gap >= 0 && gap <= RACE_AFTER_DAYS_WITH_RUN)
     .sort((a, b) => a.gap - b.gap);
+  // A prova mais recente ganha: um só "depois da prova" na lista.
   for (const { race, gap } of past) {
     const run = findRaceRunServer(input.runs, race);
     if (run) {
-      return { ...base, trigger: "race_after", key: `race_after:${race.id}:${run.id || "corrida"}`, raceId: race.id, raceName: race.name ?? null, hasRun: true, anchorDate: race.date.slice(0, 10), anchorAt: run.created_at ?? null };
+      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:${run.id || "corrida"}`, raceId: race.id, raceName: race.name ?? null, hasRun: true, anchorDate: race.date.slice(0, 10), anchorAt: run.created_at ?? null });
+      break;
     }
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
-      return { ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, anchorDate: race.date.slice(0, 10) };
+      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, anchorDate: race.date.slice(0, 10) });
+      break;
     }
   }
 
   const block = ok("block_end") ? findEndingBlock(input.plans, todayISO) : null;
   if (block) {
-    return { ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) };
+    out.push({ ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) });
   }
 
   const last = ok("silence") && input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
   if (last) {
     const gap = daysBetween(last, todayISO);
-    if (gap >= SILENCE_DAYS) return { ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last };
+    if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
   }
-  return null;
+  return out;
 }
 
 /* O texto da notificação, na voz dela (carolTone): sem emoji, sem ponto de

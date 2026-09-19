@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer } from "./proactiveTriggers.ts";
 
 const TODAY = "2026-09-18";
 const race = (over: Record<string, unknown> = {}) => ({ id: "r1", name: "Meia de Lisboa", date: TODAY, status: "agendada", ...over });
@@ -152,3 +152,17 @@ Deno.test("P.6: um momento desligado não esconde os seguintes", () => {
   assertEquals(pickServerProactive({ raceEvents: races, runs: [], lastRecordDate: "2026-09-10", allowed: [] }, TODAY), null);
 });
 
+
+Deno.test("listServerProactive: todos os momentos que se aplicam, por prioridade, um por tipo", () => {
+  const list = listServerProactive({
+    raceEvents: [race({ id: "r2", date: "2026-09-19" }), race({ id: "r0", date: "2026-09-16", status: "concluida" }), race({ id: "rx", date: "2026-09-15", status: "concluida" })],
+    runs: [],
+    lastRecordDate: "2026-09-10",
+    intervention: { status: "needed", reason: "dor no joelho" },
+  }, TODAY);
+  assertEquals(list.map((c) => c.trigger), ["intervention", "race_eve", "race_after", "silence"]);
+  // Só a prova mais recente conta para o "depois da prova".
+  assertEquals(list[2].raceId, "r0");
+  assertEquals(pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: null }, TODAY), null);
+  assertEquals(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: null }, TODAY), []);
+});

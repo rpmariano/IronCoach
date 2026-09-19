@@ -466,7 +466,7 @@ export function buildImpressionsContext(rows: any[] | null | undefined, todayISO
   const lines = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === addDaysISO(todayISO, -1) ? "Ontem" : date}: ${items.join("; ")}.`);
-  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que o Início lhe mostrou):\n${lines.join("\n")}\n` +
+  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que a Home lhe mostrou):\n${lines.join("\n")}\n` +
     `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.`;
 }
 

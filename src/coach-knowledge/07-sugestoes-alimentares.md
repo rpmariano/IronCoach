@@ -38,7 +38,7 @@ entrega, todas em cima do que já existe:
    sem entidade nova. É aqui que os alvos de 4.3 #1 e #3 (peri-treino, carga
    de hidratos) ganham forma concreta.
 
-3. **Cartão de resumo do Coach no Início.** Várias mensagens curtas: o que se
+3. **Cartão de resumo do Coach na Home.** Várias mensagens curtas: o que se
    passou recentemente, avisos para hoje, sugestão de refeição, preparação
    para amanhã. É a materialização da proatividade descrita no PRD 3.6.1 #3 —
    **gatilhos determinísticos decidem quando falar, o modelo só escreve o
@@ -240,7 +240,7 @@ com 4.3 #5 (testar cafeína em treino) e Bloco 6 #4 (nada não testado nas
 sessão Z3-Z5 registada; hidratos cronicamente baixos veem-se de `meal_items`.
 
 **Valor prático**: é a lista do que o coach deve *procurar* antes de o atleta
-perguntar — alimenta a forma de entrega 3 (cartão de resumo no Início).
+perguntar — alimenta a forma de entrega 3 (cartão de resumo na Home).
 
 ---
 

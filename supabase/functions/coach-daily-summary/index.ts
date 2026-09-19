@@ -573,7 +573,7 @@ const RESPONSE_SCHEMA = {
 async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null): Promise<any> {
   const prompt =
     `És a Carol, a treinadora deste atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
-    `conteúdos independentes para o cartão diário do Início, em primeira pessoa. Nunca genérico. ` +
+    `conteúdos independentes para o cartão diário da Home, em primeira pessoa. Nunca genérico. ` +
     `Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +

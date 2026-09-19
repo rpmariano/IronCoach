@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { decidePush, lisbonDateOf } from "./decide.ts";
+import { choosePush, decidePush, lisbonDateOf } from "./decide.ts";
 
 const candidate = { trigger: "race_eve" as const, key: "race_eve:r1", raceId: "r1", raceName: "Meia", hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 const NOW = Date.parse("2026-09-18T15:00:00Z");
@@ -76,3 +76,39 @@ Deno.test("decidePush: as preferências do atleta (P.6)", () => {
   assertEquals(decidePush({ ...base, lisbonHour: 16, prefs: { startHour: 18, endHour: 22 } }), { send: false, reason: "fora_de_horas" });
 });
 
+
+/* A lista (revisão pré-master de 2026-09-19): um momento já notificado não
+   pode tapar os seguintes para sempre. */
+const intervention = { ...candidate, trigger: "intervention" as const, key: "intervention:abc", raceId: null, raceName: null };
+const { candidate: _c, ...ctx } = base;
+
+Deno.test("choosePush: a intervenção já notificada passa a vez à véspera", () => {
+  const r = choosePush([intervention, candidate], { ...ctx, pushedKeys: new Set(["intervention:abc"]) });
+  assertEquals(r.candidate?.key, "race_eve:r1");
+  assertEquals(r.decision, { send: true });
+});
+
+Deno.test("choosePush: sem nada a impedir, fica o primeiro", () => {
+  assertEquals(choosePush([intervention, candidate], ctx).candidate?.key, "intervention:abc");
+});
+
+Deno.test("choosePush: o limite do dia e as 6 horas param a lista toda", () => {
+  const cheio = choosePush([intervention, candidate], { ...ctx, pushedKeys: new Set(["intervention:abc"]), pushedTodayCount: 1 });
+  assertEquals(cheio, { candidate: null, decision: { send: false, reason: "limite_diario" } });
+  const recente = choosePush([intervention, candidate], { ...ctx, lastMessage: { role: "model", created_at: "2026-09-18T13:00:00Z" } });
+  assertEquals(recente.candidate, null);
+  assertEquals(recente.decision, { send: false, reason: "falou_ha_pouco" });
+});
+
+Deno.test("choosePush: sem nenhum que saia, o motivo é o do mais importante", () => {
+  const r = choosePush([intervention, candidate], { ...ctx, pushedKeys: new Set(["intervention:abc", "race_eve:r1"]) });
+  assertEquals(r, { candidate: null, decision: { send: false, reason: "ja_notificado" } });
+  assertEquals(choosePush([], ctx), { candidate: null, decision: { send: false, reason: "sem_momento" } });
+});
+
+Deno.test("choosePush: o balanço já feito é dessa prova, não dos outros momentos", () => {
+  const after = { ...candidate, trigger: "race_after" as const, key: "race_after:r0:run1", raceId: "r0", hasRun: true };
+  const silence = { ...candidate, trigger: "silence" as const, key: "silence:2026-09-10", raceId: null, anchorDate: "2026-09-10" };
+  const r = choosePush([after, silence], { ...ctx, balanceDoneFor: (c) => c.raceId === "r0" });
+  assertEquals(r.candidate?.key, "silence:2026-09-10");
+});

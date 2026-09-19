@@ -1375,12 +1375,12 @@ Deno.test("esquema: preferência alimentar não desencadeia proposta de objetivo
   assertStringIncludes(sys, "NUNCA chames update_goals por causa de uma mudança de preferência alimentar");
 });
 
-Deno.test("caso A manda rever a proposta no Coach, não no ecrã Início", () => {
+Deno.test("caso A manda rever a proposta no Coach, não no ecrã Home", () => {
   // O atleta está no Coach quando aceita os objetivos; a proposta de plano
   // abre ali mesmo. Mandá-lo ao Início é mandá-lo procurar noutro ecrã algo
   // que tem à frente.
   const sys = sysCom(null, null);
-  assertStringIncludes(sys, "AQUI MESMO, no Coach — não mandes o atleta para o ecrã Início");
+  assertStringIncludes(sys, "AQUI MESMO, no Coach — não mandes o atleta para o ecrã Home");
 });
 
 Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {

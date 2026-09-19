@@ -165,7 +165,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');                                  // → a tua prova
     clicar('Ainda não tenho prova marcada');              // → fecho
 
-    clicar('Ir para o Início');
+    clicar('Ir para a Home');
 
     await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
     const update = profileUpdates[0];
@@ -195,7 +195,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');
     clicar('Continuar');
     clicar('Ainda não tenho prova marcada');
-    clicar('Ir para o Início');
+    clicar('Ir para a Home');
 
     await waitFor(() => expect(coachNoteInserts.length).toBe(2));
     expect(coachNoteInserts[0]).toMatchObject({ category: 'objetivo_pessoal' });
@@ -215,7 +215,7 @@ describe('Onboarding — o que fica gravado', () => {
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
     clicar('Criar o meu plano');
-    clicar('Ir para o Início');
+    clicar('Ir para a Home');
 
     await waitFor(() => expect(useAppStore.getState().openCreationMode).toBe('race'));
     expect(useAppStore.getState().racePrefill).toMatchObject({
@@ -229,7 +229,7 @@ describe('Onboarding — o que fica gravado', () => {
   it('sem prova declarada não abre formulário nenhum', async () => {
     renderOnboarding();
     percorrerTudo();
-    clicar('Ir para o Início');
+    clicar('Ir para a Home');
     await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
     expect(useAppStore.getState().openCreationMode).toBeNull();
     expect(useAppStore.getState().activeTab).toBe('home');
@@ -253,7 +253,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Vamos a isso');
     fireEvent.change(screen.getByLabelText(/Como te chamo/), { target: { value: 'Rui' } });
     percorrerTudoAPartirDoPasso2();
-    clicar('Ir para o Início');
+    clicar('Ir para a Home');
 
     await waitFor(() => expect(profileUpdates.length).toBe(2));
     expect(profileUpdates[0]).toHaveProperty('onboarding_done', true);
