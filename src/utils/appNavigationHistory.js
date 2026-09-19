@@ -30,9 +30,14 @@ function sameScreen(a, b) {
 // `ready`: só começa a empilhar depois da app terminar a inicialização
 // (sessão, `?tab=` da URL) — sem isto, o separador inicial vindo da URL
 // contava como uma "navegação" e empilhava uma entrada logo ao arrancar.
-export function useAppNavigationHistory({ activeTab, setActiveTab, isCreatingOrEditing, closeTopScreen, ready = true }) {
+export function useAppNavigationHistory({ activeTab, setActiveTab, isCreatingOrEditing, closeTopScreen, ready = true, overlayOpen = false, closeOverlay = null }) {
   const stackRef = useRef([{ tab: activeTab, editing: isCreatingOrEditing }]);
   const wasReadyRef = useRef(false);
+  /* A camada que vive por cima de tudo sem ser um ecrã (as boas-vindas da
+     Carol): o "voltar" fecha-a primeiro, e repõe a entrada que consumiu para
+     o ecrã por baixo ficar onde estava. */
+  const overlayRef = useRef({ open: false, close: null });
+  overlayRef.current = { open: overlayOpen, close: closeOverlay };
 
   useEffect(() => {
     if (!ready) return;
@@ -61,6 +66,12 @@ export function useAppNavigationHistory({ activeTab, setActiveTab, isCreatingOrE
 
   useEffect(() => {
     const handlePopState = () => {
+      const overlay = overlayRef.current;
+      if (overlay.open && overlay.close) {
+        overlay.close();
+        window.history.pushState({ ironcoachNav: true }, '');
+        return;
+      }
       const stack = stackRef.current;
       if (!wasReadyRef.current || stack.length <= 1) return; // nada nosso para desfazer — deixa sair
 

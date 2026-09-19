@@ -150,9 +150,11 @@ function ScreenSkeleton() {
   );
 }
 
-/* Para os ecrãs que vivem FORA do Layout (arranque, bancadas de teste) o
-   fallback é exatamente o mesmo placeholder que o App já mostra enquanto
-   `isInitializing` — a troca entre os dois é invisível. */
+/* Para os ecrãs que vivem FORA do Layout (arranque, bancadas de teste). É o
+   mesmo componente que o App mostra enquanto `isInitializing`, mas cada
+   montagem é uma instância nova: o brasão recomeça o desenho quando um
+   destes substitui o outro. Vale a pena — um brasão a meio, herdado do
+   ecrã anterior, lia-se pior do que um desenho do princípio. */
 function FullScreenLoader() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" style={{ gap: 18 }}>
@@ -516,6 +518,10 @@ export default function App() {
     isCreatingOrEditing,
     closeTopScreen,
     ready: !isInitializing,
+    // As boas-vindas da Carol não são um ecrã: o "voltar" fecha-as e deixa
+    // o ecrã por baixo onde estava.
+    overlayOpen: !!welcome,
+    closeOverlay: closeWelcome,
   });
 
   // Aquece o chunk do separador ao toque, antes de o React o pedir — ver o

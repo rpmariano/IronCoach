@@ -58,3 +58,24 @@ describe('CarolWelcome', () => {
     expect(screen.getByRole('button', { name: 'Estou pronto' })).toBeInTheDocument();
   });
 });
+
+describe('CarolWelcome — o foco (revisão pré-master de 2026-09-19)', () => {
+  it('o Tab não sai dela, e ao fechar o foco volta ao sítio de onde veio', () => {
+    const antes = document.createElement('button');
+    document.body.appendChild(antes);
+    antes.focus();
+    expect(antes).toHaveFocus();
+
+    const { unmount } = render(<CarolWelcome welcome={welcome} now={NOW} onClose={() => {}} />);
+    const botao = screen.getByRole('button', { name: 'Começar o dia' });
+    expect(botao).toHaveFocus();
+
+    // Tab: fica lá dentro.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(botao).toHaveFocus();
+
+    unmount();
+    expect(antes).toHaveFocus();
+    antes.remove();
+  });
+});

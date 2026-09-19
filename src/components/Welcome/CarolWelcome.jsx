@@ -18,7 +18,8 @@ import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
    fim de ~6 s (a linha que se esvazia), num toque em qualquer sítio, no
    botão ou com Escape. Com movimento reduzido tudo aparece de uma vez
    (regras .welcome-* em globals.css). É um diálogo modal: o foco vai para
-   o botão, e a atualização automática (lib/appUpdate.js) espera por ela. */
+   o botão, o Tab não sai dela, e ao fechar o foco volta ao sítio de onde
+   veio; a atualização automática (lib/appUpdate.js) espera por ela. */
 
 const W = 390;
 const ART_H = 330;
@@ -115,12 +116,25 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
   fecharRef.current = fechar;
 
   useEffect(() => {
+    // Quem tinha o foco antes — para lho devolver ao fechar.
+    const antes = document.activeElement;
     buttonRef.current?.focus({ preventScroll: true });
     // A linha começa a esvaziar-se depois de as bolhas entrarem (1,8 s).
     const t = setTimeout(() => fecharRef.current(), 1800 + WELCOME_AUTO_CLOSE_MS);
-    const onKey = (e) => { if (e.key === 'Escape') fecharRef.current(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { fecharRef.current(); return; }
+      // Enquanto ela está aberta, o Tab não sai dela: só há uma ação.
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        buttonRef.current?.focus({ preventScroll: true });
+      }
+    };
     document.addEventListener('keydown', onKey);
-    return () => { clearTimeout(t); document.removeEventListener('keydown', onKey); };
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+      if (antes && typeof antes.focus === 'function' && document.contains(antes)) antes.focus({ preventScroll: true });
+    };
   }, []);
 
   const ChipIcon = welcome.chip ? (ICON[welcome.chip.icon] || Clock) : null;

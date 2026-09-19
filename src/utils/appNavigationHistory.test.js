@@ -107,4 +107,30 @@ describe('useAppNavigationHistory', () => {
     rerender({ activeTab: 'perfil', isCreatingOrEditing: false, ready: true }); // navegação real, agora sim
     expect(window.history.pushState).toHaveBeenCalledTimes(1);
   });
+
+  /* As boas-vindas da Carol (revisão pré-master de 2026-09-19): não são um
+     ecrã, mas o "voltar" do telemóvel tem de as fechar primeiro. */
+  it('com as boas-vindas abertas, o "voltar" fecha-as e deixa o ecrã onde estava', () => {
+    const closeOverlay = vi.fn();
+    const { setActiveTab, closeTopScreen } = setup({ activeTab: 'home', isCreatingOrEditing: false, overlayOpen: true, closeOverlay });
+
+    act(() => { firePopState(); });
+
+    expect(closeOverlay).toHaveBeenCalledTimes(1);
+    expect(setActiveTab).not.toHaveBeenCalled();
+    expect(closeTopScreen).not.toHaveBeenCalled();
+    // Repõe a entrada consumida: o ecrã por baixo não se mexe.
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem elas abertas, o "voltar" é o de sempre', () => {
+    const closeOverlay = vi.fn();
+    const { rerender, setActiveTab } = setup({ activeTab: 'home', isCreatingOrEditing: false, overlayOpen: false, closeOverlay });
+    rerender({ activeTab: 'coach', isCreatingOrEditing: false, ready: true, overlayOpen: false, closeOverlay });
+
+    act(() => { firePopState(); });
+
+    expect(closeOverlay).not.toHaveBeenCalled();
+    expect(setActiveTab).toHaveBeenCalledWith('home');
+  });
 });
