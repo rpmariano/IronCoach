@@ -21,6 +21,7 @@ import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
+import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
@@ -5261,6 +5262,9 @@ async function handler(req: Request): Promise<Response> {
     // Só provas que ainda vão acontecer (upcomingRaces inclui "ontem" para
     // o Coach poder perguntar "como correu?" — essa não conta como "próxima").
     const nextUpcomingRace = (upcomingRaces || []).find((r: any) => r.date >= todayISO) ?? null;
+    // A meteorologia da prova (ação 4.2): só nos 7 dias antes, pedida já e
+    // esperada ao montar o prompt. Nunca rejeita — sem previsão, não há bloco.
+    const raceWeatherPromise = fetchRaceWeatherContext(nextUpcomingRace, todayISO);
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -5552,6 +5556,8 @@ async function handler(req: Request): Promise<Response> {
     const memorySections = [
       // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.
       memoryBlocks.checkin,
+      // O tempo previsto para a prova, se ela for nos próximos 7 dias.
+      await raceWeatherPromise,
       memoryBlocks.portrait,
       memoryBlocks.palmares,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),

@@ -7,7 +7,7 @@
 
 | Eixo | Nota atual | Nota depois da Fase 1 | Nota depois de tudo |
 |---|---|---|---|
-| **Omnisciência** | **7,5 / 10** (3,7 antes da Fase 1; 6,0 depois dela; 7,0 depois da Fase 2) | 6,0 / 10 | 8,6 / 10 |
+| **Omnisciência** | **7,7 / 10** (3,7 no início; 7,0 depois da Fase 2; 7,5 depois da Fase 3) | 6,0 / 10 | 8,6 / 10 |
 | **Omnipresença** | **7,6 / 10** (2,8 no início; 6,1 depois da P.3; 7,0 depois da P.4) | — | 9,0 / 10 |
 
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
@@ -146,6 +146,27 @@ Com a Fase 3, O4 passa de 6 para 9. A omnisciência sobe para **7,5**.
 | **4.1** Integração com relógio para FC em repouso, HRV e sono diários. Começar pelo Health Connect e pelo Apple Health, via exportação, ou pelo Strava | O6 | G | Nova Edge Function e tabela `daily_physiology` |
 | **4.2** Meteorologia da prova a 7 dias e na véspera, e do dia do treino longo | O8 | P | Estender `enrich-race-event` com uma API de meteorologia |
 | **4.3** Perfil altimétrico do percurso da prova | O8 | M | `enrich-race-event` |
+
+#### Estado: 4.2 implementada a 2026-09-19
+
+**Fonte:** Open-Meteo, que é gratuito e não precisa de chave. As provas não têm coordenadas, só o nome do local. Por isso o local é primeiro procurado em Portugal e, se não aparecer, em qualquer país. Depois pede-se a previsão horária desse dia, em hora de Lisboa. O código está em `_shared/raceWeatherFetch.ts`.
+
+**Quando:** só quando a prova é nos próximos 7 dias e tem o local preenchido. Nada fica guardado: a previsão pede-se no momento, com um limite de 4 segundos. Se falhar, não há bloco.
+
+**O que ela recebe:** as horas em que o atleta vai estar a correr, da partida até ao fim previsto pelo objetivo de tempo, ou pela distância a 6,5 min/km. Para essas horas recebe:
+- a temperatura e a sensação térmica;
+- a humidade, a chuva e o vento;
+- o conselho da régua de calor, em `_shared/formulas/raceWeather.ts`. Abaixo de 20 °C de sensação, as condições são boas. Até 25 °C, o ritmo fica 1 a 3% mais lento. Até 30 °C, abranda 3 a 6% e junta sal. Acima de 30 °C, o objetivo de tempo deixa de ser realista.
+
+Chuva a partir de 60% e vento a partir de 25 km/h trazem um aviso próprio. O bloco diz o que foi assumido quando falta a hora de partida ou o objetivo.
+
+**Onde:** no chat, como bloco "Meteorologia da prova". No cartão diário, como `meteorologia_prova`, que ela tem em conta na prontidão e no balanço.
+
+**Ficou de fora:**
+- A meteorologia do treino longo, porque a app não sabe onde o atleta treina: o perfil não tem local.
+- O perfil altimétrico, a ação 4.3.
+
+Com a 4.2, O8 passa de 4 para 7. A omnisciência sobe para **7,7**.
 
 ---
 
