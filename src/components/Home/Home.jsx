@@ -313,7 +313,7 @@ export default function Home() {
           )}
         >
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            O aviso deixa de aparecer no Início. Podes voltar a falar com a Carol no Chat sempre que quiseres.
+            O aviso deixa de aparecer na Home. Podes voltar a falar com a Carol no Chat sempre que quiseres.
           </p>
         </Dialog>
       )}

@@ -419,7 +419,7 @@ export default function Onboarding({ reentry = false, onDone }) {
         return (
           <ActionBar aboveNav={false} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 9 }}>
             <PrimaryButton hero tone="race" disabled={isSaving} onClick={() => terminar('home')}>
-              Ir para o Início
+              Ir para a Home
             </PrimaryButton>
             <GhostButton disabled={isSaving} onClick={() => terminar('coach')} style={{ minHeight: 'var(--tap)' }}>
               Falar com a Carol

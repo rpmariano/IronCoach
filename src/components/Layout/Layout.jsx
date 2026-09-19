@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import { Bot, House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import BrandMark from '../shared/BrandMark';
@@ -35,7 +35,7 @@ const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen } = useAppStore();
+  const { activeTab, setActiveTab, profile, isAdmin, openCreationMode, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -82,7 +82,7 @@ export default function Layout({ children }) {
 
   const handleLogoClick = () => {
     setLogoPlays((n) => n + 1);
-    if (!isAdmin) { setActiveTab('home'); return; }
+    if (!isAdmin) { goTab('home'); return; }
     const now = Date.now();
     if (now - lastLogoClickAt.current < 1000) {
       lastLogoClickAt.current = 0;
@@ -121,6 +121,20 @@ export default function Layout({ children }) {
   // formulário de registo abria sozinho na visita seguinte a esse módulo.
   const goRegister = (tab, mode) => {
     if (setActiveTab('calendario')) setOpenCreationMode(mode);
+  };
+
+  /* A barra inferior fecha o ecrã "O plano" (openCreationMode 'plano').
+     É só leitura e abre por cima do separador — sem isto, tocar em Home
+     (o separador onde já se estava) não fazia nada e tocar noutro mudava
+     o separador por baixo com o plano ainda a tapar tudo: o atleta ficava
+     preso nele (relato 2026-09-19). Os registos não entram aqui: têm
+     rascunho e saem pelo próprio botão ou pelo voltar do telemóvel. */
+  const goTab = (tab) => {
+    if (openCreationMode === 'plano') {
+      setOpenCreationMode(null);
+      if (tab === activeTab) return true;
+    }
+    return setActiveTab(tab);
   };
 
   return (
@@ -166,7 +180,7 @@ export default function Layout({ children }) {
       >
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
+            <button type="button" aria-label="IronCoach, ir para a Home" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>
@@ -356,14 +370,14 @@ export default function Layout({ children }) {
           }}
         />
 
-        <VBarBtn tab="home" icon={<LayoutGrid size={20} />} label="Início" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(0)} />
-        <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(1)} />
+        <VBarBtn tab="home" icon={<House size={20} />} label="Home" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
+        <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
-        <DashboardVBarBtn activeTab={activeTab} setTab={setActiveTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
-        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={setActiveTab} pillRef={setNavItemRef(3)} />
+        <DashboardVBarBtn activeTab={activeTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
+        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button
@@ -456,7 +470,7 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
 
   return (
     <button
-      onClick={() => { if (!active) setTab(lastDashboardTab || 'hub'); }}
+      onClick={() => setTab(active ? activeTab : (lastDashboardTab || 'hub'))}
       data-vert="dashboard"
       aria-label="Dashboard"
       aria-current={active ? 'page' : undefined}

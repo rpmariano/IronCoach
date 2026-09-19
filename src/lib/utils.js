@@ -35,7 +35,7 @@ export function publicUrl(file) {
 // — activeTab/openCreationMode são chaves internas, não fazem sentido para
 // um admin a ler a lista de reports.
 const TAB_PAGE_LABELS = {
-  home: 'Início',
+  home: 'Home',
   calendario: 'Calendário',
   nutricao: 'Dashboard · Nutrição',
   ginasio: 'Dashboard · Ginásio',
