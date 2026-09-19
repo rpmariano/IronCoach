@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh } from './lib/appUpdate';
+import { reloadFresh, isBusy } from './lib/appUpdate';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -10,6 +10,8 @@ import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import { MedalhaoDefs } from './components/shared/Medalhao';
+import CarolWelcome from './components/Welcome/CarolWelcome';
+import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -17,7 +19,7 @@ import { MedalhaoDefs } from './components/shared/Medalhao';
 // rede extra. Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
-import BrandMark from './components/shared/BrandMark';
+import LogoLoader from './components/shared/LogoLoader';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -138,18 +140,12 @@ function usePreloadOnNavTouch() {
    chegar. Na prática quase nunca aparece — o pré-carregamento acima trata
    disso — e existe sobretudo para a primeira visita a cada separador com
    rede lenta. */
+/* O ecrã a chegar: o brasão desenhado a traço (shared/LogoLoader), onde o
+   conteúdo vai aparecer — em vez dos retângulos a pulsar. */
 function ScreenSkeleton() {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-label="A carregar o ecrã"
-      data-testid="screen-skeleton"
-      className="flex flex-col gap-3 pt-2 animate-pulse"
-    >
-      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-      <span className="block h-[104px] rounded-2xl w-full" style={{ background: 'rgba(255,255,255,.08)' }} />
-      <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
+    <div data-testid="screen-skeleton" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
+      <LogoLoader size={64} label="A carregar o ecrã" />
     </div>
   );
 }
@@ -159,8 +155,12 @@ function ScreenSkeleton() {
    `isInitializing` — a troca entre os dois é invisível. */
 function FullScreenLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent" role="status" aria-label="A carregar">
-      <BrandMark variant="lockup" animated size={240} className="rounded-2xl" />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" style={{ gap: 18 }}>
+      <LogoLoader size={112} label="A carregar" />
+      {/* A palavra entra quando o brasão acaba de se desenhar. */}
+      <span aria-hidden="true" className="logo-loader-word" style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.32em', color: 'var(--text-3)', paddingLeft: '.32em' }}>
+        IRONCOACH
+      </span>
     </div>
   );
 }
@@ -412,6 +412,53 @@ export default function App() {
     if (silentlyDone) markOnboardingDone();
   }, [silentlyDone, markOnboardingDone]);
 
+  /* As boas-vindas da Carol (utils/carolWelcome.js): antes da Home, na
+     primeira abertura dentro de cada faixa do dia — ao arrancar a app e ao
+     voltar a ela. Nunca por cima do arranque (que já é ela a receber), nem
+     quando a app abre por uma notificação (?tab=, o atleta vem ao que a
+     notificação disse); nesses casos a faixa conta como vista. */
+  const [welcome, setWelcome] = useState(null);
+  const openedWithTabRef = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tab'));
+  const welcomeReady = !isInitializing && !!session && !showOnboarding;
+  const welcomeReadyRef = useRef(false);
+  welcomeReadyRef.current = welcomeReady;
+  const markCurrentSlotSeen = useCallback(() => {
+    const uid = useAppStore.getState().session?.user?.id;
+    if (uid) markSeen(uid, [slotKey().key]);
+  }, []);
+  const tryWelcome = useCallback(() => {
+    const s = useAppStore.getState();
+    const uid = s.session?.user?.id;
+    const clear = () => { if (useAppStore.getState().welcomeGate !== 'open') s.setWelcomeGate('clear'); };
+    if (!uid) { clear(); return; }
+    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento da
+       medalha, um campo com o foco (a mesma regra da atualização automática,
+       lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
+    if (isBusy(document)) { clear(); return; }
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) });
+    if (!decision) { clear(); return; }
+    markSeen(uid, decision.markKeys);
+    s.setWelcomeGate('open');
+    setWelcome({ ...buildWelcome(decision.variant, s), key: decision.key, at: new Date() });
+  }, []);
+  const closeWelcome = useCallback(() => {
+    setWelcome(null);
+    useAppStore.getState().setWelcomeGate('clear');
+  }, []);
+  useEffect(() => {
+    if (showOnboarding) markCurrentSlotSeen();
+  }, [showOnboarding, markCurrentSlotSeen]);
+  useEffect(() => {
+    if (!welcomeReady) return;
+    if (openedWithTabRef.current) {
+      openedWithTabRef.current = false;
+      markCurrentSlotSeen();
+      useAppStore.getState().setWelcomeGate('clear');
+      return;
+    }
+    tryWelcome();
+  }, [welcomeReady, tryWelcome, markCurrentSlotSeen]);
+
   // Criar/editar um registo (Prova, refeição, avaliação, corrida, treino)
   // é sempre um ecrã de topo — ver o comentário completo mais abaixo, onde
   // é usado no JSX.
@@ -427,6 +474,12 @@ export default function App() {
   useEffect(() => {
     const onVisibilityChange = () => {
       const userId = loadedUserIdRef.current;
+      // Voltar à app numa faixa nova também é "abrir a app" — com nada a
+      // meio (um registo aberto passa à frente de uma saudação).
+      if (document.visibilityState === 'visible' && welcomeReadyRef.current
+        && !formOpenRef.current && !useAppStore.getState().navGuard) {
+        tryWelcome();
+      }
       // Formulário aberto: os ecrãs de topo (registo, prova, onboarding) e,
       // para os que abrem por dentro de outro ecrã (editar uma corrida a
       // partir do Calendário), a guarda de navegação que todos os
@@ -444,7 +497,7 @@ export default function App() {
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [loadInitialData]);
+  }, [loadInitialData, tryWelcome]);
 
   // Botão/gesto de "voltar" do telemóvel navega entre separadores e fecha
   // o ecrã de topo em vez de sair da app inteira — ver o comentário
@@ -485,7 +538,14 @@ export default function App() {
        fechada, a notificação abre-a com ?tab=coach, que o bloco acima trata. */
     const onWorkerMessage = (event) => {
       // O Coach, ou o Início (onde vivem o assunto por resolver e o conflito de provas — P.5).
-      if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) setActiveTab(event.data.tab);
+      if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) {
+        // Veio por uma notificação: o atleta vem ao que ela disse. As
+        // boas-vindas não o tapam, e a faixa conta como vista.
+        markCurrentSlotSeen();
+        setWelcome(null);
+        useAppStore.getState().setWelcomeGate('clear');
+        setActiveTab(event.data.tab);
+      }
     };
     if (typeof navigator !== 'undefined' && navigator.serviceWorker?.addEventListener) {
       navigator.serviceWorker.addEventListener('message', onWorkerMessage);
@@ -664,6 +724,7 @@ export default function App() {
           {openCreationMode === 'plano' && <PlanoScreen onClose={() => setOpenCreationMode(null)} />}
         </Suspense>
       </Layout>
+      {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={closeWelcome} />}
     </ToastProvider>
   );
 }

@@ -1,6 +1,63 @@
-import React from 'react';
-import { CloudOff, RefreshCw } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
+import CoachAvatar from '../Coach/CoachAvatar';
+import { prefersReducedMotion } from '../../utils/coachBubbles';
+
+/* A espera com a Carol a dizer o que está a ler (2026-09-19). Cada registo
+   por foto são 5 a 15 s de espera; um esqueleto mudo não diz se está a
+   andar. Estas frases descrevem o trabalho que a análise faz de facto
+   (analyze-meal/run/gym/body) — não são progresso inventado: sucedem-se a
+   um ritmo fixo e param na última até a resposta chegar, sem voltar ao
+   início (um ciclo lê-se como "está preso"). Passados 12 s, ela diz que
+   está a demorar — que é verdade. */
+const PASSOS = {
+  meal: ['A olhar para o prato…', 'A separar os alimentos…', 'A estimar as quantidades…', 'A fazer as contas às calorias e às macros…'],
+  run: ['A ler o print…', 'A tirar a distância, o tempo e o ritmo…', 'A ver os parciais e a frequência cardíaca…', 'A comparar com o que o plano pedia…'],
+  gym: ['A ler o treino…', 'A contar séries, repetições e cargas…', 'A juntar ao teu histórico…'],
+  body: ['A ler a avaliação…', 'A tirar o peso e a composição…', 'A comparar com a última avaliação…'],
+};
+const PASSO_MS = 2400;
+const DEMORA_MS = 12000;
+
+export function analysisSteps(kind) {
+  return PASSOS[kind] || null;
+}
+
+/** A causa de uma falha, a partir da mensagem técnica — para a Carol dizer o
+ *  que aconteceu em vez de um "não consegui" genérico. */
+export function classifyAnalysisFailure(detail, online = typeof navigator === 'undefined' ? true : navigator.onLine !== false) {
+  const d = String(detail || '');
+  if (!online || /failed to fetch|networkerror|network request failed|load failed|offline|sem rede/i.test(d)) return 'offline';
+  if (/timeout|timed out|demorou|aborted|tempo esgotado/i.test(d)) return 'timeout';
+  // Só o que é mesmo autenticação: "sessão" também é a do ginásio ("Máximo
+  // de N imagens por sessão"), e isso não é uma sessão expirada.
+  if (/\b401\b|jwt|unauthori[sz]ed|not authenticated|n[aã]o autenticad|session (?:has )?expired|sess[aã]o expirad/i.test(d)) return 'session';
+  return 'other';
+}
+
+const CAUSA = {
+  offline: { title: 'Estás sem rede', lead: 'Sem rede, a foto não chega a sair do telemóvel.' },
+  timeout: { title: 'A análise demorou demais', lead: 'A rede está lenta, ou o servidor está ocupado.' },
+  session: { title: 'A tua sessão expirou', lead: 'Volta a entrar na app; o que tens aqui não se perde.' },
+  other: { title: 'Não consegui analisar', lead: null },
+};
+
+function useSteps(steps) {
+  const reduced = prefersReducedMotion();
+  const [i, setI] = useState(0);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!steps) return undefined;
+    const timers = [];
+    if (!reduced) {
+      for (let k = 1; k < steps.length; k++) timers.push(setTimeout(() => setI(k), k * PASSO_MS));
+    }
+    timers.push(setTimeout(() => setSlow(true), DEMORA_MS));
+    return () => timers.forEach(clearTimeout);
+  }, [steps, reduced]);
+  return { text: steps ? steps[reduced ? steps.length - 1 : i] : null, slow };
+}
 
 /* Os dois estados que faltavam aos registos que dependem da IA (ponto 7 do
    redesenho 6c; auditoria, achado 10: "nenhum estado de espera ou de erro").
@@ -23,7 +80,10 @@ import Warning, { WarningAction } from './Warning';
 export function AnalysisSkeleton({
   note = 'Podes continuar a usar a app — aviso-te quando estiver pronto.',
   label = 'A analisar',
+  kind = null,
 }) {
+  const steps = analysisSteps(kind);
+  const step = useSteps(steps);
   const line = (width, height = 12) => (
     <span
       style={{
@@ -44,6 +104,19 @@ export function AnalysisSkeleton({
       aria-label={label}
       style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}
     >
+      {steps && (
+        <div data-testid="analysis-step" className="flex items-center" style={{ gap: 10 }}>
+          <CoachAvatar size={28} />
+          <span className="flex-1 min-w-0" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
+            <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
+          </span>
+          <span className="inline-flex items-center" style={{ gap: 4 }} aria-hidden="true">
+            <span className="coach-typing-dot" />
+            <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
+            <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
+          </span>
+        </div>
+      )}
       <div
         style={{
           borderRadius: 'var(--radius-xl)',
@@ -106,7 +179,7 @@ export function AnalysisSkeleton({
  *   retrying     bool — desativa as ações enquanto a repetição corre
  */
 export function AnalysisFailure({
-  title = 'Não consegui analisar',
+  title,
   children,
   detail,
   onRetry,
@@ -115,11 +188,15 @@ export function AnalysisFailure({
   retrying = false,
   ...rest
 }) {
+  // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
+  // de quem monta (`children`), porque depende do registo.
+  const causa = CAUSA[classifyAnalysisFailure(detail)];
   return (
     <Warning
       tone="warn"
-      title={title}
-      icon={<CloudOff size={14} />}
+      title={title || causa.title}
+      icon={<CoachAvatar size={20} mood="worried" />}
+      data-cause={classifyAnalysisFailure(detail)}
       data-testid="analysis-failure"
       style={{ marginBottom: 16 }}
       actions={
@@ -158,6 +235,7 @@ export function AnalysisFailure({
       }
       {...rest}
     >
+      {causa.lead && <>{causa.lead} </>}
       {children}
       {detail && (
         <span

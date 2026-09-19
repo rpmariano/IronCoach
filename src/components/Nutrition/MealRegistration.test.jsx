@@ -4,6 +4,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
 
+// O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
+// e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
+vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
+
 // analyze-meal é a única coisa que estes testes exercitam de facto —
 // "Adicionar alimento" no manual é puramente local (sem chamadas ao
 // servidor), só "Analisar refeição" toca no Gemini, seja por foto ou manual.

@@ -7,6 +7,7 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
@@ -184,7 +185,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    setConfirmation({ label, done: () => {
+    // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
+    const first = !isEditing && firstRecordMoment('meal', useAppStore.getState(), createdRecord);
+    setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
         setNavGuard(null);
@@ -535,7 +539,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
             aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
             nada do que o atleta escreveu ou fotografou se apaga. */}
-        {isAnalyzing && <AnalysisSkeleton />}
+        {isAnalyzing && <AnalysisSkeleton kind="meal" />}
 
         {/* Ponto 7 — ERRO. Texto do mock "Refeição · análise falhou", na voz
             da Carol (CAROL.md: nunca "Desculpa, não consegui analisar").
@@ -878,7 +882,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

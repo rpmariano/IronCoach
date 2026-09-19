@@ -8,6 +8,7 @@ import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Trash2, MessageSquare } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
@@ -220,7 +221,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Treino registado') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    setConfirmation({ label, done: () => {
+    // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
+    const first = !isEditing && firstRecordMoment('gym', useAppStore.getState(), createdRecord);
+    setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
         setNavGuard(null);
@@ -701,7 +705,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
         {/* Ponto 7 — espera: esqueleto onde o resultado vai aparecer, com o
             formulário bloqueado mas visível. */}
-        {isAnalyzing && <AnalysisSkeleton />}
+        {isAnalyzing && <AnalysisSkeleton kind="gym" />}
 
         {/* Ponto 7 — erro: aviso coral na voz da Carol, com "Tentar de novo"
             (mesma chamada, mesmos dados) e a alternativa manual. */}
@@ -1116,7 +1120,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

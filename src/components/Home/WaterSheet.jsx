@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Droplets, BellOff } from 'lucide-react';
+import CoachAvatar from '../Coach/CoachAvatar';
 import { useAppStore } from '../../store';
 import { lisbonTodayISO } from '../../lib/utils';
 import { Sheet } from '../shared/Sheet';
@@ -7,28 +8,49 @@ import { useToast } from '../shared/ToastProvider';
 
 /* Registar água — vive no FAB desde o redesenho 2026-09 (auditoria, achado
    7: a órbita do Início é só leitura). Três quantidades e o silêncio dos
-   lembretes de hoje, que estava no antigo cartão de hidratação. */
+   lembretes de hoje, que estava no antigo cartão de hidratação.
+
+   O nível do dia vê-se numa linha de água por baixo do total. O copo que
+   passa a meta é o único registo de água que não é igual aos outros: em vez
+   do aviso "+250 ml" e de fechar logo, a linha enche até ao fim, a Carol diz
+   uma frase, e a persiana fecha sozinha — uma vez por dia, porque a meta só
+   se passa uma vez. Um toque fecha logo. */
 const AMOUNTS = [200, 250, 300];
+export const WATER_GOAL_MOMENT_MS = 2600;
 const litres = (ml) => (Math.round((ml / 1000) * 10) / 10).toFixed(1).replace('.', ',');
 
 export default function WaterSheet() {
   const { waterSheetOpen, setWaterSheetOpen, waterLogs, profile, addWaterLog, snoozeWaterReminder } = useAppStore();
   const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
+  const [reached, setReached] = useState(false);
+  const closeTimer = useRef(null);
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
   const today = lisbonTodayISO();
   const total = useMemo(() => (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0), [waterLogs, today]);
   const goal = Number(profile?.water_goal_ml) || 2000;
   const mutedToday = profile?.water_reminder_muted_date === today;
 
   if (!waterSheetOpen) return null;
-  const close = () => setWaterSheetOpen(false);
+  const close = () => {
+    clearTimeout(closeTimer.current);
+    setReached(false);
+    setWaterSheetOpen(false);
+  };
 
   const log = async (ml) => {
     if (!profile?.id || busy) return;
     setBusy(true);
+    const before = total;
     const row = await addWaterLog(ml, profile.id);
     setBusy(false);
     if (row) {
+      // O copo que passa a meta: o momento, em vez do aviso.
+      if (before < goal && before + ml >= goal) {
+        setReached(true);
+        closeTimer.current = setTimeout(close, WATER_GOAL_MOMENT_MS);
+        return;
+      }
       showToast(`+${ml} ml de água`);
       close();
     } else {
@@ -49,6 +71,44 @@ export default function WaterSheet() {
       onClose={close}
       testId="water-sheet"
     >
+      {/* A linha de água do dia. */}
+      <div
+        role="progressbar"
+        aria-label="Água de hoje"
+        aria-valuemin={0}
+        aria-valuemax={goal}
+        aria-valuenow={Math.min(total, goal)}
+        className="relative overflow-hidden mt-1"
+        style={{ height: 8, borderRadius: 99, background: 'rgba(255,255,255,.07)' }}
+      >
+        <span
+          className="absolute inset-0"
+          style={{
+            // scaleX, não width: anima no compositor, sem recalcular o layout.
+            transform: `scaleX(${Math.min(1, total / goal)})`,
+            transformOrigin: 'left',
+            borderRadius: 99,
+            background: 'linear-gradient(90deg, color-mix(in srgb, var(--run) 60%, transparent), var(--run))',
+            transition: 'transform var(--dur-rings, 700ms) var(--ease-out)',
+          }}
+        />
+      </div>
+
+      {reached ? (
+        <button
+          type="button"
+          data-testid="water-goal-reached"
+          onClick={close}
+          className="water-goal-moment w-full flex items-start gap-3 mt-4 text-left rounded-[16px]"
+          style={{ padding: '14px 15px', background: 'var(--tint-run-bg)', border: '1px solid var(--tint-run-bd)' }}
+        >
+          <CoachAvatar size={34} mood="happy" breathing />
+          <span className="flex-1 min-w-0">
+            <span className="block text-[14.5px] font-black leading-[1.25]" style={{ color: 'var(--text-1)' }}>A água de hoje está feita.</span>
+            <span className="block text-[12.5px] leading-[1.45] mt-1" style={{ color: 'var(--text-3)' }}>{litres(total)} L. O resto do dia é só manter.</span>
+          </span>
+        </button>
+      ) : (
       <div className="grid grid-cols-3 gap-2 pt-3">
         {AMOUNTS.map((ml) => (
           <button key={ml} type="button" disabled={busy} onClick={() => log(ml)} className="inline-flex items-center justify-center gap-1.5 min-h-[46px] rounded-[11px] text-[13.5px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-run-bg)', border: '1px solid var(--tint-run-bd)', color: 'var(--run)' }}>
@@ -56,6 +116,7 @@ export default function WaterSheet() {
           </button>
         ))}
       </div>
+      )}
       <button
         type="button"
         disabled={mutedToday || !profile?.id}

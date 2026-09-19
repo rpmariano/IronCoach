@@ -10,6 +10,9 @@ import { detectCoachInsights } from '../../utils/biEngine';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
+import RecordConfirmation from '../shared/RecordConfirmation';
+import { planStartMoment } from '../../utils/planStart';
+import { todayISO } from '../../lib/utils';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
 import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
 import { writeCachedBalance } from '../../utils/raceBalance';
@@ -380,9 +383,22 @@ export default function Coach() {
   // ainda estiver pendente, a persiana continua aberta a mostrá-la (ver
   // PlanProposalBottomSheet, que já não fecha a persiana sozinho ao
   // responder a uma secção).
+  /* O plano aceite (utils/planStart.js): em vez do aviso "Plano aceite", o
+     arranque do bloco dito por ela — quantas semanas, quando começa, o
+     primeiro treino —, no cartão da confirmação. Recusar continua a ser só
+     o aviso: não há nada a começar. */
+  const [planStart, setPlanStart] = useState(null);
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
-    if (ok) showToast(accept ? 'Plano aceite' : 'Plano recusado');
+    if (ok && accept) {
+      const st = useAppStore.getState();
+      const plan = (st.coachPlans || []).find((p) => p.id === planId);
+      const moment = planStartMoment(plan, st.coachPlanItems, todayISO());
+      if (moment) setPlanStart(moment);
+      else showToast('Plano aceite');
+    } else if (ok) {
+      showToast('Plano recusado');
+    }
     setActiveProposalSheetPlan(null);
     // Mesmo problema que os objetivos (ver handleRespondGoal): decidir na
     // persiana só grava o estado, não é uma troca de mensagens — sem isto a
@@ -933,6 +949,7 @@ export default function Coach() {
           onClose={handleCloseProposalsSheet}
         />
       )}
+      {planStart && <RecordConfirmation label="Plano aceite" first={planStart} onDone={() => setPlanStart(null)} />}
     </div>
   );
 }

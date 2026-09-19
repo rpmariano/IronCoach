@@ -25,6 +25,8 @@ import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import { firstRecordMoment } from '../../utils/firstRecord';
+import { runRecordMoment } from '../../utils/runRecord';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -376,7 +378,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    setConfirmation({ label, done: () => {
+    // O primeiro registo deste tipo, ou um recorde de treino (ritmo aos
+    // 5/10/21 km, a corrida mais longa): a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js, utils/runRecord.js). Só ao criar — editar a
+    // única corrida não é "a primeira", nem um recorde novo.
+    const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
+      || runRecordMoment(createdRecord, useAppStore.getState().runs));
+    setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
         setNavGuard(null);
@@ -1569,7 +1577,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do print falha. */
   const renderAnalysisStates = () => (
     <>
-      {analyzingRun && <AnalysisSkeleton />}
+      {analyzingRun && <AnalysisSkeleton kind="run" />}
 
       {analysis.hasFailed && (
         <AnalysisFailure
@@ -2576,7 +2584,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
     </div>
   );
 }

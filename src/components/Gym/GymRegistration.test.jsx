@@ -5,6 +5,10 @@ import { useAppStore } from '../../store';
 import GymRegistration from './GymRegistration';
 import { todayISO } from '../../lib/utils';
 
+// O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
+// e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
+vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
+
 // analyze-gym é a única coisa que estes testes exercitam de facto — tanto
 // a foto como o manual gravam a sessão e geram o comentário do Coach numa só
 // chamada à Edge Function. Editar passa pelo Gemini quando os dados

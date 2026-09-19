@@ -459,6 +459,109 @@ a[href]:not(.no-tap-scale):active {
 .onb-week-race { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
 .onb-done-badge { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) 180ms both; }
 
+/* As boas-vindas da Carol (Welcome/CarolWelcome.jsx): o nome entra a
+   desfocar-se, as bolhas com o compasso do chat (os atrasos vêm do JSX), a
+   linha de baixo esvazia-se até ela fechar, e o halo respira três vezes. */
+.welcome-greet { animation: welcomeGreet 700ms var(--ease-out) both; }
+@keyframes welcomeGreet {
+  from { opacity: 0; transform: translateY(12px); filter: blur(6px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.welcome-bubble { animation: welcomeBubble 420ms var(--ease-out) both; }
+@keyframes welcomeBubble {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.welcome-drain { transform-origin: left; animation: welcomeDrain 6000ms linear 1800ms both; }
+@keyframes welcomeDrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.welcome-halo { animation: welcomeHalo var(--dur-breathe) ease-in-out 3 both; }
+@keyframes welcomeHalo {
+  0%, 100% { transform: scale(.92); opacity: .55; }
+  50%      { transform: scale(1.08); opacity: 1; }
+}
+html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
+/* Ecrãs baixos (um telemóvel pequeno, o teclado do sistema): a arte encolhe
+   para o nome, as frases e o botão caberem sem rolar. */
+@media (max-height: 740px) {
+  .welcome-art { transform: scale(.72); transform-origin: 50% 0; margin-bottom: -81px; }
+  .welcome-greet { font-size: 34px !important; }
+}
+@media (max-height: 620px) {
+  .welcome-art { transform: scale(.55); margin-bottom: -130px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-greet, .welcome-bubble, .welcome-halo { animation: none; }
+  /* A linha fica: diz quanto falta para fechar, não é decoração. */
+}
+
+/* A Home no primeiro dia: o que a Carol guardou do arranque entra facto a
+   facto (Home/FirstDayCard.jsx; atrasos no JSX). */
+.first-day-fact { animation: welcomeBubble 420ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .first-day-fact { animation: none; } }
+
+/* O primeiro registo de um tipo (shared/RecordConfirmation.jsx): a Carol
+   sobe por baixo do visto; a linha esvazia-se até seguir. */
+.first-record-card { animation: welcomeBubble 480ms var(--ease-out) both; }
+.first-record-drain { transform-origin: left; animation: welcomeDrain linear both; }
+@media (prefers-reduced-motion: reduce) { .first-record-card { animation: none; } }
+
+/* A resposta da Carol ao check-in (Home/CheckinCard.jsx): entra como uma
+   bolha do chat, só no momento em que o atleta acabou de o fazer. */
+.checkin-reply { animation: welcomeBubble 480ms var(--ease-out) 160ms both; }
+@media (prefers-reduced-motion: reduce) { .checkin-reply { animation: none; } }
+
+/* A semana cumprida (Home/WeekDoneRibbon.jsx), só na primeira vez que se
+   vê: a frase entra e os dias feitos enchem-se um a um. */
+.week-done-line { animation: welcomeBubble 480ms var(--ease-out) both; }
+.week-done-dot { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+@media (prefers-reduced-motion: reduce) { .week-done-line, .week-done-dot { animation: none; } }
+
+/* O dia fechado (Home/DayPlanCard.jsx), só na primeira vez que se vê: o
+   visto com o impulso da confirmação de registo, e o feito a entrar. */
+.day-done-check { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
+.day-done-text { animation: welcomeBubble 420ms var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .day-done-check, .day-done-text { animation: none; } }
+
+/* A meta da água passada (Home/WaterSheet.jsx): a Carol entra onde
+   estavam os botões. */
+.water-goal-moment { animation: welcomeBubble 480ms var(--ease-out) 200ms both; }
+@media (prefers-reduced-motion: reduce) { .water-goal-moment { animation: none; } }
+
+/* O marco da contagem para a prova (Home/RaceCard.jsx), na primeira vez
+   que se vê nesse dia. */
+.race-milestone-line { animation: welcomeBubble 480ms var(--ease-out) 200ms both; }
+@media (prefers-reduced-motion: reduce) { .race-milestone-line { animation: none; } }
+
+/* O carregamento com a marca (shared/LogoLoader.jsx): o hexágono a traço,
+   os dois chevrons a seguir, o preenchimento, e no fim o brasão brilha. Se a
+   página ainda não chegou, o brilho respira devagar (não volta a desenhar).
+   ~1,9 s até ao brilho. */
+.logo-loader { display: inline-flex; align-items: center; justify-content: center; }
+.logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }
+.logo-loader-hex-in { animation: logoDraw 620ms cubic-bezier(.65,0,.35,1) 260ms forwards; }
+.logo-loader-chev-ouro  { animation: logoDraw 480ms cubic-bezier(.65,0,.35,1) 640ms forwards; }
+.logo-loader-chev-ciano { animation: logoDraw 480ms cubic-bezier(.65,0,.35,1) 880ms forwards; }
+@keyframes logoDraw { to { stroke-dashoffset: 0; } }
+.logo-loader-fill { opacity: 0; }
+.logo-loader-fill-ouro  { animation: logoFill 320ms var(--ease-out) 1240ms forwards; }
+.logo-loader-fill-ciano { animation: logoFill 320ms var(--ease-out) 1360ms forwards; }
+@keyframes logoFill { to { opacity: 1; } }
+.logo-loader-aura { opacity: 0; animation: logoFlash 700ms var(--ease-out) 1520ms forwards, logoBreathe 2600ms ease-in-out 2220ms infinite; }
+@keyframes logoFlash { 0% { opacity: 0; } 45% { opacity: .75; } 100% { opacity: .32; } }
+@keyframes logoBreathe { 0%, 100% { opacity: .32; } 50% { opacity: .55; } }
+.logo-loader svg { transform-origin: center; animation: logoPop 520ms var(--ease-spring) 1480ms both; }
+@keyframes logoPop { 0% { transform: scale(1); } 40% { transform: scale(1.045); } 100% { transform: scale(1); } }
+html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
+.logo-loader-word { animation: welcomeBubble 520ms var(--ease-out) 1500ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { animation: none; stroke-dashoffset: 0; }
+  .logo-loader-fill { animation: none; opacity: 1; }
+  .logo-loader-aura { animation: none; opacity: .32; }
+  .logo-loader svg { animation: none; }
+  .logo-loader-word { animation: none; }
+}
+
 /* "a escrever…" — três pontos a respirar ao lado do texto */
 .coach-typing-dot {
   display: inline-block; width: 5px; height: 5px; border-radius: 50%;

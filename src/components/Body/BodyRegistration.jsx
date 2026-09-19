@@ -8,6 +8,8 @@ import useAnalysis from '../../utils/useAnalysis';
 import { ScanLine, X, ImagePlus, Camera, PencilLine, MessageSquare } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
+import { firstRecordMoment } from '../../utils/firstRecord';
+import { bodyGoalMoment } from '../../utils/bodyGoal';
 import Chip from '../shared/Chip';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -153,7 +155,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Avaliação registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
-    setConfirmation({ label, done: () => {
+    // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
+    // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
+    const st = useAppStore.getState();
+    // …ou a avaliação que atravessa uma meta do Corpo (utils/bodyGoal.js).
+    const first = !isEditing && (firstRecordMoment('body', st, createdRecord)
+      || bodyGoalMoment(createdRecord, st.bodyAssessments, st.profile));
+    setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
         setNavGuard(null);
@@ -468,7 +476,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         </div>
 
         {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão). */}
-        {isAnalyzing && <AnalysisSkeleton />}
+        {isAnalyzing && <AnalysisSkeleton kind="body" />}
 
         {analysis.hasFailed && (
           <AnalysisFailure
@@ -658,7 +666,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>
