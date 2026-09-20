@@ -15,6 +15,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
+import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
@@ -999,6 +1000,11 @@ export default function Perfil() {
       <ActionBar>
         {tab === 'equipamento' ? addShoesButton : saveButton}
       </ActionBar>
+
+      {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
+          Chat (pedido do utilizador). Sobe acima da barra de ação: a 100px
+          o botão caía em cima do "Guardar alterações". */}
+      <CoachInsightsDock bottom={168} />
     </div>
   );
 }

@@ -153,7 +153,10 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
                 </span>
               )}
             </div>
-            <button type="button" onClick={() => understood(insight)} className="min-h-[44px] mt-3 px-[13px] rounded-[11px] text-[12px] font-extrabold" style={{ background: t.btnBg, color: t.btnColor }}>
+            {/* Largura total, como o "Falar com a Carol" e o "Ignorar" do
+                rodapé: encolhido ao conteúdo, lia-se como um botão de outra
+                categoria (pedido do utilizador). */}
+            <button type="button" onClick={() => understood(insight)} className="w-full min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: t.btnBg, color: t.btnColor }}>
               Entendido
             </button>
           </div>

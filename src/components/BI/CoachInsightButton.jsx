@@ -10,7 +10,10 @@ import CoachAvatar from '../Coach/CoachAvatar';
    ("precisa de falar contigo", "o plano precisa de um ajuste", "o balanço
    da prova" — pedido 2026-09-13). Contam no número como os insights e,
    quando pedem conversa (severity 'warning'), fazem a onda pulsar. */
-export default function CoachInsightButton({ insights = [], alerts = [], onClick }) {
+/* `bottom` (px) sobe o botão quando o ecrã tem barra de ação fixa por
+   baixo — o Perfil tem, e a 100px o botão caía em cima do "Guardar
+   alterações" (z-38 contra o z-30 da barra). */
+export default function CoachInsightButton({ insights = [], alerts = [], onClick, bottom = 100 }) {
   const list = insights || [];
   const carolAlerts = alerts || [];
   const total = list.length + carolAlerts.length;
@@ -41,8 +44,8 @@ export default function CoachInsightButton({ insights = [], alerts = [], onClick
       aria-label={label}
       data-testid="coach-insight-button"
       data-alerts={carolAlerts.length}
-      className="fixed right-4 bottom-[100px] z-[38] w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-      style={{ background: 'var(--grad-coach-legible)', animation: hasCritical || hasWarning ? 'coach-pulse-ring 2s infinite' : 'none' }}
+      className="fixed right-4 z-[38] w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+      style={{ bottom, background: 'var(--grad-coach-legible)', animation: hasCritical || hasWarning ? 'coach-pulse-ring 2s infinite' : 'none' }}
     >
       <span aria-hidden="true" className="coach-wave-ring" style={{ background: wave }} />
       <span aria-hidden="true" className="coach-wave-ring coach-wave-ring--delay" style={{ background: wave }} />
