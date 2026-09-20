@@ -296,14 +296,44 @@ describe('Os Recordes', () => {
     expect(s.valueLabel).toMatch(/\/km$/);
   });
 
-  it('o VO2 mede o melhor VDOT de qualquer corrida', () => {
-    const forte = run('2026-05-03', 10, { id: 'forte', duration_seconds: 2700 }); // 45:00 aos 10 km
-    const r = compute({ runs: [...TREINOS, forte], raceEvents: [], today: '2026-09-15' });
+  /* O VO2 é o que o RELÓGIO mediu, não um VDOT calculado do tempo: o
+     medalhão dizia 39,2 enquanto o cartão da mesma corrida dizia 44,5, dois
+     números para a mesma coisa à frente um do outro (relatado na app). */
+  it('o VO2 mede o melhor VO2 máximo medido pelo relógio', () => {
+    const comVo2 = run('2026-05-03', 10, { id: 'forte', details: { vo2_max: 46.2 } });
+    const r = compute({ runs: [...TREINOS, comVo2], raceEvents: [], today: '2026-09-15' });
     const s = slotOf(r, 'recordes', 'vo2');
     expect(s.state).toBe('won');
     // Vírgula decimal, como o resto dos números da app.
-    expect(Number(String(s.valueLabel).replace(',', '.'))).toBeGreaterThanOrEqual(45);
-    expect(s.detail).toContain('para ouro: VDOT 55 ou mais numa corrida');
+    expect(s.valueLabel).toBe('46,2');
+    expect(s.detail).toContain('para ouro: VO2 máximo de 55 ou mais numa corrida');
+  });
+
+  it('sem VO2 em corrida nenhuma, o encaixe diz o que falta', () => {
+    const r = compute({ runs: TREINOS, raceEvents: [], today: '2026-09-15' });
+    const s = slotOf(r, 'recordes', 'vo2');
+    expect(s.state).toBe('empty');
+    expect(s.detail).toBe('precisa de uma corrida com VO2 máximo registado');
+    expect(s.contributions).toEqual([]);
+  });
+
+  /* O bug relatado depois do deploy: os dois encaixes novos apareciam
+     ganhos, com nível e valor, mas a persiana dos registos dizia "ainda não
+     há registos para este encaixe" — faltava passar-lhes a lista. */
+  it('o passo e o VO2 trazem os registos que os encheram', () => {
+    const comVo2 = run('2026-05-03', 10, { id: 'forte', duration_seconds: 2700, details: { vo2_max: 46.2 } });
+    const r = compute({ runs: [...TREINOS, comVo2], raceEvents: [], today: '2026-09-15' });
+
+    const passo = slotOf(r, 'recordes', 'ritmo');
+    expect(passo.contributions.length).toBeGreaterThan(0);
+    expect(passo.contributionsSummary).toMatch(/corridas? medidas?/);
+    // A corrida que deu o melhor passo vem assinalada.
+    expect(passo.contributions.some((c) => /o teu melhor/.test(c.meta))).toBe(true);
+
+    const vo2 = slotOf(r, 'recordes', 'vo2');
+    expect(vo2.contributions.map((c) => c.runId)).toEqual(['forte']);
+    expect(vo2.contributions[0].meta).toContain('VO2 46,2');
+    expect(vo2.contributionsSummary).toBe('1 corrida com VO2');
   });
 });
 

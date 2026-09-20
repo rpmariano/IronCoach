@@ -201,11 +201,14 @@ function raceContribution({ race, run, outcome }, { metaExtra = [], ...extra } =
   };
 }
 
-function runContribution(run, raceByRun) {
+function runContribution(run, raceByRun, { metaExtra = [] } = {}) {
   const race = run?.id != null ? raceByRun?.get(run.id) : null;
   const km = num(run?.distance_km);
-  const meta = [km ? fmtKmLinha(km) : null, num(run?.duration_seconds) ? formatDuration(Math.round(num(run.duration_seconds))) : null]
-    .filter(Boolean).join(' · ');
+  const meta = [
+    km ? fmtKmLinha(km) : null,
+    num(run?.duration_seconds) ? formatDuration(Math.round(num(run.duration_seconds))) : null,
+    ...metaExtra,
+  ].filter(Boolean).join(' · ');
   if (race) {
     return { kind: 'race', id: race.id ?? null, raceId: race.id ?? null, runId: run.id ?? null, date: dayOf(run.date), title: race.name || 'Prova sem nome', meta };
   }
@@ -616,17 +619,23 @@ function proximoNivel(atual) {
    mesmo depois de o atleta corrigir a corrida. */
 const VDOT_MAXIMO_PLAUSIVEL = 85;
 
-/* O VDOT de uma corrida: precisa de distância e de tempo. Nas provas usa-se
-   o tempo OFICIAL (é o que conta), nos treinos a duração registada. */
-function vdotDaCorrida(run) {
-  const km = num(run?.distance_km);
-  const segundos = num(run?.duration_seconds);
-  if (!km || !segundos) return 0;
-  const vdot = calculateVDOT(km, segundos);
-  return vdot > VDOT_MAXIMO_PLAUSIVEL ? 0 : vdot;
+/* O VO2 máximo que o RELÓGIO mediu nesta corrida.
+
+   Era o VDOT calculado a partir do tempo, e isso pôs o medalhão a dizer 39,2
+   enquanto o cartão da mesma corrida dizia 44,5 — dois números para a mesma
+   coisa, à frente um do outro (relatado pelo utilizador: "o Record Passos e
+   vo2 não fazem muito sentido"). Passa a ser o número que ele já conhece.
+   As chaves alternativas são as mesmas que Run/RunCard.jsx aceita, porque o
+   valor chega por vias diferentes conforme o relógio e a análise da foto. */
+function vo2DaCorrida(run) {
+  const bruto = run?.details?.vo2_max ?? run?.vo2_max ?? run?.vo2max ?? run?.metrics?.vo2_max;
+  const vo2 = num(bruto);
+  if (!vo2) return 0;
+  // Mesmo teto de plausibilidade: um valor absurdo cunhava ouro para sempre.
+  return vo2 > VDOT_MAXIMO_PLAUSIVEL ? 0 : vo2;
 }
 
-function recordes({ completed, todayYear, runs }) {
+function recordes({ completed, todayYear, runs, raceByRun }) {
   const due = [];
 
   /* Um encaixe de escala: o nível já atingido dá a cor e a gravação; o que
@@ -742,11 +751,32 @@ function recordes({ completed, todayYear, runs }) {
   });
 
   // ── O ritmo: o passo mais rápido de sempre, de prova ou de treino ──────
-  const melhorRitmo = [5, 10, 21]
-    .map((km) => computeBestPace(runs || [], km))
+  const BUCKETS_RITMO = [5, 10, 21];
+  const melhorPaceDe = (lista) => BUCKETS_RITMO
+    .map((km) => computeBestPace(lista, km))
     .filter(Boolean)
     .reduce((melhor, r) => (!melhor || r.pace < melhor.pace ? r : melhor), null);
+  const melhorRitmo = melhorPaceDe(runs || []);
   const nivelRitmo = nivelPorRitmo(melhorRitmo?.pace);
+
+  /* Os registos por trás deste encaixe. Faltavam por inteiro: o encaixe
+     aparecia ganho, com nível e valor, e a persiana dos registos dizia
+     "ainda não há registos para este encaixe" (relatado pelo utilizador).
+     Cada corrida passa sozinha pelo MESMO computeBestPace do total, para a
+     lista usar exatamente a régua do encaixe — parciais incluídos — em vez
+     de uma conta paralela que podia discordar dela. */
+  const ritmoPorCorrida = (runs || [])
+    .map((run) => ({ run, melhor: melhorPaceDe([run]) }))
+    .filter((e) => e.melhor);
+  const contributionsRitmo = newestFirst(ritmoPorCorrida.map(({ run, melhor }) => runContribution(run, raceByRun, {
+    metaExtra: [
+      `${formatPace(melhor.pace)}/km`,
+      melhorRitmo && melhor.pace === melhorRitmo.pace && dayOf(run.date) === dayOf(melhorRitmo.date) ? 'o teu melhor' : null,
+    ].filter(Boolean),
+  })));
+  const contributionsSummaryRitmo = ritmoPorCorrida.length
+    ? `${ritmoPorCorrida.length} ${plural(ritmoPorCorrida.length, 'corrida medida', 'corridas medidas')}`
+    : null;
   if (nivelRitmo) {
     cunharAte(nivelRitmo, {
       medalhao: 'recordes',
@@ -770,41 +800,59 @@ function recordes({ completed, todayYear, runs }) {
     contexto: melhorRitmo ? (melhorRitmo.source === 'split' ? 'num parcial' : 'numa corrida inteira') : null,
     porSubir: (n) => `um esforço a ${formatPace(n.paceSeconds)}/km ou melhor`,
     semDados: melhorRitmo ? null : 'precisa de uma corrida com distância e tempo',
+    contributions: contributionsRitmo,
+    contributionsSummary: contributionsSummaryRitmo,
   });
 
-  // ── O VO2: o melhor VDOT alguma vez atingido, em qualquer corrida ──────
-  let melhorVdotRun = null;
-  let melhorVdot = 0;
-  for (const run of runs || []) {
-    const v = vdotDaCorrida(run);
-    if (v > melhorVdot) { melhorVdot = v; melhorVdotRun = run; }
+  // ── O VO2: o melhor VO2 máximo medido pelo relógio ───────────────
+  const vo2PorCorrida = (runs || [])
+    .map((run) => ({ run, vo2: vo2DaCorrida(run) }))
+    .filter((e) => e.vo2 > 0);
+  let melhorVo2Run = null;
+  let melhorVo2 = 0;
+  for (const { run, vo2 } of vo2PorCorrida) {
+    if (vo2 > melhorVo2) { melhorVo2 = vo2; melhorVo2Run = run; }
   }
-  const nivelVo2 = nivelPorVdot(melhorVdot);
+  const nivelVo2 = nivelPorVdot(melhorVo2);
   // Vírgula decimal, como o resto dos números da app (ver fmtKm).
-  const vdotLabel = String(melhorVdot).replace('.', ',');
+  const vo2Label = String(melhorVo2).replace('.', ',');
+
+  // Os registos deste encaixe — as corridas em que o relógio mediu VO2.
+  const contributionsVo2 = newestFirst(vo2PorCorrida.map(({ run, vo2 }) => runContribution(run, raceByRun, {
+    metaExtra: [
+      `VO2 ${String(vo2).replace('.', ',')}`,
+      run === melhorVo2Run ? 'o teu melhor' : null,
+    ].filter(Boolean),
+  })));
+  const contributionsSummaryVo2 = vo2PorCorrida.length
+    ? `${vo2PorCorrida.length} ${plural(vo2PorCorrida.length, 'corrida com VO2', 'corridas com VO2')}`
+    : null;
+
   if (nivelVo2) {
     cunharAte(nivelVo2, {
       medalhao: 'recordes',
       slot: 'vo2',
       raceId: null,
-      awardedOn: dayOf(melhorVdotRun?.date),
-      valueLabel: vdotLabel,
+      awardedOn: dayOf(melhorVo2Run?.date),
+      valueLabel: vo2Label,
       title: 'Nível de VO2',
-      line: `VDOT ${vdotLabel} — o teu melhor nível de sempre.`,
-    }, melhorVdot);
+      line: `VO2 máximo de ${vo2Label} — o teu melhor de sempre.`,
+    }, melhorVo2);
   }
   const slotVo2 = escalaSlot({
     key: 'vo2',
     label: 'VO2',
     shortLabel: 'VO2',
     nivel: nivelVo2,
-    valor: melhorVdot || null,
-    valueLabel: melhorVdot ? vdotLabel : null,
-    awardedOn: melhorVdotRun ? dayOf(melhorVdotRun.date) : null,
+    valor: melhorVo2 || null,
+    valueLabel: melhorVo2 ? vo2Label : null,
+    awardedOn: melhorVo2Run ? dayOf(melhorVo2Run.date) : null,
     raceId: null,
-    contexto: melhorVdot ? `VDOT ${vdotLabel}` : null,
-    porSubir: (n) => `VDOT ${n.vdot} ou mais numa corrida`,
-    semDados: melhorVdot ? null : 'precisa de uma corrida com distância e tempo',
+    contexto: melhorVo2Run ? 'medido pelo relógio' : null,
+    porSubir: (n) => `VO2 máximo de ${n.vdot} ou mais numa corrida`,
+    semDados: melhorVo2 ? null : 'precisa de uma corrida com VO2 máximo registado',
+    contributions: contributionsVo2,
+    contributionsSummary: contributionsSummaryVo2,
   });
 
   return {

@@ -91,8 +91,12 @@ mesma aptidão. Os limiares vivem todos em `NIVEIS`, em `utils/medalhoes.js`:
 - **O passo**: o esforço mais rápido de sempre em s/km, de prova ou de
   treino (`computeBestPace` nos escalões 5/10/21). Não usa VDOT porque mede
   velocidade pura; escala própria: 6:00, 5:00 e 4:15/km.
-- **O VO2**: o melhor VDOT alguma vez atingido em qualquer corrida — o pico
-  de forma, não o de hoje.
+- **O VO2**: o melhor **VO2 máximo medido pelo relógio**
+  (`runs.details.vo2_max`), não um VDOT calculado do tempo. Revisto a
+  2026-09-20, no mesmo dia: com o VDOT, o medalhão dizia 39,2 enquanto o
+  cartão da mesma corrida dizia 44,5 — dois números para a mesma coisa, à
+  frente um do outro. Sem VO2 em corrida nenhuma o encaixe fica vazio; não
+  há forma de o estimar sem mudar de escala.
 
 Um registo com VDOT acima de `VDOT_MAXIMO_PLAUSIVEL` (85) é descartado: é
 dado sujo, e uma medalha cunhada por ele ficava no histórico para sempre.
