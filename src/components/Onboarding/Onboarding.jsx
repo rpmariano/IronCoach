@@ -340,10 +340,21 @@ export default function Onboarding({ reentry = false, onDone }) {
     const distancia = parseNum(draft.race_distance_km);
     const tempoSegundos = parseDurationToSeconds(draft.race_target_time);
     if (!userId || !distancia || !tempoSegundos) return false;
+    /* Reabrir o arranque pelo Perfil (reentry) restaura o rascunho com os
+       campos da prova ainda preenchidos — sem esta verificação, terminá-lo
+       outra vez inseria uma segunda prova igual, e o atleta nem via o
+       formulário para dar por isso. O par nome+data chega: é o que ele
+       reconheceria como "a mesma prova". */
+    const nome = draft.race_name.trim();
+    const jaExiste = (raceEvents || []).some((e) => (
+      String(e?.name || '').trim().toLowerCase() === nome.toLowerCase()
+      && String(e?.date || '').slice(0, 10) === draft.race_date
+    ));
+    if (jaExiste) return true;
     try {
       const payload = {
         user_id: userId,
-        name: draft.race_name.trim(),
+        name: nome,
         date: draft.race_date,
         location: draft.race_location.trim(),
         race_type: draft.race_type,
@@ -354,7 +365,12 @@ export default function Onboarding({ reentry = false, onDone }) {
         experience_level: draft.experience_level || 'iniciante',
         race_priority: 'a',
         elevation_gain_m: draft.race_type === 'trail' ? parseNum(draft.race_elevation_gain_m) : null,
-        status: draft.race_date < todayISO() ? 'concluida' : 'agendada',
+        /* Sem `status`, como o formulário da prova também faz: deixa o
+           default da coluna. Marcá-la 'concluida' por a data ser passada
+           criava uma prova concluída SEM corrida ligada, e essas são
+           filtradas por completedRaces — o que cortava já a sequência no
+           medalhão "A Sequência" a quem declarasse no arranque uma prova
+           que já correu. */
       };
       const { data, error } = await supabase.from('race_events').insert(payload).select().single();
       if (error || !data) {

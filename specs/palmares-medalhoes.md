@@ -61,14 +61,50 @@ uma prova de 15 km dava a medalha dos 21,1). Uma vez ganha, fica. Esmalte
 
 ### 3. Os Recordes
 
-Encaixes: as mesmas quatro distâncias. Ganha-se quando uma prova bate o teu
-melhor anterior **dentro da mesma distância oficial** (calculado em
-`medalhoes.js`, não com o `isPersonalRecord` de `utils/raceOutcome.js`, que
-compara pela categoria larga — um 15 km rápido tirava o recorde à meia) —
-a primeira prova numa distância enche "As Distâncias", não "Os Recordes"
-(é a mesma regra da conquista `recorde_pessoal`: precisa de duas provas). A
-estrela leva o tempo gravado e é **re-cunhada** a cada PB novo (o momento
-toca de novo; o histórico guarda todos). Esmalte ciano.
+**Revisto a 2026-09-20** (pedido do utilizador na app: "criar badges bronze,
+prata e ouro para melhor corrida de 5k, 10km, 21km e 42km, passe mais rápido
+e melhor nível de VO2"). Antes era binário por distância — bateste o teu
+tempo anterior, ou não. Passou a uma escala de três níveis, e ganhou os dois
+encaixes que faltavam.
+
+Encaixes: **seis** — as quatro distâncias oficiais, o **passo** e o **VO2**.
+
+Níveis: **bronze, prata e ouro**, cada um com o seu esmalte. A cor deixa de
+ser a do módulo e passa a dizer o nível; a lei da cor continua a valer nos
+outros medalhões.
+
+A régua das distâncias e do VO2 é o **VDOT** (Daniels-Gilbert,
+`@formulas/racePrediction.ts`), escolhido por ser a única medida que compara
+distâncias diferentes — um 10 km de ouro e uma maratona de ouro exigem a
+mesma aptidão. Os limiares vivem todos em `NIVEIS`, em `utils/medalhoes.js`:
+
+| Nível | VDOT | 5 km | 10 km | Meia | Maratona |
+|---|---|---|---|---|---|
+| Bronze | 35 | 27:01 | 56:06 | 2:04:22 | 4:16:24 |
+| Prata | 45 | 21:50 | 45:16 | 1:40:20 | 3:28:27 |
+| Ouro | 55 | 18:23 | 38:07 | 1:24:20 | 2:56:03 |
+
+- **As quatro distâncias**: o nível vem da **melhor** prova dessa distância
+  (menor tempo oficial), não da última. A distância oficial continua a ser a
+  estreita de `medalhoes.js`, não a `categorizeDistance` larga — um 15 km
+  rápido não conta para a meia.
+- **O passo**: o esforço mais rápido de sempre em s/km, de prova ou de
+  treino (`computeBestPace` nos escalões 5/10/21). Não usa VDOT porque mede
+  velocidade pura; escala própria: 6:00, 5:00 e 4:15/km.
+- **O VO2**: o melhor VDOT alguma vez atingido em qualquer corrida — o pico
+  de forma, não o de hoje.
+
+Um registo com VDOT acima de `VDOT_MAXIMO_PLAUSIVEL` (85) é descartado: é
+dado sujo, e uma medalha cunhada por ele ficava no histórico para sempre.
+
+Cada nível cunha-se uma vez, do bronze até ao atingido, para quem chega
+direto a prata levar as duas cerimónias. O nível vai em `period_key` de
+`medal_awards`, que a chave única já distingue — sem migração. As linhas
+antigas deste medalhão (com o id da prova em `period_key`) ficam sem
+correspondência no cálculo novo e deixam de ter título; não estorvam.
+
+Quem ainda não chega ao bronze não fica sem nada: "As Distâncias" continua
+a marcar a primeira vez em cada distância. Este é o medalhão do mérito.
 
 ### 4. O Terreno
 
@@ -232,6 +268,10 @@ Ecrã inteiro quando há `medal_awards` com `seen_at is null`.
 A secção "Conquistas" mantém-se e passa a mostrar também as medalhas que esta
 prova deu (Distâncias, Recordes, Superação, Terreno, Sequência), com o
 medalhão pequeno.
+
+Ressalva desde a revisão d'Os Recordes: aí o `raceId` aponta para a **melhor**
+prova da distância, que pode não ser a que se acabou de registar, e os
+encaixes do passo e do VO2 vão sem prova nenhuma (`raceId: null`).
 
 ## O que acontece às conquistas
 

@@ -204,6 +204,26 @@ export function MedalhaoDefs() {
           <stop offset="55%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#052e22" />
         </radialGradient>
+        {/* Os três da escala d'Os Recordes. Têm de existir nesta família
+            `dt-*` e não só na `enam-*`: ENAMELS vem de TEXT_FILL, e é ele
+            que MedalSlotIcon percorre — sem estes, cada encaixe ganho na
+            persiana do Palmarés pedia um gradiente inexistente e o browser
+            resolvia para `none`, deixando o ícone de 44px vazio. */}
+        <radialGradient id={MEDAL_ID('dt-bronze')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#f0cba8" />
+          <stop offset="55%" stopColor="#c87f43" />
+          <stop offset="100%" stopColor="#5c2d12" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('dt-prata')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#f4f7fa" />
+          <stop offset="55%" stopColor="#c3ced9" />
+          <stop offset="100%" stopColor="#49586a" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('dt-ouro')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#fdefb8" />
+          <stop offset="55%" stopColor="#f0c33c" />
+          <stop offset="100%" stopColor="#7d5806" />
+        </radialGradient>
 
         {/* Sombra das estrelas */}
         <filter id={MEDAL_ID('star-drop')} x="-50%" y="-50%" width="200%" height="200%">

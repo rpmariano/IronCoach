@@ -608,13 +608,22 @@ function proximoNivel(atual) {
   return NIVEIS[i + 1] || null;
 }
 
+/* Acima disto não é um atleta: é um registo com o GPS a delirar, uma corrida
+   de bicicleta mal classificada, ou um tempo mal escrito. O recorde mundial
+   dos 10 000 m anda em VDOT ~85, por isso qualquer coisa acima disso num
+   registo de amador é dado sujo. Importa porque `medal_awards` é histórico:
+   uma medalha de ouro cunhada por um registo errado fica lá para sempre,
+   mesmo depois de o atleta corrigir a corrida. */
+const VDOT_MAXIMO_PLAUSIVEL = 85;
+
 /* O VDOT de uma corrida: precisa de distância e de tempo. Nas provas usa-se
    o tempo OFICIAL (é o que conta), nos treinos a duração registada. */
 function vdotDaCorrida(run) {
   const km = num(run?.distance_km);
   const segundos = num(run?.duration_seconds);
   if (!km || !segundos) return 0;
-  return calculateVDOT(km, segundos);
+  const vdot = calculateVDOT(km, segundos);
+  return vdot > VDOT_MAXIMO_PLAUSIVEL ? 0 : vdot;
 }
 
 function recordes({ completed, todayYear, runs }) {
@@ -625,7 +634,7 @@ function recordes({ completed, todayYear, runs }) {
      por nível NOVO — assim a cerimónia da medalha dispara em cada subida, e
      a chave única de medal_awards (user, medalhão, encaixe, period_key)
      guarda o nível em period_key sem precisar de coluna nova. */
-  const escalaSlot = ({ key, label, shortLabel, nivel, valueLabel, awardedOn, raceId, contexto, porSubir, semDados, contributions = [], contributionsSummary = null }) => {
+  const escalaSlot = ({ key, label, shortLabel, nivel, valor, valueLabel, awardedOn, raceId, contexto, porSubir, semDados, contributions = [], contributionsSummary = null }) => {
     const seguinte = proximoNivel(nivel);
     if (!nivel) {
       return slot({
@@ -636,7 +645,9 @@ function recordes({ completed, todayYear, runs }) {
     }
     return slot({
       key, label, shortLabel, state: 'won', enamel: nivel.enamel,
-      value: nivel.vdot, valueLabel,
+      // O número medido (segundos de prova, s/km, VDOT), não o limiar do
+      // nível: é o que a coluna `value` de medal_awards diz guardar.
+      value: valor ?? nivel.vdot, valueLabel,
       periodKey: nivel.key,
       awardedOn, raceId,
       detail: [
@@ -652,10 +663,12 @@ function recordes({ completed, todayYear, runs }) {
   /* Cada nível conquistado até ao atual entra em `due` uma vez. Sem isto, um
      atleta que chegasse direto a ouro nunca veria a cerimónia do bronze e da
      prata — e o Palmarés mostraria um salto sem história. */
-  const cunharAte = (nivel, base) => {
+  const cunharAte = (nivel, base, valor = null) => {
     if (!nivel) return;
     for (const n of NIVEIS) {
-      due.push({ ...base, slot: base.slot, periodKey: n.key, value: n.vdot, title: `${base.title} · ${n.label}` });
+      // `value` guarda o número MEDIDO (segundos da prova, s/km, VDOT) — é o
+      // que a coluna de medal_awards diz guardar. O nível já vai em periodKey.
+      due.push({ ...base, slot: base.slot, periodKey: n.key, value: valor ?? n.vdot, title: `${base.title} · ${n.label}` });
       if (n.key === nivel.key) break;
     }
   };
@@ -679,7 +692,10 @@ function recordes({ completed, todayYear, runs }) {
     for (const entry of races) {
       if (!melhor || entry.outcome.officialSeconds < melhor.outcome.officialSeconds) melhor = entry;
     }
-    const vdot = melhor ? calculateVDOT(num(melhor.race.distance_km) || dist.min, melhor.outcome.officialSeconds) : 0;
+    const vdotBruto = melhor ? calculateVDOT(num(melhor.race.distance_km) || dist.min, melhor.outcome.officialSeconds) : 0;
+    // Mesmo teto de plausibilidade dos treinos: um tempo oficial mal escrito
+    // (minutos em vez de horas) cunhava ouro e a medalha não se apaga.
+    const vdot = vdotBruto > VDOT_MAXIMO_PLAUSIVEL ? 0 : vdotBruto;
     const nivel = nivelPorVdot(vdot);
 
     /* O tempo que aquele nível exigiria NESTA distância: é o que torna a
@@ -705,7 +721,7 @@ function recordes({ completed, todayYear, runs }) {
         valueLabel: formatDuration(melhor.outcome.officialSeconds),
         title: dist.recorde,
         line: `${formatDuration(melhor.outcome.officialSeconds)} em ${dist.nome} — ${melhor.race.name || 'a prova'}. VDOT ${String(vdot).replace('.', ',')}.`,
-      });
+      }, melhor.outcome.officialSeconds);
     }
 
     return escalaSlot({
@@ -713,6 +729,7 @@ function recordes({ completed, todayYear, runs }) {
       label: dist.label,
       shortLabel: dist.short,
       nivel,
+      valor: melhor ? melhor.outcome.officialSeconds : null,
       valueLabel: melhor ? formatDuration(melhor.outcome.officialSeconds) : null,
       awardedOn: melhor ? dayOf(melhor.race.date) : null,
       raceId: melhor?.race?.id ?? null,
@@ -739,13 +756,14 @@ function recordes({ completed, todayYear, runs }) {
       valueLabel: `${formatPace(melhorRitmo.pace)}/km`,
       title: 'Passo mais rápido',
       line: `${formatPace(melhorRitmo.pace)}/km — o teu passo mais rápido de sempre.`,
-    });
+    }, melhorRitmo.pace);
   }
   const slotRitmo = escalaSlot({
     key: 'ritmo',
     label: 'Passo',
     shortLabel: 'passo',
     nivel: nivelRitmo,
+    valor: melhorRitmo ? melhorRitmo.pace : null,
     valueLabel: melhorRitmo ? `${formatPace(melhorRitmo.pace)}/km` : null,
     awardedOn: melhorRitmo ? dayOf(melhorRitmo.date) : null,
     raceId: null,
@@ -773,13 +791,14 @@ function recordes({ completed, todayYear, runs }) {
       valueLabel: vdotLabel,
       title: 'Nível de VO2',
       line: `VDOT ${vdotLabel} — o teu melhor nível de sempre.`,
-    });
+    }, melhorVdot);
   }
   const slotVo2 = escalaSlot({
     key: 'vo2',
     label: 'VO2',
     shortLabel: 'VO2',
     nivel: nivelVo2,
+    valor: melhorVdot || null,
     valueLabel: melhorVdot ? vdotLabel : null,
     awardedOn: melhorVdotRun ? dayOf(melhorVdotRun.date) : null,
     raceId: null,

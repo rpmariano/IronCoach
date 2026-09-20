@@ -170,7 +170,14 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     // ── 1. O peso ──────────────────────────────────────────────────────
     const peso = Number(assessment.weight_kg);
     const idade = daysBetweenISO(assessment.date, todayISO);
-    const recente = idade !== null && idade >= 0 && idade <= PESO_RECENTE_DIAS;
+    /* `idade >= -1` e não `>= 0`: o servidor conta os dias em UTC e a data da
+       avaliação é escrita na hora LOCAL do atleta. Entre a meia-noite e a uma
+       da manhã em Lisboa no horário de verão, o "hoje" em UTC ainda é ontem —
+       uma pesagem acabada de registar dava idade -1 e o peso do perfil não se
+       repunha, sem nada nos logs a dizer porquê. Um dia de folga cobre
+       qualquer fuso a ocidente de UTC+14 sem abrir a janela a datas futuras
+       a sério. */
+    const recente = idade !== null && idade >= -1 && idade <= PESO_RECENTE_DIAS;
     if (Number.isFinite(peso) && peso > 0 && recente) {
       /* Só se não houver nenhuma avaliação mais recente: editar a de há três
          dias quando a de ontem já entrou não pode fazer recuar o peso. */
@@ -188,19 +195,29 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     }
 
     // ── 2. Os objetivos ────────────────────────────────────────────────
-    const { data: perfil } = await sb
+    const { data: perfil, error: erroPerfil } = await sb
       .from("profiles")
       .select([...BODY_GOAL_COLUMNS, ...MACRO_GOAL_COLUMNS, "coach_intervention_status"].join(", "))
       .eq("id", userId)
       .maybeSingle();
+    // O supabase-js não LANÇA nestes casos: devolve o erro no objeto. Sem o
+    // ler, uma leitura recusada (RLS, coluna em falta) passava por "o atleta
+    // não tem perfil" e saltava a intervenção sem deixar rasto nenhum.
+    if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
 
     if (perfil) {
       const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
       const faltamCorpo = !temAlgum(BODY_GOAL_COLUMNS);
       const faltamMacros = !temAlgum(MACRO_GOAL_COLUMNS);
       /* Uma intervenção já pendente não se sobrepõe: o motivo que lá está
-         pode ser mais urgente do que este, e o atleta só vê um de cada vez. */
-      if ((faltamCorpo || faltamMacros) && perfil.coach_intervention_status !== "needed") {
+         pode ser mais urgente do que este, e o atleta só vê um de cada vez.
+         'in_progress' conta como pendente — é uma conversa JÁ A MEIO, e
+         reescrever o motivo aqui apagava sem retorno a razão pela qual ela
+         chamou por ele (a coluna não tem histórico). É a mesma leitura que
+         o resto da app faz: ver store/index.js e Home/Home.jsx, ambos com
+         ['needed','in_progress']. */
+      const intervencaoPendente = ["needed", "in_progress"].includes(perfil.coach_intervention_status);
+      if ((faltamCorpo || faltamMacros) && !intervencaoPendente) {
         const emFalta = [faltamCorpo ? "os do corpo" : null, faltamMacros ? "os de macronutrientes" : null]
           .filter(Boolean).join(" e ");
         patch.coach_intervention_status = "needed";
@@ -212,7 +229,8 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     }
 
     if (Object.keys(patch).length > 0) {
-      await sb.from("profiles").update(patch).eq("id", userId);
+      const { error: erroUpdate } = await sb.from("profiles").update(patch).eq("id", userId);
+      if (erroUpdate) console.warn("syncProfileAfterAssessment: falha a gravar o perfil:", erroUpdate);
     }
   } catch (e) {
     // Nunca é motivo para falhar o registo: a avaliação já está gravada.

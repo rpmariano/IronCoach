@@ -138,6 +138,16 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
+  it('o foco vai para o botão e o Tab não sai da mensagem', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+    const fechar = screen.getByTestId('record-confirmation-close');
+    expect(document.activeElement).toBe(fechar);
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(fechar);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
   it('Escape fecha', () => {
     const onDone = vi.fn();
     render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);

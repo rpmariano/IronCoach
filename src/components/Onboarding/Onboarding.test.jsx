@@ -269,12 +269,41 @@ describe('Onboarding — o que fica gravado', () => {
       target_time: '1:45:00',
       target_time_seconds: 6300,
       race_type: 'estrada',
-      status: 'agendada',
     });
+    /* Sem `status`, como o formulário da prova: deixa o default da coluna.
+       Forçá-lo criava uma prova 'concluida' sem corrida ligada, que corta a
+       sequência no Palmarés. */
+    expect(raceInserts[0]).not.toHaveProperty('status');
     // 6300 s / 21,1 km = 298,58 → 299 s/km
     expect(raceInserts[0].target_pace_seconds_per_km).toBe(299);
     expect(useAppStore.getState().openCreationMode).toBeNull();
     expect(useAppStore.getState().raceEvents).toHaveLength(1);
+  });
+
+  /* Reabrir o arranque pelo Perfil restaura o rascunho com a prova ainda
+     preenchida; sem dedupe, terminá-lo outra vez gravava uma segunda igual. */
+  it('não grava a prova duas vezes se ela já existir com o mesmo nome e data', async () => {
+    useAppStore.setState({
+      raceEvents: [{ id: 'ja-existe', name: 'Meia de Lisboa', date: '2027-03-08', distance_km: 21.1 }],
+    });
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
+    fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
+    fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
+    clicar('Criar o meu plano');
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
+    expect(raceInserts).toHaveLength(0);
+    // E não manda o atleta para o formulário: a prova já lá está.
+    expect(useAppStore.getState().openCreationMode).toBeNull();
   });
 
   /* Falhar a gravação não pode perder a prova: cai no formulário, como antes. */

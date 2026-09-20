@@ -123,12 +123,25 @@ export default function PlanoScreen({ onClose }) {
      `center` — o cabeçalho da semana deve encostar ao topo, com os dias
      dela por baixo. */
   const currentWeekRef = useRef(null);
+  const jaRolouRef = useRef(false);
   useEffect(() => {
-    if (!currentWeek || weeks[0]?.start === currentWeek.start) return;
+    // Uma vez só, à entrada: sem esta guarda, abrir ou fechar qualquer
+    // semana puxava o ecrã de volta para a de hoje a meio da leitura.
+    if (jaRolouRef.current) return undefined;
+    if (!currentWeek || weeks[0]?.start === currentWeek.start) return undefined;
+    if (!openWeeks.has(currentWeek.start)) return undefined;
     const node = currentWeekRef.current;
-    if (!node?.scrollIntoView) return;
-    node.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [currentWeek, weeks]);
+    if (!node?.scrollIntoView) return undefined;
+    /* Num frame à frente, e não já: o efeito que abre a semana em curso só
+       produz o layout novo no commit seguinte, e rolar antes disso media a
+       página toda colapsada — o destino saía calculado com as alturas
+       erradas e a semana acabava fora do sítio. */
+    jaRolouRef.current = true;
+    const id = requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [currentWeek, weeks, openWeeks]);
 
   /* Dias sem plano nenhum: o atleta tem de poder pedir à Carol que os
      preencha. Um convite por dia vazio seria ruído num bloco de cinco dias

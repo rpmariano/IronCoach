@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
+import { useEscapeClose } from './Sheet';
 import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
 import CoachAvatar from '../Coach/CoachAvatar';
 
@@ -96,15 +97,36 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
     // temporizador por causa disso adiava a saída para sempre.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Escape fecha, como em qualquer diálogo da app; e o foco vai para o botão
-     de dispensa, que é a única saída quando não há temporizador. */
+  /* Escape fecha pela pilha partilhada (Sheet.jsx), não por um listener
+     próprio: é essa pilha que garante que a tecla fecha SÓ o que está por
+     cima. Um listener à parte funcionava por acaso — `document` dispara
+     antes de `window` no bubble — e o comentário da pilha regista que foi
+     exatamente esse atalho que já trouxe o bug de volta uma vez. */
+  const escapeClose = useCallback(() => { if (dismissible) finish(); }, [dismissible]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEscapeClose(escapeClose);
+
+  /* O foco vai para o botão de dispensa e não sai dali enquanto a mensagem
+     estiver aberta — é o que `aria-modal` promete, e o ecrã por baixo
+     continua montado. Mesmo padrão das boas-vindas da Carol
+     (Welcome/CarolWelcome.jsx): só há uma ação, por isso o Tab devolve
+     sempre o foco ao botão. Ao fechar, o foco volta a quem o tinha. */
   useEffect(() => {
     if (!dismissible) return undefined;
-    const onKeyDown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } };
-    document.addEventListener('keydown', onKeyDown);
-    closeRef.current?.focus?.();
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [dismissible]); // eslint-disable-line react-hooks/exhaustive-deps
+    const antes = document.activeElement;
+    closeRef.current?.focus?.({ preventScroll: true });
+    const onKey = (e) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      closeRef.current?.focus?.({ preventScroll: true });
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (antes && typeof antes.focus === 'function' && document.contains(antes)) {
+        antes.focus({ preventScroll: true });
+      }
+    };
+  }, [dismissible]);
 
   return (
     <div

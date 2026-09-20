@@ -3222,9 +3222,12 @@ const MEAL_DOCTRINE =
   `REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às ` +
   `compras por um ingrediente novo a cada refeição sugerida. Excesso de ` +
   `precisão/variedade gera ansiedade e abandono, não adesão.\n` +
-  `- Dia leve/descanso (<60 min Z1-Z2): pequeno-almoço 20-25% kcal, lanche ` +
-  `da manhã 5-10%, almoço ` +
-  `30-35%, lanche da tarde 10-15%, jantar 25-30%, ceia opcional 5-10%. Proteína ` +
+  `- Dia leve/descanso (<60 min Z1-Z2), com os lanches: pequeno-almoço 20-25% ` +
+  `kcal, lanche da manhã 5-10%, almoço 25-30%, lanche da tarde 10-15%, jantar ` +
+  `20-25%, ceia opcional 5-10%. Sem os lanches, o pequeno-almoço, o almoço e o ` +
+  `jantar absorvem essas percentagens. Estas faixas são orientativas mas o DIA ` +
+  `TEM DE SOMAR 100%: escolhe dentro de cada faixa de forma a fechar a conta, ` +
+  `nunca somes os extremos de todas. Proteína ` +
   `0,3-0,4 g/kg por refeição, 3-5 doses espaçadas 3-4h.\n` +
   `- Dia de treino exigente (>60 min Z3-Z5): hidratos concentram-se na ` +
   `janela peri-treino (40-50% do total diário). Pré (1-3h antes): 1,0-2,0 ` +
@@ -5382,12 +5385,17 @@ async function handler(req: Request): Promise<Response> {
     /* Uma contagem, não as linhas: só interessa saber se alguma vez houve um
        plano aceite. É o que distingue "o primeiro plano" de "mais um plano"
        no discurso da Carol (ver buildPlanContext). */
-    const { count: planosAceitesDeSempre } = await sb
+    const { count: planosAceitesDeSempre, error: erroContagem } = await sb
       .from("coach_plans")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("status", "aceite");
-    const everHadPlan = (planosAceitesDeSempre ?? 0) > 0;
+    /* Falhando a contagem, assume-se que JÁ HOUVE plano: é o comportamento
+       de sempre e o erro seguro. Ao contrário, um count a null por causa de
+       uma query falhada punha a Carol a dizer a um atleta de meses que nunca
+       teve plano nenhum — pior do que não dizer nada. */
+    if (erroContagem) console.warn("coach-chat: falha a contar planos aceites:", erroContagem);
+    const everHadPlan = erroContagem ? true : (planosAceitesDeSempre ?? 0) > 0;
 
     const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan);
 
