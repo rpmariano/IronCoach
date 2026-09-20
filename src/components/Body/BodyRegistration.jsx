@@ -155,6 +155,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Avaliação registada') => {
     const hadPendingNav = !!pendingNavTarget.current;
+    /* A analyze-body pode ter mexido no perfil ao gravar esta avaliação:
+       repor o peso a partir de uma pesagem recente, e levantar a intervenção
+       da Carol a propor definir objetivos. Nada disso passa pela resposta —
+       sem esta releitura o Perfil ficava com o peso antigo e o aviso dela não
+       aparecia até ao próximo arranque. Sem await: é o ecrã de confirmação
+       que manda no tempo, não esta ida à rede. */
+    useAppStore.getState().refreshProfile?.();
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const st = useAppStore.getState();

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
@@ -26,6 +26,17 @@ import CoachAvatar from '../Coach/CoachAvatar';
  * visto, porque o que acabou de acontecer não foi "mais um registo" mas a
  * prova para a qual o ciclo inteiro foi montado. O rótulo traz o nome dela
  * ("Meia de Lisboa concluída"), escrito por quem monta.
+ *
+ * ── Dispensa manual (relatado pelo utilizador, "Registo da prova") ─────────
+ * O visto de "mais um registo" continua a sair sozinho: é uma confirmação,
+ * não tem nada para ler. Mas as mensagens de PARABÉNS — a prova concluída
+ * (`tone="race"`), uma conquista nova (`achievement`) ou a Carol a marcar o
+ * momento (`first`) — traziam texto a sério e desapareciam em 1,6-3 s, antes
+ * de darem tempo de o ler: «surgiu uma mensagem de parabéns, mas foi muito
+ * rápido. Este tipo de mensagem não deve desaparecer, mas sim ter um botão
+ * para fechar, e fechar quando se clica fora da mensagem.» É isso que
+ * `dismissible` faz: sem temporizador nenhum, com botão "Continuar", clique
+ * no fundo e Escape.
  */
 const TONES = {
   ok: {
@@ -43,41 +54,41 @@ const TONES = {
 };
 
 /* A conquista nova (specs/gamificacao-provas.md §1): entra 300 ms depois do
-   check e prolonga a confirmação até 1,6 s, porque há mais para ler. Sem
-   conquista nova nada disto acontece — o registo de todos os dias sai aos
-   900 ms como sempre. `achievement` é uma conquista do computeAchievements
-   (name, detail, tone, Icon), com um `extra` opcional para o "+1 conquista"
-   quando a prova deu mais do que uma. */
+   check. `achievement` é uma conquista do computeAchievements (name, detail,
+   tone, Icon), com um `extra` opcional para o "+1 conquista" quando a prova
+   deu mais do que uma. */
 const DUR_ACHIEVEMENT_IN = 300;
-const DUR_CONFIRM_EXIT_ACHIEVEMENT = 1600;
 
 /* O primeiro registo de um tipo (utils/firstRecord.js), ou um recorde de
    treino (utils/runRecord.js): a Carol entra por baixo do visto e diz o que
-   ele quer dizer. Fica 3 s — é tempo de LEITURA,
-   não de animação, por isso o movimento reduzido não o encurta (só lhe tira
-   o movimento). Um toque em qualquer sítio segue logo. */
+   ele quer dizer. */
 export const DUR_FIRST_IN = 350;
+
+/* Já não temporiza a saída de nada — estas confirmações esperam pela dispensa
+   do atleta —, mas continua exportada porque os testes a usam como unidade de
+   "tempo mais do que suficiente para ter saído, se saísse". */
 export const DUR_CONFIRM_EXIT_FIRST = 3000;
 
 export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', achievement = null, first = null, onDone }) {
   const { ring, fill, label: labelColor, Icon } = TONES[tone] || TONES.ok;
-  const [showAchievement, setShowAchievement] = useState(false);
+  /* Há algo para LER, não só um visto a confirmar: espera pelo atleta. */
+  const dismissible = !!(achievement || first || tone === 'race');
+  const [showAchievement, setShowAchievement] = useState(() => !!achievement && (dismissible ? prefersReducedMotion() : false));
   // Com movimento reduzido, ela já lá está no primeiro render.
   const [showFirst, setShowFirst] = useState(() => !!first && prefersReducedMotion());
-  const doneRef = React.useRef(false);
+  const doneRef = useRef(false);
+  const closeRef = useRef(null);
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;
     onDone?.();
   };
   useEffect(() => {
-    // Movimento reduzido mantém a regra da app: tudo a 120 ms, incluindo o
-    // tempo até sair. A conquista não se perde — o hub mostra-a a seguir,
-    // na secção "Conquistas".
     const reduced = prefersReducedMotion();
-    const delay = first ? DUR_CONFIRM_EXIT_FIRST
-      : reduced ? DUR_TAP : (achievement ? DUR_CONFIRM_EXIT_ACHIEVEMENT : DUR_CONFIRM_EXIT);
-    const timers = [setTimeout(finish, delay)];
+    const timers = [];
+    // Movimento reduzido mantém a regra da app: tudo a 120 ms, incluindo o
+    // tempo até sair. Só o visto simples é que sai sozinho.
+    if (!dismissible) timers.push(setTimeout(finish, reduced ? DUR_TAP : DUR_CONFIRM_EXIT));
     if (achievement && !first) timers.push(setTimeout(() => setShowAchievement(true), reduced ? 0 : DUR_ACHIEVEMENT_IN));
     if (first && !reduced) timers.push(setTimeout(() => setShowFirst(true), DUR_FIRST_IN));
     return () => timers.forEach(clearTimeout);
@@ -85,89 +96,121 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
     // temporizador por causa disso adiava a saída para sempre.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* Escape fecha, como em qualquer diálogo da app; e o foco vai para o botão
+     de dispensa, que é a única saída quando não há temporizador. */
+  useEffect(() => {
+    if (!dismissible) return undefined;
+    const onKeyDown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } };
+    document.addEventListener('keydown', onKeyDown);
+    closeRef.current?.focus?.();
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [dismissible]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div
       data-testid="record-confirmation"
       data-tone={tone}
       data-first={first ? 'true' : undefined}
-      role="status"
-      aria-live="polite"
-      onClick={first ? finish : undefined}
+      data-dismissible={dismissible ? 'true' : undefined}
+      role={dismissible ? 'dialog' : 'status'}
+      aria-modal={dismissible ? 'true' : undefined}
+      aria-label={dismissible ? label : undefined}
+      aria-live={dismissible ? undefined : 'polite'}
+      onClick={dismissible ? finish : undefined}
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
-      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: first ? 'pointer' : undefined }}
+      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: dismissible ? 'pointer' : undefined }}
     >
-      <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
-        <span aria-hidden="true" className="record-confirm-halo absolute inset-0 rounded-full" style={{ border: `2px solid ${ring}` }} />
-        <span
-          aria-hidden="true"
-          className="record-confirm-check flex items-center justify-center rounded-full"
-          style={{ width: 56, height: 56, background: fill, border: `1.5px solid ${ring}`, color: ring }}
-        >
-          <Icon size={26} />
-        </span>
-      </div>
-      <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: labelColor }}>{label}</div>
-
-      {showFirst && first && (
-        <div
-          data-testid="record-confirmation-first"
-          className="first-record-card flex items-start gap-3 mx-6 mt-6"
-          style={{
-            maxWidth: 330,
-            borderRadius: 20,
-            background: 'rgba(12,20,34,.92)',
-            border: '1px solid rgba(34,211,238,.32)',
-            padding: '14px 16px 12px',
-            boxShadow: '0 18px 40px rgba(0,0,0,.45)',
-          }}
-        >
-          <CoachAvatar size={40} mood="happy" breathing />
-          <div className="min-w-0 flex-1">
-            <div className="text-[17px] font-black leading-[1.2]" style={{ color: 'var(--text-1)', letterSpacing: '-.015em' }}>{first.title}</div>
-            <div className="text-[13px] leading-[1.5] mt-1" style={{ color: 'var(--text-3)' }}>{first.sub}</div>
-            <div aria-hidden="true" className="flex items-center gap-2 mt-3">
-              <span className="flex-1 overflow-hidden" style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,.08)' }}>
-                <span className="first-record-drain block h-full" style={{ background: 'var(--coach)', opacity: 0.7, animationDuration: `${DUR_CONFIRM_EXIT_FIRST - DUR_FIRST_IN}ms` }} />
-              </span>
-              <span className="text-[10.5px] font-semibold" style={{ color: 'var(--text-4)' }}>Toca para seguir</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showAchievement && achievement && (
-        <div
-          data-testid="record-confirmation-achievement"
-          className="record-confirm-label flex items-center gap-3 mx-6 mt-5"
-          style={{
-            maxWidth: 320,
-            borderRadius: 20,
-            background: 'var(--surface-glass)',
-            border: `1px solid var(--tint-${achievement.tone}-bd)`,
-            padding: '12px 14px',
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
+      {/* Clicar NA mensagem não a fecha — só clicar fora dela. */}
+      <div
+        className="flex flex-col items-center"
+        onClick={dismissible ? (e) => e.stopPropagation() : undefined}
+        style={{ cursor: 'auto' }}
+      >
+        <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
+          <span aria-hidden="true" className="record-confirm-halo absolute inset-0 rounded-full" style={{ border: `2px solid ${ring}` }} />
           <span
             aria-hidden="true"
-            className="inline-flex items-center justify-center shrink-0"
+            className="record-confirm-check flex items-center justify-center rounded-full"
+            style={{ width: 56, height: 56, background: fill, border: `1.5px solid ${ring}`, color: ring }}
+          >
+            <Icon size={26} />
+          </span>
+        </div>
+        <div className="record-confirm-label text-[13px] font-extrabold mt-[15px]" style={{ color: labelColor }}>{label}</div>
+
+        {showFirst && first && (
+          <div
+            data-testid="record-confirmation-first"
+            className="first-record-card flex items-start gap-3 mx-6 mt-6"
             style={{
-              width: 44, height: 44, borderRadius: '50%',
-              background: `var(--tint-${achievement.tone}-bg)`,
-              border: `1px solid var(--tint-${achievement.tone}-bd)`,
-              color: `var(--${achievement.tone})`,
+              maxWidth: 330,
+              borderRadius: 20,
+              background: 'rgba(12,20,34,.92)',
+              border: '1px solid rgba(34,211,238,.32)',
+              padding: '14px 16px 12px',
+              boxShadow: '0 18px 40px rgba(0,0,0,.45)',
             }}
           >
-            {achievement.Icon && <achievement.Icon size={20} />}
-          </span>
-          <div className="min-w-0">
-            <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.05em', color: `var(--${achievement.tone})` }}>Nova conquista</div>
-            <div className="text-[17px] font-black leading-[1.15] mt-0.5" style={{ color: 'var(--text-1)' }}>{achievement.name}</div>
-            {achievement.detail && <div className="text-[11.5px] leading-[1.35] mt-[3px]" style={{ color: 'var(--text-3)' }}>{achievement.detail}</div>}
-            {achievement.extra && <div className="text-[11px] mt-[3px]" style={{ color: 'var(--text-4)' }}>{achievement.extra}</div>}
+            <CoachAvatar size={40} mood="happy" breathing />
+            <div className="min-w-0 flex-1">
+              <div className="text-[17px] font-black leading-[1.2]" style={{ color: 'var(--text-1)', letterSpacing: '-.015em' }}>{first.title}</div>
+              <div className="text-[13px] leading-[1.5] mt-1" style={{ color: 'var(--text-3)' }}>{first.sub}</div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {showAchievement && achievement && (
+          <div
+            data-testid="record-confirmation-achievement"
+            className="record-confirm-label flex items-center gap-3 mx-6 mt-5"
+            style={{
+              maxWidth: 320,
+              borderRadius: 20,
+              background: 'var(--surface-glass)',
+              border: `1px solid var(--tint-${achievement.tone}-bd)`,
+              padding: '12px 14px',
+              boxShadow: 'var(--shadow-card)',
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="inline-flex items-center justify-center shrink-0"
+              style={{
+                width: 44, height: 44, borderRadius: '50%',
+                background: `var(--tint-${achievement.tone}-bg)`,
+                border: `1px solid var(--tint-${achievement.tone}-bd)`,
+                color: `var(--${achievement.tone})`,
+              }}
+            >
+              {achievement.Icon && <achievement.Icon size={20} />}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.05em', color: `var(--${achievement.tone})` }}>Nova conquista</div>
+              <div className="text-[17px] font-black leading-[1.15] mt-0.5" style={{ color: 'var(--text-1)' }}>{achievement.name}</div>
+              {achievement.detail && <div className="text-[11.5px] leading-[1.35] mt-[3px]" style={{ color: 'var(--text-3)' }}>{achievement.detail}</div>}
+              {achievement.extra && <div className="text-[11px] mt-[3px]" style={{ color: 'var(--text-4)' }}>{achievement.extra}</div>}
+            </div>
+          </div>
+        )}
+
+        {dismissible && (
+          <button
+            type="button"
+            ref={closeRef}
+            data-testid="record-confirmation-close"
+            onClick={finish}
+            className="inline-flex items-center justify-center min-h-[44px] mt-6 rounded-[11px] text-[12.5px] font-extrabold"
+            style={{
+              padding: '0 28px',
+              background: tone === 'race' ? 'var(--tint-race-bg)' : 'var(--surface-glass)',
+              border: `1px solid ${tone === 'race' ? 'var(--tint-race-bd)' : 'var(--border-glass-strong)'}`,
+              color: tone === 'race' ? 'var(--race)' : 'var(--text-1)',
+            }}
+          >
+            Continuar
+          </button>
+        )}
+      </div>
     </div>
   );
 }

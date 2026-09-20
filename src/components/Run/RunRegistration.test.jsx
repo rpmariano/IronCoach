@@ -125,7 +125,9 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
+    // O aviso pára o ecrã no diálogo "Dados Incompletos" (e continua inline).
+    expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
+    expect(screen.getByTestId('run-validation-error')).toHaveTextContent('Preenche o nome da corrida.');
   });
 
   it('acrescenta a corrida devolvida ao store e fecha o formulário', async () => {
@@ -297,7 +299,9 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(screen.getByText('Preenche o nome da corrida.')).toBeInTheDocument();
+    // O aviso pára o ecrã no diálogo "Dados Incompletos" (e continua inline).
+    expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
+    expect(screen.getByTestId('run-validation-error')).toHaveTextContent('Preenche o nome da corrida.');
   });
 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
@@ -859,7 +863,14 @@ describe('RunRegistration — modo prova', () => {
     fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
 
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(screen.getByText('Indica o tempo oficial da prova.')).toBeInTheDocument();
+    /* Relatado pelo utilizador: o aviso de que o tempo oficial é obrigatório
+       era uma linha no fundo da página, muitas vezes fora do ecrã. Agora
+       pára o ecrã com o mesmo diálogo do formulário da prova. */
+    expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
+    expect(screen.getByTestId('run-validation-error')).toHaveTextContent('Indica o tempo oficial da prova.');
+    // E fecha-se com "Entendido", devolvendo o atleta ao campo em falta.
+    fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
+    expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
   });
 
   it('pelo FAB, o chip Competição oferece o seletor "Qual prova?" e entrar nele abre o modo prova', () => {

@@ -116,6 +116,26 @@ export const useAppStore = create((set, get) => ({
   // Actions
   setSession: (session) => set({ session }),
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
+
+  /* Relê o perfil da BD. Serve para quando é o SERVIDOR a mexer no perfil e
+     o cliente não tem como saber: a analyze-body repõe `weight_kg` a partir
+     de uma avaliação recente e pode levantar uma intervenção da Carol
+     (syncProfileAfterAssessment). Sem isto o Perfil continuava a mostrar o
+     peso antigo até ao próximo arranque da app. Best-effort: falhar aqui
+     nunca pode estragar um registo que já ficou gravado. */
+  refreshProfile: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return null;
+    try {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+      if (error || !data) return null;
+      set({ profile: data, isAdmin: data?.is_admin || false });
+      return data;
+    } catch (err) {
+      console.warn('refreshProfile falhou:', err);
+      return null;
+    }
+  },
   setNavGuard: (fn) => set({ navGuard: fn }),
   // Devolve false quando o guard recusa, para quem chama não seguir com
   // efeitos secundários (ex.: abrir um formulário de registo) numa navegação

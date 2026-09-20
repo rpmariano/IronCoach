@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -24,6 +24,7 @@ import { raceResultSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '../../utils/runRecord';
@@ -305,6 +306,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  /* Um campo obrigatório em falta ao gravar era só uma linha vermelha no fundo
+     do formulário, fora do ecrã quando se carrega em "Guardar" a meio de uma
+     página longa — foi o que aconteceu com o tempo oficial da prova
+     (relatado pelo utilizador: "a mensagem de alerta deve ser mais visível").
+     Passa a parar o ecrã com o mesmo diálogo "Dados Incompletos" que o
+     formulário da prova já usa, e a linha inline fica como estava para quem
+     volte a olhar para o campo. Os erros ASSÍNCRONOS (falha a gravar, limite
+     de imagens) continuam só inline: não são um passo em falta do atleta. */
+  const [validationError, setValidationError] = useState(null);
+  const failValidation = (msg) => {
+    setErrorMsg(msg);
+    setValidationError(msg);
+  };
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -1180,21 +1194,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (!runPhotos.length || analyzingRun) return;
 
     if (!runName.trim()) {
-      setErrorMsg('Preenche o nome da corrida.');
+      failValidation('Preenche o nome da corrida.');
       return;
     }
     if (runKind === 'treino' && !runTrainingType) {
-      setErrorMsg('Escolhe o tipo de treino.');
+      failValidation('Escolhe o tipo de treino.');
       return;
     }
     if (runKind === 'competicao' && !completedRaceType) {
-      setErrorMsg('Escolhe a disciplina.');
+      failValidation('Escolhe a disciplina.');
       return;
     }
     // O tempo oficial é o resultado da prova — sem ele não há o que comparar
     // com o objetivo no hub, e o registo do dia fica pela metade.
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
-      setErrorMsg('Indica o tempo oficial da prova.');
+      failValidation('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -1311,19 +1325,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const isForceReanalyze = forceReanalyze === true;
 
     if (!runName.trim()) {
-      setErrorMsg('Preenche o nome da corrida.');
+      failValidation('Preenche o nome da corrida.');
       return;
     }
     if (runKind === 'treino' && !runTrainingType) {
-      setErrorMsg('Escolhe o tipo de treino.');
+      failValidation('Escolhe o tipo de treino.');
       return;
     }
     if (runKind === 'competicao' && !completedRaceType) {
-      setErrorMsg('Escolhe a disciplina.');
+      failValidation('Escolhe a disciplina.');
       return;
     }
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
-      setErrorMsg('Indica o tempo oficial da prova.');
+      failValidation('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -2585,6 +2599,37 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       />
 
       {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
+
+      {/* O mesmo diálogo do formulário da prova (RunAgenda), pela mesma razão:
+          um campo obrigatório em falta tem de parar o ecrã, não ficar numa
+          linha no fundo da página. */}
+      {validationError && (
+      <PremiumModal
+        isOpen={!!validationError}
+        onClose={() => setValidationError(null)}
+        title="Dados Incompletos"
+        subtitle="Por favor, corrige os seguintes erros:"
+        icon={AlertTriangle}
+        theme="warning"
+        variant="dialog"
+      >
+        <div className="p-6 space-y-6">
+          <p data-testid="run-validation-error" className="text-sm text-[var(--text-3)] leading-relaxed text-center">
+            {validationError}
+          </p>
+          <div className="flex justify-center">
+            <Button
+              variant="module"
+              moduleColor="var(--mod-prova)"
+              onClick={() => setValidationError(null)}
+              className="w-full"
+            >
+              Entendido
+            </Button>
+          </div>
+        </div>
+      </PremiumModal>
+      )}
     </div>
   );
 }

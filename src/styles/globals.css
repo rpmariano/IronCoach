@@ -500,9 +500,11 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { .first-day-fact { animation: none; } }
 
 /* O primeiro registo de um tipo (shared/RecordConfirmation.jsx): a Carol
-   sobe por baixo do visto; a linha esvazia-se até seguir. */
+   sobe por baixo do visto. A linha que se esvaziava até seguir
+   (.first-record-drain) saiu com o temporizador: a mensagem já não desaparece
+   sozinha, espera pelo "Continuar" — uma contagem a correr prometia o
+   contrário do que agora acontece. */
 .first-record-card { animation: welcomeBubble 480ms var(--ease-out) both; }
-.first-record-drain { transform-origin: left; animation: welcomeDrain linear both; }
 @media (prefers-reduced-motion: reduce) { .first-record-card { animation: none; } }
 
 /* A resposta da Carol ao check-in (Home/CheckinCard.jsx): entra como uma

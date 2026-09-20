@@ -5,6 +5,7 @@ import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
+import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -67,6 +68,14 @@ export default function Dashboard({ activeModule }) {
   // "O conteúdo segue a pílula": o módulo que fica ativo entra do lado de
   // onde veio, 14px e uma pitada de opacidade, em 280ms.
   const setPageRef = useTabEnter(currentIndex);
+
+  /* A altura do carrossel segue o módulo ativo: sem isto o contentor tinha
+     sempre a altura do módulo mais alto dos cinco, e num módulo curto
+     sobrava esse vão como scroll vazio (relatado pelo utilizador a partir
+     do Perfil — o mesmo carrossel). */
+  const pageRefs = useRef([]);
+  const setCarouselPageRef = (i) => (el) => { pageRefs.current[i] = el; setPageRef(i)(el); };
+  useCarouselActiveHeight(scrollRef, pageRefs, currentIndex);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {
@@ -148,11 +157,11 @@ export default function Dashboard({ activeModule }) {
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
       >
-        <div ref={setPageRef(0)} className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
-        <div ref={setPageRef(1)} className="tab-swipe-page"><Run /></div>
-        <div ref={setPageRef(2)} className="tab-swipe-page"><Gym /></div>
-        <div ref={setPageRef(3)} className="tab-swipe-page"><Nutrition /></div>
-        <div ref={setPageRef(4)} className="tab-swipe-page"><Body /></div>
+        <div ref={setCarouselPageRef(0)} className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
+        <div ref={setCarouselPageRef(1)} className="tab-swipe-page"><Run /></div>
+        <div ref={setCarouselPageRef(2)} className="tab-swipe-page"><Gym /></div>
+        <div ref={setCarouselPageRef(3)} className="tab-swipe-page"><Nutrition /></div>
+        <div ref={setCarouselPageRef(4)} className="tab-swipe-page"><Body /></div>
       </div>
 
       <CoachInsightButton insights={insights} onClick={() => setShowInsights(true)} />
