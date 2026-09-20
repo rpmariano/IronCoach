@@ -32,8 +32,10 @@
    A Sequência — fica em prata, sem esmalte: não há cor para "quantas". */
 
 import { completedRaces } from './achievements';
-import { findRaceRun, formatDuration, raceDistanceLabel } from './run';
+import { findRaceRun, formatDuration, formatPace, raceDistanceLabel } from './run';
 import { formatDelta } from './raceOutcome';
+import { calculateVDOT } from '@formulas/racePrediction.ts';
+import { computeBestPace } from '@formulas/bestPace.ts';
 
 export const MEDALHAO_KEYS = ['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao'];
 
@@ -550,86 +552,240 @@ function distancias({ completed, raceEvents, today, todayYear }) {
   };
 }
 
-function recordes({ completed, todayYear }) {
+/* ── A escala d'Os Recordes: bronze, prata, ouro ───────────────────────────
+
+   Pedido do utilizador ("criar badges bronze, prata e ouro para: melhor
+   corrida de 5k/10km/21km/42km, passe mais rápido, melhor nível VO2").
+   Antes, cada encaixe deste medalhão era binário: ou tinhas batido o teu
+   tempo anterior naquela distância, ou não tinhas. Passa a ter três níveis,
+   e os dois encaixes novos — o ritmo e o VO2 — completam a lista pedida.
+
+   A RÉGUA É O VDOT (Daniels-Gilbert, @formulas/racePrediction.ts), que a app
+   já calcula e já mostra na tendência do dashboard de corrida. Escolheu-se
+   por ser a única medida que compara distâncias diferentes: um 10 km de ouro
+   e uma maratona de ouro exigem a mesma aptidão aeróbica, o que uma tabela
+   de tempos por distância nunca conseguiria. Os limiares estão TODOS aqui,
+   neste sítio e só neste, para se poderem afinar sem procurar:
+
+     VDOT 35 (bronze) = 5 km 27:01 · 10 km 56:06 · meia 2:04:22 · maratona 4:16:24
+     VDOT 45 (prata)  = 5 km 21:50 · 10 km 45:16 · meia 1:40:20 · maratona 3:28:27
+     VDOT 55 (ouro)   = 5 km 18:23 · 10 km 38:07 · meia 1:24:20 · maratona 2:56:03
+
+   O encaixe do RITMO não usa VDOT: mede velocidade pura (s/km) no melhor
+   esforço de sempre, venha de prova ou de treino, por isso tem a sua própria
+   escala. O do VO2 usa o melhor VDOT alguma vez atingido em qualquer corrida
+   — é o pico de forma, não o de hoje.
+
+   Quem não chega ao bronze não fica sem nada: o medalhão "As Distâncias"
+   continua a marcar a PRIMEIRA vez em cada distância, que é a recompensa de
+   quem está a começar. Este é o do mérito. */
+
+export const NIVEIS = [
+  { key: 'bronze', label: 'Bronze', enamel: 'bronze', vdot: 35, paceSeconds: 360 },
+  { key: 'prata', label: 'Prata', enamel: 'prata', vdot: 45, paceSeconds: 300 },
+  { key: 'ouro', label: 'Ouro', enamel: 'ouro', vdot: 55, paceSeconds: 255 },
+];
+
+/** O nível de um VDOT, ou null se ainda não chega ao bronze. */
+export function nivelPorVdot(vdot) {
+  if (!Number.isFinite(vdot) || vdot <= 0) return null;
+  let atingido = null;
+  for (const n of NIVEIS) if (vdot >= n.vdot) atingido = n;
+  return atingido;
+}
+
+/** O nível de um ritmo em s/km (mais baixo é melhor), ou null. */
+export function nivelPorRitmo(secPerKm) {
+  if (!Number.isFinite(secPerKm) || secPerKm <= 0) return null;
+  let atingido = null;
+  for (const n of NIVEIS) if (secPerKm <= n.paceSeconds) atingido = n;
+  return atingido;
+}
+
+/** O nível a seguir ao atingido — o que falta subir. */
+function proximoNivel(atual) {
+  const i = atual ? NIVEIS.findIndex((n) => n.key === atual.key) : -1;
+  return NIVEIS[i + 1] || null;
+}
+
+/* O VDOT de uma corrida: precisa de distância e de tempo. Nas provas usa-se
+   o tempo OFICIAL (é o que conta), nos treinos a duração registada. */
+function vdotDaCorrida(run) {
+  const km = num(run?.distance_km);
+  const segundos = num(run?.duration_seconds);
+  if (!km || !segundos) return 0;
+  return calculateVDOT(km, segundos);
+}
+
+function recordes({ completed, todayYear, runs }) {
   const due = [];
-  const slots = DISTANCIAS.map((dist) => {
-    const races = completed.filter(({ race, outcome }) => outcome?.officialSeconds && naDistancia(dist, race, outcome));
-    // O recorde conta-se DENTRO da distância oficial, pela ordem das provas
-    // (completed vem da mais antiga para a mais recente). O isPersonalRecord
-    // do raceOutcome compara pela categoria larga — um 15 km rápido tirava o
-    // recorde a uma meia verdadeira.
-    const pbs = [];
-    let anterior = null;
-    for (const entry of races) {
-      const s = entry.outcome.officialSeconds;
-      if (anterior != null && s < anterior) pbs.push({ ...entry, deltaBestSeconds: anterior - s });
-      if (anterior == null || s < anterior) anterior = s;
-    }
-    const best = anterior;
 
-    // Todas as provas com tempo oficial na distância; as que bateram o
-    // melhor de então levam `pb` e quanto o baixaram.
-    const contributions = newestFirst(races.map((entry) => {
-      const pb = pbs.find((p) => p.race === entry.race);
-      return raceContribution(entry, {
-        pb: !!pb,
-        deltaSeconds: pb ? pb.deltaBestSeconds : null,
-        metaExtra: pb ? [`recorde, menos ${formatDelta(pb.deltaBestSeconds)}`] : [],
-      });
-    }));
-    const contributionsSummary = races.length
-      ? `${races.length} ${plural(races.length, 'prova', 'provas')} com tempo · ${pbs.length} ${plural(pbs.length, 'recorde', 'recordes')}`
-      : null;
-
-    for (const { race, outcome, deltaBestSeconds } of pbs) {
-      due.push({
-        medalhao: 'recordes',
-        slot: dist.key,
-        periodKey: String(race.id ?? ''),
-        value: outcome.officialSeconds,
-        valueLabel: formatDuration(outcome.officialSeconds),
-        raceId: race.id ?? null,
-        awardedOn: dayOf(race.date),
-        title: dist.recorde,
-        line: `${formatDuration(outcome.officialSeconds)} — ${race.name || 'a prova'}, ${formatDelta(deltaBestSeconds)} abaixo do teu melhor anterior.`,
-      });
-    }
-
-    const last = pbs[pbs.length - 1] || null;
-    if (last) {
-      const date = dayOf(last.race.date);
+  /* Um encaixe de escala: o nível já atingido dá a cor e a gravação; o que
+     falta para o seguinte dá a linha de "para subir". `due` leva uma entrada
+     por nível NOVO — assim a cerimónia da medalha dispara em cada subida, e
+     a chave única de medal_awards (user, medalhão, encaixe, period_key)
+     guarda o nível em period_key sem precisar de coluna nova. */
+  const escalaSlot = ({ key, label, shortLabel, nivel, valueLabel, awardedOn, raceId, contexto, porSubir, semDados, contributions = [], contributionsSummary = null }) => {
+    const seguinte = proximoNivel(nivel);
+    if (!nivel) {
       return slot({
-        key: dist.key,
-        label: dist.label,
-        shortLabel: dist.short,
-        state: 'won',
-        enamel: 'cyan',
-        value: last.outcome.officialSeconds,
-        valueLabel: formatDuration(last.outcome.officialSeconds),
-        periodKey: String(last.race.id ?? ''),
-        awardedOn: date,
-        raceId: last.race.id ?? null,
-        detail: [
-          `ganho a ${fmtDate(date, todayYear)}`,
-          last.race.name || null,
-          `para repetir: abaixo de ${formatDuration(best)}`,
-        ].filter(Boolean).join(' · '),
-        wins: pbs.length,
-        contributions,
-        contributionsSummary,
+        key, label, shortLabel, enamel: 'bronze',
+        detail: semDados || `para ganhar bronze: ${porSubir(NIVEIS[0])}`,
+        contributions, contributionsSummary,
       });
     }
     return slot({
+      key, label, shortLabel, state: 'won', enamel: nivel.enamel,
+      value: nivel.vdot, valueLabel,
+      periodKey: nivel.key,
+      awardedOn, raceId,
+      detail: [
+        `${nivel.label}, ganho a ${fmtDate(awardedOn, todayYear)}`,
+        contexto || null,
+        seguinte ? `para ${seguinte.label.toLowerCase()}: ${porSubir(seguinte)}` : 'o nível mais alto desta escala',
+      ].filter(Boolean).join(' · '),
+      wins: NIVEIS.findIndex((n) => n.key === nivel.key) + 1,
+      contributions, contributionsSummary,
+    });
+  };
+
+  /* Cada nível conquistado até ao atual entra em `due` uma vez. Sem isto, um
+     atleta que chegasse direto a ouro nunca veria a cerimónia do bronze e da
+     prata — e o Palmarés mostraria um salto sem história. */
+  const cunharAte = (nivel, base) => {
+    if (!nivel) return;
+    for (const n of NIVEIS) {
+      due.push({ ...base, slot: base.slot, periodKey: n.key, value: n.vdot, title: `${base.title} · ${n.label}` });
+      if (n.key === nivel.key) break;
+    }
+  };
+
+  // ── Os quatro encaixes de distância ────────────────────────────────────
+  const slotsDistancia = DISTANCIAS.map((dist) => {
+    const races = completed.filter(({ race, outcome }) => outcome?.officialSeconds && naDistancia(dist, race, outcome));
+    const contributions = newestFirst(races.map((entry) => {
+      const vdot = calculateVDOT(num(entry.race.distance_km) || dist.min, entry.outcome.officialSeconds);
+      const n = nivelPorVdot(vdot);
+      const vdotTxt = String(vdot).replace('.', ',');
+      return raceContribution(entry, { metaExtra: n ? [`${n.label} · VDOT ${vdotTxt}`] : [`VDOT ${vdotTxt}`] });
+    }));
+    const contributionsSummary = races.length
+      ? `${races.length} ${plural(races.length, 'prova', 'provas')} de ${dist.label}`
+      : null;
+
+    // A melhor prova da distância é a de menor tempo oficial — é essa que
+    // define o nível, não a última que se correu.
+    let melhor = null;
+    for (const entry of races) {
+      if (!melhor || entry.outcome.officialSeconds < melhor.outcome.officialSeconds) melhor = entry;
+    }
+    const vdot = melhor ? calculateVDOT(num(melhor.race.distance_km) || dist.min, melhor.outcome.officialSeconds) : 0;
+    const nivel = nivelPorVdot(vdot);
+
+    /* O tempo que aquele nível exigiria NESTA distância: é o que torna a
+       meta concreta ("abaixo de 1:40:20 numa meia") em vez de um número de
+       VDOT que ninguém corre. Procura-se o tempo por bissecção porque a
+       equação de Daniels não se inverte em forma fechada. */
+    const tempoParaVdot = (alvo) => {
+      const km = num(melhor?.race?.distance_km) || (dist.min + dist.max) / 2;
+      let rapido = 60; let lento = 60 * 60 * 12;
+      for (let i = 0; i < 60; i++) {
+        const meio = (rapido + lento) / 2;
+        if (calculateVDOT(km, meio) >= alvo) rapido = meio; else lento = meio;
+      }
+      return Math.round(lento);
+    };
+
+    if (nivel) {
+      cunharAte(nivel, {
+        medalhao: 'recordes',
+        slot: dist.key,
+        raceId: melhor.race.id ?? null,
+        awardedOn: dayOf(melhor.race.date),
+        valueLabel: formatDuration(melhor.outcome.officialSeconds),
+        title: dist.recorde,
+        line: `${formatDuration(melhor.outcome.officialSeconds)} em ${dist.nome} — ${melhor.race.name || 'a prova'}. VDOT ${String(vdot).replace('.', ',')}.`,
+      });
+    }
+
+    return escalaSlot({
       key: dist.key,
       label: dist.label,
       shortLabel: dist.short,
-      enamel: 'cyan',
-      detail: races.length
-        ? `para ganhar: abaixo de ${formatDuration(best)} numa prova de ${dist.label}`
-        : `precisa de duas provas de ${dist.label}: a primeira marca o tempo a bater`,
+      nivel,
+      valueLabel: melhor ? formatDuration(melhor.outcome.officialSeconds) : null,
+      awardedOn: melhor ? dayOf(melhor.race.date) : null,
+      raceId: melhor?.race?.id ?? null,
+      contexto: melhor?.race?.name || null,
+      porSubir: (n) => `abaixo de ${formatDuration(tempoParaVdot(n.vdot))} numa prova de ${dist.label}`,
+      semDados: races.length ? null : `precisa de uma prova de ${dist.label} com tempo oficial`,
       contributions,
       contributionsSummary,
     });
+  });
+
+  // ── O ritmo: o passo mais rápido de sempre, de prova ou de treino ──────
+  const melhorRitmo = [5, 10, 21]
+    .map((km) => computeBestPace(runs || [], km))
+    .filter(Boolean)
+    .reduce((melhor, r) => (!melhor || r.pace < melhor.pace ? r : melhor), null);
+  const nivelRitmo = nivelPorRitmo(melhorRitmo?.pace);
+  if (nivelRitmo) {
+    cunharAte(nivelRitmo, {
+      medalhao: 'recordes',
+      slot: 'ritmo',
+      raceId: null,
+      awardedOn: dayOf(melhorRitmo.date),
+      valueLabel: `${formatPace(melhorRitmo.pace)}/km`,
+      title: 'Passo mais rápido',
+      line: `${formatPace(melhorRitmo.pace)}/km — o teu passo mais rápido de sempre.`,
+    });
+  }
+  const slotRitmo = escalaSlot({
+    key: 'ritmo',
+    label: 'Passo',
+    shortLabel: 'passo',
+    nivel: nivelRitmo,
+    valueLabel: melhorRitmo ? `${formatPace(melhorRitmo.pace)}/km` : null,
+    awardedOn: melhorRitmo ? dayOf(melhorRitmo.date) : null,
+    raceId: null,
+    contexto: melhorRitmo ? (melhorRitmo.source === 'split' ? 'num parcial' : 'numa corrida inteira') : null,
+    porSubir: (n) => `um esforço a ${formatPace(n.paceSeconds)}/km ou melhor`,
+    semDados: melhorRitmo ? null : 'precisa de uma corrida com distância e tempo',
+  });
+
+  // ── O VO2: o melhor VDOT alguma vez atingido, em qualquer corrida ──────
+  let melhorVdotRun = null;
+  let melhorVdot = 0;
+  for (const run of runs || []) {
+    const v = vdotDaCorrida(run);
+    if (v > melhorVdot) { melhorVdot = v; melhorVdotRun = run; }
+  }
+  const nivelVo2 = nivelPorVdot(melhorVdot);
+  // Vírgula decimal, como o resto dos números da app (ver fmtKm).
+  const vdotLabel = String(melhorVdot).replace('.', ',');
+  if (nivelVo2) {
+    cunharAte(nivelVo2, {
+      medalhao: 'recordes',
+      slot: 'vo2',
+      raceId: null,
+      awardedOn: dayOf(melhorVdotRun?.date),
+      valueLabel: vdotLabel,
+      title: 'Nível de VO2',
+      line: `VDOT ${vdotLabel} — o teu melhor nível de sempre.`,
+    });
+  }
+  const slotVo2 = escalaSlot({
+    key: 'vo2',
+    label: 'VO2',
+    shortLabel: 'VO2',
+    nivel: nivelVo2,
+    valueLabel: melhorVdot ? vdotLabel : null,
+    awardedOn: melhorVdotRun ? dayOf(melhorVdotRun.date) : null,
+    raceId: null,
+    contexto: melhorVdot ? `VDOT ${vdotLabel}` : null,
+    porSubir: (n) => `VDOT ${n.vdot} ou mais numa corrida`,
+    semDados: melhorVdot ? null : 'precisa de uma corrida com distância e tempo',
   });
 
   return {
@@ -637,8 +793,8 @@ function recordes({ completed, todayYear }) {
       key: 'recordes',
       name: 'Os Recordes',
       engraving: 'OS RECORDES',
-      rule: 'Ganha-se quando uma prova bate o teu melhor tempo anterior na mesma distância, e volta a cunhar-se a cada recorde novo.',
-      slots,
+      rule: 'Três níveis — bronze, prata e ouro — em cada uma das quatro distâncias, no passo mais rápido e no nível de VO2. A régua é o VDOT, que compara distâncias diferentes pela aptidão que exigem.',
+      slots: [...slotsDistancia, slotRitmo, slotVo2],
     }),
     due,
   };
