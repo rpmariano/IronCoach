@@ -133,4 +133,13 @@ describe('RaceLevelSuggestion', () => {
     expect(screen.getByText('Básico')).toBeInTheDocument();
     expect(screen.queryByText(/D\+\/semana/)).not.toBeInTheDocument();
   });
+
+  /* Voz única (P.7): é uma fórmula, e diz que o é — nunca passa por ela. */
+  it('identifica-se como cálculo, não como a Carol', () => {
+    getRacePrediction.mockReturnValue({ predictedSeconds: 4000 });
+    render(<RaceLevelSuggestion {...baseProps({ declaredLevel: 'avancado', onUseLevel: vi.fn() })} />);
+    expect(screen.getByText('Nível calculado')).toBeInTheDocument();
+    expect(screen.getByText(/não uma opinião da Carol/)).toBeInTheDocument();
+  });
 });
+

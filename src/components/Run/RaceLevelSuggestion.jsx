@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Sparkles, AlertOctagon } from 'lucide-react';
+import { Calculator, AlertOctagon } from 'lucide-react';
 import Warning, { WarningAction } from '../shared/Warning';
 import { getRacePrediction } from '../../utils/biEngine';
 import { assessRaceLevelTriage } from '@formulas/raceLevelTriage.ts';
@@ -40,7 +40,13 @@ function formatHoursMinutes(totalSeconds) {
  *
  * Não renderiza nada sem distância válida, sem previsão de tempo (zero
  * corridas registadas) ou fora da forma que o motor sabe avaliar.
+ *
+ * Voz única (P.7 de specs/carol-omnisciencia-omnipresenca.md): isto é uma
+ * fórmula, não a Carol. Por isso não leva o ícone dela (Sparkles) nem o
+ * tom dela — é um cálculo, com o ícone de cálculo, e diz que o é. O que a
+ * Carol acha da prova diz-o ela no hub e no chat.
  */
+const NOTA_FORMULA = 'Cálculo a partir dos teus últimos treinos, não uma opinião da Carol.';
 export default function RaceLevelSuggestion({
   raceType,
   distanceKm,
@@ -94,7 +100,7 @@ export default function RaceLevelSuggestion({
   if (result.level == null) {
     return (
       <p className="text-[11px] text-[var(--text-3)] mt-1.5 flex items-start gap-1.5">
-        <Sparkles size={12} className="shrink-0 mt-0.5 opacity-60" />
+        <Calculator size={12} className="shrink-0 mt-0.5 opacity-60" />
         <span>Ainda sem dados suficientes dos últimos treinos (menos de 3 das últimas 4 semanas com registo) para sugerir automaticamente o teu nível para esta prova.</span>
       </p>
     );
@@ -115,11 +121,12 @@ export default function RaceLevelSuggestion({
   // Excêntrica) — avisa com firmeza em vez de propor uma ação de um clique.
   if (result.level === 'sub_iniciante') {
     return (
-      <Warning tone="danger" title="Preparação insuficiente" icon={<AlertOctagon size={14} />} className="mt-1.5">
+      <Warning tone="danger" title="Preparação insuficiente (cálculo)" icon={<AlertOctagon size={14} />} className="mt-1.5">
         Pelos teus últimos treinos ({evidence || 'sem registo suficiente'}), a tua preparação
         está abaixo do que esta prova exige — mesmo para o nível Iniciante. Considera reduzir o
         objetivo, mudar a prioridade da prova para Secundária/Treino, ou dar mais tempo à
         preparação antes de escolheres um nível aqui.
+        <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--text-4)' }}>{NOTA_FORMULA}</span>
       </Warning>
     );
   }
@@ -130,16 +137,17 @@ export default function RaceLevelSuggestion({
   const matchesDeclared = declaredLevel && declaredLevel === result.level;
   if (matchesDeclared) {
     return (
-      <Warning tone="ok" title="Nível confirmado" icon={<Sparkles size={12} />} className="mt-1.5">
+      <Warning tone="ok" title="Nível calculado: bate certo" icon={<Calculator size={12} />} className="mt-1.5">
         Pelos teus últimos treinos ({evidence}), o nível que escolheste bate certo.
+        <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--text-4)' }}>{NOTA_FORMULA}</span>
       </Warning>
     );
   }
 
   return (
     <Warning
-      title="Nível sugerido"
-      icon={<Sparkles size={14} />}
+      title="Nível calculado"
+      icon={<Calculator size={14} />}
       className="mt-1.5"
       actions={
         <WarningAction onClick={() => onUseLevel(result.level)}>
@@ -149,6 +157,7 @@ export default function RaceLevelSuggestion({
     >
       Pelos teus últimos treinos ({evidence}), classificas-te como{' '}
       <strong>{levelLabel(result.level)}</strong> para esta prova.
+      <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--text-4)' }}>{NOTA_FORMULA}</span>
     </Warning>
   );
 }
