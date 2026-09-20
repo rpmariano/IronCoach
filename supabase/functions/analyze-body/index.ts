@@ -174,9 +174,10 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
        avaliação é escrita na hora LOCAL do atleta. Entre a meia-noite e a uma
        da manhã em Lisboa no horário de verão, o "hoje" em UTC ainda é ontem —
        uma pesagem acabada de registar dava idade -1 e o peso do perfil não se
-       repunha, sem nada nos logs a dizer porquê. Um dia de folga cobre
-       qualquer fuso a ocidente de UTC+14 sem abrir a janela a datas futuras
-       a sério. */
+       repunha, sem nada nos logs a dizer porquê. O desencontro é dos fusos a
+       ORIENTE de UTC — os que já entraram no dia seguinte enquanto o servidor
+       ainda conta o anterior. Um dia de folga cobre qualquer um deles sem
+       abrir a janela a datas futuras a sério. */
     const recente = idade !== null && idade >= -1 && idade <= PESO_RECENTE_DIAS;
     if (Number.isFinite(peso) && peso > 0 && recente) {
       /* Só se não houver nenhuma avaliação mais recente: editar a de há três

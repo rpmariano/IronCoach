@@ -365,12 +365,17 @@ export default function Onboarding({ reentry = false, onDone }) {
         experience_level: draft.experience_level || 'iniciante',
         race_priority: 'a',
         elevation_gain_m: draft.race_type === 'trail' ? parseNum(draft.race_elevation_gain_m) : null,
-        /* Sem `status`, como o formulário da prova também faz: deixa o
-           default da coluna. Marcá-la 'concluida' por a data ser passada
-           criava uma prova concluída SEM corrida ligada, e essas são
-           filtradas por completedRaces — o que cortava já a sequência no
-           medalhão "A Sequência" a quem declarasse no arranque uma prova
-           que já correu. */
+        /* Sem `status`: deixa o default da coluna ('agendada'). Marcá-la
+           'concluida' por a data ser passada criava uma prova concluída SEM
+           corrida ligada, e essas são filtradas por completedRaces — o que
+           cortava já a sequência no medalhão "A Sequência" a quem
+           declarasse no arranque uma prova que já correu.
+
+           NOTA: isto DIVERGE de propósito do formulário da prova, que ainda
+           põe `status: date < hoje ? 'concluida' : 'agendada'` no insert
+           (Run/RunAgenda.jsx). O mesmo defeito continua lá; não se corrigiu
+           aqui por estar fora do âmbito. Quem for alinhar os dois, alinhe o
+           formulário por este, não o contrário. */
       };
       const { data, error } = await supabase.from('race_events').insert(payload).select().single();
       if (error || !data) {
