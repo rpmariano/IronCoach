@@ -996,7 +996,10 @@ describe('RunRegistration — modo prova', () => {
 
   /* A Carol lê o diploma (pedido 2026-09-13): ao juntar a imagem, a
      analyze-diploma devolve a leitura e o atleta aplica-a ao registo. */
-  it('ao juntar o diploma, a Carol lê-o e "Aplicar" preenche o registo com o tempo de chip', async () => {
+  /* O diploma é o documento oficial da prova: entra sozinho nos campos do
+     resultado, por cima do que lá estiver. Era preciso tocar em "Aplicar"
+     (pedido do utilizador para o tirar do caminho). */
+  it('ao juntar o diploma, a Carol lê-o e preenche sozinha o registo com o tempo de chip', async () => {
     entrarPeloPrefill();
     mocks.invoke.mockImplementation((fn) => fn === 'analyze-diploma'
       ? Promise.resolve({ data: { reading: { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group: null, age_group_position: 226, gender_position: null, participants: null, bib_number: null, splits: [{ km: 5, seconds: 1515 }] } }, error: null })
@@ -1008,14 +1011,15 @@ describe('RunRegistration — modo prova', () => {
       fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
     });
     const leitura = await screen.findByTestId('diploma-reading');
-    expect(leitura).toHaveTextContent('A Carol leu o diploma');
+    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'applied'));
     // O cartão vive nas Memórias, por baixo do diploma — não em "O resultado".
     expect(screen.getByTestId('race-memories')).toContainElement(leitura);
     expect(leitura).toHaveTextContent('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
     expect(leitura).toHaveTextContent('Em nome de RUI MARIANO');
     expect(JSON.parse(mocks.invoke.mock.calls[0][1].body).image).toBe('AAA');
 
-    fireEvent.click(screen.getByTestId('diploma-reading-apply'));
+    // Sem passar por botão nenhum: os campos já lá estão.
+    expect(screen.queryByTestId('diploma-reading-apply')).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Tempo oficial/).value).toBe('51:27');
     expect(screen.getByLabelText('Posição geral (opcional)').value).toBe('1668');
     expect(screen.getByLabelText('Pos. escalão').value).toBe('226');

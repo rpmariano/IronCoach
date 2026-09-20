@@ -65,13 +65,17 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
     if (memory) {
       setDiploma(memory);
       setDirty(true);
-      // Só há onde aplicar com a corrida registada; um PDF não se lê.
-      if (run?.id) diplomaReading.ask(memory);
+      /* Só há onde aplicar com a corrida registada; um PDF não se lê. A
+         leitura aplica-se SOZINHA: o diploma é o documento oficial da prova
+         e ganha ao que foi escrito à mão (pedido do utilizador). */
+      if (run?.id) {
+        const reading = await diplomaReading.ask(memory);
+        if (reading) await aplicarLeitura(reading);
+      }
     }
   };
 
-  const applyReading = async () => {
-    const reading = diplomaReading.state?.reading;
+  const aplicarLeitura = async (reading) => {
     if (!reading || !run?.id) return;
     diplomaReading.markApplying();
     try {
@@ -170,11 +174,8 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
             afterDiploma={(
               <DiplomaReadingCard
                 state={diplomaReading.state}
-                onApply={applyReading}
-                onDismiss={diplomaReading.clear}
-                applyLabel="Aplicar à corrida"
                 appliedLabel="Aplicado à corrida"
-                appliedHint="O tempo oficial e a classificação já estão na corrida. Guarda as memórias para ficares com o diploma."
+                appliedHint="O que o diploma diz ficou na corrida, por cima do que estava. Guarda as memórias para ficares com o diploma."
                 manualHint="Podes acrescentar à mão em “Editar a corrida”."
               />
             )}

@@ -246,6 +246,26 @@ describe('dados do mural', () => {
     expect(graphicUnavailableReason('titulo', { data: d })).toBeNull();
   });
 
+  /* A razão do diploma distingue "não há diploma" de "o diploma só deu o
+     tempo": dizer "sem dados do diploma" a quem acabou de o carregar é uma
+     mentira a quem sabe que o carregou (relatado pelo utilizador). */
+  it('o diploma distingue não haver dados de haver só o tempo', () => {
+    const semDiploma = muralData({ race: TEJO, run: { distance_km: 10, details: {} }, seconds: 3087 });
+    expect(graphicUnavailableReason('diploma', { data: semDiploma }))
+      .toBe('Sem dados do diploma — junta-o nas Memórias da prova');
+
+    const soOTempo = muralData({ race: TEJO, run: { distance_km: 10, details: { official_time_seconds: 3087 } }, seconds: 3087 });
+    expect(graphicUnavailableReason('diploma', { data: soOTempo }))
+      .toBe('O diploma só deu o tempo, que já aparece em grande');
+
+    const completo = muralData({
+      race: TEJO,
+      run: { distance_km: 10, details: { official_time_seconds: 3087, position: 1668 } },
+      seconds: 3087,
+    });
+    expect(graphicUnavailableReason('diploma', { data: completo })).toBeNull();
+  });
+
   it('a medalha nunca cobre o texto, mesmo empilhada com a marca no mesmo canto (achado na revisão pré-deploy 2026-09-14)', () => {
     for (const template of ['capa', 'mosaico4', 'mosaico6']) {
       for (const format of Object.keys(STUDIO_FORMATS)) {

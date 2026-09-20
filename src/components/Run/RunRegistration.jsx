@@ -886,15 +886,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (memory) {
       setDiploma(memory);
       setIsFormDirty(true);
-      // Em modo prova a Carol lê o diploma logo (analyze-diploma) e o
-      // registo mostra a leitura para o atleta aplicar — não se preenche
-      // nada por conta própria. Um PDF não se lê (o hook ignora-o).
-      if (isRaceMode) diplomaReading.ask(memory);
+      /* Em modo prova a Carol lê o diploma logo (analyze-diploma) e o que ele
+         diz entra SOZINHO nos campos do resultado, por cima do que lá
+         estiver: o diploma é o documento oficial da prova e ganha ao que foi
+         escrito à mão (pedido do utilizador). Nada fica gravado sem ele
+         guardar o registo, por isso continua a poder corrigir qualquer campo
+         antes disso. Um PDF não se lê (o hook ignora-o). */
+      if (isRaceMode) {
+        const reading = await diplomaReading.ask(memory);
+        if (reading) applyDiplomaReading(reading);
+      }
     }
   };
 
-  const applyDiplomaReading = () => {
-    const values = diplomaFormValues(diplomaReading.state?.reading);
+  const applyDiplomaReading = (reading) => {
+    const values = diplomaFormValues(reading || diplomaReading.state?.reading);
     if (values.officialTime) setOfficialTime(values.officialTime);
     if (values.position) setPosition(values.position);
     if (values.ageGroup) setAgeGroup(values.ageGroup);
@@ -1925,11 +1931,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             afterDiploma={(
               <DiplomaReadingCard
                 state={diplomaReading.state}
-                onApply={applyDiplomaReading}
-                onDismiss={diplomaReading.clear}
-                applyLabel="Aplicar ao registo"
                 appliedLabel="Aplicado ao registo"
-                appliedHint="O tempo oficial e a classificação ficaram em “O resultado”, lá em cima."
+                appliedHint="O que o diploma diz ficou em “O resultado”, lá em cima, por cima do que estava. Confere antes de guardar."
                 manualHint="Podes preencher à mão em “O resultado”, lá em cima."
               />
             )}

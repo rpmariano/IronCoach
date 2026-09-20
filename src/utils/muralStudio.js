@@ -141,9 +141,13 @@ export function muralData({ race, run, seconds, classification = '', achievement
     .forEach((s) => cells.push({ label: `${String(s.km).replace('.', ',')} km`, value: formatDuration(s.seconds) }));
   if (Number(details.position) > 0) cells.push({ label: 'Geral', value: `${details.position}.º` });
   if (Number(details.age_group_position) > 0) cells.push({ label: details.age_group || 'Escalão', value: `${details.age_group_position}.º` });
-  // O cartão só vale a pena com o que o relógio não dá: um tempo oficial
-  // sozinho repete o tempo em grande.
+  /* O cartão só vale a pena com o que o relógio não dá: um tempo oficial
+     sozinho repete o tempo que já aparece em grande. Mas o número de
+     células que HAVIA fica guardado — senão o estúdio dizia "Sem dados do
+     diploma" a quem tinha o diploma lido e um dado dele à frente, que é
+     uma mentira a quem sabe que o carregou (relatado pelo utilizador). */
   const diplomaCells = cells.length >= 2 ? cells.slice(0, 6) : [];
+  const diplomaCellCount = cells.length;
   return {
     eyebrow: ['Prova concluída', muralDateLabel(race?.date), race?.location || ''].filter(Boolean).join(' · ').toUpperCase(),
     name: race?.name || 'A minha prova',
@@ -155,6 +159,7 @@ export function muralData({ race, run, seconds, classification = '', achievement
     fastestPace: paces.length ? paceLabel(Math.min(...paces)) : '',
     achievements: (achievements || []).map((a) => a?.name).filter(Boolean).slice(0, 4),
     diplomaCells,
+    diplomaCellCount,
   };
 }
 
@@ -167,7 +172,12 @@ export function graphicUnavailableReason(key, { data, candidates = [], template 
     case 'classificacao': return data.classification ? null : 'Sem classificação do diploma';
     case 'ritmo': return data.paces.length >= 2 ? null : 'Sem parciais por km';
     case 'conquistas': return data.achievements.length ? null : 'Sem conquistas nesta prova';
-    case 'diploma': return data.diplomaCells.length ? null : 'Sem dados do diploma';
+    case 'diploma':
+      if (data.diplomaCells.length) return null;
+      // Um dado só, e ele é o tempo: dizer "sem dados" seria falso.
+      return data.diplomaCellCount > 0
+        ? 'O diploma só deu o tempo, que já aparece em grande'
+        : 'Sem dados do diploma — junta-o nas Memórias da prova';
     case 'medalhao':
       if (template === 'trofeu') return 'O Troféu já tem a medalha ao centro';
       // Sem fotos, o texto ocupa quase a tela toda — não há canto de cima

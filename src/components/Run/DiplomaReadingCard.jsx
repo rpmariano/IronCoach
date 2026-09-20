@@ -8,9 +8,16 @@ import { readDiploma, describeDiplomaReading } from '../../utils/diplomaReading'
    leitura tem de aparecer AO LADO do diploma, seja ele posto onde for —
    não numa secção lá em cima que o atleta já não está a ver.
 
-   Estados: reading → ready (Aplicar/Ignorar) → applied (fica visível a
-   confirmar o que entrou) | failed (a mensagem e a dica para preencher à
-   mão). Nada se grava sem o atleta tocar em "Aplicar". */
+   Estados: reading → applied (fica visível a confirmar o que entrou) |
+   failed (a mensagem e a dica para preencher à mão).
+
+   O diploma É o documento oficial da prova: o que se conseguir ler dele
+   ganha ao que foi escrito à mão, e aplica-se sozinho — pedido do
+   utilizador, depois de a leitura ter corrido três vezes com sucesso e os
+   números nunca terem chegado à corrida por faltar o toque em "Aplicar".
+   O passo `ready`, com o botão, deixou de existir; o cartão passa a dizer
+   o que entrou em vez de pedir licença. Enganando-se a leitura, o atleta
+   corrige em "Editar a corrida" — caminho que o cartão indica. */
 
 export function useDiplomaReading() {
   const [state, setState] = useState(null);
@@ -21,18 +28,22 @@ export function useDiplomaReading() {
 
   const ask = async (memory) => {
     // Trocar a imagem por um PDF: a leitura anterior já não é deste ficheiro.
-    if (!memory || memory.isPdf) { clear(); return; }
+    if (!memory || memory.isPdf) { clear(); return null; }
     const requestId = ++requestRef.current;
     setState({ status: 'reading', reading: null, error: '' });
     try {
       const reading = await readDiploma(memory);
-      if (requestId !== requestRef.current) return;
-      setState({ status: 'ready', reading, error: '' });
+      if (requestId !== requestRef.current) return null;
+      // Fica em 'reading' até quem chamou aplicar: o cartão nunca chega a
+      // mostrar um estado à espera de decisão que já não existe.
+      setState({ status: 'reading', reading, error: '' });
+      return reading;
     } catch (err) {
-      if (requestId !== requestRef.current) return;
+      if (requestId !== requestRef.current) return null;
       console.warn('Leitura do diploma falhou', err);
       setState({ status: 'failed', reading: null, error: err?.message || 'Não consegui ler o diploma.' });
     }
+    return null;
   };
   const markApplying = () => setState((prev) => (prev ? { ...prev, applying: true, error: '' } : prev));
   const markApplied = () => setState((prev) => (prev ? { ...prev, status: 'applied', applying: false, error: '' } : prev));
@@ -43,22 +54,18 @@ export function useDiplomaReading() {
 
 const titleFor = (status, appliedLabel) => {
   if (status === 'reading') return 'A Carol está a ler o diploma…';
-  if (status === 'ready') return 'A Carol leu o diploma';
   if (status === 'applied') return appliedLabel;
   return 'Diploma por ler';
 };
 
 export default function DiplomaReadingCard({
   state,
-  onApply,
-  onDismiss,
-  applyLabel = 'Aplicar ao registo',
   appliedLabel = 'Aplicado ao registo',
   appliedHint = '',
   manualHint = 'Podes preencher à mão.',
 }) {
   if (!state) return null;
-  const { status, reading, error, applying } = state;
+  const { status, reading, error } = state;
   const summary = describeDiplomaReading(reading);
 
   return (
@@ -80,42 +87,18 @@ export default function DiplomaReadingCard({
         </div>
       )}
 
-      {(status === 'ready' || status === 'applied') && (
+      {status === 'applied' && (
         <p className="text-[12.5px] leading-[1.5] mt-1.5" style={{ color: 'var(--text-1)' }}>{summary}</p>
       )}
 
-      {status === 'ready' && (
+      {status === 'applied' && (
         <>
           {reading?.athlete_name && (
-            <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>Em nome de {reading.athlete_name}. Confirma antes de aplicar.</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>Em nome de {reading.athlete_name}.</p>
           )}
-          <div className="flex gap-2 mt-2.5">
-            <button
-              type="button"
-              data-testid="diploma-reading-apply"
-              onClick={onApply}
-              disabled={!!applying}
-              className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-extrabold disabled:opacity-60"
-              style={{ minHeight: 44, padding: '0 14px', background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)', border: 'none' }}
-            >
-              {applying ? 'A aplicar…' : applyLabel}
-            </button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              disabled={!!applying}
-              className="inline-flex items-center justify-center rounded-[11px] text-[12.5px] font-bold disabled:opacity-60"
-              style={{ minHeight: 44, padding: '0 12px', background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}
-            >
-              Ignorar
-            </button>
-          </div>
+          {appliedHint && <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>{appliedHint}</p>}
           {error && <p data-testid="diploma-reading-error" className="text-[12px] leading-[1.5] mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
         </>
-      )}
-
-      {status === 'applied' && appliedHint && (
-        <p className="text-[11px] mt-1" style={{ color: 'var(--text-4)' }}>{appliedHint}</p>
       )}
 
       {status === 'failed' && (

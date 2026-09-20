@@ -67,7 +67,11 @@ beforeEach(() => {
 describe('RaceMemoriesSheet — a Carol lê o diploma que chega depois', () => {
   const TEJO = { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group_position: 226, splits: [{ km: 5, seconds: 1515 }] };
 
-  it('ao juntar o diploma, lê-o ao lado dele e "Aplicar à corrida" grava em runs.details na hora', async () => {
+  /* O diploma é o documento oficial da prova: o que se lê dele entra sozinho
+     na corrida, por cima do que estava. Era preciso tocar em "Aplicar", e os
+     números ficavam de fora quando ninguém tocava — foi o que aconteceu a
+     quem o reportou, com três leituras bem sucedidas e nada aplicado. */
+  it('ao juntar o diploma, lê-o e grava sozinho em runs.details, por cima do manual', async () => {
     mocks.diploma = { data: { reading: TEJO }, error: null };
     render(<RaceMemoriesSheet race={RACE} run={RACE_RUN} userId="user-1" onClose={() => {}} />);
     await screen.findByTestId('race-memories-save');
@@ -76,14 +80,13 @@ describe('RaceMemoriesSheet — a Carol lê o diploma que chega depois', () => {
     });
 
     const leitura = await screen.findByTestId('diploma-reading');
-    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'ready'));
+    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'applied'));
     expect(leitura).toHaveTextContent('tempo de chip 51:27 (bruto 51:51) · 1668.º geral · 226.º no escalão · passagem aos 5 km 25:15');
     // O cartão está mesmo por baixo do diploma, não no fim da persiana.
     expect(screen.getByText('Diploma').parentElement).toContainElement(leitura);
-    expect(mocks.updates).toEqual([]); // nada gravado sem "Aplicar"
+    // Sem passar por nenhum botão.
+    expect(screen.queryByRole('button', { name: 'Aplicar à corrida' })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar à corrida' }));
-    await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'applied'));
     expect(mocks.updates).toEqual([{ table: 'runs', id: 'run-1', payload: { details: {
       official_time_seconds: 3087, position: 1668, age_group_position: 226, gun_time_seconds: 3111, official_splits: [{ km: 5, seconds: 1515 }],
     } } }]);
