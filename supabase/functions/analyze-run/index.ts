@@ -24,6 +24,7 @@ import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -417,6 +418,38 @@ export function computeRunRecordContext(
   return { bestPacesLine, personalRecordKind: personalRecord?.kind ?? null };
 }
 
+/**
+ * A linha "Volume semanal" do contexto do Coach — sempre a semana de
+ * CALENDÁRIO (segunda a domingo) que contém `todayISO`, nunca uma janela
+ * rolante.
+ *
+ * Havia aqui uma janela rolante dos "7 dias terminados hoje": numa
+ * segunda-feira essa janela cobre quase toda a semana anterior, e o rótulo
+ * genérico "Volume semanal" levava a Carol a descrevê-lo como a semana
+ * cumprida/terminada — quando a semana de calendário tinha acabado de
+ * começar (bug relatado 2026-09-21: "a análise diz que terminei o volume
+ * semanal, sendo hoje o primeiro dia da semana"). Mesma confusão
+ * rolante/calendário do bug documentado no cabeçalho de
+ * _shared/formulas/weeklyVolume.ts, que já a resolveu para a Carol no chat
+ * (coach-chat, buildWeeklyRunningContext) — usa-se aqui o mesmo motor.
+ *
+ * `runs` deve incluir a corrida que está a ser registada — o chamador
+ * junta-a ao histórico antes de chamar esta função.
+ */
+export function buildWeeklyVolumeLine(
+  runs: { date: string; distance_km: number | null }[],
+  todayISO: string,
+): string {
+  if (!runs.length) return "";
+  const { currentWeek } = computeCalendarWeeklyVolume(runs, todayISO);
+  // 1=segunda .. 7=domingo, em UTC sobre a string — a mesma conta de
+  // weeklyVolume.ts, para dizer explicitamente que a semana ainda não
+  // acabou em vez de deixar o modelo adivinhar pelo número.
+  const dow = ((new Date(todayISO + "T00:00:00Z").getUTCDay() + 6) % 7) + 1;
+  const aDecorrer = dow < 7 ? `, ainda a decorrer (dia ${dow} de 7, segunda a domingo)` : "";
+  return `${currentWeek.km.toFixed(1)} km em ${currentWeek.count} corrida(s), semana de calendário (segunda a domingo)${aDecorrer}`;
+}
+
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
 // baseado na corrida acabada de ser criada e no contexto das últimas corridas.
 async function generateCoachNotes(
@@ -515,15 +548,9 @@ async function generateCoachNotes(
         : `~${Math.abs(diff)}s/km mais lento que a média recente`;
   }
 
-  let weeklyVolumeStr = "";
-
-  if (previousRuns.length > 0) {
-    const sevenDaysAgo = new Date(run.date);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const recentWeekRuns = previousRuns.filter((r) => new Date(r.date) >= sevenDaysAgo);
-    const weeklyVol = recentWeekRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0) + (run.distance_km || 0);
-    weeklyVolumeStr = `${weeklyVol.toFixed(1)} km (nos 7 dias terminados hoje)`;
-  }
+  const weeklyVolumeStr = (previousRuns.length > 0 || (run.distance_km || 0) > 0)
+    ? buildWeeklyVolumeLine([...previousRuns, { date: run.date, distance_km: run.distance_km }], run.date)
+    : "";
 
   // bestPacesLine e personalRecordKind (ação 5.3): substituem o antigo
   // min(pace) de qualquer distância e a tendência crua por metade do
@@ -591,7 +618,7 @@ async function generateCoachNotes(
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
     `- Se o contexto abaixo diz que esta corrida é um novo recorde pessoal (ritmo ou distância), é a PRIMEIRA frase — com o número e a diferença para o recorde anterior, usando os "melhores por escalão" dados. É o momento de reconhecer; noutro dia qualquer, não se elogia por rotina.\n` +
-    `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
+    `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada. O "Volume semanal" abaixo é sempre a semana de CALENDÁRIO (segunda a domingo) em curso, nunca uma janela rolante — se disser "ainda a decorrer", NUNCA a trates como cumprida, terminada ou fechada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +

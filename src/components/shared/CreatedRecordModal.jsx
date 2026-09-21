@@ -5,7 +5,7 @@ import Button from './Button';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { useToast } from './ToastProvider';
-import { MessageSquare, Edit2, CheckCircle2, Trash2 } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
 
 import RunCard from '../Run/RunCard';
 import GymSessionCard from '../Gym/GymSessionCard';
@@ -31,7 +31,6 @@ export default function CreatedRecordModal() {
     profile,
     setProfile,
     setActiveTab,
-    setSelectedDate,
     dismissedInterventions,
     dismissIntervention,
     loadInitialData,
@@ -83,22 +82,6 @@ export default function CreatedRecordModal() {
   const showCoachButton = !isDismissed && (interventionNeeded || profile?.coach_intervention_status === 'needed' || hasInterventionInRecord);
 
   const handleClose = () => {
-    clearNewlyCreatedRecord();
-  };
-
-  const handleUpdate = () => {
-    if (record.date) {
-      setSelectedDate(new Date(record.date));
-    }
-    if (type === 'run') {
-      useAppStore.setState({ editingRunId: record.id });
-    } else if (type === 'gym') {
-      useAppStore.setState({ editingGymId: record.id });
-    } else if (type === 'meal') {
-      useAppStore.setState({ editingMealId: record.id });
-    } else if (type === 'body') {
-      useAppStore.setState({ editingBodyId: record.id });
-    }
     clearNewlyCreatedRecord();
   };
 
@@ -171,12 +154,18 @@ export default function CreatedRecordModal() {
           </Button>
         )}
 
-        {/* Fechar, Atualizar registo e Eliminar juntos no mesmo frame — o
-            "Eliminar avaliação" do cartão acima ficava isolado lá em cima
-            (e inerte, por causa do pointer-events-none do preview) enquanto
-            estes dois viviam num rodapé à parte. "Fechar" é agora o botão
-            com mais destaque dos três (é a ação normal de sair deste ecrã
-            de sucesso); "Atualizar registo" e "Eliminar" ficam secundários. */}
+        {/* Fechar e Eliminar juntos no mesmo frame — o "Eliminar avaliação"
+            do cartão acima ficava isolado lá em cima (e inerte, por causa do
+            pointer-events-none do preview) enquanto estes dois viviam num
+            rodapé à parte. "Fechar" tem mais destaque: é a ação normal de
+            sair deste ecrã de sucesso.
+
+            Havia um terceiro botão aqui, "Atualizar registo", que abria o
+            registo em edição na hora — mas é sempre o registo que se acabou
+            de submeter: não há nada por atualizar ainda (relatado
+            2026-09-21, "acabamos de o submeter, atualização só se for ver o
+            detalhe"). Editar continua possível a partir do cartão do dia no
+            Calendário — é lá que a ação faz sentido. */}
         <div className="space-y-3 pt-2">
           <Button
             onClick={handleClose}
@@ -184,17 +173,6 @@ export default function CreatedRecordModal() {
             className="w-full"
           >
             Fechar
-          </Button>
-
-          <Button
-            onClick={handleUpdate}
-            variant="outline"
-            className="w-full"
-          >
-            <div className="flex items-center justify-center gap-2 w-full">
-              <Edit2 size={18} />
-              <span>Atualizar registo</span>
-            </div>
           </Button>
 
           <Button

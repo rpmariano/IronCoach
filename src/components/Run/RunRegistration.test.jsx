@@ -201,12 +201,25 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     expect(screen.queryByPlaceholderText('Ex: 48.5')).not.toBeInTheDocument(); // VO2 Max is an extra field
   });
 
-  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra', () => {
+  /* Bug relatado 2026-09-21: "O tempo da corrida aparece para fazer o
+     registo manual, mesmo estando escolhido a opção de análise do coach.
+     Esses campos só deveriam surgir na opção manual." Distância e duração
+     (renderCoreMetrics) renderizavam-se sempre, antes da própria escolha do
+     método — mostravam-se mesmo com "Foto (IA)" selecionada. */
+  it('com "Foto (IA)" selecionada (por omissão), não mostra distância nem duração — só a IA os dá', () => {
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument(); // Distância
+    expect(screen.queryByPlaceholderText('00:00')).not.toBeInTheDocument(); // Duração
+  });
+
+  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra, incluindo distância e duração', () => {
     render(<RunRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 48.5')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument(); // Distância
+    expect(screen.getByPlaceholderText('00:00')).toBeInTheDocument(); // Duração
     expect(screen.getByRole('button', { name: /Analisar corrida/i })).toBeInTheDocument();
   });
 

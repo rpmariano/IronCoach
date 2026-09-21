@@ -2150,12 +2150,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
           )}
 
-          {/* Main Manual Fields */}
-          {renderCoreMetrics()}
-
           {showToggle && renderEntryMethodChips()}
 
-          {showFotoBlock ? renderPhotoBlock() : renderManualDetails()}
+          {/* Distância e duração são manuais — na opção "Foto (IA)" quem os
+              dá é a análise do print, não o atleta. Estavam a renderizar-se
+              sempre, antes da própria escolha do método, e apareciam mesmo
+              com "Foto (IA)" selecionada (bug #34, relatado 2026-09-21). O
+              modo prova, mais acima, já seguia este padrão correto. */}
+          {showFotoBlock ? renderPhotoBlock() : (
+            <>
+              {renderCoreMetrics()}
+              {renderManualDetails()}
+            </>
+          )}
 
           {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
           </div>
