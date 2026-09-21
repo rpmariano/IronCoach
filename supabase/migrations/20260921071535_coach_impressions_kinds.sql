@@ -1,6 +1,6 @@
 -- ============================================================================
 -- O que a Carol diz no cliente fica registado (specs/carol-omnisciencia-omnipresenca.md, 5.1)
--- APLICAR À MÃO EM PRODUÇÃO ANTES DO PUSH A DEV (testar numa transação revertida).
+-- Aplicada à mão em produção a 2026-09-21 (testada antes numa transação revertida).
 -- O workflow só faz deploy das funções, não das migrations. Sem esta, cada
 -- logImpression 'welcome'/'moment' do cliente falha com 23514 dentro de
 -- try/console.warn: a app não parte, mas não grava nada e ninguém dá por isso.
