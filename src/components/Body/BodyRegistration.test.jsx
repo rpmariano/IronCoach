@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import BodyRegistration from './BodyRegistration';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
@@ -99,6 +100,7 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
   });
@@ -111,6 +113,7 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(useAppStore.getState().activeTab).toBe('calendario'));
     // BodyRegistration usa a data de hoje por omissão (sem dateIso a prefill).
     expect(useAppStore.getState().pendingCalendarDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -167,6 +170,7 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().bodyAssessments).toEqual([newAssessment]);
   });
@@ -420,6 +424,7 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 

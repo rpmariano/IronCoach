@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import GymRegistration from './GymRegistration';
 import { todayISO } from '../../lib/utils';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
@@ -116,6 +117,7 @@ describe('GymRegistration — Analisar treino por foto (analyze-gym)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
@@ -172,6 +174,7 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
@@ -332,6 +335,7 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(payload).toEqual({ date: '2026-01-05', name: 'Push A' });
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(mocks.deleteSets).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -568,6 +572,7 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 
@@ -636,6 +641,7 @@ describe('GymRegistration — hora de início', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(mocks.updateSession).not.toHaveBeenCalled();
   });

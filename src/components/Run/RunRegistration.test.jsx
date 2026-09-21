@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
 import { draftMediaStore } from '../../utils/draftMediaPersistence';
 import { todayISO } from '../../lib/utils';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
@@ -154,6 +155,7 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
   });
@@ -287,6 +289,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
   });
@@ -481,6 +484,7 @@ describe('RunRegistration — editar corrida existente', () => {
 
         fireEvent.change(screen.getByLabelText(/Nome da corrida/i), { target: { value: 'Rodagem leve' } });
         fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+        await dispensarConfirmacao();
         await waitFor(() => expect(onClose).toHaveBeenCalled());
         expect(mocks.invoke).not.toHaveBeenCalled();
         expect(mocks.updates.some(u => u.table === 'runs' && Array.isArray(u.payload.photo_paths))).toBe(false);
@@ -532,6 +536,7 @@ describe('RunRegistration — editar corrida existente', () => {
     expect(id).toBe('run-9');
     expect(payload).toEqual({ date: '2026-08-01', name: 'Rodagem longa', shoe_id: null });
     expect(mocks.invoke).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -570,6 +575,7 @@ describe('RunRegistration — editar corrida existente', () => {
     expect(body.run_id).toBe('run-9');
     expect(body.distance_km).toBe(12);
     expect(mocks.updateRun).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -759,6 +765,7 @@ describe('RunRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 
@@ -1327,6 +1334,7 @@ describe('RunRegistration — hora de início', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(mocks.updates).toEqual([]);
   });

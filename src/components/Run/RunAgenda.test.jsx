@@ -6,6 +6,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -338,6 +339,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fillRequiredFields();
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBe('race-nova');
@@ -356,6 +358,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     const expectedDate = dateInput.value;
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -382,6 +385,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBeNull();
@@ -563,6 +567,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
       fillRequiredFields();
       fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+      await dispensarConfirmacao();
 
       await waitFor(() => {
         expect(useAppStore.getState().activeTab).toBe('calendario');

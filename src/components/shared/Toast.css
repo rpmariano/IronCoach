@@ -15,17 +15,61 @@
   max-width: 380px;
 }
 
+/* A pilha em si — o contentor já centra, isto só alinha os avisos entre si. */
+.toast-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* O aviso inteiro é o botão que o dispensa: é um alvo maior do que um × de
+   12 px num ecrã de telemóvel, e é o gesto que as pessoas já tentam. */
 .toast {
   pointer-events: auto;
-  padding: 10px 20px;
+  min-height: 44px;
+  padding: 10px 16px 10px 20px;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
   animation: toast-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.toast-text { min-width: 0; }
+
+/* O × não é o alvo — é a legenda do que o toque faz. */
+.toast-x {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.65;
+  margin-left: 2px;
+}
+
+.toast-clear-all {
+  pointer-events: auto;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-glass-strong);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Footprints, UtensilsCrossed, Moon, Clock, Trophy } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
 
 /* A sala da Carol — as boas-vindas antes da Home (canvas de design
    "Boas-vindas da Carol", 2026-09-19). A decisão de QUANDO aparece e o
@@ -14,9 +13,16 @@ import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
    âmbar ao amanhecer, ciano à tarde, índigo à noite, quase nada de
    madrugada; no dia da prova, âmbar à volta dela (o rosto fica ciano).
 
-   Entra o nome, depois as bolhas com o compasso do chat; fecha sozinha ao
-   fim de ~6 s (a linha que se esvazia), num toque em qualquer sítio, no
-   botão ou com Escape. Com movimento reduzido tudo aparece de uma vez
+   Entra o nome, depois as bolhas com o compasso do chat; fica até ele a
+   dispensar — num toque em qualquer sítio, no botão ou com Escape.
+
+   Até 2026-09-21 fechava-se sozinha ao fim de ~7,8 s, com uma linha a
+   esvaziar-se por baixo a contar o tempo. Passou a esperar: «todas as
+   mensagens que têm este caráter temporário devem deixar de o ter; quero
+   que só desapareçam mediante ação do utilizador». A linha saiu com o
+   temporizador — sem contagem para mostrar, era uma promessa falsa.
+
+   Com movimento reduzido tudo aparece de uma vez
    (regras .welcome-* em globals.css). É um diálogo modal: o foco vai para
    o botão, o Tab não sai dela, e ao fechar o foco volta ao sítio de onde
    veio; a atualização automática (lib/appUpdate.js) espera por ela. */
@@ -119,8 +125,6 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
     // Quem tinha o foco antes — para lho devolver ao fechar.
     const antes = document.activeElement;
     buttonRef.current?.focus({ preventScroll: true });
-    // A linha começa a esvaziar-se depois de as bolhas entrarem (1,8 s).
-    const t = setTimeout(() => fecharRef.current(), 1800 + WELCOME_AUTO_CLOSE_MS);
     const onKey = (e) => {
       if (e.key === 'Escape') { fecharRef.current(); return; }
       // Enquanto ela está aberta, o Tab não sai dela: só há uma ação.
@@ -131,7 +135,6 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
     };
     document.addEventListener('keydown', onKey);
     return () => {
-      clearTimeout(t);
       document.removeEventListener('keydown', onKey);
       if (antes && typeof antes.focus === 'function' && document.contains(antes)) antes.focus({ preventScroll: true });
     };
@@ -236,11 +239,8 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
           >
             {welcome.cta}
           </button>
-          <div className="flex items-center" style={{ gap: 10 }} aria-hidden="true">
-            <span className="flex-1 overflow-hidden" style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,.08)' }}>
-              <span className="welcome-drain block h-full" style={{ background: accent, opacity: 0.7, animationDuration: `${WELCOME_AUTO_CLOSE_MS}ms` }} />
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)' }}>Toca em qualquer sítio para saltar</span>
+          <div className="flex items-center justify-center" aria-hidden="true">
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)' }}>Toca em qualquer sítio para fechar</span>
           </div>
         </div>
       </div>

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useEscapeClose } from './Sheet';
-import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
 import CoachAvatar from '../Coach/CoachAvatar';
 
 /**
@@ -29,15 +28,19 @@ import CoachAvatar from '../Coach/CoachAvatar';
  * ("Meia de Lisboa concluída"), escrito por quem monta.
  *
  * ── Dispensa manual (relatado pelo utilizador, "Registo da prova") ─────────
- * O visto de "mais um registo" continua a sair sozinho: é uma confirmação,
- * não tem nada para ler. Mas as mensagens de PARABÉNS — a prova concluída
+ * Primeiro foram só as mensagens de PARABÉNS — a prova concluída
  * (`tone="race"`), uma conquista nova (`achievement`) ou a Carol a marcar o
- * momento (`first`) — traziam texto a sério e desapareciam em 1,6-3 s, antes
- * de darem tempo de o ler: «surgiu uma mensagem de parabéns, mas foi muito
- * rápido. Este tipo de mensagem não deve desaparecer, mas sim ter um botão
- * para fechar, e fechar quando se clica fora da mensagem.» É isso que
- * `dismissible` faz: sem temporizador nenhum, com botão "Continuar", clique
- * no fundo e Escape.
+ * momento (`first`) —, que traziam texto a sério e desapareciam em 1,6-3 s,
+ * antes de darem tempo de o ler: «surgiu uma mensagem de parabéns, mas foi
+ * muito rápido. Este tipo de mensagem não deve desaparecer, mas sim ter um
+ * botão para fechar, e fechar quando se clica fora da mensagem.»
+ *
+ * Desde 2026-09-21 é a regra de TODAS: «todas as mensagens que têm este
+ * caráter temporário devem deixar de o ter; quero que só desapareçam
+ * mediante ação do utilizador». O visto simples também esperava pouco (900
+ * ms, ou 120 ms com movimento reduzido) e também era uma mensagem. Já não
+ * há temporizador nenhum aqui: sai no botão "Continuar", no clique fora da
+ * mensagem ou com Escape.
  */
 const TONES = {
   ok: {
@@ -72,9 +75,7 @@ export const DUR_CONFIRM_EXIT_FIRST = 3000;
 
 export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', achievement = null, first = null, onDone }) {
   const { ring, fill, label: labelColor, Icon } = TONES[tone] || TONES.ok;
-  /* Há algo para LER, não só um visto a confirmar: espera pelo atleta. */
-  const dismissible = !!(achievement || first || tone === 'race');
-  const [showAchievement, setShowAchievement] = useState(() => !!achievement && (dismissible ? prefersReducedMotion() : false));
+  const [showAchievement, setShowAchievement] = useState(() => !!achievement && prefersReducedMotion());
   // Com movimento reduzido, ela já lá está no primeiro render.
   const [showFirst, setShowFirst] = useState(() => !!first && prefersReducedMotion());
   const doneRef = useRef(false);
@@ -87,14 +88,12 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
   useEffect(() => {
     const reduced = prefersReducedMotion();
     const timers = [];
-    // Movimento reduzido mantém a regra da app: tudo a 120 ms, incluindo o
-    // tempo até sair. Só o visto simples é que sai sozinho.
-    if (!dismissible) timers.push(setTimeout(finish, reduced ? DUR_TAP : DUR_CONFIRM_EXIT));
+    /* Os únicos temporizadores que restam são de ENTRADA — a conquista e a
+       fala da Carol aparecem um instante depois do visto, para não entrarem
+       todas ao mesmo tempo. Nenhum deles faz nada sair. */
     if (achievement && !first) timers.push(setTimeout(() => setShowAchievement(true), reduced ? 0 : DUR_ACHIEVEMENT_IN));
     if (first && !reduced) timers.push(setTimeout(() => setShowFirst(true), DUR_FIRST_IN));
     return () => timers.forEach(clearTimeout);
-    // `onDone` muda de identidade a cada render de quem nos monta; re-armar o
-    // temporizador por causa disso adiava a saída para sempre.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Escape fecha pela pilha partilhada (Sheet.jsx), não por um listener
@@ -102,7 +101,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
      cima. Um listener à parte funcionava por acaso — `document` dispara
      antes de `window` no bubble — e o comentário da pilha regista que foi
      exatamente esse atalho que já trouxe o bug de volta uma vez. */
-  const escapeClose = useCallback(() => { if (dismissible) finish(); }, [dismissible]); // eslint-disable-line react-hooks/exhaustive-deps
+  const escapeClose = useCallback(() => finish(), []); // eslint-disable-line react-hooks/exhaustive-deps
   useEscapeClose(escapeClose);
 
   /* O foco vai para o botão de dispensa e não sai dali enquanto a mensagem
@@ -111,7 +110,6 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
      (Welcome/CarolWelcome.jsx): só há uma ação, por isso o Tab devolve
      sempre o foco ao botão. Ao fechar, o foco volta a quem o tinha. */
   useEffect(() => {
-    if (!dismissible) return undefined;
     const antes = document.activeElement;
     closeRef.current?.focus?.({ preventScroll: true });
     const onKey = (e) => {
@@ -126,26 +124,25 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
         antes.focus({ preventScroll: true });
       }
     };
-  }, [dismissible]);
+  }, []);
 
   return (
     <div
       data-testid="record-confirmation"
       data-tone={tone}
       data-first={first ? 'true' : undefined}
-      data-dismissible={dismissible ? 'true' : undefined}
-      role={dismissible ? 'dialog' : 'status'}
-      aria-modal={dismissible ? 'true' : undefined}
-      aria-label={dismissible ? label : undefined}
-      aria-live={dismissible ? undefined : 'polite'}
-      onClick={dismissible ? finish : undefined}
+      data-dismissible="true"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      onClick={finish}
       className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
-      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: dismissible ? 'pointer' : undefined }}
+      style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: 'pointer' }}
     >
       {/* Clicar NA mensagem não a fecha — só clicar fora dela. */}
       <div
         className="flex flex-col items-center"
-        onClick={dismissible ? (e) => e.stopPropagation() : undefined}
+        onClick={(e) => e.stopPropagation()}
         style={{ cursor: 'auto' }}
       >
         <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
@@ -215,8 +212,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
           </div>
         )}
 
-        {dismissible && (
-          <button
+        <button
             type="button"
             ref={closeRef}
             data-testid="record-confirmation-close"
@@ -230,8 +226,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
             }}
           >
             Continuar
-          </button>
-        )}
+        </button>
       </div>
     </div>
   );
