@@ -5011,12 +5011,20 @@ async function handler(req: Request): Promise<Response> {
     // O hub da prova pede o balanço assim que a corrida fica registada
     // (pedido 2026-09-13) — aí a regra "ela falou há pouco, cala-te" não se
     // aplica: o atleta está a olhar para o sítio onde o balanço vai aparecer.
-    const proactiveForce = proactiveTrigger === "race_after" && body.proactive_force === true;
+    // Fura as duas travas: a chave já entregue (é ele a pedir de novo, de
+    // propósito) e as quiet hours.
+    const raceAfterForce = proactiveTrigger === "race_after" && body.proactive_force === true;
+    // O toque numa notificação (P.9, Coach.jsx efeito passivo): prometeu-se
+    // uma conversa, e recusá-la em silêncio porque ela falou por qualquer
+    // outro motivo há menos de 6h deixava o toque sem resposta nenhuma. Só
+    // fura as quiet hours — NUNCA o dedup por chave: se a conversa já
+    // aconteceu (outro dispositivo), o toque não a repete, só a reconhece
+    // (fetchPushesBlock já diz "tocou").
+    const tapForce = proactiveTrigger !== "race_after" && body.proactive_force === true;
+    const bypassQuietHours = raceAfterForce || tapForce;
     // A chave que torna esta mensagem única (src/utils/coachProactive.js).
-    // Já entregue noutro dispositivo → não se repete. O pedido forçado do
-    // hub ("Falar com a Carol" no balanço) é o atleta a pedir: passa sempre.
     const proactiveKey = proactiveTrigger ? parseProactiveKey(body.proactive_key) : null;
-    if (proactiveTrigger && proactiveKey && !proactiveForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+    if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
       return jsonResponse({
         skipped: true,
         reason: "already_sent",
@@ -5071,7 +5079,7 @@ async function handler(req: Request): Promise<Response> {
        Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
        abaixo): nesse caso só arranca depois, para não gastar as consultas. */
     let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
-      proactiveTrigger && !proactiveForce ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
+      proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
@@ -5582,7 +5590,7 @@ async function handler(req: Request): Promise<Response> {
       : null;
     // Nunca duas mensagens dela empilhadas: se falou há menos de 6h e o
     // atleta ainda não respondeu, a mensagem proativa fica para outra vez.
-    if (proactiveTrigger && !proactiveForce && shouldSkipProactive(recentHistory || [], Date.now())) {
+    if (proactiveTrigger && !bypassQuietHours && shouldSkipProactive(recentHistory || [], Date.now())) {
       return jsonResponse({
         skipped: true,
         reason: "quiet_hours",
@@ -5712,6 +5720,9 @@ async function handler(req: Request): Promise<Response> {
       memoryBlocks.adherence,
       memoryBlocks.dailyCard,
       memoryBlocks.impressions,
+      // O que ela disse fora da app e se foi tocado (P.9) — também no turno
+      // proativo (ambos passam por aqui, mesma promessa memoryBlocksPromise).
+      memoryBlocks.pushes,
     ].filter(Boolean);
     if (memorySections.length > 0) {
       finalSystemInstruction += "\n\n--- A TUA MEMÓRIA ALARGADA (o que já sabes, disseste e viste deste atleta fora desta conversa) ---\n" +

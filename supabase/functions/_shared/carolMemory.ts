@@ -611,6 +611,63 @@ export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: s
   }
 }
 
+// A Carol falando com ele fora da app (P.9) — os rótulos são os mesmos de
+// PUSH_TYPE_LABELS em coach-chat/index.ts (duplicado como IMPRESSION_KIND_LABELS
+// acima: um rótulo de apresentação, não lógica, o risco de divergir é baixo).
+const PUSH_TRIGGER_LABELS: Record<string, string> = {
+  intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+};
+
+export function buildPushesContext(
+  pushes: Array<{ key: string; trigger: string; sent_date: string; sent_at?: string | null; body?: string | null }> | null | undefined,
+  tappedKeys: Set<string> | null | undefined,
+  todayISO: string,
+): string | null {
+  const list = (pushes || []).filter((p) => p && typeof p.sent_date === "string" && p.key);
+  if (!list.length) return null;
+  const yesterdayISO = addDaysISO(todayISO, -1);
+  const tapped = tappedKeys || new Set<string>();
+  const lines = list
+    .slice()
+    .sort((a, b) => String(a.sent_at ?? "").localeCompare(String(b.sent_at ?? "")))
+    .map((p) => {
+      const label = PUSH_TRIGGER_LABELS[p.trigger] ?? p.trigger;
+      const day = p.sent_date === todayISO ? "Hoje" : p.sent_date === yesterdayISO ? "Ontem" : p.sent_date;
+      const body = clip(p.body, 200);
+      const estado = tapped.has(p.key) ? "tocou" : "não abriu";
+      return `- ${day}, ${label}${body ? `: "${body.replace(/"/g, "'")}"` : ""} (${estado}).`;
+    });
+  return `NOTIFICASTE-O (últimos 3 dias):\n${lines.join("\n")}\n` +
+    `A primeira mensagem continua a notificação; não a repitas com outras palavras.`;
+}
+
+/**
+ * O que a Carol lhe disse fora da app e se ele tocou (P.9). Lido só pelo
+ * chat: as notificações não são o que o Início mostrou (isso é
+ * fetchImpressionsBlock), são o que ELA falou por iniciativa própria. A
+ * impressão kind 'push' (gravada pelo cliente ao tocar) diz o que foi aberto.
+ */
+export async function fetchPushesBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
+  try {
+    const from = addDaysISO(todayISO, -2);
+    const [{ data: pushes, error: e1 }, { data: opened, error: e2 }] = await Promise.all([
+      sb.from("coach_proactive_pushes").select("key, trigger, sent_date, sent_at, body")
+        .eq("user_id", userId).gte("sent_date", from).lte("sent_date", todayISO)
+        .order("sent_at", { ascending: false }).limit(9),
+      sb.from("coach_impressions").select("key").eq("user_id", userId).eq("kind", "push")
+        .gte("date", from).lte("date", todayISO),
+    ]);
+    warn("coach_proactive_pushes", e1);
+    warn("coach_impressions(push)", e2);
+    const tapped = new Set<string>((opened || []).map((r: any) => r.key));
+    return buildPushesContext(pushes, tapped, todayISO);
+  } catch (e) {
+    console.warn("carolMemory: fetchPushesBlock falhou:", e);
+    return null;
+  }
+}
+
 // ── Fase 3 — O que ela prescreveu e o que aconteceu ──────────────────────
 
 /**
@@ -744,6 +801,8 @@ export interface ChatMemoryBlocks {
   portrait: string | null;
   checkin: string | null;
   impressions: string | null;
+  /** O que ela disse fora da app e se foi tocado (P.9). */
+  pushes: string | null;
   adherence: string | null;
   /** A proposta de objetivos por decidir (5.2). */
   proposals: string | null;
@@ -760,6 +819,9 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O check-in e as impressões usam o dia de Lisboa, como o cliente as grava.
     const checkinPromise = fetchCheckinBlock(sb, userId, lisbonTodayISO(), profile);
     const impressionsPromise = fetchImpressionsBlock(sb, userId, lisbonTodayISO());
+    // O que ela disse fora da app (P.9) — mesma data de Lisboa das impressões,
+    // a mesma que o cliente grava a impressão 'push' ao tocar.
+    const pushesPromise = fetchPushesBlock(sb, userId, lisbonTodayISO());
     const adherencePromise = fetchAdherenceBlock(sb, userId, todayISO);
     // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
     // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
@@ -836,11 +898,12 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       portrait: await portraitPromise,
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
+      pushes: await pushesPromise,
       adherence: await adherencePromise,
       proposals: buildGoalProposalContext((goalsR.data || [])[0] ?? null),
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, adherence: null, proposals: null };
+    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null };
   }
 }

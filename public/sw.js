@@ -34,8 +34,13 @@ self.addEventListener('push', (event) => {
       // Cada tipo substitui só a sua: a água não apaga uma mensagem da Carol.
       tag: data.tag || 'water-reminder',
       renotify: true,
-      // O separador que o toque abre (a Carol abre o Coach).
-      data: { tab: typeof data.tab === 'string' ? data.tab : null },
+      // O separador que o toque abre (a Carol abre o Coach), e a chave do
+      // momento (ação P.9) — para o toque abrir exatamente a conversa que
+      // esta notificação prometeu, não só o separador.
+      data: {
+        tab: typeof data.tab === 'string' ? data.tab : null,
+        key: typeof data.key === 'string' ? data.key : null,
+      },
     })
   );
 });
@@ -43,17 +48,20 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const tab = event.notification.data && event.notification.data.tab;
+  const key = event.notification.data && event.notification.data.key;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
         if ('focus' in client) {
           // A app já aberta muda de separador (App.jsx ouve esta mensagem).
-          if (tab) client.postMessage({ type: 'open-tab', tab });
+          // Payloads antigos (sem key) continuam a funcionar — key fica undefined.
+          if (tab) client.postMessage({ type: 'open-tab', tab, key });
           return client.focus();
         }
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(self.registration.scope + (tab ? `?tab=${encodeURIComponent(tab)}` : ''));
+        const params = tab ? `?tab=${encodeURIComponent(tab)}${key ? `&carol=${encodeURIComponent(key)}` : ''}` : '';
+        return self.clients.openWindow(self.registration.scope + params);
       }
     })
   );

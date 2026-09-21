@@ -12,6 +12,8 @@ import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import { MedalhaoDefs } from './components/shared/Medalhao';
 import CarolWelcome from './components/Welcome/CarolWelcome';
 import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
+import { detectRaceConflict } from './utils/planDivergence';
+import { todayISO } from './lib/utils';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -421,6 +423,44 @@ export default function App() {
      notificação disse); nesses casos a faixa conta como vista. */
   const [welcome, setWelcome] = useState(null);
   const openedWithTabRef = useRef(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('tab'));
+  /* A chave de uma notificação tocada com a app fechada (ação P.9, `?carol=`
+     na URL) — guardada aqui porque só se consome depois de loadInitialData
+     trazer os dados frescos (perfil, planos, provas); ver consumeProactiveKey. */
+  const proactiveKeyRef = useRef(null);
+  const consumeProactiveKey = useCallback((key) => {
+    if (!key) return;
+    useAppStore.getState().logImpression({ kind: 'push', key, title: null });
+    if (key.startsWith('intervention:')) {
+      // Só abre o Coach se o assunto ainda estiver por resolver — resolvido
+      // entretanto (noutro dispositivo, ou nesta app antes de o toque
+      // chegar), fica no Início com o aviso, como qualquer outro candidato
+      // que já não se aplica.
+      const s = useAppStore.getState();
+      if (s.profile?.coach_intervention_status === 'needed' || s.profile?.coach_intervention_status === 'in_progress') {
+        s.setCoachIntent({ kind: 'proactive_intervention', reason: s.profile?.coach_intervention_reason || null });
+        setActiveTab('coach');
+      }
+      return;
+    }
+    if (key.startsWith('race_conflict:')) {
+      const s = useAppStore.getState();
+      const conflict = detectRaceConflict({ coachPlans: s.coachPlans, raceEvents: s.raceEvents, today: todayISO() });
+      if (conflict) {
+        s.setCoachIntent({
+          kind: 'race_conflict',
+          races: conflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
+          target: conflict.target ? { id: conflict.target.id, name: conflict.target.name, date: conflict.target.date } : null,
+        });
+        setActiveTab('coach');
+      }
+      return;
+    }
+    // Os outros momentos (race_morning/race_eve/race_after/block_end/silence)
+    // o cliente sabe montar sozinho (listProactiveTriggers), mas só o Coach
+    // decide — o efeito passivo lá (Coach.jsx) percorre a lista e honra esta
+    // preferência sem lhe dar prioridade sobre um coachIntent explícito.
+    useAppStore.getState().setProactiveKeyRequested(key);
+  }, [setActiveTab]);
   const welcomeReady = !isInitializing && !!session && !showOnboarding;
   const welcomeReadyRef = useRef(false);
   welcomeReadyRef.current = welcomeReady;
@@ -578,9 +618,22 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
     const isDemo = params.get('demo') === 'true';
+    // A chave da notificação que abriu a app (ação P.9) — sem sessão ainda
+    // não há a quem atribuir a impressão nem dados para decidir o ecrã;
+    // fica à espera de loadInitialData, mais abaixo.
+    const carolParam = params.get('carol');
 
     if (tabParam) {
       setActiveTab(tabParam);
+    }
+    if (carolParam) {
+      proactiveKeyRef.current = carolParam;
+      // Sem o `carol=`: um F5 a seguir não repete a mesma conversa. O `tab`
+      // fica, para um recarregamento nesta sessão continuar a ver a mesma
+      // coisa que openedWithTabRef já fixou.
+      try {
+        window.history.replaceState(null, '', `${window.location.pathname}?tab=${encodeURIComponent(tabParam || 'home')}`);
+      } catch { /* URL API indisponível — o pior caso é o carol= sobreviver a um F5 */ }
     }
 
     /* Uma notificação da Carol tocada com a app já aberta (ação P.3): o
@@ -595,6 +648,9 @@ export default function App() {
         setWelcome(null);
         useAppStore.getState().setWelcomeGate('clear');
         setActiveTab(event.data.tab);
+        // Com a app já aberta os dados já estão carregados — consome-se já
+        // (ação P.9), sem esperar por loadInitialData como no arranque a frio.
+        if (event.data.key) consumeProactiveKey(event.data.key);
       }
     };
     if (typeof navigator !== 'undefined' && navigator.serviceWorker?.addEventListener) {
@@ -605,7 +661,14 @@ export default function App() {
       if (existingSession?.user) {
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
-        loadInitialData(existingSession.user.id).finally(() => setIsInitializing(false));
+        loadInitialData(existingSession.user.id)
+          .then(() => {
+            if (proactiveKeyRef.current) {
+              consumeProactiveKey(proactiveKeyRef.current);
+              proactiveKeyRef.current = null;
+            }
+          })
+          .finally(() => setIsInitializing(false));
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -677,7 +740,7 @@ export default function App() {
       subscription.unsubscribe();
       if (typeof navigator !== 'undefined') navigator.serviceWorker?.removeEventListener?.('message', onWorkerMessage);
     };
-  }, [setSession, setProfile, loadInitialData, setActiveTab]);
+  }, [setSession, setProfile, loadInitialData, setActiveTab, consumeProactiveKey]);
 
   if (activeTab === 'design-system') {
     return <Suspense fallback={<FullScreenLoader />}><ButtonShowcase /></Suspense>;

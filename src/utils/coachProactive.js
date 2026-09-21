@@ -60,34 +60,38 @@ function daysBetween(fromIso, toIso) {
   return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / DAY_MS);
 }
 
-/** Escolhe a mensagem proativa para este momento, ou null. Prioridade: manhã
- *  da prova > véspera > depois da prova > silêncio — o dia da prova manda
- *  em tudo o resto. `now` é injetável para os testes. */
-export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [] }, now = new Date()) {
+/** Todos os momentos que se aplicam agora, pela ordem de prioridade do
+ *  servidor: manhã da prova > véspera > depois da prova > fim de bloco >
+ *  silêncio — o dia da prova manda em tudo o resto. `now` é injetável para
+ *  os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
+ *  candidato uma notificação tocada corresponde, mesmo que não seja o
+ *  primeiro da lista; `pickProactiveTrigger` continua a ser só o primeiro. */
+export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [] }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
+  const list = [];
 
   const morning = scheduled.find((r) => r.date.slice(0, 10) === today);
   if (morning) {
-    return {
+    list.push({
       trigger: 'race_morning',
       key: `race_morning:${morning.id}`,
       details: `Prova de hoje: "${morning.name}"${morning.distance_km ? `, ${morning.distance_km} km` : ''}.`,
-    };
+    });
   }
 
   const eve = scheduled.find((r) => daysBetween(today, r.date.slice(0, 10)) === 1);
   if (eve) {
-    return {
+    list.push({
       trigger: 'race_eve',
       key: `race_eve:${eve.id}`,
       details: `Prova amanhã: "${eve.name}"${eve.distance_km ? `, ${eve.distance_km} km` : ''}${eve.location ? `, em ${eve.location}` : ''}.`,
-    };
+    });
   }
 
   const afterCandidate = pickRaceAfter({ races, runs, profile, today });
-  if (afterCandidate) return afterCandidate;
+  if (afterCandidate) list.push(afterCandidate);
 
   /* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A
      régua é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser
@@ -100,25 +104,31 @@ export function pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments
     const end = String(block.period_end).slice(0, 10);
     const gap = daysBetween(today, end);
     const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
-    return {
+    list.push({
       trigger: 'block_end',
       key: `block_end:${block.id}`,
       details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
-    };
+    });
   }
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
   if (last) {
     const gap = daysBetween(last, today);
     if (gap >= SILENCE_DAYS) {
-      return {
+      list.push({
         trigger: 'silence',
         key: `silence:${last}`,
         details: `Último registo: ${last} (há ${gap} dias).`,
-      };
+      });
     }
   }
-  return null;
+  return list;
+}
+
+/** Escolhe a mensagem proativa para este momento, ou null — o primeiro de
+ *  listProactiveTriggers. */
+export function pickProactiveTrigger(data, now = new Date()) {
+  return listProactiveTriggers(data, now)[0] ?? null;
 }
 
 /* O balanço depois da prova (specs/gamificacao-provas.md, "A Carol no

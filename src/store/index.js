@@ -164,7 +164,9 @@ export const useAppStore = create((set, get) => ({
     // dispensou: sem a limpar, esse 'ignored' ficava para o utilizador
     // seguinte. Os 'ignored' do próprio voltam do servidor ao entrar.
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
-    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), insightStates: {} });
+    // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
+    // para o próximo utilizador deste telemóvel.
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), insightStates: {}, proactiveKeyRequested: null });
   },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 
@@ -250,7 +252,15 @@ export const useAppStore = create((set, get) => ({
   setWelcomeGate: (gate) => set({ welcomeGate: gate }),
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
-  
+  /* A chave de uma notificação tocada (P.9) para um momento que o cliente
+     não sabe montar sozinho (só o servidor gera race_after/block_end/silence
+     com os dados todos) — NÃO é um coachIntent: o efeito passivo do Coach
+     (Coach.jsx) cede a qualquer intent explícito, e isto é só uma preferência
+     de ordem dentro da lista normal de candidatos (listProactiveTriggers).
+     Consumida (e limpa) por esse efeito assim que o Coach monta ou recebe. */
+  proactiveKeyRequested: null,
+  setProactiveKeyRequested: (key) => set({ proactiveKeyRequested: key }),
+
   // Coach Actions
   addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
   // Usado para retirar a mensagem placeholder "isto está a demorar…" depois
