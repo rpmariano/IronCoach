@@ -22,6 +22,8 @@ import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMem
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
+import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
+import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -450,6 +452,9 @@ async function generateCoachNotes(
   // — a mesma do cliente): 'pace' ou 'distance', ou null. A régua decide, o
   // texto não compara os números sozinho.
   personalRecordKind: "pace" | "distance" | null = null,
+  // "FC média X bpm = ZY (Karvonen; FCmáx Z observada)" (ação 5.4), já
+  // pronta — substitui a linha simples "FC média: X bpm" quando existe.
+  hrZoneLine: string | null = null,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
@@ -599,7 +604,7 @@ async function generateCoachNotes(
     `- Esforço percebido (RPE): ${run.effort_rpe || "?"}/10\n` +
     (details.elevation_gain_m ? `- Desnível: ${details.elevation_gain_m}m\n` : "") +
     (details.cadence_spm ? `- Cadência: ${details.cadence_spm}spm${details.max_cadence_spm ? ` (máx ${details.max_cadence_spm}spm)` : ""}\n` : "") +
-    (details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
+    (hrZoneLine ? `- ${hrZoneLine}.\n` : details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
     contextSection +
     yesterdaySection +
@@ -766,7 +771,7 @@ async function attachCoachNotes(
     const hasUpcomingRace = (upcomingRaces || []).length > 0;
     
     const sevenDaysAgoISO = new Date(new Date(ctx.date).getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const [{ data: recentGym }, { data: sameDayRuns }] = await Promise.all([
+    const [{ data: recentGym }, { data: sameDayRuns }, { data: hrProfile }] = await Promise.all([
       sb
         .from("workout_sessions")
         .select("date, name, categories, exertion, duration_seconds")
@@ -779,6 +784,9 @@ async function attachCoachNotes(
         .eq("user_id", userId)
         .eq("date", ctx.date)
         .neq("id", run.id),
+      // FCmáx e zona (ação 5.4): birth_date/resting_hr_bpm para resolveMaxHR
+      // e resolveHrZones — a mesma régua do coach-chat e do cartão diário.
+      sb.from("profiles").select("birth_date, resting_hr_bpm").eq("id", userId).maybeSingle(),
     ]);
 
     // Régua única do recorde (ação 5.3): TODAS as corridas (sem filtro de
@@ -798,6 +806,27 @@ async function attachCoachNotes(
       { id: run.id, date: ctx.date, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
       recordCandidates || [],
     );
+
+    // Em que zona foi a FC média desta corrida (ação 5.4) — para o plano
+    // poder dizer Z2 e a Carol poder dizer que foi feito em Z4. A FCmáx é a
+    // maior repetida nos prints (previousRuns já traz details em bruto,
+    // mais esta própria corrida), senão Tanaka pela idade do perfil.
+    const todayDetails = (ctx.details || {}) as Record<string, unknown>;
+    const observedMaxHr = [
+      ...(previousRuns || []).map((r: any) => ({ bpm: Number((r.details as Record<string, unknown> | null)?.max_heart_rate_bpm), date: r.date })),
+      todayDetails.max_heart_rate_bpm != null ? { bpm: Number(todayDetails.max_heart_rate_bpm), date: ctx.date } : null,
+    ].filter((r): r is { bpm: number; date: string } => !!r && Number.isFinite(r.bpm));
+    const maxHr = resolveMaxHR(ageFromBirthDate(hrProfile?.birth_date ?? null), observedMaxHr);
+    let hrZoneLine: string | null = null;
+    if (maxHr && todayDetails.avg_heart_rate_bpm != null) {
+      const avgHr = Number(todayDetails.avg_heart_rate_bpm);
+      const { zones, method } = resolveHrZones(maxHr.bpm, hrProfile?.resting_hr_bpm ?? null);
+      const zone = zoneOf(avgHr, zones);
+      if (zone) {
+        const origem = maxHr.source === "observada" ? `FCmáx ${maxHr.bpm} observada` : `FCmáx ${maxHr.bpm} por Tanaka`;
+        hrZoneLine = `FC média ${avgHr} bpm = ${zone} (${method === "karvonen" ? "Karvonen" : "%FCmáx"}; ${origem})`;
+      }
+    }
 
     const coachResult = await generateCoachNotes(
       {
@@ -819,6 +848,7 @@ async function attachCoachNotes(
       await memoryPromise,
       bestPacesLine,
       personalRecordKind,
+      hrZoneLine,
     );
 
     if (coachResult.text) {

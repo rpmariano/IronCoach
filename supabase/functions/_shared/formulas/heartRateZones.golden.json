@@ -8,5 +8,44 @@
   ],
   "pctMax": [
     { "name": "maxHR 177", "input": { "maxHR": 177 }, "expect": { "z1": [89, 106], "z2": [106, 124], "z3": [124, 142], "z4": [142, 159], "z5": [159, 177] } }
+  ],
+  "resolveMaxHR": [
+    {
+      "name": "FCmáx observada repetida (±5 bpm) ganha a Tanaka",
+      "input": { "age": 30, "observed": [{ "bpm": 185, "date": "2026-03-01" }, { "bpm": 183, "date": "2026-05-01" }, { "bpm": 120, "date": "2026-01-01" }] },
+      "expect": { "bpm": 185, "source": "observada", "date": "2026-03-01" }
+    },
+    {
+      "name": "um único pico isolado não chega — cai para Tanaka",
+      "input": { "age": 30, "observed": [{ "bpm": 200, "date": "2026-01-01" }] },
+      "expect": { "bpm": 187, "source": "tanaka", "date": null }
+    },
+    {
+      "name": "duas leituras distintas sem se repetirem — usa a segunda maior, não a mais alta",
+      "input": { "age": 30, "observed": [{ "bpm": 200, "date": "2026-01-01" }, { "bpm": 150, "date": "2026-02-01" }] },
+      "expect": { "bpm": 150, "source": "observada", "date": "2026-02-01" }
+    },
+    {
+      "name": "leituras fora de 120-220 são descartadas, não só desempatadas",
+      "input": { "age": 40, "observed": [{ "bpm": 250, "date": "2026-01-01" }, { "bpm": 100, "date": "2026-02-01" }] },
+      "expect": { "bpm": 180, "source": "tanaka", "date": null }
+    },
+    {
+      "name": "sem idade e sem leituras, null — nunca uma estimativa inventada",
+      "input": { "age": null, "observed": [] },
+      "expect": null
+    }
+  ],
+  "zoneOf": [
+    { "name": "dentro da Z1", "input": { "bpm": 130 }, "expect": "Z1" },
+    { "name": "no limite exato entre Z1 e Z2 — conta para a de cima", "input": { "bpm": 136 }, "expect": "Z2" },
+    { "name": "dentro da Z3", "input": { "bpm": 158 }, "expect": "Z3" },
+    { "name": "no topo da Z5", "input": { "bpm": 187 }, "expect": "Z5" },
+    { "name": "acima da FCmáx, ainda Z5", "input": { "bpm": 195 }, "expect": "Z5" },
+    { "name": "abaixo da Z1 — fora das zonas de esforço", "input": { "bpm": 100 }, "expect": null }
+  ],
+  "resolveHrZones": [
+    { "name": "com FC de repouso, Karvonen", "input": { "maxHRBpm": 187, "restingHrBpm": 60 }, "expect": { "method": "karvonen" } },
+    { "name": "sem FC de repouso, %FCmáx", "input": { "maxHRBpm": 177, "restingHrBpm": null }, "expect": { "method": "pctMax" } }
   ]
 }
